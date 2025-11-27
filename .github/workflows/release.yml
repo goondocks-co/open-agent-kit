@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate-tag:
+    name: Validate Release Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      is_prerelease: ${{ steps.extract.outputs.is_prerelease }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "This is a pre-release: $VERSION"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "This is a stable release: $VERSION"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify version matches pyproject.toml
+        run: |
+          VERSION_TAG="${{ steps.extract.outputs.version }}"
+
+          # Use awk instead of grep -P for cross-platform compatibility
+          VERSION_FILE=$(awk '/^\[project\]/{flag=1; next} /^\[/{flag=0} flag && /^version = "/{gsub(/.*version = "|".*/, ""); print; exit}' pyproject.toml)
+
+          echo "Tag version: $VERSION_TAG"
+          echo "File version: $VERSION_FILE"
+
+          if [ "$VERSION_TAG" != "$VERSION_FILE" ]; then
+            echo "Error: Version mismatch!"
+            echo "Git tag: v$VERSION_TAG"
+            echo "pyproject.toml: $VERSION_FILE"
+            exit 1
+          fi
+
+  build-python-package:
+    name: Build Python Package
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build hatchling
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Verify package
+        run: |
+          pip install dist/*.whl
+          python -c "import oak; print(f'Installed version: {oak.__version__}')"
+          python -m oak.cli version
+
+      - name: Upload Python artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages
+          path: dist/
+
+  run-tests:
+    name: Run Full Test Suite
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: |
+          pytest --cov=oak --cov-report=xml --cov-report=term
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: release
+          fail_ci_if_error: false
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-tag, build-python-package, run-tests]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Python packages
+        uses: actions/download-artifact@v4
+        with:
+          name: python-packages
+          path: release-files
+
+      - name: List artifacts
+        run: |
+          echo "Release artifacts:"
+          ls -lh release-files/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+
+          # Get commits since last tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%an)" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%an)" --no-merges | head -20)
+          fi
+
+          # Create release notes
+          cat > release-notes.md <<EOF
+          ## What's Changed
+
+          ${COMMITS}
+
+          ## Install and Upgrade
+
+          \`\`\`bash
+          # Install via pip
+          pip install open-agent-kit
+
+          # Or install from source
+          git clone https://github.com/sirkirby/open-agent-kit.git
+          cd open-agent-kit
+          pip install -e .
+
+          # Upgrade templates and commands in your project
+          cd /path/to/your/project
+          oak upgrade
+          \`\`\`
+
+          ## Documentation
+
+          - [README](https://github.com/sirkirby/open-agent-kit/blob/main/README.md)
+          - [Quick Start Guide](https://github.com/sirkirby/open-agent-kit/blob/main/QUICKSTART.md)
+          EOF
+
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release v${{ needs.validate-tag.outputs.version }}
+          body_path: release-notes.md
+          files: release-files/*
+          draft: false
+          prerelease: ${{ needs.validate-tag.outputs.is_prerelease == 'true' }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish release summary
+        run: |
+          echo "## Release Created Successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate-tag.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** ${{ needs.validate-tag.outputs.is_prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh release-files/ >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "pip install open_agent_kit-${{ needs.validate-tag.outputs.version }}-py3-none-any.whl" >> $GITHUB_STEP_SUMMARY
+          echo "oak init" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

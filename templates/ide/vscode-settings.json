@@ -1,0 +1,16 @@
+{
+  "chat.promptFilesRecommendations": {
+    "oak.rfc-create": true,
+    "oak.rfc-list": true,
+    "oak.constitution-create": true,
+    "oak.constitution-amend": true,
+    "oak.issue-plan": true,
+    "oak.issue-implement": true,
+    "oak.issue-validate": true
+  },
+  "chat.tools.terminal.autoApprove": {
+    "oak": true,
+    ".oak/scripts/bash/": true,
+    ".oak/scripts/powershell/": true
+  }
+}

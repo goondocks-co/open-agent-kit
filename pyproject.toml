@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "open-agent-kit"
+version = "0.1.0"
+description = "CLI toolkit for AI-powered development workflows - spec-driven development, RFC/ARC management, and shared conventions across AI coding agents"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Chris Kirby"}
+]
+keywords = ["cli", "ai", "rfc", "development-workflow", "ai-agents", "claude", "copilot", "cursor"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "readchar>=4.0.0",
+    "platformdirs>=4.0.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "ruff>=0.1.0",
+    "black>=24.0.0",
+    "types-PyYAML>=6.0.0",
+]
+
+[project.scripts]
+oak = "open_agent_kit.cli:cli_main"
+
+[project.urls]
+Homepage = "https://github.com/sirkirby/open-agent-kit"
+Documentation = "https://github.com/sirkirby/open-agent-kit/blob/main/README.md"
+Repository = "https://github.com/sirkirby/open-agent-kit"
+Issues = "https://github.com/sirkirby/open-agent-kit/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/open_agent_kit"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/templates",
+    "/scripts",
+    "/README.md",
+    "/LICENSE",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=open_agent_kit --cov-report=term-missing --cov-report=html"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+files = ["src/open_agent_kit"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # imported but unused
+"src/open_agent_kit/commands/*.py" = ["B904"]  # typer.Exit doesn't need exception chaining
+"src/open_agent_kit/models/agent.py" = ["B904"]  # re-raising with custom message is intentional
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+include = '\.pyi?$'

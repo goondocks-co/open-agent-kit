@@ -1,0 +1,27 @@
+{
+  "testing_strategy": "pragmatic",
+  "coverage_target": 50,
+  "coverage_strict": false,
+  "has_e2e_infrastructure": false,
+  "e2e_planned": false,
+  "critical_integration_points": [],
+  "tdd_required": false,
+  "testing_rationale": "Pragmatic approach for MVP - focus on critical path testing",
+  "code_review_policy": "flexible",
+  "num_reviewers": 1,
+  "documentation_level": "minimal",
+  "adr_required": false,
+  "docstring_style": "google",
+  "ci_enforcement": "basic",
+  "required_checks": ["tests"],
+  "ci_platform": null,
+  "architectural_pattern": "pragmatic",
+  "error_handling_pattern": "exceptions",
+  "dependency_injection": false,
+  "domain_events": false,
+  "feature_organization": null,
+  "layer_organization": null,
+  "coding_principles": ["KISS", "YAGNI"],
+  "architectural_rationale": "Pragmatic approach for rapid MVP development - keep it simple"
+}
+
