@@ -1,0 +1,6 @@
+{
+  "$comment": "Windsurf Cascade auto-approval settings for oak commands. Uses cascadeCommandsAllowList to auto-execute oak commands without prompting.",
+  "windsurf.cascadeCommandsAllowList": [
+    "oak"
+  ]
+}

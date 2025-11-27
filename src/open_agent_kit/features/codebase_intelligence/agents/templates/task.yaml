@@ -1,0 +1,180 @@
+# =============================================================================
+# Agent Task: {{ display_name }}
+# =============================================================================
+# Task for: {{ agent_type }} agent
+#
+# This file defines WHAT task this agent performs.
+# The base agent ({{ agent_type }}) defines HOW it works (tools, permissions).
+# Edit this file to customize the task for your project.
+# =============================================================================
+
+name: {{ name }}
+display_name: "{{ display_name }}"
+agent_type: {{ agent_type }}
+description: "{{ description }}"
+
+# =============================================================================
+# Task Definition (REQUIRED)
+# =============================================================================
+default_task: |
+{{ default_task | indent(2, first=true) }}
+
+# =============================================================================
+# Execution Limits (optional)
+# =============================================================================
+# Overrides template defaults. Omit to use template settings.
+#
+# execution:
+#   # timeout_seconds: Wall-clock limit for the entire agent run.
+#   # Use 60-120s for simple tasks (changelog, docs update).
+#   # Use 300-600s for moderate tasks (code review, analysis).
+#   # Use 900-1800s for complex tasks (large refactors, multi-file changes).
+#   timeout_seconds: 300
+#
+#   # max_turns: Limits API round-trips (each turn ~ one Claude response).
+#   # Controls both cost and execution time. Each turn costs tokens.
+#   # Use 20-30 for simple, focused tasks (update one file).
+#   # Use 50-100 for moderate tasks (explore + update).
+#   # Use 150-300 for complex tasks (multi-step analysis, many file edits).
+#   max_turns: 50
+#
+#   # permission_mode: How to handle file permission prompts.
+#   # - default: Require approval for all edits
+#   # - acceptEdits: Auto-accept file edits (recommended for CI agents)
+#   # - bypassPermissions: Bypass all permission checks (dangerous)
+#   permission_mode: acceptEdits
+
+# =============================================================================
+# Schedule (optional - for automated periodic execution)
+# =============================================================================
+# Cron expression for periodic execution. Format: minute hour day month weekday
+#
+# schedule:
+#   cron: "0 0 * * MON"     # Standard cron: minute hour day month weekday
+#   description: "Weekly execution every Monday at midnight"
+#
+# Cron examples:
+#   "0 0 * * MON"   - Weekly on Monday at midnight
+#   "0 9 * * *"     - Daily at 9 AM
+#   "0 */6 * * *"   - Every 6 hours
+#   "0 0 1 * *"     - Monthly on the 1st
+#   "30 14 * * 5"   - Every Friday at 2:30 PM
+
+# =============================================================================
+# Maintained Files (customize for your project)
+# =============================================================================
+# Declare which files this task is responsible for maintaining.
+# The agent uses this to focus its work and avoid unrelated changes.
+#
+maintained_files:
+  - path: "TODO: add file path or glob pattern"
+    purpose: "TODO: describe what this file contains"
+    # naming: "docs/{category}/{name}.md"  # Naming convention for new files
+    # auto_create: false                    # Create file if missing
+
+# Examples:
+#   - path: "README.md"
+#     purpose: "Project overview and getting started"
+#
+#   - path: "CHANGELOG.md"
+#     purpose: "Version history and release notes"
+#
+#   - path: "oak/docs/features/*.md"
+#     purpose: "Feature documentation files"
+#     naming: "oak/docs/features/{feature_name}.md"
+#     auto_create: true
+#
+#   - path: "oak/docs/architecture/*.md"
+#     purpose: "Architecture decision records"
+#     naming: "oak/docs/architecture/{decision_name}.md"
+#     auto_create: true
+
+# =============================================================================
+# CI Queries (gather context before executing task)
+# =============================================================================
+# Query CI tools to gather relevant context before running the task.
+# Phases execute in order: discovery -> context -> verification
+#
+ci_queries:
+  # Discovery phase: Find relevant code and information
+  discovery:
+    - tool: ci_search
+      query_template: "TODO: search query"
+      search_type: all          # all | code | memory | plans
+      min_confidence: medium    # high | medium | low | all
+      limit: 10
+      purpose: "TODO: what this finds"
+      # required: false         # Fail if no results
+
+# Additional phases (uncomment as needed):
+#
+#   # Context phase: Gather background knowledge
+#   context:
+#     - tool: ci_memories
+#       filter: gotcha          # gotcha | decision | discovery | bug_fix | trade_off
+#       limit: 10
+#       purpose: "Find gotchas to warn about"
+#
+#     - tool: ci_project_stats
+#       purpose: "Get codebase overview"
+#
+#   # Verification phase: Check recent activity
+#   verification:
+#     - tool: ci_sessions
+#       limit: 20
+#       include_summary: true
+#       purpose: "Recent session context"
+#
+# Available tools:
+#   - ci_search: Semantic search across code, memories, plans
+#   - ci_memories: Filter memories by type (gotcha, decision, discovery, bug_fix, trade_off)
+#   - ci_sessions: Get recent session summaries
+#   - ci_project_stats: Get codebase statistics and overview
+
+# =============================================================================
+# Output Requirements (optional)
+# =============================================================================
+# Define expected output format and required sections.
+#
+output_requirements:
+  required_sections: []
+  # required_sections:
+  #   - name: "Overview"
+  #     source: "code"           # Where to get info: code | sessions | memories
+  #     description: "High-level summary"
+  #   - name: "Installation"
+  #     source: "code"
+  #     description: "How to install/setup"
+  #   - name: "Usage"
+  #     source: "code"
+  #     description: "How to use with examples"
+  #
+  # format: Named standard the output should follow. Examples:
+  #   - "keepachangelog"    # CHANGELOG.md per https://keepachangelog.com
+  #   - "adr"               # Architecture Decision Record (context, decision, consequences)
+  #   - "readme-badges"     # README with status badges, install, usage sections
+  #   - "api-reference"     # API docs with endpoints, parameters, responses
+  #   - "release-notes"     # User-facing release notes (not developer changelog)
+  #   - "runbook"           # Operational runbook (symptoms, diagnosis, resolution)
+  #
+  # link_sources: true      # Include links to CI sessions/code that informed the output
+
+# =============================================================================
+# Style Preferences (optional)
+# =============================================================================
+# Customize the writing style and formatting preferences.
+#
+style:
+  tone: "technical"             # technical | concise | welcoming | formal
+  include_examples: true
+  # link_code_files: true       # Link to source files in output
+  # code_link_format: "relative" # relative | line (path:line_number)
+  # link_sessions: true         # Link to CI sessions in output
+  #
+  # conventions:                # Project-specific writing guidelines
+  #   - "Use imperative mood in headings"
+  #   - "Include code examples with syntax highlighting"
+  #   - "Keep paragraphs short (2-3 sentences)"
+  #   - "Use bullet points for lists of 3+ items"
+
+schema_version: {{ schema_version }}

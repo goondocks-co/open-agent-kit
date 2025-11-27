@@ -1,0 +1,55 @@
+# Documentation Agent
+#
+# This agent maintains project documentation using codebase intelligence.
+# It can update README files, generate changelogs, and keep docs in sync
+# with the codebase.
+
+name: documentation
+display_name: "Documentation Agent"
+description: >
+  Maintains project documentation by analyzing code, session history, and
+  memories to keep docs accurate and up-to-date. Can update README files,
+  generate release notes, and identify documentation gaps.
+
+execution:
+  max_turns: 100
+  timeout_seconds: 600
+  permission_mode: acceptEdits
+
+# Tools the agent can use
+allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+
+# Never allow shell access
+disallowed_tools:
+  - Bash
+  - Task
+
+# Path restrictions - agent can only write to documentation files
+allowed_paths:
+  - "oak/docs/**"
+  - "README.md"
+  - "CHANGELOG.md"
+  - "CONTRIBUTING.md"
+  - "*.md"
+
+# Security: never touch sensitive files
+disallowed_paths:
+  - ".env"
+  - ".env.*"
+  - "*.pem"
+  - "*.key"
+  - "*.crt"
+  - "**/credentials*"
+  - "**/secrets*"
+
+# CI data access - full access for documentation purposes
+ci_access:
+  code_search: true
+  memory_search: true
+  session_history: true
+  project_stats: true

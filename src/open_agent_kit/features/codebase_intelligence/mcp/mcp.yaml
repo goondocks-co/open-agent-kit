@@ -1,0 +1,24 @@
+# MCP Server Configuration for Codebase Intelligence
+#
+# This configuration defines the MCP server that agents can use
+# for semantic code search and persistent memory.
+#
+# Agent-specific MCP registration is handled by the Python MCPInstaller class,
+# which reads configuration from each agent's manifest.yaml mcp: section.
+# No shell scripts are needed - it's all done in Python for cross-platform support.
+
+# Server identity
+name: oak-ci
+description: "OAK Codebase Intelligence - semantic code search and persistent memory for AI assistants"
+
+# The command to run the MCP server
+# The MCP server uses the current working directory to find the project.
+# Uses 'oak' directly, expecting it to be on PATH (installed via pipx, uv tool install, etc.)
+command: "oak ci mcp"
+
+# Server capabilities (for documentation/validation)
+capabilities:
+  tools:
+    - oak_search    # Semantic search across code and memories
+    - oak_remember  # Store observations for future sessions
+    - oak_context   # Get curated context for a task

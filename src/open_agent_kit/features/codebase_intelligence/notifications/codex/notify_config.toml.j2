@@ -1,0 +1,3 @@
+# OAK Codebase Intelligence notify configuration for Codex
+
+notify = ["{{ notify_command }}"{% for arg in notify_args %}, "{{ arg }}"{% endfor %}{% if notify_script_path %}, "{{ notify_script_path }}"{% endif %}]

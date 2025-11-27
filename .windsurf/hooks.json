@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "pre_user_prompt": [
+      {
+        "command": "oak ci hook pre_user_prompt --agent windsurf"
+      }
+    ],
+    "post_cascade_response": [
+      {
+        "command": "oak ci hook post_cascade_response --agent windsurf"
+      }
+    ],
+    "post_write_code": [
+      {
+        "command": "oak ci hook post_write_code --agent windsurf"
+      }
+    ],
+    "post_read_code": [
+      {
+        "command": "oak ci hook post_read_code --agent windsurf"
+      }
+    ],
+    "post_run_command": [
+      {
+        "command": "oak ci hook post_run_command --agent windsurf"
+      }
+    ],
+    "post_mcp_tool_use": [
+      {
+        "command": "oak ci hook post_mcp_tool_use --agent windsurf"
+      }
+    ]
+  },
+  "version": 1
+}

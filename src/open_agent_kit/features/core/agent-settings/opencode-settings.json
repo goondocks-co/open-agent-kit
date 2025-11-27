@@ -1,0 +1,9 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "$comment": "OpenCode auto-approval settings for oak commands. These permissions allow oak CLI commands to run without prompting.",
+  "permission": {
+    "bash": {
+      "oak *": "allow"
+    }
+  }
+}

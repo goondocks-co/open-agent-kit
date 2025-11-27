@@ -1,0 +1,78 @@
+---
+title: Getting Started
+description: Capture the full development story behind AI-written code.
+template: splash
+hero:
+  tagline: "You architect. AI agents build. OAK captures the full development story — plans, decisions, gotchas, and context — so nothing is lost between sessions."
+  image:
+    file: ../../assets/images/dashboard-home.png
+  actions:
+    - text: Quick Start
+      link: "#quick-start"
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/goondocks-co/open-agent-kit
+      icon: external
+---
+
+import { Steps, Card, CardGrid } from "@astrojs/starlight/components";
+
+## Why OAK?
+
+When AI agents build your software, every session produces plans, architectural decisions, trade-offs, and hard-won lessons. But all of that context vanishes when the session ends — leaving you with code changes and a git diff that can never tell the full story.
+
+OAK captures what git can't.
+
+<CardGrid>
+  <Card title="The Complete Development Record" icon="pencil">
+    Every plan, decision, gotcha, and trade-off is recorded automatically as your agents work — creating a development history that's semantically richer than git blame could ever be.
+  </Card>
+  <Card title="Semantic Code Search" icon="magnifier">
+    Agents find code by *concept* ("where is auth?") rather than just regex, using AST-aware indexing across 13 languages and vector embeddings.
+  </Card>
+  <Card title="Context That Follows You" icon="rocket">
+    Relevant memories and code context are automatically injected into every agent session — preventing regressive bugs and circular conversations across your entire team.
+  </Card>
+  <Card title="Autonomous Agents" icon="laptop">
+    OAK Agents turn captured intelligence into action — generating documentation, surfacing insights, and improving your codebase using everything OAK has learned.
+  </Card>
+</CardGrid>
+
+## Quick Start
+
+<Steps>
+
+1. **Install OAK**
+
+   ```bash
+   # macOS / Linux
+   curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+
+   # Or via pipx (recommended)
+   pipx install oak-ci
+
+   # Or via uv
+   uv tool install oak-ci
+   ```
+
+2. **Initialize your project**
+
+   ```bash
+   cd your-project
+   oak init              # Interactive mode — pick your agent(s) and languages
+   ```
+
+3. **Start the daemon and open the dashboard**
+
+   ```bash
+   oak ci start --open
+   ```
+
+   The dashboard opens in your browser. From here, you can configure embedding models, browse sessions, search your codebase, and manage memories — all from the UI.
+
+</Steps>
+
+That's it! OAK is now running. **The dashboard is your primary interface** — use it to configure settings, explore agent activity, search code, and manage project memory. The CLI is only needed for [setup and maintenance tasks](/open-agent-kit/cli/).
+
+![The OAK Dashboard showing project stats, recent sessions, and system health](../../assets/images/dashboard-home.png)

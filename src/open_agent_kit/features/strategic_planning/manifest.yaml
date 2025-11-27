@@ -1,0 +1,24 @@
+# Strategic Planning Feature Manifest
+# RFC/ADR management for formal technical planning
+name: strategic-planning
+display_name: "Strategic Planning"
+description: "RFC and Architecture Decision Record (ADR) management for formal technical planning and documentation."
+version: "2.0.0"
+default_enabled: true
+dependencies:
+  - rules-management
+
+# Skills consolidated into rules-management/project-governance
+# RFC workflows are now reference docs within the project-governance skill
+skills: []
+
+# RFC templates only (plan templates removed)
+templates:
+  - architecture.md
+  - engineering.md
+  - feature.md
+  - process.md
+
+# Feature-specific default configuration
+config_defaults:
+  rfc_directory: oak/rfc

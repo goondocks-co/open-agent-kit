@@ -1,0 +1,105 @@
+# Claude Code Agent Manifest
+# Anthropic's Claude Code CLI - the most capable agent for oak workflows
+
+name: claude
+display_name: "Claude Code"
+version: "1.0.0"
+description: "Anthropic's Claude Code CLI agent with full agentic capabilities"
+
+installation:
+  folder: ".claude/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  instruction_file: "./CLAUDE.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://docs.anthropic.com/en/docs/claude-code"
+
+capabilities:
+  has_background_agents: true   # Can launch background tasks, parallel agents
+  background_agent_instructions: |
+    Use the `Task` tool with `run_in_background: true`. Launch ALL parallel tasks in a single message with multiple Task tool calls.
+    Select the appropriate `subagent_type` based on task type:
+    Match agent expertise to task requirements for best results.
+  has_native_web: true          # Built-in WebSearch, WebFetch tools
+  has_mcp: true                 # First-class MCP support (local & remote)
+  research_strategy: "Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)"
+
+  # Capability tiers for prompt complexity adaptation
+  # These inform how much reasoning and context the agent can handle
+  reasoning_tier: high          # high | medium | basic - ability to handle complex multi-step reasoning
+  context_handling: large       # large | medium | small - effective context window utilization
+  model_consistency: high       # high | medium | variable - how predictable the underlying model is
+
+  # Skills support (Claude-specific)
+  has_skills: true              # Claude Code supports SKILL.md files
+  skills_directory: "skills"    # .claude/skills/
+
+# Codebase Intelligence configuration
+ci:
+  # Resume command template - allows UI to show copyable command for session continuation
+  resume_command: "claude --resume {session_id}"
+
+  # Plan storage - Claude Code stores plans in .claude/plans/ (project) or ~/.claude/plans/ (global)
+  plans_subfolder: "plans"
+
+  # Plan execution detection - when user approves a plan and selects
+  # "clear context and implement", Claude Code injects a new prompt
+  # starting with this prefix
+  plan_execution_prefix: "Implement the following plan:"
+
+  # Tool that signals plan mode exit - when detected, CI re-reads
+  # the plan file to capture final content
+  exit_plan_tool: "ExitPlanMode"
+
+  # Transcript configuration - Claude Code stores transcripts in ~/.claude/projects/
+  # Path pattern: ~/.claude/projects/-{project-path}/{session-id}.jsonl
+  transcript:
+    base_dir: ".claude/projects"
+    path_pattern: "{encoded_project}/{session_id}.jsonl"
+    project_encoding: "slash-to-dash"
+
+  # Session continuation triggers - which SessionStart sources indicate continuation
+  # Claude Code fires SessionStart with source="clear" when user clears context,
+  # and source="compact" for automatic context compaction
+  continuation:
+    continuation_sources:
+      - clear    # User cleared context to continue in new session
+      - compact  # Automatic context compaction mid-session
+
+settings:
+  # Auto-approval settings for oak commands
+  auto_approve:
+    enabled: true
+    file: ".claude/settings.local.json"
+    format: json
+    template: "agent-settings/claude-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config
+  # Claude Code stores MCP servers in .mcp.json at project root
+  config_file: ".mcp.json"
+  format: json
+  servers_key: "mcpServers"
+  # CLI commands (preferred method if claude CLI is available)
+  # Placeholders: {name} = server name, {command} = full command string
+  cli:
+    install: "claude mcp add {name} --scope project -- {command}"
+    remove: "claude mcp remove {name} --scope project"
+  # JSON entry format for direct manipulation fallback
+  # Placeholders: {cmd} = executable, {args} = argument list
+  entry_format:
+    type: "stdio"
+    command: "{cmd}"
+    args: "{args}"
+    env: {}
+
+# Hooks configuration for Codebase Intelligence
+# Claude Code uses settings.json with nested hook structure
+hooks:
+  type: json
+  config_file: "settings.json"
+  hooks_key: "hooks"
+  format: nested
+  template_file: "hooks.json"

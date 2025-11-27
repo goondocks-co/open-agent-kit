@@ -1,0 +1,94 @@
+{
+  "coreTools": [
+    "ShellTool(oak *)"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-context",
+            "type": "command",
+            "command": "oak ci hook SessionStart --agent gemini",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-prompt",
+            "type": "command",
+            "command": "oak ci hook BeforeAgent --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-observe",
+            "type": "command",
+            "command": "oak ci hook PostToolUse --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-stop",
+            "type": "command",
+            "command": "oak ci hook AfterAgent --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "PreCompress": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-pre-compact",
+            "type": "command",
+            "command": "oak ci hook PreCompress --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-session-end",
+            "type": "command",
+            "command": "oak ci hook SessionEnd --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "oak-ci": {
+      "command": "oak",
+      "args": [
+        "ci",
+        "mcp"
+      ]
+    }
+  }
+}

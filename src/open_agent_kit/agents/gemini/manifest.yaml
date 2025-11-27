@@ -1,0 +1,81 @@
+# Gemini CLI Agent Manifest
+# Google's Gemini CLI with Google Search grounding
+
+name: gemini
+display_name: "Gemini CLI"
+version: "1.0.0"
+description: "Google Gemini CLI with Google Search grounding and MCP support"
+
+installation:
+  folder: ".gemini/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  # GEMINI.md in project root
+  instruction_file: "./GEMINI.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://github.com/google-gemini/gemini-cli"
+
+capabilities:
+  has_background_agents: false  # Sub-agents feature in development; no stable parallel mechanism yet
+  background_agent_instructions: "Execute tasks sequentially. Gemini CLI sub-agents feature is in development."
+  has_native_web: true          # Google Search grounding + web fetch
+  has_mcp: true                 # Supports local/remote MCP servers
+  research_strategy: "Use built-in search + fetch as primary; MCP for extras"
+
+  # Capability tiers for prompt complexity adaptation
+  # Gemini CLI uses Google's first-party models
+  reasoning_tier: high          # high | medium | basic - Gemini 2.x models excel at reasoning
+  context_handling: large       # large | medium | small - excellent context window (1M+)
+  model_consistency: high       # high | medium | variable - first-party models are consistent
+
+  # Skills support (Agent Skills standard)
+  # Compatible with Claude Code SKILL.md format
+  # Gemini CLI uses .gemini/skills/ for workspace skills
+  # See: https://geminicli.com/docs/cli/skills/
+  has_skills: true
+  skills_directory: "skills"    # .gemini/skills/
+
+# Codebase Intelligence configuration
+ci:
+  resume_command: "gemini --resume {session_id}"
+
+  # Plan storage - Gemini CLI may store plans in .gemini/plans/ (TBD - needs verification)
+  # Set to null until plan storage location is confirmed
+  plans_subfolder: null
+
+  # Plan execution/exit detection TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
+settings:
+  # Auto-approval settings for oak commands
+  auto_approve:
+    enabled: true
+    file: ".gemini/settings.json"
+    format: json
+    template: "agent-settings/gemini-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config (via gemini mcp add CLI)
+  config_file: ".gemini/settings.json"
+  format: json
+  servers_key: "mcpServers"
+  # CLI commands (preferred method if gemini CLI is available)
+  cli:
+    install: "gemini mcp add --name {name} -- {command}"
+    remove: "gemini mcp remove {name}"
+  # JSON entry format for direct manipulation fallback
+  entry_format:
+    command: "{cmd}"
+    args: "{args}"
+
+# Hooks configuration for Codebase Intelligence
+# Gemini CLI uses settings.json with nested hook structure (like Claude)
+hooks:
+  type: json
+  config_file: "settings.json"
+  hooks_key: "hooks"
+  format: nested
+  template_file: "hooks.json"

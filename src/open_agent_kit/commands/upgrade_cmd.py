@@ -1,0 +1,732 @@
+"""Upgrade command for updating open-agent-kit templates and commands."""
+
+from pathlib import Path
+
+import typer
+
+from open_agent_kit.config.messages import (
+    ERROR_MESSAGES,
+    INFO_MESSAGES,
+    PROJECT_URL,
+    SUCCESS_MESSAGES,
+    UPGRADE_MESSAGES,
+    WARNING_MESSAGES,
+)
+from open_agent_kit.constants import VERSION
+from open_agent_kit.pipeline.context import FlowType, PipelineContext
+from open_agent_kit.pipeline.executor import build_upgrade_pipeline
+from open_agent_kit.services.upgrade_service import UpgradePlan, UpgradeResults, UpgradeService
+from open_agent_kit.utils import (
+    StepTracker,
+    confirm,
+    print_error,
+    print_header,
+    print_info,
+    print_panel,
+)
+
+
+def upgrade_command(
+    commands: bool = typer.Option(
+        False,
+        "--commands",
+        "-c",
+        help="Upgrade only agent command templates",
+    ),
+    templates: bool = typer.Option(
+        False,
+        "--templates",
+        "-t",
+        help="Upgrade only command templates",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-d",
+        help="Preview changes without applying them",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation prompts",
+    ),
+) -> None:
+    """Upgrade open-agent-kit templates and agent commands.
+
+    Upgrades agent command prompts and command helper templates to the latest versions.
+    Agent commands are always safe to upgrade. command helper templates will warn if customized.
+    """
+    project_root = Path.cwd()
+
+    # Initialize upgrade service for planning
+    upgrade_service = UpgradeService(project_root)
+
+    # Check if open-agent-kit is initialized
+    if not upgrade_service.is_initialized():
+        print_error(ERROR_MESSAGES["no_oak_dir"])
+        raise typer.Exit(code=1)
+
+    print_header("Upgrade open-agent-kit")
+
+    # Determine what to upgrade
+    upgrade_all = not commands and not templates
+    upgrade_commands = commands or upgrade_all
+    upgrade_templates = templates or upgrade_all
+
+    if dry_run:
+        print_info(f"{INFO_MESSAGES['dry_run_mode']}\n")
+
+    # Get upgrade plan (using UpgradeService for planning)
+    plan = upgrade_service.plan_upgrade(
+        commands=upgrade_commands,
+        templates=upgrade_templates,
+    )
+
+    # Check if there's anything to upgrade (use centralized utility)
+    from typing import Any, cast
+
+    from open_agent_kit.pipeline.models import plan_has_upgrades
+
+    if not plan_has_upgrades(cast(dict[str, Any], plan)):
+        print_info(f"[green]✓[/green] {SUCCESS_MESSAGES['up_to_date']}")
+        return
+
+    # Display what will be upgraded
+    _display_upgrade_plan(plan, dry_run)
+
+    # Confirm if not forced and not dry-run
+    if not force and not dry_run:
+        if not confirm("\nProceed with upgrade?", default=True):
+            print_info(f"\n{INFO_MESSAGES['upgrade_cancelled']}")
+            return
+
+    # Execute upgrade using pipeline
+    if not dry_run:
+        print_info("")  # Blank line
+
+        # Load current config to populate selections for reconciliation stages
+        from open_agent_kit.pipeline.context import SelectionState
+        from open_agent_kit.services.config_service import ConfigService
+
+        config_service = ConfigService(project_root)
+        config = config_service.load_config()
+
+        # Build pipeline context with plan pre-populated and selections from config
+        context = PipelineContext(
+            project_root=project_root,
+            flow_type=FlowType.UPGRADE,
+            dry_run=False,
+            selections=SelectionState(
+                agents=config.agents,
+                languages=config.languages.installed,
+            ),
+        )
+        # Pre-populate the plan in context so stages don't need to re-plan
+        context.set_result("plan_upgrade", {"plan": plan, "has_upgrades": True})
+        # Store upgrade options for stages that might need them
+        # Use different keys to avoid conflict with stage result names
+        context.set_result(
+            "upgrade_options",
+            {
+                "commands": upgrade_commands,
+                "templates": upgrade_templates,
+            },
+        )
+
+        # Build and execute pipeline
+        pipeline = build_upgrade_pipeline().build()
+        step_count = pipeline.get_stage_count(context)
+        tracker = StepTracker(step_count)
+
+        result = pipeline.execute(context, tracker)
+
+        # Collect results from pipeline context
+        results = _collect_pipeline_results(context)
+
+        if result.success:
+            _display_upgrade_results(results)
+        else:
+            for stage_name, error in result.stages_failed:
+                print_error(f"Stage '{stage_name}' failed: {error}")
+            raise typer.Exit(code=1)
+    else:
+        print_info(f"\n[dim]{INFO_MESSAGES['dry_run_complete']}[/dim]")
+
+
+def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
+    """Collect upgrade results from pipeline context.
+
+    Args:
+        context: Pipeline context with stage results
+
+    Returns:
+        UpgradeResults TypedDict with all upgrade outcomes
+    """
+    results: UpgradeResults = {
+        "commands": {"upgraded": [], "failed": []},
+        "templates": {"upgraded": [], "failed": []},
+        "agent_settings": {"upgraded": [], "failed": []},
+        "migrations": {"upgraded": [], "failed": []},
+        "obsolete_removed": {"upgraded": [], "failed": []},
+        "legacy_commands_removed": {"upgraded": [], "failed": []},
+        "skills": {"upgraded": [], "failed": []},
+        "hooks": {"upgraded": [], "failed": []},
+        "mcp_servers": {"upgraded": [], "failed": []},
+        "gitignore": {"upgraded": [], "failed": []},
+        "agent_tasks": {"upgraded": [], "failed": []},
+        "structural_repairs": [],
+        "version_updated": False,
+    }
+
+    # Collect from each stage result
+    legacy_cmd_result = context.get_result("cleanup_legacy_commands", {})
+    if legacy_cmd_result:
+        results["legacy_commands_removed"]["upgraded"] = [
+            f"Removed {legacy_cmd_result.get('removed_count', 0)} legacy command(s)"
+        ]
+
+    cmd_result = context.get_result("upgrade_commands", {})
+    if cmd_result:
+        results["commands"]["upgraded"] = cmd_result.get("upgraded", [])
+        results["commands"]["failed"] = cmd_result.get("failed", [])
+
+    tpl_result = context.get_result("upgrade_templates", {})
+    if tpl_result:
+        results["templates"]["upgraded"] = tpl_result.get("upgraded", [])
+        results["templates"]["failed"] = tpl_result.get("failed", [])
+
+    obsolete_result = context.get_result("remove_obsolete_templates", {})
+    if obsolete_result:
+        results["obsolete_removed"]["upgraded"] = obsolete_result.get("removed", [])
+        results["obsolete_removed"]["failed"] = obsolete_result.get("failed", [])
+
+    agent_settings_result = context.get_result("upgrade_agent_settings", {})
+    if agent_settings_result:
+        results["agent_settings"]["upgraded"] = agent_settings_result.get("upgraded", [])
+        results["agent_settings"]["failed"] = agent_settings_result.get("failed", [])
+
+    skill_result = context.get_result("upgrade_skills", {})
+    if skill_result:
+        results["skills"]["upgraded"] = skill_result.get("upgraded", [])
+        results["skills"]["failed"] = skill_result.get("failed", [])
+
+    hooks_result = context.get_result("upgrade_hooks", {})
+    if hooks_result:
+        results["hooks"]["upgraded"] = hooks_result.get("upgraded", [])
+        results["hooks"]["failed"] = hooks_result.get("failed", [])
+
+    gitignore_result = context.get_result("upgrade_gitignore", {})
+    if gitignore_result:
+        results["gitignore"]["upgraded"] = gitignore_result.get("upgraded", [])
+        results["gitignore"]["failed"] = gitignore_result.get("failed", [])
+
+    mcp_result = context.get_result("reconcile_mcp_servers", {})
+    if mcp_result:
+        results["mcp_servers"]["upgraded"] = mcp_result.get("installed", [])
+        # MCP doesn't track failures in the same way, but we can check for skipped
+        results["mcp_servers"]["failed"] = []
+
+    agent_tasks_result = context.get_result("upgrade_agent_tasks", {})
+    if agent_tasks_result:
+        # Combine installed and upgraded into the "upgraded" list
+        results["agent_tasks"]["upgraded"] = agent_tasks_result.get(
+            "installed", []
+        ) + agent_tasks_result.get("upgraded", [])
+        results["agent_tasks"]["failed"] = agent_tasks_result.get("failed", [])
+
+    migration_result = context.get_result("run_migrations", {})
+    if migration_result:
+        results["migrations"]["upgraded"] = migration_result.get("completed", [])
+        results["migrations"]["failed"] = migration_result.get("failed", [])
+
+    repair_result = context.get_result("upgrade_structural_repairs", {})
+    if repair_result:
+        results["structural_repairs"] = repair_result.get("repaired", [])
+
+    version_result = context.get_result("update_upgrade_version", {})
+    if version_result and version_result.get("version"):
+        results["version_updated"] = True
+
+    return results
+
+
+def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
+    """Display what will be upgraded.
+
+    Args:
+        plan: Upgrade plan from UpgradeService.plan_upgrade()
+        dry_run: Whether this is a dry run
+    """
+    action = UPGRADE_MESSAGES["would_upgrade"] if dry_run else UPGRADE_MESSAGES["will_upgrade"]
+
+    sections = []
+
+    # Version upgrade
+    if plan.get("version_outdated"):
+        current_ver = plan.get("current_version", "unknown")
+        package_ver = plan.get("package_version", "unknown")
+        sections.append(
+            f"[cyan]{UPGRADE_MESSAGES['section_project_version']}[/cyan]\n"
+            f"  • {UPGRADE_MESSAGES['current_version'].format(version=current_ver)}\n"
+            f"  • {UPGRADE_MESSAGES['update_to_version'].format(version=package_ver)}"
+        )
+
+    # Legacy commands to remove
+    if plan.get("legacy_commands_cleanup"):
+        legacy_items = []
+        for cleanup_item in plan["legacy_commands_cleanup"]:
+            agent = cleanup_item["agent"]
+            for cmd in cleanup_item["commands"]:
+                legacy_items.append(f"  • {agent}: {cmd['file']}")
+        if legacy_items:
+            legacy_list = "\n".join(legacy_items)
+            sections.append(
+                f"[cyan]Legacy Commands to Remove[/cyan] ({len(legacy_items)} files)\n{legacy_list}"
+            )
+
+    # Command upgrades
+    if plan["commands"]:
+        command_list = "\n".join([f"  • {cmd['agent']}: {cmd['file']}" for cmd in plan["commands"]])
+        sections.append(
+            f"[cyan]{UPGRADE_MESSAGES['section_agent_commands']}[/cyan] ({len(plan['commands'])} files)\n{command_list}"
+        )
+
+    # Template upgrades
+    if plan["templates"]:
+        template_list = "\n".join([f"  • {tpl}" for tpl in plan["templates"]])
+        sections.append(
+            f"[cyan]{UPGRADE_MESSAGES['section_templates']}[/cyan] ({len(plan['templates'])} files)\n{template_list}"
+        )
+
+        if plan.get("templates_customized"):
+            sections.append(f"\n[yellow]⚠[/yellow]  {WARNING_MESSAGES['templates_customized']}")
+
+    # Obsolete templates to remove
+    if plan.get("obsolete_templates"):
+        obsolete_list = "\n".join([f"  • {tpl}" for tpl in plan["obsolete_templates"]])
+        sections.append(
+            f"[cyan]Obsolete Templates[/cyan] ({len(plan['obsolete_templates'])} files to remove)\n{obsolete_list}"
+        )
+
+    # Agent settings upgrades
+    if plan.get("agent_settings"):
+        agent_list = "\n".join([f"  • {agent}" for agent in plan["agent_settings"]])
+        sections.append(
+            f"[cyan]Agent Settings[/cyan] ({len(plan['agent_settings'])} agent(s))\n{agent_list}"
+        )
+
+    # Skills installation and upgrade
+    skill_plan = plan["skills"]
+    skills_to_install = skill_plan["install"]
+    skills_to_upgrade = skill_plan["upgrade"]
+
+    if skills_to_install:
+        install_list = "\n".join(
+            [f"  • {s['skill']} (from {s['feature']} feature)" for s in skills_to_install]
+        )
+        sections.append(
+            f"[cyan]Skills to Install[/cyan] ({len(skills_to_install)} skill(s))\n{install_list}"
+        )
+
+    if skills_to_upgrade:
+        upgrade_list = "\n".join(
+            [f"  • {s['skill']} (from {s['feature']} feature)" for s in skills_to_upgrade]
+        )
+        sections.append(
+            f"[cyan]Skills to Upgrade[/cyan] ({len(skills_to_upgrade)} skill(s))\n{upgrade_list}"
+        )
+
+    # Obsolete skills to remove (renamed or removed from features)
+    skills_to_remove = skill_plan.get("obsolete", [])
+    if skills_to_remove:
+        remove_list = "\n".join([f"  • {s['skill']} ({s['reason']})" for s in skills_to_remove])
+        sections.append(
+            f"[cyan]Obsolete Skills to Remove[/cyan] ({len(skills_to_remove)} skill(s))\n{remove_list}"
+        )
+
+    # Agent tasks installation and upgrade
+    agent_tasks_plan = plan.get("agent_tasks") or {"install": [], "upgrade": []}
+    tasks_to_install = agent_tasks_plan.get("install", [])
+    tasks_to_upgrade = agent_tasks_plan.get("upgrade", [])
+
+    if tasks_to_install:
+        install_list = "\n".join(
+            [f"  • {t['task']} ({t['agent_type']} agent)" for t in tasks_to_install]
+        )
+        sections.append(
+            f"[cyan]Agent Tasks to Install[/cyan] ({len(tasks_to_install)} task(s))\n{install_list}"
+        )
+
+    if tasks_to_upgrade:
+        upgrade_list = "\n".join(
+            [f"  • {t['task']} ({t['agent_type']} agent)" for t in tasks_to_upgrade]
+        )
+        sections.append(
+            f"[cyan]Agent Tasks to Upgrade[/cyan] ({len(tasks_to_upgrade)} task(s))\n{upgrade_list}"
+        )
+
+    # Feature hooks
+    hooks_to_upgrade = plan.get("hooks", [])
+    if hooks_to_upgrade:
+        hooks_list = "\n".join(
+            [
+                f"  • {h['agent']} → {h['target_description']} (from {h['feature']} feature)"
+                for h in hooks_to_upgrade
+            ]
+        )
+        sections.append(
+            f"[cyan]Hooks to Upgrade[/cyan] ({len(hooks_to_upgrade)} hook(s))\n{hooks_list}"
+        )
+
+    # Agent notifications (notify handlers)
+    notifications_to_upgrade = plan.get("notifications", [])
+    if notifications_to_upgrade:
+        notifications_list = "\n".join(
+            [
+                f"  • {n['agent']} → {n['target_description']} (from {n['feature']} feature)"
+                for n in notifications_to_upgrade
+            ]
+        )
+        sections.append(
+            f"[cyan]Notifications to Upgrade[/cyan] ({len(notifications_to_upgrade)} handler(s))\n"
+            f"{notifications_list}"
+        )
+
+    # MCP servers
+    mcp_servers = plan.get("mcp_servers", [])
+    if mcp_servers:
+        mcp_list = "\n".join(
+            [f"  • {m['agent']} (from {m['feature']} feature)" for m in mcp_servers]
+        )
+        sections.append(
+            f"[cyan]MCP Servers to Install[/cyan] ({len(mcp_servers)} server(s))\n{mcp_list}"
+        )
+
+    # Gitignore entries
+    gitignore_entries = plan.get("gitignore", [])
+    if gitignore_entries:
+        gitignore_list = "\n".join(
+            [f"  • {g['entry']} (from {g['feature']} feature)" for g in gitignore_entries]
+        )
+        sections.append(
+            f"[cyan]Gitignore Entries[/cyan] ({len(gitignore_entries)} pattern(s))\n{gitignore_list}"
+        )
+
+    # Structural repairs
+    if plan.get("structural_repairs"):
+        repair_list = "\n".join([f"  • {r}" for r in plan["structural_repairs"]])
+        sections.append(
+            f"[cyan]Structural Repairs[/cyan] ({len(plan['structural_repairs'])} item(s))\n{repair_list}"
+        )
+
+    # Migrations
+    if plan.get("migrations"):
+        migration_list = "\n".join([f"  • {m['description']}" for m in plan["migrations"]])
+        sections.append(
+            f"[cyan]Migrations[/cyan] ({len(plan['migrations'])} task(s))\n{migration_list}"
+        )
+
+    content = f"[bold]{action}:[/bold]\n\n" + "\n\n".join(sections)
+
+    print_panel(content, title=UPGRADE_MESSAGES["upgrade_plan_title"], style="cyan")
+
+
+def _display_upgrade_results(results: UpgradeResults) -> None:
+    """Display upgrade results.
+
+    Args:
+        results: Upgrade results TypedDict
+    """
+    # Count total steps needed
+    steps = 0
+    if results.get("commands", {}).get("upgraded"):
+        steps += 1
+    if results.get("templates", {}).get("upgraded"):
+        steps += 1
+    if results.get("obsolete_removed", {}).get("upgraded"):
+        steps += 1
+    if results.get("agent_settings", {}).get("upgraded"):
+        steps += 1
+    if results.get("skills", {}).get("upgraded"):
+        steps += 1
+    if results.get("agent_tasks", {}).get("upgraded"):
+        steps += 1
+    if results.get("hooks", {}).get("upgraded"):
+        steps += 1
+    if results.get("mcp_servers", {}).get("upgraded"):
+        steps += 1
+    if results.get("gitignore", {}).get("upgraded"):
+        steps += 1
+    if results.get("structural_repairs"):
+        steps += 1
+    if results.get("migrations", {}).get("upgraded"):
+        steps += 1
+    if results.get("version_updated"):
+        steps += 1
+
+    tracker = StepTracker(steps)
+
+    # Commands upgrade
+    if results.get("commands"):
+        upgraded = results["commands"]["upgraded"]
+        failed = results["commands"]["failed"]
+
+        if upgraded:
+            tracker.start_step(
+                INFO_MESSAGES["upgrading_agent_commands"].format(count=len(upgraded))
+            )
+            tracker.complete_step(
+                SUCCESS_MESSAGES["upgraded_agent_commands"].format(count=len(upgraded))
+            )
+
+        if failed:
+            tracker.start_step("Command upgrade failures")
+            tracker.fail_step(
+                f"Failed to upgrade {len(failed)} command(s)",
+                ", ".join(failed),
+            )
+
+    # Templates upgrade
+    if results.get("templates"):
+        upgraded = results["templates"]["upgraded"]
+        failed = results["templates"]["failed"]
+
+        if upgraded:
+            tracker.start_step(INFO_MESSAGES["upgrading_templates"].format(count=len(upgraded)))
+            tracker.complete_step(
+                SUCCESS_MESSAGES["upgraded_templates"].format(count=len(upgraded))
+            )
+
+        if failed:
+            tracker.start_step("Template upgrade failures")
+            tracker.fail_step(
+                f"Failed to upgrade {len(failed)} template(s)",
+                ", ".join(failed),
+            )
+
+    # Obsolete template removal
+    if results.get("obsolete_removed"):
+        upgraded = results["obsolete_removed"]["upgraded"]
+        failed = results["obsolete_removed"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Removing {len(upgraded)} obsolete template(s)")
+            tracker.complete_step(f"Removed {len(upgraded)} obsolete template(s)")
+
+        if failed:
+            tracker.start_step("Obsolete removal failures")
+            tracker.fail_step(
+                f"Failed to remove {len(failed)} template(s)",
+                ", ".join(failed),
+            )
+
+    # Agent settings upgrade
+    if results.get("agent_settings"):
+        upgraded = results["agent_settings"]["upgraded"]
+        failed = results["agent_settings"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Upgrading agent settings for {len(upgraded)} agent(s)")
+            tracker.complete_step(f"Upgraded agent settings for {len(upgraded)} agent(s)")
+
+        if failed:
+            tracker.start_step("Agent settings upgrade failures")
+            tracker.fail_step(
+                f"Failed to upgrade {len(failed)} agent setting(s)",
+                ", ".join(failed),
+            )
+
+    # Skills installation/upgrade
+    if results.get("skills"):
+        upgraded = results["skills"]["upgraded"]
+        failed = results["skills"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Installing/upgrading {len(upgraded)} skill(s)")
+            tracker.complete_step(f"Installed/upgraded {len(upgraded)} skill(s)")
+
+        if failed:
+            tracker.start_step("Skill installation failures")
+            tracker.fail_step(
+                f"Failed to install/upgrade {len(failed)} skill(s)",
+                ", ".join(failed),
+            )
+
+    # Agent tasks installation/upgrade
+    if results.get("agent_tasks"):
+        upgraded = results["agent_tasks"]["upgraded"]
+        failed = results["agent_tasks"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Installing/upgrading {len(upgraded)} agent task(s)")
+            tracker.complete_step(f"Installed/upgraded {len(upgraded)} agent task(s)")
+
+        if failed:
+            tracker.start_step("Agent task installation failures")
+            tracker.fail_step(
+                f"Failed to install/upgrade {len(failed)} agent task(s)",
+                ", ".join(failed),
+            )
+
+    # Feature hooks
+    if results.get("hooks"):
+        upgraded = results["hooks"]["upgraded"]
+        failed = results["hooks"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Upgrading {len(upgraded)} hook(s)")
+            tracker.complete_step(f"Upgraded {len(upgraded)} hook(s)")
+
+        if failed:
+            tracker.start_step("Hook upgrade failures")
+            tracker.fail_step(
+                f"Failed to upgrade {len(failed)} hook(s)",
+                ", ".join(failed),
+            )
+
+    # MCP servers
+    if results.get("mcp_servers"):
+        upgraded = results["mcp_servers"]["upgraded"]
+        failed = results["mcp_servers"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Installing {len(upgraded)} MCP server(s)")
+            tracker.complete_step(f"Installed {len(upgraded)} MCP server(s)")
+
+        if failed:
+            tracker.start_step("MCP server failures")
+            tracker.fail_step(
+                f"Failed to install {len(failed)} MCP server(s)",
+                ", ".join(failed),
+            )
+
+    # Gitignore entries
+    if results.get("gitignore"):
+        upgraded = results["gitignore"]["upgraded"]
+        failed = results["gitignore"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Adding {len(upgraded)} gitignore pattern(s)")
+            tracker.complete_step(f"Added {len(upgraded)} gitignore pattern(s)")
+
+        if failed:
+            tracker.start_step("Gitignore failures")
+            tracker.fail_step(
+                f"Failed to add {len(failed)} gitignore pattern(s)",
+                ", ".join(failed),
+            )
+
+    # Structural repairs
+    if results.get("structural_repairs"):
+        repaired = results["structural_repairs"]
+        tracker.start_step(f"Repairing {len(repaired)} structural issue(s)")
+        tracker.complete_step(f"Repaired {len(repaired)} structural issue(s)")
+
+    # Migrations
+    if results.get("migrations"):
+        upgraded = results["migrations"]["upgraded"]
+        failed = results["migrations"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Running {len(upgraded)} migration(s)")
+            tracker.complete_step(f"Completed {len(upgraded)} migration(s)")
+
+        if failed:
+            tracker.start_step("Migration failures")
+            tracker.fail_step(
+                f"Failed to run {len(failed)} migration(s)",
+                ", ".join(failed),
+            )
+
+    # Version update
+    if results.get("version_updated"):
+        tracker.start_step(INFO_MESSAGES["updating_project_version"])
+        tracker.complete_step(SUCCESS_MESSAGES["updated_project_version"].format(version=VERSION))
+
+    tracker.finish(SUCCESS_MESSAGES["upgrade_complete"])
+
+    # Display what's new based on what was upgraded
+    _display_whats_new(results)
+
+
+def _display_whats_new(results: UpgradeResults) -> None:
+    """Display what's new after upgrade.
+
+    Args:
+        results: Upgrade results from UpgradeService
+    """
+    commands_upgraded = len(results.get("commands", {}).get("upgraded", []))
+    templates_upgraded = len(results.get("templates", {}).get("upgraded", []))
+    obsolete_removed = len(results.get("obsolete_removed", {}).get("upgraded", []))
+    agent_settings_upgraded = len(results.get("agent_settings", {}).get("upgraded", []))
+    skills_upgraded = len(results.get("skills", {}).get("upgraded", []))
+    mcp_servers_installed = len(results.get("mcp_servers", {}).get("upgraded", []))
+    gitignore_added = len(results.get("gitignore", {}).get("upgraded", []))
+    version_updated = results.get("version_updated", False)
+
+    # Build message based on what was upgraded
+    if (
+        commands_upgraded > 0
+        or templates_upgraded > 0
+        or obsolete_removed > 0
+        or agent_settings_upgraded > 0
+        or skills_upgraded > 0
+        or mcp_servers_installed > 0
+        or gitignore_added > 0
+    ):
+        # Files were upgraded
+        message_parts = [f"[bold green]{UPGRADE_MESSAGES['whats_new_title']}[/bold green]\n\n"]
+
+        if commands_upgraded > 0:
+            message_parts.append(
+                f"✓ {SUCCESS_MESSAGES['upgraded_agent_commands'].format(count=commands_upgraded)}\n"
+            )
+
+        if templates_upgraded > 0:
+            message_parts.append(
+                f"✓ {SUCCESS_MESSAGES['upgraded_templates'].format(count=templates_upgraded)}\n"
+            )
+
+        if obsolete_removed > 0:
+            message_parts.append(f"✓ Removed {obsolete_removed} obsolete template(s)\n")
+
+        if agent_settings_upgraded > 0:
+            message_parts.append(
+                f"✓ Upgraded agent settings for {agent_settings_upgraded} agent(s)\n"
+            )
+
+        if skills_upgraded > 0:
+            message_parts.append(f"✓ Installed/upgraded {skills_upgraded} agent skill(s)\n")
+
+        if mcp_servers_installed > 0:
+            message_parts.append(f"✓ Installed {mcp_servers_installed} MCP server(s)\n")
+
+        if gitignore_added > 0:
+            message_parts.append(f"✓ Added {gitignore_added} gitignore pattern(s)\n")
+
+        if version_updated:
+            message_parts.append(
+                f"✓ {SUCCESS_MESSAGES['updated_project_version'].format(version=VERSION)}\n"
+            )
+
+        release_url = f"{PROJECT_URL}/releases/tag/v{VERSION}"
+        message_parts.append(
+            f"\n[dim]{UPGRADE_MESSAGES['release_notes']}[/dim]\n[cyan]{release_url}[/cyan]"
+        )
+
+        print_panel(
+            "".join(message_parts),
+            title=UPGRADE_MESSAGES["upgrade_summary_title"],
+            style="green",
+        )
+    elif version_updated:
+        # Only version was updated
+        release_url = f"{PROJECT_URL}/releases/tag/v{VERSION}"
+        print_panel(
+            f"[bold green]Updated to v{VERSION}[/bold green]\n\n"
+            f"[dim]{UPGRADE_MESSAGES['release_notes']}[/dim]\n"
+            f"[cyan]{release_url}[/cyan]",
+            title=UPGRADE_MESSAGES["upgrade_summary_title"],
+            style="green",
+        )

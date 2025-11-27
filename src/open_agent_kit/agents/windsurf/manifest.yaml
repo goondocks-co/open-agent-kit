@@ -1,0 +1,65 @@
+# Windsurf Agent Manifest
+# Codeium's Windsurf IDE with Cascade agentic capabilities
+
+name: windsurf
+display_name: "Windsurf"
+version: "1.0.0"
+description: "Codeium's Windsurf IDE with Cascade agentic capabilities"
+
+installation:
+  folder: ".windsurf/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  # .windsurf/rules/rules.md or global_rules.md
+  instruction_file: ".windsurf/rules/rules.md"
+
+requirements:
+  requires_cli: false
+  install_url: null
+
+capabilities:
+  has_background_agents: true   # Cascade agentic IDE, multi-step flows
+  background_agent_instructions: "Start multiple Cascade sessions to work on tasks in parallel. Use Plan Mode for multi-step workflows. Each Cascade instance can execute independently while others are running."
+  has_native_web: false         # Depends on chosen model
+  has_mcp: false                # Global-only MCP config (~/.codeium/windsurf/mcp_config.json) — incompatible with OAK's project-scoped daemons
+  research_strategy: "Deep research via MCP web-search stack"
+
+  # Capability tiers for prompt complexity adaptation
+  # Windsurf can use various models via Cascade
+  reasoning_tier: variable      # high | medium | basic | variable - depends on selected model
+  context_handling: large       # large | medium | small - Cascade handles context well
+  model_consistency: variable   # high | medium | variable - user can switch models
+
+  # Skills support (Agent Skills standard)
+  # Windsurf uses .windsurf/skills/ for project-level skills
+  has_skills: true
+  skills_directory: "skills"    # .windsurf/skills/
+
+# Codebase Intelligence configuration
+ci:
+  # Plan storage - Windsurf stores plans in .windsurf/plans/ (project) and ~/.windsurf/plans/ (global)
+  plans_subfolder: "plans"
+
+  # Plan execution detection - Windsurf transitions to Code mode via UI button,
+  # no detectable prompt prefix or tool signal
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
+# Hooks configuration for Codebase Intelligence
+# Windsurf uses a standalone hooks.json with flat structure (same as Cursor)
+hooks:
+  type: json
+  config_file: "hooks.json"
+  hooks_key: "hooks"
+  format: flat
+  version_key: "version"
+  template_file: "hooks.json"
+
+settings:
+  # Auto-approval settings for oak commands
+  # Windsurf uses cascadeCommandsAllowList in settings.json to auto-execute commands
+  auto_approve:
+    enabled: true
+    file: ".windsurf/settings.json"
+    format: json
+    template: "agent-settings/windsurf-settings.json"  # Template from features/core/

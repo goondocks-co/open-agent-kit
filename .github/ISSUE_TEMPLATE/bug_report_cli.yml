@@ -1,0 +1,129 @@
+name: "Bug: CLI / Installers"
+description: Report a bug in install scripts, CLI commands, or local setup flow.
+title: "[CLI] "
+labels: ["bug", "cli"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide a minimal, reproducible report.
+        For install issues, include the exact install command and method.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where does the bug occur?
+      options:
+        - install.sh (macOS/Linux installer)
+        - install.ps1 (Windows installer)
+        - oak init
+        - oak upgrade
+        - oak remove
+        - oak ci commands
+        - other CLI command
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command(s)
+      description: Paste exactly what you ran.
+      placeholder: |
+        curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+        oak init --agent claude --no-interactive
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide a minimal sequence from a clean state.
+      placeholder: |
+        1. Create a new temp directory.
+        2. Run installer command.
+        3. Run oak --version.
+        4. Observe error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output / error
+      description: Include full relevant logs and tracebacks.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install method
+      options:
+        - pipx
+        - uv tool
+        - pip --user
+        - editable dev install (make setup / make sync)
+        - unknown
+    validations:
+      required: true
+
+  - type: input
+    id: oak_version
+    attributes:
+      label: OAK version
+      description: Output of `oak --version`
+      placeholder: oak 0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      placeholder: 3.13.2
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: OS and version
+      placeholder: macOS 15 / Ubuntu 24.04 / Windows 11
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducible_clean
+    attributes:
+      label: Reproducible in a fresh directory?
+      options:
+        - "yes"
+        - "no"
+        - not tested
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any extra details that may help triage.

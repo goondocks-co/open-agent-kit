@@ -1,0 +1,6 @@
+{
+  "$comment": "GitHub Copilot auto-approval settings for oak commands. Uses chat.tools.terminal.autoApprove (available in VS Code 1.99+).",
+  "chat.tools.terminal.autoApprove": {
+    "oak": true
+  }
+}

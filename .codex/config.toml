@@ -1,0 +1,22 @@
+notify = [
+    "oak",
+    "ci",
+    "notify",
+    "--agent",
+    "codex",
+]
+
+[mcp_servers.oak-ci]
+command = "oak"
+args = [
+    "ci",
+    "mcp",
+]
+
+[otel]
+environment = "dev"
+log_user_prompt = true
+
+[otel.exporter.otlp-http]
+endpoint = "http://127.0.0.1:38388/v1/logs"
+protocol = "json"

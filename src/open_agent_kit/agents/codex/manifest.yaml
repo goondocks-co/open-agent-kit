@@ -1,0 +1,116 @@
+# OpenAI Codex CLI Agent Manifest
+# OpenAI's Codex CLI with MCP support
+# See: https://developers.openai.com/codex/mcp
+
+name: codex
+display_name: "Codex CLI"
+version: "1.0.0"
+description: "OpenAI Codex CLI agent with MCP support"
+
+installation:
+  folder: ".codex/"
+  commands_subfolder: "prompts"
+  file_extension: ".md"
+  # AGENTS.md in project root (shared with Cursor)
+  instruction_file: "./AGENTS.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://github.com/openai/codex"
+
+capabilities:
+  has_background_agents: false  # No true background worker
+  has_native_web: true         # has native web search capabilities
+  has_mcp: true                 # Full MCP support via config.toml
+  research_strategy: "Use MCP servers for extended capabilities; degrade gracefully to general knowledge"
+
+  # Capability tiers for prompt complexity adaptation
+  # Codex uses OpenAI's first-party models
+  reasoning_tier: high          # high | medium | basic - o-series models excel at reasoning
+  context_handling: large       # large | medium | small - good context window
+  model_consistency: high       # high | medium | variable - first-party models are consistent
+
+  # Skills support (Codex supports SKILL.md files in .codex/skills/)
+  has_skills: true
+  skills_directory: "skills"    # .codex/skills/
+
+# Codebase Intelligence configuration
+ci:
+  # Resume command template - allows UI to show copyable command for session continuation
+  resume_command: "codex resume {session_id}"
+
+  # Plan storage - Codex may store plans in .codex/plans/ (TBD - needs verification)
+  # Set to null until plan storage location is confirmed
+  plans_subfolder: null
+
+  # Plan execution/exit detection TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
+# Hooks configuration for Codebase Intelligence
+# Codex uses OpenTelemetry events instead of traditional hooks
+# See: https://github.com/openai/codex/pull/2103
+hooks:
+  type: otel
+  config_file: "config.toml"
+  otel:
+    enabled: true
+    config_template: "otel_config.toml.j2"
+    config_section: "otel"
+    # Codex uses conversation.id as the session identifier
+    session_id_attribute: "conversation.id"
+    # Attribute containing agent/service name for auto-detection
+    agent_attribute: "slug"
+    # Map Codex OTel events to OAK hook actions
+    # tool_decision is the first event in a tool call flow, used for prompt batch creation
+    event_mapping:
+      "codex.conversation_starts": "session-start"
+      "codex.user_prompt": "prompt-submit"
+      "codex.tool_decision": "prompt-submit"
+      "codex.tool_result": "post-tool-use"
+
+# Notifications configuration for Codebase Intelligence
+# Codex notify handler emits "agent-turn-complete" after each response.
+notifications:
+  type: notify
+  config_file: "config.toml"
+  config_template: "notify_config.toml.j2"
+  notify:
+    enabled: true
+    config_key: "notify"
+    command: "oak"
+    args:
+      - "ci"
+      - "notify"
+      - "--agent"
+      - "codex"
+    session_id_field: "thread-id"
+    response_field: "last-assistant-message"
+    input_messages_field: "input-messages"
+    event_mapping:
+      "agent-turn-complete": "response-summary"
+
+settings:
+  # Auto-approval settings for oak commands
+  # Codex uses global TOML config (~/.codex/config.toml) that affects ALL projects
+  # We don't auto-manage this to avoid affecting the user's global configuration
+  # User can manually set approval_policy to 'on-request' or 'on-failure' for auto-approval
+  auto_approve:
+    enabled: false
+    file: "~/.codex/config.toml"
+    format: toml
+    # Note: No per-command approval in Codex - uses approval_policy (untrusted|on-failure|on-request|never)
+
+mcp:
+  # MCP server registration config
+  # Codex uses TOML format in .codex/config.toml (project-scoped)
+  # See: https://developers.openai.com/codex/mcp
+  config_file: ".codex/config.toml"
+  format: toml
+  servers_key: "mcp_servers"  # Section prefix: [mcp_servers.<name>]
+  # Note: Codex CLI (codex mcp add) always installs globally to ~/.codex/config.toml
+  # For project-scoped MCP servers, we use direct TOML manipulation
+  # TOML entry format: [mcp_servers.<name>] section with command and args
+  entry_format:
+    command: "{cmd}"
+    args: "{args}"

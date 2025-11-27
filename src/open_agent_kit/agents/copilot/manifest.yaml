@@ -1,0 +1,76 @@
+# GitHub Copilot Agent Manifest
+# GitHub Copilot with coding agent and Mission Control capabilities
+
+name: copilot
+display_name: "GitHub Copilot"
+version: "1.0.0"
+description: "GitHub Copilot with coding agent, Mission Control, and MCP support"
+
+installation:
+  folder: ".github/"
+  commands_subfolder: "agents"
+  file_extension: ".agent.md"
+  instruction_file: "copilot-instructions.md"
+
+requirements:
+  requires_cli: false
+  install_url: "https://docs.github.com/en/copilot/get-started/quickstart"
+
+capabilities:
+  has_background_agents: true   # Coding agent, Mission Control
+  background_agent_instructions: "Use Mission Control to assign multiple tasks in parallel. Each task runs in its own cloud environment. Monitor progress and guide agents with real-time steering."
+  has_native_web: true          # Built-in web/search tools in Copilot Chat
+  has_mcp: true                 # Full MCP support in VS Code
+  research_strategy: "Use Copilot's built-in web tools + keyless MCP"
+
+  # Capability tiers for prompt complexity adaptation
+  # Copilot can use various models - capabilities depend on user's model selection
+  reasoning_tier: variable      # high | medium | basic | variable - depends on selected model
+  context_handling: medium      # large | medium | small - varies by model
+  model_consistency: variable   # high | medium | variable - user can switch models
+
+  # Skills support (Copilot supports SKILL.md files in .github/skills/)
+  has_skills: true
+  skills_directory: "skills"    # .github/skills/
+
+# Codebase Intelligence configuration
+ci:
+  # Plan storage - Copilot may store plans in .github/plans/ (TBD - needs verification)
+  # Set to null until plan storage location is confirmed
+  plans_subfolder: null
+
+  # Plan execution/exit detection TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
+settings:
+  # Auto-approval settings for oak commands
+  # GitHub Copilot uses chat.tools.terminal.autoApprove in VSCode settings (1.99+)
+  # Note: This is slightly flaky - see https://github.com/microsoft/vscode/issues/252496
+  auto_approve:
+    enabled: true
+    file: ".vscode/settings.json"
+    format: json
+    template: "agent-settings/copilot-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config
+  config_file: ".vscode/mcp.json"
+  format: json
+  servers_key: "servers"  # Note: Copilot uses "servers" not "mcpServers"
+  # No CLI support - direct JSON manipulation only
+  # JSON entry format
+  entry_format:
+    command: "{cmd}"
+    args: "{args}"
+
+# Hooks configuration for Codebase Intelligence
+# Copilot hooks are stored in .github/hooks/ per GitHub docs
+# https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/use-hooks
+hooks:
+  type: json
+  config_file: "hooks/oak-ci-hooks.json"
+  hooks_key: "hooks"
+  format: copilot
+  version_key: "version"
+  template_file: "hooks.json"

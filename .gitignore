@@ -1,0 +1,112 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+.ruff_cache/
+
+# Auto-generated version file (hatch-vcs)
+src/open_agent_kit/_version.py
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+!**/ui/src/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+COVERAGE_STATUS.txt
+*.cover
+.hypothesis/
+.playwright-mcp/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Documentation
+docs/_build/
+docs/node_modules/
+docs/dist/
+docs/.astro/
+# Stray Astro/Node artifacts if build runs from project root
+/.astro/
+/dist/
+/node_modules/
+site/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# open-agent-kit specific
+*.tar.gz
+packages/
+release-artifacts/
+release-files/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.swp
+*~
+.logs/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# open-agent-kit: Issue raw JSON (local debugging only)
+oak/issue/**/context.json
+
+# open-agent-kit: Codebase Intelligence
+.oak/ci/
+
+# open-agent-kit: Codebase Intelligence
+.oak/config.*.yaml

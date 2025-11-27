@@ -1,0 +1,138 @@
+version: 0.1.0rc2.dev7+g94eed463f.d20260207
+agents:
+- copilot
+- opencode
+- codex
+- gemini
+- windsurf
+- cursor
+- claude
+rfc:
+  directory: oak/rfc
+  template: engineering
+  auto_number: true
+  number_format: sequential
+  validate_on_create: true
+constitution:
+  directory: oak
+languages:
+  installed: [javascript, python, typescript]
+skills:
+  installed: [project-governance, codebase-intelligence]
+  auto_install: true
+codebase_intelligence:
+  embedding:
+    provider: ollama
+    model: bge-m3
+    base_url: http://localhost:11434
+    dimensions: 1024
+    api_key: null
+    fallback_enabled: false
+    context_tokens: 8192
+    max_chunk_chars: 6553
+  summarization:
+    enabled: true
+    provider: lmstudio
+    model: openai/gpt-oss-20b
+    base_url: http://localhost:1234
+    api_key: null
+    timeout: 180.0
+    context_tokens: 131072
+  agents:
+    provider_type: cloud
+    provider_base_url: null
+    provider_model: null
+    enabled: true
+    max_turns: 50
+    timeout_seconds: 600
+    scheduler_interval_seconds: 60
+    executor_cache_size: 100
+    background_processing_interval_seconds: 60
+  tunnel:
+    provider: cloudflared
+    auto_start: false
+    cloudflared_path: null
+    ngrok_path: null
+  log_level: DEBUG
+  log_rotation:
+    enabled: true
+    max_size_mb: 20
+    backup_count: 3
+  session_quality:
+    min_activities: 3
+    stale_timeout_seconds: 3600
+  index_on_startup: true
+  watch_files: true
+  exclude_patterns:
+  - .git
+  - .git/**
+  - .oak
+  - .oak/**
+  - .agent/skills
+  - .claude/commands
+  - .claude/settings.local.json
+  - .claude/skills
+  - .codex/prompts
+  - .codex/skills
+  - .cursor/commands
+  - .cursor/mcp.json
+  - .cursor/settings.json
+  - .gemini/commands
+  - .gemini/settings.json
+  - .github/agents
+  - .github/skills
+  - .mcp.json
+  - .vscode/mcp.json
+  - .vscode/settings.json
+  - .windsurf/commands
+  - .windsurf/settings.json
+  - node_modules
+  - node_modules/**
+  - __pycache__
+  - __pycache__/**
+  - .mypy_cache
+  - .mypy_cache/**
+  - .pytest_cache
+  - .pytest_cache/**
+  - .ruff_cache
+  - .ruff_cache/**
+  - htmlcov
+  - htmlcov/**
+  - .venv
+  - .venv/**
+  - venv
+  - venv/**
+  - .env
+  - .env.*
+  - '*.env'
+  - '*.pem'
+  - '*.key'
+  - '*.crt'
+  - '*.p12'
+  - '*.pfx'
+  - '*.jks'
+  - '*.keystore'
+  - '*.pyc'
+  - '*.pyo'
+  - '*.min.js'
+  - '*.min.css'
+  - '*.map'
+  - '*.lock'
+  - package-lock.json
+  - yarn.lock
+  - pnpm-lock.yaml
+  - dist/**
+  - build/**
+  - .next/**
+  - coverage/**
+  - '*.egg-info/**'
+  - translations/**
+  - locales/**
+  - locale/**
+  - i18n/**
+  - l10n/**
+  - '*.po'
+  - '*.pot'
+  - '*.mo'
+  backup:
+    on_upgrade: true

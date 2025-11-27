@@ -1,0 +1,24 @@
+# Rules Management Feature Manifest
+name: rules-management
+display_name: "Rules Management"
+description: "Create, validate, and maintain AI agent rules files (constitution.md) that define engineering standards and best practices for projects."
+version: "2.0.0"
+default_enabled: true
+dependencies: []
+
+# Skills are installed to agents with has_skills capability when feature is enabled
+# Consolidated skill covering constitutions, agent files, and RFCs
+skills:
+  - project-governance
+
+# Templates section removed - skill teaches agents to write constitutions directly
+# using examples in skills/project-governance/references/
+
+# Feature lifecycle hooks
+hooks:
+  # Sync agent instruction files when agents are added/removed
+  on_agents_changed: rules-management:sync_agent_files
+
+# Feature-specific default configuration
+config_defaults:
+  directory: oak

@@ -1,0 +1,19 @@
+# Core Feature Manifest
+# Core contains non-feature assets that support OAK functionality
+# These are not user-selectable features but foundational components
+name: core
+display_name: "Core Assets"
+description: "Core OAK assets including IDE settings. Not a selectable feature."
+version: "1.0.0"
+is_core: true
+
+# Core components
+components:
+  agent_settings:
+    description: "Agent auto-approval settings for oak commands"
+    files:
+      - agent-settings/claude-settings.json
+      - agent-settings/copilot-settings.json
+      - agent-settings/cursor-settings.json
+      - agent-settings/gemini-settings.json
+      - agent-settings/windsurf-settings.json

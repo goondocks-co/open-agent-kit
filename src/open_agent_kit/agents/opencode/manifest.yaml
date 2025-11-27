@@ -1,0 +1,82 @@
+# OpenCode Agent Manifest
+# OpenCode AI coding agent with TUI, desktop app, and IDE support
+
+name: opencode
+display_name: "OpenCode"
+version: "1.0.0"
+description: "OpenCode AI coding agent with TUI, desktop app, IDE extension, and plugin-based extensibility"
+
+installation:
+  folder: ".opencode/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  # AGENTS.md in project root (shared with Cursor/Codex)
+  instruction_file: "./AGENTS.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://opencode.ai/docs"
+
+capabilities:
+  has_background_agents: true   # Primary agents (Build, Plan) + subagents (General, Explore)
+  background_agent_instructions: |
+    Use @mention to invoke subagents (General, Explore) or let primary agents invoke them automatically.
+    Switch between primary agents (Build, Plan) using the Tab key.
+    Subagents run in isolated contexts and return results to the parent agent.
+  has_native_web: true          # Built-in web tools
+  has_mcp: true                 # Full MCP support via opencode.json
+  research_strategy: "Use built-in web tools or configure MCP servers in opencode.json under the 'mcp' key"
+
+  # Capability tiers for prompt complexity adaptation
+  # OpenCode can use various models - capabilities depend on user's model selection
+  reasoning_tier: variable      # high | medium | basic | variable - depends on selected model
+  context_handling: large       # large | medium | small - excellent context management
+  model_consistency: variable   # high | medium | variable - user can switch models
+
+  # Skills support (Agent Skills standard)
+  # OpenCode supports .opencode/skills/ and .claude/skills/ (Claude-compatible)
+  # See: https://opencode.ai/docs/skills/
+  has_skills: true
+  skills_directory: "skills"    # .opencode/skills/
+
+# Codebase Intelligence configuration
+ci:
+  resume_command: "opencode --session {session_id}"
+  # Plan storage - OpenCode Plan mode uses in-memory planning, doesn't persist to disk
+  # Plans are created interactively and executed within the same session
+  plans_subfolder: null
+
+  # Plan execution/exit detection - not applicable for OpenCode's model
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
+settings:
+  # Auto-approval settings for oak commands
+  # OpenCode uses permissions in opencode.json
+  auto_approve:
+    enabled: true
+    file: "opencode.json"
+    format: json
+    template: "agent-settings/opencode-settings.json"
+
+mcp:
+  # MCP server registration config
+  # OpenCode uses opencode.json with servers under the "mcp" key
+  # Structure: { "mcp": { "server-name": { "type": "local", "command": [...] } } }
+  config_file: "opencode.json"
+  format: json
+  servers_key: "mcp"  # OpenCode uses "mcp" not "mcpServers"
+  # No CLI support - direct JSON manipulation only
+  # JSON entry format (OpenCode uses array format for command)
+  # Note: OpenCode uses "command" as an array, not separate cmd/args
+  entry_format:
+    type: "local"
+    command: "{command_array}"  # Special: full command as array
+
+# Hooks configuration for plugin-based CI integration
+# OpenCode uses TypeScript/JavaScript plugins instead of JSON hooks
+hooks:
+  type: plugin
+  plugin_dir: "plugins"
+  plugin_file: "oak-ci.ts"
+  template_file: "oak-ci.ts"

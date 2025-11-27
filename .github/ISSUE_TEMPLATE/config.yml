@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://oak.goondocks.co/
+    about: Read setup, CLI, and feature docs before opening an issue
+  - name: Contributing Guide
+    url: https://github.com/goondocks-co/open-agent-kit/blob/main/CONTRIBUTING.md
+    about: Review contribution expectations and quality gates

@@ -1,0 +1,367 @@
+"""Tests for upgrade command and service."""
+
+from pathlib import Path
+
+from open_agent_kit.services.upgrade_service import UpgradeService
+
+
+def test_is_initialized_false_when_no_oak_dir(temp_project_dir: Path) -> None:
+    """Test is_initialized returns False when .oak doesn't exist."""
+    service = UpgradeService(temp_project_dir)
+    assert not service.is_initialized()
+
+
+def test_is_initialized_true_when_oak_dir_exists(initialized_project: Path) -> None:
+    """Test is_initialized returns True when .oak exists."""
+    service = UpgradeService(initialized_project)
+    assert service.is_initialized()
+
+
+def test_plan_upgrade_with_no_agents(initialized_project: Path) -> None:
+    """Test plan_upgrade returns empty plan when no agents configured."""
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+    assert "commands" in plan
+    assert "templates" in plan
+    assert plan["commands"] == []
+    assert isinstance(plan["templates"], list)
+
+
+def test_plan_upgrade_commands_only(initialized_project: Path) -> None:
+    """Test plan_upgrade with commands=True, templates=False."""
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade(commands=True, templates=False)
+    assert "commands" in plan
+    assert "templates" in plan
+    assert plan["templates"] == []
+
+
+def test_plan_upgrade_templates_only(initialized_project: Path) -> None:
+    """Test plan_upgrade with commands=False, templates=True."""
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade(commands=False, templates=True)
+    assert "commands" in plan
+    assert "templates" in plan
+    assert plan["commands"] == []
+    assert isinstance(plan["templates"], list)
+
+
+def test_files_differ_identical_files(initialized_project: Path) -> None:
+    """Test _files_differ returns False for identical files."""
+    service = UpgradeService(initialized_project)
+    file1 = initialized_project / "test1.txt"
+    file2 = initialized_project / "test2.txt"
+    content = "Test content\n"
+    file1.write_text(content, encoding="utf-8")
+    file2.write_text(content, encoding="utf-8")
+    assert not service._files_differ(file1, file2)
+
+
+def test_files_differ_different_files(initialized_project: Path) -> None:
+    """Test _files_differ returns True for different files."""
+    service = UpgradeService(initialized_project)
+    file1 = initialized_project / "test1.txt"
+    file2 = initialized_project / "test2.txt"
+    file1.write_text("Content A\n", encoding="utf-8")
+    file2.write_text("Content B\n", encoding="utf-8")
+    assert service._files_differ(file1, file2)
+
+
+def test_files_differ_nonexistent_file(initialized_project: Path) -> None:
+    """Test _files_differ returns False when file doesn't exist."""
+    service = UpgradeService(initialized_project)
+    file1 = initialized_project / "test1.txt"
+    file2 = initialized_project / "nonexistent.txt"
+    file1.write_text("Content\n", encoding="utf-8")
+    assert not service._files_differ(file1, file2)
+
+
+def test_plan_upgrade_detects_modified_command(initialized_project: Path) -> None:
+    """Test that plan_upgrade detects modified agent command files.
+
+    All agents get commands (sub-agents). We use codebase-intelligence which
+    has the backend-python-expert command installed.
+    """
+    from open_agent_kit.commands.init_cmd import init_command
+
+    init_command(force=False, agent=["cursor"], no_interactive=True)
+    commands_dir = initialized_project / ".cursor" / "commands"
+    command_file = commands_dir / "oak.backend-python-expert.md"
+    assert command_file.exists()
+    original_content = command_file.read_text(encoding="utf-8")
+    command_file.write_text(original_content + "\n# Modified\n", encoding="utf-8")
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade(commands=True, templates=False)
+    assert len(plan["commands"]) > 0
+    assert any(cmd["file"] == "oak.backend-python-expert.md" for cmd in plan["commands"])
+
+
+def test_execute_upgrade_restores_command(initialized_project: Path) -> None:
+    """Test that execute_upgrade restores modified command file.
+
+    All agents get commands (sub-agents). We use codebase-intelligence which
+    has the backend-python-expert command installed.
+    """
+    from open_agent_kit.commands.init_cmd import init_command
+
+    init_command(force=False, agent=["cursor"], no_interactive=True)
+    commands_dir = initialized_project / ".cursor" / "commands"
+    command_file = commands_dir / "oak.backend-python-expert.md"
+    original_content = command_file.read_text(encoding="utf-8")
+    modified_content = original_content + "\n# Modified\n"
+    command_file.write_text(modified_content, encoding="utf-8")
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade(commands=True, templates=False)
+    results = service.execute_upgrade(plan)
+    assert len(results["commands"]["upgraded"]) > 0
+    assert "oak.backend-python-expert.md" in results["commands"]["upgraded"]
+    restored_content = command_file.read_text(encoding="utf-8")
+    assert "# Modified" not in restored_content
+    assert restored_content == original_content
+
+
+def test_execute_upgrade_with_empty_plan(initialized_project: Path) -> None:
+    """Test execute_upgrade with empty plan does nothing."""
+    service = UpgradeService(initialized_project)
+    empty_plan = {
+        "commands": [],
+        "templates": [],
+        "templates_customized": False,
+        "obsolete_templates": [],
+        "agent_settings": [],
+        "skills": {"install": [], "upgrade": [], "obsolete": []},
+        "hooks": [],
+        "notifications": [],
+        "mcp_servers": [],
+        "gitignore": [],
+        "agent_tasks": {"install": [], "upgrade": []},
+        "migrations": [],
+        "structural_repairs": [],
+        "version_outdated": False,
+        "current_version": "1.0.0",
+        "package_version": "1.0.0",
+    }
+    results = service.execute_upgrade(empty_plan)
+    assert results["commands"]["upgraded"] == []
+    assert results["commands"]["failed"] == []
+    assert results["templates"]["upgraded"] == []
+    assert results["templates"]["failed"] == []
+    assert results["agent_settings"]["upgraded"] == []
+    assert results["agent_settings"]["failed"] == []
+
+
+def test_plan_upgrade_multiple_agents(initialized_project: Path) -> None:
+    """Test plan_upgrade with multiple agents configured.
+
+    All agents get commands (sub-agents). We use codebase-intelligence which
+    has the backend-python-expert command installed for all agents.
+    """
+    from open_agent_kit.commands.init_cmd import init_command
+
+    init_command(force=False, agent=["cursor", "windsurf"], no_interactive=True)
+    cursor_dir = initialized_project / ".cursor" / "commands"
+    windsurf_dir = initialized_project / ".windsurf" / "commands"
+    cursor_file = cursor_dir / "oak.backend-python-expert.md"
+    windsurf_file = windsurf_dir / "oak.backend-python-expert.md"
+    cursor_file.write_text(
+        cursor_file.read_text(encoding="utf-8") + "\n# Modified Cursor\n", encoding="utf-8"
+    )
+    windsurf_file.write_text(
+        windsurf_file.read_text(encoding="utf-8") + "\n# Modified Windsurf\n", encoding="utf-8"
+    )
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade(commands=True, templates=False)
+    assert len(plan["commands"]) >= 2
+    agents = [cmd["agent"] for cmd in plan["commands"]]
+    assert "cursor" in agents
+    assert "windsurf" in agents
+
+
+def test_get_upgrade_service_helper() -> None:
+    """Test get_upgrade_service helper function."""
+    from open_agent_kit.services.upgrade_service import get_upgrade_service
+
+    service = get_upgrade_service()
+    assert isinstance(service, UpgradeService)
+    assert service.project_root == Path.cwd()
+
+
+def test_upgrade_service_with_custom_project_root(temp_project_dir: Path) -> None:
+    """Test UpgradeService with custom project root."""
+    service = UpgradeService(temp_project_dir)
+    assert service.project_root == temp_project_dir
+
+
+def test_execute_upgrade_updates_config_version(initialized_project: Path) -> None:
+    """Test that execute_upgrade updates the config version.
+
+    All agents get commands (sub-agents). We use codebase-intelligence which
+    has the backend-python-expert command installed.
+    """
+    from open_agent_kit import __version__
+    from open_agent_kit.commands.init_cmd import init_command
+    from open_agent_kit.services.config_service import ConfigService
+
+    init_command(force=False, agent=["cursor"], no_interactive=True)
+    config_service = ConfigService(initialized_project)
+    config = config_service.load_config()
+    config.version = "0.0.1"
+    config_service.save_config(config)
+    commands_dir = initialized_project / ".cursor" / "commands"
+    command_file = commands_dir / "oak.backend-python-expert.md"
+    original_content = command_file.read_text(encoding="utf-8")
+    command_file.write_text(original_content + "\n# Modified\n", encoding="utf-8")
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade(commands=True, templates=False)
+    results = service.execute_upgrade(plan)
+    assert results["version_updated"] is True
+    config = config_service.load_config()
+    assert config.version == __version__
+
+
+def test_execute_upgrade_no_version_update_when_nothing_upgraded(initialized_project: Path) -> None:
+    """Test that version is not updated when nothing was upgraded."""
+    service = UpgradeService(initialized_project)
+    empty_plan = {
+        "commands": [],
+        "templates": [],
+        "templates_customized": False,
+        "obsolete_templates": [],
+        "agent_settings": [],
+        "skills": {"install": [], "upgrade": [], "obsolete": []},
+        "hooks": [],
+        "notifications": [],
+        "mcp_servers": [],
+        "gitignore": [],
+        "agent_tasks": {"install": [], "upgrade": []},
+        "migrations": [],
+        "structural_repairs": [],
+        "version_outdated": False,
+        "current_version": "1.0.0",
+        "package_version": "1.0.0",
+    }
+    results = service.execute_upgrade(empty_plan)
+    assert results["version_updated"] is False
+
+
+def test_plan_upgrade_detects_outdated_version(initialized_project: Path) -> None:
+    """Test that plan_upgrade detects when config version is outdated."""
+    from open_agent_kit import __version__
+    from open_agent_kit.services.config_service import ConfigService
+
+    config_service = ConfigService(initialized_project)
+    config = config_service.load_config()
+    config.version = "0.0.1"
+    config_service.save_config(config)
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+    assert plan["version_outdated"] is True
+    assert plan["current_version"] == "0.0.1"
+    assert plan["package_version"] == __version__
+
+
+def test_plan_upgrade_current_version_not_outdated(initialized_project: Path) -> None:
+    """Test that plan_upgrade recognizes current version as up to date."""
+    from open_agent_kit import __version__
+    from open_agent_kit.services.config_service import ConfigService
+
+    config_service = ConfigService(initialized_project)
+    config = config_service.load_config()
+    config.version = __version__
+    config_service.save_config(config)
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+    assert plan["version_outdated"] is False
+    assert plan["current_version"] == __version__
+    assert plan["package_version"] == __version__
+
+
+def test_execute_upgrade_updates_version_when_outdated(initialized_project: Path) -> None:
+    """Test that execute_upgrade updates version even if no files changed."""
+    from open_agent_kit import __version__
+    from open_agent_kit.services.config_service import ConfigService
+
+    config_service = ConfigService(initialized_project)
+    config = config_service.load_config()
+    config.version = "0.0.1"
+    config_service.save_config(config)
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+    assert plan["version_outdated"] is True
+    assert len(plan["commands"]) == 0
+    assert len(plan["templates"]) == 0
+    results = service.execute_upgrade(plan)
+    assert results["version_updated"] is True
+    config = config_service.load_config()
+    assert config.version == __version__
+
+
+def test_no_template_upgrades_detected(initialized_project: Path) -> None:
+    """Test that template upgrades are no longer detected.
+
+    Templates are now read directly from the installed package, so there's
+    no concept of "upgrading" project templates. Users get the latest templates
+    automatically when they update the oak package.
+    """
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+
+    # Template upgrades are no longer supported - list should always be empty
+    assert plan["templates"] == []
+
+
+def test_oak_features_dir_not_created(initialized_project: Path) -> None:
+    """Test that .oak/features/ directory is not created during init.
+
+    Feature assets (commands, templates) are now read directly from the
+    installed package rather than being copied to .oak/features/.
+    """
+    from open_agent_kit.config.paths import OAK_DIR
+
+    # .oak/features/ should NOT exist
+    features_dir = initialized_project / OAK_DIR / "features"
+    assert not features_dir.exists()
+
+
+def test_upgrade_only_checks_known_template_categories(initialized_project: Path) -> None:
+    """Test that upgrade only checks RFC and constitution templates, not all .md files."""
+    from open_agent_kit.config.paths import OAK_DIR
+
+    # Create a random .md file that shouldn't be detected
+    (initialized_project / "README.md").write_text("# Random file", encoding="utf-8")
+    (initialized_project / OAK_DIR / "notes.md").write_text("# Notes", encoding="utf-8")
+
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+
+    # Should not include README.md or notes.md
+    assert not any("README" in t for t in plan["templates"])
+    assert not any("notes" in t for t in plan["templates"])
+    # Should only include RFC and constitution templates
+    assert all(t.startswith(("rfc/", "constitution/")) for t in plan["templates"])
+
+
+def test_plan_upgrade_detects_modified_plugin_hook(initialized_project: Path) -> None:
+    """Test that plan_upgrade detects when a plugin hook file has been modified.
+
+    Initializes with opencode agent, modifies the installed plugin, and
+    verifies that plan["hooks"] detects the change.
+    """
+    from open_agent_kit.commands.init_cmd import init_command
+
+    init_command(force=False, agent=["opencode"], no_interactive=True)
+
+    # Verify the plugin was installed
+    plugin_path = initialized_project / ".opencode" / "plugins" / "oak-ci.ts"
+    assert plugin_path.exists(), "Plugin should be installed by init"
+
+    # Modify the installed plugin
+    original = plugin_path.read_text(encoding="utf-8")
+    plugin_path.write_text(original + "\n// modified by test\n", encoding="utf-8")
+
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+
+    # Should detect the modified hook
+    hook_agents = [h["agent"] for h in plan["hooks"]]
+    assert "opencode" in hook_agents, f"Expected opencode in hooks plan, got agents: {hook_agents}"
