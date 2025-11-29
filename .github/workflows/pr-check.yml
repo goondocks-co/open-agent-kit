@@ -114,11 +114,11 @@ jobs:
 
       - name: Smoke test - CLI loads and init works
         run: |
-          # Verify CLI is importable and version works
-          python -m oak.cli --version
+          # Verify CLI entry point works
+          oak --version
           # Verify init completes without error
           cd /tmp
-          python -m oak.cli init --no-interactive --agent claude
+          oak init --no-interactive --agent claude
           # Detailed structure assertions are in the test suite (test_cli_init.py)
 
   check-version:
@@ -145,14 +145,14 @@ jobs:
           # Extract version from pyproject.toml [project] section only
           VERSION_PYPROJECT=$(awk '/^\[project\]/{flag=1; next} /^\[/{flag=0} flag && /^version = "/{gsub(/.*version = "|".*/, ""); print; exit}' pyproject.toml)
 
-          # Get version from Python (handles dynamic import from pyproject.toml)
-          VERSION_INIT=$(python -c "from oak import __version__; print(__version__)")
+          # Get version from Python runtime
+          VERSION_RUNTIME=$(python -c "from open_agent_kit import __version__; print(__version__)")
 
           echo "Version in pyproject.toml: '$VERSION_PYPROJECT'"
-          echo "Version in __init__.py: '$VERSION_INIT'"
+          echo "Version at runtime: '$VERSION_RUNTIME'"
 
-          if [ "$VERSION_PYPROJECT" != "$VERSION_INIT" ]; then
-            echo "Error: Version mismatch between pyproject.toml ($VERSION_PYPROJECT) and __init__.py ($VERSION_INIT)"
+          if [ "$VERSION_PYPROJECT" != "$VERSION_RUNTIME" ]; then
+            echo "Error: Version mismatch between pyproject.toml ($VERSION_PYPROJECT) and runtime ($VERSION_RUNTIME)"
             exit 1
           fi
 
