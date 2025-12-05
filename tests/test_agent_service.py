@@ -574,3 +574,219 @@ class TestIntegration:
         assert "claude" in results3["skipped"]
         backup_file = initialized_project / ".claude" / "CLAUDE.md.backup"
         assert not backup_file.exists()
+
+
+class TestGetAgentContext:
+    """Tests for get_agent_context method - capability-aware template rendering."""
+
+    def test_get_agent_context_returns_dict(self, initialized_project: Path) -> None:
+        """Test get_agent_context returns a dictionary."""
+        service = AgentService(initialized_project)
+        context = service.get_agent_context("claude")
+
+        assert isinstance(context, dict)
+        assert "agent_type" in context
+
+    def test_get_agent_context_includes_capabilities(self, initialized_project: Path) -> None:
+        """Test get_agent_context includes capability flags."""
+        service = AgentService(initialized_project)
+        context = service.get_agent_context("claude")
+
+        # Should include capability flags from manifest
+        assert "has_background_agents" in context
+        assert "has_native_web" in context
+        assert "has_mcp" in context
+
+    def test_get_agent_context_different_agents(self, initialized_project: Path) -> None:
+        """Test different agents may have different capabilities."""
+        service = AgentService(initialized_project)
+
+        claude_context = service.get_agent_context("claude")
+        copilot_context = service.get_agent_context("copilot")
+
+        # Both should have agent_type set correctly
+        assert claude_context["agent_type"] == "claude"
+        assert copilot_context["agent_type"] == "copilot"
+
+    def test_get_agent_context_applies_config_overrides(self, initialized_project: Path) -> None:
+        """Test that config overrides are applied to context."""
+        from open_agent_kit.models.config import AgentCapabilitiesConfig
+
+        service = AgentService(initialized_project)
+        config_service = ConfigService(initialized_project)
+
+        # Set an override in config
+        config = config_service.load_config()
+        config.agent_capabilities["claude"] = AgentCapabilitiesConfig(
+            has_background_agents=False,  # Override to False
+            has_native_web=True,
+        )
+        config_service.save_config(config)
+
+        # Reload service to pick up config
+        service = AgentService(initialized_project)
+        context = service.get_agent_context("claude")
+
+        # Override should be applied
+        assert context["has_background_agents"] is False
+        assert context["has_native_web"] is True
+
+    def test_get_agent_context_partial_overrides(self, initialized_project: Path) -> None:
+        """Test partial overrides only affect specified fields."""
+        from open_agent_kit.models.config import AgentCapabilitiesConfig
+
+        service = AgentService(initialized_project)
+        config_service = ConfigService(initialized_project)
+
+        # Get original context to compare
+        original_context = service.get_agent_context("claude")
+        original_mcp = original_context.get("has_mcp")
+
+        # Set partial override (only has_background_agents)
+        config = config_service.load_config()
+        config.agent_capabilities["claude"] = AgentCapabilitiesConfig(
+            has_background_agents=False,
+        )
+        config_service.save_config(config)
+
+        # Reload and check
+        service = AgentService(initialized_project)
+        context = service.get_agent_context("claude")
+
+        # Override applied
+        assert context["has_background_agents"] is False
+        # Non-overridden fields should retain original values
+        assert context["has_mcp"] == original_mcp
+
+    def test_get_agent_context_case_insensitive(self, initialized_project: Path) -> None:
+        """Test agent type lookup is case insensitive."""
+        service = AgentService(initialized_project)
+
+        context_lower = service.get_agent_context("claude")
+        context_upper = service.get_agent_context("CLAUDE")
+        context_mixed = service.get_agent_context("Claude")
+
+        assert context_lower["agent_type"] == "claude"
+        assert context_upper["agent_type"] == "claude"
+        assert context_mixed["agent_type"] == "claude"
+
+
+class TestGetCapabilitiesConfig:
+    """Tests for get_capabilities_config method."""
+
+    def test_get_capabilities_config_returns_dict(self, initialized_project: Path) -> None:
+        """Test get_capabilities_config returns a dictionary."""
+        service = AgentService(initialized_project)
+        caps = service.get_capabilities_config("claude")
+
+        assert isinstance(caps, dict)
+
+    def test_get_capabilities_config_has_expected_keys(self, initialized_project: Path) -> None:
+        """Test capabilities dict has expected keys."""
+        service = AgentService(initialized_project)
+        caps = service.get_capabilities_config("claude")
+
+        expected_keys = ["has_background_agents", "has_native_web", "has_mcp", "research_strategy"]
+        for key in expected_keys:
+            assert key in caps
+
+    def test_get_capabilities_config_values_are_correct_types(
+        self, initialized_project: Path
+    ) -> None:
+        """Test capability values are correct types."""
+        service = AgentService(initialized_project)
+        caps = service.get_capabilities_config("claude")
+
+        # Boolean flags
+        assert isinstance(caps["has_background_agents"], bool)
+        assert isinstance(caps["has_native_web"], bool)
+        assert isinstance(caps["has_mcp"], bool)
+        # String or None
+        assert caps["research_strategy"] is None or isinstance(caps["research_strategy"], str)
+
+    def test_get_capabilities_config_different_agents(self, initialized_project: Path) -> None:
+        """Test different agents have different capabilities."""
+        service = AgentService(initialized_project)
+
+        claude_caps = service.get_capabilities_config("claude")
+        copilot_caps = service.get_capabilities_config("copilot")
+
+        # Both should have the same keys but may have different values
+        assert set(claude_caps.keys()) == set(copilot_caps.keys())
+
+
+class TestAgentCapabilitiesConfig:
+    """Tests for AgentCapabilitiesConfig model."""
+
+    def test_capabilities_config_defaults_to_none(self) -> None:
+        """Test that config fields default to None."""
+        from open_agent_kit.models.config import AgentCapabilitiesConfig
+
+        config = AgentCapabilitiesConfig()
+
+        assert config.has_background_agents is None
+        assert config.has_native_web is None
+        assert config.has_mcp is None
+        assert config.research_strategy is None
+        assert config.custom == {}
+
+    def test_capabilities_config_accepts_values(self) -> None:
+        """Test that config accepts explicit values."""
+        from open_agent_kit.models.config import AgentCapabilitiesConfig
+
+        config = AgentCapabilitiesConfig(
+            has_background_agents=True,
+            has_native_web=False,
+            has_mcp=True,
+            research_strategy="deep_research",
+            custom={"custom_flag": True},
+        )
+
+        assert config.has_background_agents is True
+        assert config.has_native_web is False
+        assert config.has_mcp is True
+        assert config.research_strategy == "deep_research"
+        assert config.custom["custom_flag"] is True
+
+    def test_capabilities_config_in_oak_config(self, initialized_project: Path) -> None:
+        """Test agent_capabilities can be set in OakConfig."""
+        from open_agent_kit.models.config import AgentCapabilitiesConfig
+
+        config_service = ConfigService(initialized_project)
+        config = config_service.load_config()
+
+        # Add capabilities
+        config.agent_capabilities["claude"] = AgentCapabilitiesConfig(
+            has_background_agents=True,
+        )
+        config_service.save_config(config)
+
+        # Reload and verify
+        reloaded = config_service.load_config()
+        assert "claude" in reloaded.agent_capabilities
+        assert reloaded.agent_capabilities["claude"].has_background_agents is True
+
+    def test_capabilities_config_persists_through_yaml(self, initialized_project: Path) -> None:
+        """Test capabilities survive YAML serialization round-trip."""
+        from open_agent_kit.models.config import AgentCapabilitiesConfig
+
+        config_service = ConfigService(initialized_project)
+        config = config_service.load_config()
+
+        # Add complex capabilities
+        config.agent_capabilities["claude"] = AgentCapabilitiesConfig(
+            has_background_agents=True,
+            has_native_web=False,
+            research_strategy="focused",
+            custom={"parallel_limit": 3},
+        )
+        config_service.save_config(config)
+
+        # Reload and verify all fields
+        reloaded = config_service.load_config()
+        claude_caps = reloaded.agent_capabilities["claude"]
+
+        assert claude_caps.has_background_agents is True
+        assert claude_caps.has_native_web is False
+        assert claude_caps.research_strategy == "focused"
+        assert claude_caps.custom["parallel_limit"] == 3

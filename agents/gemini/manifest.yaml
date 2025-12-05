@@ -1,0 +1,26 @@
+# Gemini CLI Agent Manifest
+# Google's Gemini CLI with Google Search grounding
+
+name: gemini
+display_name: "Gemini CLI"
+version: "1.0.0"
+description: "Google Gemini CLI with Google Search grounding and MCP support"
+
+installation:
+  folder: ".gemini/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  # GEMINI.md in project root
+  instruction_file: "./GEMINI.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://github.com/google-gemini/gemini-cli"
+
+capabilities:
+  has_background_agents: true   # Long ReAct loops, multi-step execution
+  has_native_web: true          # Google Search grounding + web fetch
+  has_mcp: true                 # Supports local/remote MCP servers
+  research_strategy: "Use built-in search + fetch as primary; MCP for extras"
+
+settings: {}

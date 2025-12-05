@@ -85,7 +85,7 @@ If the amendment affects architectural sections (patterns, error handling, testi
    - Architectural Pattern (Vertical Slice, Clean, Layered, etc.)
    - Error Handling Pattern (Result Pattern, exceptions, mixed)
    - Rationale for the chosen approach
-   
+
    This helps future team members understand the "why" behind the architecture.
    ```
 

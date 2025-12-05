@@ -48,6 +48,37 @@ class IssueProvider(ABC):
             Issue model
         """
 
+    @abstractmethod
+    def create_issue(
+        self,
+        title: str,
+        description: str,
+        issue_type: str | None = None,
+        priority: str | None = None,
+        labels: list[str] | None = None,
+        parent_id: str | None = None,
+        acceptance_criteria: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Issue:
+        """Create a new issue in the provider.
+
+        Args:
+            title: Issue title
+            description: Issue description/body
+            issue_type: Type of issue (epic, story, task, subtask, bug, etc.)
+            priority: Priority level
+            labels: List of labels/tags
+            parent_id: Parent issue ID for hierarchical linking
+            acceptance_criteria: List of acceptance criteria
+            **kwargs: Provider-specific additional fields
+
+        Returns:
+            Created Issue model with identifier and URL
+
+        Raises:
+            IssueProviderError: If issue creation fails
+        """
+
     def build_branch_name(self, identifier: str, title: str | None = None) -> str:
         """Build a default branch name for the issue.
 

@@ -5,26 +5,26 @@ from typing import cast
 
 import typer
 
-from open_agent_kit.constants import (
-    DEFAULT_AGENT_CONFIGS,
-    DEFAULT_FEATURES,
+from open_agent_kit.config.messages import (
     ERROR_MESSAGES,
-    FEATURE_CONFIG,
-    FEATURE_DISPLAY_NAMES,
     FEATURE_MESSAGES,
-    IDE_DISPLAY_NAMES,
     INFO_MESSAGES,
     INIT_HELP_TEXT,
     NEXT_STEPS_INIT,
-    OAK_DIR,
     PROJECT_URL,
-    SUPPORTED_AGENTS,
+    USAGE_EXAMPLES,
+)
+from open_agent_kit.config.paths import OAK_DIR, TEMPLATES_DIR
+from open_agent_kit.constants import (
+    DEFAULT_FEATURES,
+    FEATURE_CONFIG,
+    FEATURE_DISPLAY_NAMES,
+    IDE_DISPLAY_NAMES,
     SUPPORTED_FEATURES,
     SUPPORTED_IDES,
-    TEMPLATES_DIR,
-    USAGE_EXAMPLES,
     VERSION,
 )
+from open_agent_kit.models.config import AgentCapabilitiesConfig
 from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.feature_service import FeatureService
@@ -40,7 +40,33 @@ from open_agent_kit.utils import (
     print_header,
     print_info,
     print_panel,
+    print_warning,
 )
+
+
+def _build_agent_capabilities(
+    agents: list[str], agent_service: AgentService
+) -> dict[str, AgentCapabilitiesConfig]:
+    """Build agent_capabilities config from agent manifests.
+
+    Populates config with manifest defaults so users can see and override them.
+
+    Args:
+        agents: List of agent type names
+        agent_service: AgentService instance for loading manifests
+
+    Returns:
+        Dictionary mapping agent names to AgentCapabilitiesConfig
+    """
+    capabilities: dict[str, AgentCapabilitiesConfig] = {}
+    for agent_type in agents:
+        try:
+            caps_dict = agent_service.get_capabilities_config(agent_type)
+            capabilities[agent_type] = AgentCapabilitiesConfig(**caps_dict)
+        except ValueError:
+            # Unknown agent, skip
+            pass
+    return capabilities
 
 
 def init_command(
@@ -54,7 +80,7 @@ def init_command(
         None,
         "--agent",
         "-a",
-        help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf, none",
+        help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
     ),
     ide: list[str] = typer.Option(
         None,
@@ -129,24 +155,22 @@ def init_command(
     # Determine agent selection
     selected_agents: list[str] = []
     if agent:
-        # Validate provided agents
+        # Validate provided agents using manifests
+        agent_service = AgentService()
+        available_agents = agent_service.list_available_agents()
+
         for a in agent:
-            if a.lower() not in SUPPORTED_AGENTS:
+            if a.lower() not in available_agents:
                 print_error(ERROR_MESSAGES["invalid_agent"].format(agent=a))
                 print_info(
                     INFO_MESSAGES["supported_agents_list"].format(
-                        agents=", ".join(SUPPORTED_AGENTS)
+                        agents=", ".join(sorted(available_agents))
                     )
                 )
                 raise typer.Exit(code=1)
 
-        # Convert to lowercase and filter out 'none'
-        selected_agents = [a.lower() for a in agent if a.lower() != "none"]
-
-        # Validate: 'none' cannot be combined with other agents
-        if len(agent) != len(selected_agents) and len(selected_agents) > 0:
-            print_error(ERROR_MESSAGES["none_with_others"])
-            raise typer.Exit(code=1)
+        # Convert to lowercase
+        selected_agents = [a.lower() for a in agent]
     elif not no_interactive:
         # Interactive mode - always show full list with pre-selection if existing
         selected_agents = _interactive_agent_selection(existing_agents if is_existing else None)
@@ -243,6 +267,29 @@ def init_command(
             try:
                 config_service.update_agents(selected_agents)
                 config_service.update_config(version=VERSION)  # Update version too
+
+                # Update agent_capabilities for new agents
+                config = config_service.load_config()
+                agent_service = AgentService(project_root)
+
+                # Remove capabilities for removed agents
+                for agent_type in agents_removed:
+                    config.agent_capabilities.pop(agent_type, None)
+
+                # Add capabilities for new agents (preserve existing overrides)
+                agents_added = set(selected_agents) - set(existing_agents)
+                for agent_type in agents_added:
+                    if agent_type not in config.agent_capabilities:
+                        try:
+                            caps_dict = agent_service.get_capabilities_config(agent_type)
+                            config.agent_capabilities[agent_type] = AgentCapabilitiesConfig(
+                                **caps_dict
+                            )
+                        except ValueError:
+                            pass
+
+                config_service.save_config(config)
+
                 # Ensure .gitignore excludes issue context.json files
                 ensure_gitignore_has_issue_context(project_root)
                 tracker.complete_step("Updated agent configuration")
@@ -251,6 +298,9 @@ def init_command(
                 raise typer.Exit(code=1)
 
             # Step: Update command templates
+            # Determine which agents were added
+            agents_added = set(selected_agents) - set(existing_agents)
+
             tracker.start_step(f"Updating command templates for {len(selected_agents)} agent(s)")
             try:
                 agent_service = AgentService(project_root)
@@ -261,10 +311,14 @@ def init_command(
                     if removed_count > 0:
                         print_info(f"  Removed {removed_count} command(s) for {agent_type}")
 
-                # Create/update commands for selected agents (use installed features)
-                installed_features = config_service.get_features()
-                for agent_type in selected_agents:
-                    agent_service.create_default_commands(agent_type, features=installed_features)
+                # Install feature commands for newly added agents
+                # Use FeatureService for proper agent-aware rendering and state tracking
+                if agents_added:
+                    feature_svc = FeatureService(project_root)
+                    installed_features = config_service.get_features()
+                    for feature_name in installed_features:
+                        # Install feature for just the new agents
+                        feature_svc.install_feature(feature_name, list(agents_added))
 
                 tracker.complete_step("Updated command templates")
             except Exception as e:
@@ -385,6 +439,11 @@ def init_command(
         )
         # Set features in config
         config.features.enabled = selected_features
+
+        # Populate agent_capabilities from manifests (visible and editable by users)
+        agent_service = AgentService(project_root)
+        config.agent_capabilities = _build_agent_capabilities(selected_agents, agent_service)
+
         config_service.save_config(config)
 
         # Ensure .gitignore excludes issue context.json files
@@ -459,7 +518,7 @@ def _interactive_agent_selection(existing_agents: list[str] | None = None) -> li
         existing_agents: List of currently configured agents (will be pre-selected)
 
     Returns:
-        List of selected agent names (empty if "none" selected)
+        List of selected agent names
     """
     if existing_agents:
         print_header("Update AI Agents")
@@ -476,22 +535,15 @@ def _interactive_agent_selection(existing_agents: list[str] | None = None) -> li
     options = []
     default_selections = []
 
-    for agent_name in SUPPORTED_AGENTS:
-        if agent_name == "none":
-            options.append(
-                SelectOption(
-                    value="none",
-                    label="None (Skip AI agent setup)",
-                    description="Use open-agent-kit without AI assistance",
-                )
-            )
-            # Pre-select "none" only if there are no existing agents
-            if not existing_agents:
-                # Don't auto-select "none", let user choose
-                pass
-        else:
-            agent_config = DEFAULT_AGENT_CONFIGS.get(agent_name, {})
-            display_name = str(agent_config.get("name", agent_name.capitalize()))
+    # Use AgentService to get available agents and their display names
+    agent_service = AgentService()
+    available_agents = agent_service.list_available_agents()
+
+    # Add available agents from manifests
+    for agent_name in available_agents:
+        try:
+            manifest = agent_service.get_agent_manifest(agent_name)
+            display_name = manifest.display_name
             options.append(
                 SelectOption(
                     value=agent_name,
@@ -502,19 +554,15 @@ def _interactive_agent_selection(existing_agents: list[str] | None = None) -> li
             # Pre-select if this agent is already configured
             if agent_name.lower() in existing_agents_lower:
                 default_selections.append(agent_name)
+        except ValueError:
+            continue
 
     selected = multi_select(
         options,
         "Which agents would you like to use? (Space to select, Enter to confirm)",
         defaults=default_selections,
-        min_selections=0,
+        min_selections=1,  # At least one agent is required
     )
-
-    # Filter out 'none' - if 'none' is selected with others, remove 'none'
-    if "none" in selected and len(selected) > 1:
-        selected = [s for s in selected if s != "none"]
-    elif "none" in selected:
-        return []
 
     return selected
 
@@ -589,7 +637,7 @@ def _display_next_steps(agents: list[str], ides: list[str]) -> None:
         agents: List of selected agent names
         ides: List of selected IDE names
     """
-    from open_agent_kit.constants import CONFIG_FILE
+    from open_agent_kit.config.paths import CONFIG_FILE
 
     next_steps_text = NEXT_STEPS_INIT.format(
         config_file=CONFIG_FILE,
@@ -603,15 +651,19 @@ def _display_next_steps(agents: list[str], ides: list[str]) -> None:
 
     # Display Agent Commands panel if agents were selected
     if agents:
-        from open_agent_kit.constants import AGENT_CONFIG
-
+        agent_service = AgentService()
         agent_info_lines = []
         for agent in agents:
-            agent_config = AGENT_CONFIG.get(agent.lower(), {})
-            folder = agent_config.get("folder", "")
-            commands_subfolder = agent_config.get("commands_subfolder", "commands")
-            agent_name = agent_config.get("name", agent.capitalize())
-            agent_info_lines.append(f"  • [cyan]{agent_name}[/cyan]: {folder}{commands_subfolder}/")
+            try:
+                manifest = agent_service.get_agent_manifest(agent.lower())
+                folder = manifest.installation.folder
+                commands_subfolder = manifest.installation.commands_subfolder
+                display_name = manifest.display_name
+                agent_info_lines.append(
+                    f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
+                )
+            except ValueError:
+                agent_info_lines.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
 
         agent_list = "\n".join(agent_info_lines)
 
@@ -661,19 +713,23 @@ def _display_additions_message(agents: list[str], ides: list[str]) -> None:
         print_info("No IDEs added either.")
         return
 
-    from open_agent_kit.constants import AGENT_CONFIG
-
+    agent_service = AgentService()
     message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
 
     # Add agents info if any
     if agents:
         agent_info_lines = []
         for agent in agents:
-            agent_config = AGENT_CONFIG.get(agent.lower(), {})
-            folder = agent_config.get("folder", "")
-            commands_subfolder = agent_config.get("commands_subfolder", "commands")
-            agent_name = agent_config.get("name", agent.capitalize())
-            agent_info_lines.append(f"  • [cyan]{agent_name}[/cyan]: {folder}{commands_subfolder}/")
+            try:
+                manifest = agent_service.get_agent_manifest(agent.lower())
+                folder = manifest.installation.folder
+                commands_subfolder = manifest.installation.commands_subfolder
+                display_name = manifest.display_name
+                agent_info_lines.append(
+                    f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
+                )
+            except ValueError:
+                agent_info_lines.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
 
         agent_list = "\n".join(agent_info_lines)
         message_parts.append(
@@ -704,6 +760,23 @@ def _display_additions_message(agents: list[str], ides: list[str]) -> None:
     print_info(f"\n{INFO_MESSAGES['more_info'].format(url=PROJECT_URL)}")
 
 
+def _get_agent_display_name(agent_service: AgentService, agent: str) -> str:
+    """Get display name for an agent from manifest.
+
+    Args:
+        agent_service: AgentService instance
+        agent: Agent name
+
+    Returns:
+        Display name (falls back to capitalized name if manifest not found)
+    """
+    try:
+        manifest = agent_service.get_agent_manifest(agent.lower())
+        return manifest.display_name
+    except ValueError:
+        return agent.capitalize()
+
+
 def _display_update_message(
     old_agents: list[str],
     new_agents: list[str],
@@ -718,8 +791,7 @@ def _display_update_message(
         old_ides: Previously configured IDEs
         new_ides: Newly configured IDEs
     """
-    from open_agent_kit.constants import AGENT_CONFIG
-
+    agent_service = AgentService()
     message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
 
     # Show agent changes
@@ -735,8 +807,7 @@ def _display_update_message(
         if agents_kept:
             agent_lines.append("[dim]Keeping:[/dim]")
             for agent in sorted(agents_kept):
-                agent_config = AGENT_CONFIG.get(agent.lower(), {})
-                agent_name = agent_config.get("name", agent.capitalize())
+                agent_name = _get_agent_display_name(agent_service, agent)
                 agent_lines.append(f"  • [cyan]{agent_name}[/cyan]")
 
         if agents_added:
@@ -744,8 +815,7 @@ def _display_update_message(
                 agent_lines.append("")
             agent_lines.append("[green]Added:[/green]")
             for agent in sorted(agents_added):
-                agent_config = AGENT_CONFIG.get(agent.lower(), {})
-                agent_name = agent_config.get("name", agent.capitalize())
+                agent_name = _get_agent_display_name(agent_service, agent)
                 agent_lines.append(f"  • [green]{agent_name}[/green]")
 
         if agents_removed:
@@ -753,8 +823,7 @@ def _display_update_message(
                 agent_lines.append("")
             agent_lines.append("[red]Removed:[/red]")
             for agent in sorted(agents_removed):
-                agent_config = AGENT_CONFIG.get(agent.lower(), {})
-                agent_name = agent_config.get("name", agent.capitalize())
+                agent_name = _get_agent_display_name(agent_service, agent)
                 agent_lines.append(f"  • [red]{agent_name}[/red]")
 
         message_parts.append("\n**Agent Configuration:**\n" + "\n".join(agent_lines))
@@ -855,11 +924,64 @@ def _interactive_feature_selection(existing_features: list[str] | None = None) -
         elif not existing_features and config.get("default_enabled", False):
             default_selections.append(feature_name)
 
-    selected = multi_select(
-        options,
-        "Which features would you like to enable? (Space to select, Enter to confirm)",
-        defaults=default_selections,
-        min_selections=0,
-    )
+    # Loop until we have a valid selection (dependencies satisfied or user confirms removal)
+    while True:
+        selected = multi_select(
+            options,
+            "Which features would you like to enable? (Space to select, Enter to confirm)",
+            defaults=default_selections,
+            min_selections=0,
+        )
 
-    return selected
+        # Check for dependency violations
+        features_to_remove = _get_features_with_unmet_dependencies(selected)
+
+        if not features_to_remove:
+            # All dependencies satisfied
+            return selected
+
+        # Show what would be removed and ask for confirmation
+        display_names = [FEATURE_DISPLAY_NAMES.get(f, f) for f in features_to_remove]
+        print_warning(
+            f"\nThe following features will be removed (missing dependencies):\n"
+            f"  {', '.join(display_names)}\n"
+        )
+
+        confirm = typer.confirm("Continue with these features removed?", default=True)
+
+        if confirm:
+            # Remove features with unmet dependencies
+            return [f for f in selected if f not in features_to_remove]
+        else:
+            # Let user re-select - use their last selection as the new defaults
+            print_info("\nReturning to feature selection...\n")
+            default_selections = selected
+
+
+def _get_features_with_unmet_dependencies(selected_features: list[str]) -> list[str]:
+    """Find features whose dependencies are not selected.
+
+    Args:
+        selected_features: List of selected feature names
+
+    Returns:
+        List of features that would need to be removed
+    """
+    selected_set = set(selected_features)
+    features_to_remove: list[str] = []
+
+    # Keep iterating until no more changes (handles transitive dependencies)
+    changed = True
+    while changed:
+        changed = False
+        for feature_name in list(selected_set):
+            config = FEATURE_CONFIG.get(feature_name, {})
+            deps = cast(list[str], config.get("dependencies", []))
+
+            # Check if all dependencies are selected
+            if deps and not all(dep in selected_set for dep in deps):
+                selected_set.remove(feature_name)
+                features_to_remove.append(feature_name)
+                changed = True
+
+    return features_to_remove

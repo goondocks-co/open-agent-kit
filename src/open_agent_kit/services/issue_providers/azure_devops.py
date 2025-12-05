@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 import httpx
 
-from open_agent_kit.constants import (
-    ERROR_MESSAGES,
-    ISSUE_PROVIDER_TIMEOUT_SECONDS,
-    ISSUE_PROVIDER_VALIDATION_MESSAGES,
-)
+from open_agent_kit.config.messages import ERROR_MESSAGES, ISSUE_PROVIDER_VALIDATION_MESSAGES
+from open_agent_kit.config.settings import issue_provider_settings
 from open_agent_kit.models.config import AzureDevOpsProviderConfig
 from open_agent_kit.models.issue import Comment, Issue, IssueTestStep, RelatedIssue
 from open_agent_kit.services.issue_providers.base import IssueProvider, IssueProviderError
@@ -80,7 +78,7 @@ class AzureDevOpsProvider(IssueProvider):
                 url,
                 params=params,
                 headers=headers,
-                timeout=ISSUE_PROVIDER_TIMEOUT_SECONDS,
+                timeout=issue_provider_settings.timeout_seconds,
                 follow_redirects=False,  # Don't follow redirects, they indicate auth failure
             )
             response.raise_for_status()
@@ -215,7 +213,7 @@ class AzureDevOpsProvider(IssueProvider):
                 params=params,
                 headers=headers,
                 json=payload,
-                timeout=ISSUE_PROVIDER_TIMEOUT_SECONDS,
+                timeout=issue_provider_settings.timeout_seconds,
                 follow_redirects=False,
             )
             response.raise_for_status()
@@ -260,7 +258,7 @@ class AzureDevOpsProvider(IssueProvider):
                 url,
                 params=params,
                 headers=headers,
-                timeout=ISSUE_PROVIDER_TIMEOUT_SECONDS,
+                timeout=issue_provider_settings.timeout_seconds,
                 follow_redirects=False,
             )
             response.raise_for_status()
@@ -307,6 +305,258 @@ class AzureDevOpsProvider(IssueProvider):
             )
 
         return comments
+
+    def create_issue(
+        self,
+        title: str,
+        description: str,
+        issue_type: str | None = None,
+        priority: str | None = None,
+        labels: list[str] | None = None,
+        parent_id: str | None = None,
+        acceptance_criteria: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Issue:
+        """Create a new Azure DevOps work item.
+
+        Args:
+            title: Work item title
+            description: Work item description
+            issue_type: Work item type (Epic, Feature, User Story, Task, Bug)
+            priority: Priority level (1-4)
+            labels: Tags (semicolon-separated in ADO)
+            parent_id: Parent work item ID for hierarchical linking
+            acceptance_criteria: Acceptance criteria list
+            **kwargs: Additional fields:
+                - area_path: Area path
+                - iteration_path: Iteration path
+                - assigned_to: Display name or email
+
+        Returns:
+            Created Issue model
+
+        Raises:
+            IssueProviderError: If work item creation fails
+        """
+        import base64
+
+        issues = self.validate()
+        if issues:
+            raise IssueProviderError("; ".join(issues))
+
+        pat = self.environment.get(self.settings.pat_env or "", "")
+        if not pat:
+            raise IssueProviderError(
+                ERROR_MESSAGES["issue_provider_env_var_missing"].format(var=self.settings.pat_env)
+            )
+
+        # Map issue types to ADO work item types
+        work_item_type = _map_issue_type_to_ado(issue_type)
+
+        # Build JSON Patch document
+        operations: list[dict[str, Any]] = [
+            {"op": "add", "path": "/fields/System.Title", "value": title},
+            {"op": "add", "path": "/fields/System.Description", "value": description},
+        ]
+
+        # Add acceptance criteria if provided
+        if acceptance_criteria:
+            ac_html = "<ul>" + "".join(f"<li>{c}</li>" for c in acceptance_criteria) + "</ul>"
+            operations.append(
+                {
+                    "op": "add",
+                    "path": "/fields/Microsoft.VSTS.Common.AcceptanceCriteria",
+                    "value": ac_html,
+                }
+            )
+
+        # Add priority (1-4 in ADO)
+        if priority:
+            priority_map = {"critical": 1, "high": 2, "medium": 3, "low": 4}
+            ado_priority = priority_map.get(priority.lower(), 3)
+            operations.append(
+                {
+                    "op": "add",
+                    "path": "/fields/Microsoft.VSTS.Common.Priority",
+                    "value": ado_priority,
+                }
+            )
+
+        # Add tags
+        if labels:
+            operations.append(
+                {
+                    "op": "add",
+                    "path": "/fields/System.Tags",
+                    "value": "; ".join(labels),
+                }
+            )
+
+        # Add area path (use configured default or provided value)
+        area_path = kwargs.get("area_path") or self.settings.area_path
+        if area_path:
+            operations.append(
+                {
+                    "op": "add",
+                    "path": "/fields/System.AreaPath",
+                    "value": area_path,
+                }
+            )
+
+        # Add iteration path
+        iteration_path = kwargs.get("iteration_path")
+        if iteration_path:
+            operations.append(
+                {
+                    "op": "add",
+                    "path": "/fields/System.IterationPath",
+                    "value": iteration_path,
+                }
+            )
+
+        # Add assigned to
+        assigned_to = kwargs.get("assigned_to")
+        if assigned_to:
+            operations.append(
+                {
+                    "op": "add",
+                    "path": "/fields/System.AssignedTo",
+                    "value": assigned_to,
+                }
+            )
+
+        # Credentials
+        credentials = base64.b64encode(f":{pat}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json-patch+json",
+        }
+
+        # Create work item
+        url = (
+            f"https://dev.azure.com/{self.settings.organization}/"
+            f"{self.settings.project}/_apis/wit/workitems/${work_item_type}"
+        )
+        params = {"api-version": self.api_version}
+
+        try:
+            response = httpx.post(
+                url,
+                params=params,
+                headers=headers,
+                json=operations,
+                timeout=issue_provider_settings.timeout_seconds,
+                follow_redirects=False,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise IssueProviderError(
+                ERROR_MESSAGES["issue_provider_api_error"].format(
+                    provider=self.label, error_type=exc.__class__.__name__, details=str(exc)
+                )
+            ) from exc
+
+        data = response.json()
+        work_item_id = str(data.get("id", ""))
+
+        # Add parent link if provided
+        if parent_id and work_item_id:
+            self._add_parent_link(work_item_id, parent_id, credentials)
+
+        # Get web URL
+        web_url = data.get("_links", {}).get("html", {}).get("href")
+
+        # Return created issue
+        fields = data.get("fields", {})
+        return Issue(
+            provider=self.key,
+            identifier=work_item_id,
+            title=fields.get("System.Title", title),
+            description=fields.get("System.Description", description),
+            state=fields.get("System.State"),
+            url=web_url,
+            area_path=fields.get("System.AreaPath"),
+            iteration_path=fields.get("System.IterationPath"),
+            tags=labels or [],
+            acceptance_criteria=acceptance_criteria or [],
+            issue_type=work_item_type,
+            priority=fields.get("Microsoft.VSTS.Common.Priority"),
+        )
+
+    def _add_parent_link(self, child_id: str, parent_id: str, credentials: str) -> None:
+        """Add parent-child link between work items.
+
+        Args:
+            child_id: Child work item ID
+            parent_id: Parent work item ID
+            credentials: Base64 encoded credentials
+        """
+        headers = {
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json-patch+json",
+        }
+
+        # Build link operation
+        parent_url = (
+            f"https://dev.azure.com/{self.settings.organization}/"
+            f"{self.settings.project}/_apis/wit/workitems/{parent_id}"
+        )
+
+        operations = [
+            {
+                "op": "add",
+                "path": "/relations/-",
+                "value": {
+                    "rel": "System.LinkTypes.Hierarchy-Reverse",
+                    "url": parent_url,
+                    "attributes": {"comment": "Added by open-agent-kit plan export"},
+                },
+            }
+        ]
+
+        url = (
+            f"https://dev.azure.com/{self.settings.organization}/"
+            f"{self.settings.project}/_apis/wit/workitems/{child_id}"
+        )
+        params = {"api-version": self.api_version}
+
+        try:
+            response = httpx.patch(
+                url,
+                params=params,
+                headers=headers,
+                json=operations,
+                timeout=issue_provider_settings.timeout_seconds,
+                follow_redirects=False,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            # Link creation failed - log but don't fail the whole operation
+            pass
+
+
+def _map_issue_type_to_ado(issue_type: str | None) -> str:
+    """Map generic issue types to Azure DevOps work item types.
+
+    Args:
+        issue_type: Generic type (epic, story, task, subtask, bug)
+
+    Returns:
+        Azure DevOps work item type
+    """
+    if not issue_type:
+        return "Task"
+
+    type_map = {
+        "epic": "Epic",
+        "story": "User Story",
+        "feature": "Feature",
+        "task": "Task",
+        "subtask": "Task",  # ADO doesn't have subtask, use Task
+        "bug": "Bug",
+    }
+
+    return type_map.get(issue_type.lower(), "Task")
 
 
 def _normalize_acceptance_criteria(value: str | None) -> list[str]:

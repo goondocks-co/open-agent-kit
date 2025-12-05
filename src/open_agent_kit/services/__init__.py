@@ -8,6 +8,7 @@ from open_agent_kit.services.ide_settings_service import (
     IDESettingsService,
     get_ide_settings_service,
 )
+from open_agent_kit.services.plan import PlanService, PlanServiceError, get_plan_service
 from open_agent_kit.services.rfc_service import RFCService, get_rfc_service
 from open_agent_kit.services.state_service import StateService, get_state_service
 from open_agent_kit.services.template_service import TemplateService, get_template_service
@@ -22,6 +23,9 @@ __all__ = [
     "ConstitutionService",
     "IDESettingsService",
     "get_ide_settings_service",
+    "PlanService",
+    "PlanServiceError",
+    "get_plan_service",
     "RFCService",
     "get_rfc_service",
     "StateService",

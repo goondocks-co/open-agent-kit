@@ -24,4 +24,3 @@
   "coding_principles": ["KISS", "YAGNI"],
   "architectural_rationale": "Pragmatic approach for rapid MVP development - keep it simple"
 }
-

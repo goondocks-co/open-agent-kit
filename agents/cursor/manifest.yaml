@@ -1,0 +1,26 @@
+# Cursor Agent Manifest
+# Cursor IDE's AI assistant with cloud agent capabilities
+
+name: cursor
+display_name: "Cursor"
+version: "1.0.0"
+description: "Cursor IDE AI assistant with cloud agents and MCP support"
+
+installation:
+  folder: ".cursor/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  # AGENTS.md in project root (shared with Codex)
+  instruction_file: "./AGENTS.md"
+
+requirements:
+  requires_cli: false
+  install_url: "https://cursor.com/download"
+
+capabilities:
+  has_background_agents: true   # Cloud agents (limited in some modes)
+  has_native_web: false         # No general web search by default
+  has_mcp: true                 # Full MCP support via configuration
+  research_strategy: "Deep research via MCP web-search + background agents"
+
+settings: {}

@@ -7,7 +7,7 @@ Key Classes:
     ConfigService: Main service for configuration CRUD operations
 
 Dependencies:
-    - Pydantic models (OakConfig, RFCConfig, IssueProvidersConfig)
+    - Pydantic models (OakConfig, RFCConfig, IssueConfig, PlanConfig, ConstitutionConfig)
     - YAML for serialization
 
 Configuration Hierarchy:
@@ -40,16 +40,14 @@ Issue Provider Configuration:
 from pathlib import Path
 from typing import Any
 
+from open_agent_kit.config.paths import CONFIG_FILE, OAK_DIR
 from open_agent_kit.constants import (
-    CONFIG_FILE,
     DEFAULT_CONFIG_YAML,
     DEFAULT_FEATURES,
-    ISSUE_DIR,
     ISSUE_PROVIDER_CONFIG_MAP,
-    OAK_DIR,
     VERSION,
 )
-from open_agent_kit.models.config import IssueProvidersConfig, OakConfig
+from open_agent_kit.models.config import IssueConfig, OakConfig
 from open_agent_kit.utils import file_exists, read_yaml, write_file
 
 
@@ -216,12 +214,33 @@ class ConfigService:
         return self.get_oak_dir() / "commands"
 
     def get_issue_dir(self) -> Path:
-        """Get issue artifacts directory path (oak/issue).
+        """Get issue artifacts directory path.
+
+        Note: Issue directory is now hardcoded to oak/issue since issue contexts
+        can be stored either standalone or within plan directories.
 
         Returns:
-            Path to issue directory
+            Path to issue directory (oak/issue)
         """
-        return self.project_root / ISSUE_DIR
+        return self.project_root / "oak" / "issue"
+
+    def get_plan_dir(self) -> Path:
+        """Get plan artifacts directory path from config.
+
+        Returns:
+            Path to plan directory
+        """
+        config = self.load_config()
+        return self.project_root / config.plan.directory
+
+    def get_constitution_dir(self) -> Path:
+        """Get constitution directory path from config.
+
+        Returns:
+            Path to constitution directory
+        """
+        config = self.load_config()
+        return self.project_root / config.constitution.directory
 
     def get_agents(self) -> list[str]:
         """Get configured agents list.
@@ -297,11 +316,11 @@ class ConfigService:
         # Update both ides and version
         return self.update_config(ides=all_ides, version=VERSION)
 
-    def get_issue_config(self) -> IssueProvidersConfig:
-        """Get issue provider configuration.
+    def get_issue_config(self) -> IssueConfig:
+        """Get issue configuration.
 
         Returns:
-            IssueProvidersConfig object
+            IssueConfig object
         """
         config = self.load_config()
         return config.issue
@@ -319,7 +338,7 @@ class ConfigService:
         self,
         provider_key: str,
         **settings: Any,
-    ) -> IssueProvidersConfig:
+    ) -> IssueConfig:
         """Update issue provider configuration and set it active.
 
         Args:
@@ -327,7 +346,7 @@ class ConfigService:
             **settings: Provider-specific settings
 
         Returns:
-            Updated IssueProvidersConfig object
+            Updated IssueConfig object
         """
         provider_attr = ISSUE_PROVIDER_CONFIG_MAP.get(provider_key)
         if not provider_attr:
@@ -389,10 +408,12 @@ class ConfigService:
 
             # Validate agents
             if config.agents:
-                from open_agent_kit.constants import SUPPORTED_AGENTS
+                from open_agent_kit.services.agent_service import AgentService
 
+                agent_service = AgentService()
+                available_agents = agent_service.list_available_agents()
                 for agent in config.agents:
-                    if agent.lower() not in SUPPORTED_AGENTS:
+                    if agent.lower() not in available_agents:
                         errors.append(f"Invalid agent: {agent}")
 
             # Validate RFC config

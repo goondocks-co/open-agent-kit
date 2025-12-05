@@ -139,14 +139,14 @@ decision_categories:
 {
   "_comment": "Example decision context for balanced projects",
   "_usage": "Pass this file to: oak constitution create-file --context-file decisions.json",
-  
+
   "testing_strategy": "balanced",
   "coverage_target": 70,
   "coverage_strict": true,
-  
+
   "architectural_pattern": "clean_architecture",
   "error_handling_pattern": "result_pattern",
-  
+
   "_architectural_pattern_options": ["vertical_slice", "clean_architecture", "layered", "modular_monolith", "pragmatic", "custom"]
 }
 ```
@@ -188,7 +188,7 @@ def test_example_decisions_json():
     """Test that example-decisions.json validates."""
     with open("templates/constitution/example-decisions.json") as f:
         data = json.load(f)
-    
+
     decisions = DecisionContext(**data)  # Must validate!
     assert decisions is not None
 ```
@@ -330,7 +330,7 @@ This ensures examples never drift out of sync with the model.
 
 class DecisionContext(BaseModel):
     # ... existing fields
-    
+
     # New field
     security_scanning: bool = Field(
         default=False,
@@ -473,4 +473,3 @@ A: Yes! Fields starting with `_` are ignored by the model (useful for comments).
 ---
 
 **Recommendation**: This architecture provides the best of all worlds - validation, guidance, and usability.
-

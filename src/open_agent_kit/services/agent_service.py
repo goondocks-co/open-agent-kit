@@ -1,11 +1,22 @@
-"""Agent service for managing AI agent configurations."""
+"""Agent service for managing AI agent configurations.
+
+This service manages AI coding agent configurations using manifest files.
+Agent manifests define where to install commands, what capabilities the
+agent has, and how to render agent-specific prompts.
+
+Lifecycle:
+- oak init --agent <name>: Installs agent commands using manifest config
+- oak upgrade: Updates agent commands when manifests change
+- Feature install: Renders commands with agent-specific context
+"""
 
 import os
 import shutil
 from pathlib import Path
 
-from open_agent_kit.constants import AGENT_CONFIG, AGENT_INSTRUCTION_PATTERNS
+from open_agent_kit.models.agent_manifest import AgentManifest
 from open_agent_kit.services.config_service import ConfigService
+from open_agent_kit.services.state_service import StateService
 from open_agent_kit.utils import (
     cleanup_empty_directories,
     ensure_dir,
@@ -18,8 +29,12 @@ from open_agent_kit.utils import (
 class AgentService:
     """Service for managing AI agent configurations and commands.
 
-    Following each agents pattern: installs commands in each agent's native directory
-    (.claude/commands/, .github/agents/, etc.) instead of requiring API keys.
+    Loads agent manifests from the package's agents/ directory and provides
+    methods for:
+    - Getting agent installation paths
+    - Getting agent capabilities for template rendering
+    - Installing/removing agent commands
+    - Validating agent setup
     """
 
     def __init__(self, project_root: Path | None = None):
@@ -30,9 +45,60 @@ class AgentService:
         """
         self.project_root = project_root or Path.cwd()
         self.config_service = ConfigService(project_root)
+        self.state_service = StateService(project_root)
 
-        # Package features directory (where command templates are stored)
-        self.package_features_dir = Path(__file__).parent.parent.parent.parent / "features"
+        # Package directories
+        self.package_root = Path(__file__).parent.parent.parent.parent
+        self.package_agents_dir = self.package_root / "agents"
+        self.package_features_dir = self.package_root / "features"
+
+        # Cache for loaded manifests
+        self._manifest_cache: dict[str, AgentManifest] = {}
+
+    def list_available_agents(self) -> list[str]:
+        """List all available agent types from package manifests.
+
+        Returns:
+            List of agent names (e.g., ['claude', 'cursor', 'copilot'])
+        """
+        agents = []
+        if self.package_agents_dir.exists():
+            for agent_dir in self.package_agents_dir.iterdir():
+                if agent_dir.is_dir():
+                    manifest_path = agent_dir / "manifest.yaml"
+                    if manifest_path.exists():
+                        agents.append(agent_dir.name)
+        return sorted(agents)
+
+    def get_agent_manifest(self, agent_type: str) -> AgentManifest:
+        """Load agent manifest from package.
+
+        Args:
+            agent_type: Agent type name (e.g., "claude", "copilot")
+
+        Returns:
+            AgentManifest instance
+
+        Raises:
+            ValueError: If agent type is unknown
+        """
+        agent_type = agent_type.lower()
+
+        # Check cache first
+        if agent_type in self._manifest_cache:
+            return self._manifest_cache[agent_type]
+
+        # Load from package agents directory
+        manifest_path = self.package_agents_dir / agent_type / "manifest.yaml"
+        if not manifest_path.exists():
+            available = self.list_available_agents()
+            raise ValueError(
+                f"Unknown agent type: {agent_type}. " f"Available agents: {', '.join(available)}"
+            )
+
+        manifest = AgentManifest.load(manifest_path)
+        self._manifest_cache[agent_type] = manifest
+        return manifest
 
     def get_agent_commands_dir(self, agent_type: str) -> Path:
         """Get native commands directory for an agent.
@@ -48,16 +114,11 @@ class AgentService:
             - copilot: project_root/.github/agents/
             - cursor: project_root/.cursor/commands/
         """
-        agent_config = AGENT_CONFIG.get(agent_type.lower())
-        if not agent_config:
-            raise ValueError(f"Unknown agent type: {agent_type}")
-
-        folder = str(agent_config["folder"])
-        subfolder = str(agent_config["commands_subfolder"])
-        return self.project_root / folder / subfolder
+        manifest = self.get_agent_manifest(agent_type)
+        return self.project_root / manifest.get_commands_dir()
 
     def get_agents_from_config(self) -> list[str]:
-        """Get configured agents from config.
+        """Get configured agents from project config.
 
         Returns:
             List of configured agent names
@@ -79,16 +140,76 @@ class AgentService:
             return agent_type.lower() in [a.lower() for a in agents]
         return len(agents) > 0
 
-    def get_agent_config(self, agent_type: str) -> dict:
-        """Get configuration for an agent type.
+    def get_agent_context(self, agent_type: str) -> dict:
+        """Get template context for agent-aware command rendering.
+
+        This context is used when installing commands to conditionally render
+        agent-specific sections based on each agent's capabilities (web search,
+        background agents, MCP tools, etc.).
+
+        Capabilities are resolved in order of precedence:
+        1. User config overrides (from .oak/config.yaml agent_capabilities)
+        2. Manifest defaults (from agents/{agent}/manifest.yaml)
 
         Args:
             agent_type: Agent type name (e.g., "claude", "copilot")
 
         Returns:
-            Agent configuration dictionary
+            Dictionary with agent context for Jinja2 template rendering
+
+        Examples:
+            >>> service = AgentService()
+            >>> context = service.get_agent_context('claude')
+            >>> context['has_native_web']
+            True
+            >>> context = service.get_agent_context('codex')
+            >>> context['has_native_web']
+            False
         """
-        return AGENT_CONFIG.get(agent_type.lower(), {})
+        manifest = self.get_agent_manifest(agent_type)
+        context = manifest.get_template_context()
+
+        # Apply config overrides if present
+        config = self.config_service.load_config()
+        agent_key = agent_type.lower()
+
+        if agent_key in config.agent_capabilities:
+            overrides = config.agent_capabilities[agent_key]
+            # Only override non-None values
+            if overrides.has_background_agents is not None:
+                context["has_background_agents"] = overrides.has_background_agents
+            if overrides.has_native_web is not None:
+                context["has_native_web"] = overrides.has_native_web
+            if overrides.has_mcp is not None:
+                context["has_mcp"] = overrides.has_mcp
+            if overrides.research_strategy is not None:
+                context["research_strategy"] = overrides.research_strategy
+            # Add any custom capabilities
+            if overrides.custom:
+                context.update(overrides.custom)
+
+        return context
+
+    def get_capabilities_config(self, agent_type: str) -> dict:
+        """Get capabilities from manifest as config-ready dict.
+
+        Used by oak init to populate agent_capabilities in config.yaml with
+        manifest defaults, making them visible and editable by users.
+
+        Args:
+            agent_type: Agent type name (e.g., "claude", "copilot")
+
+        Returns:
+            Dictionary with capability values suitable for config.yaml
+        """
+        manifest = self.get_agent_manifest(agent_type)
+        caps = manifest.capabilities
+        return {
+            "has_background_agents": caps.has_background_agents,
+            "has_native_web": caps.has_native_web,
+            "has_mcp": caps.has_mcp,
+            "research_strategy": caps.research_strategy,
+        }
 
     def get_command_filename(self, agent_type: str, command_name: str) -> str:
         """Get the full command filename for an agent.
@@ -104,12 +225,40 @@ class AgentService:
             - claude: oak.rfc-create.md
             - copilot: oak.rfc-create.agent.md
         """
-        agent_config = self.get_agent_config(agent_type)
-        if not agent_config:
-            raise ValueError(f"Unknown agent type: {agent_type}")
+        manifest = self.get_agent_manifest(agent_type)
+        return manifest.get_command_filename(command_name)
 
-        extension = agent_config["file_extension"]
-        return f"oak.{command_name}{extension}"
+    def get_agent_display_name(self, agent_type: str) -> str:
+        """Get display name for an agent.
+
+        Args:
+            agent_type: Agent type name
+
+        Returns:
+            Human-readable display name
+        """
+        manifest = self.get_agent_manifest(agent_type)
+        return manifest.display_name
+
+    def get_agent_instruction_file(self, agent_type: str) -> Path | None:
+        """Get path to agent's instruction file.
+
+        Args:
+            agent_type: Agent type (claude, copilot, etc.)
+
+        Returns:
+            Path to instruction file, or None if not defined
+
+        Examples:
+            claude -> .claude/CLAUDE.md
+            copilot -> .github/copilot-instructions.md
+            cursor -> .cursor/rules.md
+        """
+        manifest = self.get_agent_manifest(agent_type)
+        instruction_path = manifest.get_instruction_file_path()
+        if instruction_path:
+            return self.project_root / instruction_path
+        return None
 
     def create_agent_commands_dir(self, agent_type: str) -> Path:
         """Create native commands directory for an agent.
@@ -139,8 +288,8 @@ class AgentService:
             return []
 
         # Get file extension pattern for this agent
-        agent_config = self.get_agent_config(agent_type)
-        extension = agent_config.get("file_extension", ".md")
+        manifest = self.get_agent_manifest(agent_type)
+        extension = manifest.installation.file_extension
         pattern = f"oak.*{extension}"
 
         return list_files(commands_dir, pattern, recursive=False)
@@ -157,10 +306,6 @@ class AgentService:
 
         Returns:
             List of created command file paths
-
-        Examples:
-            For claude: Creates .claude/commands/oak.rfc-create.md
-            For copilot: Creates .github/agents/oak.rfc-create.agent.md
         """
         commands_dir = self.create_agent_commands_dir(agent_type)
 
@@ -212,58 +357,30 @@ class AgentService:
         Returns:
             Tuple of (is_valid, list_of_issues)
         """
-        issues = []
+        try:
+            manifest = self.get_agent_manifest(agent_type)
+        except ValueError as e:
+            return (False, [str(e)])
 
-        # Check if agent is supported
-        if agent_type.lower() not in AGENT_CONFIG:
-            issues.append(f"Unsupported agent type: {agent_type}")
-            return (False, issues)
-
-        # Check if native commands directory exists
-        commands_dir = self.get_agent_commands_dir(agent_type)
-        if not commands_dir.exists():
-            agent_config = self.get_agent_config(agent_type)
-            folder = agent_config["folder"]
-            issues.append(
-                f"Commands directory not found: {commands_dir}. "
-                f"Run 'oak init --agent {agent_type}' to create {folder} structure."
-            )
-
-        # Check if any commands exist
-        if commands_dir.exists():
-            commands = self.list_agent_commands(agent_type)
-            if not commands:
-                issues.append(
-                    f"No oak commands found in {commands_dir}. "
-                    "Run 'oak init' to install default commands."
-                )
-
-        return (len(issues) == 0, issues)
+        return manifest.validate_installation(self.project_root)
 
     def remove_agent_commands(self, agent_type: str) -> int:
         """Remove open-agent-kit command files for an agent.
 
         Only removes files that start with 'oak.' to avoid deleting
-        user's custom commands. Also removes empty directories if we
-        created them.
+        user's custom commands.
 
         Args:
             agent_type: Agent type name
 
         Returns:
             Number of files removed
-
-        Examples:
-            Removes: oak.rfc-create.md, oak.issue-plan.md
-            Keeps: custom-command.md, user-prompt.md
-            Cleans: .codex/prompts/ if empty after cleanup
         """
         commands_dir = self.get_agent_commands_dir(agent_type)
         if not commands_dir.exists():
             return 0
 
         removed_count = 0
-        # List all open-agent-kit commands (files starting with 'oak.')
         oak_commands = self.list_agent_commands(agent_type)
 
         for command_file in oak_commands:
@@ -271,10 +388,9 @@ class AgentService:
                 command_file.unlink()
                 removed_count += 1
             except Exception:
-                # Continue removing other files even if one fails
                 pass
 
-        # Clean up empty directories if we emptied them
+        # Clean up empty directories
         cleanup_empty_directories(commands_dir, self.project_root)
 
         return removed_count
@@ -288,10 +404,6 @@ class AgentService:
 
         Returns:
             Number of files removed
-
-        Examples:
-            Removes: oak.rfc-create.md, oak.rfc-list.md, oak.rfc-validate.md
-            Keeps: Commands from other features
         """
         from typing import cast
 
@@ -316,7 +428,6 @@ class AgentService:
                 except Exception:
                     pass
 
-        # Clean up empty directories
         cleanup_empty_directories(commands_dir, self.project_root)
 
         return removed_count
@@ -326,14 +437,6 @@ class AgentService:
 
         Returns:
             List of command names (e.g., ['rfc-create', 'constitution-validate'])
-
-        Examples:
-            >>> service = AgentService()
-            >>> commands = service.get_all_command_names()
-            >>> print(commands)
-            ['constitution-create', 'constitution-validate', 'constitution-amend',
-             'rfc-create', 'rfc-list', 'rfc-validate',
-             'issue-plan', 'issue-validate', 'issue-implement']
         """
         from typing import cast
 
@@ -346,87 +449,25 @@ class AgentService:
             all_commands.extend(command_names)
         return all_commands
 
-    def get_agent_display_name(self, agent_type: str) -> str:
-        """Get display name for an agent.
-
-        Args:
-            agent_type: Agent type name
-
-        Returns:
-            Display name
-        """
-        agent_config = self.get_agent_config(agent_type)
-        return str(agent_config.get("name", agent_type.capitalize()))
-
-    def get_agent_instruction_file(self, agent_type: str) -> Path:
-        """Get path to agent's instruction file.
-
-        Args:
-            agent_type: Agent type (claude, copilot, etc.)
-
-        Returns:
-            Path to instruction file
-
-        Examples:
-            claude → .claude/CLAUDE.md
-            copilot → .github/copilot-instructions.md
-            cursor → AGENTS.md (root)
-        """
-        agent_type = agent_type.lower()
-
-        # Get the instruction pattern for this agent
-        if agent_type not in AGENT_INSTRUCTION_PATTERNS:
-            raise ValueError(f"Unknown agent type: {agent_type}")
-
-        pattern = AGENT_INSTRUCTION_PATTERNS[agent_type]
-
-        # Replace {agent_folder} placeholder if present
-        if "{agent_folder}" in pattern:
-            agent_config = self.get_agent_config(agent_type)
-            if not agent_config:
-                raise ValueError(f"No configuration for agent: {agent_type}")
-            agent_folder = agent_config["folder"]
-            pattern = pattern.replace("{agent_folder}", agent_folder)
-
-        # Return path relative to project root
-        return self.project_root / pattern
-
     def detect_existing_agent_instructions(self) -> dict[str, dict]:
         """Detect existing agent instruction files for all configured agents.
 
         Returns:
-            Dictionary mapping agent_type to detection info:
-            {
-                'copilot': {
-                    'exists': True,
-                    'path': Path('.github/copilot-instructions.md'),
-                    'content': '...',
-                    'has_constitution_ref': False
-                },
-                'claude': {
-                    'exists': False,
-                    'path': Path('.claude/CLAUDE.md'),
-                    'content': None,
-                    'has_constitution_ref': False
-                }
-            }
+            Dictionary mapping agent_type to detection info
         """
-        # Get configured agents from config
         configured_agents = self.get_agents_from_config()
-
         detection_results = {}
 
         for agent_type in configured_agents:
             agent_type = agent_type.lower()
 
             try:
-                # Get instruction file path
                 instruction_path = self.get_agent_instruction_file(agent_type)
+                if instruction_path is None:
+                    continue
 
-                # Check if file exists
                 exists = instruction_path.exists()
 
-                # Read content if file exists
                 content = None
                 has_constitution_ref = False
                 if exists:
@@ -434,7 +475,6 @@ class AgentService:
                         content = read_file(instruction_path)
                         has_constitution_ref = self._has_constitution_reference(instruction_path)
                     except Exception:
-                        # File might exist but be unreadable
                         content = None
 
                 detection_results[agent_type] = {
@@ -445,35 +485,18 @@ class AgentService:
                 }
 
             except ValueError:
-                # Unknown agent type - skip
                 continue
-
-        # Handle shared files (cursor and codex both use AGENTS.md)
-        # If both are configured and use the same file, they'll have identical results
-        # This is intentional as they share the same instruction file
 
         return detection_results
 
     def _has_constitution_reference(self, file_path: Path) -> bool:
-        """Check if instruction file already references constitution.
-
-        Looks for markers:
-        - "## Project Constitution"
-        - "oak/constitution.md"
-
-        Args:
-            file_path: Path to instruction file
-
-        Returns:
-            True if already has reference
-        """
+        """Check if instruction file already references constitution."""
         if not file_path.exists():
             return False
 
         try:
             content = read_file(file_path)
 
-            # Check for various constitution reference markers
             constitution_markers = [
                 "## Project Constitution",
                 "# Project Constitution",
@@ -486,7 +509,6 @@ class AgentService:
                 "[Constitution]",
             ]
 
-            # Case-insensitive check for any of the markers
             content_lower = content.lower()
             for marker in constitution_markers:
                 if marker.lower() in content_lower:
@@ -495,7 +517,6 @@ class AgentService:
             return False
 
         except Exception:
-            # If we can't read the file, assume no reference
             return False
 
     def update_agent_instructions_from_constitution(
@@ -503,33 +524,12 @@ class AgentService:
     ) -> dict[str, list[str]]:
         """Update agent instruction files to reference constitution.
 
-        Strategy:
-        - Existing file WITHOUT ref → Append constitution section + backup
-        - Existing file WITH ref → Skip (idempotent)
-        - No file → Create new with constitution reference
-        - Shared files (AGENTS.md) → Update once, affects multiple agents
-
         Args:
             constitution_path: Path to constitution.md file
             mode: Update mode - "additive" (default) or "skip"
 
         Returns:
-            Dictionary with results:
-            {
-                'updated': ['copilot'],  # Files appended to
-                'created': ['claude'],   # New files created
-                'skipped': ['cursor'],   # Already had reference
-                'backed_up': ['.github/copilot-instructions.md.backup'],
-                'errors': []
-            }
-
-        Examples:
-            >>> service = AgentService()
-            >>> results = service.update_agent_instructions_from_constitution(
-            ...     Path("oak/constitution.md")
-            ... )
-            >>> print(f"Updated: {results['updated']}")
-            >>> print(f"Created: {results['created']}")
+            Dictionary with results (updated, created, skipped, backed_up, errors)
         """
         results: dict[str, list[str]] = {
             "updated": [],
@@ -539,15 +539,12 @@ class AgentService:
             "errors": [],
         }
 
-        # Validate constitution file exists
         if not constitution_path.exists():
             results["errors"].append(f"Constitution file not found: {constitution_path}")
             return results
 
-        # Get detection results for all configured agents
         detection = self.detect_existing_agent_instructions()
 
-        # Group agents by file path to handle shared files
         files_to_process = {}
         for agent_type, info in detection.items():
             file_path = info["path"]
@@ -563,35 +560,29 @@ class AgentService:
 
             files_to_process[file_key]["agents"].append(agent_type)
 
-        # Process each unique file
-        for _file_key, file_info in files_to_process.items():
+        for file_info in files_to_process.values():
             file_path = file_info["path"]
             agents = file_info["agents"]
             exists = file_info["exists"]
             has_ref = file_info["has_constitution_ref"]
 
             try:
-                # Skip if already has constitution reference
                 if has_ref:
                     for agent in agents:
                         results["skipped"].append(agent)
                     continue
 
-                # Skip mode - don't modify existing files
                 if mode == "skip" and exists:
                     for agent in agents:
                         results["skipped"].append(agent)
                     continue
 
-                # Process the file
                 if exists:
-                    # Append to existing file
                     backup_path = self._append_constitution_reference(file_path, constitution_path)
                     results["backed_up"].append(str(backup_path))
                     for agent in agents:
                         results["updated"].append(agent)
                 else:
-                    # Create new file
                     self._create_agent_instruction_file(file_path, constitution_path, agents)
                     for agent in agents:
                         results["created"].append(agent)
@@ -603,92 +594,44 @@ class AgentService:
         return results
 
     def _append_constitution_reference(self, file_path: Path, constitution_path: Path) -> Path:
-        """Append constitution reference to existing file.
-
-        Safety:
-        - Creates backup with .backup extension
-        - Adds separator line before reference
-        - Uses relative path from file location
-
-        Args:
-            file_path: Path to existing instruction file
-            constitution_path: Path to constitution.md
-
-        Returns:
-            Path to backup file
-
-        Raises:
-            IOError: If file operations fail
-
-        Examples:
-            >>> service = AgentService()
-            >>> backup = service._append_constitution_reference(
-            ...     Path(".github/copilot-instructions.md"),
-            ...     Path("oak/constitution.md")
-            ... )
-            >>> print(f"Backup created: {backup}")
-        """
-        # Create backup
+        """Append constitution reference to existing file."""
         backup_path = file_path.with_suffix(file_path.suffix + ".backup")
         shutil.copy2(file_path, backup_path)
 
-        # Read existing content
         existing_content = read_file(file_path)
 
-        # Calculate relative path from file location to constitution
         try:
             relative_path = os.path.relpath(constitution_path, file_path.parent)
-            # Normalize path separators for markdown links
             relative_path = relative_path.replace("\\", "/")
         except ValueError:
-            # If on different drives (Windows), use absolute path
             relative_path = str(constitution_path).replace("\\", "/")
 
-        # Get constitution reference template
         reference_text = self._get_constitution_reference_template(relative_path)
-
-        # Append with proper separator
         updated_content = existing_content.rstrip() + "\n\n" + reference_text
 
-        # Write updated content
         write_file(file_path, updated_content)
+
+        # Record that we modified this file (existed before oak)
+        self.state_service.record_modified_file(
+            file_path,
+            modification_type="appended",
+            marker="## Project Constitution",
+        )
 
         return backup_path
 
     def _create_agent_instruction_file(
         self, file_path: Path, constitution_path: Path, agent_types: list[str]
     ) -> None:
-        """Create new agent instruction file with constitution reference.
-
-        Args:
-            file_path: Path where file should be created
-            constitution_path: Path to constitution.md
-            agent_types: List of agents using this file (for shared files)
-
-        Raises:
-            IOError: If file operations fail
-
-        Examples:
-            >>> service = AgentService()
-            >>> service._create_agent_instruction_file(
-            ...     Path(".claude/CLAUDE.md"),
-            ...     Path("oak/constitution.md"),
-            ...     ["claude"]
-            ... )
-        """
-        # Ensure parent directory exists
+        """Create new agent instruction file with constitution reference."""
         ensure_dir(file_path.parent)
 
-        # Calculate relative path from file location to constitution
         try:
             relative_path = os.path.relpath(constitution_path, file_path.parent)
-            # Normalize path separators for markdown links
             relative_path = relative_path.replace("\\", "/")
         except ValueError:
-            # If on different drives (Windows), use absolute path
             relative_path = str(constitution_path).replace("\\", "/")
 
-        # Create header based on agent types
         if len(agent_types) == 1:
             agent_name = self.get_agent_display_name(agent_types[0])
             header = f"# {agent_name} Instructions\n\n"
@@ -698,31 +641,16 @@ class AgentService:
             header = "# AI Assistant Instructions\n\n"
             intro = f"This file contains instructions for AI assistants ({', '.join(agent_names)}) when working with this project.\n\n"
 
-        # Get constitution reference template
         reference_text = self._get_constitution_reference_template(relative_path)
-
-        # Combine header, intro, and constitution reference
         content = header + intro + reference_text
 
-        # Write the file
         write_file(file_path, content)
 
+        # Record that we created this file (can safely remove later)
+        self.state_service.record_created_file(file_path, content)
+
     def _get_constitution_reference_template(self, constitution_relative_path: str) -> str:
-        """Get template text for constitution reference.
-
-        Args:
-            constitution_relative_path: Relative path to constitution
-
-        Returns:
-            Markdown template text to append/insert
-
-        Examples:
-            >>> service = AgentService()
-            >>> template = service._get_constitution_reference_template(
-            ...     "../oak/constitution.md"
-            ... )
-            >>> print(template[:50])  # First 50 chars
-        """
+        """Get template text for constitution reference."""
         template = f"""---
 
 ## Project Constitution

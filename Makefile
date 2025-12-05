@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help setup install install-dev sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build
+.PHONY: help venv setup install install-dev sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build
 
 # Default target
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "Prerequisites: Python 3.13+, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
+	@echo "    make venv         Setup virtual environment and show activation command"
 	@echo "    make setup        Install all dependencies (recommended first step)"
 	@echo "    make sync         Sync dependencies with lockfile"
 	@echo "    make lock         Update lockfile after changing pyproject.toml"
@@ -40,6 +41,17 @@ help:
 	@echo "    make clean        Remove build artifacts and cache"
 
 # Setup targets
+venv:
+	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	@if [ ! -d ".venv" ]; then \
+		echo "Creating virtual environment..."; \
+		uv sync --extra dev; \
+	else \
+		echo "Virtual environment already exists."; \
+	fi
+	@echo "\nTo activate the virtual environment, run:"
+	@echo "  source .venv/bin/activate"
+
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
 	uv sync --extra dev

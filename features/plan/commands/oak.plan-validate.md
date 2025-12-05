@@ -1,9 +1,9 @@
 ---
-description: Review implementation artifacts for an issue and surface gaps.
+description: Review implementation artifacts for a plan and surface gaps.
 handoffs:
   - label: Implement Plan
-    agent: oak.issue-implement
-    prompt: Implement the plan for this issue and its related issues.
+    agent: oak.plan-implement
+    prompt: Implement the plan and its associated tasks.
 ---
 
 ## User Input
@@ -12,11 +12,11 @@ handoffs:
 $ARGUMENTS
 ```
 
-Interpret the input as a request to validate a specific issue (issue/task/story). Ask for clarification if the provider or identifier is missing.
+Interpret the input as a request to validate a specific plan. The plan name can be provided explicitly or inferred from the current git branch. Ask for clarification if the plan name is ambiguous.
 
 ## Operating Constraints
 
-**READ-ONLY ANALYSIS**: This command performs non-destructive analysis across issue artifacts (context-summary.md, plan.md, implementation). Do not modify any files during the analysis phase. Output a structured analysis report with findings.
+**READ-ONLY ANALYSIS**: This command performs non-destructive analysis across plan artifacts (summary.md, plan.md, implementation). Do not modify any files during the analysis phase. Output a structured analysis report with findings.
 
 **REMEDIATION IS OPTIONAL**: After analysis, offer to help fix issues interactively. User must explicitly approve before entering the fixing phase. Each fix requires individual user confirmation before being applied.
 
@@ -31,12 +31,13 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - The constitution is foundational - validation checks compliance against it.
    - **This is checked first** by the CLI before any other prerequisites.
 
-2. **Issue Plan Exists** (REQUIRED): The user must have already created an issue plan using `/oak.issue-plan`.
-   - If no plan exists, **STOP** and instruct: "Please run `/oak.issue-plan <ISSUE_ID>` first to create an implementation plan before validating."
+2. **Plan Exists** (REQUIRED): The user must have already created a plan using `/oak.plan-create` or `/oak.plan-issue`.
+   - If no plan exists, **STOP** and instruct: "Please run `/oak.plan-create` or `/oak.plan-issue` first to create a plan before validating."
 
-3. **Issue ID** (REQUIRED): You must know which issue to validate.
-   - If the user hasn't provided one, ask: "Which issue should I validate? (e.g., ADO issue #12345 or GitHub issue #42)"
-   - The CLI can infer from the current branch name, but confirm with the user that it's correct.
+3. **Plan Name** (REQUIRED): You must know which plan to validate.
+   - If the user hasn't provided one, check the current branch - plan branches follow the pattern `plan/<name>`
+   - If inferrable from branch, proceed directly
+   - Otherwise ask: "Which plan should I validate?"
 
 ## Mission
 
@@ -57,21 +58,125 @@ Before executing this command, ensure these prerequisites are met **in order**:
 
 ## Responsibilities
 
-1. Confirm provider + issue identifier (the **focus issue** from planning).
+1. Confirm plan name (from arguments or current branch).
 2. Run validation to check artifacts, plan completeness, and constitution compliance.
 3. Perform comprehensive content quality analysis (clarity, ambiguity, underspecification).
-4. Verify all acceptance criteria are met and mapped to tasks.
+4. Verify all acceptance criteria are met and mapped to tasks (for issue-based plans).
 5. Check code implementation against plan (if code exists).
 6. Present findings with severity levels and multiple fix options.
 7. Guide user through interactive improvements with their approval.
 
-**Understanding the Focus Issue:**
+## Validation Strategy
 
-- This command validates the **focus issue** that was planned with `/oak.issue-plan`.
-- All artifacts are under `oak/issue/{provider}/{focus-issue}/` (context-summary.md, plan.md).
-- Related items (parents, children, dependencies) in `related/{id}/context-summary.md` provide context but are not directly validated.
-- Validation checks that the focus issue's acceptance criteria are met and the plan is complete.
-- The implementation should satisfy the focus issue first, then consider impacts on related items.
+{% if has_background_agents %}
+### Parallel Validation with Background Agents
+
+**You can orchestrate multiple validation checks in parallel for faster feedback.**
+
+When validating complex plans with code implementation:
+
+**Parallelizable Validation Checks:**
+
+| Check Type | Agent Focus | Independence |
+|------------|-------------|--------------|
+| **Artifact Validation** | Plan completeness, structure | Independent |
+| **Code Quality** | Linting, formatting, types | Independent |
+| **Test Execution** | Run test suite, coverage | Independent |
+| **Constitution Compliance** | MUST/SHOULD rules | Independent |
+| **Documentation** | README, API docs | Independent |
+
+**Parallel Validation Workflow:**
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│ Validation Orchestrator                                  │
+├─────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐│
+│  │ Artifact │  │   Code   │  │   Test   │  │  Const.  ││
+│  │  Check   │  │  Quality │  │  Runner  │  │ Checker  ││
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘│
+│       │              │             │             │      │
+│       └──────────────┴─────────────┴─────────────┘      │
+│                         │                               │
+│              Consolidate Findings                       │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Subagent Validation Template:**
+
+```markdown
+# Validation Assignment: <Check Type>
+
+## Context
+- **Plan:** oak/plan/<plan-name>/plan.md
+- **Constitution:** oak/constitution.md
+- **Branch:** <current-branch>
+
+## Your Validation Focus
+
+**Check Type:** <artifact|code_quality|tests|constitution|docs>
+
+**Scope:**
+<Specific areas to validate>
+
+## Validation Criteria
+
+Apply these checks:
+1. <Check 1>
+2. <Check 2>
+3. <Check 3>
+
+## Output Format
+
+Return findings as:
+```yaml
+findings:
+  - id: "<check>-1"
+    severity: "critical|important|minor"
+    category: "<category>"
+    location: "<file:line>"
+    issue: "<description>"
+    recommendation: "<fix>"
+```
+
+## Constraints
+
+- READ-ONLY: Do not modify any files
+- Report ALL findings, let orchestrator prioritize
+```
+
+{% else %}
+### Sequential Validation
+
+Perform validation checks one at a time. This ensures thorough analysis but takes longer for complex plans.
+{% endif %}
+
+{% if has_native_web %}
+### Web-Assisted Validation
+
+When validating external integrations or API usage:
+- Verify API endpoints and documentation are current
+- Check for deprecated patterns or security advisories
+- Validate configuration against latest best practices
+{% endif %}
+
+{% if has_mcp %}
+### MCP-Powered Validation
+
+Leverage available MCP tools for automated checks:
+- **Linting**: Run project linters via MCP tools
+- **Type checking**: Execute type checkers (mypy, tsc)
+- **Security scanning**: Run security analysis tools
+- **Coverage**: Generate coverage reports
+{% endif %}
+
+**Understanding Plan Validation:**
+
+- This command validates a plan created with `/oak.plan-create` (research-first) or `/oak.plan-issue` (issue-first).
+- For issue-based plans: Artifacts are under `oak/plan/{name}/issue/` (summary.md, plan.md).
+- For research-based plans: Artifacts are under `oak/plan/{name}/` (plan.md, research/, tasks.md).
+- Related items (for issue-based plans) in `related/{id}/summary.md` provide context but are not directly validated.
+- Validation checks that the plan's goals or acceptance criteria are met and the plan is complete.
 
 ## Workflow
 
@@ -98,16 +203,16 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - **Optional**: Run `oak constitution check` to verify the constitution exists before attempting validation.
 
 2. **Execute CLI Validation**
-   - Run `oak issue validate` via the shell (issue auto-detected from branch).
-   - **Or** explicitly specify: `oak issue validate <ISSUE_ID> [--provider <key>]`
+   - Run `oak plan validate` via the shell (plan auto-detected from branch).
+   - **Or** explicitly specify: `oak plan validate <NAME>`
    - The CLI will check:
-     - Prerequisites (constitution, issue provider config)
-     - Artifacts exist (`context-summary.md`, `plan.md`)
+     - Prerequisites (constitution exists)
+     - Artifacts exist (plan.md, and for issue-based: `summary.md`)
      - Plan sections are complete (no PENDING placeholders)
-     - Acceptance criteria are captured
+     - Acceptance criteria are captured (for issue-based plans)
      - Implementation branch exists
      - Basic constitution rule coverage in plan
-   - **The CLI creates initial** `oak/issue/<provider>/<issue>/validation.md` with raw validation results
+   - **The CLI creates initial** `oak/plan/<name>/validation.md` with raw validation results
      - This is just the starting point - you will enhance it with your analysis and fixes
 
 3. **Verify Branch**

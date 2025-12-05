@@ -7,7 +7,8 @@ from typing import Any
 import jinja2
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
-from open_agent_kit.constants import FEATURES_DIR, SUPPORTED_FEATURES
+from open_agent_kit.config.paths import FEATURES_DIR
+from open_agent_kit.constants import SUPPORTED_FEATURES
 from open_agent_kit.utils import ensure_dir, file_exists, read_file, write_file
 
 

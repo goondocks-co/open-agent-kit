@@ -7,9 +7,8 @@ from open_agent_kit.constants import (
     REQUIRED_RFC_SECTIONS,
     RFC_FILENAME_PATTERN,
     RFC_NUMBER_PATTERN,
-    RFC_STATUSES,
-    SUPPORTED_AGENTS,
 )
+from open_agent_kit.models.enums import RFCStatus
 
 
 def validate_rfc_number(rfc_number: str) -> bool:
@@ -105,7 +104,7 @@ def validate_rfc_status(status: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    return status.lower() in RFC_STATUSES
+    return status.lower() in RFCStatus.values()
 
 
 def validate_agent_type(agent: str) -> bool:
@@ -117,7 +116,11 @@ def validate_agent_type(agent: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    return agent.lower() in SUPPORTED_AGENTS
+    from open_agent_kit.services.agent_service import AgentService
+
+    agent_service = AgentService()
+    available_agents = agent_service.list_available_agents()
+    return agent.lower() in available_agents
 
 
 def validate_file_path(path: str) -> bool:

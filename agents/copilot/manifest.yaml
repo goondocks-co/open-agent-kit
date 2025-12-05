@@ -1,0 +1,25 @@
+# GitHub Copilot Agent Manifest
+# GitHub Copilot with coding agent and Mission Control capabilities
+
+name: copilot
+display_name: "GitHub Copilot"
+version: "1.0.0"
+description: "GitHub Copilot with coding agent, Mission Control, and MCP support"
+
+installation:
+  folder: ".github/"
+  commands_subfolder: "agents"
+  file_extension: ".agent.md"
+  instruction_file: "copilot-instructions.md"
+
+requirements:
+  requires_cli: false
+  install_url: "https://docs.github.com/en/copilot/get-started/quickstart"
+
+capabilities:
+  has_background_agents: true   # Coding agent, Mission Control
+  has_native_web: true          # Built-in web/search tools in Copilot Chat
+  has_mcp: true                 # Full MCP support in VS Code
+  research_strategy: "Use Copilot's built-in web tools + keyless MCP"
+
+settings: {}

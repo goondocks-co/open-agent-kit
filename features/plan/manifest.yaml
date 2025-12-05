@@ -1,0 +1,25 @@
+# Plan Feature Manifest
+name: plan
+display_name: "Planning"
+description: "Unified SDD workflow supporting both issue-first (GitHub/Azure DevOps) and idea-first planning with research phases, structured task generation, and export to issue trackers."
+version: "1.0.0"
+default_enabled: true
+dependencies:
+  - constitution
+  # Note: Issue provider configuration is in core (ConfigService), not the issues feature.
+  # plan commands use core issue providers directly.
+
+commands:
+  - plan-create
+  - plan-research
+  - plan-tasks
+  - plan-implement
+  - plan-export
+  - plan-issue
+  - plan-validate
+
+templates: []
+
+# Feature-specific default configuration
+config_defaults:
+  directory: oak/plan

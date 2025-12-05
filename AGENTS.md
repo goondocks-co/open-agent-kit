@@ -1,6 +1,6 @@
 # AI Agent Instructions for open-agent-kit
 
-**Audience:** Codex CLI, Cursor, and any compatible AI agents  
+**Audience:** Codex CLI, Cursor, and any compatible AI agents
 **Primary rule:** Always anchor decisions in [.constitution.md](.constitution.md). That file is the
 canonical reference for architecture, coding standards, workflows, and governance.
 

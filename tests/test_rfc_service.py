@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from open_agent_kit.constants import RFC_STALE_DRAFT_DAYS
+from open_agent_kit.config.settings import validation_settings
 from open_agent_kit.models.rfc import RFCStatus
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.rfc_service import RFCService
@@ -55,7 +55,7 @@ def test_templates_surface_guidance_placeholders(
 
 
 def test_get_rfc_statistics_identifies_stale_drafts(configured_project: RFCService) -> None:
-    old_date = datetime.now() - timedelta(days=RFC_STALE_DRAFT_DAYS + 5)
+    old_date = datetime.now() - timedelta(days=validation_settings.rfc_stale_draft_days + 5)
     recent_date = datetime.now()
     stale_rfc = configured_project.create_rfc(title="Legacy Cleanup", author="Alex", tags=["ops"])
     _update_rfc_metadata(stale_rfc.path, date=old_date)

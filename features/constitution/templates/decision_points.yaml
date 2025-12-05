@@ -25,7 +25,7 @@ testing_strategy:
         - "Testing discipline across team"
         - "More development time"
         - "CI/CD infrastructure"
-      
+
     - id: "balanced"
       name: "Balanced Testing"
       description: "Test-after acceptable with moderate coverage and selective integration tests"
@@ -42,7 +42,7 @@ testing_strategy:
       requires:
         - "Standard testing frameworks"
         - "Basic CI/CD"
-      
+
     - id: "pragmatic"
       name: "Pragmatic Testing"
       description: "Essential tests only, focusing on critical functionality"
@@ -60,12 +60,12 @@ testing_strategy:
       requires:
         - "Minimal infrastructure"
         - "Clear definition of 'critical'"
-      
+
     - id: "custom"
       name: "Custom Testing Strategy"
       description: "Define your own specific requirements"
       prompt: "Describe your testing requirements in detail"
-  
+
   follow_up_questions:
     - condition: "if comprehensive or balanced"
       questions:
@@ -77,7 +77,7 @@ testing_strategy:
           text: "Should coverage checks block CI/CD merges?"
           type: "boolean"
           help: "yes = strict enforcement, no = advisory only"
-    
+
     - condition: "if comprehensive"
       questions:
         - id: "has_e2e_infrastructure"
@@ -97,7 +97,7 @@ testing_strategy:
           type: "list"
           help: "Examples: authentication, payment processing, data sync"
           optional: true
-    
+
     - condition: "if balanced"
       questions:
         - id: "critical_integration_points"
@@ -105,14 +105,14 @@ testing_strategy:
           type: "list"
           help: "Examples: authentication, payment processing, external APIs"
           optional: true
-    
+
     - condition: "if pragmatic"
       questions:
         - id: "critical_functionality"
           text: "Define what qualifies as 'critical functionality'"
           type: "text"
           help: "This helps determine what must be tested"
-    
+
     - condition: "always"
       questions:
         - id: "testing_rationale"
@@ -137,7 +137,7 @@ code_review:
         - "Production systems"
         - "Regulated environments"
         - "Distributed teams"
-      
+
     - id: "standard"
       name: "Standard Review Policy"
       description: "Reviews required with flexibility for urgent situations"
@@ -149,7 +149,7 @@ code_review:
       best_for:
         - "Most production applications"
         - "Teams with on-call rotation"
-      
+
     - id: "flexible"
       name: "Flexible Review Policy"
       description: "Reviews recommended but not strictly enforced"
@@ -162,12 +162,12 @@ code_review:
         - "Small teams"
         - "Prototypes"
         - "Internal tools"
-      
+
     - id: "custom"
       name: "Custom Review Policy"
       description: "Define your own review requirements"
       prompt: "Describe your code review policy"
-  
+
   follow_up_questions:
     - condition: "if strict or standard"
       questions:
@@ -181,7 +181,7 @@ code_review:
           type: "text"
           optional: true
           help: "Examples: senior engineer, domain expert"
-    
+
     - condition: "if standard"
       questions:
         - id: "hotfix_definition"
@@ -208,7 +208,7 @@ documentation:
         - "Open source projects"
         - "Large teams"
         - "High turnover environments"
-      
+
     - id: "standard"
       name: "Standard Documentation"
       description: "Documentation for public interfaces and complex logic"
@@ -221,7 +221,7 @@ documentation:
       best_for:
         - "Most projects"
         - "Standard team sizes"
-      
+
     - id: "minimal"
       name: "Minimal Documentation"
       description: "Essential documentation only"
@@ -233,12 +233,12 @@ documentation:
         - "Prototypes"
         - "Small teams with high context"
         - "Internal tools"
-      
+
     - id: "custom"
       name: "Custom Documentation"
       description: "Define your own documentation requirements"
       prompt: "Describe your documentation standards"
-  
+
   follow_up_questions:
     - condition: "if extensive or standard"
       questions:
@@ -272,7 +272,7 @@ architectural_patterns:
         - "Feature folders (e.g., features/user-registration/)"
         - "Command/Query separation (CQRS-lite)"
         - "Mediator pattern for feature orchestration"
-      
+
     - id: "clean_architecture"
       name: "Clean Architecture (Onion/Hexagonal)"
       description: "Layer code with dependency inversion, business logic at the center"
@@ -291,7 +291,7 @@ architectural_patterns:
         - "Repository pattern"
         - "Use cases / Application services"
         - "Dependency injection"
-      
+
     - id: "layered"
       name: "Traditional Layered Architecture"
       description: "Organize by technical layers (presentation, business, data)"
@@ -309,7 +309,7 @@ architectural_patterns:
         - "Controllers, Services, Repositories"
         - "DTOs for layer boundaries"
         - "Transaction script pattern"
-      
+
     - id: "modular_monolith"
       name: "Modular Monolith"
       description: "Single deployment with strong module boundaries"
@@ -326,7 +326,7 @@ architectural_patterns:
         - "Module boundaries with public APIs"
         - "Domain events for module communication"
         - "Shared kernel for cross-cutting concerns"
-      
+
     - id: "pragmatic"
       name: "Pragmatic / Adaptive"
       description: "Mix patterns based on context, no single architecture"
@@ -339,12 +339,12 @@ architectural_patterns:
         - "Small to medium projects"
         - "Rapid prototyping"
         - "Teams with diverse experience"
-      
+
     - id: "custom"
       name: "Custom Architecture"
       description: "Define your own architectural approach"
       prompt: "Describe your architectural patterns and principles"
-  
+
   follow_up_questions:
     - condition: "if vertical_slice or clean_architecture or modular_monolith"
       questions:
@@ -364,17 +364,17 @@ architectural_patterns:
             - value: "other"
               label: "Other pattern"
           help: "How do you represent and propagate errors?"
-        
+
         - id: "dependency_injection"
           text: "Is dependency injection required?"
           type: "boolean"
           help: "DI is typical for Clean Architecture and testability"
-        
+
         - id: "domain_events"
           text: "Do you use domain events for decoupling?"
           type: "boolean"
           help: "Domain events enable loose coupling between modules/slices"
-    
+
     - condition: "if vertical_slice or modular_monolith"
       questions:
         - id: "feature_organization"
@@ -382,7 +382,7 @@ architectural_patterns:
           type: "text"
           help: "Example: 'features/{feature-name}/' or 'modules/{module-name}/'"
           placeholder: "features/{feature-name}/"
-    
+
     - condition: "if clean_architecture or layered"
       questions:
         - id: "layer_organization"
@@ -390,7 +390,7 @@ architectural_patterns:
           type: "text"
           help: "Example: 'domain, application, infrastructure, presentation'"
           placeholder: "domain, application, infrastructure, presentation"
-    
+
     - condition: "always"
       questions:
         - id: "coding_principles"
@@ -398,7 +398,7 @@ architectural_patterns:
           type: "list"
           help: "Examples: SOLID, DRY, YAGNI, KISS"
           optional: true
-        
+
         - id: "architectural_rationale"
           text: "Why does this architecture fit your project?"
           type: "text"
@@ -422,7 +422,7 @@ ci_cd:
         - "Production systems"
         - "Mature projects"
         - "Large teams"
-      
+
     - id: "standard"
       name: "Standard Enforcement"
       description: "Core checks that block merges"
@@ -435,7 +435,7 @@ ci_cd:
       best_for:
         - "Most projects"
         - "Growing codebases"
-      
+
     - id: "basic"
       name: "Basic Enforcement"
       description: "Essential checks, advisory only"
@@ -447,7 +447,7 @@ ci_cd:
         - "Early-stage projects"
         - "Small teams"
         - "Rapid iteration"
-      
+
     - id: "none"
       name: "No CI/CD Yet"
       description: "Planning phase, no enforcement"
@@ -456,12 +456,12 @@ ci_cd:
       best_for:
         - "New projects"
         - "Pre-CI phase"
-      
+
     - id: "custom"
       name: "Custom CI/CD"
       description: "Define your own CI/CD requirements"
       prompt: "Describe your CI/CD checks"
-  
+
   follow_up_questions:
     - condition: "if full or standard"
       questions:
@@ -475,7 +475,7 @@ ci_cd:
           type: "text"
           optional: true
           help: "Examples: GitHub Actions, GitLab CI, CircleCI"
-    
+
     - condition: "if none"
       questions:
         - id: "ci_planned"
@@ -490,32 +490,31 @@ ci_cd:
 # Decision confirmation template
 confirmation_template: |
   === Constitution Decision Summary ===
-  
+
   Based on our conversation, here's what will be in your constitution:
-  
+
   ## Testing Strategy: {testing_strategy}
   {testing_details}
-  
+
   ## Code Review: {code_review_policy}
   {code_review_details}
-  
+
   ## Documentation: {documentation_level}
   {documentation_details}
-  
+
   ## CI/CD: {ci_enforcement}
   {ci_cd_details}
-  
+
   ---
-  
+
   This will result in:
   - {must_count} MUST requirements (mandatory)
   - {should_count} SHOULD recommendations (encouraged)
   - {may_count} MAY options (flexible)
-  
+
   Rationale: {overall_rationale}
-  
+
   Do these decisions accurately reflect your project needs?
   - yes: Proceed with constitution generation
   - no: Cancel and restart
   - revise: Modify specific decisions
-

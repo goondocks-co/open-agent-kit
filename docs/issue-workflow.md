@@ -50,4 +50,3 @@ user navigate the workflow.
 - `README.md` – high-level overview for humans.
 - `.constitution.md` §V.5 – constitutional summary and prerequisites.
 - `templates/commands/oak.issue-plan.md` – agent command template for running the workflow.
-

@@ -68,7 +68,7 @@ I've detected this constitution was created with an earlier version of open-agen
 prescriptive templates. The current version uses a decision-driven approach that:
 
 ✅ Tailors requirements to YOUR project needs
-✅ Captures architectural patterns (Vertical Slice, Clean, etc.)  
+✅ Captures architectural patterns (Vertical Slice, Clean, etc.)
 ✅ Documents error handling patterns (Result Pattern, exceptions)
 ✅ Aligns testing requirements with your actual infrastructure
 ✅ Makes requirements realistic and achievable
@@ -143,7 +143,7 @@ This suggests: Traditional Layered Architecture
 Questions:
 1. What architectural pattern do you actually use?
    a) Vertical Slice Architecture
-   b) Clean Architecture  
+   b) Clean Architecture
    c) Traditional Layered (detected)
    d) Modular Monolith
    e) Pragmatic/Mixed
@@ -186,7 +186,7 @@ Architecture: Traditional Layered
 - Organization: presentation, business, data
 
 Code Review: Standard
-Documentation: Standard  
+Documentation: Standard
 CI/CD: Standard
 
 These decisions will regenerate your constitution with:
@@ -526,28 +526,28 @@ Require an explicit explanation-before-change for every modification. If the use
 4. **If modernization opportunities were identified**, summarize them:
    ```text
    📊 MODERNIZATION OPPORTUNITIES IDENTIFIED
-   
+
    Your constitution is valid but could benefit from these modern features:
-   
+
    1. ⚠️  Architectural patterns not documented
       - Add: Specific architecture (Vertical Slice, Clean, Layered, etc.)
       - Add: Error handling pattern (Result Pattern, exceptions)
       - Impact: Better onboarding, clearer architectural philosophy
-   
+
    2. ⚠️  Testing strategy not explicit
       - Add: Testing philosophy (Comprehensive/Balanced/Pragmatic)
       - Add: Rationale for coverage target
       - Impact: Clearer expectations, better alignment with reality
-   
+
    3. ✅ Reality alignment checked
       - Coverage target adjusted to match actual capability
       - E2E requirement adjusted to reflect infrastructure
-   
+
    Next Steps for Modernization:
    - Option A: Full modernization via `/oak.constitution-validate` (select Option 2)
    - Option B: Incremental improvements via amendments
    - Option C: Continue with current constitution (defer modernization)
-   
+
    Recommendation: Option B (Incremental) - Add architectural decisions via amendment,
    keeping most of your current constitution intact.
    ```

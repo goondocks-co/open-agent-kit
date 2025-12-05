@@ -2,8 +2,8 @@
 description: Prepare implementation context for a tracked issue (issue/task/story).
 handoffs:
   - label: Validate Plan
-    agent: oak.issue-validate
-    prompt: Validate the plan for this this issue and its related isssues for accuracy and completeness. 
+    agent: oak.plan-validate
+    prompt: Validate the plan for this issue and its related issues for accuracy and completeness. 
 ---
 
 ## User Input
@@ -35,12 +35,95 @@ Treat the text supplied after the command as canonical context for this work ses
 
 1. Confirm provider + issue identifier (this becomes the **focus issue**).
 2. Fetch the focus issue and all its related items (parents, children, dependencies) for additional context.
-3. Create local artifacts under `oak/issue/{provider}/{focus-issue}/` with related items in `related/` subdirectory.
+3. Create local artifacts under `oak/plan/{name}/issue/` with related items in `related/` subdirectory.
 4. Prepare an implementation branch prefixed with the focus issue ID.
 5. Read the project constitution to understand standards and requirements.
 6. Explore the codebase to find relevant patterns and test strategies.
 7. Summarize what happened and propose next actions.
 8. Clarify that these utilities only scaffold context—the agent must still inspect the actual repo (via commands and tools you have access to) to learn idiomatic patterns and design the implementation.
+
+## Issue Fetching Strategy
+
+{% if has_background_agents %}
+### Parallel Issue Fetching with Background Agents
+
+**For issues with many related items, parallelize the fetching process.**
+
+When the focus issue has 3+ related items (parents, children, dependencies):
+
+**Parallel Fetch Workflow:**
+
+```text
+┌─────────────────────────────────────────────────────┐
+│ Issue Fetch Orchestrator                             │
+├─────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
+│  │  Focus   │  │  Parent  │  │  Child   │          │
+│  │  Issue   │  │  Issues  │  │  Issues  │          │
+│  └──────────┘  └──────────┘  └──────────┘          │
+│       │              │             │                │
+│       └──────────────┴─────────────┘                │
+│                    │                                │
+│          Merge Context Summaries                    │
+└─────────────────────────────────────────────────────┘
+```
+
+**Benefits of parallel fetching:**
+- Faster context gathering for complex issue hierarchies
+- Reduced wait time for large epics with many children
+- Parallel summary generation for related items
+
+**Subagent Fetch Template:**
+
+```markdown
+# Related Issue Fetch Assignment
+
+## Context
+- **Focus Issue:** <provider> #<focus-id>
+- **Output Directory:** oak/plan/<name>/issue/related/<id>/
+
+## Your Assignment
+
+Fetch and summarize related issue: **<provider> #<related-id>**
+
+**Relationship:** <parent|child|dependency|sibling>
+
+## Deliverables
+
+1. Fetch issue details via CLI: `oak plan issue --fetch-only <id>`
+2. Create summary.md with:
+   - Title, description, acceptance criteria
+   - Relationship context to focus issue
+   - Relevant implementation hints
+
+## Output
+
+Return summary and any blockers encountered.
+```
+
+{% else %}
+### Sequential Issue Fetching
+
+Fetch focus issue first, then related items in order of relevance (parents before children, dependencies before siblings).
+{% endif %}
+
+{% if has_native_web %}
+### Web-Enriched Issue Context
+
+When issues reference external resources:
+- Fetch linked documentation or specs
+- Check for related discussions or decisions
+- Validate external API or service references
+{% endif %}
+
+{% if has_mcp %}
+### MCP-Enhanced Fetching
+
+Leverage MCP tools for richer context:
+- **Issue provider tools**: Direct API access for detailed metadata
+- **Document fetch**: Retrieve linked documents and attachments
+- **Search tools**: Find related issues not explicitly linked
+{% endif %}
 
 **Understanding the Focus Issue:**
 
@@ -49,7 +132,7 @@ Treat the text supplied after the command as canonical context for this work ses
 - All hierarchical relationships (parents, children, siblings, dependencies) are fetched automatically as **context**.
 - The directory structure is always based on the **focus issue**, with related items stored in `related/{id}/` subdirectories.
 - The plan.md includes sections for Parent, Child, and Related Issues (Context) so you understand the full scope.
-- Example: If you pass Task #456 (which has parent Story #123), the directory is `oak/issue/ado/456/` with the parent story context at `oak/issue/ado/456/related/123/context-summary.md`.
+- Example: If you pass Task #456 (which has parent Story #123), the directory is `oak/plan/{name}/issue/` with the parent story context at `oak/plan/{name}/issue/related/123/summary.md`.
 
 ## Prerequisites
 
@@ -85,29 +168,29 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - To verify configuration yourself: Read `.oak/config.yaml` (e.g., `cat .oak/config.yaml`) or run `oak config issue-provider show`.
 
 3. **Execute Plan Command**
-   - Once prerequisites are met, run `oak issue plan <ISSUE_ID> [--provider <key>]` via the shell.
+   - Once prerequisites are met, run `oak plan issue <NAME> --id <ISSUE_ID> [--provider <key>]` via the shell.
    - The CLI will:
      - Validate prerequisites (constitution, issue provider config)
      - Fetch the issue from the provider
-     - Write artifacts to `oak/issue/<provider>/<issue>/`:
-       - `context-summary.md` - Agent-friendly summary with all issue details
+     - Write artifacts to `oak/plan/{name}/issue/`:
+       - `summary.md` - Agent-friendly summary with all issue details
        - `plan.md` - Implementation plan
      - Create/switch to an implementation branch prefixed with the issue ID
 
 4. **Verify Branch**
 
-   After running `oak issue plan`, verify you're on the correct implementation branch:
+   After running `oak plan issue`, verify you're on the correct implementation branch:
 
    ```bash
    # Check current branch
    git branch --show-current
    ```
 
-   The branch name is saved in the issue context and will be used consistently across all issue operations (plan/implement/validate). If you need to switch branches for any reason, make sure to return to the issue's branch before continuing.
+   The branch name is saved in the plan context and will be used consistently across all plan operations (issue/validate/implement). If you need to switch branches for any reason, make sure to return to the plan's branch before continuing.
 
 5. **Discover Artifacts**
 
-   After running `oak issue plan`, use `oak issue show <ISSUE_ID> [--provider <key>]` to discover:
+   After running `oak plan issue`, use `oak plan show <NAME>` to discover:
    - All artifact paths (context, plan, codebase)
    - The saved branch name for this issue
    - Related issues (parents, children, etc.)
@@ -115,7 +198,7 @@ Before executing this command, ensure these prerequisites are met **in order**:
 
    The CLI generates these key files:
 
-   **`context-summary.md`**
+   **`summary.md`**
    - Issue title, description, acceptance criteria from the provider
    - Labels/tags, assigned user, status, priority, effort
    - Type-specific fields (test steps for Test Cases, repro steps for Bugs)
@@ -134,8 +217,8 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - This becomes your implementation roadmap
 
 
-   **Related Items** (discovered via `oak issue show`)
-   - Run `oak issue show <ISSUE_ID>` to see all related issues with their paths
+   **Related Items** (discovered via `oak plan show`)
+   - Run `oak plan show <NAME>` to see all related issues with their paths
    - Context for parent issues (epics, stories above the focus)
    - Context for child issues (tasks, sub-tasks below the focus)
    - Context for other related items (dependencies, pull requests, etc.)
@@ -293,7 +376,7 @@ Before executing this command, ensure these prerequisites are met **in order**:
 
 10. **Create Detailed Implementation Plan with Structured Tasks**
 
-    Open and edit `oak/issue/<provider>/<issue>/plan.md` to fill in the details:
+    Open and edit `oak/plan/<name>/issue/plan.md` to fill in the details:
 
     **A. Plan Sections (Standard)**
 
@@ -425,12 +508,12 @@ Before executing this command, ensure these prerequisites are met **in order**:
 
     **Issue**: {provider} #{id} - {title}
     **Branch**: {branch_name}
-    **Plan Location**: oak/issue/{provider}/{id}/plan.md
+    **Plan Location**: oak/plan/{name}/issue/plan.md
 
     ### Artifacts Created
-    - ✅ context-summary.md - Agent-friendly issue summary with all details
+    - ✅ summary.md - Agent-friendly issue summary with all details
     - ✅ plan.md - Implementation plan with structured task phases
-    - ✅ related/{id}/context-summary.md - {count} related items for context
+    - ✅ related/{id}/summary.md - {count} related items for context
 
     ### Issue Context Leveraged
     - **Acceptance Criteria**: {count} criteria mapped to implementation tasks
@@ -460,8 +543,8 @@ Before executing this command, ensure these prerequisites are met **in order**:
 
     ### Next Steps
     1. Review plan.md to confirm approach and tasks
-    2. Validate plan: /oak.issue-validate
-    3. Once validated, implement: /oak.issue-implement
+    2. Validate plan: /oak.plan-validate
+    3. Once validated, implement: /oak.plan-implement
     ```
 
     **Command ends here**. The user should review the plan before proceeding to validation or implementation.

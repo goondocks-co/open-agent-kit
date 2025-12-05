@@ -10,6 +10,59 @@ import yaml
 from pydantic import BaseModel, Field
 
 
+class CreatedFile(BaseModel):
+    """A file created by oak.
+
+    Tracks files we create from scratch so we can safely remove them.
+    The hash allows us to detect if the user modified the file.
+    """
+
+    path: str = Field(description="Relative path from project root")
+    hash: str = Field(description="SHA256 hash of file contents when created")
+    created_at: str = Field(description="ISO timestamp when file was created")
+
+
+class ModifiedFile(BaseModel):
+    """A file modified by oak.
+
+    Tracks files that existed before oak but we appended to.
+    We don't auto-remove these - just inform the user.
+    """
+
+    path: str = Field(description="Relative path from project root")
+    modification_type: str = Field(
+        default="appended",
+        description="Type of modification (appended, replaced)",
+    )
+    marker: str = Field(
+        default="## Project Constitution",
+        description="Marker text that identifies our additions",
+    )
+
+
+class ManagedAssets(BaseModel):
+    """Assets managed by oak installation.
+
+    Tracks what oak created vs modified so we can:
+    - Safely remove files we created (if unchanged)
+    - Inform users about files we modified
+    - Clean up empty directories
+    """
+
+    directories: list[str] = Field(
+        default_factory=list,
+        description="Directories created by oak (relative paths)",
+    )
+    created_files: list[CreatedFile] = Field(
+        default_factory=list,
+        description="Files created by oak",
+    )
+    modified_files: list[ModifiedFile] = Field(
+        default_factory=list,
+        description="Files modified by oak (existed before)",
+    )
+
+
 class OakState(BaseModel):
     """Internal state for OAK installation.
 
@@ -20,6 +73,10 @@ class OakState(BaseModel):
     migrations: list[str] = Field(
         default_factory=list,
         description="Completed migration IDs",
+    )
+    managed_assets: ManagedAssets = Field(
+        default_factory=ManagedAssets,
+        description="Assets created or modified by oak",
     )
 
     @classmethod

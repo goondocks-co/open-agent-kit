@@ -209,11 +209,17 @@ def test_validate_future_ratification_date() -> None:
 
 
 def test_validate_non_declarative_language(valid_constitution: ConstitutionDocument) -> None:
-    """Test validation detects non-declarative language."""
+    """Test validation detects non-declarative language.
+
+    Note: Validation is case-sensitive to avoid flagging RFC 2119 keywords
+    (MUST, SHOULD, MAY) which are uppercase. We only flag lowercase informal
+    usage like "should", "could", "maybe".
+    """
     valid_constitution.sections.append(
         ConstitutionSection(
             title="Soft Requirements",
-            content="Code should be tested\nYou could add comments\nMaybe use types",
+            # Use lowercase to ensure detection (uppercase SHOULD/MAY are valid RFC 2119)
+            content="Code should be tested\nYou could add comments\nThis maybe needs types",
             order=10,
         )
     )
@@ -249,6 +255,33 @@ def test_validate_non_declarative_with_line_numbers(
     ]
     assert len(language_issues) == 1
     assert language_issues[0].line_number == 2
+
+
+def test_rfc_2119_keywords_not_flagged(valid_constitution: ConstitutionDocument) -> None:
+    """Test that uppercase RFC 2119 keywords are NOT flagged as non-declarative.
+
+    RFC 2119 defines MUST, SHOULD, MAY as valid requirement keywords.
+    These should NOT be flagged when used in uppercase.
+    """
+    valid_constitution.sections.append(
+        ConstitutionSection(
+            title="Requirements",
+            content=(
+                "All code MUST pass tests.\n"
+                "Documentation SHOULD be comprehensive.\n"
+                "Edge cases MAY be handled gracefully.\n"
+                "Code MUST NOT contain secrets."
+            ),
+            order=10,
+        )
+    )
+    service = ValidationService()
+    result = service.validate(valid_constitution)
+    language_issues = [
+        issue for issue in result.issues if issue.category == ValidationCategory.LANGUAGE
+    ]
+    # No language issues should be flagged for uppercase RFC 2119 keywords
+    assert len(language_issues) == 0
 
 
 def test_validation_categorizes_by_priority() -> None:

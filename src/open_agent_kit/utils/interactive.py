@@ -353,7 +353,7 @@ def prompt(
                 return default
 
             if validator and not validator(response):
-                from open_agent_kit.constants import ERROR_MESSAGES
+                from open_agent_kit.config.messages import ERROR_MESSAGES
 
                 msg = error_message or ERROR_MESSAGES["invalid_input"]
                 console.print(f"[red]✗[/red] {msg}")

@@ -5,14 +5,9 @@ from pathlib import Path
 
 import yaml
 
-from open_agent_kit.constants import (
-    AGENT_CONFIG,
-    AGENT_INSTRUCTION_PATTERNS,
-    CONFIG_FILE,
-    OAK_DIR,
-    SUPPORTED_AGENTS,
-)
+from open_agent_kit.config.paths import CONFIG_FILE, OAK_DIR
 from open_agent_kit.models.constitution import ConstitutionDocument
+from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.utils import ensure_dir, file_exists, read_file, write_file
@@ -29,6 +24,7 @@ class AgentFileService:
         """
         self.project_root = project_root or Path.cwd()
         self.config_service = ConfigService(project_root)
+        self.agent_service = AgentService(project_root)
         self.template_service = TemplateService(project_root=project_root)
         self.config_path = self.project_root / OAK_DIR / CONFIG_FILE
 
@@ -51,16 +47,16 @@ class AgentFileService:
                 # If config can't be read, fall back to directory detection
                 pass
 
-        # Check for agent directories
-        for agent in SUPPORTED_AGENTS:
-            if agent == "none":
-                continue
-
-            if agent in AGENT_CONFIG:
-                agent_folder = str(AGENT_CONFIG[agent]["folder"])
+        # Check for agent directories using manifests
+        for agent in self.agent_service.list_available_agents():
+            try:
+                manifest = self.agent_service.get_agent_manifest(agent)
+                agent_folder = manifest.installation.folder
                 agent_dir = self.project_root / agent_folder
                 if agent_dir.exists() and agent not in installed_agents:
                     installed_agents.append(agent)
+            except ValueError:
+                continue
 
         return list(set(installed_agents))  # Remove duplicates
 
@@ -99,13 +95,12 @@ class AgentFileService:
         generated_files: dict[str, Path] = {}
 
         for agent in agents:
-            if agent not in AGENT_CONFIG:
-                continue
-
             try:
+                # Validate agent exists in manifests
+                self.agent_service.get_agent_manifest(agent)
                 file_path = self._generate_agent_file(agent, constitution)
                 generated_files[agent] = file_path
-            except Exception:
+            except (ValueError, Exception):
                 # Skip agents that fail to generate
                 continue
 
@@ -143,8 +138,8 @@ class AgentFileService:
         Raises:
             ValueError: If agent file path cannot be determined
         """
-        # Get agent configuration
-        agent_config = AGENT_CONFIG[agent]
+        # Get agent manifest
+        manifest = self.agent_service.get_agent_manifest(agent)
         file_path = self._get_agent_file_path(agent)
 
         if not file_path:
@@ -154,7 +149,7 @@ class AgentFileService:
         content = self.template_service.render_template(
             "constitution/agent_instructions.md",
             {
-                "agent_name": agent_config["name"],
+                "agent_name": manifest.display_name,
                 "project_name": constitution.metadata.project_name,
                 "constitution_path": "oak/constitution.md",
                 "version": constitution.metadata.version,
@@ -178,24 +173,12 @@ class AgentFileService:
             agent: Agent name
 
         Returns:
-            File path or None if pattern not found
+            File path or None if not defined
         """
-        if agent not in AGENT_CONFIG:
+        try:
+            return self.agent_service.get_agent_instruction_file(agent)
+        except ValueError:
             return None
-
-        pattern = AGENT_INSTRUCTION_PATTERNS.get(agent)
-        if not pattern:
-            return None
-
-        # Replace {agent_folder} template variable if present
-        agent_config = AGENT_CONFIG[agent]
-        if "{agent_folder}" in pattern:
-            file_path_str = pattern.format(agent_folder=agent_config["folder"])
-        else:
-            # Pattern is absolute (like "AGENTS.md" or ".cursorrules")
-            file_path_str = pattern
-
-        return self.project_root / file_path_str
 
     @classmethod
     def from_config(cls, project_root: Path | None = None) -> "AgentFileService":

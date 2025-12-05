@@ -1,89 +1,88 @@
 {
   "_comment": "Example decision context for constitution generation",
   "_usage": "Pass this file to: oak constitution create-file --context-file decisions.json",
-  
+
   "testing_strategy": "balanced",
   "_testing_strategy_options": ["comprehensive", "balanced", "pragmatic", "custom"],
   "_testing_strategy_description": "comprehensive=TDD+high coverage, balanced=test-after OK+moderate coverage, pragmatic=essential tests only",
-  
+
   "coverage_target": 70,
   "_coverage_target_description": "Percentage (40-100) or null for flexible",
-  
+
   "coverage_strict": false,
   "_coverage_strict_description": "true=blocks CI/CD, false=advisory only",
-  
+
   "has_e2e_infrastructure": false,
   "_has_e2e_infrastructure_description": "Do you have Playwright/Cypress/Selenium set up?",
-  
+
   "e2e_planned": true,
   "_e2e_planned_description": "Are E2E tests planned for the future?",
-  
+
   "critical_integration_points": ["authentication", "payment processing"],
   "_critical_integration_points_description": "List of integration points requiring tests (array of strings)",
-  
+
   "tdd_required": false,
   "_tdd_required_description": "Is test-first (TDD) required?",
-  
+
   "testing_rationale": "Balanced approach for production application without over-engineering",
   "_testing_rationale_description": "Brief explanation of why this testing strategy fits the project",
-  
+
   "code_review_policy": "standard",
   "_code_review_policy_options": ["strict", "standard", "flexible", "custom"],
   "_code_review_policy_description": "strict=no exceptions, standard=hotfixes allowed, flexible=optional reviews",
-  
+
   "num_reviewers": 1,
   "_num_reviewers_description": "Number of required approvals (usually 1 or 2)",
-  
+
   "reviewer_qualifications": null,
   "_reviewer_qualifications_description": "Optional: e.g., 'senior engineer' or 'domain expert'",
-  
+
   "hotfix_definition": "Production-critical bugs affecting users",
   "_hotfix_definition_description": "When can review process be bypassed? (for standard policy)",
-  
+
   "documentation_level": "standard",
   "_documentation_level_options": ["extensive", "standard", "minimal", "custom"],
   "_documentation_level_description": "extensive=all APIs+ADRs, standard=public APIs+README, minimal=README only",
-  
+
   "adr_required": true,
   "_adr_required_description": "Are Architecture Decision Records required?",
-  
+
   "docstring_style": "google",
   "_docstring_style_options": ["google", "numpy", "sphinx", "other"],
   "_docstring_style_description": "Preferred docstring format",
-  
+
   "ci_enforcement": "standard",
   "_ci_enforcement_options": ["full", "standard", "basic", "none"],
   "_ci_enforcement_description": "full=all checks blocking, standard=linting+tests blocking, basic=advisory, none=not yet",
-  
+
   "required_checks": ["tests", "linting", "coverage"],
   "_required_checks_description": "Array of required CI checks: tests, linting, type-checking, security, coverage",
-  
+
   "ci_platform": "GitHub Actions",
   "_ci_platform_description": "Optional: CI/CD platform name",
-  
+
   "architectural_pattern": "vertical_slice",
   "_architectural_pattern_options": ["vertical_slice", "clean_architecture", "layered", "modular_monolith", "pragmatic", "custom"],
   "_architectural_pattern_description": "How is your code organized? See decision_points.yaml for details on each",
-  
+
   "error_handling_pattern": "result_pattern",
   "_error_handling_pattern_options": ["result_pattern", "exceptions", "mixed", "other"],
   "_error_handling_pattern_description": "How do you handle errors? Result<T,Error> vs exceptions",
-  
+
   "dependency_injection": true,
   "_dependency_injection_description": "Is dependency injection required?",
-  
+
   "domain_events": true,
   "_domain_events_description": "Do you use domain events for decoupling?",
-  
+
   "feature_organization": "features/{feature-name}/",
   "_feature_organization_description": "For vertical_slice or modular_monolith: how are features/modules organized?",
-  
+
   "layer_organization": null,
   "_layer_organization_description": "For clean_architecture or layered: what are your layers? (e.g., 'domain, application, infrastructure, presentation')",
-  
+
   "coding_principles": ["SOLID", "DRY", "YAGNI"],
   "_coding_principles_description": "Key coding principles your team follows (array of strings)",
-  
+
   "architectural_rationale": "Vertical slices enable rapid feature development with clear boundaries and minimal coupling"
 }
-

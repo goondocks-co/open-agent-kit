@@ -259,7 +259,7 @@ def test_execute_upgrade_updates_version_when_outdated(initialized_project: Path
 
 def test_detects_rfc_templates_needing_upgrade(initialized_project: Path) -> None:
     """Test that upgrade detects RFC templates that need updating."""
-    from open_agent_kit.constants import OAK_DIR
+    from open_agent_kit.config.paths import OAK_DIR
 
     # Templates directory exists from initialization
     templates_dir = initialized_project / OAK_DIR / "features" / "rfc" / "templates"
@@ -285,7 +285,7 @@ def test_detects_rfc_templates_needing_upgrade(initialized_project: Path) -> Non
 
 def test_detects_constitution_templates_needing_upgrade(initialized_project: Path) -> None:
     """Test that upgrade detects constitution templates that need updating."""
-    from open_agent_kit.constants import OAK_DIR
+    from open_agent_kit.config.paths import OAK_DIR
 
     # Templates directory exists from initialization
     templates_dir = initialized_project / OAK_DIR / "features" / "constitution" / "templates"
@@ -306,7 +306,7 @@ def test_detects_constitution_templates_needing_upgrade(initialized_project: Pat
 
 def test_upgrade_only_checks_known_template_categories(initialized_project: Path) -> None:
     """Test that upgrade only checks RFC and constitution templates, not all .md files."""
-    from open_agent_kit.constants import OAK_DIR
+    from open_agent_kit.config.paths import OAK_DIR
 
     # Create a random .md file that shouldn't be detected
     (initialized_project / "README.md").write_text("# Random file", encoding="utf-8")

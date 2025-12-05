@@ -1,17 +1,18 @@
 """Feature service for managing OAK features."""
 
+import re
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
-from open_agent_kit.constants import (
-    FEATURE_CONFIG,
-    FEATURE_MANIFEST_FILE,
-    FEATURES_DIR,
-    SUPPORTED_FEATURES,
-)
+from open_agent_kit.config.paths import FEATURE_MANIFEST_FILE, FEATURES_DIR
+from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
 from open_agent_kit.models.feature import FeatureManifest
 from open_agent_kit.services.config_service import ConfigService
+from open_agent_kit.services.state_service import StateService
 from open_agent_kit.utils import ensure_dir, read_file, write_file
+
+# Regex pattern to detect Jinja2 template syntax
+JINJA2_PATTERN = re.compile(r"\{\{|\{%")
 
 
 class FeatureService:
@@ -28,9 +29,50 @@ class FeatureService:
         """
         self.project_root = project_root or Path.cwd()
         self.config_service = ConfigService(project_root)
+        self.state_service = StateService(project_root)
 
         # Package features directory (where feature manifests/templates are stored)
         self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+
+    def _has_jinja2_syntax(self, content: str) -> bool:
+        """Check if content contains Jinja2 template syntax.
+
+        Args:
+            content: String content to check
+
+        Returns:
+            True if content contains {{ or {% syntax
+        """
+        return bool(JINJA2_PATTERN.search(content))
+
+    def _render_command_for_agent(self, content: str, agent_type: str) -> str:
+        """Render command content with agent-specific context.
+
+        If content contains Jinja2 syntax, renders it with agent context.
+        Otherwise returns content unchanged.
+
+        Args:
+            content: Raw command content (may contain Jinja2 syntax)
+            agent_type: Agent type (e.g., 'claude', 'cursor')
+
+        Returns:
+            Rendered content with agent-specific values
+        """
+        if not self._has_jinja2_syntax(content):
+            return content
+
+        # Import here to avoid circular dependency
+        from open_agent_kit.services.agent_service import AgentService
+        from open_agent_kit.services.template_service import TemplateService
+
+        agent_service = AgentService(self.project_root)
+        template_service = TemplateService(project_root=self.project_root)
+
+        # Get agent context for rendering
+        context = agent_service.get_agent_context(agent_type)
+
+        # Render template with agent context
+        return template_service.render_string(content, context)
 
     def list_available_features(self) -> list[FeatureManifest]:
         """List all available features from package.
@@ -264,11 +306,20 @@ class FeatureService:
 
                 content = read_file(template_file)
 
+                # Render with agent-specific context if command uses Jinja2 syntax
+                rendered_content = self._render_command_for_agent(content, agent_type)
+
                 # Write to agent's commands directory with proper extension
                 filename = agent_service.get_command_filename(agent_type, command_name)
                 file_path = agent_commands_dir / filename
 
-                write_file(file_path, content)
+                write_file(file_path, rendered_content)
+
+                # Record the created file for smart removal later
+                self.state_service.record_created_file(file_path, rendered_content)
+
+                # Record the directory if this is the first file we're adding to it
+                self.state_service.record_created_directory(agent_commands_dir)
 
                 if command_name not in results["commands_installed"]:
                     results["commands_installed"].append(command_name)
@@ -370,6 +421,49 @@ class FeatureService:
         if feature_name in config.features.enabled:
             config.features.enabled.remove(feature_name)
             self.config_service.save_config(config)
+
+        return results
+
+    def refresh_features(self) -> dict[str, Any]:
+        """Refresh all installed features by re-rendering with current config.
+
+        This re-renders command templates using current agent_capabilities,
+        allowing users to update capabilities in config.yaml and apply changes
+        without a package upgrade.
+
+        Returns:
+            Dictionary with refresh results:
+            - features_refreshed: list of feature names
+            - commands_rendered: dict of feature -> list of commands
+            - agents: list of agents updated
+        """
+        results: dict[str, Any] = {
+            "features_refreshed": [],
+            "commands_rendered": {},
+            "agents": [],
+        }
+
+        # Get installed features and configured agents
+        config = self.config_service.load_config()
+        installed_features = config.features.enabled
+        agents = config.agents
+
+        if not agents:
+            return results
+
+        results["agents"] = agents
+
+        # Re-render each feature for all agents
+        for feature_name in installed_features:
+            manifest = self.get_feature_manifest(feature_name)
+            if not manifest:
+                continue
+
+            feature_results = self.install_feature(feature_name, agents)
+            results["features_refreshed"].append(feature_name)
+            results["commands_rendered"][feature_name] = feature_results.get(
+                "commands_installed", []
+            )
 
         return results
 

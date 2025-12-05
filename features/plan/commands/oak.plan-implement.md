@@ -1,5 +1,5 @@
 ---
-description: Prepare implementation context for a tracked issue (issue/task/story).
+description: Implement a plan (research-based or issue-based) with progress tracking and verification.
 ---
 
 ## User Input
@@ -49,44 +49,128 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - The constitution is foundational - implementation must follow its standards.
    - **This is checked first** by the CLI before any other prerequisites.
 
-2. **Issue Plan Exists** (REQUIRED): The user must have already created an issue plan using `/oak.issue-plan`.
-   - If no plan exists, **STOP** and instruct: "Please run `/oak.issue-plan <ISSUE_ID>` first to create an implementation plan."
+2. **Plan Exists** (REQUIRED): The user must have already created a plan using `/oak.plan-create` or `/oak.plan-issue`.
+   - If no plan exists, **STOP** and instruct: "Please run `/oak.plan-create` or `/oak.plan-issue` first to create a plan."
 
-3. **Issue ID** (REQUIRED): You must know which issue to implement.
-   - If the user hasn't provided one, ask: "Which issue should I implement? (e.g., ADO work item #12345 or GitHub issue #42)"
-   - The CLI can infer from the current branch name, but confirm with the user that it's correct.
+3. **Plan Name** (REQUIRED): You must know which plan to implement.
+   - If the user hasn't provided one, infer from the current branch name (`plan/<name>` pattern)
+   - If inferrable from branch, proceed directly
+   - Otherwise ask: "Which plan should I implement?"
 
 ## Responsibilities
 
-1. Confirm provider + issue identifier (the **focus issue** from planning).
-2. Load implementation context from spec artifacts (plan.md, context.json, validation.md if exists).
+1. Confirm plan name (from arguments or current branch).
+2. Load implementation context from plan artifacts (plan.md, summary.md if issue-based, research/ if research-based, validation.md if exists).
 3. Explore the codebase to find patterns to follow.
 4. Execute the implementation with tests.
 5. Keep plan updated with any deviations or new findings.
 6. Validate implementation meets definition of done.
 
-**Understanding the Focus Issue:**
+## Task Execution Strategy
 
-- This command implements the **focus issue** that was planned with `/oak.issue-plan`.
-- All artifacts are under `oak/issue/{provider}/{focus-issue}/` (context.json, context-summary.md, plan.md).
-- Related items (parents, children, dependencies) are available in `related/{id}/context.json` for additional context.
-- Review the plan.md sections for Parent/Child/Related Issues (Context) to understand scope and relationships.
-- The branch is named after the focus issue, and all work should satisfy its acceptance criteria.
+{% if has_background_agents %}
+### Parallel Execution with Background Agents
+
+**You can orchestrate multiple background agents for efficient parallel implementation.**
+
+When implementing plans with multiple independent tasks, consider delegating to specialized agents:
+
+**When to parallelize:**
+- 3+ independent tasks with no shared dependencies
+- Tasks modify different files/modules
+- Clear separation of concerns (e.g., feature vs tests vs docs)
+- Time efficiency is important
+
+**When to execute sequentially:**
+- Tasks have dependencies on each other
+- Tasks modify the same files
+- Earlier work informs later implementation
+- Complex integration requirements
+
+**Orchestration Roles:**
+
+| Agent Type | Responsibility | Best For |
+|------------|----------------|----------|
+| **Feature Agent** | Core implementation | Business logic, services, models |
+| **Test Agent** | Test creation | Unit tests, integration tests |
+| **Docs Agent** | Documentation | README updates, API docs, comments |
+| **Refactor Agent** | Code cleanup | Restructuring, pattern alignment |
+
+**Orchestration Manifest:**
+
+Create `oak/plan/<plan-name>/implementation-manifest.yml` to track parallel execution:
+
+```yaml
+version: 1.0
+plan_name: "<plan-name>"
+execution_mode: "parallel"
+started_at: "<timestamp>"
+
+task_assignments:
+  - task_id: "T1"
+    agent_type: "feature"
+    status: "in_progress"  # pending, in_progress, completed, failed
+    files_modified: []
+    started_at: "<timestamp>"
+
+  - task_id: "T2"
+    agent_type: "test"
+    status: "pending"
+    depends_on: ["T1"]
+    files_modified: []
+```
+
+{% else %}
+### Sequential Execution
+
+Execute tasks one at a time in dependency order. This ensures:
+- Earlier work informs later implementation
+- No file conflicts between tasks
+- Easier debugging if issues arise
+{% endif %}
+
+{% if has_native_web %}
+### Web Research During Implementation
+
+When encountering unfamiliar APIs or patterns during implementation:
+- Search for official documentation and examples
+- Look for common implementation patterns
+- Check for known issues or gotchas
+- Find recent best practices (2024-2025)
+{% endif %}
+
+{% if has_mcp %}
+### MCP Tool Integration
+
+Leverage available MCP tools during implementation:
+- **Code quality tools**: Linters, formatters, type checkers
+- **Testing tools**: Test runners, coverage analyzers
+- **Documentation tools**: Doc generators, API spec validators
+- **Search tools**: Code search, web fetch for docs
+{% endif %}
+
+**Understanding Plan Implementation:**
+
+- This command implements a plan created with `/oak.plan-create` (research-first) or `/oak.plan-issue` (issue-first).
+- For issue-based plans: Artifacts are under `oak/plan/{name}/issue/` (summary.md, plan.md, related items).
+- For research-based plans: Artifacts are under `oak/plan/{name}/` (plan.md, research/, tasks.md).
+- Review the plan sections to understand scope, goals, and context.
+- The branch is named after the plan (`plan/<name>`), and all work should satisfy the plan's goals or acceptance criteria.
 
 ## Workflow
 
 **IMPORTANT: Follow these steps sequentially. Do not skip to implementation without completing preparation steps 1-8.**
 
-1. **Check for Stale Context (NEW)**
+1. **Check for Stale Context (For Issue-Based Plans)**
 
-   If issue was fetched more than 1 day ago, consider refreshing:
+   If working with an issue-based plan and the issue was fetched more than 1 day ago, consider refreshing:
 
    ```bash
-   oak issue refresh  # Refreshes current issue
-   oak issue refresh <ISSUE_ID>  # Refreshes specific item
+   oak plan refresh  # Refreshes current plan's issue data
+   oak plan refresh <NAME>  # Refreshes specific plan
    ```
 
-   This updates `context.json` and `context-summary.md` with latest data from the provider while preserving all your local work (plan.md, notes.md, etc.).
+   This updates `summary.md` with latest data from the provider while preserving all your local work (plan.md, notes.md, etc.).
 
    **Refresh when:**
    - Issue description/requirements may have changed
@@ -95,7 +179,8 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - Team made updates you haven't seen
 
    **Skip refresh when:**
-   - Just ran `issue plan` today
+   - Just ran `plan issue` today
+   - Working with research-based plan (no issue provider)
    - Confident issue hasn't changed
    - No network access to provider
 
@@ -104,15 +189,15 @@ Before executing this command, ensure these prerequisites are met **in order**:
    First, report what you're about to do and run the CLI command:
 
    ```text
-   I'll implement issue {ISSUE_ID} from plan.md.
+   I'll implement plan {NAME} from plan.md.
 
-   Running: oak issue implement [options]
+   Running: oak plan implement [options]
    ```
 
    The CLI will output:
    ```text
-   ✓ Plan exists: oak/issue/{provider}/{issue}/plan.md
-   ✓ Context loaded: oak/issue/{provider}/{issue}/context.json
+   ✓ Plan exists: oak/plan/{name}/plan.md
+   ✓ Context loaded (if issue-based): oak/plan/{name}/issue/summary.md
    Ready to implement!
    ```
    
@@ -121,11 +206,13 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - **If user provided NO arguments**: Ask if they want you to proceed with full implementation or just review context
    - **Default**: When in doubt, continue - they invoked this command to implement, not just view context
 
-3. **Review Spec Artifacts**
+3. **Review Plan Artifacts**
 
-   Open and read the spec artifacts in `oak/issue/<provider>/<issue>/`:
+   Open and read the plan artifacts:
 
-   **`context-summary.md`** - Agent-friendly issue summary:
+   **For Issue-Based Plans** (`oak/plan/{name}/issue/`):
+
+   **`summary.md`** - Agent-friendly issue summary:
    - Clean, readable format optimized for LLM consumption
    - Type-specific fields extracted (test steps for Test Cases, repro steps for Bugs, etc.)
    - HTML cleaned from description
@@ -133,6 +220,17 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - All issue details: title, description, acceptance criteria, tags, assignee, priority, effort
    - Related issues with clear relationship types
    - **Use this as your primary source** for all issue information
+
+   **For Research-Based Plans** (`oak/plan/{name}/`):
+
+   **`research/*.md`** - Research findings:
+   - Topic-specific research results
+   - Recommendations and trade-offs
+   - Source references
+
+   **`tasks.md`** - Generated tasks (if exists):
+   - Structured task breakdown
+   - Dependencies and priorities
 
    **`plan.md`** - Implementation plan (validated and ready):
    - Objectives and success criteria
@@ -151,7 +249,7 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - Any skipped issues to be aware of
    - Quality checks performed
 
-   **`related/{id}/context-summary.md`** (if exists) - Related issues:
+   **`issue/related/{id}/summary.md`** (if exists, for issue-based plans) - Related issues:
    - Parent items (stories, epics) for broader context
    - Child items (sub-tasks) if breaking down work
    - Dependencies or linked items
@@ -276,7 +374,118 @@ Before executing this command, ensure these prerequisites are met **in order**:
 
 9. **Execute Implementation with Progress Tracking**
 
-   **NOW you can begin implementation.** For each task in plan.md:
+   **NOW you can begin implementation.**
+
+{% if has_background_agents %}
+   **Parallel Execution Mode:**
+
+   For plans with 3+ independent tasks, consider parallel execution:
+
+   **Step 9a: Identify Parallelizable Tasks**
+
+   Analyze task dependencies and group into execution waves:
+
+   ```text
+   Wave 1 (parallel): T1, T2, T3  [no dependencies]
+   Wave 2 (parallel): T4, T5      [depend on Wave 1]
+   Wave 3 (sequential): T6        [depends on T4 + T5, needs integration]
+   ```
+
+   **Step 9b: Create Subagent Delegation**
+
+   For each parallelizable task, prepare a delegation prompt:
+
+   ```markdown
+   # Implementation Assignment: <Task Title>
+
+   ## Context
+   - **Plan:** oak/plan/<plan-name>/plan.md
+   - **Constitution:** oak/constitution.md
+   - **Branch:** <current-branch>
+
+   ## Your Task
+
+   **ID:** <Task ID>
+   **Title:** <Task Title>
+   **Type:** <feature|test|docs|refactor>
+
+   **Description:**
+   <Full task description from plan.md>
+
+   **Acceptance Criteria:**
+   - [ ] <Criterion 1>
+   - [ ] <Criterion 2>
+
+   **Files to Modify:**
+   - <file-path-1>
+   - <file-path-2>
+
+   ## Patterns to Follow
+
+   Reference these existing implementations:
+   - <similar-file-1>: <why it's relevant>
+   - <similar-file-2>: <pattern to copy>
+
+   ## Constitution Requirements
+
+   Apply these rules from constitution:
+   - <Relevant rule 1>
+   - <Relevant rule 2>
+
+   ## Deliverables
+
+   1. Implement the task following patterns above
+   2. Write tests per constitution requirements
+   3. Run linters and fix any issues
+   4. Report: files modified, tests added, any blockers
+
+   ## Constraints
+
+   - Do NOT modify files outside your assignment
+   - Do NOT commit changes (orchestrator handles this)
+   - If blocked, report and wait for guidance
+   ```
+
+   **Step 9c: Launch and Monitor**
+
+   ```text
+   Launching parallel implementation:
+
+   ┌─────────────────────────────────────────────────────┐
+   │ Wave 1: Independent Tasks                           │
+   ├─────────────────────────────────────────────────────┤
+   │  🔄 Agent 1: T1 - Implement UserService.validate()  │
+   │  🔄 Agent 2: T2 - Add unit tests for validation     │
+   │  🔄 Agent 3: T3 - Update API documentation          │
+   └─────────────────────────────────────────────────────┘
+
+   Monitoring progress...
+   ```
+
+   **Step 9d: Consolidate Results**
+
+   As agents complete:
+   1. Review modified files for conflicts
+   2. Run full test suite to catch integration issues
+   3. Merge changes and update manifest
+   4. Proceed to next wave when all agents complete
+
+   ```yaml
+   # Update implementation-manifest.yml
+   task_assignments:
+     - task_id: "T1"
+       status: "completed"
+       files_modified:
+         - src/services/user_service.py
+         - tests/test_user_service.py
+       completed_at: "<timestamp>"
+   ```
+
+{% else %}
+   **Sequential Execution Mode:**
+
+{% endif %}
+   For each task in plan.md:
 
     **a) Report starting the task:**
     ```text

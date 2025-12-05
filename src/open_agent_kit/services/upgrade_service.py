@@ -1,14 +1,11 @@
 """Upgrade service for updating templates and commands."""
 
+import re
 from pathlib import Path
 from typing import TypedDict, cast
 
-from open_agent_kit.constants import (
-    FEATURE_CONFIG,
-    FEATURES_DIR,
-    OAK_DIR,
-    SUPPORTED_FEATURES,
-)
+from open_agent_kit.config.paths import FEATURES_DIR, OAK_DIR
+from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
 from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.ide_settings_service import IDESettingsService
@@ -20,6 +17,9 @@ from open_agent_kit.utils import (
     read_file,
     write_file,
 )
+
+# Regex pattern to detect Jinja2 template syntax
+JINJA2_PATTERN = re.compile(r"\{\{|\{%")
 
 
 class UpgradeCategoryResults(TypedDict):
@@ -53,6 +53,39 @@ class UpgradeService:
 
         # Package features directory (source of truth for commands)
         self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+
+    def _has_jinja2_syntax(self, content: str) -> bool:
+        """Check if content contains Jinja2 template syntax.
+
+        Args:
+            content: String content to check
+
+        Returns:
+            True if content contains {{ or {% syntax
+        """
+        return bool(JINJA2_PATTERN.search(content))
+
+    def _render_command_for_agent(self, content: str, agent_type: str) -> str:
+        """Render command content with agent-specific context.
+
+        If content contains Jinja2 syntax, renders it with agent context.
+        Otherwise returns content unchanged.
+
+        Args:
+            content: Raw command content (may contain Jinja2 syntax)
+            agent_type: Agent type (e.g., 'claude', 'cursor')
+
+        Returns:
+            Rendered content with agent-specific values
+        """
+        if not self._has_jinja2_syntax(content):
+            return content
+
+        # Get agent context for rendering
+        context = self.agent_service.get_agent_context(agent_type)
+
+        # Render template with agent context
+        return self.template_service.render_string(content, context)
 
     def is_initialized(self) -> bool:
         """Check if open-agent-kit is initialized.
@@ -281,7 +314,12 @@ class UpgradeService:
 
                 # Check if needs upgrade (file exists and content differs) OR is new
                 if installed_file.exists():
-                    needs_upgrade = self._files_differ(package_template, installed_file)
+                    # Compare rendered package template with installed file
+                    # (installed files are rendered during init, so we must render
+                    # the package template before comparing to avoid false positives)
+                    needs_upgrade = self._command_needs_upgrade(
+                        package_template, installed_file, agent
+                    )
                     if needs_upgrade:
                         upgradeable.append(
                             {
@@ -374,15 +412,19 @@ class UpgradeService:
         """
         package_path = cmd["package_path"]
         installed_path = cmd["installed_path"]
+        agent_type = cmd["agent"]
 
         # Read package template
         content = read_file(package_path)
 
+        # Render with agent-specific context (same as during init)
+        rendered_content = self._render_command_for_agent(content, agent_type)
+
         # Ensure directory exists
         ensure_dir(installed_path.parent)
 
-        # Write to installed location
-        write_file(installed_path, content)
+        # Write rendered content to installed location
+        write_file(installed_path, rendered_content)
 
     def _upgrade_rfc_template(self, template_name: str) -> None:
         """Upgrade a single template.
@@ -436,6 +478,35 @@ class UpgradeService:
             content1 = read_file(file1)
             content2 = read_file(file2)
             return content1 != content2
+        except Exception:
+            return False
+
+    def _command_needs_upgrade(
+        self, package_path: Path, installed_path: Path, agent_type: str
+    ) -> bool:
+        """Check if a command needs upgrading by comparing rendered content.
+
+        Unlike _files_differ(), this method renders the package template with
+        agent-specific context before comparing, since installed files are
+        rendered during init.
+
+        Args:
+            package_path: Path to package template file
+            installed_path: Path to installed command file
+            agent_type: Agent type for rendering context
+
+        Returns:
+            True if command needs upgrade (rendered content differs)
+        """
+        try:
+            # Read package template and render with agent context
+            package_content = read_file(package_path)
+            rendered_package = self._render_command_for_agent(package_content, agent_type)
+
+            # Read installed file (already rendered)
+            installed_content = read_file(installed_path)
+
+            return rendered_package != installed_content
         except Exception:
             return False
 

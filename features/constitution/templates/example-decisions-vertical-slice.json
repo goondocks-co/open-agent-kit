@@ -1,7 +1,7 @@
 {
   "_description": "Example decision context for Vertical Slice Architecture with Result Pattern",
   "_usage": "This represents a typical feature-driven project setup with modern architecture patterns",
-  
+
   "testing_strategy": "balanced",
   "coverage_target": 75,
   "coverage_strict": true,
@@ -10,20 +10,20 @@
   "critical_integration_points": ["authentication", "authorization", "external APIs"],
   "tdd_required": false,
   "testing_rationale": "Balanced testing with strong coverage for production reliability while maintaining development velocity",
-  
+
   "code_review_policy": "standard",
   "num_reviewers": 1,
   "reviewer_qualifications": null,
   "hotfix_definition": "Production-critical issues affecting active users",
-  
+
   "documentation_level": "standard",
   "adr_required": true,
   "docstring_style": "google",
-  
+
   "ci_enforcement": "standard",
   "required_checks": ["tests", "linting", "type-checking", "coverage"],
   "ci_platform": "GitHub Actions",
-  
+
   "architectural_pattern": "vertical_slice",
   "error_handling_pattern": "result_pattern",
   "dependency_injection": true,
@@ -33,4 +33,3 @@
   "coding_principles": ["SOLID", "DRY", "YAGNI", "Explicit over Implicit"],
   "architectural_rationale": "Vertical Slice Architecture with Result Pattern enables rapid feature development, clear boundaries, and explicit error handling - perfect for feature-driven teams building maintainable systems"
 }
-

@@ -1,0 +1,25 @@
+# Claude Code Agent Manifest
+# Anthropic's Claude Code CLI - the most capable agent for oak workflows
+
+name: claude
+display_name: "Claude Code"
+version: "1.0.0"
+description: "Anthropic's Claude Code CLI agent with full agentic capabilities"
+
+installation:
+  folder: ".claude/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  instruction_file: "CLAUDE.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://docs.anthropic.com/en/docs/claude-code"
+
+capabilities:
+  has_background_agents: true   # Can launch background tasks, parallel agents
+  has_native_web: true          # Built-in WebSearch, WebFetch tools
+  has_mcp: true                 # First-class MCP support (local & remote)
+  research_strategy: "Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)"
+
+settings: {}

@@ -126,4 +126,3 @@ Why it works:
 - [ ] User-facing description is understandable.
 - [ ] Verified on fresh and existing installs.
 - [ ] Documentation updates mention the migration.
-

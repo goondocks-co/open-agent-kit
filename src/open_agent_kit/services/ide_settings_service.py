@@ -4,15 +4,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-from open_agent_kit.constants import (
+from open_agent_kit.config.paths import (
     CURSOR_SETTINGS_FILE,
     FEATURES_DIR,
+    IDE_SETTINGS_TEMPLATES,
+    VSCODE_SETTINGS_FILE,
+)
+from open_agent_kit.constants import (
     IDE_SETTINGS_JSON_KEY_AUTO_APPROVE,
     IDE_SETTINGS_JSON_KEY_PROMPT_RECOMMENDATIONS,
     IDE_SETTINGS_OAK_AUTO_APPROVE_KEYS,
     IDE_SETTINGS_OAK_PROMPT_PREFIX,
-    IDE_SETTINGS_TEMPLATES,
-    VSCODE_SETTINGS_FILE,
 )
 from open_agent_kit.utils import (
     cleanup_empty_directories,

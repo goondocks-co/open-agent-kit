@@ -5,9 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from open_agent_kit.constants import CONSTITUTION_DIR, CONSTITUTION_FILENAME
+from open_agent_kit.config.paths import CONSTITUTION_FILENAME
 from open_agent_kit.models.constitution import AmendmentType, ConstitutionStatus
 from open_agent_kit.services.constitution_service import ConstitutionService
+
+# Default directory for test fixtures (matching config default)
+CONSTITUTION_DIR = "oak"
 
 
 def test_get_constitution_path(temp_project_dir: Path) -> None:

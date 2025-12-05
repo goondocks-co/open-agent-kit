@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from open_agent_kit.constants import CONFIG_FILE, OAK_DIR
+from open_agent_kit.config.paths import CONFIG_FILE, OAK_DIR
 from open_agent_kit.models.constitution import (
     ConstitutionDocument,
     ConstitutionMetadata,

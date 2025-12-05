@@ -9,15 +9,14 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
+from open_agent_kit.config.messages import ERROR_MESSAGES, INFO_MESSAGES
 from open_agent_kit.constants import (
-    ERROR_MESSAGES,
-    INFO_MESSAGES,
     ISSUE_PROVIDER_DEFAULTS,
     ISSUE_PROVIDER_DISPLAY_NAMES,
     SUPPORTED_ISSUE_PROVIDERS,
 )
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.services.issue_service import IssueService
+from open_agent_kit.services.plan_service import PlanService
 from open_agent_kit.utils import (
     ensure_gitignore_has_env,
     get_project_root,
@@ -221,7 +220,7 @@ def _interactive_issue_provider_setup(project_root: Path) -> None:
 
     # Run validation
     print_info("\nValidating configuration...")
-    service = IssueService(project_root)
+    service = PlanService(project_root)
     issues = service.validate_provider(provider_key)
 
     if issues:
@@ -303,7 +302,7 @@ def show_issue_provider() -> None:
 def check_issue_provider(provider: str | None = typer.Option(None, "--provider", "-p")) -> None:
     """Validate provider configuration and prerequisite secrets."""
     project_root = _require_project_root()
-    service = IssueService(project_root)
+    service = PlanService(project_root)
     issues = service.validate_provider(provider)
     if issues:
         print_error("Issue provider configuration is incomplete:")

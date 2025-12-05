@@ -7,6 +7,36 @@ import yaml
 from pydantic import BaseModel, Field
 
 
+class AgentCapabilitiesConfig(BaseModel):
+    """User-configurable agent capabilities.
+
+    These override the defaults from the agent's manifest.yaml.
+    Users can enable new capabilities or adjust existing ones.
+    """
+
+    has_background_agents: bool | None = Field(
+        default=None,
+        description="Whether agent supports background/parallel agent execution",
+    )
+    has_native_web: bool | None = Field(
+        default=None,
+        description="Whether agent has built-in web search capabilities",
+    )
+    has_mcp: bool | None = Field(
+        default=None,
+        description="Whether agent supports MCP (Model Context Protocol) servers",
+    )
+    research_strategy: str | None = Field(
+        default=None,
+        description="Agent-specific guidance for research tasks",
+    )
+    # Extensible: users can add custom capabilities
+    custom: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Custom capabilities for future features",
+    )
+
+
 class RFCConfig(BaseModel):
     """RFC-specific configuration."""
 
@@ -41,8 +71,8 @@ class GitHubIssuesProviderConfig(BaseModel):
     )
 
 
-class IssueProvidersConfig(BaseModel):
-    """Top-level issue provider configuration."""
+class IssueConfig(BaseModel):
+    """Issue provider settings."""
 
     provider: str | None = Field(default=None, description="Active issue provider key")
     azure_devops: AzureDevOpsProviderConfig = Field(
@@ -53,6 +83,18 @@ class IssueProvidersConfig(BaseModel):
         default_factory=GitHubIssuesProviderConfig,
         description="GitHub Issues provider settings",
     )
+
+
+class PlanConfig(BaseModel):
+    """Plan feature configuration."""
+
+    directory: str = Field(default="oak/plan", description="Directory for strategic plans")
+
+
+class ConstitutionConfig(BaseModel):
+    """Constitution feature configuration."""
+
+    directory: str = Field(default="oak", description="Directory for constitution files")
 
 
 class FeaturesConfig(BaseModel):
@@ -76,9 +118,15 @@ class OakConfig(BaseModel):
         default_factory=list,
         description="Configured IDEs (source of truth for installed IDE settings)",
     )
+    agent_capabilities: dict[str, AgentCapabilitiesConfig] = Field(
+        default_factory=dict,
+        description="Per-agent capability overrides (merged with manifest defaults)",
+    )
     rfc: RFCConfig = Field(default_factory=RFCConfig, description="RFC configuration")
-    issue: IssueProvidersConfig = Field(
-        default_factory=IssueProvidersConfig, description="Issue provider configuration"
+    issue: IssueConfig = Field(default_factory=IssueConfig, description="Issue configuration")
+    plan: PlanConfig = Field(default_factory=PlanConfig, description="Plan configuration")
+    constitution: ConstitutionConfig = Field(
+        default_factory=ConstitutionConfig, description="Constitution configuration"
     )
     features: FeaturesConfig = Field(
         default_factory=FeaturesConfig,
@@ -110,6 +158,13 @@ class OakConfig(BaseModel):
                     data["agents"] = [agent_value]
                 else:
                     data["agents"] = []
+
+            # Convert agent_capabilities dict entries to AgentCapabilitiesConfig
+            if "agent_capabilities" in data and isinstance(data["agent_capabilities"], dict):
+                data["agent_capabilities"] = {
+                    agent: AgentCapabilitiesConfig(**caps) if isinstance(caps, dict) else caps
+                    for agent, caps in data["agent_capabilities"].items()
+                }
 
             # Migration: Infer enabled features from installed commands
             if "features" not in data:

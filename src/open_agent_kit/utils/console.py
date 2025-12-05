@@ -8,7 +8,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
-from open_agent_kit.constants import BANNER
+from open_agent_kit.config.messages import BANNER
 
 # Custom theme for consistent styling
 custom_theme = Theme(
@@ -198,7 +198,7 @@ def prompt(
                 return default
 
             if not response and required:
-                from open_agent_kit.constants import ERROR_MESSAGES
+                from open_agent_kit.config.messages import ERROR_MESSAGES
 
                 print_error(ERROR_MESSAGES["field_required"])
                 continue

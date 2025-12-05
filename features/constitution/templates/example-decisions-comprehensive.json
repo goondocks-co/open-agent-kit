@@ -26,4 +26,3 @@
   "coding_principles": ["SOLID", "DRY", "Single Responsibility", "Dependency Inversion"],
   "architectural_rationale": "Clean Architecture ensures business logic independence and enables long-term maintainability for our complex financial domain"
 }
-

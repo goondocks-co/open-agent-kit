@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 import httpx
 
-from open_agent_kit.constants import (
-    ERROR_MESSAGES,
-    ISSUE_PROVIDER_TIMEOUT_SECONDS,
-    ISSUE_PROVIDER_VALIDATION_MESSAGES,
-)
+from open_agent_kit.config.messages import ERROR_MESSAGES, ISSUE_PROVIDER_VALIDATION_MESSAGES
+from open_agent_kit.config.settings import issue_provider_settings
 from open_agent_kit.models.config import GitHubIssuesProviderConfig
 from open_agent_kit.models.issue import Issue, RelatedIssue
 from open_agent_kit.services.issue_providers.base import IssueProvider, IssueProviderError
@@ -66,7 +64,9 @@ class GitHubIssuesProvider(IssueProvider):
         }
 
         try:
-            response = httpx.get(url, headers=headers, timeout=ISSUE_PROVIDER_TIMEOUT_SECONDS)
+            response = httpx.get(
+                url, headers=headers, timeout=issue_provider_settings.timeout_seconds
+            )
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise IssueProviderError(
@@ -140,6 +140,128 @@ class GitHubIssuesProvider(IssueProvider):
             created_at=created_at,
             updated_at=updated_at,
             closed_at=closed_at,
+        )
+
+    def create_issue(
+        self,
+        title: str,
+        description: str,
+        issue_type: str | None = None,
+        priority: str | None = None,
+        labels: list[str] | None = None,
+        parent_id: str | None = None,
+        acceptance_criteria: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Issue:
+        """Create a new GitHub issue.
+
+        Args:
+            title: Issue title
+            description: Issue description/body
+            issue_type: Type of issue (used for labels: epic, story, task)
+            priority: Priority level (used for labels)
+            labels: Additional labels
+            parent_id: Parent issue ID (adds task list reference in description)
+            acceptance_criteria: Acceptance criteria (added as checklist)
+            **kwargs: Additional fields:
+                - assignees: List of GitHub usernames
+                - milestone: Milestone number
+
+        Returns:
+            Created Issue model
+
+        Raises:
+            IssueProviderError: If issue creation fails
+        """
+        issues = self.validate()
+        if issues:
+            raise IssueProviderError("; ".join(issues))
+
+        token = self.environment.get(self.settings.token_env or "", "")
+        if not token:
+            raise IssueProviderError(
+                ERROR_MESSAGES["issue_provider_env_var_missing"].format(var=self.settings.token_env)
+            )
+
+        # Build issue body
+        body_parts = [description]
+
+        # Add parent reference if hierarchical
+        if parent_id:
+            body_parts.insert(0, f"Parent: #{parent_id}\n")
+
+        # Add acceptance criteria as checklist
+        if acceptance_criteria:
+            body_parts.append("\n## Acceptance Criteria\n")
+            for criterion in acceptance_criteria:
+                body_parts.append(f"- [ ] {criterion}")
+
+        body = "\n".join(body_parts)
+
+        # Build labels list
+        all_labels = list(labels) if labels else []
+
+        # Add type label
+        if issue_type:
+            type_label = f"type:{issue_type.lower()}"
+            if type_label not in all_labels:
+                all_labels.append(type_label)
+
+        # Add priority label
+        if priority:
+            priority_label = f"priority:{priority.lower()}"
+            if priority_label not in all_labels:
+                all_labels.append(priority_label)
+
+        # Build request payload
+        payload: dict[str, Any] = {
+            "title": title,
+            "body": body,
+        }
+
+        if all_labels:
+            payload["labels"] = all_labels
+
+        # Optional fields
+        if kwargs.get("assignees"):
+            payload["assignees"] = kwargs["assignees"]
+        if kwargs.get("milestone"):
+            payload["milestone"] = kwargs["milestone"]
+
+        url = f"https://api.github.com/repos/{self.settings.owner}/{self.settings.repo}/issues"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            response = httpx.post(
+                url, headers=headers, json=payload, timeout=issue_provider_settings.timeout_seconds
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise IssueProviderError(
+                ERROR_MESSAGES["issue_provider_api_error"].format(
+                    provider=self.label, error_type=exc.__class__.__name__, details=str(exc)
+                )
+            ) from exc
+
+        data = response.json()
+
+        # Return created issue
+        return Issue(
+            provider=self.key,
+            identifier=str(data.get("number")),
+            title=data.get("title", title),
+            description=data.get("body", body),
+            state=data.get("state"),
+            url=data.get("html_url"),
+            tags=[label.get("name", "") for label in data.get("labels", [])],
+            acceptance_criteria=acceptance_criteria or [],
+            issue_type=issue_type,
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
         )
 
 

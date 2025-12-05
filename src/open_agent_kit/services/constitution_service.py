@@ -47,12 +47,11 @@ import re
 from datetime import date
 from pathlib import Path
 
-from open_agent_kit.constants import (
-    CONSTITUTION_DIR,
+from open_agent_kit.config.paths import (
     CONSTITUTION_FILENAME,
-    CONSTITUTION_REQUIRED_SECTIONS,
     CONSTITUTION_TEMPLATE_BASE,
 )
+from open_agent_kit.constants import CONSTITUTION_REQUIRED_SECTIONS
 from open_agent_kit.models.constitution import (
     Amendment,
     AmendmentType,
@@ -121,7 +120,8 @@ class ConstitutionService:
         Returns:
             Path to constitution file
         """
-        return self.project_root / CONSTITUTION_DIR / CONSTITUTION_FILENAME
+        constitution_dir = self.config_service.get_constitution_dir()
+        return constitution_dir / CONSTITUTION_FILENAME
 
     def exists(self) -> bool:
         """Check if constitution exists.

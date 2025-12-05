@@ -1,0 +1,26 @@
+# OpenAI Codex CLI Agent Manifest
+# OpenAI's Codex CLI - limited capabilities, primarily offline
+
+name: codex
+display_name: "Codex CLI"
+version: "1.0.0"
+description: "OpenAI Codex CLI agent - offline-first, limited agent features"
+
+installation:
+  folder: ".codex/"
+  commands_subfolder: "prompts"
+  file_extension: ".md"
+  # AGENTS.md in project root (shared with Cursor)
+  instruction_file: "./AGENTS.md"
+
+requirements:
+  requires_cli: true
+  install_url: "https://github.com/openai/codex"
+
+capabilities:
+  has_background_agents: false  # No true background worker
+  has_native_web: false         # Usually no web access
+  has_mcp: false                # Usually no MCP support
+  research_strategy: "Offline/spec-only; degrade gracefully to general knowledge"
+
+settings: {}

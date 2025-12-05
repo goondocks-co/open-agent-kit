@@ -11,10 +11,12 @@ from open_agent_kit.commands.config_cmd import config_app
 from open_agent_kit.commands.constitution_cmd import constitution_app
 from open_agent_kit.commands.feature_cmd import feature_app
 from open_agent_kit.commands.init_cmd import init_command
-from open_agent_kit.commands.issue_cmd import issue_app
+from open_agent_kit.commands.plan_cmd import plan_app
+from open_agent_kit.commands.remove_cmd import remove_command
 from open_agent_kit.commands.rfc_cmd import rfc_app
 from open_agent_kit.commands.upgrade_cmd import upgrade_command
-from open_agent_kit.constants import HELP_TEXT, VERSION
+from open_agent_kit.config.messages import HELP_TEXT
+from open_agent_kit.constants import VERSION
 from open_agent_kit.utils import print_banner, print_error, print_panel
 
 # Load .env file from current directory if it exists
@@ -31,7 +33,7 @@ app = typer.Typer(
 
 # Add command groups
 app.add_typer(rfc_app, name="rfc")
-app.add_typer(issue_app, name="issue")
+app.add_typer(plan_app, name="plan")
 app.add_typer(config_app, name="config")
 app.add_typer(constitution_app, name="constitution")
 app.add_typer(feature_app, name="feature")
@@ -52,7 +54,7 @@ def init(
         None,
         "--agent",
         "-a",
-        help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf, none",
+        help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
     ),
     ide: list[str] = typer.Option(
         None,
@@ -116,6 +118,29 @@ def upgrade(
         dry_run=dry_run,
         force=force,
     )
+
+
+@app.command("remove")
+def remove(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation prompt",
+    ),
+    keep_ide_settings: bool = typer.Option(
+        False,
+        "--keep-ide-settings",
+        help="Keep IDE settings files (.vscode/settings.json, .cursor/settings.json)",
+    ),
+) -> None:
+    """Remove open-agent-kit from the current project.
+
+    Removes all oak-managed assets including configuration, agent directories,
+    and agent instruction files. User content in the oak/ directory (constitution,
+    RFCs, plans) is preserved.
+    """
+    remove_command(force=force, keep_ide_settings=keep_ide_settings)
 
 
 @app.command("version")
@@ -190,7 +215,7 @@ def cli_main() -> None:
             sys.exit(e.exit_code)
 
         # Handle other exceptions
-        from open_agent_kit.constants import ERROR_MESSAGES
+        from open_agent_kit.config.messages import ERROR_MESSAGES
 
         print_error(ERROR_MESSAGES["generic_error"].format(error=str(e)))
 

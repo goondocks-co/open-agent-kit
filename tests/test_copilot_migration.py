@@ -1,6 +1,5 @@
 import pytest
 
-from open_agent_kit.constants import AGENT_CONFIG
 from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.migrations import _migrate_copilot_agents_folder
 
@@ -22,11 +21,12 @@ def temp_project(tmp_path):
     return tmp_path
 
 
-def test_copilot_config_update():
-    """Verify Copilot configuration uses new paths."""
-    config = AGENT_CONFIG["copilot"]
-    assert config["commands_subfolder"] == "agents"
-    assert config["file_extension"] == ".agent.md"
+def test_copilot_config_uses_new_paths():
+    """Verify Copilot manifest uses new paths."""
+    service = AgentService()
+    manifest = service.get_agent_manifest("copilot")
+    assert manifest.installation.commands_subfolder == "agents"
+    assert manifest.installation.file_extension == ".agent.md"
 
 
 def test_migration_removes_legacy_files(temp_project):

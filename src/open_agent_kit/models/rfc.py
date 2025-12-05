@@ -2,21 +2,10 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
-
-class RFCStatus(str, Enum):
-    """RFC status enumeration"""
-
-    DRAFT = "draft"
-    REVIEW = "review"
-    APPROVED = "approved"
-    ADOPTED = "adopted"
-    ABANDONED = "abandoned"
-    IMPLEMENTED = "implemented"
-    WONT_IMPLEMENT = "wont-implement"
+from open_agent_kit.models.enums import RFCStatus
 
 
 @dataclass

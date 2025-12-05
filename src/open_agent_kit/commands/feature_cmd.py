@@ -6,12 +6,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from open_agent_kit.constants import (
-    FEATURE_DISPLAY_NAMES,
-    FEATURE_MESSAGES,
-    OAK_DIR,
-    SUPPORTED_FEATURES,
-)
+from open_agent_kit.config.messages import FEATURE_MESSAGES
+from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.constants import FEATURE_DISPLAY_NAMES, SUPPORTED_FEATURES
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.feature_service import FeatureService
 from open_agent_kit.utils import (
@@ -167,6 +164,63 @@ def feature_add(
             raise typer.Exit(code=1)
 
     tracker.finish(FEATURE_MESSAGES["feature_added"].format(feature=name_lower))
+
+
+@feature_app.command("refresh")
+def feature_refresh() -> None:
+    """Refresh all features by re-rendering with current config.
+
+    Use this after modifying agent_capabilities in .oak/config.yaml
+    to apply capability changes to command templates without upgrading.
+
+    Example workflow:
+        1. Edit .oak/config.yaml to change agent_capabilities
+        2. Run 'oak feature refresh' to re-render commands
+        3. Commands now reflect the updated capabilities
+    """
+    project_root = Path.cwd()
+
+    # Check if OAK is initialized
+    if not dir_exists(project_root / OAK_DIR):
+        print_error("OAK is not initialized. Run 'oak init' first.")
+        raise typer.Exit(code=1)
+
+    feature_service = FeatureService(project_root)
+    config_service = ConfigService(project_root)
+
+    # Get current state
+    installed = feature_service.list_installed_features()
+    agents = config_service.get_agents()
+
+    if not installed:
+        print_info("No features installed. Nothing to refresh.")
+        return
+
+    if not agents:
+        print_error("No agents configured. Run 'oak init' to configure agents first.")
+        raise typer.Exit(code=1)
+
+    # Show what will be refreshed
+    print_header("Refreshing Features")
+    print_info(f"Features: {', '.join(installed)}")
+    print_info(f"Agents: {', '.join(agents)}\n")
+
+    # Perform refresh
+    tracker = StepTracker(len(installed))
+
+    for feature_name in installed:
+        display_name = FEATURE_DISPLAY_NAMES.get(feature_name, feature_name)
+        tracker.start_step(f"Refreshing {display_name}")
+
+        try:
+            results = feature_service.install_feature(feature_name, agents)
+            cmd_count = len(results.get("commands_installed", []))
+            tracker.complete_step(f"Refreshed {display_name} ({cmd_count} commands)")
+        except Exception as e:
+            tracker.fail_step(f"Failed to refresh {display_name}", str(e))
+            raise typer.Exit(code=1)
+
+    tracker.finish("Features refreshed with current configuration!")
 
 
 @feature_app.command("remove")

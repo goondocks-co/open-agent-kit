@@ -97,12 +97,8 @@ def _migrate_features_restructure(project_root: Path) -> None:
     """
     import shutil
 
-    from open_agent_kit.constants import (
-        CONFIG_FILE,
-        DEFAULT_FEATURES,
-        FEATURE_CONFIG,
-        SUPPORTED_FEATURES,
-    )
+    from open_agent_kit.config.paths import CONFIG_FILE
+    from open_agent_kit.constants import DEFAULT_FEATURES, FEATURE_CONFIG, SUPPORTED_FEATURES
     from open_agent_kit.utils import read_yaml
 
     config_path = project_root / CONFIG_FILE
@@ -191,7 +187,7 @@ def _migrate_cleanup_old_templates(project_root: Path) -> None:
     """
     import shutil
 
-    from open_agent_kit.constants import CONFIG_FILE
+    from open_agent_kit.config.paths import CONFIG_FILE
     from open_agent_kit.utils import read_yaml
 
     old_templates_dir = project_root / ".oak" / "templates"

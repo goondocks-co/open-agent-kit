@@ -3,6 +3,7 @@
 import re
 from datetime import date
 
+from open_agent_kit.config.settings import validation_settings
 from open_agent_kit.constants import (
     CONSTITUTION_DATE_PATTERN,
     CONSTITUTION_METADATA_PROJECT_NAME,
@@ -10,7 +11,6 @@ from open_agent_kit.constants import (
     CONSTITUTION_NORMATIVE_SECTIONS,
     CONSTITUTION_REQUIRED_METADATA,
     CONSTITUTION_REQUIRED_SECTIONS,
-    CONSTITUTION_SECTION_MIN_SENTENCE_COUNT,
     CONSTITUTION_TOKENS,
     CONSTITUTION_VAGUE_POLICY_PATTERNS,
     CONSTITUTION_VERSION_PATTERN,
@@ -228,9 +228,12 @@ class ValidationService:
             result: ValidationResult to update with issues
         """
         # Check for non-declarative language patterns
+        # Note: We do NOT use re.IGNORECASE here because uppercase keywords
+        # like "SHOULD" are valid RFC 2119 language. We only want to flag
+        # lowercase informal usage like "should", "could", etc.
         for section in constitution.sections:
             for pattern in NON_DECLARATIVE_PATTERNS:
-                matches = list(re.finditer(pattern, section.content, re.IGNORECASE))
+                matches = list(re.finditer(pattern, section.content))
                 for match in matches:
                     # Find line number
                     line_num = section.content[: match.start()].count("\n") + 1
@@ -242,7 +245,7 @@ class ValidationService:
                             message=f"Non-declarative language: '{match.group()}'",
                             location=section.title,
                             line_number=line_num,
-                            suggested_fix="Use declarative language (MUST, MUST NOT, SHALL, MAY)",
+                            suggested_fix="Use RFC 2119 keywords in uppercase (MUST, SHOULD, MAY) for requirements",
                             auto_fixable=False,
                         )
                     )
@@ -301,7 +304,7 @@ class ValidationService:
 
             if section.required:
                 sentence_count = self._count_substantive_sentences(content)
-                if sentence_count < CONSTITUTION_SECTION_MIN_SENTENCE_COUNT:
+                if sentence_count < validation_settings.constitution_min_sentences:
                     result.add_issue(
                         ValidationIssue(
                             category=ValidationCategory.QUALITY,
@@ -313,7 +316,7 @@ class ValidationService:
                             location=section.title,
                             suggested_fix=(
                                 "Expand the section with specific, testable policies "
-                                f"(target ≥ {CONSTITUTION_SECTION_MIN_SENTENCE_COUNT} sentences or bullets)."
+                                f"(target ≥ {validation_settings.constitution_min_sentences} sentences or bullets)."
                             ),
                             auto_fixable=False,
                         )

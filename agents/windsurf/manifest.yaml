@@ -1,0 +1,26 @@
+# Windsurf Agent Manifest
+# Codeium's Windsurf IDE with Cascade agentic capabilities
+
+name: windsurf
+display_name: "Windsurf"
+version: "1.0.0"
+description: "Codeium's Windsurf IDE with Cascade agentic capabilities"
+
+installation:
+  folder: ".windsurf/"
+  commands_subfolder: "commands"
+  file_extension: ".md"
+  # .windsurf/rules/rules.md or global_rules.md
+  instruction_file: ".windsurf/rules/rules.md"
+
+requirements:
+  requires_cli: false
+  install_url: null
+
+capabilities:
+  has_background_agents: true   # Cascade agentic IDE, multi-step flows
+  has_native_web: false         # Depends on chosen model
+  has_mcp: true                 # Wave 3 MCP support + curated server list
+  research_strategy: "Deep research via MCP web-search stack"
+
+settings: {}

@@ -22,7 +22,7 @@ def test_init_creates_subdirectories(temp_project_dir: Path) -> None:
     # Default features should have their directories created
     assert (oak_dir / "features" / "constitution").exists()
     assert (oak_dir / "features" / "rfc").exists()
-    assert (oak_dir / "features" / "issues").exists()
+    assert (oak_dir / "features" / "plan").exists()
 
 
 def test_init_creates_config_file(temp_project_dir: Path) -> None:

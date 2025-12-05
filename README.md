@@ -56,31 +56,6 @@ pip install git+ssh://git@github.com/sirkirby/open-agent-kit.git
 pip install git+https://github.com/sirkirby/open-agent-kit.git
 ```
 
-## Uninstallation
-
-### Using uv
-
-```bash
-# Remove open-agent-kit
-uv tool uninstall open-agent-kit
-```
-
-### Using pip
-
-```bash
-# Remove open-agent-kit
-pip uninstall open-agent-kit
-```
-
-**Note**: This removes the CLI tool but does not delete project files created by `oak init` (`.oak/`, agent command directories, etc.). To clean up a project, manually delete:
-
-- `.oak/` - Configuration and templates
-- `.vscode/settings.json` - VSCode settings (if no other settings)
-- `.cursor/settings.json` - Cursor settings (if no other settings)
-- `.claude/commands/oak.*` - Claude commands
-- `.github/agents/oak.*` - Copilot commands
-- Agent instruction file references to `oak/constitution.md`
-
 ## Quick Start
 
 ```bash
@@ -121,7 +96,7 @@ Open Agent Kit uses a modular feature system that lets you install only the work
 |---------|-------------|--------------|
 | **constitution** | Engineering standards, architectural patterns, team conventions | None |
 | **rfc** | RFC workflow for documenting technical decisions | constitution |
-| **issues** | spec-driven development (SDD) workflow which integrates with Azure DevOps/GitHub Issues | constitution |
+| **plan** | Issue-driven implementation planning with research, task breakdown, and validation | constitution |
 
 ### Feature Selection
 
@@ -140,7 +115,20 @@ oak feature list
 oak feature add rfc
 
 # Remove a feature (with dependency check)
-oak feature remove issues
+oak feature remove plan
+
+# Refresh features after config changes
+oak feature refresh
+```
+
+### Refreshing Features
+
+The `oak feature refresh` command re-renders all installed feature commands using your current configuration. This is useful when you've modified agent capabilities in `.oak/config.yaml` and want to apply those changes without upgrading the package.
+
+```bash
+# Edit agent capabilities in .oak/config.yaml
+# Then refresh to apply changes
+oak feature refresh
 ```
 
 ## Commands
@@ -221,7 +209,7 @@ These commands are available in your AI agent interface after running `oak init 
 
 - [Constitution Management](docs/features/constitution.md)
 - [RFC Management](docs/features/rfc.md)
-- [SDD / Issue Management](docs/features/issues.md)
+- [Plan Management](docs/features/plan.md) - Issue-driven implementation planning
 
 ## Configuration
 
@@ -237,7 +225,7 @@ features:
   enabled:
     - constitution
     - rfc
-    - issues
+    - plan
 
 rfc:
   directory: oak/rfc
@@ -245,10 +233,37 @@ rfc:
   auto_number: true
   validate_on_create: true
 
-issue:
-  directory: oak/issue
-  provider: ado
+# Agent capabilities (auto-populated from agent manifests)
+agent_capabilities:
+  claude:
+    has_background_agents: true
+    has_native_web: true
+    has_mcp: true
+    research_strategy: null
+  copilot:
+    has_background_agents: false
+    has_native_web: false
+    has_mcp: false
+    research_strategy: null
 ```
+
+### Agent Capabilities
+
+Agent capabilities control how feature commands are rendered for each agent. These are auto-populated from agent manifests during `oak init`, but you can override them:
+
+| Capability | Description |
+|-----------|-------------|
+| `has_background_agents` | Agent supports spawning background/parallel agents |
+| `has_native_web` | Agent has built-in web search/fetch capabilities |
+| `has_mcp` | Agent supports Model Context Protocol servers |
+| `research_strategy` | Custom research approach (e.g., "deep_research") |
+
+**Customizing Capabilities:**
+
+1. Edit `.oak/config.yaml` to change capability values
+2. Run `oak feature refresh` to re-render commands with new capabilities
+
+This allows you to enable or disable agent-specific features without upgrading the package.
 
 ## AI Agent Integration
 
@@ -327,6 +342,51 @@ oak init --agent claude --agent copilot --agent cursor
 
 # RFC files are shared, tools are not!
 ```
+
+## Uninstallation
+
+### Using uv
+
+```bash
+# Remove open-agent-kit
+uv tool uninstall open-agent-kit
+```
+
+### Using pip
+
+```bash
+# Remove open-agent-kit
+pip uninstall open-agent-kit
+```
+
+**Note**: This removes the CLI tool but does not delete project files created by `oak init` (`.oak/`, agent command directories, etc.). To clean up a project, manually delete:
+
+- `.oak/` - Configuration and templates
+- `.vscode/settings.json` - VSCode settings (if no other settings)
+- `.cursor/settings.json` - Cursor settings (if no other settings)
+- `.claude/commands/oak.*` - Claude commands
+- `.github/agents/oak.*` - Copilot commands
+- Agent instruction file references to `oak/constitution.md`
+
+## Removing from a Project
+
+To remove Open Agent Kit from a specific project without uninstalling the CLI tool:
+
+```bash
+# Remove OAK configuration and files from the current project
+oak remove
+```
+
+This command will:
+- Remove the `.oak` directory
+- Remove agent-specific command files (e.g., `.claude/commands/oak.*`)
+- Remove IDE settings added by OAK (unless `--keep-ide-settings` is used)
+- Clean up empty directories created by OAK
+
+It will **not** remove:
+- Generated artifacts in the `oak/` directory (RFCs, constitution, etc.)
+- Files you have modified after OAK created them
+- The `oak` CLI tool itself
 
 ## Troubleshooting
 

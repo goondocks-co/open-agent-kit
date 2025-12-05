@@ -19,3 +19,7 @@ templates:
   - example-decisions-minimal.json
   - example-decisions-comprehensive.json
   - example-decisions-vertical-slice.json
+
+# Feature-specific default configuration
+config_defaults:
+  directory: oak

@@ -44,13 +44,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from open_agent_kit.constants import (
-    RFC_FILE_EXTENSION,
-    RFC_FILENAME_PATTERN,
-    RFC_PLACEHOLDER_KEYWORDS,
-    RFC_STALE_DRAFT_DAYS,
-)
-from open_agent_kit.models.rfc import RFCDocument, RFCStatus
+from open_agent_kit.config.paths import RFC_FILE_EXTENSION
+from open_agent_kit.config.settings import validation_settings
+from open_agent_kit.constants import RFC_FILENAME_PATTERN, RFC_PLACEHOLDER_KEYWORDS
+from open_agent_kit.models.enums import RFCStatus
+from open_agent_kit.models.rfc import RFCDocument
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.utils import (
@@ -500,7 +498,7 @@ class RFCService:
             "latest_number": rfcs[-1].number if rfcs else None,
         }
 
-        cutoff = datetime.now() - timedelta(days=RFC_STALE_DRAFT_DAYS)
+        cutoff = datetime.now() - timedelta(days=validation_settings.rfc_stale_draft_days)
 
         for rfc in rfcs:
             status_key = rfc.status.value if isinstance(rfc.status, RFCStatus) else str(rfc.status)

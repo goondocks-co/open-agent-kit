@@ -7,7 +7,10 @@ import pytest
 from typer.testing import CliRunner
 
 from open_agent_kit.cli import app
-from open_agent_kit.constants import CONSTITUTION_DIR, CONSTITUTION_FILENAME
+from open_agent_kit.config.paths import CONSTITUTION_FILENAME
+
+# Default directory for test fixtures (matching config default)
+CONSTITUTION_DIR = "oak"
 
 
 @pytest.fixture

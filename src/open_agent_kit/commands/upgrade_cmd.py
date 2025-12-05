@@ -4,15 +4,15 @@ from pathlib import Path
 
 import typer
 
-from open_agent_kit.constants import (
+from open_agent_kit.config.messages import (
     ERROR_MESSAGES,
     INFO_MESSAGES,
     PROJECT_URL,
     SUCCESS_MESSAGES,
     UPGRADE_MESSAGES,
-    VERSION,
     WARNING_MESSAGES,
 )
+from open_agent_kit.constants import VERSION
 from open_agent_kit.services.upgrade_service import UpgradeResults, UpgradeService
 from open_agent_kit.utils import (
     StepTracker,
