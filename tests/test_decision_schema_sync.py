@@ -12,8 +12,9 @@ Why this matters:
 These tests catch drift automatically in CI/PR checks.
 """
 
+import types
 from pathlib import Path
-from typing import get_args, get_origin
+from typing import Union, get_args, get_origin
 
 import pytest
 import yaml
@@ -122,16 +123,30 @@ class TestDecisionSchemaSync:
 
             # Extract Literal values from model
             model_values = None
-            if origin is type(None) or str(origin) == "typing.Union":
-                # Optional[Literal[...]]
+
+            # Check for Union types: typing.Union OR types.UnionType (Python 3.10+ X | Y syntax)
+            is_union = origin is Union or isinstance(origin, type) and origin is types.UnionType
+            # Also check for types.UnionType directly (Python 3.10+)
+            if not is_union:
+                try:
+                    is_union = origin is types.UnionType
+                except AttributeError:
+                    pass
+
+            if is_union:
+                # Optional[Literal[...]] or Literal[...] | None
                 args = get_args(annotation)
                 for arg in args:
-                    if arg is not type(None) and hasattr(arg, "__args__"):
-                        model_values = set(get_args(arg))
+                    # Skip NoneType
+                    if arg is type(None):
+                        continue
+                    # Extract Literal values
+                    if hasattr(arg, "__args__"):
+                        model_values = {v for v in get_args(arg) if not isinstance(v, type)}
                         break
             elif hasattr(annotation, "__args__"):
                 # Direct Literal[...]
-                model_values = set(get_args(annotation))
+                model_values = {v for v in get_args(annotation) if not isinstance(v, type)}
 
             if model_values and yaml_category in yaml_data:
                 # Get YAML options

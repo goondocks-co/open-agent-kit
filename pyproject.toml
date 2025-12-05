@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "open-agent-kit"
-version = "0.3.0"
+version = "0.3.1"
 description = "CLI toolkit for AI-powered development workflows - spec-driven development, RFC/ARC management, and shared conventions across AI coding agents"
 readme = "README.md"
 requires-python = ">=3.13"

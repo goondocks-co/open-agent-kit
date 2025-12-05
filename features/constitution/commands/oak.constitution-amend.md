@@ -63,6 +63,86 @@ Engage the user to collect or confirm:
 
 Validate user intent by restating the amendment in your own words and asking for confirmation before proceeding.
 
+## Step 2B: Research Phase for Pattern-Based Amendments (Capability-Aware)
+
+**If the amendment introduces new patterns, technologies, or architectural changes, conduct research before proceeding.**
+
+### When to Trigger Research
+
+Scan the amendment summary and rationale for research-worthy topics:
+
+- **New architectural patterns**: "adopting vertical slice", "switching to CQRS", "adding event sourcing"
+- **New frameworks/libraries**: "migrating to FastAPI", "adding Playwright for E2E"
+- **Technology upgrades**: "upgrading to Python 3.13", "moving to .NET 8"
+- **New compliance requirements**: "adding HIPAA compliance", "PCI DSS requirements"
+
+**Reference `features/constitution/templates/decision_points.yaml` section `research_triggers` for the full pattern list.**
+
+### Research Execution (Based on Agent Capabilities)
+
+{% if has_native_web %}
+**🌐 NATIVE WEB SEARCH AVAILABLE**
+
+For pattern-introducing amendments:
+
+1. **Research current best practices:**
+   ```
+   Search: "[pattern] best practices 2025"
+   Search: "[pattern] implementation in [tech_stack]"
+   Search: "[pattern] common pitfalls"
+   ```
+
+2. **Synthesize 3-5 key requirements** the amendment should address
+
+3. **Present findings before finalizing amendment language:**
+   ```text
+   ═══════════════════════════════════════════════════════════════════
+   📚 RESEARCH: [Pattern/Technology] Best Practices
+   ═══════════════════════════════════════════════════════════════════
+
+   Before codifying this amendment, here's what current best practices suggest:
+
+   1. **[Key Requirement]** - [Why it matters]
+   2. **[Key Requirement]** - [Why it matters]
+   3. **[Key Requirement]** - [Why it matters]
+
+   **Suggested amendment additions based on research:**
+   - [Specific requirement to add]
+   - [Specific requirement to add]
+
+   Would you like to incorporate these into the amendment? (yes/no/customize)
+   ═══════════════════════════════════════════════════════════════════
+   ```
+{% elif has_mcp %}
+**🔌 MCP WEB SEARCH AVAILABLE**
+
+Use your configured MCP web-search server. {{ research_strategy }}
+
+For pattern-introducing amendments, query for best practices and present findings before finalizing.
+{% else %}
+**📚 LIMITED RESEARCH MODE**
+
+When the amendment introduces patterns you're uncertain about:
+
+1. **Flag the uncertainty:**
+   ```text
+   ⚠️  This amendment introduces [pattern]. I want to ensure the requirements
+   reflect current best practices. Can you:
+   a) Share any resources/docs you're following for this pattern
+   b) Confirm the specific requirements you want to codify
+   c) Tell me if general patterns are acceptable
+   ```
+
+2. **Note any knowledge limitations** in the final report
+{% endif %}
+
+### Skip Research When
+
+- Amendment is clarifying existing language (patch)
+- Amendment adjusts thresholds (e.g., coverage 70% → 75%)
+- Amendment removes outdated requirements
+- User explicitly states they don't need research
+
 ## Step 3: Impact Analysis
 
 Investigate how the amendment interacts with the current constitution:

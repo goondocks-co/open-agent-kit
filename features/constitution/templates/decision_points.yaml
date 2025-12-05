@@ -2,6 +2,470 @@
 # This file defines the interactive decision points for constitution creation
 # Agents should use this to guide users through key decisions
 
+# =============================================================================
+# RESEARCH TRIGGERS
+# =============================================================================
+# These patterns help agents identify when web research should be conducted
+# before presenting decision options. Research enriches decisions with
+# real-world best practices and current patterns.
+
+research_triggers:
+  # Language/Runtime Version Patterns
+  # When users mention specific versions, research current best practices
+  language_versions:
+    - pattern: "python\\s*3\\.1[0-9]"
+      extract_version: true
+      topics:
+        - "{language} {version} best practices"
+        - "{language} {version} new features to adopt"
+        - "{language} {version} typing patterns"
+        - "{language} {version} async/await patterns"
+      present_as: "Python {version} Idiomatic Patterns"
+
+    - pattern: "typescript\\s*[45]\\.[0-9]"
+      extract_version: true
+      topics:
+        - "TypeScript {version} best practices 2025"
+        - "TypeScript {version} strict mode patterns"
+        - "TypeScript {version} type inference improvements"
+      present_as: "TypeScript {version} Modern Patterns"
+
+    - pattern: "node\\s*(1[89]|2[0-9])|nodejs\\s*(1[89]|2[0-9])"
+      extract_version: true
+      topics:
+        - "Node.js {version} best practices"
+        - "Node.js {version} ESM patterns"
+        - "Node.js {version} performance patterns"
+      present_as: "Node.js {version} Patterns"
+
+    - pattern: "java\\s*(1[789]|2[0-9])"
+      extract_version: true
+      topics:
+        - "Java {version} modern features"
+        - "Java {version} records and sealed classes"
+        - "Java {version} virtual threads patterns"
+      present_as: "Java {version} Modern Patterns"
+
+    - pattern: "go\\s*1\\.(1[89]|2[0-9])|golang\\s*1\\.(1[89]|2[0-9])"
+      extract_version: true
+      topics:
+        - "Go {version} best practices"
+        - "Go {version} generics patterns"
+        - "Go {version} error handling patterns"
+      present_as: "Go {version} Idiomatic Patterns"
+
+    - pattern: "rust\\s*1\\.[67][0-9]"
+      extract_version: true
+      topics:
+        - "Rust {version} best practices"
+        - "Rust {version} async patterns"
+        - "Rust {version} error handling Result patterns"
+      present_as: "Rust {version} Patterns"
+
+    - pattern: "c#\\s*1[0-3]|csharp\\s*1[0-3]"
+      extract_version: true
+      topics:
+        - "C# {version} new features"
+        - "C# {version} pattern matching"
+        - "C# {version} records and primary constructors"
+        - "C# {version} best practices"
+      present_as: "C# {version} Modern Patterns"
+
+    - pattern: "\\.net\\s*[89]|dotnet\\s*[89]"
+      extract_version: true
+      topics:
+        - ".NET {version} best practices"
+        - ".NET {version} performance improvements"
+        - ".NET {version} minimal API patterns"
+        - ".NET {version} Native AOT patterns"
+      present_as: ".NET {version} Patterns"
+
+  # Framework-Specific Patterns
+  # Research idiomatic patterns for specific frameworks
+  frameworks:
+    - pattern: "fastapi"
+      topics:
+        - "FastAPI project structure best practices"
+        - "FastAPI async patterns 2025"
+        - "FastAPI dependency injection patterns"
+        - "Pydantic V2 validation patterns"
+      present_as: "FastAPI Idiomatic Patterns"
+      affects_decisions:
+        - architectural_patterns
+        - testing_strategy
+
+    - pattern: "django\\s*[45]"
+      topics:
+        - "Django {version} best practices"
+        - "Django {version} async views patterns"
+        - "Django REST framework patterns"
+      present_as: "Django Modern Patterns"
+      affects_decisions:
+        - architectural_patterns
+        - testing_strategy
+
+    - pattern: "flask"
+      topics:
+        - "Flask application factory pattern"
+        - "Flask blueprints best practices"
+        - "Flask async patterns"
+      present_as: "Flask Patterns"
+
+    - pattern: "express|expressjs"
+      topics:
+        - "Express.js project structure 2025"
+        - "Express.js middleware patterns"
+        - "Express.js error handling best practices"
+      present_as: "Express.js Patterns"
+
+    - pattern: "nextjs|next\\.js|next\\s*1[45]"
+      topics:
+        - "Next.js App Router patterns"
+        - "Next.js server components best practices"
+        - "Next.js data fetching patterns 2025"
+      present_as: "Next.js Modern Patterns"
+
+    - pattern: "react\\s*1[89]|react\\s*19"
+      topics:
+        - "React {version} best practices"
+        - "React {version} server components"
+        - "React {version} hooks patterns"
+      present_as: "React {version} Patterns"
+
+    - pattern: "vue\\s*3"
+      topics:
+        - "Vue 3 Composition API patterns"
+        - "Vue 3 project structure best practices"
+        - "Pinia state management patterns"
+      present_as: "Vue 3 Patterns"
+
+    - pattern: "spring\\s*boot|springboot"
+      topics:
+        - "Spring Boot 3 best practices"
+        - "Spring Boot microservices patterns"
+        - "Spring Boot testing patterns"
+      present_as: "Spring Boot Modern Patterns"
+
+    - pattern: "rails|ruby\\s*on\\s*rails"
+      topics:
+        - "Ruby on Rails 7 best practices"
+        - "Rails Hotwire patterns"
+        - "Rails service object patterns"
+      present_as: "Rails Modern Patterns"
+
+    - pattern: "asp\\.?net\\s*core|aspnetcore"
+      topics:
+        - "ASP.NET Core 8 best practices"
+        - "ASP.NET Core minimal API patterns"
+        - "ASP.NET Core dependency injection patterns"
+        - "ASP.NET Core middleware patterns"
+      present_as: "ASP.NET Core Patterns"
+      affects_decisions:
+        - architectural_patterns
+        - testing_strategy
+
+    - pattern: "blazor"
+      topics:
+        - "Blazor component patterns"
+        - "Blazor state management best practices"
+        - "Blazor Server vs WebAssembly patterns"
+        - "Blazor performance optimization"
+      present_as: "Blazor Patterns"
+      affects_decisions:
+        - architectural_patterns
+        - testing_strategy
+
+    - pattern: "entity\\s*framework|ef\\s*core"
+      topics:
+        - "Entity Framework Core best practices"
+        - "EF Core performance optimization"
+        - "EF Core repository pattern"
+        - "EF Core migrations best practices"
+      present_as: "Entity Framework Core Patterns"
+
+    - pattern: "maui|\\.net\\s*maui"
+      topics:
+        - ".NET MAUI best practices"
+        - "MAUI MVVM patterns"
+        - "MAUI cross-platform patterns"
+      present_as: ".NET MAUI Patterns"
+
+  # CLI/TUI Framework Patterns
+  cli_frameworks:
+    - pattern: "ink|ink-cli|ink\\s*library"
+      topics:
+        - "Ink CLI library best practices"
+        - "Ink React-based CLI component patterns"
+        - "Ink state management patterns"
+        - "TypeScript CLI application architecture"
+      present_as: "Ink CLI Framework Patterns"
+      affects_decisions:
+        - architectural_patterns
+        - testing_strategy
+
+    - pattern: "commander\\.js|commander"
+      topics:
+        - "Commander.js CLI patterns"
+        - "Node.js CLI best practices"
+      present_as: "Commander.js CLI Patterns"
+
+    - pattern: "click|typer"
+      topics:
+        - "Python CLI best practices with Click/Typer"
+        - "Typer CLI application patterns"
+      present_as: "Python CLI Patterns"
+
+    - pattern: "cobra|golang\\s*cli"
+      topics:
+        - "Cobra CLI patterns Go"
+        - "Go CLI application architecture"
+      present_as: "Go CLI Patterns"
+
+  # Architecture Pattern Research
+  # When users mention architecture patterns, research real implementations
+  architecture:
+    - pattern: "vertical\\s*slice"
+      topics:
+        - "vertical slice architecture examples"
+        - "vertical slice vs clean architecture comparison"
+        - "vertical slice folder structure"
+      present_as: "Vertical Slice Architecture Research"
+
+    - pattern: "hexagonal|ports\\s*and\\s*adapters"
+      topics:
+        - "hexagonal architecture implementation examples"
+        - "ports and adapters pattern best practices"
+        - "hexagonal architecture testing patterns"
+      present_as: "Hexagonal Architecture Research"
+
+    - pattern: "clean\\s*architecture"
+      topics:
+        - "clean architecture implementation {tech_stack}"
+        - "clean architecture folder structure"
+        - "clean architecture dependency rule"
+      present_as: "Clean Architecture Research"
+
+    - pattern: "ddd|domain.driven"
+      topics:
+        - "domain driven design tactical patterns"
+        - "DDD aggregates and entities best practices"
+        - "DDD bounded context patterns"
+      present_as: "Domain-Driven Design Research"
+
+    - pattern: "cqrs|event.sourc"
+      topics:
+        - "CQRS implementation patterns"
+        - "event sourcing best practices"
+        - "CQRS vs CRUD when to use"
+      present_as: "CQRS/Event Sourcing Research"
+
+    - pattern: "microservice"
+      topics:
+        - "microservices patterns 2025"
+        - "microservices communication patterns"
+        - "microservices testing strategies"
+      present_as: "Microservices Patterns Research"
+
+    - pattern: "event.driven|eda|message.driven"
+      topics:
+        - "event-driven architecture patterns"
+        - "event-driven vs request-response comparison"
+        - "message broker patterns Kafka RabbitMQ"
+        - "eventual consistency patterns"
+      present_as: "Event-Driven Architecture Research"
+
+    - pattern: "serverless|lambda|azure\\s*functions|cloud\\s*functions|faas"
+      topics:
+        - "serverless architecture best practices"
+        - "serverless design patterns"
+        - "cold start optimization patterns"
+        - "serverless testing strategies"
+      present_as: "Serverless/FaaS Architecture Research"
+      affects_decisions:
+        - testing_strategy
+        - ci_cd
+
+    - pattern: "actor\\s*model|akka|orleans|proto\\.?actor"
+      topics:
+        - "actor model architecture patterns"
+        - "Akka/Orleans best practices"
+        - "actor supervision patterns"
+        - "actor concurrency patterns"
+      present_as: "Actor Model Architecture Research"
+
+    - pattern: "bff|backend.for.frontend"
+      topics:
+        - "Backend for Frontend pattern implementation"
+        - "BFF vs API Gateway comparison"
+        - "BFF per-client patterns"
+      present_as: "Backend for Frontend (BFF) Research"
+
+    - pattern: "monorepo|nx\\s|turborepo|lerna|bazel"
+      topics:
+        - "monorepo best practices 2025"
+        - "monorepo tooling comparison Nx Turborepo"
+        - "monorepo dependency management"
+        - "monorepo CI/CD patterns"
+      present_as: "Monorepo Architecture Research"
+      affects_decisions:
+        - ci_cd
+
+    - pattern: "saga|choreography|orchestration"
+      topics:
+        - "saga pattern implementation"
+        - "choreography vs orchestration comparison"
+        - "distributed transaction patterns"
+        - "compensating transaction patterns"
+      present_as: "Saga/Distributed Transaction Research"
+
+    - pattern: "repr|request.endpoint.response|minimal\\s*api\\s*pattern"
+      topics:
+        - "REPR pattern implementation"
+        - "minimal API design patterns"
+        - "endpoint-per-action patterns"
+      present_as: "REPR Pattern Research"
+
+    - pattern: "mvc|mvvm|mvp|model.view"
+      topics:
+        - "MVC vs MVVM vs MVP comparison"
+        - "MVVM data binding patterns"
+        - "presentation layer architecture patterns"
+      present_as: "MVC/MVVM/MVP Pattern Research"
+
+    - pattern: "plugin|extension|extensib"
+      topics:
+        - "plugin architecture patterns"
+        - "extension point design patterns"
+        - "plugin discovery and loading patterns"
+        - "plugin API versioning"
+      present_as: "Plugin Architecture Research"
+
+    - pattern: "strangler|legacy\\s*modernization"
+      topics:
+        - "strangler fig pattern implementation"
+        - "legacy modernization strategies"
+        - "incremental migration patterns"
+      present_as: "Legacy Modernization Research"
+
+    - pattern: "outbox|inbox\\s*pattern|transactional\\s*messaging"
+      topics:
+        - "outbox pattern implementation"
+        - "transactional messaging patterns"
+        - "reliable messaging patterns"
+      present_as: "Outbox/Reliable Messaging Research"
+
+  # Testing Framework Research
+  testing:
+    - pattern: "pytest"
+      topics:
+        - "pytest best practices 2025"
+        - "pytest fixtures patterns"
+        - "pytest async testing"
+      present_as: "Pytest Best Practices"
+
+    - pattern: "jest"
+      topics:
+        - "Jest testing best practices"
+        - "Jest mocking patterns"
+        - "Jest async testing patterns"
+      present_as: "Jest Testing Patterns"
+
+    - pattern: "vitest"
+      topics:
+        - "Vitest best practices"
+        - "Vitest vs Jest comparison"
+        - "Vitest component testing patterns"
+      present_as: "Vitest Testing Patterns"
+
+    - pattern: "playwright"
+      topics:
+        - "Playwright E2E testing best practices"
+        - "Playwright page object pattern"
+        - "Playwright CI/CD integration"
+      present_as: "Playwright E2E Patterns"
+
+    - pattern: "cypress"
+      topics:
+        - "Cypress testing best practices 2025"
+        - "Cypress component testing patterns"
+      present_as: "Cypress Testing Patterns"
+
+    - pattern: "xunit|xunit\\.net"
+      topics:
+        - "xUnit.net best practices"
+        - "xUnit test organization patterns"
+        - "xUnit fixtures and collections"
+      present_as: "xUnit.net Testing Patterns"
+
+    - pattern: "nunit"
+      topics:
+        - "NUnit best practices"
+        - "NUnit test fixtures patterns"
+        - "NUnit parameterized tests"
+      present_as: "NUnit Testing Patterns"
+
+    - pattern: "mstest"
+      topics:
+        - "MSTest best practices"
+        - "MSTest data-driven testing"
+      present_as: "MSTest Testing Patterns"
+
+    - pattern: "specflow|bdd\\s*\\.?net"
+      topics:
+        - "SpecFlow BDD patterns"
+        - "SpecFlow step definitions best practices"
+        - "BDD testing in .NET"
+      present_as: "SpecFlow BDD Patterns"
+
+    - pattern: "fluentassertions|shouldly"
+      topics:
+        - "FluentAssertions best practices"
+        - ".NET assertion library patterns"
+      present_as: ".NET Assertion Library Patterns"
+
+  # Industry/Compliance Patterns
+  compliance:
+    - pattern: "fintech|financial|banking"
+      topics:
+        - "fintech software compliance requirements"
+        - "financial services testing requirements"
+        - "PCI DSS development best practices"
+      present_as: "Fintech Compliance Patterns"
+      affects_decisions:
+        - testing_strategy
+        - code_review
+        - documentation
+
+    - pattern: "healthcare|hipaa|medical"
+      topics:
+        - "HIPAA software development requirements"
+        - "healthcare application security patterns"
+        - "medical software testing requirements"
+      present_as: "Healthcare/HIPAA Compliance Patterns"
+
+    - pattern: "gdpr|privacy"
+      topics:
+        - "GDPR compliant software patterns"
+        - "privacy by design implementation"
+      present_as: "GDPR/Privacy Compliance Patterns"
+
+# Research presentation template for agents
+research_presentation_template: |
+  📚 RESEARCH FINDINGS: {topic_title}
+
+  Based on my research of current best practices, here are the key patterns:
+
+  {findings_formatted}
+
+  **How this affects your constitution:**
+  {implications}
+
+  Would you like me to incorporate these patterns? (yes/no/tell me more)
+
+# =============================================================================
+# DECISION CATEGORIES
+# =============================================================================
+
 testing_strategy:
   question: "What testing approach fits your project?"
   description: "Testing strategy affects development speed, confidence, and infrastructure needs"

@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup install install-dev sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build
+.PHONY: help venv setup install-tool sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build
 
 # Default target
 help:
@@ -18,11 +18,12 @@ help:
 	@echo "Prerequisites: Python 3.13+, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make venv         Setup virtual environment and show activation command"
 	@echo "    make setup        Install all dependencies (recommended first step)"
+	@echo "    make venv         Setup virtual environment and show activation command"
+	@echo "    make install-tool Install 'oak' globally via uv tool (works from any directory)"
 	@echo "    make sync         Sync dependencies with lockfile"
 	@echo "    make lock         Update lockfile after changing pyproject.toml"
-	@echo "    make uninstall    Remove dev environment (to test live package)"
+	@echo "    make uninstall    Remove dev environment and stale global installs"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test         Run all tests with coverage"
@@ -56,12 +57,12 @@ setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
 	uv sync --extra dev
 	@echo "\nSetup complete! Run 'make check' to verify everything works."
+	@echo "To use 'oak' globally from any directory, run: make install-tool"
 
 install:
-	uv pip install -e .
-
-install-dev:
-	uv pip install -e ".[dev]"
+	@echo "Installing oak globally via uv tool..."
+	uv tool install --editable . --force
+	@echo "\n'oak' is now available globally from any directory."
 
 sync:
 	uv sync --extra dev
@@ -72,8 +73,12 @@ lock:
 
 uninstall:
 	uv pip uninstall open-agent-kit 2>/dev/null || true
+	uv tool uninstall open-agent-kit 2>/dev/null || true
 	rm -rf .venv
-	@echo "Dev environment removed. To test the live package: uv tool install open-agent-kit"
+	@# Clean up stale pip --user installations
+	@rm -f ~/.local/bin/oak 2>/dev/null || true
+	@echo "Dev environment and global installs removed."
+	@echo "To reinstall: make setup && make install-tool"
 
 # Testing targets
 test:

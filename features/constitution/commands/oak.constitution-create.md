@@ -22,11 +22,13 @@ Lead the constitution creation process end-to-end. Gather facts, form judgments,
 
 1. Establish shared context with the user (gather facts, confirm assumptions).
 2. Investigate the repository and existing guidance; document your findings.
-3. Synthesize requirements section-by-section before writing anything.
-4. Generate a base file via CLI, then overwrite sections with your curated content.
-5. Update agent instruction files only after summarizing planned changes and receiving confirmation.
-6. Perform a quality review and (optionally) run validation with explicit user consent.
-7. Deliver a comprehensive report with next steps and open questions.
+3. **Research technologies and patterns** mentioned by the user (capability-aware).
+4. Synthesize requirements section-by-section before writing anything.
+5. **Gather explicit user decisions** on testing, code review, documentation, CI/CD, and architecture.
+6. Generate a base file via CLI with decision context, then refine with curated content.
+7. Update agent instruction files only after summarizing planned changes and receiving confirmation.
+8. Perform a quality review and (optionally) run validation with explicit user consent.
+9. Deliver a comprehensive report with next steps and open questions.
 
 ## Step 0: Project Analysis (Before Any Questions)
 
@@ -114,6 +116,132 @@ For each discovery session:
 - Capture the command, a concise output summary, and the implication (e.g., “CI enforces pytest with coverage 85% → Testing section MUST codify this threshold”).
 - When an agent instruction file already exists (e.g., `.github/copilot-instructions.md`), read its content in full, summarize key rules, and tag each with the constitution section it should influence. Treat these artifacts as authoritative for brownfield projects unless the user explicitly asks to change direction.
 - Flag conflicting or missing information for user review.
+
+## Step 3B: Research Phase (Capability-Aware)
+
+**Before presenting decision options, conduct research on technologies and patterns mentioned by the user.**
+
+This step ensures the constitution reflects current best practices rather than outdated or generic patterns.
+
+### Research Trigger Detection
+
+Scan user input (project description, tech stack, $ARGUMENTS) for research-worthy topics:
+
+1. **Version-specific patterns**: "Python 3.13", "TypeScript 5.x", "Node 22" → Research current best practices for that version
+2. **Framework patterns**: "FastAPI", "Ink CLI", "Next.js 15" → Research idiomatic patterns for that framework
+3. **Architecture patterns**: "vertical slice", "hexagonal", "DDD" → Research real-world implementations
+4. **Testing frameworks**: "pytest", "Vitest", "Playwright" → Research current testing best practices
+5. **Industry/Compliance**: "fintech", "healthcare", "GDPR" → Research regulatory requirements
+
+**Reference `features/constitution/templates/decision_points.yaml` section `research_triggers` for the full pattern list.**
+
+### Capability-Based Research Execution
+
+{% if has_native_web %}
+**🌐 NATIVE WEB SEARCH AVAILABLE**
+
+You have built-in web search capabilities. For each research topic identified:
+
+1. **Search for current best practices:**
+   ```
+   Search: "[technology] best practices 2025"
+   Search: "[framework] idiomatic patterns"
+   Search: "[pattern] implementation examples [tech_stack]"
+   ```
+
+2. **Synthesize findings** into 3-5 actionable patterns per topic
+
+3. **Present findings to user BEFORE relevant decision points**
+
+4. **Document sources** for traceability in the constitution
+{% elif has_mcp %}
+**🔌 MCP WEB SEARCH AVAILABLE**
+
+Use your configured MCP web-search server. {{ research_strategy }}
+
+For each research topic:
+1. Query MCP web-search with: "[topic] best practices 2025"
+2. Synthesize top results into actionable patterns
+3. Present findings before relevant decisions
+{% else %}
+**📚 LIMITED RESEARCH MODE**
+
+No web search available. When encountering unfamiliar patterns:
+1. Use your training knowledge but note the knowledge cutoff
+2. **Ask the user for clarification:**
+   ```
+   You mentioned "[pattern]". I want to ensure the constitution reflects
+   current best practices. Can you:
+   a) Describe what you mean by this pattern
+   b) Share any resources/docs you're following
+   c) Tell me if you'd like me to use general patterns instead
+   ```
+3. Flag any patterns you're uncertain about in the final report
+{% endif %}
+
+### Research Presentation Format
+
+Present research findings BEFORE each relevant decision point:
+
+```text
+═══════════════════════════════════════════════════════════════════
+📚 RESEARCH FINDINGS: [Topic Title]
+═══════════════════════════════════════════════════════════════════
+
+Based on current best practices research, here are the key patterns:
+
+1. **[Pattern Name]**
+   - Description: [What it is and why it matters]
+   - When to use: [Appropriate contexts]
+   - Example: [Brief code/structure example if relevant]
+
+2. **[Pattern Name]**
+   - Description: ...
+   - When to use: ...
+
+3. **[Pattern Name]**
+   ...
+
+**How this affects your constitution decisions:**
+→ Testing: [Implication for testing strategy]
+→ Architecture: [Implication for architectural decisions]
+→ Documentation: [Implication for documentation requirements]
+
+═══════════════════════════════════════════════════════════════════
+Would you like me to incorporate these patterns? (yes / no / tell me more)
+```
+
+### Research Topics Checklist
+
+Based on user input, mark which topics require research:
+
+| Topic Category | Detected Pattern | Research Status | Findings Summary |
+|----------------|------------------|-----------------|------------------|
+| Language/Version | [e.g., Python 3.13] | ⬜ Pending / ✅ Done | [Brief summary] |
+| Framework | [e.g., FastAPI] | ⬜ Pending / ✅ Done | [Brief summary] |
+| Architecture | [e.g., vertical slice] | ⬜ Pending / ✅ Done | [Brief summary] |
+| Testing | [e.g., pytest] | ⬜ Pending / ✅ Done | [Brief summary] |
+| Compliance | [e.g., none] | ⬜ N/A | - |
+
+**Complete all relevant research BEFORE proceeding to Step 4.**
+
+### Research Integration with Decisions
+
+When presenting decision options in Step 4A, integrate research findings:
+
+```text
+=== Testing Strategy Decision ===
+
+📚 Based on my research of [Framework] testing patterns:
+- [Framework] projects commonly use [X coverage] as a baseline
+- [Specific testing pattern] is recommended for [use case]
+- E2E testing with [Tool] is the community standard
+
+With this context, what testing approach fits your project?
+[Present standard options, but highlight research-informed recommendations]
+```
+
+---
 
 ## Step 4: Synthesis Notebook
 
