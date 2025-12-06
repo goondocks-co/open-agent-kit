@@ -15,7 +15,7 @@ class TestGetAgentInstructionFile:
         """Test get_agent_instruction_file returns correct path for Claude."""
         service = AgentService(initialized_project)
         path = service.get_agent_instruction_file("claude")
-        assert path == initialized_project / ".claude" / "CLAUDE.md"
+        assert path == initialized_project / "CLAUDE.md"
 
     def test_returns_correct_path_for_copilot(self, initialized_project: Path) -> None:
         """Test get_agent_instruction_file returns correct path for Copilot."""
@@ -57,9 +57,9 @@ class TestGetAgentInstructionFile:
         """Test that agent type is case-insensitive."""
         service = AgentService(initialized_project)
         path_upper = service.get_agent_instruction_file("CLAUDE")
-        assert path_upper == initialized_project / ".claude" / "CLAUDE.md"
+        assert path_upper == initialized_project / "CLAUDE.md"
         path_mixed = service.get_agent_instruction_file("ClAuDe")
-        assert path_mixed == initialized_project / ".claude" / "CLAUDE.md"
+        assert path_mixed == initialized_project / "CLAUDE.md"
 
 
 class TestDetectExistingAgentInstructions:
@@ -93,7 +93,7 @@ class TestDetectExistingAgentInstructions:
         assert existing["claude"]["exists"] is False
         assert existing["claude"]["content"] is None
         assert existing["claude"]["has_constitution_ref"] is False
-        assert existing["claude"]["path"] == initialized_project / ".claude" / "CLAUDE.md"
+        assert existing["claude"]["path"] == initialized_project / "CLAUDE.md"
 
     def test_detects_constitution_reference(self, initialized_project: Path) -> None:
         """Test detection when file has constitution reference."""
@@ -126,9 +126,8 @@ class TestDetectExistingAgentInstructions:
 
     def test_handles_multiple_agents(self, initialized_project: Path) -> None:
         """Test detection with multiple agents configured."""
-        claude_dir = initialized_project / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        claude_file = claude_dir / "CLAUDE.md"
+        # CLAUDE.md is at project root (not in .claude/)
+        claude_file = initialized_project / "CLAUDE.md"
         claude_file.write_text("# Claude Instructions\n", encoding="utf-8")
         copilot_dir = initialized_project / ".github"
         copilot_dir.mkdir(parents=True, exist_ok=True)
@@ -329,7 +328,7 @@ class TestUpdateAgentInstructionsFromConstitution:
         assert "claude" in results["created"]
         assert "claude" not in results["updated"]
         assert "claude" not in results["skipped"]
-        claude_file = initialized_project / ".claude" / "CLAUDE.md"
+        claude_file = initialized_project / "CLAUDE.md"
         assert claude_file.exists()
         content = claude_file.read_text(encoding="utf-8")
         assert "## Project Constitution" in content
@@ -395,7 +394,7 @@ class TestUpdateAgentInstructionsFromConstitution:
             constitution_file, mode="skip"
         )
         assert "claude" in results["created"]
-        claude_file = initialized_project / ".claude" / "CLAUDE.md"
+        claude_file = initialized_project / "CLAUDE.md"
         assert claude_file.exists()
 
 
@@ -465,7 +464,7 @@ class TestCreateAgentInstructionFile:
 
     def test_creates_new_file_with_constitution_reference(self, temp_project_dir: Path) -> None:
         """Test creating new instruction file with constitution reference."""
-        file_path = temp_project_dir / ".claude" / "CLAUDE.md"
+        file_path = temp_project_dir / "CLAUDE.md"
         constitution_file = temp_project_dir / "oak" / "constitution.md"
         constitution_file.parent.mkdir(parents=True, exist_ok=True)
         constitution_file.write_text("# Constitution\n", encoding="utf-8")
@@ -475,11 +474,12 @@ class TestCreateAgentInstructionFile:
         content = file_path.read_text(encoding="utf-8")
         assert "# Claude Code Instructions" in content
         assert "## Project Constitution" in content
-        assert "../oak/constitution.md" in content
+        # CLAUDE.md is at project root, so path to oak/constitution.md is direct
+        assert "oak/constitution.md" in content
 
     def test_handles_single_agent(self, temp_project_dir: Path) -> None:
         """Test creating file for single agent."""
-        file_path = temp_project_dir / ".claude" / "CLAUDE.md"
+        file_path = temp_project_dir / "CLAUDE.md"
         constitution_file = temp_project_dir / "constitution.md"
         constitution_file.write_text("# Constitution\n", encoding="utf-8")
         service = AgentService(temp_project_dir)
@@ -529,7 +529,7 @@ class TestIntegration:
         assert len(results["updated"]) == 0
         assert len(results["skipped"]) == 0
         assert len(results["errors"]) == 0
-        assert (initialized_project / ".claude" / "CLAUDE.md").exists()
+        assert (initialized_project / "CLAUDE.md").exists()
         assert (initialized_project / ".github" / "copilot-instructions.md").exists()
         assert (initialized_project / "AGENTS.md").exists()
 
@@ -539,9 +539,8 @@ class TestIntegration:
         constitution_dir.mkdir(parents=True, exist_ok=True)
         constitution_file = constitution_dir / "constitution.md"
         constitution_file.write_text("# Project Constitution\n", encoding="utf-8")
-        claude_dir = initialized_project / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        claude_file = claude_dir / "CLAUDE.md"
+        # CLAUDE.md is at project root (not in .claude/)
+        claude_file = initialized_project / "CLAUDE.md"
         claude_file.write_text("# Existing Claude instructions\n", encoding="utf-8")
         copilot_dir = initialized_project / ".github"
         copilot_dir.mkdir(parents=True, exist_ok=True)

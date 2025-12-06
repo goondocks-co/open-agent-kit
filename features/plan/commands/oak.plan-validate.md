@@ -31,8 +31,8 @@ Before executing this command, ensure these prerequisites are met **in order**:
    - The constitution is foundational - validation checks compliance against it.
    - **This is checked first** by the CLI before any other prerequisites.
 
-2. **Plan Exists** (REQUIRED): The user must have already created a plan using `/oak.plan-create` or `/oak.plan-issue`.
-   - If no plan exists, **STOP** and instruct: "Please run `/oak.plan-create` or `/oak.plan-issue` first to create a plan before validating."
+2. **Plan Exists** (REQUIRED): The user must have already created a plan using `/oak.plan-create`.
+   - If no plan exists, **STOP** and instruct: "Please run `/oak.plan-create` first to create a plan before validating."
 
 3. **Plan Name** (REQUIRED): You must know which plan to validate.
    - If the user hasn't provided one, check the current branch - plan branches follow the pattern `plan/<name>`
@@ -172,7 +172,7 @@ Leverage available MCP tools for automated checks:
 
 **Understanding Plan Validation:**
 
-- This command validates a plan created with `/oak.plan-create` (research-first) or `/oak.plan-issue` (issue-first).
+- This command validates a plan created with `/oak.plan-create`.
 - For issue-based plans: Artifacts are under `oak/plan/{name}/issue/` (summary.md, plan.md).
 - For research-based plans: Artifacts are under `oak/plan/{name}/` (plan.md, research/, tasks.md).
 - Related items (for issue-based plans) in `related/{id}/summary.md` provide context but are not directly validated.

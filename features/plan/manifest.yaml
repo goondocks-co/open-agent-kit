@@ -15,10 +15,17 @@ commands:
   - plan-tasks
   - plan-implement
   - plan-export
-  - plan-issue
   - plan-validate
 
-templates: []
+templates:
+  - early_triage.md
+  - issue_context.md
+  - clarifying_questions.md
+  - constitution_compliance.md
+  - codebase_exploration.md
+  - plan_structure.md
+  - research_strategy.md
+  - final_report.md
 
 # Feature-specific default configuration
 config_defaults:

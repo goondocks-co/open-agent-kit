@@ -41,6 +41,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "Remove old .oak/templates/ directory",
             _migrate_cleanup_old_templates,
         ),
+        (
+            "2025.12.05_unify_plan_create",
+            "Remove deprecated plan-issue command (merged into plan-create)",
+            _migrate_remove_plan_issue,
+        ),
     ]
 
 
@@ -223,6 +228,33 @@ def _migrate_cleanup_old_templates(project_root: Path) -> None:
                 old_templates_dir.rmdir()
         except Exception:
             pass
+
+
+def _migrate_remove_plan_issue(project_root: Path) -> None:
+    """Remove deprecated plan-issue command files.
+
+    The plan-issue command has been merged into plan-create, which now supports
+    both idea-based and issue-based planning through early triage.
+
+    This migration removes:
+    - .claude/commands/oak.plan-issue.md
+    - .github/agents/oak.plan-issue.md (if exists)
+
+    Args:
+        project_root: Project root directory
+    """
+    # Locations where the deprecated command might exist
+    deprecated_files = [
+        project_root / ".claude" / "commands" / "oak.plan-issue.md",
+        project_root / ".github" / "agents" / "oak.plan-issue.md",
+    ]
+
+    for file_path in deprecated_files:
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
 
 
 def run_migrations(

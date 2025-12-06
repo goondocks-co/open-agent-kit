@@ -1,17 +1,25 @@
 ---
-description: Create a strategic plan with clarifying questions, goals, and research topics.
+description: Create a strategic implementation plan from an idea or tracked issue.
 requires:
   - path: oak/constitution.md
     error: "Run /oak.constitution-create first to establish your project's engineering standards."
 generates:
+  # Always created
   - oak/plan/<plan-name>/plan.md
   - oak/plan/<plan-name>/.manifest.json
+  - git branch: plan/<plan-name> or <issue-id>/<plan-name>
+  # Issue-based planning (when starting from tracked issue)
+  - oak/plan/<plan-name>/issue/summary.md
+  - oak/plan/<plan-name>/issue/related/<id>/summary.md
+  # Idea-based planning (when starting from scratch)
   - oak/plan/<plan-name>/research/
-  - git branch: plan/<plan-name>
 handoffs:
   - label: Research Topics
     agent: oak.plan-research
     prompt: Research the topics identified in the plan to gather insights and inform task generation.
+  - label: Validate Plan
+    agent: oak.plan-validate
+    prompt: Validate the plan for accuracy and completeness.
 ---
 
 ## User Input
@@ -20,227 +28,93 @@ handoffs:
 $ARGUMENTS
 ```
 
-Treat the text supplied after the command as context for the planning session. This should describe what you're planning (a feature, migration, architecture change, etc.). Ask clarifying questions if anything is ambiguous.
+Treat the text supplied after the command as context for the planning session. This may describe an idea, reference a tracked issue, or both.
 
 ## Interaction Guidelines
 
 **Always ask when:**
-- The scope or objectives are unclear
+- The planning source (issue vs idea) is ambiguous
+- Scope or objectives are unclear
 - There are multiple valid approaches to consider
 - Key constraints or requirements are missing
-- Research topics need prioritization
 
 **Proceed without asking when:**
-- Objectives are clearly stated in $ARGUMENTS
+- Issue ID is clearly provided (e.g., "ADO #123", "GitHub issue #42")
+- Objectives are clearly stated for idea-based planning
 - Context is complete and unambiguous
-- Standard planning workflow applies
 
 **How to ask effectively:**
 - Present specific options when clarifying
 - Explain what information is needed and why
 - Suggest defaults based on available context
 
-## Responsibilities
+## Purpose
 
-1. Gather requirements through clarifying questions.
-2. Create the plan structure via `oak plan create`.
-3. Populate the plan with goals, success criteria, and research topics.
-4. Read the project constitution to understand standards.
-5. Identify research topics that need investigation.
-6. Summarize and propose next actions (research phase).
+Lead the plan creation process end-to-end. Whether starting from a tracked issue or an idea, you will gather context, explore the codebase, align with the constitution, and produce a detailed implementation plan.
 
-## Prerequisites
+## Workflow Overview
 
-Before executing this command, ensure these prerequisites are met:
+1. **Determine planning source** - Issue or idea?
+2. **Gather context** - Fetch issue data OR conduct clarifying questions
+3. **Read the constitution** - Extract standards and testing requirements
+4. **Explore the codebase** - Find patterns, similar implementations, test strategies
+5. **Create detailed plan** - Structured tasks, constitution compliance, definition of done
+6. **Report and handoff** - Summary and next steps
 
-1. **Constitution Exists** (REQUIRED): The project must have a constitution at `oak/constitution.md`.
-   - If missing, **STOP** and instruct the user: "Please run `/oak.constitution-create` first to establish your project's engineering standards."
+---
 
-## Workflow
+## Step 1: Planning Source Decision
 
-### 1. Clarifying Questions Phase
+{% include 'early_triage.md' %}
 
-Before creating the plan, gather essential context:
+**Based on $ARGUMENTS, determine the path:**
 
-**Scope Questions:**
-- What is the primary objective of this plan?
-- What problem are we solving or opportunity are we pursuing?
-- What is in scope? What is explicitly out of scope?
-- What are the key constraints (technical, timeline, resources)?
+- **Issue detected** (e.g., "#123", "ADO 12345", "GitHub issue #42") → Proceed to Issue-Based Planning
+- **No issue detected** → Proceed to Idea-Based Planning
+- **Ambiguous** → Ask the user to clarify
 
-**Research Questions:**
-- What unknowns need investigation before implementation?
-- Are there competing approaches to evaluate?
-- What external resources, APIs, or tools might be involved?
-- What existing codebase patterns should inform this work?
+---
 
-**Success Questions:**
-- How will we know when this is complete?
-- What are the acceptance criteria for success?
-- Who are the stakeholders and what do they need?
+## Step 2A: Issue-Based Planning (if issue detected)
 
-**Present questions strategically:**
-- Group related questions together
-- Provide examples or defaults where helpful
-- Prioritize questions that unlock other answers
+{% include 'issue_context.md' %}
 
-### 2. Create Plan Structure
+**After fetching issue context, skip to Step 3.**
 
-Once you have sufficient context:
+---
 
-```bash
-# Create the plan with a URL-safe name
-oak plan create <plan-name> --display-name "Human Readable Name"
+## Step 2B: Idea-Based Planning (if no issue)
 
-# Example:
-oak plan create auth-redesign --display-name "Authentication System Redesign"
-```
+{% include 'clarifying_questions.md' %}
 
-The CLI will:
-- Create `oak/plan/<plan-name>/` directory
-- Initialize `plan.md` with basic structure
-- Create `.manifest.json` with metadata
-- Create `research/` directory for findings
-- Create a git branch `plan/<plan-name>`
+**After gathering requirements, proceed to Step 3.**
 
-### 3. Populate Plan Content
+---
 
-Edit `oak/plan/<plan-name>/plan.md` to include:
+## Step 3: Constitution Alignment
 
-**Overview Section:**
-- Executive summary of what this plan achieves
-- Problem statement or opportunity description
-- High-level approach
+{% include 'constitution_compliance.md' %}
 
-**Goals Section:**
-- 3-5 specific, measurable objectives
-- Each goal should be testable/verifiable
+---
 
-**Success Criteria Section:**
-- How success will be measured
-- Specific outcomes or deliverables
+## Step 4: Systematic Codebase Exploration
 
-**Scope Section:**
-- What's in scope (features, components, etc.)
-- What's explicitly out of scope
-- Known boundaries and limitations
+{% include 'codebase_exploration.md' %}
 
-**Constraints Section:**
-- Technical constraints (languages, frameworks, APIs)
-- Resource constraints (time, team, budget)
-- Organizational constraints (approvals, dependencies)
+---
 
-### 4. Identify Research Topics
+## Step 5: Research Strategy
 
-Based on the clarifying conversation, create research topics:
+{% include 'research_strategy.md' %}
 
-**Research Topic Structure:**
-```markdown
-### Topic Title
-**Slug:** `url-safe-slug`
-**Priority:** 1-5 (1 = highest)
-**Status:** pending
+---
 
-Description of what to research and why.
+## Step 6: Create Detailed Implementation Plan
 
-**Questions to answer:**
-- Specific question 1?
-- Specific question 2?
+{% include 'plan_structure.md' %}
 
-**Sources to check:**
-- Documentation links
-- Similar projects
-- Internal resources
-```
+---
 
-**Good Research Topics:**
-- Technology comparisons (e.g., "OAuth Providers")
-- Architecture patterns (e.g., "Event Sourcing Patterns")
-- Integration approaches (e.g., "Payment Gateway APIs")
-- Codebase analysis (e.g., "Existing Auth Patterns")
+## Step 7: Stop and Report
 
-**Research Depth:**
-- `minimal`: Quick validation, 1-2 sources
-- `standard`: Comprehensive overview, 3-5 sources (default)
-- `comprehensive`: Deep dive, extensive sources, comparisons
-
-### 5. Constitution Alignment
-
-Read the project constitution and identify:
-
-```bash
-cat oak/constitution.md
-```
-
-- Relevant coding standards for this work
-- Testing requirements that apply
-- Documentation standards to follow
-- Review or approval processes
-
-Document in the plan how constitution standards will be applied.
-
-### 6. Update Plan Status
-
-```bash
-oak plan status <plan-name> researching
-```
-
-### 7. Stop and Report
-
-After creating the plan, provide a summary:
-
-```text
-## Plan Created
-
-**Plan:** <plan-name>
-**Display Name:** <Human Readable Name>
-**Branch:** plan/<plan-name>
-**Location:** oak/plan/<plan-name>/plan.md
-
-### Overview
-<Brief summary of the plan>
-
-### Goals Defined
-1. <Goal 1>
-2. <Goal 2>
-3. <Goal 3>
-
-### Research Topics Identified
-1. **<Topic 1>** (Priority 1) - <Brief description>
-2. **<Topic 2>** (Priority 2) - <Brief description>
-3. **<Topic 3>** (Priority 3) - <Brief description>
-
-### Constitution Alignment
-- <Key standards that will apply>
-
-### Next Steps
-1. Review and refine plan.md
-2. Begin research: /oak.plan-research <plan-name>
-```
-
-**Command ends here.** The user should review the plan before proceeding to research.
-
-## Research Strategy Guidance
-
-{% if has_native_web %}
-When researching topics in the next phase, you have access to **web search capabilities**. Use them proactively to gather current information, documentation, and best practices.
-{% else %}
-Note: This agent may not have native web search capabilities. During the research phase, focus on:
-- Codebase exploration for existing patterns
-- General knowledge for established best practices
-{% if has_mcp %}
-- MCP tools if web search servers are available
-{% endif %}
-{% endif %}
-
-{% if has_background_agents %}
-Consider using **background agents** during research to parallelize investigation of multiple topics efficiently.
-{% endif %}
-
-## Notes
-
-- **Plans are living documents**: Update plan.md as understanding evolves
-- **Research before tasks**: Thorough research leads to better task definitions
-- **Constitution is authoritative**: All planning should align with project standards
-- **Scope creep prevention**: Use the scope section to maintain focus
-- **Prioritize research**: Not all topics are equally important - focus on high-priority unknowns first
+{% include 'final_report.md' %}

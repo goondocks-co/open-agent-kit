@@ -303,7 +303,6 @@ FEATURE_CONFIG = {
             "plan-tasks",
             "plan-implement",
             "plan-export",
-            "plan-issue",
             "plan-validate",
         ],
     },
@@ -334,7 +333,6 @@ UPGRADE_COMMAND_NAMES = [
     "plan-tasks",
     "plan-implement",
     "plan-export",
-    "plan-issue",
     "plan-validate",
 ]
 

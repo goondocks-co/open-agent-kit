@@ -358,7 +358,7 @@ def test_constitution_generate_agent_files(
     result = cli_runner.invoke(app, ["constitution", "generate-agent-files"])
     assert result.exit_code == 0
     assert "claude" in result.stdout.lower()
-    agent_file = initialized_project_with_agent / ".claude" / "CLAUDE.md"
+    agent_file = initialized_project_with_agent / "CLAUDE.md"
     assert agent_file.exists()
 
 
@@ -411,7 +411,7 @@ def test_constitution_update_agent_files(
     result = cli_runner.invoke(app, ["constitution", "update-agent-files"])
     assert result.exit_code == 0
     assert "claude" in result.stdout.lower()
-    agent_file = initialized_project_with_agent / ".claude" / "CLAUDE.md"
+    agent_file = initialized_project_with_agent / "CLAUDE.md"
     assert agent_file.exists()
     content = agent_file.read_text(encoding="utf-8")
     assert "constitution" in content.lower()

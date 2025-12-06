@@ -110,7 +110,7 @@ def test_generate_agent_files_for_claude(
     generated = service.generate_agent_files(sample_constitution, ["claude"])
     assert "claude" in generated
     assert generated["claude"].exists()
-    expected_path = temp_project_dir / ".claude" / "CLAUDE.md"
+    expected_path = temp_project_dir / "CLAUDE.md"
     assert generated["claude"] == expected_path
     content = generated["claude"].read_text(encoding="utf-8")
     assert "Test Project" in content
@@ -205,15 +205,26 @@ def test_generate_agent_files_creates_directories(
 ) -> None:
     """Test that generating agent files creates necessary directories."""
     service = AgentFileService(temp_project_dir)
-    generated = service.generate_agent_files(sample_constitution, ["claude"])
-    assert (temp_project_dir / ".claude").exists()
-    assert generated["claude"].exists()
+    # Test with copilot which has a directory-based path (.github/copilot-instructions.md)
+    generated = service.generate_agent_files(sample_constitution, ["copilot"])
+    assert (temp_project_dir / ".github").exists()
+    assert generated["copilot"].exists()
+    # Claude's CLAUDE.md is at project root, so no directory creation needed
+    generated_claude = service.generate_agent_files(sample_constitution, ["claude"])
+    assert generated_claude["claude"].exists()
+    assert generated_claude["claude"] == temp_project_dir / "CLAUDE.md"
 
 
 def test_update_agent_files(
     temp_project_dir: Path, sample_constitution: ConstitutionDocument
 ) -> None:
     """Test updating existing agent files."""
+    # Set up config with agents
+    oak_dir = temp_project_dir / OAK_DIR
+    oak_dir.mkdir(exist_ok=True)
+    config = {"agents": ["claude"], "version": "0.1.0"}
+    write_file(oak_dir / CONFIG_FILE, yaml.dump(config))
+
     service = AgentFileService(temp_project_dir)
     service.generate_agent_files(sample_constitution, ["claude"])
     sample_constitution.metadata.version = "1.1.0"
@@ -289,7 +300,7 @@ def test_get_agent_file_path_claude(temp_project_dir: Path) -> None:
     """Test getting file path for Claude."""
     service = AgentFileService(temp_project_dir)
     path = service._get_agent_file_path("claude")
-    assert path == temp_project_dir / ".claude" / "CLAUDE.md"
+    assert path == temp_project_dir / "CLAUDE.md"
 
 
 def test_get_agent_file_path_copilot(temp_project_dir: Path) -> None:
@@ -320,6 +331,12 @@ def test_agent_files_persist_across_service_instances(
     temp_project_dir: Path, sample_constitution: ConstitutionDocument
 ) -> None:
     """Test that generated agent files persist across service instances."""
+    # Set up config with agents
+    oak_dir = temp_project_dir / OAK_DIR
+    oak_dir.mkdir(exist_ok=True)
+    config = {"agents": ["claude"], "version": "0.1.0"}
+    write_file(oak_dir / CONFIG_FILE, yaml.dump(config))
+
     service1 = AgentFileService(temp_project_dir)
     generated1 = service1.generate_agent_files(sample_constitution, ["claude"])
     service2 = AgentFileService(temp_project_dir)

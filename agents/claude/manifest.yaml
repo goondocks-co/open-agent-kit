@@ -10,7 +10,7 @@ installation:
   folder: ".claude/"
   commands_subfolder: "commands"
   file_extension: ".md"
-  instruction_file: "CLAUDE.md"
+  instruction_file: "./CLAUDE.md"
 
 requirements:
   requires_cli: true
