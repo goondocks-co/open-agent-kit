@@ -19,6 +19,7 @@ requirements:
 
 capabilities:
   has_background_agents: true   # Cloud agents (limited in some modes)
+  background_agent_instructions: "Use Background Agents to run tasks in parallel cloud environments. Launch cloud agents from the Cursor editor or cursor.com/agents. Each agent works in an isolated copy of the codebase using git worktrees."
   has_native_web: false         # No general web search by default
   has_mcp: true                 # Full MCP support via configuration
   research_strategy: "Deep research via MCP web-search + background agents"

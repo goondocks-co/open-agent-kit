@@ -184,6 +184,12 @@ class AgentService:
                 context["has_mcp"] = overrides.has_mcp
             if overrides.research_strategy is not None:
                 context["research_strategy"] = overrides.research_strategy
+            # Check for background_agent_instructions override
+            if (
+                hasattr(overrides, "background_agent_instructions")
+                and overrides.background_agent_instructions is not None
+            ):
+                context["background_agent_instructions"] = overrides.background_agent_instructions
             # Add any custom capabilities
             if overrides.custom:
                 context.update(overrides.custom)
@@ -206,6 +212,7 @@ class AgentService:
         caps = manifest.capabilities
         return {
             "has_background_agents": caps.has_background_agents,
+            "background_agent_instructions": caps.background_agent_instructions,
             "has_native_web": caps.has_native_web,
             "has_mcp": caps.has_mcp,
             "research_strategy": caps.research_strategy,

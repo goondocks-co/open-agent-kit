@@ -48,11 +48,15 @@ This should be a plan name or can be inferred from the current git branch. May o
 ## Export Strategy
 
 {% if has_background_agents %}
-### Parallel Export with Background Agents
+### Parallel Export with Background Agents (DEFAULT)
 
-**For plans with many tasks, parallelize the export process.**
+**You MUST use parallel export when exporting 10+ tasks.**
 
-When exporting 10+ tasks:
+Parallel export is the DEFAULT mode for this agent when task count warrants it. Only fall back to sequential for small exports (<10 tasks).
+
+**REQUIRED for parallel export:**
+- 10+ tasks to export
+- Issue provider is configured and accessible
 
 **Parallel Export Workflow:**
 
@@ -74,7 +78,13 @@ When exporting 10+ tasks:
 └─────────────────────────────────────────────────────┘
 ```
 
-**Subagent Export Template:**
+#### Launching Background Agents
+
+**HOW TO LAUNCH:** {{ background_agent_instructions }}
+
+Note: Create parent issues (epics) FIRST sequentially, then parallelize child issue creation.
+
+For each batch, use this delegation prompt:
 
 ```markdown
 # Issue Export Assignment
@@ -114,10 +124,30 @@ exports:
 - Then parallelize child issue creation
 - Update tasks.md with all links after completion
 
-{% else %}
-### Sequential Export
+**DECISION GATE: Before exporting, you MUST:**
 
-Export tasks one at a time, respecting hierarchy (parents before children).
+1. Count total tasks to export
+2. Verify issue provider is configured
+3. Choose execution mode based on task count
+
+**MANDATORY OUTPUT before proceeding:**
+```text
+## Export Mode Decision
+
+Total tasks to export: [X]
+Issue provider: [GitHub/Azure DevOps]
+Provider configured: [Yes/No]
+
+**Decision: [PARALLEL / SEQUENTIAL]**
+**Reason:** [Task count >= 10 requires parallel / Task count < 10 allows sequential]
+```
+
+**If PARALLEL selected, create export manifest and launch background agents after creating parent issues.**
+
+{% else %}
+### Sequential Export (Fallback)
+
+Export tasks one at a time when background agents are not available. Respects hierarchy (parents before children).
 {% endif %}
 
 {% if has_mcp %}

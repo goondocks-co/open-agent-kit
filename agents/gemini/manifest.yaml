@@ -18,7 +18,8 @@ requirements:
   install_url: "https://github.com/google-gemini/gemini-cli"
 
 capabilities:
-  has_background_agents: true   # Long ReAct loops, multi-step execution
+  has_background_agents: false  # Sub-agents feature in development; no stable parallel mechanism yet
+  background_agent_instructions: "Execute tasks sequentially. Gemini CLI sub-agents feature is in development."
   has_native_web: true          # Google Search grounding + web fetch
   has_mcp: true                 # Supports local/remote MCP servers
   research_strategy: "Use built-in search + fetch as primary; MCP for extras"

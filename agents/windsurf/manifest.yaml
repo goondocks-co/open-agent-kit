@@ -19,6 +19,7 @@ requirements:
 
 capabilities:
   has_background_agents: true   # Cascade agentic IDE, multi-step flows
+  background_agent_instructions: "Start multiple Cascade sessions to work on tasks in parallel. Use Plan Mode for multi-step workflows. Each Cascade instance can execute independently while others are running."
   has_native_web: false         # Depends on chosen model
   has_mcp: true                 # Wave 3 MCP support + curated server list
   research_strategy: "Deep research via MCP web-search stack"

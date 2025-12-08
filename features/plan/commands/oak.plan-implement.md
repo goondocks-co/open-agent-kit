@@ -69,23 +69,21 @@ Before executing this command, ensure these prerequisites are met **in order**:
 ## Task Execution Strategy
 
 {% if has_background_agents %}
-### Parallel Execution with Background Agents
+### Parallel Execution with Background Agents (DEFAULT)
 
-**You can orchestrate multiple background agents for efficient parallel implementation.**
+**You MUST use parallel execution with background agents when the plan has 3+ independent tasks.**
 
-When implementing plans with multiple independent tasks, consider delegating to specialized agents:
+Parallel execution is the DEFAULT mode for this agent. Only fall back to sequential execution when tasks have tight dependencies that prevent parallelization.
 
-**When to parallelize:**
-- 3+ independent tasks with no shared dependencies
+**REQUIRED for parallel execution (all must be true):**
+- 3+ tasks with no shared dependencies
 - Tasks modify different files/modules
 - Clear separation of concerns (e.g., feature vs tests vs docs)
-- Time efficiency is important
 
-**When to execute sequentially:**
-- Tasks have dependencies on each other
-- Tasks modify the same files
-- Earlier work informs later implementation
-- Complex integration requirements
+**Fall back to sequential ONLY when:**
+- Tasks have hard dependencies on each other's output
+- Multiple tasks modify the same files
+- Complex integration requires step-by-step verification
 
 **Orchestration Roles:**
 
@@ -96,14 +94,14 @@ When implementing plans with multiple independent tasks, consider delegating to 
 | **Docs Agent** | Documentation | README updates, API docs, comments |
 | **Refactor Agent** | Code cleanup | Restructuring, pattern alignment |
 
-**Orchestration Manifest:**
+**Implementation Manifest (REQUIRED):**
 
-Create `oak/plan/<plan-name>/implementation-manifest.yml` to track parallel execution:
+You MUST create `oak/plan/<plan-name>/implementation-manifest.yml` BEFORE launching any background agents:
 
 ```yaml
 version: 1.0
 plan_name: "<plan-name>"
-execution_mode: "parallel"
+execution_mode: "parallel"  # or "sequential"
 started_at: "<timestamp>"
 
 task_assignments:
@@ -159,7 +157,7 @@ Leverage available MCP tools during implementation:
 
 ## Workflow
 
-**IMPORTANT: Follow these steps sequentially. Do not skip to implementation without completing preparation steps 1-8.**
+**IMPORTANT: Complete preparation steps 1-8 before implementation. Step 9 determines parallel vs sequential execution based on task analysis.**
 
 1. **Check for Stale Context (For Issue-Based Plans)**
 
@@ -367,23 +365,66 @@ Leverage available MCP tools during implementation:
    ```
 
    **Execution rules:**
-   - Execute tasks sequentially unless plan.md specifies otherwise
    - Respect dependencies between tasks (setup before implementation, etc.)
    - Follow constitution's guidance on test-first vs test-after approach
    - Mark tasks complete in plan.md as you finish them
-
-9. **Execute Implementation with Progress Tracking**
-
-   **NOW you can begin implementation.**
+   - Execution mode (parallel vs sequential) is determined in Step 9
 
 {% if has_background_agents %}
-   **Parallel Execution Mode:**
+9. **DECISION GATE: Execution Mode Selection (REQUIRED)**
 
-   For plans with 3+ independent tasks, consider parallel execution:
+   **STOP and analyze tasks before proceeding. You MUST explicitly choose an execution mode.**
 
-   **Step 9a: Identify Parallelizable Tasks**
+   **Analysis Steps:**
+   1. List all tasks from plan.md
+   2. Identify dependencies between tasks (which tasks require output from others?)
+   3. Count tasks that can run independently (no dependencies on each other)
+   4. Check if independent tasks modify different files
 
-   Analyze task dependencies and group into execution waves:
+   **Decision Rule:**
+   - **IF** 3+ tasks have no dependencies on each other **AND** they modify different files:
+     → **USE PARALLEL EXECUTION** (proceed to Step 10a)
+   - **OTHERWISE**:
+     → **USE SEQUENTIAL EXECUTION** (proceed to Step 10e)
+
+   **MANDATORY OUTPUT - Document your decision:**
+   ```text
+   ## Execution Mode Decision
+
+   Total tasks: [X]
+   Independent tasks (no dependencies): [Y]
+   Tasks modifying same files: [list or "none"]
+
+   **Decision: [PARALLEL / SEQUENTIAL]**
+   **Reason:** [Brief explanation based on analysis above]
+   ```
+
+   **IF PARALLEL SELECTED:** Create the implementation manifest NOW before continuing:
+
+   ```bash
+   # Create manifest file
+   cat > oak/plan/<plan-name>/implementation-manifest.yml << 'EOF'
+   version: 1.0
+   plan_name: "<plan-name>"
+   execution_mode: "parallel"
+   started_at: "<timestamp>"
+
+   task_assignments:
+     # Fill in based on your task analysis
+   EOF
+   ```
+
+   **Verify manifest exists before proceeding to Step 10.**
+
+10. **Execute Implementation with Progress Tracking**
+
+   **NOW you can begin implementation based on your decision in Step 9.**
+
+   **Parallel Execution Mode (Step 10a-10d):**
+
+   **Step 10a: Group Tasks into Execution Waves**
+
+   Based on your analysis in Step 9, group tasks into waves:
 
    ```text
    Wave 1 (parallel): T1, T2, T3  [no dependencies]
@@ -391,9 +432,11 @@ Leverage available MCP tools during implementation:
    Wave 3 (sequential): T6        [depends on T4 + T5, needs integration]
    ```
 
-   **Step 9b: Create Subagent Delegation**
+   **Step 10b: Launch Background Agents**
 
-   For each parallelizable task, prepare a delegation prompt:
+   **HOW TO LAUNCH:** {{ background_agent_instructions }}
+
+   For each task in the current wave, use this delegation prompt:
 
    ```markdown
    # Implementation Assignment: <Task Title>
@@ -446,10 +489,12 @@ Leverage available MCP tools during implementation:
    - If blocked, report and wait for guidance
    ```
 
-   **Step 9c: Launch and Monitor**
+   **Step 10c: Monitor Progress**
+
+   Track agent progress and update manifest:
 
    ```text
-   Launching parallel implementation:
+   Parallel Implementation Status:
 
    ┌─────────────────────────────────────────────────────┐
    │ Wave 1: Independent Tasks                           │
@@ -462,9 +507,9 @@ Leverage available MCP tools during implementation:
    Monitoring progress...
    ```
 
-   **Step 9d: Consolidate Results**
+   **Step 10d: Consolidate Results**
 
-   As agents complete:
+   As each wave completes:
    1. Review modified files for conflicts
    2. Run full test suite to catch integration issues
    3. Merge changes and update manifest
@@ -482,9 +527,11 @@ Leverage available MCP tools during implementation:
    ```
 
 {% else %}
-   **Sequential Execution Mode:**
+9. **Execute Implementation with Progress Tracking**
 
 {% endif %}
+   **Sequential Execution Mode (Step 10e):**
+
    For each task in plan.md:
 
     **a) Report starting the task:**
@@ -520,7 +567,7 @@ Leverage available MCP tools during implementation:
     - **Write tests per constitution**: Follow the project's test strategy (test-first or test-after)
     - **Keep plan.md updated**: Mark tasks [X] as you complete them
 
-10. **Reasoning Checkpoints - While Implementing**
+11. **Reasoning Checkpoints - While Implementing**
 
    Continuously verify:
    - [ ] Am I following patterns I found in the codebase?
@@ -531,7 +578,7 @@ Leverage available MCP tools during implementation:
    - [ ] Am I handling errors appropriately?
    - [ ] Am I updating docs as needed?
 
-11. **Completion Validation**
+12. **Completion Validation**
 
    After implementing all tasks, verify the work is complete:
 
@@ -598,7 +645,7 @@ Leverage available MCP tools during implementation:
     - No secrets or sensitive data
     - Changes are on the correct branch
 
-12. **Stop and Report**
+13. **Stop and Report**
 
    After implementation is complete, provide comprehensive summary:
 

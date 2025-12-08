@@ -52,11 +52,16 @@ This should be a plan name or can be inferred from the current git branch.
 ## Task Generation Strategy
 
 {% if has_background_agents %}
-### Parallel Task Generation with Background Agents
+### Parallel Task Generation with Background Agents (DEFAULT)
 
-**For plans with multiple epics or research topics, parallelize task generation.**
+**You MUST use parallel task generation when the plan contains 3+ distinct areas.**
 
-When the plan contains 3+ distinct areas (epics, features, or research topics):
+Parallel task generation is the DEFAULT mode for this agent. Only fall back to sequential when areas have tight dependencies requiring sequential context.
+
+**REQUIRED for parallel generation (all must be true):**
+- 3+ distinct areas (epics, features, or research topics)
+- Areas can be broken into tasks independently
+- No area's tasks require knowing another area's task structure first
 
 **Parallel Generation Approach:**
 
@@ -75,7 +80,11 @@ When the plan contains 3+ distinct areas (epics, features, or research topics):
 └─────────────────────────────────────────────────────┘
 ```
 
-**Subagent Task Generation Template:**
+#### Launching Background Agents
+
+**HOW TO LAUNCH:** {{ background_agent_instructions }}
+
+For each area, use this delegation prompt:
 
 ```markdown
 # Task Generation Assignment: <Epic/Area>
@@ -125,10 +134,30 @@ tasks:
 3. Validate no duplicate IDs
 4. Order by priority and dependencies
 
-{% else %}
-### Sequential Task Generation
+**DECISION GATE: Before generating tasks, you MUST:**
 
-Generate tasks for each epic/area one at a time, building on previous context.
+1. Count distinct areas (epics, features, research topics) in the plan
+2. Determine if areas can be processed independently
+3. Choose execution mode based on criteria above
+
+**MANDATORY OUTPUT before proceeding:**
+```text
+## Task Generation Mode Decision
+
+Distinct areas found: [X]
+Areas can be processed independently: [Yes/No]
+Areas with dependencies: [list or "none"]
+
+**Decision: [PARALLEL / SEQUENTIAL]**
+**Reason:** [Brief explanation]
+```
+
+**If PARALLEL selected, create task-generation manifest and launch background agents.**
+
+{% else %}
+### Sequential Task Generation (Fallback)
+
+Generate tasks for each epic/area one at a time when background agents are not available.
 {% endif %}
 
 {% if has_native_web %}

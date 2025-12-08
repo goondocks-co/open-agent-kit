@@ -18,6 +18,10 @@ requirements:
 
 capabilities:
   has_background_agents: true   # Can launch background tasks, parallel agents
+  background_agent_instructions: |
+    Use the `Task` tool with `run_in_background: true`. Launch ALL parallel tasks in a single message with multiple Task tool calls.
+    Select the appropriate `subagent_type` based on task type:
+    Match agent expertise to task requirements for best results.
   has_native_web: true          # Built-in WebSearch, WebFetch tools
   has_mcp: true                 # First-class MCP support (local & remote)
   research_strategy: "Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)"

@@ -92,29 +92,27 @@ This agent may not have built-in web search. Adapt your strategy:
 {% endif %}
 
 {% if has_background_agents %}
-### Parallel Research with Background Agents
+### Parallel Research with Background Agents (DEFAULT)
 
-**You can launch background agents for efficient parallel research.**
+**You MUST use parallel research with background agents when 3+ independent topics exist.**
 
-For plans with multiple research topics:
-1. Identify independent topics that can be researched simultaneously
-2. Launch a background agent for each topic with full context
-3. Update `research-manifest.yml` with agent assignments
-4. Monitor progress and consolidate findings
+Parallel research is the DEFAULT mode for this agent. Only fall back to sequential research when topics have explicit dependencies.
 
-**When to parallelize:**
+**REQUIRED for parallel research (all must be true):**
 - 3+ topics with priority 1-2
 - Topics are independent (no dependencies between them)
-- Time efficiency is important
+- Topics don't require sequential learning (one informing another)
 
-**When to research sequentially:**
-- Topics build on each other
-- Earlier findings inform later research
-- Limited context capacity
+**Fall back to sequential ONLY when:**
+- Topics explicitly build on each other
+- Earlier findings MUST inform later research
+- Research questions reference other topics' outputs
 
-#### Subagent Delegation Template
+#### Launching Background Agents
 
-For each topic delegated to a background agent:
+**HOW TO LAUNCH:** {{ background_agent_instructions }}
+
+For each topic, use this delegation prompt:
 
 ```markdown
 # Research Assignment: <Topic Title>
@@ -233,6 +231,39 @@ This manifest serves as the **single source of truth** for research progress, en
 - Resumability if interrupted
 - Progress tracking across sessions
 - Parallel coordination (if using background agents)
+
+{% if has_background_agents %}
+### 1.6. DECISION GATE: Research Mode Selection (REQUIRED)
+
+**STOP and analyze topics before proceeding. You MUST explicitly choose a research mode.**
+
+**Analysis Steps:**
+1. List all research topics from plan.md
+2. Identify dependencies between topics (does one topic's answer inform another's questions?)
+3. Count topics with priority 1-2 that are independent
+4. Check if topics can be researched in isolation
+
+**Decision Rule:**
+- **IF** 3+ priority 1-2 topics are independent:
+  → **USE PARALLEL RESEARCH** (launch background agents in Step 2)
+- **OTHERWISE**:
+  → **USE SEQUENTIAL RESEARCH** (research one at a time in Step 2)
+
+**MANDATORY OUTPUT - Document your decision:**
+```text
+## Research Mode Decision
+
+Total topics: [X]
+Priority 1-2 topics: [Y]
+Independent topics: [Z]
+Topics with dependencies: [list or "none"]
+
+**Decision: [PARALLEL / SEQUENTIAL]**
+**Reason:** [Brief explanation based on analysis above]
+```
+
+**Verify manifest is created before proceeding to Step 2.**
+{% endif %}
 
 ### 2. Research Each Topic
 

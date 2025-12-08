@@ -31,6 +31,10 @@ class AgentCapabilities(BaseModel):
         default=False,
         description="Whether agent supports background/parallel agent execution",
     )
+    background_agent_instructions: str = Field(
+        default="Use your agent's parallel execution capability.",
+        description="Agent-specific instructions for launching background agents",
+    )
     has_native_web: bool = Field(
         default=False,
         description="Whether agent has built-in web search capabilities",
@@ -252,6 +256,7 @@ class AgentManifest(BaseModel):
             "file_extension": self.installation.file_extension,
             # Capability flags for conditional rendering
             "has_background_agents": self.capabilities.has_background_agents,
+            "background_agent_instructions": self.capabilities.background_agent_instructions,
             "has_native_web": self.capabilities.has_native_web,
             "has_mcp": self.capabilities.has_mcp,
             "research_strategy": self.capabilities.research_strategy,

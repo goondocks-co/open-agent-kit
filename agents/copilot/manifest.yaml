@@ -18,6 +18,7 @@ requirements:
 
 capabilities:
   has_background_agents: true   # Coding agent, Mission Control
+  background_agent_instructions: "Use Mission Control to assign multiple tasks in parallel. Each task runs in its own cloud environment. Monitor progress and guide agents with real-time steering."
   has_native_web: true          # Built-in web/search tools in Copilot Chat
   has_mcp: true                 # Full MCP support in VS Code
   research_strategy: "Use Copilot's built-in web tools + keyless MCP"

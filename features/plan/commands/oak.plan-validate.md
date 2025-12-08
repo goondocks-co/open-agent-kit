@@ -72,11 +72,11 @@ Before executing this command, ensure these prerequisites are met **in order**:
 ## Validation Strategy
 
 {% if has_background_agents %}
-### Parallel Validation with Background Agents
+### Parallel Validation with Background Agents (DEFAULT)
 
-**You can orchestrate multiple validation checks in parallel for faster feedback.**
+**You MUST use parallel validation with background agents when validating plans with code implementation.**
 
-When validating complex plans with code implementation:
+Parallel validation is the DEFAULT mode for this agent. All validation checks listed below are independent and MUST run in parallel:
 
 **Parallelizable Validation Checks:**
 
@@ -105,7 +105,11 @@ When validating complex plans with code implementation:
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Subagent Validation Template:**
+#### Launching Background Agents
+
+**HOW TO LAUNCH:** {{ background_agent_instructions }}
+
+For each check, use this delegation prompt:
 
 ```markdown
 # Validation Assignment: <Check Type>
@@ -148,10 +152,27 @@ findings:
 - Report ALL findings, let orchestrator prioritize
 ```
 
-{% else %}
-### Sequential Validation
+**DECISION GATE: Before starting validation, you MUST:**
 
-Perform validation checks one at a time. This ensures thorough analysis but takes longer for complex plans.
+1. Confirm plan has code implementation to validate (if not, skip Code Quality and Test checks)
+2. Create a validation manifest at `oak/plan/<plan-name>/validation-manifest.yml`
+3. Launch all applicable checks in parallel
+4. Monitor and consolidate findings
+
+**MANDATORY OUTPUT before launching agents:**
+```text
+## Validation Mode Decision
+
+Plan has code implementation: [Yes/No]
+Checks to run in parallel: [list applicable checks]
+Creating validation manifest...
+Launching background agents...
+```
+
+{% else %}
+### Sequential Validation (Fallback)
+
+Perform validation checks one at a time when background agents are not available.
 {% endif %}
 
 {% if has_native_web %}
