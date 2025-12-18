@@ -44,6 +44,7 @@ from .exceptions import (
 from .feature import FeatureManifest, LifecycleHooks
 from .project import ProjectConfig, ProjectState
 from .rfc import RFCDocument, RFCIndex
+from .skill import SkillManifest
 from .state import OakState
 from .template import Template, TemplateConfig, TemplateHooks
 from .validation import (
@@ -71,6 +72,8 @@ __all__ = [
     # Features
     "FeatureManifest",
     "LifecycleHooks",
+    # Skills
+    "SkillManifest",
     # RFC
     "RFCDocument",
     "RFCIndex",

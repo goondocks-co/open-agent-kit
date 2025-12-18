@@ -11,6 +11,11 @@ commands:
   - constitution-validate
   - constitution-amend
 
+# Skills are installed to agents with has_skills capability when feature is enabled
+skills:
+  - constitution-authoring
+  - constitution-governance
+
 templates:
   - base_constitution.md
   - agent_instructions.md

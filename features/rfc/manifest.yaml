@@ -12,6 +12,11 @@ commands:
   - rfc-list
   - rfc-validate
 
+# Skills are installed to agents with has_skills capability when feature is enabled
+skills:
+  - rfc-authoring
+  - rfc-review
+
 templates:
   - engineering.md
   - architecture.md

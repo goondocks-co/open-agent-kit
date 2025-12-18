@@ -106,6 +106,19 @@ class FeaturesConfig(BaseModel):
     )
 
 
+class SkillsConfig(BaseModel):
+    """Skills configuration tracking installed skills."""
+
+    installed: list[str] = Field(
+        default_factory=list,
+        description="List of installed skill names",
+    )
+    auto_install: bool = Field(
+        default=True,
+        description="Auto-install skills when associated feature is enabled",
+    )
+
+
 class OakConfig(BaseModel):
     """Main open-agent-kit configuration."""
 
@@ -131,6 +144,10 @@ class OakConfig(BaseModel):
     features: FeaturesConfig = Field(
         default_factory=FeaturesConfig,
         description="Features configuration",
+    )
+    skills: SkillsConfig = Field(
+        default_factory=SkillsConfig,
+        description="Skills configuration",
     )
 
     @classmethod

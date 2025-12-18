@@ -1,0 +1,30 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "pipx",
+    "softprops",
+    "hatchling",
+    "hatch",
+    "pyproject",
+    "ruff",
+    "mypy",
+    "pytest",
+    "typer",
+    "pydantic",
+    "docstrings",
+    "setuptools",
+    "oakdir",
+    "copilot",
+    "mermaid",
+    "markdownlint"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    ".venv",
+    "dist",
+    "build",
+    "*.lock",
+    "src/open_agent_kit/_version.py"
+  ]
+}

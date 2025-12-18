@@ -20,12 +20,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history needed for hatch-vcs to determine version from tags
 
       - name: Extract version from tag
         id: extract
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
+          VERSION="${TAG_NAME#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
@@ -36,28 +39,6 @@ jobs:
             echo "This is a stable release: $VERSION"
           fi
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Verify version matches pyproject.toml
-        run: |
-          VERSION_TAG="${{ steps.extract.outputs.version }}"
-
-          # Use awk instead of grep -P for cross-platform compatibility
-          VERSION_FILE=$(awk '/^\[project\]/{flag=1; next} /^\[/{flag=0} flag && /^version = "/{gsub(/.*version = "|".*/, ""); print; exit}' pyproject.toml)
-
-          echo "Tag version: $VERSION_TAG"
-          echo "File version: $VERSION_FILE"
-
-          if [ "$VERSION_TAG" != "$VERSION_FILE" ]; then
-            echo "Error: Version mismatch!"
-            echo "Git tag: v$VERSION_TAG"
-            echo "pyproject.toml: $VERSION_FILE"
-            exit 1
-          fi
-
   build-python-package:
     name: Build Python Package
     runs-on: ubuntu-latest
@@ -65,6 +46,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history needed for hatch-vcs to determine version from tags
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -74,7 +57,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build hatchling
+          pip install build hatchling hatch-vcs
 
       - name: Build package
         run: |
@@ -115,45 +98,52 @@ jobs:
 
       - name: Generate release notes
         id: notes
+        env:
+          VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
-          VERSION="${{ needs.validate-tag.outputs.version }}"
-
-          # Get commits since last tag
+          # Get commits since last tag (sanitize output to prevent injection)
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
           if [ -n "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%an)" --no-merges)
+            # Use %s for subject only, escape special characters
+            COMMITS=$(git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"- %s" --no-merges | head -50)
           else
-            COMMITS=$(git log --pretty=format:"- %s (%an)" --no-merges | head -20)
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges | head -20)
           fi
 
-          # Create release notes
-          cat > release-notes.md <<EOF
+          # Write release notes to file (avoids shell expansion issues)
+          cat > release-notes.md << 'RELEASE_EOF'
           ## What's Changed
 
-          ${COMMITS}
+          RELEASE_EOF
+
+          # Append commits safely
+          echo "$COMMITS" >> release-notes.md
+
+          cat >> release-notes.md << 'RELEASE_EOF'
 
           ## Install and Upgrade
 
-          \`\`\`bash
-          # Install via pip
-          pip install open-agent-kit
+          ```bash
+          # Install via uv (recommended)
+          uv tool install git+https://github.com/sirkirby/open-agent-kit.git
 
-          # Or install from source
-          git clone https://github.com/sirkirby/open-agent-kit.git
-          cd open-agent-kit
-          pip install -e .
+          # Or install via pipx
+          pipx install git+https://github.com/sirkirby/open-agent-kit.git
 
-          # Upgrade templates and commands in your project
+          # Initialize in your project
           cd /path/to/your/project
+          oak init
+
+          # Upgrade templates and commands in existing project
           oak upgrade
-          \`\`\`
+          ```
 
           ## Documentation
 
           - [README](https://github.com/sirkirby/open-agent-kit/blob/main/README.md)
           - [Quick Start Guide](https://github.com/sirkirby/open-agent-kit/blob/main/QUICKSTART.md)
-          EOF
+          RELEASE_EOF
 
           cat release-notes.md
 
@@ -170,11 +160,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish release summary
+        env:
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+          IS_PRERELEASE: ${{ needs.validate-tag.outputs.is_prerelease }}
         run: |
-          echo "## Release Created Successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ needs.validate-tag.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Pre-release:** ${{ needs.validate-tag.outputs.is_prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** $IS_PRERELEASE" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -183,6 +176,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Installation" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "pip install open_agent_kit-${{ needs.validate-tag.outputs.version }}-py3-none-any.whl" >> $GITHUB_STEP_SUMMARY
+          echo "pip install open_agent_kit-${VERSION}-py3-none-any.whl" >> $GITHUB_STEP_SUMMARY
           echo "oak init" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

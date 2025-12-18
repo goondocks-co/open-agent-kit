@@ -14,6 +14,7 @@ from open_agent_kit.commands.init_cmd import init_command
 from open_agent_kit.commands.plan_cmd import plan_app
 from open_agent_kit.commands.remove_cmd import remove_command
 from open_agent_kit.commands.rfc_cmd import rfc_app
+from open_agent_kit.commands.skill_cmd import skill_app
 from open_agent_kit.commands.upgrade_cmd import upgrade_command
 from open_agent_kit.config.messages import HELP_TEXT
 from open_agent_kit.constants import VERSION
@@ -37,6 +38,7 @@ app.add_typer(plan_app, name="plan")
 app.add_typer(config_app, name="config")
 app.add_typer(constitution_app, name="constitution")
 app.add_typer(feature_app, name="feature")
+app.add_typer(skill_app, name="skill")
 
 # Create console for output
 console = Console()

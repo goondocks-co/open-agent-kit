@@ -32,4 +32,8 @@ capabilities:
   context_handling: large       # large | medium | small - effective context window utilization
   model_consistency: high       # high | medium | variable - how predictable the underlying model is
 
+  # Skills support (Claude-specific)
+  has_skills: true              # Claude Code supports SKILL.md files
+  skills_directory: "skills"    # .claude/skills/
+
 settings: {}

@@ -88,6 +88,7 @@ class FeatureManifest(BaseModel):
     templates: list[str] = Field(
         default_factory=list, description="Template files provided by this feature"
     )
+    skills: list[str] = Field(default_factory=list, description="Skills provided by this feature")
     hooks: LifecycleHooks = Field(
         default_factory=LifecycleHooks, description="OAK system lifecycle hook subscriptions"
     )

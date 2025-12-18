@@ -1,8 +1,13 @@
 """Upgrade service for updating templates and commands."""
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict, cast
+
+if TYPE_CHECKING:
+    from open_agent_kit.services.skill_service import SkillService
 
 from open_agent_kit.config.paths import FEATURES_DIR, OAK_DIR
 from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
@@ -33,8 +38,56 @@ class UpgradeResults(TypedDict):
     ide_settings: UpgradeCategoryResults
     migrations: UpgradeCategoryResults
     obsolete_removed: UpgradeCategoryResults
+    skills: UpgradeCategoryResults
     structural_repairs: list[str]
     version_updated: bool
+
+
+class UpgradePlanCommand(TypedDict):
+    """A single command upgrade plan item."""
+
+    agent: str
+    command: str
+    file: str
+    package_path: Path
+    installed_path: Path
+
+
+class UpgradePlanMigration(TypedDict):
+    """A single migration plan item."""
+
+    id: str
+    description: str
+
+
+class UpgradePlanSkillItem(TypedDict):
+    """A single skill plan item."""
+
+    skill: str
+    feature: str
+
+
+class UpgradePlanSkills(TypedDict):
+    """Skills upgrade plan."""
+
+    install: list[UpgradePlanSkillItem]
+    upgrade: list[UpgradePlanSkillItem]
+
+
+class UpgradePlan(TypedDict):
+    """Structure returned by plan_upgrade()."""
+
+    commands: list[UpgradePlanCommand]
+    templates: list[str]
+    templates_customized: bool
+    obsolete_templates: list[str]
+    ide_settings: list[str]
+    skills: UpgradePlanSkills
+    migrations: list[UpgradePlanMigration]
+    structural_repairs: list[str]
+    version_outdated: bool
+    current_version: str
+    package_version: str
 
 
 class UpgradeService:
@@ -101,27 +154,18 @@ class UpgradeService:
         commands: bool = True,
         templates: bool = True,
         ide_settings: bool = True,
-    ) -> dict:
+        skills: bool = True,
+    ) -> UpgradePlan:
         """Plan what needs to be upgraded.
 
         Args:
             commands: Whether to upgrade agent commands
             templates: Whether to upgrade RFC templates
             ide_settings: Whether to upgrade IDE settings
+            skills: Whether to install/upgrade skills
 
         Returns:
-            Dictionary with upgrade plan:
-            {
-                "commands": [{"agent": "claude", "file": "oak.rfc-create.md", ...}],
-                "templates": ["engineering.md", "architecture.md"],
-                "templates_customized": bool,
-                "ide_settings": ["vscode", "cursor"],
-                "migrations": [{"id": "...", "description": "..."}],
-                "structural_repairs": ["issues directory missing", ...],
-                "version_outdated": bool,
-                "current_version": str,
-                "package_version": str
-            }
+            UpgradePlan with upgrade details
         """
         from open_agent_kit.constants import VERSION
         from open_agent_kit.services.migrations import get_migrations
@@ -131,12 +175,13 @@ class UpgradeService:
         current_version = config.version
         version_outdated = current_version != VERSION
 
-        plan = {
+        plan: UpgradePlan = {
             "commands": [],
             "templates": [],
             "templates_customized": False,
             "obsolete_templates": [],
             "ide_settings": [],
+            "skills": {"install": [], "upgrade": []},
             "migrations": [],
             "structural_repairs": [],
             "version_outdated": version_outdated,
@@ -171,6 +216,11 @@ class UpgradeService:
                     upgradeable_ide_settings.append(ide)
             plan["ide_settings"] = upgradeable_ide_settings
 
+        # Plan skill installations and upgrades
+        if skills:
+            skill_plan = self._get_upgradeable_skills()
+            plan["skills"] = skill_plan
+
         # Plan migrations (one-time upgrade tasks)
         completed_migrations = set(self.config_service.get_completed_migrations())
         all_migrations = get_migrations()
@@ -180,7 +230,7 @@ class UpgradeService:
 
         return plan
 
-    def execute_upgrade(self, plan: dict) -> UpgradeResults:
+    def execute_upgrade(self, plan: UpgradePlan) -> UpgradeResults:
         """Execute the upgrade plan.
 
         Updates config version to current package version after successful upgrades.
@@ -190,14 +240,7 @@ class UpgradeService:
             plan: Upgrade plan from plan_upgrade()
 
         Returns:
-            Dictionary with results:
-            {
-                "commands": {"upgraded": [...], "failed": [...]},
-                "templates": {"upgraded": [...], "failed": [...]},
-                "ide_settings": {"upgraded": [...], "failed": [...]},
-                "migrations": {"upgraded": [...], "failed": [...]},
-                "version_updated": bool
-            }
+            UpgradeResults with upgrade outcomes
         """
         results: UpgradeResults = {
             "commands": {"upgraded": [], "failed": []},
@@ -205,6 +248,7 @@ class UpgradeService:
             "ide_settings": {"upgraded": [], "failed": []},
             "migrations": {"upgraded": [], "failed": []},
             "obsolete_removed": {"upgraded": [], "failed": []},
+            "skills": {"upgraded": [], "failed": []},
             "structural_repairs": [],
             "version_updated": False,
         }
@@ -245,6 +289,22 @@ class UpgradeService:
             except Exception as e:
                 results["ide_settings"]["failed"].append(f"{ide}: {e}")
 
+        # Install and upgrade skills
+        skill_plan = plan["skills"]
+        for skill_info in skill_plan["install"]:
+            try:
+                self._install_skill(skill_info["skill"], skill_info["feature"])
+                results["skills"]["upgraded"].append(skill_info["skill"])
+            except Exception as e:
+                results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
+
+        for skill_info in skill_plan["upgrade"]:
+            try:
+                self._upgrade_skill(skill_info["skill"])
+                results["skills"]["upgraded"].append(skill_info["skill"])
+            except Exception as e:
+                results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
+
         # Run migrations (one-time upgrade tasks)
         completed_migrations = set(self.config_service.get_completed_migrations())
         successful_migrations, failed_migrations = run_migrations(
@@ -268,6 +328,7 @@ class UpgradeService:
             + len(results["templates"]["upgraded"])
             + len(results["obsolete_removed"]["upgraded"])
             + len(results["ide_settings"]["upgraded"])
+            + len(results["skills"]["upgraded"])
             + len(results["migrations"]["upgraded"])
             + len(results["structural_repairs"])
         )
@@ -285,7 +346,7 @@ class UpgradeService:
 
         return results
 
-    def _get_upgradeable_commands(self, agent: str) -> list[dict]:
+    def _get_upgradeable_commands(self, agent: str) -> list[UpgradePlanCommand]:
         """Get agent commands that can be upgraded.
 
         Args:
@@ -294,7 +355,7 @@ class UpgradeService:
         Returns:
             List of command dictionaries with upgrade info
         """
-        upgradeable = []
+        upgradeable: list[UpgradePlanCommand] = []
 
         # Get agent's commands directory
         try:
@@ -358,6 +419,94 @@ class UpgradeService:
 
         return upgradeable
 
+    def _get_upgradeable_skills(self) -> UpgradePlanSkills:
+        """Get skills that need to be installed or upgraded.
+
+        Checks all enabled features for skills that:
+        - Are not installed yet (need installation)
+        - Are installed but differ from package version (need upgrade)
+
+        Returns:
+            UpgradePlanSkills with install and upgrade lists
+        """
+        from open_agent_kit.services.skill_service import SkillService
+
+        result: UpgradePlanSkills = {"install": [], "upgrade": []}
+
+        # Check if any agent supports skills
+        skill_service = SkillService(self.project_root)
+        if not skill_service._has_skills_capable_agent():
+            return result
+
+        # Get enabled features
+        config = self.config_service.load_config()
+        enabled_features = (
+            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
+        )
+
+        # Get currently installed skills
+        installed_skills = set(skill_service.list_installed_skills())
+
+        # Check each enabled feature for skills
+        for feature_name in enabled_features:
+            feature_skills = skill_service.get_skills_for_feature(feature_name)
+
+            for skill_name in feature_skills:
+                if skill_name not in installed_skills:
+                    # Skill needs installation
+                    result["install"].append(
+                        {
+                            "skill": skill_name,
+                            "feature": feature_name,
+                        }
+                    )
+                else:
+                    # Check if skill needs upgrade (content differs)
+                    if self._skill_needs_upgrade(skill_service, skill_name):
+                        result["upgrade"].append(
+                            {
+                                "skill": skill_name,
+                                "feature": feature_name,
+                            }
+                        )
+
+        return result
+
+    def _skill_needs_upgrade(self, skill_service: SkillService, skill_name: str) -> bool:
+        """Check if an installed skill differs from the package version.
+
+        Args:
+            skill_service: SkillService instance
+            skill_name: Name of the skill
+
+        Returns:
+            True if skill content differs from package version
+        """
+        from open_agent_kit.models.skill import SkillManifest
+
+        # Get package manifest
+        package_manifest = skill_service.get_skill_manifest(skill_name)
+        if not package_manifest:
+            return False
+
+        # Get installed manifest from first agent with skills support
+        agents_with_skills = skill_service._get_agents_with_skills_support()
+        if not agents_with_skills:
+            return False
+
+        _, skills_dir, _ = agents_with_skills[0]
+        installed_skill_file = skills_dir / skill_name / "SKILL.md"
+
+        if not installed_skill_file.exists():
+            return False
+
+        try:
+            installed_manifest = SkillManifest.load(installed_skill_file)
+            # Compare serialized content
+            return package_manifest.to_skill_file() != installed_manifest.to_skill_file()
+        except (FileNotFoundError, ValueError):
+            return False
+
     def _get_upgradeable_templates(self) -> list[str]:
         """Get templates that can be upgraded or newly installed.
 
@@ -420,7 +569,7 @@ class UpgradeService:
         # In the future, we could add version headers to templates to track this better
         return len(self._get_upgradeable_templates()) > 0
 
-    def _upgrade_agent_command(self, cmd: dict) -> None:
+    def _upgrade_agent_command(self, cmd: UpgradePlanCommand) -> None:
         """Upgrade a single agent command.
 
         Args:
@@ -556,6 +705,35 @@ class UpgradeService:
         """
         # Use the IDE settings service to install/merge settings
         self.ide_settings_service.install_settings(ide, force=False)
+
+    def _install_skill(self, skill_name: str, feature_name: str) -> None:
+        """Install a skill for a feature.
+
+        Args:
+            skill_name: Name of the skill to install
+            feature_name: Name of the feature the skill belongs to
+        """
+        from open_agent_kit.services.skill_service import SkillService
+
+        skill_service = SkillService(self.project_root)
+        result = skill_service.install_skill(skill_name, feature_name)
+
+        if "error" in result:
+            raise ValueError(result["error"])
+
+    def _upgrade_skill(self, skill_name: str) -> None:
+        """Upgrade a skill to the latest package version.
+
+        Args:
+            skill_name: Name of the skill to upgrade
+        """
+        from open_agent_kit.services.skill_service import SkillService
+
+        skill_service = SkillService(self.project_root)
+        result = skill_service.upgrade_skill(skill_name)
+
+        if "error" in result:
+            raise ValueError(result["error"])
 
     def _files_differ(self, file1: Path, file2: Path) -> bool:
         """Check if two files have different content.

@@ -13,7 +13,7 @@ from open_agent_kit.config.messages import (
     WARNING_MESSAGES,
 )
 from open_agent_kit.constants import VERSION
-from open_agent_kit.services.upgrade_service import UpgradeResults, UpgradeService
+from open_agent_kit.services.upgrade_service import UpgradePlan, UpgradeResults, UpgradeService
 from open_agent_kit.utils import (
     StepTracker,
     confirm,
@@ -82,14 +82,17 @@ def upgrade_command(
     )
 
     # Check if there's anything to upgrade
+    skill_plan = plan["skills"]
     has_upgrades = (
         plan["commands"]
         or plan["templates"]
-        or plan.get("obsolete_templates", [])
+        or plan["obsolete_templates"]
         or plan["ide_settings"]
-        or plan.get("migrations", [])
-        or plan.get("structural_repairs", [])
-        or plan.get("version_outdated", False)
+        or skill_plan["install"]
+        or skill_plan["upgrade"]
+        or plan["migrations"]
+        or plan["structural_repairs"]
+        or plan["version_outdated"]
     )
 
     if not has_upgrades:
@@ -114,7 +117,7 @@ def upgrade_command(
 
         feature_service = FeatureService(project_root)
         try:
-            feature_service.trigger_pre_upgrade_hooks(plan)
+            feature_service.trigger_pre_upgrade_hooks(dict(plan))
         except Exception:
             pass  # Hook failures are not fatal
 
@@ -132,11 +135,11 @@ def upgrade_command(
         print_info(f"\n[dim]{INFO_MESSAGES['dry_run_complete']}[/dim]")
 
 
-def _display_upgrade_plan(plan: dict, dry_run: bool) -> None:
+def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
     """Display what will be upgraded.
 
     Args:
-        plan: Upgrade plan dictionary
+        plan: Upgrade plan from UpgradeService.plan_upgrade()
         dry_run: Whether this is a dry run
     """
     action = UPGRADE_MESSAGES["would_upgrade"] if dry_run else UPGRADE_MESSAGES["will_upgrade"]
@@ -184,6 +187,27 @@ def _display_upgrade_plan(plan: dict, dry_run: bool) -> None:
             f"[cyan]IDE Settings[/cyan] ({len(plan['ide_settings'])} IDE(s))\n{ide_list}"
         )
 
+    # Skills installation and upgrade
+    skill_plan = plan["skills"]
+    skills_to_install = skill_plan["install"]
+    skills_to_upgrade = skill_plan["upgrade"]
+
+    if skills_to_install:
+        install_list = "\n".join(
+            [f"  • {s['skill']} (from {s['feature']} feature)" for s in skills_to_install]
+        )
+        sections.append(
+            f"[cyan]Skills to Install[/cyan] ({len(skills_to_install)} skill(s))\n{install_list}"
+        )
+
+    if skills_to_upgrade:
+        upgrade_list = "\n".join(
+            [f"  • {s['skill']} (from {s['feature']} feature)" for s in skills_to_upgrade]
+        )
+        sections.append(
+            f"[cyan]Skills to Upgrade[/cyan] ({len(skills_to_upgrade)} skill(s))\n{upgrade_list}"
+        )
+
     # Structural repairs
     if plan.get("structural_repairs"):
         repair_list = "\n".join([f"  • {r}" for r in plan["structural_repairs"]])
@@ -218,6 +242,8 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
     if results.get("obsolete_removed", {}).get("upgraded"):
         steps += 1
     if results.get("ide_settings", {}).get("upgraded"):
+        steps += 1
+    if results.get("skills", {}).get("upgraded"):
         steps += 1
     if results.get("structural_repairs"):
         steps += 1
@@ -298,6 +324,22 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
                 ", ".join(failed),
             )
 
+    # Skills installation/upgrade
+    if results.get("skills"):
+        upgraded = results["skills"]["upgraded"]
+        failed = results["skills"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Installing/upgrading {len(upgraded)} skill(s)")
+            tracker.complete_step(f"Installed/upgraded {len(upgraded)} skill(s)")
+
+        if failed:
+            tracker.start_step("Skill installation failures")
+            tracker.fail_step(
+                f"Failed to install/upgrade {len(failed)} skill(s)",
+                ", ".join(failed),
+            )
+
     # Structural repairs
     if results.get("structural_repairs"):
         repaired = results["structural_repairs"]
@@ -341,6 +383,7 @@ def _display_whats_new(results: UpgradeResults) -> None:
     templates_upgraded = len(results.get("templates", {}).get("upgraded", []))
     obsolete_removed = len(results.get("obsolete_removed", {}).get("upgraded", []))
     ide_settings_upgraded = len(results.get("ide_settings", {}).get("upgraded", []))
+    skills_upgraded = len(results.get("skills", {}).get("upgraded", []))
     version_updated = results.get("version_updated", False)
 
     # Build message based on what was upgraded
@@ -349,6 +392,7 @@ def _display_whats_new(results: UpgradeResults) -> None:
         or templates_upgraded > 0
         or obsolete_removed > 0
         or ide_settings_upgraded > 0
+        or skills_upgraded > 0
     ):
         # Files were upgraded
         message_parts = [f"[bold green]{UPGRADE_MESSAGES['whats_new_title']}[/bold green]\n\n"]
@@ -368,6 +412,9 @@ def _display_whats_new(results: UpgradeResults) -> None:
 
         if ide_settings_upgraded > 0:
             message_parts.append(f"✓ Upgraded IDE settings for {ide_settings_upgraded} IDE(s)\n")
+
+        if skills_upgraded > 0:
+            message_parts.append(f"✓ Installed/upgraded {skills_upgraded} agent skill(s)\n")
 
         if version_updated:
             message_parts.append(

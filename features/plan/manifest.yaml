@@ -17,6 +17,12 @@ commands:
   - plan-export
   - plan-validate
 
+# Skills are installed to agents with has_skills capability when feature is enabled
+skills:
+  - planning-workflow
+  - research-synthesis
+  - task-decomposition
+
 templates:
   - early_triage.md
   - issue_context.md

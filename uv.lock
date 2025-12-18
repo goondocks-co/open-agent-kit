@@ -317,7 +317,6 @@ wheels = [
 
 [[package]]
 name = "open-agent-kit"
-version = "0.3.6"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

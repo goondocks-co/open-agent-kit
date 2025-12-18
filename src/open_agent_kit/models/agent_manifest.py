@@ -67,6 +67,16 @@ class AgentCapabilities(BaseModel):
         description="Model consistency: 'high' (first-party), 'medium' (curated), 'variable' (user choice)",
     )
 
+    # Skills support
+    has_skills: bool = Field(
+        default=False,
+        description="Whether agent supports SKILL.md files for domain expertise",
+    )
+    skills_directory: str = Field(
+        default="skills",
+        description="Subdirectory within agent folder for skills (e.g., 'skills' -> .claude/skills/)",
+    )
+
 
 class AgentInstallation(BaseModel):
     """Agent installation configuration.

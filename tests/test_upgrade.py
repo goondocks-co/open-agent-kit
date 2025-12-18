@@ -119,7 +119,14 @@ def test_execute_upgrade_with_empty_plan(initialized_project: Path) -> None:
         "commands": [],
         "templates": [],
         "templates_customized": False,
+        "obsolete_templates": [],
         "ide_settings": [],
+        "skills": {"install": [], "upgrade": []},
+        "migrations": [],
+        "structural_repairs": [],
+        "version_outdated": False,
+        "current_version": "1.0.0",
+        "package_version": "1.0.0",
     }
     results = service.execute_upgrade(empty_plan)
     assert results["commands"]["upgraded"] == []
@@ -198,8 +205,14 @@ def test_execute_upgrade_no_version_update_when_nothing_upgraded(initialized_pro
         "commands": [],
         "templates": [],
         "templates_customized": False,
+        "obsolete_templates": [],
         "ide_settings": [],
+        "skills": {"install": [], "upgrade": []},
+        "migrations": [],
+        "structural_repairs": [],
         "version_outdated": False,
+        "current_version": "1.0.0",
+        "package_version": "1.0.0",
     }
     results = service.execute_upgrade(empty_plan)
     assert results["version_updated"] is False

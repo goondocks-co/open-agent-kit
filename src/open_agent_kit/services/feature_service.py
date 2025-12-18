@@ -370,6 +370,18 @@ class FeatureService:
             except Exception:
                 pass  # Hook failures are not fatal
 
+        # Auto-install associated skills if enabled
+        if was_disabled and config.skills.auto_install:
+            try:
+                from open_agent_kit.services.skill_service import SkillService
+
+                skill_service = SkillService(self.project_root)
+                skill_results = skill_service.install_skills_for_feature(feature_name)
+                if skill_results.get("skills_installed"):
+                    results["skills_installed"] = skill_results["skills_installed"]
+            except Exception:
+                pass  # Skill installation failures are not fatal
+
         return results
 
     def remove_feature(
@@ -425,6 +437,17 @@ class FeatureService:
 
             shutil.rmtree(project_feature_dir)
             results["templates_removed"] = manifest.templates
+
+        # Remove associated skills
+        try:
+            from open_agent_kit.services.skill_service import SkillService
+
+            skill_service = SkillService(self.project_root)
+            skill_results = skill_service.remove_skills_for_feature(feature_name)
+            if skill_results.get("skills_removed"):
+                results["skills_removed"] = skill_results["skills_removed"]
+        except Exception:
+            pass  # Skill removal failures are not fatal
 
         # Trigger feature disabled hook BEFORE removing from config
         config = self.config_service.load_config()
