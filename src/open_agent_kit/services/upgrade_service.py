@@ -199,13 +199,11 @@ class UpgradeService:
                 agent_commands = self._get_upgradeable_commands(agent)
                 plan["commands"].extend(agent_commands)
 
-        # Plan RFC template upgrades
-        if templates:
-            upgradeable_templates = self._get_upgradeable_templates()
-            plan["templates"] = upgradeable_templates
-            plan["templates_customized"] = self._are_templates_customized()
-            # Also detect obsolete templates that should be removed
-            plan["obsolete_templates"] = self._get_obsolete_templates()
+        # Templates are read directly from the package - no project copies to upgrade
+        # These fields are kept for backward compatibility with the plan structure
+        plan["templates"] = []
+        plan["templates_customized"] = False
+        plan["obsolete_templates"] = []
 
         # Plan IDE settings upgrades (only for configured IDEs)
         if ide_settings:
@@ -265,21 +263,7 @@ class UpgradeService:
             except Exception as e:
                 results["commands"]["failed"].append(f"{cmd['file']}: {e}")
 
-        # Upgrade RFC templates
-        for template in plan["templates"]:
-            try:
-                self._upgrade_rfc_template(template)
-                results["templates"]["upgraded"].append(template)
-            except Exception as e:
-                results["templates"]["failed"].append(f"{template}: {e}")
-
-        # Remove obsolete templates
-        for obsolete in plan.get("obsolete_templates", []):
-            try:
-                self._remove_obsolete_template(obsolete)
-                results["obsolete_removed"]["upgraded"].append(obsolete)
-            except Exception as e:
-                results["obsolete_removed"]["failed"].append(f"{obsolete}: {e}")
+        # Note: Template upgrades are no longer needed - templates are read from package
 
         # Upgrade IDE settings
         for ide in plan["ide_settings"]:
@@ -507,68 +491,6 @@ class UpgradeService:
         except (FileNotFoundError, ValueError):
             return False
 
-    def _get_upgradeable_templates(self) -> list[str]:
-        """Get templates that can be upgraded or newly installed.
-
-        Returns:
-            List of template names that can be upgraded or installed
-        """
-        upgradeable = []
-
-        # Template file extensions to check (use recursive glob **)
-        extensions = ["**/*.md", "**/*.yaml", "**/*.json"]
-
-        # Get enabled features from config
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
-
-        # Check templates in each enabled feature's templates directory
-        for feature_name in enabled_features:
-            feature_templates_dir = self.package_features_dir / feature_name / "templates"
-            if not feature_templates_dir.exists():
-                continue
-
-            for ext in extensions:
-                for package_file in feature_templates_dir.glob(ext):
-                    # Get relative path from templates dir (preserves subdirectories)
-                    relative_path = package_file.relative_to(feature_templates_dir)
-                    # Template name format: feature/relative/path.ext
-                    template_name = f"{feature_name}/{relative_path}"
-
-                    try:
-                        # Project templates are in .oak/features/{feature}/templates/
-                        project_path = (
-                            self.project_root
-                            / ".oak"
-                            / "features"
-                            / feature_name
-                            / "templates"
-                            / relative_path
-                        )
-
-                        if project_path.exists():
-                            if self._files_differ(package_file, project_path):
-                                upgradeable.append(template_name)
-                        else:
-                            # New template
-                            upgradeable.append(template_name)
-                    except Exception:
-                        continue
-
-        return upgradeable
-
-    def _are_templates_customized(self) -> bool:
-        """Check if any RFC templates have been customized.
-
-        Returns:
-            True if any templates differ from package versions
-        """
-        # For now, if any templates need upgrading, consider them potentially customized
-        # In the future, we could add version headers to templates to track this better
-        return len(self._get_upgradeable_templates()) > 0
-
     def _upgrade_agent_command(self, cmd: UpgradePlanCommand) -> None:
         """Upgrade a single agent command.
 
@@ -590,112 +512,6 @@ class UpgradeService:
 
         # Write rendered content to installed location
         write_file(installed_path, rendered_content)
-
-    def _upgrade_rfc_template(self, template_name: str) -> None:
-        """Upgrade a single template.
-
-        Args:
-            template_name: Template name (e.g., "rfc/engineering.md" or "constitution/includes/foo.md")
-        """
-        # Parse template name: "feature/relative/path.ext"
-        parts = template_name.split("/", 1)
-        if len(parts) != 2:
-            return
-
-        feature_name, relative_path = parts
-
-        # Source from package features directory
-        source_path = self.package_features_dir / feature_name / "templates" / relative_path
-
-        # Destination in project .oak/features/{feature}/templates/
-        dest_path = (
-            self.project_root / ".oak" / "features" / feature_name / "templates" / relative_path
-        )
-
-        if not source_path.exists():
-            return
-
-        # Ensure directory exists (handles subdirectories like includes/)
-        ensure_dir(dest_path.parent)
-
-        # Copy content from package to project
-        content = read_file(source_path)
-        write_file(dest_path, content)
-
-    def _get_obsolete_templates(self) -> list[str]:
-        """Get templates that exist in project but not in package (obsolete).
-
-        Returns:
-            List of obsolete template names to remove (e.g., "constitution/example-decisions.json")
-        """
-        from open_agent_kit.services.feature_service import FeatureService
-
-        obsolete = []
-
-        # Get enabled features from config
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
-
-        feature_service = FeatureService(self.project_root)
-
-        for feature_name in enabled_features:
-            # Get the manifest to know what templates SHOULD exist
-            manifest = feature_service.get_feature_manifest(feature_name)
-            if not manifest:
-                continue
-
-            expected_templates = set(manifest.templates)
-
-            # Check what templates actually exist in the project
-            project_templates_dir = (
-                self.project_root / ".oak" / "features" / feature_name / "templates"
-            )
-            if not project_templates_dir.exists():
-                continue
-
-            # Recursively find all template files in project
-            extensions = ["**/*.md", "**/*.yaml", "**/*.json"]
-            for ext in extensions:
-                for project_file in project_templates_dir.glob(ext):
-                    relative_path = project_file.relative_to(project_templates_dir)
-                    relative_str = str(relative_path)
-
-                    # If file exists in project but not in manifest, it's obsolete
-                    if relative_str not in expected_templates:
-                        obsolete.append(f"{feature_name}/{relative_str}")
-
-        return obsolete
-
-    def _remove_obsolete_template(self, template_name: str) -> None:
-        """Remove an obsolete template file.
-
-        Args:
-            template_name: Template name (e.g., "constitution/example-decisions.json")
-        """
-        from open_agent_kit.utils import cleanup_empty_directories
-
-        # Parse template name: "feature/relative/path.ext"
-        parts = template_name.split("/", 1)
-        if len(parts) != 2:
-            return
-
-        feature_name, relative_path = parts
-
-        # File to remove
-        file_path = (
-            self.project_root / ".oak" / "features" / feature_name / "templates" / relative_path
-        )
-
-        if file_path.exists():
-            file_path.unlink()
-
-            # Clean up empty parent directories (e.g., if we removed last file in includes/)
-            cleanup_empty_directories(
-                file_path.parent,
-                self.project_root / ".oak" / "features" / feature_name / "templates",
-            )
 
     def _upgrade_ide_settings(self, ide: str) -> None:
         """Upgrade IDE settings.
@@ -784,36 +600,20 @@ class UpgradeService:
     def _get_structural_repairs(self) -> list[str]:
         """Check for structural issues that need repair.
 
+        Note: .oak/features/ is no longer used - feature assets are read from the package.
+        This method now only checks for old structures that should be cleaned up.
+
         Returns:
             List of repair descriptions
         """
         repairs = []
 
-        # Get enabled features from config
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
-
+        # Check for old .oak/features/ structure that needs cleanup
         features_dir = self.project_root / ".oak" / "features"
-
-        # Check core feature (always required, has ide/ instead of commands/)
-        core_dir = features_dir / "core"
-        core_ide_dir = core_dir / "ide"
-        if not core_dir.exists() or not core_ide_dir.exists():
-            repairs.append("Reinstall .oak/features/core/ (IDE settings)")
-
-        # Check for missing or incomplete feature directories
-        for feature_name in enabled_features:
-            feature_dir = features_dir / feature_name
-            commands_dir = feature_dir / "commands"
-
-            if not feature_dir.exists():
-                repairs.append(f"Reinstall missing .oak/features/{feature_name}/")
-            elif not commands_dir.exists():
-                repairs.append(
-                    f"Reinstall incomplete .oak/features/{feature_name}/ (missing commands/)"
-                )
+        if features_dir.exists():
+            repairs.append(
+                "Remove obsolete .oak/features/ directory (assets now read from package)"
+            )
 
         # Check for old structure that needs cleanup
         old_templates_dir = self.project_root / ".oak" / "templates"
@@ -828,49 +628,26 @@ class UpgradeService:
     def _repair_structure(self) -> list[str]:
         """Repair structural issues in the installation.
 
+        Note: .oak/features/ is no longer used - feature assets are read from the package.
+        This method now removes obsolete structures.
+
         Returns:
             List of repairs performed
         """
         import shutil
 
-        from open_agent_kit.services.feature_service import FeatureService
-
         repaired = []
 
-        # Get enabled features and agents from config
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
-        configured_agents = config.agents or []
-
+        # Remove obsolete .oak/features/ directory (assets now read from package)
         features_dir = self.project_root / ".oak" / "features"
-        features_dir.mkdir(parents=True, exist_ok=True)
+        if features_dir.exists():
+            try:
+                shutil.rmtree(features_dir)
+                repaired.append("Removed obsolete .oak/features/ directory")
+            except Exception:
+                pass
 
-        # Repair core feature (IDE settings) if missing
-        core_dir = features_dir / "core"
-        core_ide_dir = core_dir / "ide"
-        if not core_dir.exists() or not core_ide_dir.exists():
-            # Install ALL core IDE assets to .oak/features/core/ide/
-            self.ide_settings_service.install_core_assets()
-            repaired.append("Reinstalled .oak/features/core/ (IDE settings)")
-
-        # Use FeatureService to properly reinstall missing/incomplete features
-        feature_service = FeatureService(self.project_root)
-
-        for feature_name in enabled_features:
-            feature_dir = features_dir / feature_name
-            commands_dir = feature_dir / "commands"
-
-            # Check if feature directory is missing or incomplete (no commands/)
-            needs_install = not feature_dir.exists() or not commands_dir.exists()
-
-            if needs_install:
-                # Use FeatureService to properly install the feature
-                feature_service.install_feature(feature_name, configured_agents)
-                repaired.append(f"Reinstalled .oak/features/{feature_name}/")
-
-        # Clean up old structure
+        # Clean up old .oak/templates/ structure
         old_templates_dir = self.project_root / ".oak" / "templates"
         if old_templates_dir.exists():
             for subdir in ["constitution", "rfc", "commands", "ide"]:

@@ -4,30 +4,8 @@ from open_agent_kit.pipeline.context import FlowType, PipelineContext
 from open_agent_kit.pipeline.ordering import StageOrder
 from open_agent_kit.pipeline.stage import BaseStage, StageLifecycle, StageOutcome
 
-
-class InstallCoreIDEAssetsStage(BaseStage):
-    """Install core IDE assets to .oak directory."""
-
-    name = "install_core_ide_assets"
-    display_name = "Installing core IDE assets"
-    order = StageOrder.INSTALL_CORE_IDE_ASSETS
-    is_critical = False
-    lifecycle = StageLifecycle.INSTALL
-    # Cleanup happens via oak remove command, not a pipeline stage
-    counterpart_stage = None  # Explicitly documented as handled by oak remove
-
-    def _should_run(self, context: PipelineContext) -> bool:
-        """Always run for fresh installs, or if IDEs changed."""
-        if context.is_fresh_install or context.is_force_reinit:
-            return True
-        return context.selections.has_ide_changes
-
-    def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Install core IDE assets."""
-        ide_service = self._get_ide_settings_service(context)
-        ide_service.install_core_assets()
-
-        return StageOutcome.success("Installed core IDE assets")
+# Note: InstallCoreIDEAssetsStage was removed.
+# IDE assets are now read directly from the installed package - no copying to .oak/ needed.
 
 
 class RemoveIDESettingsStage(BaseStage):
@@ -95,7 +73,6 @@ class InstallIDESettingsStage(BaseStage):
 def get_ide_stages() -> list[BaseStage]:
     """Get all IDE stages."""
     return [
-        InstallCoreIDEAssetsStage(),
         RemoveIDESettingsStage(),
         InstallIDESettingsStage(),
     ]

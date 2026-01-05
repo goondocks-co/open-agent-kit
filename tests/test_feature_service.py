@@ -178,9 +178,10 @@ class TestFeatureInstallation:
         claude_commands = initialized_project / ".claude" / "commands"
         assert claude_commands.exists()
 
-        # Check feature directory exists
+        # Note: .oak/features/ is no longer created - assets read from package
+        # Only agent-native directories receive the commands
         feature_dir = initialized_project / ".oak" / "features" / "constitution"
-        assert feature_dir.exists()
+        assert not feature_dir.exists()
 
     def test_install_feature_multiple_agents(self, initialized_project: Path) -> None:
         """Test installing feature for multiple agents."""
@@ -221,8 +222,12 @@ class TestFeatureRemoval:
         assert "commands_removed" in results
         assert service.is_feature_installed("constitution") is False
 
-    def test_remove_feature_removes_directories(self, initialized_project: Path) -> None:
-        """Test that removal cleans up directories."""
+    def test_remove_feature_removes_agent_commands(self, initialized_project: Path) -> None:
+        """Test that removal cleans up agent command files.
+
+        Note: .oak/features/ is no longer created - only agent-native directories
+        receive the commands, so removal just cleans up those files.
+        """
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)
 
@@ -231,15 +236,15 @@ class TestFeatureRemoval:
         config_service.save_config(config)
         service.install_feature("constitution", ["claude"])
 
-        # Verify directory exists before removal
-        feature_dir = initialized_project / ".oak" / "features" / "constitution"
-        assert feature_dir.exists()
+        # Verify command file exists before removal
+        command_file = initialized_project / ".claude" / "commands" / "oak.constitution-create.md"
+        assert command_file.exists()
 
         # Remove
         service.remove_feature("constitution", ["claude"])
 
-        # Verify directory is removed
-        assert not feature_dir.exists()
+        # Verify command file is removed
+        assert not command_file.exists()
 
 
 class TestFeatureRefresh:

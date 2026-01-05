@@ -13,16 +13,18 @@ def test_init_creates_oak_directory(temp_project_dir: Path) -> None:
     assert oak_dir.is_dir()
 
 
-def test_init_creates_subdirectories(temp_project_dir: Path) -> None:
-    """Test that init creates required subdirectories."""
+def test_init_creates_essential_files(temp_project_dir: Path) -> None:
+    """Test that init creates essential oak files.
+
+    Note: .oak/features/ is no longer created - feature assets are read
+    directly from the installed package.
+    """
     init_command(force=False, agent=[], no_interactive=True)
     oak_dir = temp_project_dir / ".oak"
-    # Features directory with feature-specific subdirectories
-    assert (oak_dir / "features").exists()
-    # Default features should have their directories created
-    assert (oak_dir / "features" / "constitution").exists()
-    assert (oak_dir / "features" / "rfc").exists()
-    assert (oak_dir / "features" / "plan").exists()
+    # Only essential files should be created in .oak/
+    assert (oak_dir / "config.yaml").exists()
+    # .oak/features/ should NOT exist (assets read from package)
+    assert not (oak_dir / "features").exists()
 
 
 def test_init_creates_config_file(temp_project_dir: Path) -> None:
@@ -48,14 +50,16 @@ def test_init_writes_package_version(temp_project_dir: Path) -> None:
     assert config.version == __version__
 
 
-def test_init_copies_templates(temp_project_dir: Path) -> None:
-    """Test that init copies RFC templates."""
+def test_init_does_not_copy_templates(temp_project_dir: Path) -> None:
+    """Test that init does NOT copy templates to project.
+
+    Templates are now read directly from the installed package,
+    not copied to .oak/features/.
+    """
     init_command(force=False, agent=[], no_interactive=True)
-    templates_dir = temp_project_dir / ".oak" / "features" / "rfc" / "templates"
-    assert (templates_dir / "engineering.md").exists()
-    assert (templates_dir / "architecture.md").exists()
-    assert (templates_dir / "feature.md").exists()
-    assert (templates_dir / "process.md").exists()
+    # Templates should NOT be copied to .oak/features/
+    features_dir = temp_project_dir / ".oak" / "features"
+    assert not features_dir.exists()
 
 
 def test_init_with_claude_agent(temp_project_dir: Path) -> None:

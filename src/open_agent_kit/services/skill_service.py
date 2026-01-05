@@ -46,10 +46,8 @@ class SkillService:
         self.config_service = ConfigService(project_root)
 
         # Package features directory (where feature manifests/templates/skills are stored)
+        # Skills are read directly from the package and installed to agent directories
         self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
-
-        # Project directories
-        self.project_features_dir = self.project_root / ".oak" / "features"
 
     def _get_agents_with_skills_support(self) -> list[tuple[str, Path, str]]:
         """Get configured agents that support skills.

@@ -216,98 +216,8 @@ class UpgradeCommandsStage(BaseStage):
         )
 
 
-class UpgradeTemplatesStage(BaseStage):
-    """Upgrade RFC templates."""
-
-    name = "upgrade_templates"
-    display_name = "Upgrading templates"
-    order = 210
-    applicable_flows = {FlowType.UPGRADE}
-    is_critical = False
-
-    def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are templates to upgrade."""
-        if context.dry_run:
-            return False
-        plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
-        return bool(plan.get("templates"))
-
-    def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Upgrade RFC templates."""
-        from open_agent_kit.services.upgrade_service import UpgradeService
-
-        upgrade_service = UpgradeService(context.project_root)
-        plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
-
-        upgraded = []
-        failed = []
-
-        for template in plan["templates"]:
-            try:
-                upgrade_service._upgrade_rfc_template(template)
-                upgraded.append(template)
-            except Exception as e:
-                failed.append(f"{template}: {e}")
-
-        if failed:
-            return StageOutcome.success(
-                f"Upgraded {len(upgraded)} template(s), {len(failed)} failed",
-                data={"upgraded": upgraded, "failed": failed},
-            )
-
-        return StageOutcome.success(
-            f"Upgraded {len(upgraded)} template(s)",
-            data={"upgraded": upgraded, "failed": []},
-        )
-
-
-class RemoveObsoleteTemplatesStage(BaseStage):
-    """Remove obsolete templates."""
-
-    name = "remove_obsolete_templates"
-    display_name = "Removing obsolete templates"
-    order = 220
-    applicable_flows = {FlowType.UPGRADE}
-    is_critical = False
-
-    def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are obsolete templates to remove."""
-        if context.dry_run:
-            return False
-        plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
-        return bool(plan.get("obsolete_templates"))
-
-    def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Remove obsolete templates."""
-        from open_agent_kit.services.upgrade_service import UpgradeService
-
-        upgrade_service = UpgradeService(context.project_root)
-        plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
-
-        removed = []
-        failed = []
-
-        for obsolete in plan.get("obsolete_templates", []):
-            try:
-                upgrade_service._remove_obsolete_template(obsolete)
-                removed.append(obsolete)
-            except Exception as e:
-                failed.append(f"{obsolete}: {e}")
-
-        if failed:
-            return StageOutcome.success(
-                f"Removed {len(removed)} template(s), {len(failed)} failed",
-                data={"removed": removed, "failed": failed},
-            )
-
-        return StageOutcome.success(
-            f"Removed {len(removed)} obsolete template(s)",
-            data={"removed": removed, "failed": []},
-        )
+# Note: UpgradeTemplatesStage and RemoveObsoleteTemplatesStage were removed.
+# Templates are now read directly from the installed package - no project copies to upgrade.
 
 
 class UpgradeIDESettingsStage(BaseStage):
@@ -598,8 +508,7 @@ def get_upgrade_stages() -> list[BaseStage]:
         TriggerPreUpgradeHooksStage(),
         UpgradeStructuralRepairsStage(),
         UpgradeCommandsStage(),
-        UpgradeTemplatesStage(),
-        RemoveObsoleteTemplatesStage(),
+        # Note: Template upgrade stages removed - templates are read from package
         UpgradeIDESettingsStage(),
         UpgradeSkillsStage(),
         RunMigrationsStage(),

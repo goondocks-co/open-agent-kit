@@ -9,7 +9,7 @@ from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
 from open_agent_kit.models.feature import FeatureManifest
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.state_service import StateService
-from open_agent_kit.utils import ensure_dir, read_file, write_file
+from open_agent_kit.utils import read_file, write_file
 
 # Regex pattern to detect Jinja2 template syntax
 JINJA2_PATTERN = re.compile(r"\{\{|\{%")
@@ -326,35 +326,9 @@ class FeatureService:
 
             results["agents"].append(agent_type)
 
-        # Create .oak/features/{feature}/ directory structure
-        project_feature_dir = self.project_root / ".oak" / "features" / feature_name
-        ensure_dir(project_feature_dir)
-
-        # Copy commands to .oak/features/{feature}/commands/ (canonical install location)
-        if commands_dir.exists() and manifest.commands:
-            project_commands_dir = project_feature_dir / "commands"
-            ensure_dir(project_commands_dir)
-
-            for command_name in manifest.commands:
-                src = commands_dir / f"oak.{command_name}.md"
-                if src.exists():
-                    dst = project_commands_dir / f"oak.{command_name}.md"
-                    write_file(dst, read_file(src))
-
-        # Copy templates to .oak/features/{feature}/templates/ if any exist
-        templates_dir = self.get_feature_templates_dir(feature_name)
-        if templates_dir.exists() and manifest.templates:
-            project_templates_dir = project_feature_dir / "templates"
-            ensure_dir(project_templates_dir)
-
-            for template in manifest.templates:
-                src = templates_dir / template
-                if src.exists():
-                    dst = project_templates_dir / template
-                    # Ensure parent directories exist for nested templates (e.g., includes/foo.md)
-                    ensure_dir(dst.parent)
-                    write_file(dst, read_file(src))
-                    results["templates_copied"].append(template)
+        # Note: We no longer copy commands/templates to .oak/features/
+        # Feature assets are read directly from the installed package.
+        # Only agent-native directories receive the rendered commands.
 
         # Update config to mark feature as installed
         config = self.config_service.load_config()
@@ -430,13 +404,8 @@ class FeatureService:
 
             results["agents"].append(agent_type)
 
-        # Remove entire .oak/features/{feature}/ directory (commands and templates)
-        project_feature_dir = self.project_root / ".oak" / "features" / feature_name
-        if project_feature_dir.exists():
-            import shutil
-
-            shutil.rmtree(project_feature_dir)
-            results["templates_removed"] = manifest.templates
+        # Note: We no longer store feature assets in .oak/features/
+        # Nothing to clean up there - feature assets are in the package.
 
         # Remove associated skills
         try:

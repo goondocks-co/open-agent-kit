@@ -426,7 +426,7 @@ class TestBuildUpgradePipeline:
         # Check for key upgrade stages
         assert "plan_upgrade" in stage_names
         assert "upgrade_commands" in stage_names
-        assert "upgrade_templates" in stage_names
+        # Note: upgrade_templates stage removed - templates are read from package
         assert "upgrade_skills" in stage_names
         assert "run_migrations" in stage_names
 

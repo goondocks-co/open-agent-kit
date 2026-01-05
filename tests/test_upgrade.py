@@ -270,51 +270,31 @@ def test_execute_upgrade_updates_version_when_outdated(initialized_project: Path
     assert config.version == __version__
 
 
-def test_detects_rfc_templates_needing_upgrade(initialized_project: Path) -> None:
-    """Test that upgrade detects RFC templates that need updating."""
-    from open_agent_kit.config.paths import OAK_DIR
+def test_no_template_upgrades_detected(initialized_project: Path) -> None:
+    """Test that template upgrades are no longer detected.
 
-    # Templates directory exists from initialization
-    templates_dir = initialized_project / OAK_DIR / "features" / "rfc" / "templates"
-
-    # Modify a template to make it different from package version
-    (templates_dir / "engineering.md").write_text("# Old content", encoding="utf-8")
-
-    # Delete some templates to test detection of missing templates
-    (templates_dir / "architecture.md").unlink()
-    (templates_dir / "feature.md").unlink()
-
+    Templates are now read directly from the installed package, so there's
+    no concept of "upgrading" project templates. Users get the latest templates
+    automatically when they update the oak package.
+    """
     service = UpgradeService(initialized_project)
     plan = service.plan_upgrade()
 
-    # Should detect engineering.md needs update (exists but differs)
-    assert "rfc/engineering.md" in plan["templates"]
-    # Should also detect deleted templates as needing installation
-    assert "rfc/architecture.md" in plan["templates"]
-    assert "rfc/feature.md" in plan["templates"]
-    # process.md should not be in list (exists and matches package version)
-    # Unless we also deleted it, but we didn't, so it should be identical
+    # Template upgrades are no longer supported - list should always be empty
+    assert plan["templates"] == []
 
 
-def test_detects_constitution_templates_needing_upgrade(initialized_project: Path) -> None:
-    """Test that upgrade detects constitution templates that need updating."""
+def test_oak_features_dir_not_created(initialized_project: Path) -> None:
+    """Test that .oak/features/ directory is not created during init.
+
+    Feature assets (commands, templates) are now read directly from the
+    installed package rather than being copied to .oak/features/.
+    """
     from open_agent_kit.config.paths import OAK_DIR
 
-    # Templates directory exists from initialization
-    templates_dir = initialized_project / OAK_DIR / "features" / "constitution" / "templates"
-
-    # Modify a template to make it different from package version
-    (templates_dir / "base_constitution.md").write_text("# Old content", encoding="utf-8")
-
-    # Delete another template to test detection of missing templates
-    (templates_dir / "agent_instructions.md").unlink()
-
-    service = UpgradeService(initialized_project)
-    plan = service.plan_upgrade()
-
-    # Should detect both templates
-    assert "constitution/base_constitution.md" in plan["templates"]
-    assert "constitution/agent_instructions.md" in plan["templates"]
+    # .oak/features/ should NOT exist
+    features_dir = initialized_project / OAK_DIR / "features"
+    assert not features_dir.exists()
 
 
 def test_upgrade_only_checks_known_template_categories(initialized_project: Path) -> None:

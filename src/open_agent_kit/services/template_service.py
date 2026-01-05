@@ -9,7 +9,7 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from open_agent_kit.config.paths import FEATURES_DIR
 from open_agent_kit.constants import SUPPORTED_FEATURES
-from open_agent_kit.utils import ensure_dir, file_exists, read_file, write_file
+from open_agent_kit.utils import file_exists, write_file
 
 
 class TemplateService:
@@ -23,21 +23,19 @@ class TemplateService:
         """Initialize template service.
 
         Args:
-            templates_dir: Custom templates directory (optional)
+            templates_dir: Custom templates directory (optional, for backward compatibility)
             project_root: Project root directory (defaults to current directory)
         """
         self.project_root = project_root or Path.cwd()
 
-        # Project features directory (.oak/features/)
-        self.project_features_dir = self.project_root / ".oak" / FEATURES_DIR
-
         # Use custom templates dir if provided (for backward compatibility)
         self.templates_dir: Path | None = templates_dir
 
-        # Package features directory (templates are inside each feature)
+        # Package features directory (templates are read directly from here)
+        # Templates are no longer copied to .oak/features/ - they stay in the package
         self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
 
-        # Setup Jinja2 environment with multiple loaders
+        # Setup Jinja2 environment
         self.env = self._create_environment()
 
     def _create_environment(self) -> Environment:
@@ -47,20 +45,14 @@ class TemplateService:
             Configured Jinja2 Environment
         """
         # Build list of template directories
-        # Priority: project templates first, then package templates
+        # Templates are read directly from the package - no project copies
         template_dirs = []
-
-        # Add project feature template directories first (higher priority)
-        for feature_name in SUPPORTED_FEATURES:
-            project_feature_templates = self.project_features_dir / feature_name / "templates"
-            if project_feature_templates.exists():
-                template_dirs.append(str(project_feature_templates))
 
         # Add custom templates dir if provided (for backward compatibility)
         if self.templates_dir:
             template_dirs.append(str(self.templates_dir))
 
-        # Add package feature template directories last (fallback)
+        # Add package feature template directories (source of truth)
         for feature_name in SUPPORTED_FEATURES:
             package_feature_templates = self.package_features_dir / feature_name / "templates"
             if package_feature_templates.exists():
@@ -142,6 +134,8 @@ class TemplateService:
     def get_template_path(self, template_name: str) -> Path | None:
         """Get full path to a template file.
 
+        Templates are read directly from the installed package.
+
         Args:
             template_name: Template filename (e.g., "rfc/engineering.md" or "engineering.md")
 
@@ -155,25 +149,12 @@ class TemplateService:
         if len(parts) == 2:
             feature_name, filename = parts
 
-            # Check project feature templates first (higher priority)
-            project_feature_path = self.project_features_dir / feature_name / "templates" / filename
-            if file_exists(project_feature_path):
-                return project_feature_path
-
             # Check package feature templates
             package_feature_path = self.package_features_dir / feature_name / "templates" / filename
             if file_exists(package_feature_path):
                 return package_feature_path
         else:
-            # Search all project feature directories first
-            for feature_name in SUPPORTED_FEATURES:
-                project_feature_path = (
-                    self.project_features_dir / feature_name / "templates" / template_name
-                )
-                if file_exists(project_feature_path):
-                    return project_feature_path
-
-            # Then search all package feature directories
+            # Search all package feature directories
             for feature_name in SUPPORTED_FEATURES:
                 package_feature_path = (
                     self.package_features_dir / feature_name / "templates" / template_name
@@ -203,6 +184,8 @@ class TemplateService:
     def list_templates(self, category: str | None = None) -> list[str]:
         """List available templates.
 
+        Templates are listed from the installed package.
+
         Args:
             category: Optional category/feature to filter by (e.g., "rfc", "constitution")
 
@@ -214,17 +197,7 @@ class TemplateService:
         # Template file extensions to include
         extensions = ["*.md", "*.yaml", "*.json"]
 
-        # List from project feature templates first
-        for feature_name in SUPPORTED_FEATURES:
-            project_feature_templates_dir = self.project_features_dir / feature_name / "templates"
-            if project_feature_templates_dir.exists():
-                for ext in extensions:
-                    for path in project_feature_templates_dir.glob(ext):
-                        template_name = f"{feature_name}/{path.name}"
-                        if template_name not in templates:
-                            templates.append(template_name)
-
-        # List from package feature templates
+        # List from package feature templates (source of truth)
         for feature_name in SUPPORTED_FEATURES:
             package_feature_templates_dir = self.package_features_dir / feature_name / "templates"
             if package_feature_templates_dir.exists():
@@ -248,60 +221,6 @@ class TemplateService:
             templates = [t for t in templates if t.startswith(f"{category}/")]
 
         return sorted(templates)
-
-    def copy_template_to_project(
-        self,
-        template_name: str,
-        destination: Path | None = None,
-        force: bool = False,
-    ) -> Path:
-        """Copy a template from package to project templates directory.
-
-        Args:
-            template_name: Template filename (e.g., "rfc/engineering.md")
-            destination: Optional custom destination path
-            force: If True, overwrite existing files
-
-        Returns:
-            Path to copied template
-
-        Raises:
-            FileNotFoundError: If template doesn't exist
-        """
-        source_path = self.get_template_path(template_name)
-        if not source_path:
-            raise FileNotFoundError(f"Template not found: {template_name}")
-
-        # Determine destination
-        if destination:
-            dest_path = destination
-        else:
-            # Parse template name to get feature and filename
-            parts = template_name.split("/", 1)
-            if len(parts) == 2:
-                feature_name, filename = parts
-                dest_path = self.project_features_dir / feature_name / "templates" / filename
-            else:
-                # If no feature prefix, fall back to custom templates dir
-                if self.templates_dir:
-                    dest_path = self.templates_dir / template_name
-                else:
-                    raise ValueError(
-                        f"Template name must include feature prefix (e.g., 'rfc/engineering.md'): {template_name}"
-                    )
-
-        # Check if exists and not forcing
-        if not force and file_exists(dest_path):
-            return dest_path
-
-        # Ensure destination directory exists
-        ensure_dir(dest_path.parent)
-
-        # Copy template
-        content = read_file(source_path)
-        write_file(dest_path, content)
-
-        return dest_path
 
     def get_template_source_path(self, template_name: str) -> Path:
         """Get path to template in package (source of truth).
@@ -333,30 +252,6 @@ class TemplateService:
                     return package_path
 
         raise FileNotFoundError(f"Template not found in package: {template_name}")
-
-    def get_template_project_path(self, template_name: str) -> Path:
-        """Get path to template in project.
-
-        Args:
-            template_name: Template filename (e.g., "rfc/engineering.md")
-
-        Returns:
-            Path to template in project (may not exist)
-        """
-        # Parse template name to get feature and filename
-        parts = template_name.split("/", 1)
-        if len(parts) == 2:
-            feature_name, filename = parts
-            return self.project_features_dir / feature_name / "templates" / filename
-        else:
-            # If no feature prefix, fall back to custom templates dir
-            if self.templates_dir:
-                return self.templates_dir / template_name
-            else:
-                # Return path in first feature directory as default
-                return (
-                    self.project_features_dir / SUPPORTED_FEATURES[0] / "templates" / template_name
-                )
 
     def render_to_file(
         self,
@@ -439,36 +334,6 @@ class TemplateService:
             return (True, None)
         except Exception as e:
             return (False, str(e))
-
-    def create_template(
-        self,
-        template_name: str,
-        content: str,
-        overwrite: bool = False,
-    ) -> Path:
-        """Create a new template in project templates directory.
-
-        Args:
-            template_name: Template filename (e.g., "rfc/engineering.md")
-            content: Template content
-            overwrite: Whether to overwrite existing template
-
-        Returns:
-            Path to created template
-
-        Raises:
-            FileExistsError: If template exists and overwrite=False
-        """
-        template_path = self.get_template_project_path(template_name)
-
-        if file_exists(template_path) and not overwrite:
-            raise FileExistsError(f"Template already exists: {template_name}")
-
-        # Ensure parent directory exists
-        ensure_dir(template_path.parent)
-
-        write_file(template_path, content)
-        return template_path
 
 
 def get_template_service(

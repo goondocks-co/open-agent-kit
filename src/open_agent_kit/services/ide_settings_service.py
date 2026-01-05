@@ -37,43 +37,16 @@ class IDESettingsService:
         self.project_root = project_root or Path.cwd()
 
         # Package features/core/ide directory (source of IDE templates)
+        # Templates are read directly from here - no copying to .oak/
         self.package_ide_dir = (
             Path(__file__).parent.parent.parent.parent / FEATURES_DIR / "core" / "ide"
         )
-
-        # Project core IDE directory (canonical install location)
-        self.project_ide_dir = self.project_root / ".oak" / "features" / "core" / "ide"
 
         # Map IDE names to their settings file paths
         self.settings_files = {
             "vscode": self.project_root / VSCODE_SETTINGS_FILE,
             "cursor": self.project_root / CURSOR_SETTINGS_FILE,
         }
-
-    def install_core_assets(self) -> list[str]:
-        """Install all core IDE assets to .oak/features/core/ide/.
-
-        This installs ALL IDE templates regardless of configuration.
-        The canonical install location should have all assets available.
-
-        Returns:
-            List of installed template filenames
-        """
-        installed = []
-        ensure_dir(self.project_ide_dir)
-
-        # Install all IDE templates from package to project
-        for _ide, template_name in IDE_SETTINGS_TEMPLATES.items():
-            template_filename = Path(template_name).name
-            package_template_path = self.package_ide_dir / template_filename
-            project_template_path = self.project_ide_dir / template_filename
-
-            if package_template_path.exists():
-                template_content = read_file(package_template_path)
-                write_file(project_template_path, template_content)
-                installed.append(template_filename)
-
-        return installed
 
     def install_settings(self, ide: str, force: bool = False) -> bool:
         """Install IDE settings from template.
@@ -97,21 +70,16 @@ class IDESettingsService:
         settings_file = self.settings_files[ide]
         template_name = IDE_SETTINGS_TEMPLATES[ide]
 
-        # Get template content from features/core/ide directory
-        # Template name is like "ide/vscode-settings.json", we need just the filename
+        # Get template content from features/core/ide directory in the package
+        # Templates are read directly from the package - no copying to .oak/
         template_filename = Path(template_name).name
         package_template_path = self.package_ide_dir / template_filename
-        project_template_path = self.project_ide_dir / template_filename
 
         try:
             if not package_template_path.exists():
                 raise FileNotFoundError(f"Template not found: {package_template_path}")
             template_content = read_file(package_template_path)
             template_settings = json.loads(template_content)
-
-            # Install to .oak/features/core/ide/ (canonical location)
-            ensure_dir(self.project_ide_dir)
-            write_file(project_template_path, template_content)
         except FileNotFoundError as err:
             raise FileNotFoundError(f"Template not found: {template_name}") from err
         except json.JSONDecodeError as e:

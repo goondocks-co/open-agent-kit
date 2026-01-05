@@ -46,6 +46,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "Remove deprecated plan-issue command (merged into plan-create)",
             _migrate_remove_plan_issue,
         ),
+        (
+            "2026.01.05_remove_oak_features_dir",
+            "Remove .oak/features/ directory (assets now read from package)",
+            _migrate_remove_oak_features_dir,
+        ),
     ]
 
 
@@ -96,6 +101,9 @@ def _migrate_features_restructure(project_root: Path) -> None:
     1. Infers enabled features from installed commands
     2. Updates config.yaml with features.enabled list
     3. Removes the old .oak/templates/ directory structure
+
+    Note: We no longer create .oak/features/ directories - feature assets
+    are now read directly from the installed package.
 
     Args:
         project_root: Project root directory
@@ -151,11 +159,10 @@ def _migrate_features_restructure(project_root: Path) -> None:
         config.features.enabled = sorted(enabled_features)
         config.save(config_path)
 
-    # Clean up old .oak/templates/ directory if new structure exists
+    # Clean up old .oak/templates/ directory if it exists
     old_templates_dir = project_root / ".oak" / "templates"
-    new_features_dir = project_root / ".oak" / "features"
 
-    if old_templates_dir.exists() and new_features_dir.exists():
+    if old_templates_dir.exists():
         # Remove old templates directories that have been migrated
         for subdir in ["constitution", "rfc", "commands"]:
             old_subdir = old_templates_dir / subdir
@@ -182,34 +189,20 @@ def _migrate_features_restructure(project_root: Path) -> None:
 
 
 def _migrate_cleanup_old_templates(project_root: Path) -> None:
-    """Remove old .oak/templates/ directory structure and ensure feature directories exist.
+    """Remove old .oak/templates/ directory structure.
 
     This is a follow-up migration to clean up projects that ran the
     features_restructure migration before the cleanup logic was added.
+
+    Note: We no longer create .oak/features/ directories - feature assets
+    are now read directly from the installed package.
 
     Args:
         project_root: Project root directory
     """
     import shutil
 
-    from open_agent_kit.config.paths import CONFIG_FILE
-    from open_agent_kit.utils import read_yaml
-
     old_templates_dir = project_root / ".oak" / "templates"
-    new_features_dir = project_root / ".oak" / "features"
-
-    # Ensure features directory exists
-    new_features_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create directories for all enabled features
-    config_path = project_root / CONFIG_FILE
-    if config_path.exists():
-        data = read_yaml(config_path)
-        if data and "features" in data:
-            enabled_features = data["features"].get("enabled", [])
-            for feature_name in enabled_features:
-                feature_dir = new_features_dir / feature_name
-                feature_dir.mkdir(parents=True, exist_ok=True)
 
     # Clean up old templates directory if it exists
     if old_templates_dir.exists():
@@ -255,6 +248,30 @@ def _migrate_remove_plan_issue(project_root: Path) -> None:
                 file_path.unlink()
             except Exception:
                 pass
+
+
+def _migrate_remove_oak_features_dir(project_root: Path) -> None:
+    """Remove .oak/features/ directory.
+
+    Feature assets (commands, templates) are now read directly from the installed
+    package rather than being copied to the user's project. This reduces file
+    duplication and simplifies the oak installation footprint.
+
+    Only .oak/config.yaml and .oak/state.yaml are needed in the project.
+
+    Args:
+        project_root: Project root directory
+    """
+    import shutil
+
+    features_dir = project_root / ".oak" / "features"
+
+    if features_dir.exists():
+        try:
+            shutil.rmtree(features_dir)
+        except Exception:
+            # If removal fails, don't block the migration
+            pass
 
 
 def run_migrations(

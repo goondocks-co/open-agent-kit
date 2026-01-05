@@ -281,17 +281,8 @@ class TestFeatureStages:
 class TestIDEStages:
     """Tests for IDE stages."""
 
-    def test_install_core_ide_assets_fresh_init(self, tmp_path: Path):
-        """Test InstallCoreIDEAssetsStage runs for fresh init."""
-        from open_agent_kit.pipeline.stages.ide import InstallCoreIDEAssetsStage
-
-        stage = InstallCoreIDEAssetsStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.FRESH_INIT,
-        )
-        assert stage.should_run(context) is True
+    # Note: test_install_core_ide_assets_fresh_init removed.
+    # InstallCoreIDEAssetsStage was removed - IDE assets are read from package.
 
     def test_remove_ide_settings_stage(self, tmp_path: Path):
         """Test RemoveIDESettingsStage runs when IDEs removed."""
