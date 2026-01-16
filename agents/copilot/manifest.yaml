@@ -29,4 +29,22 @@ capabilities:
   context_handling: medium      # large | medium | small - varies by model
   model_consistency: variable   # high | medium | variable - user can switch models
 
-settings: {}
+  # Skills support (Copilot supports SKILL.md files in .github/skills/)
+  has_skills: true
+  skills_directory: "skills"    # .github/skills/
+
+settings:
+  # Auto-approval settings for oak commands
+  # GitHub Copilot uses chat.tools.terminal.autoApprove in VSCode settings (1.99+)
+  # Note: This is slightly flaky - see https://github.com/microsoft/vscode/issues/252496
+  auto_approve:
+    enabled: true
+    file: ".vscode/settings.json"
+    format: json
+    template: "agent-settings/copilot-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config
+  config_file: ".vscode/mcp.json"
+  format: json
+  servers_key: "servers"  # Note: Copilot uses "servers" not "mcpServers"

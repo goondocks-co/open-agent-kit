@@ -37,6 +37,7 @@ Issue Provider Configuration:
     ... )
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,8 @@ from open_agent_kit.constants import (
 )
 from open_agent_kit.models.config import IssueConfig, OakConfig
 from open_agent_kit.utils import file_exists, read_yaml, write_file
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigService:
@@ -91,8 +94,9 @@ class ConfigService:
                 self.save_config(config)
 
             return config
-        except Exception:
+        except (OSError, ValueError) as e:
             # Return default config if parsing fails
+            logger.warning(f"Failed to load config from {self.config_path}, using defaults: {e}")
             return OakConfig()
 
     def save_config(self, config: OakConfig) -> None:
@@ -106,14 +110,12 @@ class ConfigService:
     def create_default_config(
         self,
         agents: list[str] | None = None,
-        ides: list[str] | None = None,
         features: list[str] | None = None,
     ) -> OakConfig:
         """Create and save default configuration.
 
         Args:
             agents: List of agent types (optional)
-            ides: List of IDE types (optional)
             features: List of feature names (optional, defaults to DEFAULT_FEATURES)
 
         Returns:
@@ -125,17 +127,10 @@ class ConfigService:
             # Create YAML list format
             agents_yaml = "[" + ", ".join(agents) + "]"
 
-        # Format ides list for YAML
-        ides_yaml = "[]"
-        if ides:
-            # Create YAML list format
-            ides_yaml = "[" + ", ".join(ides) + "]"
-
         # Create config from template
         config_content = DEFAULT_CONFIG_YAML.format(
             version=VERSION,
             agents=agents_yaml,
-            ides=ides_yaml,
         )
 
         # Write to file
@@ -278,43 +273,6 @@ class ConfigService:
         all_agents = list(set(existing_agents + new_agents))
         # Update both agents and version
         return self.update_config(agents=all_agents, version=VERSION)
-
-    def get_ides(self) -> list[str]:
-        """Get configured IDEs list.
-
-        Returns:
-            List of IDE names
-        """
-        config = self.load_config()
-        return config.ides
-
-    def update_ides(self, ides: list[str]) -> OakConfig:
-        """Update IDEs list in configuration.
-
-        Args:
-            ides: List of IDE names
-
-        Returns:
-            Updated OakConfig object
-        """
-        return self.update_config(ides=ides)
-
-    def add_ides(self, new_ides: list[str]) -> OakConfig:
-        """Add IDEs to configuration (merges with existing).
-
-        Also updates the config version to current package version.
-
-        Args:
-            new_ides: List of IDE names to add
-
-        Returns:
-            Updated OakConfig object
-        """
-        existing_ides = self.get_ides()
-        # Merge and deduplicate
-        all_ides = list(set(existing_ides + new_ides))
-        # Update both ides and version
-        return self.update_config(ides=all_ides, version=VERSION)
 
     def get_issue_config(self) -> IssueConfig:
         """Get issue configuration.

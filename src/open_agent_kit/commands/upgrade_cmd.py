@@ -84,17 +84,20 @@ def upgrade_command(
     )
 
     # Check if there's anything to upgrade
-    skill_plan = plan["skills"]
+    skill_plan = plan.get("skills", {})
     has_upgrades = (
-        plan["commands"]
-        or plan["templates"]
-        or plan["obsolete_templates"]
-        or plan["ide_settings"]
-        or skill_plan["install"]
-        or skill_plan["upgrade"]
-        or plan["migrations"]
-        or plan["structural_repairs"]
-        or plan["version_outdated"]
+        plan.get("commands")
+        or plan.get("templates")
+        or plan.get("obsolete_templates")
+        or plan.get("agent_settings")
+        or skill_plan.get("install")
+        or skill_plan.get("upgrade")
+        or plan.get("hooks")
+        or plan.get("mcp_servers")
+        or plan.get("gitignore")
+        or plan.get("migrations")
+        or plan.get("structural_repairs")
+        or plan.get("version_outdated")
     )
 
     if not has_upgrades:
@@ -114,11 +117,22 @@ def upgrade_command(
     if not dry_run:
         print_info("")  # Blank line
 
-        # Build pipeline context with plan pre-populated
+        # Load current config to populate selections for reconciliation stages
+        from open_agent_kit.pipeline.context import SelectionState
+        from open_agent_kit.services.config_service import ConfigService
+
+        config_service = ConfigService(project_root)
+        config = config_service.load_config()
+
+        # Build pipeline context with plan pre-populated and selections from config
         context = PipelineContext(
             project_root=project_root,
             flow_type=FlowType.UPGRADE,
             dry_run=False,
+            selections=SelectionState(
+                agents=config.agents,
+                features=config.features.enabled if config.features.enabled else [],
+            ),
         )
         # Pre-populate the plan in context so stages don't need to re-plan
         context.set_result("plan_upgrade", {"plan": plan, "has_upgrades": True})
@@ -164,10 +178,13 @@ def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
     results: UpgradeResults = {
         "commands": {"upgraded": [], "failed": []},
         "templates": {"upgraded": [], "failed": []},
-        "ide_settings": {"upgraded": [], "failed": []},
+        "agent_settings": {"upgraded": [], "failed": []},
         "migrations": {"upgraded": [], "failed": []},
         "obsolete_removed": {"upgraded": [], "failed": []},
         "skills": {"upgraded": [], "failed": []},
+        "hooks": {"upgraded": [], "failed": []},
+        "mcp_servers": {"upgraded": [], "failed": []},
+        "gitignore": {"upgraded": [], "failed": []},
         "structural_repairs": [],
         "version_updated": False,
     }
@@ -188,15 +205,31 @@ def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
         results["obsolete_removed"]["upgraded"] = obsolete_result.get("removed", [])
         results["obsolete_removed"]["failed"] = obsolete_result.get("failed", [])
 
-    ide_result = context.get_result("upgrade_ide_settings", {})
-    if ide_result:
-        results["ide_settings"]["upgraded"] = ide_result.get("upgraded", [])
-        results["ide_settings"]["failed"] = ide_result.get("failed", [])
+    agent_settings_result = context.get_result("upgrade_agent_settings", {})
+    if agent_settings_result:
+        results["agent_settings"]["upgraded"] = agent_settings_result.get("upgraded", [])
+        results["agent_settings"]["failed"] = agent_settings_result.get("failed", [])
 
     skill_result = context.get_result("upgrade_skills", {})
     if skill_result:
         results["skills"]["upgraded"] = skill_result.get("upgraded", [])
         results["skills"]["failed"] = skill_result.get("failed", [])
+
+    hooks_result = context.get_result("upgrade_hooks", {})
+    if hooks_result:
+        results["hooks"]["upgraded"] = hooks_result.get("upgraded", [])
+        results["hooks"]["failed"] = hooks_result.get("failed", [])
+
+    gitignore_result = context.get_result("upgrade_gitignore", {})
+    if gitignore_result:
+        results["gitignore"]["upgraded"] = gitignore_result.get("upgraded", [])
+        results["gitignore"]["failed"] = gitignore_result.get("failed", [])
+
+    mcp_result = context.get_result("reconcile_mcp_servers", {})
+    if mcp_result:
+        results["mcp_servers"]["upgraded"] = mcp_result.get("installed", [])
+        # MCP doesn't track failures in the same way, but we can check for skipped
+        results["mcp_servers"]["failed"] = []
 
     migration_result = context.get_result("run_migrations", {})
     if migration_result:
@@ -259,11 +292,11 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
             f"[cyan]Obsolete Templates[/cyan] ({len(plan['obsolete_templates'])} files to remove)\n{obsolete_list}"
         )
 
-    # IDE settings upgrades
-    if plan["ide_settings"]:
-        ide_list = "\n".join([f"  • {ide}" for ide in plan["ide_settings"]])
+    # Agent settings upgrades
+    if plan.get("agent_settings"):
+        agent_list = "\n".join([f"  • {agent}" for agent in plan["agent_settings"]])
         sections.append(
-            f"[cyan]IDE Settings[/cyan] ({len(plan['ide_settings'])} IDE(s))\n{ide_list}"
+            f"[cyan]Agent Settings[/cyan] ({len(plan['agent_settings'])} agent(s))\n{agent_list}"
         )
 
     # Skills installation and upgrade
@@ -285,6 +318,39 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
         )
         sections.append(
             f"[cyan]Skills to Upgrade[/cyan] ({len(skills_to_upgrade)} skill(s))\n{upgrade_list}"
+        )
+
+    # Feature hooks
+    hooks_to_upgrade = plan.get("hooks", [])
+    if hooks_to_upgrade:
+        hooks_list = "\n".join(
+            [
+                f"  • {h['agent']} → {h['target_description']} (from {h['feature']} feature)"
+                for h in hooks_to_upgrade
+            ]
+        )
+        sections.append(
+            f"[cyan]Hooks to Upgrade[/cyan] ({len(hooks_to_upgrade)} hook(s))\n{hooks_list}"
+        )
+
+    # MCP servers
+    mcp_servers = plan.get("mcp_servers", [])
+    if mcp_servers:
+        mcp_list = "\n".join(
+            [f"  • {m['agent']} (from {m['feature']} feature)" for m in mcp_servers]
+        )
+        sections.append(
+            f"[cyan]MCP Servers to Install[/cyan] ({len(mcp_servers)} server(s))\n{mcp_list}"
+        )
+
+    # Gitignore entries
+    gitignore_entries = plan.get("gitignore", [])
+    if gitignore_entries:
+        gitignore_list = "\n".join(
+            [f"  • {g['entry']} (from {g['feature']} feature)" for g in gitignore_entries]
+        )
+        sections.append(
+            f"[cyan]Gitignore Entries[/cyan] ({len(gitignore_entries)} pattern(s))\n{gitignore_list}"
         )
 
     # Structural repairs
@@ -320,9 +386,15 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
         steps += 1
     if results.get("obsolete_removed", {}).get("upgraded"):
         steps += 1
-    if results.get("ide_settings", {}).get("upgraded"):
+    if results.get("agent_settings", {}).get("upgraded"):
         steps += 1
     if results.get("skills", {}).get("upgraded"):
+        steps += 1
+    if results.get("hooks", {}).get("upgraded"):
+        steps += 1
+    if results.get("mcp_servers", {}).get("upgraded"):
+        steps += 1
+    if results.get("gitignore", {}).get("upgraded"):
         steps += 1
     if results.get("structural_repairs"):
         steps += 1
@@ -387,19 +459,19 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
                 ", ".join(failed),
             )
 
-    # IDE settings upgrade
-    if results.get("ide_settings"):
-        upgraded = results["ide_settings"]["upgraded"]
-        failed = results["ide_settings"]["failed"]
+    # Agent settings upgrade
+    if results.get("agent_settings"):
+        upgraded = results["agent_settings"]["upgraded"]
+        failed = results["agent_settings"]["failed"]
 
         if upgraded:
-            tracker.start_step(f"Upgrading IDE settings for {len(upgraded)} IDE(s)")
-            tracker.complete_step(f"Upgraded IDE settings for {len(upgraded)} IDE(s)")
+            tracker.start_step(f"Upgrading agent settings for {len(upgraded)} agent(s)")
+            tracker.complete_step(f"Upgraded agent settings for {len(upgraded)} agent(s)")
 
         if failed:
-            tracker.start_step("IDE settings upgrade failures")
+            tracker.start_step("Agent settings upgrade failures")
             tracker.fail_step(
-                f"Failed to upgrade {len(failed)} IDE setting(s)",
+                f"Failed to upgrade {len(failed)} agent setting(s)",
                 ", ".join(failed),
             )
 
@@ -416,6 +488,54 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
             tracker.start_step("Skill installation failures")
             tracker.fail_step(
                 f"Failed to install/upgrade {len(failed)} skill(s)",
+                ", ".join(failed),
+            )
+
+    # Feature hooks
+    if results.get("hooks"):
+        upgraded = results["hooks"]["upgraded"]
+        failed = results["hooks"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Upgrading {len(upgraded)} hook(s)")
+            tracker.complete_step(f"Upgraded {len(upgraded)} hook(s)")
+
+        if failed:
+            tracker.start_step("Hook upgrade failures")
+            tracker.fail_step(
+                f"Failed to upgrade {len(failed)} hook(s)",
+                ", ".join(failed),
+            )
+
+    # MCP servers
+    if results.get("mcp_servers"):
+        upgraded = results["mcp_servers"]["upgraded"]
+        failed = results["mcp_servers"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Installing {len(upgraded)} MCP server(s)")
+            tracker.complete_step(f"Installed {len(upgraded)} MCP server(s)")
+
+        if failed:
+            tracker.start_step("MCP server failures")
+            tracker.fail_step(
+                f"Failed to install {len(failed)} MCP server(s)",
+                ", ".join(failed),
+            )
+
+    # Gitignore entries
+    if results.get("gitignore"):
+        upgraded = results["gitignore"]["upgraded"]
+        failed = results["gitignore"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Adding {len(upgraded)} gitignore pattern(s)")
+            tracker.complete_step(f"Added {len(upgraded)} gitignore pattern(s)")
+
+        if failed:
+            tracker.start_step("Gitignore failures")
+            tracker.fail_step(
+                f"Failed to add {len(failed)} gitignore pattern(s)",
                 ", ".join(failed),
             )
 
@@ -461,8 +581,10 @@ def _display_whats_new(results: UpgradeResults) -> None:
     commands_upgraded = len(results.get("commands", {}).get("upgraded", []))
     templates_upgraded = len(results.get("templates", {}).get("upgraded", []))
     obsolete_removed = len(results.get("obsolete_removed", {}).get("upgraded", []))
-    ide_settings_upgraded = len(results.get("ide_settings", {}).get("upgraded", []))
+    agent_settings_upgraded = len(results.get("agent_settings", {}).get("upgraded", []))
     skills_upgraded = len(results.get("skills", {}).get("upgraded", []))
+    mcp_servers_installed = len(results.get("mcp_servers", {}).get("upgraded", []))
+    gitignore_added = len(results.get("gitignore", {}).get("upgraded", []))
     version_updated = results.get("version_updated", False)
 
     # Build message based on what was upgraded
@@ -470,8 +592,10 @@ def _display_whats_new(results: UpgradeResults) -> None:
         commands_upgraded > 0
         or templates_upgraded > 0
         or obsolete_removed > 0
-        or ide_settings_upgraded > 0
+        or agent_settings_upgraded > 0
         or skills_upgraded > 0
+        or mcp_servers_installed > 0
+        or gitignore_added > 0
     ):
         # Files were upgraded
         message_parts = [f"[bold green]{UPGRADE_MESSAGES['whats_new_title']}[/bold green]\n\n"]
@@ -489,11 +613,19 @@ def _display_whats_new(results: UpgradeResults) -> None:
         if obsolete_removed > 0:
             message_parts.append(f"✓ Removed {obsolete_removed} obsolete template(s)\n")
 
-        if ide_settings_upgraded > 0:
-            message_parts.append(f"✓ Upgraded IDE settings for {ide_settings_upgraded} IDE(s)\n")
+        if agent_settings_upgraded > 0:
+            message_parts.append(
+                f"✓ Upgraded agent settings for {agent_settings_upgraded} agent(s)\n"
+            )
 
         if skills_upgraded > 0:
             message_parts.append(f"✓ Installed/upgraded {skills_upgraded} agent skill(s)\n")
+
+        if mcp_servers_installed > 0:
+            message_parts.append(f"✓ Installed {mcp_servers_installed} MCP server(s)\n")
+
+        if gitignore_added > 0:
+            message_parts.append(f"✓ Added {gitignore_added} gitignore pattern(s)\n")
 
         if version_updated:
             message_parts.append(

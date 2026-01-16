@@ -1,0 +1,119 @@
+# Codebase Intelligence Feature Manifest
+name: codebase-intelligence
+display_name: "Codebase Intelligence"
+description: "Semantic search and persistent memory for AI assistants. Provides context-aware code retrieval and cross-session knowledge management."
+version: "1.0.0"
+default_enabled: false  # Opt-in due to external dependencies (Ollama)
+dependencies:
+  - constitution
+
+# Python packages required by this feature
+# These are installed directly when the feature is enabled
+# Note: tree-sitter versions must match pyproject.toml optional-dependencies
+pip_packages:
+  # Core daemon dependencies
+  - fastapi>=0.109.0
+  - uvicorn>=0.27.0
+  - chromadb>=0.5.0
+  - fastembed>=0.3.0
+  - watchdog>=4.0.0
+  - httpx>=0.27.0
+  # MCP protocol support
+  - mcp>=1.0.0
+  # Tree-sitter base
+  - tree-sitter>=0.23.0
+  # Core language parsers (top languages - matches ci-parsers in pyproject.toml)
+  - tree-sitter-python>=0.23.0
+  - tree-sitter-javascript>=0.23.0
+  - tree-sitter-typescript>=0.23.0
+  - tree-sitter-java>=0.23.0
+  - tree-sitter-c-sharp>=0.23.0
+  - tree-sitter-go>=0.23.0
+  - tree-sitter-rust>=0.23.0
+
+# External prerequisites required for this feature
+prerequisites:
+  - name: ollama
+    type: service
+    description: "Local LLM runtime for generating embeddings"
+    check_command: "ollama --version"
+    install_url: "https://ollama.com/download"
+    install_instructions: |
+      Install Ollama from https://ollama.com/download
+      Then run: ollama pull nomic-embed-text
+    required: false  # Falls back to FastEmbed if not available
+    models:
+      - nomic-embed-text
+
+# User-invocable slash commands for agents
+commands:
+  - ci  # Helps agents use CI for search, context, and memory
+
+# Skills are installed to agents with has_skills capability (Claude Code)
+# These guide the agent on WHEN to use the oak ci CLI commands via Bash
+# Skills use allowed-tools to restrict Claude to Bash execution
+skills:
+  - codebase-awareness  # Guides semantic search and context retrieval
+  - memory-capture      # Guides observation capture and storage
+
+# MCP tools are available but optional - CLI commands (oak ci) are preferred
+# The daemon exposes MCP tools for agents that don't support Bash:
+#   - oak_search, oak_remember, oak_context
+# To enable, add the MCP server to agent settings: oak ci mcp
+
+# Gitignore patterns added when feature is enabled, removed on disable
+# The .oak/ci/ directory contains regenerated data that should not be committed
+gitignore:
+  - .oak/ci/
+
+# Feature lifecycle hooks
+hooks:
+  # Initialize feature: sets up data dir, constitution, hooks, and starts daemon
+  on_feature_enabled: codebase-intelligence:initialize
+  # Cleanup feature: stops daemon, removes hooks, cleans data
+  on_feature_disabled: codebase-intelligence:cleanup
+  # Pre-remove hook: cleanup before oak remove (same as on_feature_disabled)
+  on_pre_remove: codebase-intelligence:on_pre_remove
+  # Update agent hook configurations when agents change (oak init with different agents)
+  on_agents_changed: codebase-intelligence:update_agent_hooks
+  # Note: on_init_complete not needed - initialize() handles daemon startup
+  # Note: Hook upgrades are handled by UpgradeHooksStage in the upgrade pipeline
+
+# Feature-specific default configuration
+config_defaults:
+  enabled: true
+  daemon:
+    port: 37800
+    auto_start: true
+    log_level: info
+    idle_timeout_minutes: 30
+  embedding:
+    provider: ollama
+    model: nomic-embed-text
+    fallback_provider: fastembed
+    ollama_url: http://localhost:11434
+    dimensions: 768
+  indexing:
+    auto_index: true
+    stale_threshold_minutes: 30
+    ignored_patterns:
+      - ".git"
+      - ".oak"
+      - "node_modules"
+      - "__pycache__"
+      - ".venv"
+      - "*.pyc"
+      - "*.min.js"
+      - "*.lock"
+  retrieval:
+    default_limit: 20
+    max_context_tokens: 2000
+    relevance_threshold: 0.3
+  memory:
+    auto_capture: true
+    observation_types:
+      - gotcha
+      - bug_fix
+      - decision
+      - discovery
+    retention_days: 90

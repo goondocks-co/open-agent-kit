@@ -43,6 +43,7 @@ Example:
     ... )
 """
 
+import logging
 import re
 from datetime import date
 from pathlib import Path
@@ -66,6 +67,8 @@ from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.utils import ensure_dir, file_exists, read_file, write_file
 from open_agent_kit.utils.version import increment_version
+
+logger = logging.getLogger(__name__)
 
 
 class ConstitutionService:
@@ -516,8 +519,11 @@ class ConstitutionService:
             try:
                 amendment = Amendment.from_dict(amendment_dict)
                 amendments.append(amendment)
-            except Exception:
+            except (ValueError, KeyError) as e:
                 # Skip invalid amendments
+                logger.warning(
+                    f"Failed to parse amendment at version {amendment_dict.get('version')}: {e}"
+                )
                 continue
 
         return amendments
@@ -672,8 +678,8 @@ class ConstitutionService:
                         "non_oak_lines": len(non_oak_lines),
                     }
                 )
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to analyze instruction file {display_path}: {e}")
 
         # Process all instruction patterns (both static files and globs)
         for pattern, is_glob in agent_instruction_patterns:

@@ -120,7 +120,7 @@ def test_execute_upgrade_with_empty_plan(initialized_project: Path) -> None:
         "templates": [],
         "templates_customized": False,
         "obsolete_templates": [],
-        "ide_settings": [],
+        "agent_settings": [],
         "skills": {"install": [], "upgrade": []},
         "migrations": [],
         "structural_repairs": [],
@@ -133,8 +133,8 @@ def test_execute_upgrade_with_empty_plan(initialized_project: Path) -> None:
     assert results["commands"]["failed"] == []
     assert results["templates"]["upgraded"] == []
     assert results["templates"]["failed"] == []
-    assert results["ide_settings"]["upgraded"] == []
-    assert results["ide_settings"]["failed"] == []
+    assert results["agent_settings"]["upgraded"] == []
+    assert results["agent_settings"]["failed"] == []
 
 
 def test_plan_upgrade_multiple_agents(initialized_project: Path) -> None:
@@ -206,7 +206,7 @@ def test_execute_upgrade_no_version_update_when_nothing_upgraded(initialized_pro
         "templates": [],
         "templates_customized": False,
         "obsolete_templates": [],
-        "ide_settings": [],
+        "agent_settings": [],
         "skills": {"install": [], "upgrade": []},
         "migrations": [],
         "structural_repairs": [],

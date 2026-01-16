@@ -30,4 +30,16 @@ capabilities:
   context_handling: large       # large | medium | small - excellent context window (1M+)
   model_consistency: high       # high | medium | variable - first-party models are consistent
 
-settings: {}
+settings:
+  # Auto-approval settings for oak commands
+  auto_approve:
+    enabled: true
+    file: ".gemini/settings.json"
+    format: json
+    template: "agent-settings/gemini-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config (via gemini mcp add CLI)
+  config_file: ".gemini/settings.json"
+  format: json
+  servers_key: "mcpServers"

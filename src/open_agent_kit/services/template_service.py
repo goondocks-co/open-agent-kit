@@ -1,5 +1,6 @@
 """Template service for rendering templates with Jinja2."""
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from open_agent_kit.config.paths import FEATURES_DIR
 from open_agent_kit.constants import SUPPORTED_FEATURES
 from open_agent_kit.utils import file_exists, write_file
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateService:
@@ -310,7 +313,8 @@ class TemplateService:
             # Get undeclared variables (variables used but not defined in template)
             ast = self.env.parse(source)
             return set(ast.find_all(jinja2.nodes.Name))  # type: ignore[arg-type]  # jinja2.nodes.Node.find_all() returns Iterator but type stubs are incomplete
-        except Exception:
+        except (TemplateNotFound, jinja2.TemplateSyntaxError) as e:
+            logger.warning(f"Failed to get template variables for {template_name}: {e}")
             return set()
 
     def validate_template_syntax(self, template_name: str) -> tuple[bool, str | None]:
@@ -334,6 +338,39 @@ class TemplateService:
             return (True, None)
         except Exception as e:
             return (False, str(e))
+
+    def render_command_for_agent(self, content: str, agent_type: str) -> str:
+        """Render command content with agent-specific context.
+
+        If content contains Jinja2 syntax, renders it with agent context.
+        Otherwise returns content unchanged.
+
+        Args:
+            content: Raw command content (may contain Jinja2 syntax)
+            agent_type: Agent type (e.g., 'claude', 'cursor')
+
+        Returns:
+            Rendered content with agent-specific values
+
+        Raises:
+            ImportError: If AgentService cannot be imported (circular dependency)
+            ValueError: If agent context cannot be retrieved
+        """
+        from open_agent_kit.utils.template_utils import has_jinja2_syntax
+
+        if not has_jinja2_syntax(content):
+            return content
+
+        # Import here to avoid circular dependency
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService(self.project_root)
+
+        # Get agent context for rendering
+        context = agent_service.get_agent_context(agent_type)
+
+        # Render template with agent context
+        return self.render_string(content, context)
 
 
 def get_template_service(

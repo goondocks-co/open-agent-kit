@@ -1,0 +1,348 @@
+"""Pydantic models for daemon API."""
+
+from datetime import datetime
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+class ChunkType(str, Enum):
+    """Types of code chunks."""
+
+    FUNCTION = "function"
+    CLASS = "class"
+    METHOD = "method"
+    MODULE = "module"
+    UNKNOWN = "unknown"
+
+
+class MemoryType(str, Enum):
+    """Types of memory observations.
+
+    This enum provides API validation for memory types. The canonical definitions
+    including descriptions and examples are in schema.yaml:
+        features/codebase-intelligence/schema.yaml
+
+    When adding new types:
+    1. Add to schema.yaml (source of truth for LLM prompts)
+    2. Add here for API validation
+    """
+
+    GOTCHA = "gotcha"
+    BUG_FIX = "bug_fix"
+    DECISION = "decision"
+    DISCOVERY = "discovery"
+    TRADE_OFF = "trade_off"
+    SESSION_SUMMARY = "session_summary"
+
+
+class HealthResponse(BaseModel):
+    """Health check response."""
+
+    status: str = "healthy"
+    version: str = "1.0.0"
+    uptime_seconds: float = 0.0
+    project_root: str | None = None
+
+
+class StatusResponse(BaseModel):
+    """Detailed status response."""
+
+    daemon: dict = Field(default_factory=dict)
+    index: dict = Field(default_factory=dict)
+    memory: dict = Field(default_factory=dict)
+    embedding: dict = Field(default_factory=dict)
+
+
+class SearchRequest(BaseModel):
+    """Search request."""
+
+    query: str = Field(..., min_length=1, description="Search query")
+    limit: int = Field(default=20, ge=1, le=100)
+    search_type: str = Field(default="all", pattern="^(all|code|memory)$")
+    relevance_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+
+
+class CodeResult(BaseModel):
+    """Code search result."""
+
+    id: str
+    chunk_type: ChunkType
+    name: str | None
+    filepath: str
+    start_line: int
+    end_line: int
+    tokens: int
+    relevance: float
+    preview: str | None = None
+
+
+class MemoryResult(BaseModel):
+    """Memory search result."""
+
+    id: str
+    memory_type: MemoryType
+    summary: str
+    tokens: int
+    relevance: float
+    created_at: datetime | None = None
+
+
+class SearchResponse(BaseModel):
+    """Search results."""
+
+    query: str
+    code: list[CodeResult] = Field(default_factory=list)
+    memory: list[MemoryResult] = Field(default_factory=list)
+    total_tokens_available: int = 0
+
+
+class FetchRequest(BaseModel):
+    """Request to fetch full content."""
+
+    ids: list[str] = Field(..., min_length=1, max_length=20)
+
+
+class FetchResult(BaseModel):
+    """Fetched content."""
+
+    id: str
+    content: str
+    tokens: int
+
+
+class FetchResponse(BaseModel):
+    """Fetch results."""
+
+    results: list[FetchResult] = Field(default_factory=list)
+    total_tokens: int = 0
+
+
+class RememberRequest(BaseModel):
+    """Request to store an observation."""
+
+    observation: str = Field(..., min_length=1)
+    memory_type: MemoryType = MemoryType.DISCOVERY
+    context: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class RememberResponse(BaseModel):
+    """Response after storing observation."""
+
+    id: str
+    stored: bool = True
+    message: str = "Observation stored successfully"
+
+
+class MemoryListItem(BaseModel):
+    """Memory item for listing (without relevance score)."""
+
+    id: str
+    memory_type: MemoryType
+    observation: str
+    context: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+
+class MemoriesListResponse(BaseModel):
+    """Response for listing memories."""
+
+    memories: list[MemoryListItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class IndexRequest(BaseModel):
+    """Request to trigger indexing."""
+
+    full_rebuild: bool = False
+
+
+class IndexResponse(BaseModel):
+    """Indexing response."""
+
+    status: str
+    chunks_indexed: int = 0
+    files_processed: int = 0
+    duration_seconds: float = 0.0
+
+
+# ============================================================================
+# Session and Hook Models (claude-mem inspired)
+# ============================================================================
+
+
+class SessionInfo(BaseModel):
+    """Active session tracking."""
+
+    session_id: str
+    agent: str
+    started_at: datetime
+    observations: list[str] = Field(default_factory=list)
+    tool_calls: int = 0
+    last_activity: datetime | None = None
+
+
+class PostToolUseRequest(BaseModel):
+    """Request from PostToolUse hook."""
+
+    session_id: str | None = None
+    agent: str = "unknown"
+    tool_name: str
+    tool_input: dict = Field(default_factory=dict)
+    tool_output: str = ""
+    success: bool = True
+    working_directory: str | None = None
+
+
+class SessionEndRequest(BaseModel):
+    """Request from SessionEnd/Stop hook."""
+
+    session_id: str | None = None
+    agent: str = "unknown"
+    transcript_path: str | None = None
+    working_directory: str | None = None
+
+
+class ObservationExtract(BaseModel):
+    """Extracted observation from tool output."""
+
+    observation: str
+    memory_type: MemoryType
+    context: str | None = None
+    confidence: float = 0.8
+
+
+# ============================================================================
+# Context Request/Response Models
+# ============================================================================
+
+
+class ContextRequest(BaseModel):
+    """Request for task context."""
+
+    task: str = Field(..., min_length=1, description="Description of the task")
+    current_files: list[str] = Field(default_factory=list, description="Files being viewed/edited")
+    max_tokens: int = Field(default=2000, ge=100, le=10000)
+
+
+class ContextCodeResult(BaseModel):
+    """Code context result."""
+
+    file_path: str
+    chunk_type: str
+    name: str | None
+    start_line: int
+    relevance: float
+
+
+class ContextMemoryResult(BaseModel):
+    """Memory context result."""
+
+    memory_type: str
+    observation: str
+    relevance: float
+
+
+class ContextResponse(BaseModel):
+    """Context response for a task."""
+
+    task: str
+    code: list[ContextCodeResult] = Field(default_factory=list)
+    memories: list[ContextMemoryResult] = Field(default_factory=list)
+    guidelines: list[str] = Field(default_factory=list)
+    total_tokens: int = 0
+
+
+# ============================================================================
+# Activity Models (SQLite activity tracking)
+# ============================================================================
+
+
+class ActivityItem(BaseModel):
+    """Single activity from a tool execution."""
+
+    id: str
+    session_id: str
+    prompt_batch_id: str | None = None
+    tool_name: str
+    tool_input: dict | None = None
+    tool_output_summary: str | None = None
+    file_path: str | None = None
+    success: bool = True
+    error_message: str | None = None
+    created_at: datetime
+
+
+class PromptBatchItem(BaseModel):
+    """Prompt batch - activities from a single user prompt."""
+
+    id: str
+    session_id: str
+    prompt_number: int
+    user_prompt: str | None = None
+    classification: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    activity_count: int = 0
+
+
+class SessionItem(BaseModel):
+    """Session - Claude Code session from launch to exit."""
+
+    id: str
+    agent: str
+    project_root: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str = "active"
+    summary: str | None = None
+    prompt_batch_count: int = 0
+    activity_count: int = 0
+
+
+class ActivityListResponse(BaseModel):
+    """Response for listing activities."""
+
+    activities: list[ActivityItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class SessionListResponse(BaseModel):
+    """Response for listing sessions."""
+
+    sessions: list[SessionItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 20
+    offset: int = 0
+
+
+class PromptBatchListResponse(BaseModel):
+    """Response for listing prompt batches."""
+
+    prompt_batches: list[PromptBatchItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class SessionDetailResponse(BaseModel):
+    """Detailed session response with stats."""
+
+    session: SessionItem
+    stats: dict = Field(default_factory=dict)
+    recent_activities: list[ActivityItem] = Field(default_factory=list)
+    prompt_batches: list[PromptBatchItem] = Field(default_factory=list)
+
+
+class ActivitySearchResponse(BaseModel):
+    """Response for activity search."""
+
+    query: str
+    activities: list[ActivityItem] = Field(default_factory=list)
+    total: int = 0

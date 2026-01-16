@@ -19,9 +19,7 @@ from open_agent_kit.constants import (
     DEFAULT_FEATURES,
     FEATURE_CONFIG,
     FEATURE_DISPLAY_NAMES,
-    IDE_DISPLAY_NAMES,
     SUPPORTED_FEATURES,
-    SUPPORTED_IDES,
 )
 from open_agent_kit.models.config import AgentCapabilitiesConfig
 from open_agent_kit.pipeline.context import FlowType, PipelineContext, SelectionState
@@ -78,11 +76,6 @@ def init_command(
         "--agent",
         "-a",
         help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
-    ),
-    ide: list[str] = typer.Option(
-        None,
-        "--ide",
-        help="IDE(s) to configure (can specify multiple times). Options: vscode, cursor, none",
     ),
     feature: list[str] = typer.Option(
         None,
@@ -145,21 +138,16 @@ def init_command(
     # Load existing configuration if applicable
     config_service = ConfigService(project_root)
     existing_agents: list[str] = []
-    existing_ides: list[str] = []
     existing_features: list[str] = []
 
     if is_existing:
         existing_agents = config_service.get_agents()
-        existing_ides = config_service.get_ides()
         config = config_service.load_config()
         existing_features = config.features.enabled
 
     # Gather selections (CLI args or interactive)
     selected_agents = _gather_agent_selection(
         agent, no_interactive, existing_agents if is_existing else None
-    )
-    selected_ides = _gather_ide_selection(
-        ide, no_interactive, existing_ides if is_existing else None
     )
     selected_features = _gather_feature_selection(
         feature, no_interactive, is_existing, existing_features
@@ -168,15 +156,12 @@ def init_command(
     # Check for no changes in update flow
     if flow_type == FlowType.UPDATE:
         agents_changed = set(selected_agents) != set(existing_agents)
-        ides_changed = set(selected_ides) != set(existing_ides)
         features_changed = set(selected_features) != set(existing_features)
 
-        if not agents_changed and not ides_changed and not features_changed:
+        if not agents_changed and not features_changed:
             print_info("\nNo changes to configuration. Current setup:")
             if existing_agents:
                 print_info(f"  Agents: {', '.join(existing_agents)}")
-            if existing_ides:
-                print_info(f"  IDEs: {', '.join(existing_ides)}")
             if existing_features:
                 print_info(f"  Features: {', '.join(existing_features)}")
             return
@@ -189,10 +174,8 @@ def init_command(
         interactive=not no_interactive,
         selections=SelectionState(
             agents=selected_agents,
-            ides=selected_ides,
             features=selected_features,
             previous_agents=existing_agents,
-            previous_ides=existing_ides,
             previous_features=existing_features,
         ),
     )
@@ -208,10 +191,15 @@ def init_command(
     if result.success:
         if flow_type == FlowType.UPDATE:
             tracker.finish("open-agent-kit configuration updated successfully!")
-            _display_update_message(existing_agents, selected_agents, existing_ides, selected_ides)
+            _display_update_message(
+                existing_agents,
+                selected_agents,
+                existing_features,
+                selected_features,
+            )
         else:
             tracker.finish("open-agent-kit initialized successfully!")
-            _display_next_steps(selected_agents, selected_ides)
+            _display_next_steps(selected_agents)
 
         # Display any hook information
         _display_hook_results(context)
@@ -255,44 +243,6 @@ def _gather_agent_selection(
         return [a.lower() for a in agent]
     elif not no_interactive:
         return _interactive_agent_selection(existing_agents)
-    else:
-        return []
-
-
-def _gather_ide_selection(
-    ide: list[str] | None,
-    no_interactive: bool,
-    existing_ides: list[str] | None,
-) -> list[str]:
-    """Gather IDE selection from CLI args or interactive prompt.
-
-    Args:
-        ide: CLI-provided IDEs
-        no_interactive: Whether to skip interactive prompts
-        existing_ides: Previously configured IDEs (for pre-selection)
-
-    Returns:
-        List of selected IDE names
-    """
-    if ide and isinstance(ide, list) and len(ide) > 0:
-        # Validate provided IDEs
-        for i in ide:
-            if i.lower() not in SUPPORTED_IDES:
-                print_error(f"Invalid IDE: {i}")
-                print_info(f"Supported IDEs: {', '.join(SUPPORTED_IDES)}")
-                raise typer.Exit(code=1)
-
-        # Convert to lowercase and filter out 'none'
-        selected_ides = [i.lower() for i in ide if i.lower() != "none"]
-
-        # Validate: 'none' cannot be combined with other IDEs
-        if len(ide) != len(selected_ides) and len(selected_ides) > 0:
-            print_error("Cannot specify 'none' with other IDEs")
-            raise typer.Exit(code=1)
-
-        return selected_ides
-    elif not no_interactive:
-        return _interactive_ide_selection(existing_ides)
     else:
         return []
 
@@ -405,6 +355,13 @@ def _interactive_agent_selection(existing_agents: list[str] | None = None) -> li
         except ValueError:
             continue
 
+    # Safety check - if no agents found, show helpful error
+    if not options:
+        print_error("No agent manifests found. This may indicate a corrupted installation.")
+        print_info(f"Expected agents directory: {agent_service.package_agents_dir}")
+        print_info(f"Available agents detected: {available_agents}")
+        raise typer.Exit(code=1)
+
     selected = multi_select(
         options,
         "Which agents would you like to use? (Space to select, Enter to confirm)",
@@ -415,75 +372,11 @@ def _interactive_agent_selection(existing_agents: list[str] | None = None) -> li
     return selected
 
 
-def _interactive_ide_selection(existing_ides: list[str] | None = None) -> list[str]:
-    """Interactive IDE selection with checkboxes (multi-select).
-
-    Args:
-        existing_ides: List of currently configured IDEs (will be pre-selected)
-
-    Returns:
-        List of selected IDE names (empty if "none" selected)
-    """
-    if existing_ides:
-        print_header("Update IDEs")
-        print_info("Current IDEs are pre-selected. Check/uncheck to modify configuration.\n")
-    else:
-        print_header("Select IDEs")
-        print_info("Choose which IDEs you'd like to configure with auto-approval settings.\n")
-
-    existing_ides = existing_ides or []
-
-    # Normalize existing IDEs to lowercase for comparison
-    existing_ides_lower = [i.lower() for i in existing_ides]
-
-    options = []
-    default_selections = []
-
-    for ide_name in SUPPORTED_IDES:
-        if ide_name == "none":
-            options.append(
-                SelectOption(
-                    value="none",
-                    label="None (Skip IDE configuration)",
-                    description="Don't install IDE settings",
-                )
-            )
-            # Don't auto-select "none"
-        else:
-            display_name = IDE_DISPLAY_NAMES.get(ide_name, ide_name.capitalize())
-            options.append(
-                SelectOption(
-                    value=ide_name,
-                    label=display_name,
-                    description=f"Configure {display_name} with auto-approval settings",
-                )
-            )
-            # Pre-select if this IDE is already configured
-            if ide_name.lower() in existing_ides_lower:
-                default_selections.append(ide_name)
-
-    selected = multi_select(
-        options,
-        "Which IDEs would you like to configure? (Space to select, Enter to confirm)",
-        defaults=default_selections,
-        min_selections=0,
-    )
-
-    # Filter out 'none' - if 'none' is selected with others, remove 'none'
-    if "none" in selected and len(selected) > 1:
-        selected = [s for s in selected if s != "none"]
-    elif "none" in selected:
-        return []
-
-    return selected
-
-
-def _display_next_steps(agents: list[str], ides: list[str]) -> None:
+def _display_next_steps(agents: list[str]) -> None:
     """Display next steps after initialization.
 
     Args:
         agents: List of selected agent names
-        ides: List of selected IDE names
     """
     from open_agent_kit.config.paths import CONFIG_FILE
 
@@ -526,78 +419,41 @@ def _display_next_steps(agents: list[str], ides: list[str]) -> None:
             style="green",
         )
 
-    # Display IDE Settings panel if IDEs were selected
-    if ides:
-        ide_info_lines = []
-        for ide in ides:
-            ide_name = IDE_DISPLAY_NAMES.get(ide, ide.capitalize())
-            settings_file = f".{ide}/settings.json"
-            ide_info_lines.append(f"  • [cyan]{ide_name}[/cyan]: {settings_file}")
-
-        ide_list = "\n".join(ide_info_lines)
-
-        print_panel(
-            f"[bold green]IDE Settings Configured[/bold green]\n\n"
-            f"Auto-approval settings have been installed for {len(ides)} IDE(s):\n\n"
-            f"{ide_list}\n\n"
-            f"Your IDE will now auto-approve [cyan]oak[/cyan] commands.\n"
-            f"Prompt files are also recommended automatically in chat!",
-            title="Ready to Use",
-            style="green",
-        )
-
     print_info(f"\n{INFO_MESSAGES['more_info'].format(url=PROJECT_URL)}")
 
 
-def _display_additions_message(agents: list[str], ides: list[str]) -> None:
-    """Display message after adding agents/IDEs to existing installation.
+def _display_additions_message(agents: list[str]) -> None:
+    """Display message after adding agents to existing installation.
 
     Args:
         agents: List of agent names that were added
-        ides: List of IDE names that were added
     """
-    if not agents and not ides:
+    if not agents:
         print_info(f"\n{INFO_MESSAGES['no_agents_added']}")
-        print_info("No IDEs added either.")
         return
 
     agent_service = AgentService()
     message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
 
-    # Add agents info if any
-    if agents:
-        agent_info_lines = []
-        for agent in agents:
-            try:
-                manifest = agent_service.get_agent_manifest(agent.lower())
-                folder = manifest.installation.folder
-                commands_subfolder = manifest.installation.commands_subfolder
-                display_name = manifest.display_name
-                agent_info_lines.append(
-                    f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
-                )
-            except ValueError:
-                agent_info_lines.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
+    # Add agents info
+    agent_info_lines = []
+    for agent in agents:
+        try:
+            manifest = agent_service.get_agent_manifest(agent.lower())
+            folder = manifest.installation.folder
+            commands_subfolder = manifest.installation.commands_subfolder
+            display_name = manifest.display_name
+            agent_info_lines.append(
+                f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
+            )
+        except ValueError:
+            agent_info_lines.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
 
-        agent_list = "\n".join(agent_info_lines)
-        message_parts.append(
-            f"\n**Agents Added ({len(agents)}):**\n{agent_list}\n"
-            f"You can now use open-agent-kit commands in these AI assistants!"
-        )
-
-    # Add IDEs info if any
-    if ides:
-        ide_info_lines = []
-        for ide in ides:
-            ide_name = IDE_DISPLAY_NAMES.get(ide, ide.capitalize())
-            settings_file = f".{ide}/settings.json"
-            ide_info_lines.append(f"  • [cyan]{ide_name}[/cyan]: {settings_file}")
-
-        ide_list = "\n".join(ide_info_lines)
-        message_parts.append(
-            f"\n**IDEs Configured ({len(ides)}):**\n{ide_list}\n"
-            f"Auto-approval settings have been installed!"
-        )
+    agent_list = "\n".join(agent_info_lines)
+    message_parts.append(
+        f"\n**Agents Added ({len(agents)}):**\n{agent_list}\n"
+        f"You can now use open-agent-kit commands in these AI assistants!"
+    )
 
     print_panel(
         "\n".join(message_parts),
@@ -628,16 +484,16 @@ def _get_agent_display_name(agent_service: AgentService, agent: str) -> str:
 def _display_update_message(
     old_agents: list[str],
     new_agents: list[str],
-    old_ides: list[str],
-    new_ides: list[str],
+    old_features: list[str] | None = None,
+    new_features: list[str] | None = None,
 ) -> None:
     """Display message showing what changed in configuration.
 
     Args:
         old_agents: Previously configured agents
         new_agents: Newly configured agents
-        old_ides: Previously configured IDEs
-        new_ides: Newly configured IDEs
+        old_features: Previously installed features
+        new_features: Newly installed features
     """
     agent_service = AgentService()
     message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
@@ -676,39 +532,39 @@ def _display_update_message(
 
         message_parts.append("\n**Agent Configuration:**\n" + "\n".join(agent_lines))
 
-    # Show IDE changes
-    old_ides_set = set(old_ides)
-    new_ides_set = set(new_ides)
-    ides_added = new_ides_set - old_ides_set
-    ides_removed = old_ides_set - new_ides_set
-    ides_kept = old_ides_set & new_ides_set
+    # Show feature changes
+    old_features_set = set(old_features or [])
+    new_features_set = set(new_features or [])
+    features_added = new_features_set - old_features_set
+    features_removed = old_features_set - new_features_set
+    features_kept = old_features_set & new_features_set
 
-    if ides_added or ides_removed or ides_kept:
-        ide_lines = []
+    if features_added or features_removed or features_kept:
+        feature_lines = []
 
-        if ides_kept:
-            ide_lines.append("[dim]Keeping:[/dim]")
-            for ide in sorted(ides_kept):
-                ide_name = IDE_DISPLAY_NAMES.get(ide, ide.capitalize())
-                ide_lines.append(f"  • [cyan]{ide_name}[/cyan]")
+        if features_kept:
+            feature_lines.append("[dim]Keeping:[/dim]")
+            for feature in sorted(features_kept):
+                feature_name = FEATURE_DISPLAY_NAMES.get(feature, feature)
+                feature_lines.append(f"  • [cyan]{feature_name}[/cyan]")
 
-        if ides_added:
-            if ide_lines:
-                ide_lines.append("")
-            ide_lines.append("[green]Added:[/green]")
-            for ide in sorted(ides_added):
-                ide_name = IDE_DISPLAY_NAMES.get(ide, ide.capitalize())
-                ide_lines.append(f"  • [green]{ide_name}[/green]")
+        if features_added:
+            if feature_lines:
+                feature_lines.append("")
+            feature_lines.append("[green]Added:[/green]")
+            for feature in sorted(features_added):
+                feature_name = FEATURE_DISPLAY_NAMES.get(feature, feature)
+                feature_lines.append(f"  • [green]{feature_name}[/green]")
 
-        if ides_removed:
-            if ide_lines:
-                ide_lines.append("")
-            ide_lines.append("[red]Removed:[/red]")
-            for ide in sorted(ides_removed):
-                ide_name = IDE_DISPLAY_NAMES.get(ide, ide.capitalize())
-                ide_lines.append(f"  • [red]{ide_name}[/red]")
+        if features_removed:
+            if feature_lines:
+                feature_lines.append("")
+            feature_lines.append("[red]Removed:[/red]")
+            for feature in sorted(features_removed):
+                feature_name = FEATURE_DISPLAY_NAMES.get(feature, feature)
+                feature_lines.append(f"  • [red]{feature_name}[/red]")
 
-        message_parts.append("\n**IDE Configuration:**\n" + "\n".join(ide_lines))
+        message_parts.append("\n**Feature Configuration:**\n" + "\n".join(feature_lines))
 
     print_panel(
         "\n".join(message_parts),
@@ -727,7 +583,7 @@ def _display_agent_added_message(agents: list[str]) -> None:
     Args:
         agents: List of agent names that were added
     """
-    _display_additions_message(agents, [])
+    _display_additions_message(agents)
 
 
 def _interactive_feature_selection(existing_features: list[str] | None = None) -> list[str]:

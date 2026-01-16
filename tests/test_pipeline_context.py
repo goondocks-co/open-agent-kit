@@ -24,10 +24,8 @@ class TestSelectionState:
         state = SelectionState()
 
         assert state.agents == []
-        assert state.ides == []
         assert state.features == []
         assert state.previous_agents == []
-        assert state.previous_ides == []
         assert state.previous_features == []
 
     def test_agents_added(self):
@@ -58,24 +56,6 @@ class TestSelectionState:
         assert state.agents_added == set()
         assert state.agents_removed == set()
         assert not state.has_agent_changes
-
-    def test_ides_added(self):
-        """Test ides_added property."""
-        state = SelectionState(
-            ides=["vscode", "cursor"],
-            previous_ides=["vscode"],
-        )
-
-        assert state.ides_added == {"cursor"}
-
-    def test_ides_removed(self):
-        """Test ides_removed property."""
-        state = SelectionState(
-            ides=["vscode"],
-            previous_ides=["vscode", "cursor"],
-        )
-
-        assert state.ides_removed == {"cursor"}
 
     def test_features_added(self):
         """Test features_added property."""
@@ -113,15 +93,6 @@ class TestSelectionState:
 
         assert state.has_agent_changes is False
 
-    def test_has_ide_changes_true(self):
-        """Test has_ide_changes when IDEs changed."""
-        state = SelectionState(
-            ides=["vscode"],
-            previous_ides=["cursor"],
-        )
-
-        assert state.has_ide_changes is True
-
     def test_has_feature_changes_true(self):
         """Test has_feature_changes when features changed."""
         state = SelectionState(
@@ -136,9 +107,7 @@ class TestSelectionState:
         state = SelectionState(
             agents=["claude"],
             previous_agents=["claude"],
-            ides=["vscode"],
-            previous_ides=["cursor"],  # IDEs changed
-            features=["constitution"],
+            features=["constitution", "rfc"],  # Features changed
             previous_features=["constitution"],
         )
 
@@ -149,8 +118,6 @@ class TestSelectionState:
         state = SelectionState(
             agents=["claude"],
             previous_agents=["claude"],
-            ides=["vscode"],
-            previous_ides=["vscode"],
             features=["constitution"],
             previous_features=["constitution"],
         )
@@ -276,7 +243,6 @@ class TestPipelineContext:
         )
 
         assert context.selections.agents == []
-        assert context.selections.ides == []
         assert context.selections.features == []
 
     def test_custom_selections(self, tmp_path: Path):
@@ -286,10 +252,8 @@ class TestPipelineContext:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude", "codex"],
-                ides=["vscode"],
                 features=["constitution", "rfc"],
                 previous_agents=["claude"],
-                previous_ides=["vscode"],
                 previous_features=["constitution"],
             ),
         )
@@ -299,4 +263,3 @@ class TestPipelineContext:
         assert context.selections.features_added == {"rfc"}
         assert context.selections.has_agent_changes is True
         assert context.selections.has_feature_changes is True
-        assert context.selections.has_ide_changes is False

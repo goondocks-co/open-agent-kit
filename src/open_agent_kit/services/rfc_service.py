@@ -38,6 +38,7 @@ Example:
     >>> rfcs = service.list_rfcs(status="approved")
 """
 
+import logging
 import re
 import shutil
 from datetime import datetime, timedelta
@@ -61,6 +62,8 @@ from open_agent_kit.utils import (
     validate_rfc_content,
     write_file,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RFCService:
@@ -345,7 +348,8 @@ class RFCService:
             rfc.status = new_status
             return rfc
 
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.warning(f"Failed to update RFC status for {rfc_number}: {e}")
             return None
 
     def adopt_rfc(self, rfc_number: str) -> RFCDocument | None:
@@ -374,7 +378,8 @@ class RFCService:
         try:
             rfc.path.unlink()
             return True
-        except Exception:
+        except OSError as e:
+            logger.warning(f"Failed to delete RFC {rfc_number} at {rfc.path}: {e}")
             return False
 
     def search_rfcs(
@@ -432,7 +437,8 @@ class RFCService:
                     content = read_file(rfc.path)
                     if query_lower in content.lower():
                         results.append(rfc)
-                except Exception:
+                except OSError as e:
+                    logger.warning(f"Failed to search RFC content at {rfc.path}: {e}")
                     continue
 
         return results

@@ -23,8 +23,11 @@ from open_agent_kit.utils.console import (
     prompt,
 )
 from open_agent_kit.utils.env_utils import (
+    add_gitignore_entries,
+    ensure_gitignore_has_ci_data,
     ensure_gitignore_has_env,
     ensure_gitignore_has_issue_context,
+    remove_gitignore_entries,
     update_env_file,
 )
 from open_agent_kit.utils.file_utils import (
@@ -65,6 +68,9 @@ from open_agent_kit.utils.step_tracker import (
     SimpleProgress,
     StepTracker,
     TaskList,
+)
+from open_agent_kit.utils.template_utils import (
+    has_jinja2_syntax,
 )
 from open_agent_kit.utils.validation import (
     parse_rfc_filename,
@@ -163,8 +169,13 @@ __all__ = [
     "validate_version",
     # Version utilities
     "get_package_version",
+    # Template utilities
+    "has_jinja2_syntax",
     # Environment utilities
     "update_env_file",
     "ensure_gitignore_has_env",
     "ensure_gitignore_has_issue_context",
+    "ensure_gitignore_has_ci_data",
+    "add_gitignore_entries",
+    "remove_gitignore_entries",
 ]

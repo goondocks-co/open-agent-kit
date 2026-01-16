@@ -34,13 +34,23 @@ from open_agent_kit.pipeline.executor import (
     PipelineResult,
     build_init_pipeline,
 )
+from open_agent_kit.pipeline.models import (
+    CategoryResult,
+    CollectedUpgradeResults,
+    PlanUpgradeData,
+    ProcessingResult,
+    UpgradeStageData,
+    plan_has_upgrades,
+)
 from open_agent_kit.pipeline.ordering import StageOrder
 from open_agent_kit.pipeline.stage import (
     BaseStage,
     Stage,
+    StageLifecycle,
     StageOutcome,
     StageResult,
 )
+from open_agent_kit.pipeline.utils import format_count_message, process_items
 
 __all__ = [
     # Context
@@ -55,8 +65,19 @@ __all__ = [
     # Stage
     "BaseStage",
     "Stage",
+    "StageLifecycle",
     "StageOutcome",
     "StageResult",
     # Ordering
     "StageOrder",
+    # Models
+    "CategoryResult",
+    "CollectedUpgradeResults",
+    "PlanUpgradeData",
+    "ProcessingResult",
+    "UpgradeStageData",
+    "plan_has_upgrades",
+    # Utils
+    "format_count_message",
+    "process_items",
 ]

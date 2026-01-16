@@ -36,4 +36,17 @@ capabilities:
   has_skills: true              # Claude Code supports SKILL.md files
   skills_directory: "skills"    # .claude/skills/
 
-settings: {}
+settings:
+  # Auto-approval settings for oak commands
+  auto_approve:
+    enabled: true
+    file: ".claude/settings.local.json"
+    format: json
+    template: "agent-settings/claude-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config
+  # Claude Code stores MCP servers in .mcp.json at project root
+  config_file: ".mcp.json"
+  format: json
+  servers_key: "mcpServers"

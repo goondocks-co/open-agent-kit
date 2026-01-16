@@ -4,11 +4,7 @@ from pathlib import Path
 
 import typer
 
-from open_agent_kit.config.paths import (
-    CURSOR_SETTINGS_FILE,
-    OAK_DIR,
-    VSCODE_SETTINGS_FILE,
-)
+from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.pipeline.context import FlowType, PipelineContext
 from open_agent_kit.pipeline.executor import build_remove_pipeline
 from open_agent_kit.services.skill_service import SkillService
@@ -22,10 +18,7 @@ from open_agent_kit.utils import (
 )
 
 
-def remove_command(
-    force: bool = False,
-    keep_ide_settings: bool = False,
-) -> None:
+def remove_command(force: bool = False) -> None:
     """Remove open-agent-kit managed assets from the project.
 
     Uses state tracking to intelligently remove only what oak created:
@@ -39,7 +32,6 @@ def remove_command(
 
     Args:
         force: Skip confirmation prompt
-        keep_ide_settings: Keep IDE settings files (.vscode/settings.json, etc.)
     """
     project_root = Path.cwd()
     oak_dir = project_root / OAK_DIR
@@ -53,10 +45,10 @@ def remove_command(
     print_header("Remove open-agent-kit")
 
     # Gather information for preview (before pipeline runs)
-    preview_data = _gather_preview_data(project_root, keep_ide_settings)
+    preview_data = _gather_preview_data(project_root)
 
     # Display preview of what will be removed
-    _display_removal_preview(preview_data, keep_ide_settings, project_root)
+    _display_removal_preview(preview_data, project_root)
 
     # Confirm removal
     if not force:
@@ -70,13 +62,6 @@ def remove_command(
     context = PipelineContext(
         project_root=project_root,
         flow_type=FlowType.REMOVE,
-    )
-    # Store removal options for stages
-    context.set_result(
-        "removal_options",
-        {
-            "keep_ide_settings": keep_ide_settings,
-        },
     )
 
     # Build and execute pipeline
@@ -97,12 +82,11 @@ def remove_command(
         raise typer.Exit(code=1)
 
 
-def _gather_preview_data(project_root: Path, keep_ide_settings: bool) -> dict:
+def _gather_preview_data(project_root: Path) -> dict:
     """Gather data needed for preview display.
 
     Args:
         project_root: Project root directory
-        keep_ide_settings: Whether to keep IDE settings
 
     Returns:
         Dictionary with preview data
@@ -132,14 +116,6 @@ def _gather_preview_data(project_root: Path, keep_ide_settings: bool) -> dict:
         if file_path.exists():
             files_to_inform_user.append((modified_file.path, modified_file.marker))
 
-    # IDE settings
-    ide_settings_to_remove: list[str] = []
-    if not keep_ide_settings:
-        if (project_root / VSCODE_SETTINGS_FILE).exists():
-            ide_settings_to_remove.append(VSCODE_SETTINGS_FILE)
-        if (project_root / CURSOR_SETTINGS_FILE).exists():
-            ide_settings_to_remove.append(CURSOR_SETTINGS_FILE)
-
     # User content
     user_content_dir = project_root / "oak"
     has_user_content = user_content_dir.exists() and any(user_content_dir.iterdir())
@@ -156,28 +132,21 @@ def _gather_preview_data(project_root: Path, keep_ide_settings: bool) -> dict:
         "files_to_remove": files_to_remove,
         "files_modified_by_user": files_modified_by_user,
         "files_to_inform_user": files_to_inform_user,
-        "ide_settings_to_remove": ide_settings_to_remove,
         "installed_skills": installed_skills,
         "has_user_content": has_user_content,
     }
 
 
-def _display_removal_preview(
-    preview_data: dict,
-    keep_ide_settings: bool,
-    project_root: Path,
-) -> None:
+def _display_removal_preview(preview_data: dict, project_root: Path) -> None:
     """Display preview of what will be removed.
 
     Args:
         preview_data: Data gathered for preview
-        keep_ide_settings: Whether to keep IDE settings
         project_root: Project root directory
     """
     files_to_remove = preview_data["files_to_remove"]
     files_modified_by_user = preview_data["files_modified_by_user"]
     files_to_inform_user = preview_data["files_to_inform_user"]
-    ide_settings_to_remove = preview_data["ide_settings_to_remove"]
     installed_skills = preview_data["installed_skills"]
     has_user_content = preview_data["has_user_content"]
 
@@ -211,23 +180,10 @@ def _display_removal_preview(
         for skill_name in installed_skills:
             print_info(f"  [red]-[/red] {skill_name}")
 
-    # Display IDE settings to remove
-    if ide_settings_to_remove:
-        print_info("\n[bold]IDE settings to remove:[/bold]\n")
-        for settings_path in ide_settings_to_remove:
-            print_info(f"  [red]-[/red] {settings_path}")
-
     # Show what will be preserved
     if has_user_content:
         print_info("\n[green]Preserved (user content):[/green]\n")
         print_info("  [green]+[/green] oak/ (constitution, RFCs, plans)")
-
-    if keep_ide_settings:
-        print_info("\n[cyan]Preserved (--keep-ide-settings):[/cyan]")
-        if (project_root / VSCODE_SETTINGS_FILE).exists():
-            print_info(f"  [cyan]+[/cyan] {VSCODE_SETTINGS_FILE}")
-        if (project_root / CURSOR_SETTINGS_FILE).exists():
-            print_info(f"  [cyan]+[/cyan] {CURSOR_SETTINGS_FILE}")
 
 
 def _display_removal_summary(context: PipelineContext, preview_data: dict) -> None:
@@ -248,13 +204,10 @@ def _display_removal_summary(context: PipelineContext, preview_data: dict) -> No
     skills_result = context.get_result("remove_skills", {})
     skills_removed = skills_result.get("skills_removed", 0)
 
-    ide_result = context.get_result("remove_ide_settings_removal", {})
-    ide_removed = len(ide_result.get("removed", []))
-
     oak_result = context.get_result("remove_oak_dir", {})
     oak_removed = 1 if oak_result.get("removed") else 0
 
-    total_removed = files_removed + skills_removed + ide_removed + oak_removed
+    total_removed = files_removed + skills_removed + oak_removed
 
     message_parts = [f"[bold green]Removed {total_removed} open-agent-kit asset(s)[/bold green]\n"]
 

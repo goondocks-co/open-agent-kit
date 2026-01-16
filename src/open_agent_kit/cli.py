@@ -7,6 +7,7 @@ import typer
 from dotenv import load_dotenv
 from rich.console import Console
 
+from open_agent_kit.commands.ci_cmd import ci_app
 from open_agent_kit.commands.config_cmd import config_app
 from open_agent_kit.commands.constitution_cmd import constitution_app
 from open_agent_kit.commands.feature_cmd import feature_app
@@ -39,6 +40,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(constitution_app, name="constitution")
 app.add_typer(feature_app, name="feature")
 app.add_typer(skill_app, name="skill")
+app.add_typer(ci_app, name="ci")
 
 # Create console for output
 console = Console()
@@ -58,11 +60,6 @@ def init(
         "-a",
         help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
     ),
-    ide: list[str] = typer.Option(
-        None,
-        "--ide",
-        help="IDE(s) to configure (can specify multiple times). Options: vscode, cursor, none",
-    ),
     no_interactive: bool = typer.Option(
         False,
         "--no-interactive",
@@ -72,12 +69,11 @@ def init(
     """Initialize open-agent-kit in the current project.
 
     Creates the .oak directory structure with templates, configuration,
-    and agent-specific command directories. Supports multiple agents and IDEs.
+    and agent-specific command directories.
     """
     init_command(
         force=force,
         agent=agent,
-        ide=ide,
         no_interactive=no_interactive,
     )
 
@@ -130,11 +126,6 @@ def remove(
         "-f",
         help="Skip confirmation prompt",
     ),
-    keep_ide_settings: bool = typer.Option(
-        False,
-        "--keep-ide-settings",
-        help="Keep IDE settings files (.vscode/settings.json, .cursor/settings.json)",
-    ),
 ) -> None:
     """Remove open-agent-kit from the current project.
 
@@ -142,7 +133,7 @@ def remove(
     and agent instruction files. User content in the oak/ directory (constitution,
     RFCs, plans) is preserved.
     """
-    remove_command(force=force, keep_ide_settings=keep_ide_settings)
+    remove_command(force=force)
 
 
 @app.command("version")

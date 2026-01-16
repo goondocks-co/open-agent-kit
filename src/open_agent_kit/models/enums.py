@@ -183,27 +183,6 @@ class IssueProvider(str, Enum):
         return keys[self.value]
 
 
-class IDE(str, Enum):
-    """Supported IDE types."""
-
-    VSCODE = "vscode"
-    CURSOR = "cursor"
-
-    @classmethod
-    def values(cls) -> list[str]:
-        """Return list of all IDEs."""
-        return [i.value for i in cls]
-
-    @property
-    def display_name(self) -> str:
-        """Human-readable IDE name."""
-        names = {
-            "vscode": "Visual Studio Code",
-            "cursor": "Cursor",
-        }
-        return names[self.value]
-
-
 class RFCNumberFormat(str, Enum):
     """RFC number format options."""
 

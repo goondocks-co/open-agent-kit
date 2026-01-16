@@ -49,6 +49,7 @@ htmlcov/
 .tox/
 .nox/
 coverage.xml
+COVERAGE_STATUS.txt
 *.cover
 .hypothesis/
 
@@ -94,3 +95,6 @@ release-files/
 
 # open-agent-kit: Issue raw JSON (local debugging only)
 oak/issue/**/context.json
+
+# open-agent-kit: Codebase Intelligence
+.oak/ci/

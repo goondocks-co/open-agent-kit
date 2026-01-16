@@ -9,9 +9,9 @@ from open_agent_kit.pipeline.context import FlowType, PipelineContext
 
 if TYPE_CHECKING:
     from open_agent_kit.services.agent_service import AgentService
+    from open_agent_kit.services.agent_settings_service import AgentSettingsService
     from open_agent_kit.services.config_service import ConfigService
     from open_agent_kit.services.feature_service import FeatureService
-    from open_agent_kit.services.ide_settings_service import IDESettingsService
     from open_agent_kit.services.skill_service import SkillService
 
 
@@ -40,11 +40,26 @@ class StageResult(str, Enum):
 class StageOutcome:
     """Outcome of a stage execution.
 
+    This dataclass captures the complete result of executing a single pipeline stage,
+    including success/failure status, user-facing message, technical error details,
+    and optional data to be passed to subsequent stages.
+
+    The data dictionary follows TypedDict patterns defined in models.py for
+    consistent, type-safe stage result structures.
+
     Attributes:
         result: Whether stage succeeded, was skipped, or failed
         message: Human-readable message for UI display
         error: Error message if failed (for logging/debugging)
-        data: Optional data to pass to subsequent stages
+        data: Optional dict of result data keyed by stage name in context.stage_results
+
+    Example:
+        >>> from open_agent_kit.pipeline.models import AgentCommandsData
+        >>> outcome = StageOutcome.success(
+        ...     "Installed commands for 2 agents",
+        ...     data={"agents": ["claude", "cursor"], "features": ["core"]}
+        ... )
+        >>> context.set_result("install_agent_commands", outcome.data)
     """
 
     result: StageResult
@@ -54,17 +69,46 @@ class StageOutcome:
 
     @classmethod
     def success(cls, message: str, data: dict[str, Any] | None = None) -> "StageOutcome":
-        """Create a successful outcome."""
+        """Create a successful outcome.
+
+        Args:
+            message: Human-readable success message for UI display
+            data: Optional dict of result data (follows TypedDict patterns from models.py).
+                  Can be any dict, including TypedDicts from models.py.
+
+        Returns:
+            StageOutcome with SUCCESS result status
+
+        Example:
+            >>> from open_agent_kit.pipeline.models import AgentCommandsData
+            >>> result_data: AgentCommandsData = {"agents": ["claude"], "features": []}
+            >>> outcome = StageOutcome.success("Done", data=result_data)
+        """
         return cls(StageResult.SUCCESS, message, data=data)
 
     @classmethod
     def skipped(cls, message: str) -> "StageOutcome":
-        """Create a skipped outcome."""
+        """Create a skipped outcome.
+
+        Args:
+            message: Reason why stage was skipped
+
+        Returns:
+            StageOutcome with SKIPPED result status
+        """
         return cls(StageResult.SKIPPED, message)
 
     @classmethod
     def failed(cls, message: str, error: str | None = None) -> "StageOutcome":
-        """Create a failed outcome."""
+        """Create a failed outcome.
+
+        Args:
+            message: User-facing failure message
+            error: Optional technical error details for logging
+
+        Returns:
+            StageOutcome with FAILED result status
+        """
         return cls(StageResult.FAILED, message, error=error)
 
 
@@ -224,33 +268,38 @@ class BaseStage(ABC):
         """
         ...
 
-    # Service helpers - lazily imported to avoid circular dependencies
+    # -------------------------------------------------------------------------
+    # Service Helpers
+    # -------------------------------------------------------------------------
+    # These are lazily imported to avoid circular dependencies.
+    # Each returns a service instance scoped to the project root from context.
+
     def _get_config_service(self, context: PipelineContext) -> "ConfigService":
-        """Get ConfigService instance."""
+        """Get ConfigService instance for the project."""
         from open_agent_kit.services.config_service import ConfigService
 
         return ConfigService(context.project_root)
 
     def _get_agent_service(self, context: PipelineContext) -> "AgentService":
-        """Get AgentService instance."""
+        """Get AgentService instance for the project."""
         from open_agent_kit.services.agent_service import AgentService
 
         return AgentService(context.project_root)
 
     def _get_feature_service(self, context: PipelineContext) -> "FeatureService":
-        """Get FeatureService instance."""
+        """Get FeatureService instance for the project."""
         from open_agent_kit.services.feature_service import FeatureService
 
         return FeatureService(context.project_root)
 
-    def _get_ide_settings_service(self, context: PipelineContext) -> "IDESettingsService":
-        """Get IDESettingsService instance."""
-        from open_agent_kit.services.ide_settings_service import IDESettingsService
-
-        return IDESettingsService(context.project_root)
-
     def _get_skill_service(self, context: PipelineContext) -> "SkillService":
-        """Get SkillService instance."""
+        """Get SkillService instance for the project."""
         from open_agent_kit.services.skill_service import SkillService
 
         return SkillService(context.project_root)
+
+    def _get_agent_settings_service(self, context: PipelineContext) -> "AgentSettingsService":
+        """Get AgentSettingsService instance for the project."""
+        from open_agent_kit.services.agent_settings_service import AgentSettingsService
+
+        return AgentSettingsService(context.project_root)

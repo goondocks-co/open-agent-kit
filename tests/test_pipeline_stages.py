@@ -278,63 +278,14 @@ class TestFeatureStages:
         assert stage.should_run(context) is True
 
 
-class TestIDEStages:
-    """Tests for IDE stages."""
-
-    # Note: test_install_core_ide_assets_fresh_init removed.
-    # InstallCoreIDEAssetsStage was removed - IDE assets are read from package.
-
-    def test_remove_ide_settings_stage(self, tmp_path: Path):
-        """Test RemoveIDESettingsStage runs when IDEs removed."""
-        from open_agent_kit.pipeline.stages.ide import RemoveIDESettingsStage
-
-        stage = RemoveIDESettingsStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.UPDATE,
-            selections=SelectionState(
-                ides=["vscode"],
-                previous_ides=["vscode", "cursor"],
-            ),
-        )
-        assert stage.should_run(context) is True
-
-    def test_install_ide_settings_stage(self, tmp_path: Path):
-        """Test InstallIDESettingsStage runs when IDEs configured."""
-        from open_agent_kit.pipeline.stages.ide import InstallIDESettingsStage
-
-        stage = InstallIDESettingsStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.FRESH_INIT,
-            selections=SelectionState(ides=["vscode"]),
-        )
-        assert stage.should_run(context) is True
-
-    def test_install_ide_settings_stage_no_ides(self, tmp_path: Path):
-        """Test InstallIDESettingsStage doesn't run without IDEs."""
-        from open_agent_kit.pipeline.stages.ide import InstallIDESettingsStage
-
-        stage = InstallIDESettingsStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.FRESH_INIT,
-            selections=SelectionState(ides=[]),
-        )
-        assert stage.should_run(context) is False
-
-
 class TestSkillStages:
     """Tests for skill stages."""
 
-    def test_install_skills_stage_fresh_init(self, tmp_path: Path):
-        """Test InstallSkillsStage runs for fresh init with features."""
-        from open_agent_kit.pipeline.stages.skills import InstallSkillsStage
+    def test_reconcile_skills_stage_with_features(self, tmp_path: Path):
+        """Test ReconcileSkillsStage runs when features are configured."""
+        from open_agent_kit.pipeline.stages.skills import ReconcileSkillsStage
 
-        stage = InstallSkillsStage()
+        stage = ReconcileSkillsStage()
 
         context = PipelineContext(
             project_root=tmp_path,
@@ -343,11 +294,11 @@ class TestSkillStages:
         )
         assert stage.should_run(context) is True
 
-    def test_install_skills_stage_no_features(self, tmp_path: Path):
-        """Test InstallSkillsStage doesn't run without features."""
-        from open_agent_kit.pipeline.stages.skills import InstallSkillsStage
+    def test_reconcile_skills_stage_no_features(self, tmp_path: Path):
+        """Test ReconcileSkillsStage doesn't run without features."""
+        from open_agent_kit.pipeline.stages.skills import ReconcileSkillsStage
 
-        stage = InstallSkillsStage()
+        stage = ReconcileSkillsStage()
 
         context = PipelineContext(
             project_root=tmp_path,
@@ -356,19 +307,17 @@ class TestSkillStages:
         )
         assert stage.should_run(context) is False
 
-    def test_refresh_skills_stage(self, tmp_path: Path):
-        """Test RefreshSkillsStage runs when agents added."""
-        from open_agent_kit.pipeline.stages.skills import RefreshSkillsStage
+    def test_reconcile_skills_stage_runs_for_all_flows(self, tmp_path: Path):
+        """Test ReconcileSkillsStage runs for any flow type with features."""
+        from open_agent_kit.pipeline.stages.skills import ReconcileSkillsStage
 
-        stage = RefreshSkillsStage()
+        stage = ReconcileSkillsStage()
 
+        # Should run for UPDATE flow as well (declarative reconciliation)
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.UPDATE,
-            selections=SelectionState(
-                agents=["claude", "codex"],
-                previous_agents=["claude"],
-            ),
+            selections=SelectionState(features=["constitution"]),
         )
         assert stage.should_run(context) is True
 
@@ -376,21 +325,53 @@ class TestSkillStages:
 class TestHookStages:
     """Tests for hook stages."""
 
-    def test_trigger_agents_changed_stage(self, tmp_path: Path):
-        """Test TriggerAgentsChangedStage runs when agents changed."""
-        from open_agent_kit.pipeline.stages.hooks import TriggerAgentsChangedStage
+    def test_reconcile_feature_hooks_stage(self, tmp_path: Path):
+        """Test ReconcileFeatureHooksStage runs when agents and features configured."""
+        from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
 
-        stage = TriggerAgentsChangedStage()
+        stage = ReconcileFeatureHooksStage()
 
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude", "codex"],
-                previous_agents=["claude"],
+                features=["constitution"],
             ),
         )
         assert stage.should_run(context) is True
+
+    def test_reconcile_feature_hooks_stage_no_features(self, tmp_path: Path):
+        """Test ReconcileFeatureHooksStage doesn't run without features."""
+        from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
+
+        stage = ReconcileFeatureHooksStage()
+
+        context = PipelineContext(
+            project_root=tmp_path,
+            flow_type=FlowType.UPDATE,
+            selections=SelectionState(
+                agents=["claude"],
+                features=[],
+            ),
+        )
+        assert stage.should_run(context) is False
+
+    def test_reconcile_feature_hooks_stage_no_agents(self, tmp_path: Path):
+        """Test ReconcileFeatureHooksStage doesn't run without agents."""
+        from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
+
+        stage = ReconcileFeatureHooksStage()
+
+        context = PipelineContext(
+            project_root=tmp_path,
+            flow_type=FlowType.UPDATE,
+            selections=SelectionState(
+                agents=[],
+                features=["constitution"],
+            ),
+        )
+        assert stage.should_run(context) is False
 
     def test_trigger_init_complete_stage(self, tmp_path: Path):
         """Test TriggerInitCompleteStage always runs."""

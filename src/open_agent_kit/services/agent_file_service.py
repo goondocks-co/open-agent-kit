@@ -1,5 +1,6 @@
 """Agent file generation service for constitution."""
 
+import logging
 from datetime import date
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.utils import ensure_dir, file_exists, read_file, write_file
+
+logger = logging.getLogger(__name__)
 
 
 class AgentFileService:
@@ -43,9 +46,9 @@ class AgentFileService:
                 config = yaml.safe_load(config_content)
                 configured_agents = config.get("agents", [])
                 installed_agents.extend(configured_agents)
-            except Exception:
+            except (OSError, yaml.YAMLError) as e:
                 # If config can't be read, fall back to directory detection
-                pass
+                logger.warning(f"Failed to read config file {self.config_path}: {e}")
 
         # Check for agent directories using manifests
         for agent in self.agent_service.list_available_agents():
@@ -100,8 +103,9 @@ class AgentFileService:
                 self.agent_service.get_agent_manifest(agent)
                 file_path = self._generate_agent_file(agent, constitution)
                 generated_files[agent] = file_path
-            except (ValueError, Exception):
+            except (ValueError, OSError) as e:
                 # Skip agents that fail to generate
+                logger.warning(f"Failed to generate agent file for {agent}: {e}")
                 continue
 
         return generated_files

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import re
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
+
+import jinja2
 
 if TYPE_CHECKING:
     from open_agent_kit.services.skill_service import SkillService
@@ -12,19 +14,19 @@ if TYPE_CHECKING:
 from open_agent_kit.config.paths import FEATURES_DIR, OAK_DIR
 from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
 from open_agent_kit.services.agent_service import AgentService
+from open_agent_kit.services.agent_settings_service import AgentSettingsService
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.services.ide_settings_service import IDESettingsService
 from open_agent_kit.services.migrations import run_migrations
 from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.utils import (
+    add_gitignore_entries,
     dir_exists,
     ensure_dir,
     read_file,
     write_file,
 )
 
-# Regex pattern to detect Jinja2 template syntax
-JINJA2_PATTERN = re.compile(r"\{\{|\{%")
+logger = logging.getLogger(__name__)
 
 
 class UpgradeCategoryResults(TypedDict):
@@ -35,10 +37,13 @@ class UpgradeCategoryResults(TypedDict):
 class UpgradeResults(TypedDict):
     commands: UpgradeCategoryResults
     templates: UpgradeCategoryResults
-    ide_settings: UpgradeCategoryResults
+    agent_settings: UpgradeCategoryResults
     migrations: UpgradeCategoryResults
     obsolete_removed: UpgradeCategoryResults
     skills: UpgradeCategoryResults
+    hooks: UpgradeCategoryResults
+    mcp_servers: UpgradeCategoryResults
+    gitignore: UpgradeCategoryResults
     structural_repairs: list[str]
     version_updated: bool
 
@@ -74,6 +79,29 @@ class UpgradePlanSkills(TypedDict):
     upgrade: list[UpgradePlanSkillItem]
 
 
+class UpgradePlanGitignoreItem(TypedDict):
+    """A single gitignore entry to add."""
+
+    feature: str
+    entry: str
+
+
+class UpgradePlanHookItem(TypedDict):
+    """A single hook upgrade plan item."""
+
+    feature: str
+    agent: str
+    source_path: Path
+    target_description: str
+
+
+class UpgradePlanMcpItem(TypedDict):
+    """A single MCP server plan item."""
+
+    agent: str
+    feature: str
+
+
 class UpgradePlan(TypedDict):
     """Structure returned by plan_upgrade()."""
 
@@ -81,8 +109,11 @@ class UpgradePlan(TypedDict):
     templates: list[str]
     templates_customized: bool
     obsolete_templates: list[str]
-    ide_settings: list[str]
+    agent_settings: list[str]
     skills: UpgradePlanSkills
+    hooks: list[UpgradePlanHookItem]
+    mcp_servers: list[UpgradePlanMcpItem]
+    gitignore: list[UpgradePlanGitignoreItem]
     migrations: list[UpgradePlanMigration]
     structural_repairs: list[str]
     version_outdated: bool
@@ -103,43 +134,10 @@ class UpgradeService:
         self.config_service = ConfigService(project_root)
         self.agent_service = AgentService(project_root)
         self.template_service = TemplateService(project_root=project_root)
-        self.ide_settings_service = IDESettingsService(project_root=project_root)
+        self.agent_settings_service = AgentSettingsService(project_root=project_root)
 
         # Package features directory (source of truth for commands)
         self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
-
-    def _has_jinja2_syntax(self, content: str) -> bool:
-        """Check if content contains Jinja2 template syntax.
-
-        Args:
-            content: String content to check
-
-        Returns:
-            True if content contains {{ or {% syntax
-        """
-        return bool(JINJA2_PATTERN.search(content))
-
-    def _render_command_for_agent(self, content: str, agent_type: str) -> str:
-        """Render command content with agent-specific context.
-
-        If content contains Jinja2 syntax, renders it with agent context.
-        Otherwise returns content unchanged.
-
-        Args:
-            content: Raw command content (may contain Jinja2 syntax)
-            agent_type: Agent type (e.g., 'claude', 'cursor')
-
-        Returns:
-            Rendered content with agent-specific values
-        """
-        if not self._has_jinja2_syntax(content):
-            return content
-
-        # Get agent context for rendering
-        context = self.agent_service.get_agent_context(agent_type)
-
-        # Render template with agent context
-        return self.template_service.render_string(content, context)
 
     def is_initialized(self) -> bool:
         """Check if open-agent-kit is initialized.
@@ -153,15 +151,15 @@ class UpgradeService:
         self,
         commands: bool = True,
         templates: bool = True,
-        ide_settings: bool = True,
+        agent_settings: bool = True,
         skills: bool = True,
     ) -> UpgradePlan:
         """Plan what needs to be upgraded.
 
         Args:
             commands: Whether to upgrade agent commands
-            templates: Whether to upgrade RFC templates
-            ide_settings: Whether to upgrade IDE settings
+            templates: Whether to upgrade RFC templates (deprecated - read from package)
+            agent_settings: Whether to upgrade agent auto-approval settings
             skills: Whether to install/upgrade skills
 
         Returns:
@@ -180,8 +178,11 @@ class UpgradeService:
             "templates": [],
             "templates_customized": False,
             "obsolete_templates": [],
-            "ide_settings": [],
+            "agent_settings": [],
             "skills": {"install": [], "upgrade": []},
+            "hooks": [],
+            "mcp_servers": [],
+            "gitignore": [],
             "migrations": [],
             "structural_repairs": [],
             "version_outdated": version_outdated,
@@ -205,19 +206,26 @@ class UpgradeService:
         plan["templates_customized"] = False
         plan["obsolete_templates"] = []
 
-        # Plan IDE settings upgrades (only for configured IDEs)
-        if ide_settings:
-            configured_ides = self.config_service.get_ides()
-            upgradeable_ide_settings = []
-            for ide in configured_ides:
-                if self.ide_settings_service.needs_upgrade(ide):
-                    upgradeable_ide_settings.append(ide)
-            plan["ide_settings"] = upgradeable_ide_settings
+        # Plan agent settings upgrades (only for configured agents with auto-approval enabled)
+        if agent_settings:
+            configured_agents = self.config_service.get_agents()
+            plan["agent_settings"] = self.agent_settings_service.get_upgradeable_agents(
+                configured_agents
+            )
 
         # Plan skill installations and upgrades
         if skills:
             skill_plan = self._get_upgradeable_skills()
             plan["skills"] = skill_plan
+
+        # Plan feature hook upgrades (for installed features with hooks)
+        plan["hooks"] = self._get_upgradeable_hooks()
+
+        # Plan MCP server installations (for features that provide MCP servers)
+        plan["mcp_servers"] = self._get_mcp_servers_to_install()
+
+        # Plan gitignore entries (ensure all declared entries are present)
+        plan["gitignore"] = self._get_missing_gitignore_entries()
 
         # Plan migrations (one-time upgrade tasks)
         completed_migrations = set(self.config_service.get_completed_migrations())
@@ -243,10 +251,13 @@ class UpgradeService:
         results: UpgradeResults = {
             "commands": {"upgraded": [], "failed": []},
             "templates": {"upgraded": [], "failed": []},
-            "ide_settings": {"upgraded": [], "failed": []},
+            "agent_settings": {"upgraded": [], "failed": []},
             "migrations": {"upgraded": [], "failed": []},
             "obsolete_removed": {"upgraded": [], "failed": []},
             "skills": {"upgraded": [], "failed": []},
+            "hooks": {"upgraded": [], "failed": []},
+            "mcp_servers": {"upgraded": [], "failed": []},
+            "gitignore": {"upgraded": [], "failed": []},
             "structural_repairs": [],
             "version_updated": False,
         }
@@ -265,13 +276,13 @@ class UpgradeService:
 
         # Note: Template upgrades are no longer needed - templates are read from package
 
-        # Upgrade IDE settings
-        for ide in plan["ide_settings"]:
+        # Upgrade agent auto-approval settings
+        for agent in plan.get("agent_settings", []):
             try:
-                self._upgrade_ide_settings(ide)
-                results["ide_settings"]["upgraded"].append(ide)
+                self._upgrade_agent_settings(agent)
+                results["agent_settings"]["upgraded"].append(agent)
             except Exception as e:
-                results["ide_settings"]["failed"].append(f"{ide}: {e}")
+                results["agent_settings"]["failed"].append(f"{agent}: {e}")
 
         # Install and upgrade skills
         skill_plan = plan["skills"]
@@ -288,6 +299,44 @@ class UpgradeService:
                 results["skills"]["upgraded"].append(skill_info["skill"])
             except Exception as e:
                 results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
+
+        # Add missing gitignore entries (grouped by feature for cleaner output)
+        gitignore_plan = plan.get("gitignore", [])
+        if gitignore_plan:
+            # Group entries by feature
+            entries_by_feature: dict[str, list[str]] = {}
+            for item in gitignore_plan:
+                feature = item["feature"]
+                if feature not in entries_by_feature:
+                    entries_by_feature[feature] = []
+                entries_by_feature[feature].append(item["entry"])
+
+            # Add entries for each feature
+            for feature_name, entries in entries_by_feature.items():
+                try:
+                    # Get feature display name for comment
+                    from open_agent_kit.models.feature import FeatureManifest
+
+                    manifest_path = self.package_features_dir / feature_name / "manifest.yaml"
+                    display_name = feature_name
+                    if manifest_path.exists():
+                        try:
+                            manifest = FeatureManifest.load(manifest_path)
+                            display_name = manifest.display_name
+                        except (ValueError, OSError) as e:
+                            logger.warning(f"Failed to load feature manifest {manifest_path}: {e}")
+
+                    added = add_gitignore_entries(
+                        self.project_root,
+                        entries,
+                        section_comment=f"open-agent-kit: {display_name}",
+                    )
+                    if added:
+                        for entry in added:
+                            results["gitignore"]["upgraded"].append(f"{feature_name}: {entry}")
+                except Exception as e:
+                    for entry in entries:
+                        results["gitignore"]["failed"].append(f"{feature_name}: {entry}: {e}")
 
         # Run migrations (one-time upgrade tasks)
         completed_migrations = set(self.config_service.get_completed_migrations())
@@ -311,8 +360,9 @@ class UpgradeService:
             len(results["commands"]["upgraded"])
             + len(results["templates"]["upgraded"])
             + len(results["obsolete_removed"]["upgraded"])
-            + len(results["ide_settings"]["upgraded"])
+            + len(results["agent_settings"]["upgraded"])
             + len(results["skills"]["upgraded"])
+            + len(results["gitignore"]["upgraded"])
             + len(results["migrations"]["upgraded"])
             + len(results["structural_repairs"])
         )
@@ -324,9 +374,9 @@ class UpgradeService:
 
                 self.config_service.update_config(version=VERSION)
                 results["version_updated"] = True
-            except Exception:
+            except (OSError, ValueError) as e:
                 # Don't fail the whole upgrade if version update fails
-                pass
+                logger.warning(f"Failed to update config version: {e}")
 
         return results
 
@@ -402,6 +452,62 @@ class UpgradeService:
                     )
 
         return upgradeable
+
+    def _get_missing_gitignore_entries(self) -> list[UpgradePlanGitignoreItem]:
+        """Get gitignore entries declared by features that are missing from .gitignore.
+
+        Checks all enabled features for gitignore patterns that should be present
+        but aren't. This ensures features added in upgrades have their gitignore
+        entries applied.
+
+        Returns:
+            List of missing gitignore entries with their source feature
+        """
+        from open_agent_kit.models.feature import FeatureManifest
+
+        missing: list[UpgradePlanGitignoreItem] = []
+
+        # Read current .gitignore patterns
+        gitignore_path = self.project_root / ".gitignore"
+        existing_patterns: set[str] = set()
+
+        if gitignore_path.exists():
+            try:
+                content = gitignore_path.read_text()
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        existing_patterns.add(stripped)
+            except OSError:
+                pass
+
+        # Get enabled features
+        config = self.config_service.load_config()
+        enabled_features = (
+            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
+        )
+
+        # Check each feature's declared gitignore entries
+        for feature_name in enabled_features:
+            manifest_path = self.package_features_dir / feature_name / "manifest.yaml"
+            if not manifest_path.exists():
+                continue
+
+            try:
+                manifest = FeatureManifest.load(manifest_path)
+                for entry in manifest.gitignore:
+                    if entry.strip() not in existing_patterns:
+                        missing.append(
+                            {
+                                "feature": feature_name,
+                                "entry": entry.strip(),
+                            }
+                        )
+            except (ValueError, OSError) as e:
+                logger.warning(f"Failed to load feature manifest {feature_name}: {e}")
+                continue
+
+        return missing
 
     def _get_upgradeable_skills(self) -> UpgradePlanSkills:
         """Get skills that need to be installed or upgraded.
@@ -491,6 +597,261 @@ class UpgradeService:
         except (FileNotFoundError, ValueError):
             return False
 
+    def _get_upgradeable_hooks(self) -> list[UpgradePlanHookItem]:
+        """Get feature hooks that need to be upgraded.
+
+        Checks all enabled features for hooks that need updating.
+        Currently supports codebase-intelligence feature hooks.
+
+        Returns:
+            List of UpgradePlanHookItem for hooks that need upgrade
+        """
+        result: list[UpgradePlanHookItem] = []
+
+        # Get enabled features and configured agents
+        config = self.config_service.load_config()
+        enabled_features = (
+            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
+        )
+        configured_agents = config.agents
+
+        # Check each enabled feature for hooks
+        for feature_name in enabled_features:
+            feature_hooks_dir = self.package_features_dir / feature_name / "hooks"
+            if not feature_hooks_dir.exists():
+                continue
+
+            # Check each configured agent for hook updates
+            for agent in configured_agents:
+                agent_hook_template = feature_hooks_dir / agent / "hooks.json"
+                if not agent_hook_template.exists():
+                    continue
+
+                # Check if hook needs upgrade
+                if self._hook_needs_upgrade(feature_name, agent, agent_hook_template):
+                    # Determine target description based on agent
+                    if agent == "claude":
+                        target_desc = ".claude/settings.json"
+                    elif agent == "cursor":
+                        target_desc = ".cursor/hooks.json"
+                    elif agent == "gemini":
+                        target_desc = ".gemini/settings.json"
+                    else:
+                        target_desc = f".{agent}/hooks"
+
+                    result.append(
+                        {
+                            "feature": feature_name,
+                            "agent": agent,
+                            "source_path": agent_hook_template,
+                            "target_description": target_desc,
+                        }
+                    )
+
+        return result
+
+    def _hook_needs_upgrade(self, feature_name: str, agent: str, source_template: Path) -> bool:
+        """Check if a feature's agent hook needs to be upgraded.
+
+        Compares the package hook template with what's currently installed.
+
+        Args:
+            feature_name: Name of the feature
+            agent: Agent name (claude, cursor, gemini)
+            source_template: Path to the package hook template
+
+        Returns:
+            True if hook content differs from installed version
+        """
+        import json
+        import re
+
+        # Load source template
+        try:
+            source_content = source_template.read_text()
+        except OSError as e:
+            logger.warning(f"Failed to read source template {source_template}: {e}")
+            return False
+
+        # Get installed hooks based on agent type
+        if agent == "claude":
+            settings_file = self.project_root / ".claude" / "settings.json"
+            if not settings_file.exists():
+                return True  # Not installed yet
+
+            try:
+                with open(settings_file) as f:
+                    settings = json.load(f)
+                installed_hooks = settings.get("hooks", {})
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Failed to read settings file {settings_file}: {e}")
+                return True
+        elif agent == "cursor":
+            hooks_file = self.project_root / ".cursor" / "hooks.json"
+            if not hooks_file.exists():
+                return True
+
+            try:
+                with open(hooks_file) as f:
+                    installed_hooks = json.load(f).get("hooks", {})
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Failed to read hooks file {hooks_file}: {e}")
+                return True
+        elif agent == "gemini":
+            settings_file = self.project_root / ".gemini" / "settings.json"
+            if not settings_file.exists():
+                return True
+
+            try:
+                with open(settings_file) as f:
+                    settings = json.load(f)
+                installed_hooks = settings.get("hooks", {})
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Failed to read settings file {settings_file}: {e}")
+                return True
+        else:
+            return False
+
+        # Parse source template (strip port placeholder for comparison)
+        try:
+            source_hooks = json.loads(source_content).get("hooks", {})
+            # Normalize by removing port-specific values
+            source_normalized = re.sub(
+                r"localhost:\d+", "localhost:PORT", json.dumps(source_hooks, sort_keys=True)
+            )
+            installed_normalized = re.sub(
+                r"localhost:\d+", "localhost:PORT", json.dumps(installed_hooks, sort_keys=True)
+            )
+
+            # Also normalize the {{PORT}} placeholder
+            source_normalized = source_normalized.replace("{{PORT}}", "PORT")
+
+            return source_normalized != installed_normalized
+        except (json.JSONDecodeError, re.error) as e:
+            logger.warning(f"Failed to compare hooks content: {e}")
+            return True
+
+    def _get_mcp_servers_to_install(self) -> list[UpgradePlanMcpItem]:
+        """Get MCP servers that need to be installed.
+
+        Checks all enabled features for MCP server configurations and identifies
+        agents that support MCP (has_mcp=True in manifest).
+
+        Currently supports codebase-intelligence feature MCP servers.
+
+        Returns:
+            List of UpgradePlanMcpItem for MCP servers to install
+        """
+        result: list[UpgradePlanMcpItem] = []
+
+        # Get enabled features and configured agents
+        config = self.config_service.load_config()
+        enabled_features = config.features.enabled if config.features.enabled else []
+        configured_agents = config.agents
+
+        # Check each enabled feature for MCP configurations
+        for feature_name in enabled_features:
+            feature_mcp_dir = self.package_features_dir / feature_name / "mcp"
+            if not feature_mcp_dir.exists():
+                continue
+
+            # Check each configured agent for MCP support
+            for agent in configured_agents:
+                # Check if agent has MCP support (has_mcp=True in manifest)
+                if not self._agent_has_mcp(agent):
+                    continue
+
+                # Check if there's an install script for this agent
+                agent_mcp_install = feature_mcp_dir / agent / "install.sh"
+                if not agent_mcp_install.exists():
+                    continue
+
+                # Check if MCP is already configured for this agent
+                if self._mcp_is_configured(agent, feature_name):
+                    continue
+
+                result.append(
+                    {
+                        "agent": agent,
+                        "feature": feature_name,
+                    }
+                )
+
+        return result
+
+    def _agent_has_mcp(self, agent: str) -> bool:
+        """Check if an agent has MCP capability.
+
+        Args:
+            agent: Agent name (e.g., "claude", "cursor")
+
+        Returns:
+            True if agent manifest has has_mcp=True
+        """
+        try:
+            context = self.agent_service.get_agent_context(agent)
+            return bool(context.get("has_mcp", False))
+        except (ValueError, KeyError) as e:
+            logger.warning(f"Failed to get agent context for {agent}: {e}")
+            return False
+
+    def _mcp_is_configured(self, agent: str, feature_name: str) -> bool:
+        """Check if MCP server is already configured for an agent.
+
+        Uses the agent's manifest.yaml to determine where MCP config is stored.
+
+        Args:
+            agent: Agent name (e.g., "claude", "cursor")
+            feature_name: Feature providing the MCP server
+
+        Returns:
+            True if MCP server is already registered
+        """
+        import json
+
+        from open_agent_kit.models.agent_manifest import AgentManifest
+
+        # Load MCP config to get server name
+        mcp_config_path = self.package_features_dir / feature_name / "mcp" / "mcp.yaml"
+        if not mcp_config_path.exists():
+            return False
+
+        try:
+            import yaml
+
+            with open(mcp_config_path) as f:
+                mcp_config = yaml.safe_load(f)
+            server_name = mcp_config.get("name", "oak-ci")
+        except Exception:
+            return False
+
+        # Load agent manifest to get MCP config location
+        try:
+            agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+            manifest = AgentManifest.load(agents_dir / agent / "manifest.yaml")
+        except Exception:
+            return False
+
+        # Get config file path and servers key from manifest
+        if not manifest.mcp:
+            # No MCP config defined in manifest
+            return False
+
+        config_file = manifest.mcp.config_file
+        servers_key = manifest.mcp.servers_key
+
+        # Check if server is registered in the config file
+        config_path = self.project_root / config_file
+        if not config_path.exists():
+            return False
+
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+            return server_name in config.get(servers_key, {})
+        except Exception:
+            return False
+
     def _upgrade_agent_command(self, cmd: UpgradePlanCommand) -> None:
         """Upgrade a single agent command.
 
@@ -505,7 +866,7 @@ class UpgradeService:
         content = read_file(package_path)
 
         # Render with agent-specific context (same as during init)
-        rendered_content = self._render_command_for_agent(content, agent_type)
+        rendered_content = self.template_service.render_command_for_agent(content, agent_type)
 
         # Ensure directory exists
         ensure_dir(installed_path.parent)
@@ -513,14 +874,14 @@ class UpgradeService:
         # Write rendered content to installed location
         write_file(installed_path, rendered_content)
 
-    def _upgrade_ide_settings(self, ide: str) -> None:
-        """Upgrade IDE settings.
+    def _upgrade_agent_settings(self, agent: str) -> None:
+        """Upgrade agent auto-approval settings.
 
         Args:
-            ide: IDE name (e.g., "vscode", "cursor")
+            agent: Agent name (e.g., "claude", "gemini")
         """
-        # Use the IDE settings service to install/merge settings
-        self.ide_settings_service.install_settings(ide, force=False)
+        # Use the agent settings service to install/merge settings
+        self.agent_settings_service.install_settings(agent, force=False)
 
     def _install_skill(self, skill_name: str, feature_name: str) -> None:
         """Install a skill for a feature.
@@ -565,7 +926,8 @@ class UpgradeService:
             content1 = read_file(file1)
             content2 = read_file(file2)
             return content1 != content2
-        except Exception:
+        except OSError as e:
+            logger.warning(f"Failed to compare files {file1} and {file2}: {e}")
             return False
 
     def _command_needs_upgrade(
@@ -588,13 +950,16 @@ class UpgradeService:
         try:
             # Read package template and render with agent context
             package_content = read_file(package_path)
-            rendered_package = self._render_command_for_agent(package_content, agent_type)
+            rendered_package = self.template_service.render_command_for_agent(
+                package_content, agent_type
+            )
 
             # Read installed file (already rendered)
             installed_content = read_file(installed_path)
 
             return rendered_package != installed_content
-        except Exception:
+        except (OSError, jinja2.TemplateError) as e:
+            logger.warning(f"Failed to check if command needs upgrade {installed_path}: {e}")
             return False
 
     def _get_structural_repairs(self) -> list[str]:
@@ -623,13 +988,17 @@ class UpgradeService:
                     repairs.append(f"Remove old .oak/templates/{subdir}/ directory")
                     break  # Only report once
 
+        # Note: Missing agent settings are handled by InstallAgentSettingsStage
+        # which runs idempotently during both init and upgrade flows.
+        # No special repair logic needed - declarative reconciliation handles it.
+
         return repairs
 
     def _repair_structure(self) -> list[str]:
         """Repair structural issues in the installation.
 
         Note: .oak/features/ is no longer used - feature assets are read from the package.
-        This method now removes obsolete structures.
+        This method now removes obsolete structures and creates missing files.
 
         Returns:
             List of repairs performed
@@ -644,8 +1013,8 @@ class UpgradeService:
             try:
                 shutil.rmtree(features_dir)
                 repaired.append("Removed obsolete .oak/features/ directory")
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove obsolete .oak/features/ directory: {e}")
 
         # Clean up old .oak/templates/ structure
         old_templates_dir = self.project_root / ".oak" / "templates"
@@ -656,16 +1025,20 @@ class UpgradeService:
                     try:
                         shutil.rmtree(old_subdir)
                         repaired.append(f"Removed old .oak/templates/{subdir}/")
-                    except Exception:
-                        pass
+                    except OSError as e:
+                        logger.warning(f"Failed to remove old .oak/templates/{subdir}/: {e}")
 
             # Remove templates dir if empty
             try:
                 if old_templates_dir.exists() and not any(old_templates_dir.iterdir()):
                     old_templates_dir.rmdir()
                     repaired.append("Removed empty .oak/templates/")
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove empty .oak/templates/: {e}")
+
+        # Note: Missing agent settings are handled by InstallAgentSettingsStage
+        # which runs idempotently during both init and upgrade flows.
+        # No special repair logic needed - declarative reconciliation handles it.
 
         return repaired
 

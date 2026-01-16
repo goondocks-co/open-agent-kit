@@ -1,0 +1,6 @@
+{
+  "$comment": "Gemini CLI auto-approval settings for oak commands",
+  "coreTools": [
+    "ShellTool(oak *)"
+  ]
+}

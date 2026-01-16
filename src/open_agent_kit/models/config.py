@@ -127,10 +127,6 @@ class OakConfig(BaseModel):
         default_factory=list,
         description="Configured AI agents (source of truth for installed agents)",
     )
-    ides: list[str] = Field(
-        default_factory=list,
-        description="Configured IDEs (source of truth for installed IDE settings)",
-    )
     agent_capabilities: dict[str, AgentCapabilitiesConfig] = Field(
         default_factory=dict,
         description="Per-agent capability overrides (merged with manifest defaults)",

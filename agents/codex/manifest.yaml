@@ -33,4 +33,13 @@ capabilities:
   has_skills: true
   skills_directory: "skills"    # .codex/skills/
 
-settings: {}
+settings:
+  # Auto-approval settings for oak commands
+  # Codex uses global TOML config (~/.codex/config.toml) that affects ALL projects
+  # We don't auto-manage this to avoid affecting the user's global configuration
+  # User can manually set approval_policy to 'on-request' or 'on-failure' for auto-approval
+  auto_approve:
+    enabled: false
+    file: "~/.codex/config.toml"
+    format: toml
+    # Note: No per-command approval in Codex - uses approval_policy (untrusted|on-failure|on-request|never)

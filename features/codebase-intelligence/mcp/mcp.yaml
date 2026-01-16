@@ -1,0 +1,31 @@
+# MCP Server Configuration for Codebase Intelligence
+#
+# This configuration defines the MCP server that agents can use
+# for semantic code search and persistent memory.
+#
+# Agent-specific install/remove scripts are in subdirectories:
+#   claude/install.sh, claude/remove.sh
+#   cursor/install.sh, cursor/remove.sh
+#   codex/install.sh, codex/remove.sh
+#
+# Scripts receive environment variables:
+#   OAK_PROJECT_ROOT  - Project root directory
+#   OAK_MCP_NAME      - Server name from this config
+#   OAK_MCP_COMMAND   - Full command to run the MCP server
+#   OAK_MCP_ARGS      - Arguments portion only (for agents that separate them)
+
+# Server identity
+name: oak-ci
+description: "OAK Codebase Intelligence - semantic code search and persistent memory for AI assistants"
+
+# The command to run the MCP server
+# {{PROJECT_ROOT}} is replaced with the actual project root
+# Uses 'oak' directly, expecting it to be on PATH (installed via pipx, uv tool install, etc.)
+command: "oak ci mcp --project {{PROJECT_ROOT}}"
+
+# Server capabilities (for documentation/validation)
+capabilities:
+  tools:
+    - oak_search    # Semantic search across code and memories
+    - oak_remember  # Store observations for future sessions
+    - oak_context   # Get curated context for a task

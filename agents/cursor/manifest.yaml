@@ -30,4 +30,17 @@ capabilities:
   context_handling: large       # large | medium | small - Cursor optimizes context well
   model_consistency: variable   # high | medium | variable - user can switch models
 
-settings: {}
+settings:
+  # Auto-approval settings for oak commands
+  # Note: Cursor's agent settings use the same file as IDE settings
+  auto_approve:
+    enabled: true
+    file: ".cursor/settings.json"
+    format: json
+    template: "agent-settings/cursor-settings.json"  # Template from features/core/
+
+mcp:
+  # MCP server registration config
+  config_file: ".cursor/mcp.json"
+  format: json
+  servers_key: "mcpServers"

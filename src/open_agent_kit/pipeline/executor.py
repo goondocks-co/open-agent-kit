@@ -199,7 +199,6 @@ class PipelineBuilder:
         ...     .with_config_stages()
         ...     .with_agent_stages()
         ...     .with_feature_stages()
-        ...     .with_ide_stages()
         ...     .with_skill_stages()
         ...     .with_hook_stages()
         ...     .with_finalization_stages()
@@ -244,12 +243,6 @@ class PipelineBuilder:
 
         return self.add_all(get_feature_stages())
 
-    def with_ide_stages(self) -> "PipelineBuilder":
-        """Add IDE setup stages."""
-        from open_agent_kit.pipeline.stages.ide import get_ide_stages
-
-        return self.add_all(get_ide_stages())
-
     def with_skill_stages(self) -> "PipelineBuilder":
         """Add skill installation stages."""
         from open_agent_kit.pipeline.stages.skills import get_skill_stages
@@ -261,6 +254,12 @@ class PipelineBuilder:
         from open_agent_kit.pipeline.stages.hooks import get_hook_stages
 
         return self.add_all(get_hook_stages())
+
+    def with_mcp_stages(self) -> "PipelineBuilder":
+        """Add MCP server registration stages."""
+        from open_agent_kit.pipeline.stages.mcp import get_mcp_stages
+
+        return self.add_all(get_mcp_stages())
 
     def with_finalization_stages(self) -> "PipelineBuilder":
         """Add finalization stages (migrations, cleanup)."""
@@ -363,33 +362,48 @@ def build_init_pipeline() -> PipelineBuilder:
         .with_config_stages()
         .with_agent_stages()
         .with_feature_stages()
-        .with_ide_stages()
         .with_skill_stages()
         .with_hook_stages()
+        .with_mcp_stages()
         .with_finalization_stages()
     )
 
 
 def build_upgrade_pipeline() -> PipelineBuilder:
-    """Build the upgrade pipeline with all upgrade stages.
+    """Build the upgrade pipeline with upgrade stages + reconciliation.
 
     Returns a PipelineBuilder pre-configured with all upgrade stages.
     Call .build() to get the Pipeline instance.
 
-    The upgrade pipeline handles:
-    - Environment validation
-    - Upgrade planning
-    - Pre/post upgrade hooks
-    - Command, template, IDE settings upgrades
-    - Skill installation/upgrade
-    - Migrations
-    - Version updates
+    The upgrade pipeline follows the pattern:
+        upgrade = migrate() + reconcile(config)
+
+    It handles:
+    1. Upgrade-specific work:
+       - Environment validation
+       - Upgrade planning
+       - Pre-upgrade hooks
+       - Migrations and structural repairs
+       - Post-upgrade hooks
+       - Version updates
+
+    2. Reconciliation (same as init):
+       - Ensure agent commands match config
+       - Ensure agent settings match config
+       - Ensure skills match config
 
     Example:
         >>> pipeline = build_upgrade_pipeline().build()
         >>> result = pipeline.execute(context)
     """
-    return PipelineBuilder().with_upgrade_stages()
+    return (
+        PipelineBuilder()
+        .with_upgrade_stages()  # Migrate: migrations, structural repairs, version
+        .with_agent_stages()  # Reconcile: agent commands and settings
+        .with_skill_stages()  # Reconcile: skills
+        .with_hook_stages()  # Reconcile: feature hooks
+        .with_mcp_stages()  # Reconcile: MCP server registrations
+    )
 
 
 def build_remove_pipeline() -> PipelineBuilder:
@@ -404,7 +418,6 @@ def build_remove_pipeline() -> PipelineBuilder:
     - Pre-remove hooks
     - Skill removal
     - Created file removal
-    - IDE settings removal
     - Directory cleanup
     - .oak directory removal
 

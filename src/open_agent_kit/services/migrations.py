@@ -6,11 +6,14 @@ Each migration is a function that gets executed once based on version tracking.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
 from open_agent_kit.utils import ensure_gitignore_has_issue_context
+
+logger = logging.getLogger(__name__)
 
 
 def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
@@ -51,6 +54,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "Remove .oak/features/ directory (assets now read from package)",
             _migrate_remove_oak_features_dir,
         ),
+        (
+            "2026.01.09_remove_ide_settings_config",
+            "Remove deprecated IDE settings (now handled by agent settings)",
+            _migrate_remove_ide_settings_config,
+        ),
     ]
 
 
@@ -83,15 +91,15 @@ def _migrate_copilot_agents_folder(project_root: Path) -> None:
     for file in prompts_dir.glob("oak.*.prompt.md"):
         try:
             file.unlink()
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning(f"Failed to remove legacy prompt file {file}: {e}")
 
     # Try to remove the directory if it's empty
     try:
         if not any(prompts_dir.iterdir()):
             prompts_dir.rmdir()
-    except Exception:
-        pass
+    except OSError as e:
+        logger.warning(f"Failed to remove empty prompts directory {prompts_dir}: {e}")
 
 
 def _migrate_features_restructure(project_root: Path) -> None:
@@ -169,23 +177,23 @@ def _migrate_features_restructure(project_root: Path) -> None:
             if old_subdir.exists():
                 try:
                     shutil.rmtree(old_subdir)
-                except Exception:
-                    pass
+                except OSError as e:
+                    logger.warning(f"Failed to remove old templates subdir {old_subdir}: {e}")
 
         # Remove ide directory (no longer needed in .oak/)
         old_ide_dir = old_templates_dir / "ide"
         if old_ide_dir.exists():
             try:
                 shutil.rmtree(old_ide_dir)
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove old ide directory {old_ide_dir}: {e}")
 
         # Try to remove the templates directory if empty
         try:
             if old_templates_dir.exists() and not any(old_templates_dir.iterdir()):
                 old_templates_dir.rmdir()
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning(f"Failed to remove empty templates directory {old_templates_dir}: {e}")
 
 
 def _migrate_cleanup_old_templates(project_root: Path) -> None:
@@ -212,15 +220,15 @@ def _migrate_cleanup_old_templates(project_root: Path) -> None:
             if old_subdir.exists():
                 try:
                     shutil.rmtree(old_subdir)
-                except Exception:
-                    pass
+                except OSError as e:
+                    logger.warning(f"Failed to remove old templates subdir {old_subdir}: {e}")
 
         # Try to remove the templates directory if empty
         try:
             if old_templates_dir.exists() and not any(old_templates_dir.iterdir()):
                 old_templates_dir.rmdir()
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning(f"Failed to remove empty templates directory {old_templates_dir}: {e}")
 
 
 def _migrate_remove_plan_issue(project_root: Path) -> None:
@@ -246,8 +254,8 @@ def _migrate_remove_plan_issue(project_root: Path) -> None:
         if file_path.exists():
             try:
                 file_path.unlink()
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove deprecated file {file_path}: {e}")
 
 
 def _migrate_remove_oak_features_dir(project_root: Path) -> None:
@@ -269,9 +277,36 @@ def _migrate_remove_oak_features_dir(project_root: Path) -> None:
     if features_dir.exists():
         try:
             shutil.rmtree(features_dir)
-        except Exception:
+        except OSError as e:
             # If removal fails, don't block the migration
-            pass
+            logger.warning(f"Failed to remove .oak/features/ directory: {e}")
+
+
+def _migrate_remove_ide_settings_config(project_root: Path) -> None:
+    """Remove deprecated IDE settings configuration.
+
+    IDE settings have been consolidated into agent settings. This migration
+    removes the 'ides' key from config.yaml if present. Agent settings are now
+    managed by AgentSettingsService based on configured agents.
+
+    Args:
+        project_root: Project root directory
+    """
+    from open_agent_kit.config.paths import CONFIG_FILE
+    from open_agent_kit.utils import read_yaml, write_yaml
+
+    config_path = project_root / CONFIG_FILE
+    if not config_path.exists():
+        return
+
+    data = read_yaml(config_path)
+    if not data:
+        return
+
+    # Remove 'ides' key if present
+    if "ides" in data:
+        del data["ides"]
+        write_yaml(config_path, data)
 
 
 def run_migrations(

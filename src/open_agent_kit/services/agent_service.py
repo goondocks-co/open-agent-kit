@@ -10,6 +10,7 @@ Lifecycle:
 - Feature install: Renders commands with agent-specific context
 """
 
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -24,6 +25,8 @@ from open_agent_kit.utils import (
     read_file,
     write_file,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AgentService:
@@ -411,8 +414,8 @@ class AgentService:
             try:
                 command_file.unlink()
                 removed_count += 1
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove command file {command_file}: {e}")
 
         # Clean up empty directories
         cleanup_empty_directories(commands_dir, self.project_root)
@@ -449,12 +452,56 @@ class AgentService:
                 try:
                     file_path.unlink()
                     removed_count += 1
-                except Exception:
-                    pass
+                except OSError as e:
+                    logger.warning(f"Failed to remove command file {file_path}: {e}")
 
         cleanup_empty_directories(commands_dir, self.project_root)
 
         return removed_count
+
+    def remove_obsolete_commands(self, agent_type: str, valid_commands: set[str]) -> list[str]:
+        """Remove oak commands that are no longer in the feature config.
+
+        This cleans up commands that have been renamed or removed from features.
+        Only removes oak.* prefixed files where the command name is not in valid_commands.
+
+        Args:
+            agent_type: Agent type name
+            valid_commands: Set of valid command names from feature config
+
+        Returns:
+            List of removed file names
+        """
+        commands_dir = self.get_agent_commands_dir(agent_type)
+        if not commands_dir.exists():
+            return []
+
+        removed: list[str] = []
+        oak_commands = self.list_agent_commands(agent_type)
+
+        for command_file in oak_commands:
+            # Extract command name from filename (e.g., oak.rfc-create.md -> rfc-create)
+            filename = command_file.name
+            # Handle different file extensions (.md, .agent.md)
+            if filename.endswith(".agent.md"):
+                command_name = filename[4:-9]  # Remove "oak." prefix and ".agent.md" suffix
+            elif filename.endswith(".md"):
+                command_name = filename[4:-3]  # Remove "oak." prefix and ".md" suffix
+            else:
+                continue
+
+            # If command is not in valid commands, remove it
+            if command_name not in valid_commands:
+                try:
+                    command_file.unlink()
+                    removed.append(filename)
+                except OSError as e:
+                    logger.warning(f"Failed to remove obsolete command {filename}: {e}")
+
+        if removed:
+            cleanup_empty_directories(commands_dir, self.project_root)
+
+        return removed
 
     def get_all_command_names(self) -> list[str]:
         """Get all available command names across all features.
@@ -498,7 +545,8 @@ class AgentService:
                     try:
                         content = read_file(instruction_path)
                         has_constitution_ref = self._has_constitution_reference(instruction_path)
-                    except Exception:
+                    except OSError as e:
+                        logger.warning(f"Failed to read instruction file {instruction_path}: {e}")
                         content = None
 
                 detection_results[agent_type] = {
@@ -540,7 +588,8 @@ class AgentService:
 
             return False
 
-        except Exception:
+        except OSError as e:
+            logger.warning(f"Failed to read file {file_path}: {e}")
             return False
 
     def update_agent_instructions_from_constitution(

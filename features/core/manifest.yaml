@@ -9,8 +9,11 @@ is_core: true
 
 # Core components
 components:
-  ide:
-    description: "IDE settings for VSCode and Cursor"
+  agent_settings:
+    description: "Agent auto-approval settings for oak commands"
     files:
-      - ide/vscode-settings.json
-      - ide/cursor-settings.json
+      - agent-settings/claude-settings.json
+      - agent-settings/copilot-settings.json
+      - agent-settings/cursor-settings.json
+      - agent-settings/gemini-settings.json
+      - agent-settings/windsurf-settings.json

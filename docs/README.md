@@ -14,6 +14,7 @@ Welcome to the open-agent-kit documentation. This directory contains comprehensi
 - **[RFC Workflow](rfc-workflow.md)** - Complete RFC process and lifecycle
 - **[Constitution Workflow](../QUICKSTART.md#creating-a-project-constitution)** - Create engineering standards and conventions
 - **[Constitution Upgrade Guide](constitution-upgrade-guide.md)** - Modernize existing constitutions with decision framework
+- **[Codebase Intelligence](features/codebase-intelligence.md)** - Semantic code search and AI agent memory
 
 ### Contributing
 
@@ -57,6 +58,8 @@ Welcome to the open-agent-kit documentation. This directory contains comprehensi
 | Upgrade existing constitution | [Constitution Upgrade Guide](constitution-upgrade-guide.md) |
 | Understand RFC workflow | [RFC Workflow](rfc-workflow.md) |
 | List/manage RFCs | [README - Commands](../README.md#commands) |
+| Set up Codebase Intelligence | [Codebase Intelligence](features/codebase-intelligence.md) |
+| Configure embedding providers | [CI - Configuration](features/codebase-intelligence.md#configuration) |
 
 #### Contribute to open-agent-kit
 
@@ -90,6 +93,8 @@ Welcome to the open-agent-kit documentation. This directory contains comprehensi
 | Review RFCs with AI | [Claude - RFC Review](../CLAUDE.md#viii-rfc-review-another-specialty) |
 | Create constitutions with AI | [Quick Start - Constitution](../QUICKSTART.md#creating-a-project-constitution) |
 | Understand agent instruction files | [README - Agent Instruction Files](../README.md#agent-instruction-files) |
+| Give AI agents codebase knowledge | [CI - MCP Integration](features/codebase-intelligence.md#mcp-integration) |
+| Use semantic code search | [CI - Search](features/codebase-intelligence.md#search-tab) |
 
 ---
 
@@ -141,6 +146,10 @@ docs/
 ├── README.md                       # This file - documentation index
 ├── rfc-workflow.md                 # RFC process and lifecycle
 ├── constitution-upgrade-guide.md   # Constitution modernization paths
+├── features/                       # Feature documentation
+│   ├── constitution.md            # Constitution feature
+│   ├── codebase-intelligence.md   # Codebase Intelligence (CI)
+│   └── ...                        # Other feature docs
 ├── development/                    # Development guides
 │   ├── releasing.md               # Release procedures
 │   └── ...                        # Other development docs
@@ -232,6 +241,7 @@ For code-related questions:
 - [x] Releasing - Release procedures
 - [x] Architecture - System design
 - [x] GitHub Workflows - CI/CD docs
+- [x] Codebase Intelligence - Semantic search and AI memory
 
 ### Agent Documentation
 

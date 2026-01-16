@@ -1,0 +1,9 @@
+{
+  "$comment": "Claude Code auto-approval settings for oak commands",
+  "permissions": {
+    "allow": [
+      "Bash(oak:*)",
+      "Bash(oak *)"
+    ]
+  }
+}

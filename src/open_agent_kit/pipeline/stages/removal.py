@@ -3,11 +3,7 @@
 import shutil
 from pathlib import Path
 
-from open_agent_kit.config.paths import (
-    CURSOR_SETTINGS_FILE,
-    OAK_DIR,
-    VSCODE_SETTINGS_FILE,
-)
+from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.pipeline.context import FlowType, PipelineContext
 from open_agent_kit.pipeline.ordering import StageOrder
 from open_agent_kit.pipeline.stage import BaseStage, StageLifecycle, StageOutcome
@@ -60,10 +56,6 @@ class PlanRemovalStage(BaseStage):
         state_service = StateService(context.project_root)
         managed_assets = state_service.get_managed_assets()
 
-        # Get removal options from context
-        removal_options = context.get_result("removal_options", {})
-        keep_ide_settings = removal_options.get("keep_ide_settings", False)
-
         # Categorize files
         files_to_remove: list[tuple[str, str]] = []  # (path, description)
         files_modified_by_user: list[tuple[str, str]] = []  # (path, reason)
@@ -93,14 +85,6 @@ class PlanRemovalStage(BaseStage):
             if dir_path.exists():
                 directories_to_check.append(dir_path_str)
 
-        # IDE settings (unless keeping them)
-        ide_settings_to_remove: list[str] = []
-        if not keep_ide_settings:
-            if (context.project_root / VSCODE_SETTINGS_FILE).exists():
-                ide_settings_to_remove.append(VSCODE_SETTINGS_FILE)
-            if (context.project_root / CURSOR_SETTINGS_FILE).exists():
-                ide_settings_to_remove.append(CURSOR_SETTINGS_FILE)
-
         # Check for user content
         user_content_dir = context.project_root / "oak"
         has_user_content = user_content_dir.exists() and any(user_content_dir.iterdir())
@@ -118,10 +102,8 @@ class PlanRemovalStage(BaseStage):
             "files_modified_by_user": files_modified_by_user,
             "files_to_inform_user": files_to_inform_user,
             "directories_to_check": directories_to_check,
-            "ide_settings_to_remove": ide_settings_to_remove,
             "installed_skills": installed_skills,
             "has_user_content": has_user_content,
-            "keep_ide_settings": keep_ide_settings,
         }
 
         return StageOutcome.success(
@@ -250,58 +232,6 @@ class RemoveCreatedFilesStage(BaseStage):
         return StageOutcome.success(
             f"Removed {removed_count} file(s)",
             data={"removed_count": removed_count, "failed": failed},
-        )
-
-
-class RemoveIDESettingsRemovalStage(BaseStage):
-    """Remove IDE settings files during removal."""
-
-    name = "remove_ide_settings_removal"
-    display_name = "Removing IDE settings"
-    order = StageOrder.REMOVE_IDE_SETTINGS_REMOVAL
-    applicable_flows = {FlowType.REMOVE}
-    is_critical = False
-    lifecycle = StageLifecycle.CLEANUP
-    counterpart_stage = "install_ide_settings"
-
-    def _should_run(self, context: PipelineContext) -> bool:
-        """Always run - check for work inside _execute."""
-        return True
-
-    def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Remove IDE settings files."""
-        plan = context.get_result("plan_removal", {})
-        ide_settings = plan.get("ide_settings_to_remove", [])
-
-        if not ide_settings:
-            return StageOutcome.skipped("No IDE settings to remove")
-
-        removed = []
-        failed = []
-
-        for settings_path in ide_settings:
-            file_path = context.project_root / settings_path
-            try:
-                if file_path.exists():
-                    file_path.unlink()
-                    removed.append(settings_path)
-            except Exception as e:
-                failed.append(f"{settings_path}: {e}")
-                context.add_warning(self.name, f"Failed to remove {settings_path}: {e}")
-
-        # Clean up empty IDE directories
-        for dir_name in [".vscode", ".cursor"]:
-            dir_path = context.project_root / dir_name
-            if dir_path.exists() and dir_path.is_dir():
-                try:
-                    if not any(dir_path.iterdir()):
-                        dir_path.rmdir()
-                except Exception:
-                    pass
-
-        return StageOutcome.success(
-            f"Removed {len(removed)} IDE setting(s)",
-            data={"removed": removed, "failed": failed},
         )
 
 
@@ -445,7 +375,7 @@ def get_removal_stages() -> list[BaseStage]:
         TriggerPreRemoveHooksStage(),
         RemoveSkillsStage(),
         RemoveCreatedFilesStage(),
-        RemoveIDESettingsRemovalStage(),
+        # Note: IDE settings removal was removed - agent settings handles cleanup
         CleanupDirectoriesStage(),
         RemoveOakDirStage(),
     ]

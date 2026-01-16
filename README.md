@@ -97,6 +97,7 @@ Open Agent Kit uses a modular feature system that lets you install only the work
 | **constitution** | Engineering standards, architectural patterns, team conventions | None |
 | **rfc** | RFC workflow for documenting technical decisions | constitution |
 | **plan** | Issue-driven implementation planning with research, task breakdown, and validation | constitution |
+| **codebase-intelligence** | Semantic code search, AST-aware indexing, and persistent memory for AI agents | None |
 
 ### Feature Selection
 

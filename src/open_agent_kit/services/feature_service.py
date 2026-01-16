@@ -1,18 +1,25 @@
 """Feature service for managing OAK features."""
 
-import re
+import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from open_agent_kit.config.paths import FEATURE_MANIFEST_FILE, FEATURES_DIR
+
+if TYPE_CHECKING:
+    from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
 from open_agent_kit.models.feature import FeatureManifest
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.state_service import StateService
-from open_agent_kit.utils import read_file, write_file
+from open_agent_kit.utils import (
+    add_gitignore_entries,
+    read_file,
+    remove_gitignore_entries,
+    write_file,
+)
 
-# Regex pattern to detect Jinja2 template syntax
-JINJA2_PATTERN = re.compile(r"\{\{|\{%")
+logger = logging.getLogger(__name__)
 
 
 class FeatureService:
@@ -33,46 +40,219 @@ class FeatureService:
 
         # Package features directory (where feature manifests/templates are stored)
         self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+        self._template_service: TemplateService | None = None
 
-    def _has_jinja2_syntax(self, content: str) -> bool:
-        """Check if content contains Jinja2 template syntax.
+    @property
+    def template_service(self) -> "TemplateService":
+        """Lazy-load template service to avoid circular dependencies."""
+        if self._template_service is None:
+            from open_agent_kit.services.template_service import TemplateService
+
+            self._template_service = TemplateService(project_root=self.project_root)
+        return self._template_service
+
+    def _is_uv_tool_install(self) -> bool:
+        """Check if OAK is running from a uv tool installation."""
+        import sys
+
+        # uv tool installs run from paths like:
+        # /Users/<user>/.local/share/uv/tools/open-agent-kit/...
+        return ".local/share/uv/tools/" in sys.executable
+
+    def _install_pip_packages(self, packages: list[str], feature_name: str) -> bool:
+        """Install pip packages for a feature into OAK's Python environment.
+
+        IMPORTANT: Packages must be installed into the same environment that OAK
+        runs from (sys.executable), not the user's project environment. This ensures
+        the daemon and other OAK components can import these packages.
+
+        For uv tool installations, we use `uv tool install --upgrade --with` to add
+        packages to the tool's isolated environment (uv pip install doesn't work for
+        tool environments).
 
         Args:
-            content: String content to check
+            packages: List of package specs to install (e.g., ['fastapi>=0.109.0'])
+            feature_name: Name of the feature (for logging)
 
         Returns:
-            True if content contains {{ or {% syntax
+            True if all packages were installed successfully
         """
-        return bool(JINJA2_PATTERN.search(content))
+        import shutil
+        import subprocess
+        import sys
 
-    def _render_command_for_agent(self, content: str, agent_type: str) -> str:
-        """Render command content with agent-specific context.
+        from open_agent_kit.utils import print_info, print_success, print_warning
 
-        If content contains Jinja2 syntax, renders it with agent context.
-        Otherwise returns content unchanged.
+        if not packages:
+            return True
+
+        # Check if running from uv tool install
+        if self._is_uv_tool_install():
+            return self._install_packages_uv_tool(packages, feature_name)
+
+        # Regular environment (venv, pip install, etc.)
+        oak_python = sys.executable
+
+        # Prefer uv for faster installs
+        use_uv = shutil.which("uv") is not None
+        installer = "uv" if use_uv else "pip"
+
+        print_info(f"Installing {len(packages)} packages for '{feature_name}' using {installer}...")
+
+        try:
+            if use_uv:
+                cmd = ["uv", "pip", "install", "--python", oak_python, "--quiet"] + packages
+            else:
+                cmd = [oak_python, "-m", "pip", "install", "--quiet"] + packages
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                print_success(f"Installed packages for '{feature_name}'")
+                return True
+            else:
+                error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+                print_warning(f"Failed to install packages for '{feature_name}':")
+                print_warning(f"  Command: {' '.join(cmd)}")
+                print_warning(f"  Error: {error_msg}")
+                return False
+        except Exception as e:
+            print_warning(f"Failed to install packages for '{feature_name}': {e}")
+            return False
+
+    def _install_packages_uv_tool(self, packages: list[str], feature_name: str) -> bool:
+        """Install packages for a uv tool installation.
+
+        uv tool environments are isolated and cannot be modified with `uv pip install`.
+        We need to use `uv tool install --upgrade --with` to add packages.
 
         Args:
-            content: Raw command content (may contain Jinja2 syntax)
-            agent_type: Agent type (e.g., 'claude', 'cursor')
+            packages: List of package specs to install
+            feature_name: Name of the feature (for logging)
 
         Returns:
-            Rendered content with agent-specific values
+            True if packages were installed successfully
         """
-        if not self._has_jinja2_syntax(content):
-            return content
+        import subprocess
 
-        # Import here to avoid circular dependency
-        from open_agent_kit.services.agent_service import AgentService
-        from open_agent_kit.services.template_service import TemplateService
+        from open_agent_kit.utils import print_info, print_success, print_warning
 
-        agent_service = AgentService(self.project_root)
-        template_service = TemplateService(project_root=self.project_root)
+        print_info(f"Installing {len(packages)} packages for '{feature_name}' via uv tool...")
+        print_info("(uv tool environments require reinstallation to add packages)")
 
-        # Get agent context for rendering
-        context = agent_service.get_agent_context(agent_type)
+        # Build --with arguments for each package
+        with_args = []
+        for pkg in packages:
+            with_args.extend(["--with", pkg])
 
-        # Render template with agent context
-        return template_service.render_string(content, context)
+        try:
+            # Upgrade the tool with additional packages
+            cmd = ["uv", "tool", "install", "open-agent-kit", "--upgrade"] + with_args
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                print_success(f"Installed packages for '{feature_name}'")
+                return True
+            else:
+                error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+                print_warning(f"Failed to install packages for '{feature_name}':")
+                print_warning(f"  Command: {' '.join(cmd)}")
+                print_warning(f"  Error: {error_msg}")
+                print_warning("\nTry manually running:")
+                print_warning(f"  uv tool install open-agent-kit --upgrade {' '.join(with_args)}")
+                return False
+        except Exception as e:
+            print_warning(f"Failed to install packages for '{feature_name}': {e}")
+            return False
+
+    def _check_prerequisites(self, prerequisites: list[dict]) -> dict[str, Any]:
+        """Check if prerequisites for a feature are satisfied.
+
+        Args:
+            prerequisites: List of prerequisite definitions from manifest
+
+        Returns:
+            Dictionary with check results:
+            {
+                'satisfied': True/False,
+                'missing': [{'name': 'ollama', 'instructions': '...'}],
+                'warnings': ['Ollama not found, will use FastEmbed fallback']
+            }
+        """
+        import shutil
+        import subprocess
+
+        from open_agent_kit.utils import print_info, print_success, print_warning
+
+        result: dict[str, Any] = {
+            "satisfied": True,
+            "missing": [],
+            "warnings": [],
+        }
+
+        for prereq in prerequisites:
+            name = prereq.get("name", "unknown")
+            prereq_type = prereq.get("type", "command")
+            check_cmd = prereq.get("check_command")
+            required = prereq.get("required", True)
+            install_url = prereq.get("install_url", "")
+            install_instructions = prereq.get("install_instructions", "")
+
+            print_info(f"Checking prerequisite: {name}...")
+
+            is_available = False
+
+            if prereq_type == "service" and check_cmd:
+                # Check if command exists and runs
+                cmd_name = check_cmd.split()[0]
+                if shutil.which(cmd_name):
+                    try:
+                        proc = subprocess.run(
+                            check_cmd.split(),
+                            capture_output=True,
+                            timeout=5,
+                            check=False,
+                        )
+                        is_available = proc.returncode == 0
+                    except (subprocess.TimeoutExpired, OSError):
+                        is_available = False
+
+            elif prereq_type == "command" and check_cmd:
+                # Just check if command exists
+                cmd_name = check_cmd.split()[0]
+                is_available = shutil.which(cmd_name) is not None
+
+            if is_available:
+                print_success(f"  {name} is available")
+            else:
+                if required:
+                    result["satisfied"] = False
+                    result["missing"].append(
+                        {
+                            "name": name,
+                            "install_url": install_url,
+                            "instructions": install_instructions,
+                        }
+                    )
+                    print_warning(f"  {name} is not available (required)")
+                else:
+                    result["warnings"].append(
+                        f"{name} not found - feature will use fallback if available"
+                    )
+                    print_warning(f"  {name} not found (optional, will use fallback)")
+
+        return result
 
     def list_available_features(self) -> list[FeatureManifest]:
         """List all available features from package.
@@ -275,18 +455,69 @@ class FeatureService:
             {
                 'commands_installed': ['rfc-create', 'rfc-list'],
                 'templates_copied': ['engineering.md', 'architecture.md'],
-                'agents': ['claude', 'copilot']
+                'agents': ['claude', 'copilot'],
+                'pip_packages_installed': ['fastapi>=0.109.0', ...]
             }
         """
-        results: dict[str, list[str]] = {
+        results: dict[str, Any] = {
             "commands_installed": [],
             "templates_copied": [],
             "agents": [],
+            "pip_packages_installed": [],
+            "prerequisites_checked": False,
+            "prerequisites_warnings": [],
         }
 
         manifest = self.get_feature_manifest(feature_name)
         if not manifest:
             return results
+
+        # Check prerequisites if declared
+        if manifest.prerequisites:
+            prereq_result = self._check_prerequisites(manifest.prerequisites)
+            results["prerequisites_checked"] = True
+            results["prerequisites_warnings"] = prereq_result.get("warnings", [])
+
+            # If required prerequisites are missing, we still continue but warn
+            # The feature's fallback mechanisms should handle missing optional deps
+            if prereq_result.get("missing"):
+                from open_agent_kit.utils import print_warning
+
+                for missing in prereq_result["missing"]:
+                    print_warning(f"\nMissing prerequisite: {missing['name']}")
+                    if missing.get("instructions"):
+                        print_warning(f"Installation instructions:\n{missing['instructions']}")
+
+        # Install pip packages if declared
+        if manifest.pip_packages:
+            packages_installed = self._install_pip_packages(manifest.pip_packages, feature_name)
+            if packages_installed:
+                results["pip_packages_installed"] = manifest.pip_packages
+            else:
+                # Pip package installation failed - this is fatal for the feature
+                from open_agent_kit.utils import print_error
+
+                print_error(
+                    f"Failed to install required packages for '{feature_name}'. "
+                    f"The feature cannot function without these dependencies."
+                )
+                print_error(
+                    "You can try installing manually: "
+                    f"pip install {' '.join(manifest.pip_packages)}"
+                )
+                raise RuntimeError(
+                    f"Required pip packages for feature '{feature_name}' failed to install"
+                )
+
+        # Add gitignore entries if declared
+        if manifest.gitignore:
+            added = add_gitignore_entries(
+                self.project_root,
+                manifest.gitignore,
+                section_comment=f"open-agent-kit: {manifest.display_name}",
+            )
+            if added:
+                results["gitignore_added"] = added
 
         # Install commands for each agent
         from open_agent_kit.services.agent_service import AgentService
@@ -307,7 +538,9 @@ class FeatureService:
                 content = read_file(template_file)
 
                 # Render with agent-specific context if command uses Jinja2 syntax
-                rendered_content = self._render_command_for_agent(content, agent_type)
+                rendered_content = self.template_service.render_command_for_agent(
+                    content, agent_type
+                )
 
                 # Write to agent's commands directory with proper extension
                 filename = agent_service.get_command_filename(agent_type, command_name)
@@ -341,8 +574,8 @@ class FeatureService:
         if was_disabled:
             try:
                 self.trigger_feature_enabled_hook(feature_name)
-            except Exception:
-                pass  # Hook failures are not fatal
+            except Exception as e:
+                logger.warning(f"Failed to trigger feature enabled hook for {feature_name}: {e}")
 
         # Auto-install associated skills if enabled
         if was_disabled and config.skills.auto_install:
@@ -353,8 +586,8 @@ class FeatureService:
                 skill_results = skill_service.install_skills_for_feature(feature_name)
                 if skill_results.get("skills_installed"):
                     results["skills_installed"] = skill_results["skills_installed"]
-            except Exception:
-                pass  # Skill installation failures are not fatal
+            except Exception as e:
+                logger.warning(f"Failed to auto-install skills for {feature_name}: {e}")
 
         return results
 
@@ -407,6 +640,15 @@ class FeatureService:
         # Note: We no longer store feature assets in .oak/features/
         # Nothing to clean up there - feature assets are in the package.
 
+        # Remove gitignore entries if declared
+        if manifest.gitignore:
+            removed_entries = remove_gitignore_entries(
+                self.project_root,
+                manifest.gitignore,
+            )
+            if removed_entries:
+                results["gitignore_removed"] = removed_entries
+
         # Remove associated skills
         try:
             from open_agent_kit.services.skill_service import SkillService
@@ -415,8 +657,8 @@ class FeatureService:
             skill_results = skill_service.remove_skills_for_feature(feature_name)
             if skill_results.get("skills_removed"):
                 results["skills_removed"] = skill_results["skills_removed"]
-        except Exception:
-            pass  # Skill removal failures are not fatal
+        except Exception as e:
+            logger.warning(f"Failed to remove skills for {feature_name}: {e}")
 
         # Trigger feature disabled hook BEFORE removing from config
         config = self.config_service.load_config()
@@ -424,8 +666,8 @@ class FeatureService:
         if was_enabled:
             try:
                 self.trigger_feature_disabled_hook(feature_name)
-            except Exception:
-                pass  # Hook failures are not fatal
+            except Exception as e:
+                logger.warning(f"Failed to trigger feature disabled hook for {feature_name}: {e}")
 
         # Update config to mark feature as uninstalled
         if was_enabled:
@@ -640,16 +882,19 @@ class FeatureService:
         Returns:
             Dictionary with hook execution result for this feature
         """
+        # Get configured agents so cleanup can remove hooks
+        config = self.config_service.load_config()
         return self._trigger_hook(
             "on_feature_disabled",
             features=[feature_name],
             feature_name=feature_name,
+            agents=config.agents,
         )
 
     # --- Project Lifecycle ---
 
     def trigger_init_complete_hooks(
-        self, is_fresh_install: bool, agents: list[str], ides: list[str], features: list[str]
+        self, is_fresh_install: bool, agents: list[str], features: list[str]
     ) -> dict[str, Any]:
         """Trigger on_init_complete hooks after oak init finishes.
 
@@ -658,7 +903,6 @@ class FeatureService:
         Args:
             is_fresh_install: True if this was a fresh install, False if update
             agents: List of configured agents
-            ides: List of configured IDEs
             features: List of enabled features
 
         Returns:
@@ -668,7 +912,6 @@ class FeatureService:
             "on_init_complete",
             is_fresh_install=is_fresh_install,
             agents=agents,
-            ides=ides,
             features=features,
         )
 
@@ -699,6 +942,8 @@ class FeatureService:
             return self._execute_constitution_hook(action, **kwargs)
         elif feature_name == "rfc":
             return self._execute_rfc_hook(action, **kwargs)
+        elif feature_name == "codebase-intelligence":
+            return self._execute_codebase_intelligence_hook(action, **kwargs)
         else:
             raise ValueError(f"Unknown feature for hook: {feature_name}")
 
@@ -736,6 +981,27 @@ class FeatureService:
         """
         # RFC hooks can be added here as needed
         raise ValueError(f"Unknown rfc hook action: {action}")
+
+    def _execute_codebase_intelligence_hook(self, action: str, **kwargs: Any) -> Any:
+        """Execute a codebase-intelligence feature hook.
+
+        Args:
+            action: Hook action name
+            **kwargs: Arguments for the action
+
+        Returns:
+            Result from the action
+        """
+        from open_agent_kit.features.codebase_intelligence.service import execute_hook
+
+        # Map kwargs to expected format for certain hooks
+        if action == "update_agent_hooks":
+            # on_agents_changed passes agents_added and agents_removed
+            # but update_agent_hooks expects a flat list of all current agents
+            config = self.config_service.load_config()
+            kwargs["agents"] = config.agents
+
+        return execute_hook(action, self.project_root, **kwargs)
 
 
 def get_feature_service(project_root: Path | None = None) -> FeatureService:

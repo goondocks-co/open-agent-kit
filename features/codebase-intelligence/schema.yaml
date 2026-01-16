@@ -1,0 +1,92 @@
+# Codebase Intelligence Schema
+#
+# This file defines the observation types that the LLM uses for classification.
+# Adding new types here automatically updates all prompts and the API.
+#
+# Each type has:
+#   - name: The identifier used in storage and API
+#   - description: What this type captures (shown to LLM)
+#   - examples: Example observations of this type (help LLM understand)
+#   - icon: Emoji for UI display (optional)
+
+version: "1.0"
+
+observation_types:
+  gotcha:
+    description: "Non-obvious behaviors, edge cases, or tricky parts that could trip someone up"
+    examples:
+      - "The API returns 200 even for validation errors, check the response body for success field"
+      - "File paths must be absolute, relative paths silently fail"
+      - "The cache TTL is in seconds, not milliseconds despite the variable name"
+    icon: "🔶"
+
+  bug_fix:
+    description: "Bugs that were identified and fixed, including root cause and solution"
+    examples:
+      - "Race condition in async handler - added mutex lock around shared state"
+      - "Off-by-one error in pagination - fixed boundary check in slice operation"
+      - "Memory leak from unclosed connections - added try/finally cleanup"
+    icon: "🐛"
+
+  decision:
+    description: "Architecture choices, design decisions, or approach selections with rationale"
+    examples:
+      - "Chose SQLite over PostgreSQL for activity storage - simpler deployment, sufficient for single-user"
+      - "Using background thread instead of async for file watcher - better isolation from event loop"
+      - "Storing tags as comma-separated string in ChromaDB - avoids metadata array limitations"
+    icon: "📐"
+
+  discovery:
+    description: "Important facts learned about the codebase, APIs, patterns, or conventions"
+    examples:
+      - "The config is loaded lazily on first access via __getattr__"
+      - "All API routes use dependency injection for state via FastAPI Depends"
+      - "Test fixtures are shared across modules via conftest.py"
+    icon: "💡"
+
+  trade_off:
+    description: "Trade-offs that were considered, alternatives evaluated, and why current approach was chosen"
+    examples:
+      - "Chose simplicity over performance - O(n) scan acceptable for expected data size"
+      - "Sacrificed type safety for flexibility - using dict instead of typed model for config"
+      - "Accepted eventual consistency for better throughput in background processing"
+    icon: "⚖️"
+
+  session_summary:
+    description: "High-level summary of what was accomplished in a coding session"
+    examples:
+      - "Implemented user authentication with JWT tokens and refresh flow"
+      - "Debugged and fixed three failing tests related to async cleanup"
+      - "Explored codebase to understand the data pipeline architecture"
+    icon: "📋"
+
+# Activity classification types (separate from observation types)
+# Used to categorize what kind of work was done in a session/batch
+activity_classifications:
+  exploration:
+    description: "Reading code, searching, understanding the codebase"
+    indicators:
+      - "Mostly Read, Grep, Glob tools"
+      - "Few or no file modifications"
+      - "Questions about how things work"
+
+  debugging:
+    description: "Investigating errors, fixing bugs, troubleshooting"
+    indicators:
+      - "Error messages in output"
+      - "Test failures"
+      - "Iterative fixes to same files"
+
+  implementation:
+    description: "Writing new code, adding features, creating new files"
+    indicators:
+      - "New files created"
+      - "Significant Write/Edit operations"
+      - "Feature-related file names"
+
+  refactoring:
+    description: "Modifying existing code structure without adding new functionality"
+    indicators:
+      - "Edits without new files"
+      - "Moving/renaming operations"
+      - "No new test files"

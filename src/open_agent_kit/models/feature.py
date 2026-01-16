@@ -82,6 +82,18 @@ class FeatureManifest(BaseModel):
     dependencies: list[str] = Field(
         default_factory=list, description="Required feature dependencies"
     )
+    pip_extras: list[str] = Field(
+        default_factory=list,
+        description="Pip extras (deprecated, use pip_packages instead)",
+    )
+    pip_packages: list[str] = Field(
+        default_factory=list,
+        description="Python packages to install when feature is enabled (e.g., ['fastapi>=0.109.0'])",
+    )
+    prerequisites: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="External prerequisites (services, tools) required by this feature",
+    )
     commands: list[str] = Field(
         default_factory=list, description="Command names provided by this feature"
     )
@@ -94,6 +106,10 @@ class FeatureManifest(BaseModel):
     )
     config_defaults: dict[str, Any] = Field(
         default_factory=dict, description="Default configuration values"
+    )
+    gitignore: list[str] = Field(
+        default_factory=list,
+        description="Patterns to add to .gitignore when feature is enabled (removed on disable)",
     )
 
     @classmethod

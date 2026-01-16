@@ -15,8 +15,8 @@ from .constitution import (
     ConstitutionSection,
     ConstitutionStatus,
 )
+from .enums import AmendmentType as AmendmentTypeEnum
 from .enums import (
-    IDE,
     ExportMode,
     IssueProvider,
     PlanStatus,
@@ -26,7 +26,6 @@ from .enums import (
     TaskPriority,
     TaskType,
 )
-from .enums import AmendmentType as AmendmentTypeEnum
 from .enums import ValidationCategory as ValidationCategoryEnum
 from .enums import ValidationPriority as ValidationPriorityEnum
 from .exceptions import (
@@ -43,6 +42,13 @@ from .exceptions import (
 )
 from .feature import FeatureManifest, LifecycleHooks
 from .project import ProjectConfig, ProjectState
+from .results import (
+    BatchOperationResult,
+    DaemonStatus,
+    FeatureInstallResult,
+    SearchResult,
+    UpgradePlanData,
+)
 from .rfc import RFCDocument, RFCIndex
 from .skill import SkillManifest
 from .state import OakState
@@ -95,9 +101,14 @@ __all__ = [
     "ValidationPriority",
     "ValidationPriorityEnum",
     "ValidationResult",
+    # Results (new)
+    "DaemonStatus",
+    "SearchResult",
+    "FeatureInstallResult",
+    "BatchOperationResult",
+    "UpgradePlanData",
     # Enums (new)
     "ExportMode",
-    "IDE",
     "IssueProvider",
     "PlanStatus",
     "ResearchDepth",

@@ -19,13 +19,35 @@ For type-safe enums, import from:
 """
 
 from open_agent_kit import __version__
-from open_agent_kit.models.enums import IDE, IssueProvider, RFCNumberFormat
+from open_agent_kit.models.enums import IssueProvider, RFCNumberFormat
 
 # =============================================================================
 # Version
 # =============================================================================
 
 VERSION = __version__
+
+# =============================================================================
+# File Scanning Configuration
+# =============================================================================
+
+# Directories to skip during file scanning and language detection
+SKIP_DIRECTORIES: tuple[str, ...] = (
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".oak",
+)
+
+# Limits for various operations
+MAX_SCAN_FILES = 1000
+MAX_SEARCH_RESULTS = 50
+MAX_MEMORY_RESULTS = 100
+JSON_INDENT = 2
 
 # =============================================================================
 # Issue Provider Configuration (derived from enums)
@@ -39,25 +61,9 @@ ISSUE_PROVIDER_DEFAULTS = {
     "github": {"owner": ""},
 }
 
-# =============================================================================
-# IDE Configuration (derived from enums)
-# =============================================================================
-
-SUPPORTED_IDES = IDE.values() + ["none"]
-IDE_DISPLAY_NAMES = {i.value: i.display_name for i in IDE}
-
 # RFC number formats
 RFC_NUMBER_FORMATS = {f.value: f.pattern for f in RFCNumberFormat}
 DEFAULT_RFC_FORMAT = RFCNumberFormat.SEQUENTIAL.value
-
-# =============================================================================
-# IDE Settings JSON Structure
-# =============================================================================
-
-IDE_SETTINGS_JSON_KEY_PROMPT_RECOMMENDATIONS = "chat.promptFilesRecommendations"
-IDE_SETTINGS_JSON_KEY_AUTO_APPROVE = "chat.tools.terminal.autoApprove"
-IDE_SETTINGS_OAK_PROMPT_PREFIX = "oak."
-IDE_SETTINGS_OAK_AUTO_APPROVE_KEYS = ["oak"]
 
 # =============================================================================
 # Validation Patterns and Heuristics
@@ -273,7 +279,7 @@ DECISION_DEFAULT_TESTING_RATIONALE = (
 # Feature Configuration
 # =============================================================================
 
-SUPPORTED_FEATURES = ["constitution", "rfc", "plan"]
+SUPPORTED_FEATURES = ["constitution", "rfc", "plan", "codebase-intelligence"]
 DEFAULT_FEATURES = ["constitution", "rfc", "plan"]
 CORE_FEATURE = "core"
 
@@ -306,12 +312,21 @@ FEATURE_CONFIG = {
             "plan-validate",
         ],
     },
+    "codebase-intelligence": {
+        "name": "Codebase Intelligence",
+        "description": "Semantic search and persistent memory for AI assistants. Provides context-aware code retrieval and cross-session knowledge management via MCP tools.",
+        "default_enabled": False,
+        "dependencies": ["constitution"],
+        "commands": ["ci"],  # User command for agents to use CI search/context/memory
+        "pip_extras": ["codebase-intelligence"],
+    },
 }
 
 FEATURE_DISPLAY_NAMES = {
     "constitution": "Constitution Management",
     "rfc": "RFC Management",
     "plan": "Planning",
+    "codebase-intelligence": "Codebase Intelligence",
 }
 
 # =============================================================================
@@ -319,8 +334,6 @@ FEATURE_DISPLAY_NAMES = {
 # =============================================================================
 
 UPGRADE_TEMPLATE_CATEGORIES = ["rfc", "constitution", "commands"]
-UPGRADE_IDE_SETTINGS = ["vscode", "cursor"]
-
 UPGRADE_COMMAND_NAMES = [
     "rfc-create",
     "rfc-list",
@@ -345,9 +358,6 @@ version: {version}
 
 # AI Agent configuration (supports multiple agents)
 agents: {agents}
-
-# IDE configuration (supports multiple IDEs)
-ides: {ides}
 
 # RFC configuration
 rfc:

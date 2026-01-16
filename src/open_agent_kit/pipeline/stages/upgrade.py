@@ -4,9 +4,16 @@ These stages wrap UpgradeService methods to provide a consistent
 pipeline-based upgrade flow.
 """
 
+from typing import Any, cast
+
 from open_agent_kit.pipeline.context import FlowType, PipelineContext
+from open_agent_kit.pipeline.models import (
+    CollectedUpgradeResults,
+    plan_has_upgrades,
+)
 from open_agent_kit.pipeline.ordering import StageOrder
 from open_agent_kit.pipeline.stage import BaseStage, StageOutcome
+from open_agent_kit.pipeline.utils import format_count_message, process_items
 
 
 class ValidateUpgradeEnvironmentStage(BaseStage):
@@ -65,43 +72,29 @@ class PlanUpgradeStage(BaseStage):
 
         upgrade_service = UpgradeService(context.project_root)
 
-        # Get upgrade options from context
+        # Get upgrade options from context (default to True if not specified)
         upgrade_commands = context.stage_results.get("upgrade_commands", True)
         upgrade_templates = context.stage_results.get("upgrade_templates", True)
-        upgrade_ide_settings = context.stage_results.get("upgrade_ide_settings", True)
+        upgrade_agent_settings = context.stage_results.get("upgrade_agent_settings", True)
         upgrade_skills = context.stage_results.get("upgrade_skills", True)
 
         plan = upgrade_service.plan_upgrade(
             commands=upgrade_commands,
             templates=upgrade_templates,
-            ide_settings=upgrade_ide_settings,
+            agent_settings=upgrade_agent_settings,
             skills=upgrade_skills,
         )
 
-        # Check if anything needs upgrading
-        skill_plan = plan["skills"]
-        has_upgrades = (
-            plan["commands"]
-            or plan["templates"]
-            or plan["obsolete_templates"]
-            or plan["ide_settings"]
-            or skill_plan["install"]
-            or skill_plan["upgrade"]
-            or plan["migrations"]
-            or plan["structural_repairs"]
-            or plan["version_outdated"]
-        )
+        # Check if anything needs upgrading using the utility function
+        # Cast to dict[str, Any] for plan_has_upgrades compatibility
+        has_upgrades = plan_has_upgrades(cast(dict[str, Any], plan))
+
+        result_data = {"plan": plan, "has_upgrades": has_upgrades}
 
         if not has_upgrades:
-            return StageOutcome.success(
-                "Already up to date",
-                data={"plan": plan, "has_upgrades": False},
-            )
+            return StageOutcome.success("Already up to date", data=result_data)
 
-        return StageOutcome.success(
-            "Upgrade plan created",
-            data={"plan": plan, "has_upgrades": True},
-        )
+        return StageOutcome.success("Upgrade plan created", data=result_data)
 
 
 class TriggerPreUpgradeHooksStage(BaseStage):
@@ -192,27 +185,20 @@ class UpgradeCommandsStage(BaseStage):
 
         upgrade_service = UpgradeService(context.project_root)
         plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
 
-        upgraded = []
-        failed = []
+        result = process_items(
+            plan.get("commands", []),
+            upgrade_service._upgrade_agent_command,
+            lambda cmd: cmd["file"],
+        )
 
-        for cmd in plan["commands"]:
-            try:
-                upgrade_service._upgrade_agent_command(cmd)
-                upgraded.append(cmd["file"])
-            except Exception as e:
-                failed.append(f"{cmd['file']}: {e}")
-
-        if failed:
-            return StageOutcome.success(
-                f"Upgraded {len(upgraded)} command(s), {len(failed)} failed",
-                data={"upgraded": upgraded, "failed": failed},
-            )
+        message = format_count_message(
+            "Upgraded", result.success_count, result.failure_count, "command"
+        )
 
         return StageOutcome.success(
-            f"Upgraded {len(upgraded)} command(s)",
-            data={"upgraded": upgraded, "failed": []},
+            message, data={"upgraded": result.succeeded, "failed": result.failed}
         )
 
 
@@ -220,51 +206,111 @@ class UpgradeCommandsStage(BaseStage):
 # Templates are now read directly from the installed package - no project copies to upgrade.
 
 
-class UpgradeIDESettingsStage(BaseStage):
-    """Upgrade IDE settings."""
+class UpgradeAgentSettingsStage(BaseStage):
+    """Upgrade agent auto-approval settings."""
 
-    name = "upgrade_ide_settings"
-    display_name = "Upgrading IDE settings"
-    order = 230
+    name = "upgrade_agent_settings"
+    display_name = "Upgrading agent settings"
+    order = 231
     applicable_flows = {FlowType.UPGRADE}
     is_critical = False
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are IDE settings to upgrade."""
+        """Run if there are agent settings to upgrade."""
         if context.dry_run:
             return False
         plan_result = context.get_result("plan_upgrade", {})
         plan = plan_result.get("plan", {})
-        return bool(plan.get("ide_settings"))
+        return bool(plan.get("agent_settings"))
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Upgrade IDE settings."""
+        """Upgrade agent settings."""
         from open_agent_kit.services.upgrade_service import UpgradeService
 
         upgrade_service = UpgradeService(context.project_root)
         plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
 
-        upgraded = []
-        failed = []
+        result = process_items(
+            plan.get("agent_settings", []),
+            upgrade_service._upgrade_agent_settings,
+        )
 
-        for ide in plan["ide_settings"]:
-            try:
-                upgrade_service._upgrade_ide_settings(ide)
-                upgraded.append(ide)
-            except Exception as e:
-                failed.append(f"{ide}: {e}")
-
-        if failed:
-            return StageOutcome.success(
-                f"Upgraded {len(upgraded)} IDE setting(s), {len(failed)} failed",
-                data={"upgraded": upgraded, "failed": failed},
-            )
+        message = format_count_message(
+            "Upgraded", result.success_count, result.failure_count, "agent setting"
+        )
 
         return StageOutcome.success(
-            f"Upgraded {len(upgraded)} IDE setting(s)",
-            data={"upgraded": upgraded, "failed": []},
+            message, data={"upgraded": result.succeeded, "failed": result.failed}
         )
+
+
+class UpgradeGitignoreStage(BaseStage):
+    """Add missing gitignore entries from feature manifests."""
+
+    name = "upgrade_gitignore"
+    display_name = "Updating gitignore"
+    order = 235
+    applicable_flows = {FlowType.UPGRADE}
+    is_critical = False
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Run if there are gitignore entries to add."""
+        if context.dry_run:
+            return False
+        plan_result = context.get_result("plan_upgrade", {})
+        plan = plan_result.get("plan", {})
+        return bool(plan.get("gitignore"))
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Add missing gitignore entries."""
+        from pathlib import Path
+
+        from open_agent_kit.config.paths import FEATURES_DIR
+        from open_agent_kit.models.feature import FeatureManifest
+        from open_agent_kit.utils import add_gitignore_entries
+
+        plan_result = context.get_result("plan_upgrade", {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
+        gitignore_plan = plan.get("gitignore", [])
+
+        # Group entries by feature
+        entries_by_feature: dict[str, list[str]] = {}
+        for item in gitignore_plan:
+            feature = item["feature"]
+            entries_by_feature.setdefault(feature, []).append(item["entry"])
+
+        # Package features directory for manifest lookup
+        package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+
+        upgraded: list[str] = []
+        failed: list[str] = []
+
+        for feature_name, entries in entries_by_feature.items():
+            try:
+                # Get feature display name for comment
+                manifest_path = package_features_dir / feature_name / "manifest.yaml"
+                display_name = feature_name
+                if manifest_path.exists():
+                    try:
+                        manifest = FeatureManifest.load(manifest_path)
+                        display_name = manifest.display_name
+                    except Exception:
+                        pass
+
+                added = add_gitignore_entries(
+                    context.project_root,
+                    entries,
+                    section_comment=f"open-agent-kit: {display_name}",
+                )
+                if added:
+                    upgraded.extend(f"{feature_name}: {entry}" for entry in added)
+            except Exception as e:
+                failed.extend(f"{feature_name}: {entry}: {e}" for entry in entries)
+
+        message = format_count_message("Added", len(upgraded), len(failed), "gitignore pattern")
+
+        return StageOutcome.success(message, data={"upgraded": upgraded, "failed": failed})
 
 
 class UpgradeSkillsStage(BaseStage):
@@ -291,38 +337,87 @@ class UpgradeSkillsStage(BaseStage):
 
         upgrade_service = UpgradeService(context.project_root)
         plan_result = context.get_result("plan_upgrade", {})
-        plan = plan_result.get("plan", {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
         skill_plan = plan.get("skills", {})
 
-        upgraded = []
-        failed = []
-
-        # Install new skills
-        for skill_info in skill_plan.get("install", []):
-            try:
-                upgrade_service._install_skill(skill_info["skill"], skill_info["feature"])
-                upgraded.append(skill_info["skill"])
-            except Exception as e:
-                failed.append(f"{skill_info['skill']}: {e}")
-
-        # Upgrade existing skills
-        for skill_info in skill_plan.get("upgrade", []):
-            try:
-                upgrade_service._upgrade_skill(skill_info["skill"])
-                upgraded.append(skill_info["skill"])
-            except Exception as e:
-                failed.append(f"{skill_info['skill']}: {e}")
-
-        if failed:
-            return StageOutcome.success(
-                f"Upgraded {len(upgraded)} skill(s), {len(failed)} failed",
-                data={"upgraded": upgraded, "failed": failed},
-            )
-
-        return StageOutcome.success(
-            f"Upgraded {len(upgraded)} skill(s)",
-            data={"upgraded": upgraded, "failed": []},
+        # Process skill installations
+        install_result = process_items(
+            skill_plan.get("install", []),
+            lambda info: upgrade_service._install_skill(info["skill"], info["feature"]),
+            lambda info: info["skill"],
         )
+
+        # Process skill upgrades
+        upgrade_result = process_items(
+            skill_plan.get("upgrade", []),
+            lambda info: upgrade_service._upgrade_skill(info["skill"]),
+            lambda info: info["skill"],
+        )
+
+        # Combine results
+        all_succeeded = install_result.succeeded + upgrade_result.succeeded
+        all_failed = install_result.failed + upgrade_result.failed
+
+        message = format_count_message("Upgraded", len(all_succeeded), len(all_failed), "skill")
+
+        return StageOutcome.success(message, data={"upgraded": all_succeeded, "failed": all_failed})
+
+
+class UpgradeHooksStage(BaseStage):
+    """Upgrade feature hooks for agents."""
+
+    name = "upgrade_hooks"
+    display_name = "Upgrading hooks"
+    order = 245
+    applicable_flows = {FlowType.UPGRADE}
+    is_critical = False
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Run if there are hooks to upgrade."""
+        if context.dry_run:
+            return False
+        plan_result = context.get_result("plan_upgrade", {})
+        plan = plan_result.get("plan", {})
+        return bool(plan.get("hooks"))
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Upgrade feature hooks by calling feature services."""
+        plan_result = context.get_result("plan_upgrade", {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
+        hooks_plan = plan.get("hooks", [])
+
+        upgraded: list[str] = []
+        failed: list[str] = []
+
+        # Group hooks by feature for efficient processing
+        hooks_by_feature: dict[str, list[str]] = {}
+        for hook_info in hooks_plan:
+            feature = hook_info["feature"]
+            agent = hook_info["agent"]
+            hooks_by_feature.setdefault(feature, []).append(agent)
+
+        # Call each feature's hook update method
+        for feature_name, agents in hooks_by_feature.items():
+            try:
+                # Trigger the feature's update_agent_hooks action
+                from open_agent_kit.features.codebase_intelligence.service import execute_hook
+
+                result = execute_hook(
+                    "update_agent_hooks",
+                    context.project_root,
+                    agents=agents,
+                )
+                if result.get("status") == "success":
+                    upgraded.extend(f"{agent} ({feature_name})" for agent in agents)
+                else:
+                    error_msg = result.get("message", "unknown error")
+                    failed.extend(f"{agent} ({feature_name}): {error_msg}" for agent in agents)
+            except Exception as e:
+                failed.extend(f"{agent} ({feature_name}): {e}" for agent in agents)
+
+        message = format_count_message("Upgraded", len(upgraded), len(failed), "hook")
+
+        return StageOutcome.success(message, data={"upgraded": upgraded, "failed": failed})
 
 
 class RunMigrationsStage(BaseStage):
@@ -427,11 +522,11 @@ class TriggerPostUpgradeHooksStage(BaseStage):
         """Trigger post-upgrade hooks."""
         feature_service = self._get_feature_service(context)
 
-        # Collect results from all upgrade stages
-        results = self._collect_upgrade_results(context)
+        # Collect results from all upgrade stages using the typed model
+        results = CollectedUpgradeResults.from_context(context)
 
         try:
-            hook_results = feature_service.trigger_post_upgrade_hooks(results)
+            hook_results = feature_service.trigger_post_upgrade_hooks(results.to_dict())
             successful = sum(1 for r in hook_results.values() if r.get("success"))
             return StageOutcome.success(
                 f"Ran {successful}/{len(hook_results)} post-upgrade hooks",
@@ -443,74 +538,27 @@ class TriggerPostUpgradeHooksStage(BaseStage):
                 data={"error": str(e)},
             )
 
-    def _collect_upgrade_results(self, context: PipelineContext) -> dict:
-        """Collect results from all upgrade stages."""
-        from typing import Any
-
-        results: dict[str, Any] = {
-            "commands": {"upgraded": [], "failed": []},
-            "templates": {"upgraded": [], "failed": []},
-            "obsolete_removed": {"upgraded": [], "failed": []},
-            "ide_settings": {"upgraded": [], "failed": []},
-            "skills": {"upgraded": [], "failed": []},
-            "migrations": {"upgraded": [], "failed": []},
-            "structural_repairs": [],
-            "version_updated": False,
-        }
-
-        # Collect from each stage result
-        cmd_result = context.get_result("upgrade_commands", {})
-        if cmd_result:
-            results["commands"]["upgraded"] = cmd_result.get("upgraded", [])
-            results["commands"]["failed"] = cmd_result.get("failed", [])
-
-        tpl_result = context.get_result("upgrade_templates", {})
-        if tpl_result:
-            results["templates"]["upgraded"] = tpl_result.get("upgraded", [])
-            results["templates"]["failed"] = tpl_result.get("failed", [])
-
-        obsolete_result = context.get_result("remove_obsolete_templates", {})
-        if obsolete_result:
-            results["obsolete_removed"]["upgraded"] = obsolete_result.get("removed", [])
-            results["obsolete_removed"]["failed"] = obsolete_result.get("failed", [])
-
-        ide_result = context.get_result("upgrade_ide_settings", {})
-        if ide_result:
-            results["ide_settings"]["upgraded"] = ide_result.get("upgraded", [])
-            results["ide_settings"]["failed"] = ide_result.get("failed", [])
-
-        skill_result = context.get_result("upgrade_skills", {})
-        if skill_result:
-            results["skills"]["upgraded"] = skill_result.get("upgraded", [])
-            results["skills"]["failed"] = skill_result.get("failed", [])
-
-        migration_result = context.get_result("run_migrations", {})
-        if migration_result:
-            results["migrations"]["upgraded"] = migration_result.get("completed", [])
-            results["migrations"]["failed"] = migration_result.get("failed", [])
-
-        repair_result = context.get_result("upgrade_structural_repairs", {})
-        if repair_result:
-            results["structural_repairs"] = repair_result.get("repaired", [])
-
-        version_result = context.get_result("update_upgrade_version", {})
-        if version_result and version_result.get("version"):
-            results["version_updated"] = True
-
-        return results
-
 
 def get_upgrade_stages() -> list[BaseStage]:
-    """Get all upgrade stages."""
+    """Get upgrade-specific stages (migration work).
+
+    Note: Reconciliation stages (agent commands, settings, skills, hooks) are
+    added separately via with_agent_stages(), with_skill_stages(), and
+    with_hook_stages() in the upgrade pipeline builder.
+
+    The pattern is: upgrade = migrate() + reconcile(config)
+    """
     return [
         ValidateUpgradeEnvironmentStage(),
         PlanUpgradeStage(),
         TriggerPreUpgradeHooksStage(),
         UpgradeStructuralRepairsStage(),
-        UpgradeCommandsStage(),
+        UpgradeCommandsStage(),  # Upgrades outdated command templates
         # Note: Template upgrade stages removed - templates are read from package
-        UpgradeIDESettingsStage(),
-        UpgradeSkillsStage(),
+        # Note: UpgradeAgentSettingsStage removed - handled by reconciliation
+        # Note: UpgradeHooksStage removed - handled by reconciliation
+        UpgradeGitignoreStage(),
+        UpgradeSkillsStage(),  # Upgrades outdated skill files
         RunMigrationsStage(),
         UpdateVersionStage(),
         TriggerPostUpgradeHooksStage(),

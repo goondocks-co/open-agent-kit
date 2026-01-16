@@ -1,5 +1,6 @@
 """Feature management commands for open-agent-kit."""
 
+import logging
 from pathlib import Path
 
 import typer
@@ -22,7 +23,62 @@ from open_agent_kit.utils import (
     prompt,
 )
 
+logger = logging.getLogger(__name__)
+
 console = Console()
+
+
+def _start_ci_and_open_settings(project_root: Path) -> None:
+    """Start CI daemon and open browser to settings tab.
+
+    Called after codebase-intelligence feature is installed to guide
+    the user through initial configuration.
+    """
+    import time
+    import webbrowser
+
+    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+        DaemonManager,
+        get_project_port,
+    )
+
+    ci_data_dir = project_root / OAK_DIR / "ci"
+    port = get_project_port(project_root, ci_data_dir)
+    manager = DaemonManager(project_root=project_root, port=port, ci_data_dir=ci_data_dir)
+
+    console.print()
+    print_info("Starting Codebase Intelligence daemon...")
+
+    if manager.start(wait=True):
+        settings_url = f"http://localhost:{port}/ui?tab=settings"
+        print_info(f"Opening settings: {settings_url}")
+
+        # Give daemon a moment to fully initialize
+        time.sleep(0.5)
+
+        # Try to open browser
+        try:
+            webbrowser.open(settings_url)
+            console.print()
+            console.print(
+                "[bold]Configure your embedding provider to start indexing.[/bold]",
+                style="cyan",
+            )
+            console.print(
+                "If the browser didn't open, visit: " + settings_url,
+                style="dim",
+            )
+        except OSError as e:
+            logger.warning(f"Failed to open browser: {e}")
+            console.print()
+            console.print(
+                f"[bold]Open this URL to configure:[/bold] {settings_url}",
+                style="cyan",
+            )
+    else:
+        print_info(f"Daemon could not start. Check logs: {manager.log_file}")
+        print_info("Run 'oak ci start' to try again.")
+
 
 feature_app = typer.Typer(
     name="feature",
@@ -150,6 +206,7 @@ def feature_add(
 
     # Install features
     tracker = StepTracker(len(new_features))
+    failures = []
 
     for feature_name in new_features:
         display_name = FEATURE_DISPLAY_NAMES.get(feature_name, feature_name)
@@ -159,11 +216,22 @@ def feature_add(
             results = feature_service.install_feature(feature_name, agents)
             cmd_count = len(results["commands_installed"])
             tracker.complete_step(f"Installed {display_name} ({cmd_count} commands)")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.error(f"Failed to install {display_name}: {e}")
             tracker.fail_step(f"Failed to install {display_name}", str(e))
-            raise typer.Exit(code=1)
+            failures.append((display_name, str(e)))
+
+    if failures:
+        print_error(f"Failed to install {len(failures)} feature(s):")
+        for fname, err in failures:
+            print_error(f"  - {fname}: {err}")
+        raise typer.Exit(code=1)
 
     tracker.finish(FEATURE_MESSAGES["feature_added"].format(feature=name_lower))
+
+    # Special handling for codebase-intelligence: start daemon and open settings
+    if name_lower == "codebase-intelligence":
+        _start_ci_and_open_settings(project_root)
 
 
 @feature_app.command("refresh")
@@ -207,6 +275,7 @@ def feature_refresh() -> None:
 
     # Perform refresh
     tracker = StepTracker(len(installed))
+    failures = []
 
     for feature_name in installed:
         display_name = FEATURE_DISPLAY_NAMES.get(feature_name, feature_name)
@@ -216,9 +285,16 @@ def feature_refresh() -> None:
             results = feature_service.install_feature(feature_name, agents)
             cmd_count = len(results.get("commands_installed", []))
             tracker.complete_step(f"Refreshed {display_name} ({cmd_count} commands)")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.error(f"Failed to refresh {display_name}: {e}")
             tracker.fail_step(f"Failed to refresh {display_name}", str(e))
-            raise typer.Exit(code=1)
+            failures.append((display_name, str(e)))
+
+    if failures:
+        print_error(f"Failed to refresh {len(failures)} feature(s):")
+        for fname, err in failures:
+            print_error(f"  - {fname}: {err}")
+        raise typer.Exit(code=1)
 
     tracker.finish("Features refreshed with current configuration!")
 
@@ -290,7 +366,8 @@ def feature_remove(
         results = feature_service.remove_feature(name_lower, agents, remove_config=remove_config)
         cmd_count = len(results["commands_removed"])
         tracker.complete_step(f"Removed {display_name} ({cmd_count} commands)")
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.error(f"Failed to remove {display_name}: {e}")
         tracker.fail_step(f"Failed to remove {display_name}", str(e))
         raise typer.Exit(code=1)
 
@@ -408,6 +485,7 @@ def _interactive_feature_management(project_root: Path) -> None:
     # Execute changes
     total_steps = len(to_add) + len(to_remove)
     tracker = StepTracker(total_steps)
+    failures = []
 
     # Remove features first (in reverse dependency order)
     for feature_name in reversed(to_remove):
@@ -416,8 +494,10 @@ def _interactive_feature_management(project_root: Path) -> None:
         try:
             feature_service.remove_feature(feature_name, agents)
             tracker.complete_step(f"Removed {display_name}")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.error(f"Failed to remove {display_name}: {e}")
             tracker.fail_step(f"Failed to remove {display_name}", str(e))
+            failures.append((display_name, str(e)))
 
     # Add features (in dependency order)
     for feature_name in to_add:
@@ -426,7 +506,15 @@ def _interactive_feature_management(project_root: Path) -> None:
         try:
             feature_service.install_feature(feature_name, agents)
             tracker.complete_step(f"Installed {display_name}")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.error(f"Failed to install {display_name}: {e}")
             tracker.fail_step(f"Failed to install {display_name}", str(e))
+            failures.append((display_name, str(e)))
+
+    if failures:
+        print_error(f"Failed to update {len(failures)} feature(s):")
+        for fname, err in failures:
+            print_error(f"  - {fname}: {err}")
+        raise typer.Exit(code=1)
 
     tracker.finish("Feature configuration updated!")

@@ -12,7 +12,7 @@ class StageOrder:
     - 100-199: Configuration (load/create config)
     - 200-299: Agent setup (command installation)
     - 300-399: Feature installation
-    - 400-499: IDE configuration
+    - 400-499: Reserved for future use
     - 500-599: Skill installation
     - 600-699: Lifecycle hooks
     - 700-799: Migrations and repairs
@@ -28,7 +28,6 @@ class StageOrder:
     LOAD_EXISTING_CONFIG = 100
     CREATE_CONFIG = 110
     UPDATE_CONFIG_AGENTS = 120
-    UPDATE_CONFIG_IDES = 130
     UPDATE_CONFIG_FEATURES = 140
     SAVE_CONFIG = 150
     MARK_MIGRATIONS_COMPLETE = 160  # For fresh installs
@@ -39,16 +38,16 @@ class StageOrder:
     INSTALL_AGENT_COMMANDS = 220
     REMOVE_AGENT_COMMANDS = 230  # For removed agents
     UPDATE_AGENT_CAPABILITIES = 240
+    REMOVE_AGENT_SETTINGS = 250  # For removed agents
+    INSTALL_AGENT_SETTINGS = 260  # Auto-approve settings for agents
 
     # Feature phase (300-399)
     RESOLVE_FEATURE_DEPENDENCIES = 300
     REMOVE_FEATURES = 310
     INSTALL_FEATURES = 320
 
-    # IDE phase (400-499)
-    INSTALL_CORE_IDE_ASSETS = 400
-    REMOVE_IDE_SETTINGS = 410
-    INSTALL_IDE_SETTINGS = 420
+    # Reserved (400-499)
+    UPGRADE_AGENT_SETTINGS = 425  # Agent auto-approval settings (upgrade pipeline)
 
     # Skill phase (500-599)
     INSTALL_SKILLS = 500
@@ -56,7 +55,6 @@ class StageOrder:
 
     # Hook phase (600-699)
     TRIGGER_AGENTS_CHANGED = 600
-    TRIGGER_IDES_CHANGED = 610
     TRIGGER_FEATURES_CHANGED = 620
     TRIGGER_INIT_COMPLETE = 650
 
@@ -78,6 +76,5 @@ class StageOrder:
     TRIGGER_PRE_REMOVE_HOOKS = 1020
     REMOVE_SKILLS = 1030
     REMOVE_CREATED_FILES = 1040
-    REMOVE_IDE_SETTINGS_REMOVAL = 1050  # Different from REMOVE_IDE_SETTINGS (update flow)
     CLEANUP_DIRECTORIES = 1060
     REMOVE_OAK_DIR = 1070

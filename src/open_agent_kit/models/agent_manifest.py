@@ -119,6 +119,28 @@ class AgentRequirements(BaseModel):
     )
 
 
+class AgentMcpConfig(BaseModel):
+    """MCP (Model Context Protocol) server configuration for the agent.
+
+    Defines where and how MCP servers are registered for this agent.
+    Each agent may store MCP server configs in different locations with
+    different key names (e.g., "mcpServers" vs "servers").
+    """
+
+    config_file: str = Field(
+        ...,
+        description="Path to the MCP config file relative to project root (e.g., '.claude/settings.local.json')",
+    )
+    format: str = Field(
+        default="json",
+        description="Config file format (currently only 'json' is supported)",
+    )
+    servers_key: str = Field(
+        default="mcpServers",
+        description="Key name in the config file where servers are registered (e.g., 'mcpServers' or 'servers')",
+    )
+
+
 class AgentManifest(BaseModel):
     """Agent manifest model representing an AI coding agent's configuration.
 
@@ -192,6 +214,12 @@ class AgentManifest(BaseModel):
     settings: dict[str, Any] = Field(
         default_factory=dict,
         description="Agent-specific custom settings",
+    )
+
+    # MCP server configuration
+    mcp: AgentMcpConfig | None = Field(
+        default=None,
+        description="MCP server registration configuration",
     )
 
     @classmethod

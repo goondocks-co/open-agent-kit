@@ -30,4 +30,11 @@ capabilities:
   context_handling: large       # large | medium | small - Cascade handles context well
   model_consistency: variable   # high | medium | variable - user can switch models
 
-settings: {}
+settings:
+  # Auto-approval settings for oak commands
+  # Windsurf uses cascadeCommandsAllowList in settings.json to auto-execute commands
+  auto_approve:
+    enabled: true
+    file: ".windsurf/settings.json"
+    format: json
+    template: "agent-settings/windsurf-settings.json"  # Template from features/core/

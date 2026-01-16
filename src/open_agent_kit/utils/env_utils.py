@@ -115,3 +115,147 @@ def ensure_gitignore_has_issue_context(project_root: Path) -> None:
         # Write back
         with gitignore_path.open("w", encoding="utf-8") as f:
             f.writelines(existing_lines)
+
+
+def add_gitignore_entries(
+    project_root: Path,
+    entries: list[str],
+    section_comment: str | None = None,
+) -> list[str]:
+    """Add entries to .gitignore if not already present.
+
+    This is a generic function for features to add gitignore patterns
+    declaratively. Patterns are added in a single section with an
+    optional comment header.
+
+    Args:
+        project_root: Project root directory
+        entries: List of gitignore patterns to add (e.g., [".oak/ci/", "*.log"])
+        section_comment: Optional comment to add before entries (e.g., "Feature: CI data")
+
+    Returns:
+        List of entries that were actually added (not already present)
+    """
+    gitignore_path = project_root / ".gitignore"
+
+    # Read existing content
+    existing_lines: list[str] = []
+    existing_patterns: set[str] = set()
+
+    if gitignore_path.exists():
+        with gitignore_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                existing_lines.append(line)
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    existing_patterns.add(stripped)
+
+    # Find entries that need to be added
+    entries_to_add = [e for e in entries if e.strip() not in existing_patterns]
+    if not entries_to_add:
+        return []
+
+    # Ensure file ends with newline
+    if existing_lines and not existing_lines[-1].endswith("\n"):
+        existing_lines.append("\n")
+
+    # Add section comment if provided
+    if section_comment:
+        existing_lines.append(f"\n# {section_comment}\n")
+    elif existing_lines:
+        existing_lines.append("\n")
+
+    # Add new entries
+    for entry in entries_to_add:
+        existing_lines.append(f"{entry.strip()}\n")
+
+    # Write back
+    with gitignore_path.open("w", encoding="utf-8") as f:
+        f.writelines(existing_lines)
+
+    return entries_to_add
+
+
+def remove_gitignore_entries(
+    project_root: Path,
+    entries: list[str],
+) -> list[str]:
+    """Remove entries from .gitignore.
+
+    This is a generic function for features to remove gitignore patterns
+    when the feature is disabled. Also removes associated comment lines
+    if they immediately precede the removed entry.
+
+    Args:
+        project_root: Project root directory
+        entries: List of gitignore patterns to remove
+
+    Returns:
+        List of entries that were actually removed
+    """
+    gitignore_path = project_root / ".gitignore"
+
+    if not gitignore_path.exists():
+        return []
+
+    # Normalize entries for comparison
+    entries_to_remove = {e.strip() for e in entries}
+
+    # Read existing content
+    with gitignore_path.open("r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # Build new content, removing specified entries
+    new_lines: list[str] = []
+    removed: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Check if this line should be removed
+        if stripped in entries_to_remove:
+            removed.append(stripped)
+            # Also remove preceding comment line if it looks related
+            if new_lines and new_lines[-1].strip().startswith("#"):
+                # Check if comment is on its own line (feature-specific)
+                # Don't remove if it's a shared section header
+                prev_comment = new_lines[-1].strip()
+                # Remove preceding comment that looks feature-specific
+                if "oak" in prev_comment.lower() or len(prev_comment) < 60:
+                    new_lines.pop()
+            i += 1
+            continue
+
+        new_lines.append(line)
+        i += 1
+
+    # Clean up excessive blank lines at end
+    while len(new_lines) > 1 and new_lines[-1].strip() == "" and new_lines[-2].strip() == "":
+        new_lines.pop()
+
+    if not removed:
+        return []
+
+    # Write back
+    with gitignore_path.open("w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+    return removed
+
+
+def ensure_gitignore_has_ci_data(project_root: Path) -> None:
+    """Ensure .gitignore includes .oak/ci/ directory.
+
+    DEPRECATED: This function is kept for backwards compatibility.
+    Features should use the manifest 'gitignore' field instead.
+
+    Args:
+        project_root: Project root directory
+    """
+    add_gitignore_entries(
+        project_root,
+        entries=[".oak/ci/"],
+        section_comment="open-agent-kit: Codebase Intelligence data (regenerated locally)",
+    )

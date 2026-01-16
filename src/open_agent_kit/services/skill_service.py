@@ -13,6 +13,7 @@ is installed, its associated skills are automatically installed (for agents with
 skills support). When a feature is removed, its skills are also removed.
 """
 
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ from open_agent_kit.config.paths import (
 from open_agent_kit.models.skill import SkillManifest
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.utils import ensure_dir, write_file
+
+logger = logging.getLogger(__name__)
 
 
 class SkillService:

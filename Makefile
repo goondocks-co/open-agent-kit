@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup install-tool sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build
+.PHONY: help venv setup setup-minimal install-global install-global-dev sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart
 
 # Default target
 help:
@@ -18,12 +18,13 @@ help:
 	@echo "Prerequisites: Python 3.13+, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make setup        Install all dependencies (recommended first step)"
-	@echo "    make venv         Setup virtual environment and show activation command"
-	@echo "    make install Install 'oak' globally via uv tool (works from any directory)"
-	@echo "    make sync         Sync dependencies with lockfile"
-	@echo "    make lock         Update lockfile after changing pyproject.toml"
-	@echo "    make uninstall    Remove dev environment and stale global installs"
+	@echo "    make setup          Install ALL dependencies including CI feature (recommended)"
+	@echo "    make setup-minimal  Install only core dev dependencies (no CI feature)"
+	@echo "    make venv           Setup virtual environment and show activation command"
+	@echo "    make install-global Install 'oak' globally via uv tool (for end-users)"
+	@echo "    make sync           Sync dependencies with lockfile"
+	@echo "    make lock           Update lockfile after changing pyproject.toml"
+	@echo "    make uninstall      Remove dev environment and stale global installs"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test         Run all tests with coverage"
@@ -40,6 +41,12 @@ help:
 	@echo "  Build:"
 	@echo "    make build        Build package"
 	@echo "    make clean        Remove build artifacts and cache"
+	@echo ""
+	@echo "  Codebase Intelligence (CI daemon):"
+	@echo "    make ci-dev       Run daemon with hot reload (development)"
+	@echo "    make ci-start     Start the daemon"
+	@echo "    make ci-stop      Stop the daemon"
+	@echo "    make ci-restart   Stop and start the daemon (picks up code changes)"
 
 # Setup targets
 venv:
@@ -55,17 +62,36 @@ venv:
 
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	uv sync --extra dev
-	@echo "\nSetup complete! Run 'make check' to verify everything works."
-	@echo "To use 'oak' globally from any directory, run: make install-tool"
+	uv sync --all-extras
+	@echo "\nSetup complete! All features installed (including CI)."
+	@echo "Run 'make check' to verify everything works."
+	@echo "For development, activate venv: source .venv/bin/activate"
+	@echo ""
+	@echo "CI feature dev workflow:"
+	@echo "  make ci-dev      Run daemon with hot reload (auto-restarts on code changes)"
+	@echo "  make ci-restart  Manual restart after code changes"
 
-install:
+setup-minimal:
+	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	uv sync --extra dev
+	@echo "\nMinimal setup complete (no CI feature deps)."
+	@echo "For full dev setup with CI feature: make setup"
+
+install-global:
 	@echo "Installing oak globally via uv tool..."
+	@echo "(For development, use 'make setup' instead - changes are picked up automatically)"
+	@echo "(CI feature dependencies will be installed when you enable the feature)"
 	uv tool install --editable . --force
 	@echo "\n'oak' is now available globally from any directory."
 
+install-global-dev:
+	@echo "Installing oak globally with all dev dependencies..."
+	@echo "(For development, use 'make setup' instead - changes are picked up automatically)"
+	uv tool install --editable . --force --with ".[codebase-intelligence,ci-parsers]"
+	@echo "\n'oak' is now available globally with CI feature pre-installed."
+
 sync:
-	uv sync --extra dev
+	uv sync --all-extras
 
 lock:
 	uv lock
@@ -127,3 +153,30 @@ clean:
 	rm -rf .coverage
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+# Codebase Intelligence daemon targets
+#
+# Dev workflow for CI feature:
+#   1. make ci-dev     - Run with hot reload (best for development)
+#   2. make ci-restart - Manual restart after code changes
+#
+# Note: 'make ci-dev' uses uvicorn --reload which auto-restarts on file changes
+# in src/. This is the recommended way to develop the CI feature.
+
+ci-dev:
+	@echo "Starting CI daemon with hot reload (Ctrl+C to stop)..."
+	@echo "The daemon will auto-restart when you modify files in src/"
+	@echo ""
+	OAK_CI_PROJECT_ROOT=$(PWD) uv run uvicorn open_agent_kit.features.codebase_intelligence.daemon.server:create_app --factory --host 127.0.0.1 --port 37800 --reload --reload-dir src/
+
+ci-start:
+	uv run oak ci start
+
+ci-stop:
+	@echo "Stopping CI daemon..."
+	@pkill -f "uvicorn.*codebase_intelligence" 2>/dev/null && echo "Daemon stopped." || echo "No daemon running."
+
+ci-restart: ci-stop
+	@sleep 1
+	@echo "Starting CI daemon..."
+	uv run oak ci start

@@ -325,14 +325,14 @@ class TestJinja2Rendering:
 
     def test_has_jinja2_syntax_detection(self, initialized_project: Path) -> None:
         """Test detection of Jinja2 syntax in content."""
-        service = FeatureService(initialized_project)
+        from open_agent_kit.utils.template_utils import has_jinja2_syntax
 
         # Should detect {{ and {%
-        assert service._has_jinja2_syntax("Hello {{ name }}")
-        assert service._has_jinja2_syntax("{% if condition %}yes{% endif %}")
-        assert service._has_jinja2_syntax("{{ var }} and {% block %}")
+        assert has_jinja2_syntax("Hello {{ name }}")
+        assert has_jinja2_syntax("{% if condition %}yes{% endif %}")
+        assert has_jinja2_syntax("{{ var }} and {% block %}")
 
         # Should not detect regular content
-        assert not service._has_jinja2_syntax("Hello world")
-        assert not service._has_jinja2_syntax("Just some text")
-        assert not service._has_jinja2_syntax("Curly { braces } alone")
+        assert not has_jinja2_syntax("Hello world")
+        assert not has_jinja2_syntax("Just some text")
+        assert not has_jinja2_syntax("Curly { braces } alone")
