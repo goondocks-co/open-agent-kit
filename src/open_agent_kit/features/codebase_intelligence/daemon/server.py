@@ -18,16 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_INDEXING_TIMEOUT_SECONDS,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.routes import (
-    activity_router,
-    config_router,
-    health_router,
-    hook_router,
-    index_router,
-    mcp_router,
-    search_router,
-    ui_router,
-)
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 
@@ -101,11 +91,13 @@ async def _background_index() -> None:
         logger.error(f"Background indexing failed: {e}")
         state.index_status.set_error()
     finally:
-        # Ensure file count is updated even if indexing failed or was partial
-        try:
-            state.index_status.file_count = state.vector_store.count_unique_files()
-        except (OSError, AttributeError, RuntimeError) as e:
-            logger.warning(f"Failed to update file count: {e}")
+        # Only update file count from DB if it wasn't set by successful indexing
+        # This prevents overwriting the accurate count from build_index() result
+        if state.index_status.file_count == 0 and state.vector_store:
+            try:
+                state.index_status.file_count = state.vector_store.count_unique_files()
+            except (OSError, AttributeError, RuntimeError) as e:
+                logger.warning(f"Failed to update file count: {e}")
 
 
 async def _start_file_watcher() -> None:
@@ -419,9 +411,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info(f"Vector store initialized at {ci_data_dir}")
 
             # Initialize indexer with configured chunk size
-            from open_agent_kit.features.codebase_intelligence.config import (
-                DEFAULT_EXCLUDE_PATTERNS,
-            )
             from open_agent_kit.features.codebase_intelligence.indexing.chunker import (
                 ChunkerConfig,
             )
@@ -434,13 +423,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 max_chunk_chars=ci_config.embedding.get_max_chunk_chars(),
             )
 
-            # Merge user-configured exclude patterns with default ignore patterns
-            # User patterns from config.yaml are added to the built-in defaults
-            combined_patterns = list(DEFAULT_EXCLUDE_PATTERNS)
-            for pattern in ci_config.exclude_patterns:
-                if pattern not in combined_patterns:
-                    combined_patterns.append(pattern)
-                    logger.debug(f"Added exclude pattern: {pattern}")
+            # Get combined exclusion patterns from config (defaults + user patterns)
+            combined_patterns = ci_config.get_combined_exclude_patterns()
+            user_patterns = ci_config.get_user_exclude_patterns()
+            if user_patterns:
+                logger.debug(f"User exclude patterns: {user_patterns}")
 
             indexer_config = IndexerConfig(ignore_patterns=combined_patterns)
 
@@ -593,15 +580,34 @@ def create_app(
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    # Register routes from modular route handlers
-    app.include_router(health_router)
-    app.include_router(search_router)
-    app.include_router(activity_router)
-    app.include_router(index_router)
-    app.include_router(hook_router)
-    app.include_router(mcp_router)
-    app.include_router(config_router)
-    app.include_router(ui_router)
+    # Include routers
+    from open_agent_kit.features.codebase_intelligence.daemon.routes import (
+        activity,
+        devtools,
+        health,
+        hooks,
+        index,
+        mcp,
+        search,
+        ui,
+    )
+    from open_agent_kit.features.codebase_intelligence.daemon.routes import (
+        config as config_routes,
+    )
+
+    # Routes already include full paths (e.g., /api/health, /api/search)
+    # so no prefix is needed
+    app.include_router(health.router)
+    app.include_router(config_routes.router)
+    app.include_router(index.router)
+    app.include_router(search.router)
+    app.include_router(activity.router)
+    app.include_router(hooks.router)
+    app.include_router(mcp.router)
+    app.include_router(devtools.router)
+
+    # UI router must be last to catch fallback routes
+    app.include_router(ui.router)
 
     # Mount static files
     # Use strict=False to allow serving files on windows if needed, but mainly ensure verify directory exists

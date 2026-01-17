@@ -161,7 +161,7 @@ class TestUpdateConfig:
     def test_update_embedding_provider(self, client, setup_state_with_project):
         """Test updating embedding provider."""
         payload = {
-            "provider": "openai",
+            "embedding": {"provider": "openai"},
         }
         response = client.put("/api/config", json=payload)
 
@@ -173,7 +173,7 @@ class TestUpdateConfig:
     def test_update_embedding_model(self, client, setup_state_with_project):
         """Test updating embedding model."""
         payload = {
-            "model": "text-embedding-3-small",
+            "embedding": {"model": "text-embedding-3-small"},
         }
         response = client.put("/api/config", json=payload)
 
@@ -185,7 +185,7 @@ class TestUpdateConfig:
     def test_update_base_url(self, client, setup_state_with_project):
         """Test updating base URL."""
         payload = {
-            "base_url": "http://localhost:8000",
+            "embedding": {"base_url": "http://localhost:8000"},
         }
         response = client.put("/api/config", json=payload)
 
@@ -196,7 +196,7 @@ class TestUpdateConfig:
     def test_update_context_tokens(self, client, setup_state_with_project):
         """Test updating context tokens."""
         payload = {
-            "context_tokens": 1024,
+            "embedding": {"context_tokens": 1024},
         }
         response = client.put("/api/config", json=payload)
 
@@ -207,7 +207,7 @@ class TestUpdateConfig:
     def test_update_max_chunk_chars(self, client, setup_state_with_project):
         """Test updating max chunk characters."""
         payload = {
-            "max_chunk_chars": 4000,
+            "embedding": {"max_chunk_chars": 4000},
         }
         response = client.put("/api/config", json=payload)
 
@@ -245,9 +245,11 @@ class TestUpdateConfig:
     def test_update_multiple_settings(self, client, setup_state_with_project):
         """Test updating multiple settings at once."""
         payload = {
-            "provider": "openai",
-            "model": "text-embedding-3-large",
-            "base_url": "https://api.openai.com/v1",
+            "embedding": {
+                "provider": "openai",
+                "model": "text-embedding-3-large",
+                "base_url": "https://api.openai.com/v1",
+            }
         }
         response = client.put("/api/config", json=payload)
 
@@ -259,7 +261,7 @@ class TestUpdateConfig:
     def test_update_config_fallback_enabled(self, client, setup_state_with_project):
         """Test updating fallback enabled flag."""
         payload = {
-            "fallback_enabled": True,
+            "embedding": {"fallback_enabled": True},
         }
         response = client.put("/api/config", json=payload)
 
@@ -281,14 +283,14 @@ class TestUpdateConfig:
         """Test update config fails without project root."""
         # Reset state AFTER client creation (client fixture sets project_root)
         reset_state()
-        response = client.put("/api/config", json={"provider": "openai"})
+        response = client.put("/api/config", json={"embedding": {"provider": "openai"}})
 
         assert response.status_code == 500
 
     def test_update_config_returns_updated_values(self, client, setup_state_with_project):
         """Test that response includes updated values."""
         payload = {
-            "model": "text-embedding-3-large",
+            "embedding": {"model": "text-embedding-3-large"},
         }
         response = client.put("/api/config", json=payload)
 

@@ -89,6 +89,7 @@ class PipelineContext:
     force: bool = False
     interactive: bool = True
     dry_run: bool = False  # For upgrade preview
+    options: dict[str, Any] = field(default_factory=dict)  # Flow-specific options
 
     # User selections (populated by selection stages or CLI)
     selections: SelectionState = field(default_factory=SelectionState)

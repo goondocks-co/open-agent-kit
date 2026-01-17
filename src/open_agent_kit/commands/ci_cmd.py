@@ -1082,7 +1082,7 @@ def ci_exclude(
         print_header("Exclude Patterns")
 
         # Show user-configured patterns (from config.yaml)
-        user_patterns = [p for p in config.exclude_patterns if p not in DEFAULT_EXCLUDE_PATTERNS]
+        user_patterns = config.get_user_exclude_patterns()
         if user_patterns:
             print_info("User-configured exclusions:")
             for pattern in user_patterns:
@@ -1092,9 +1092,7 @@ def ci_exclude(
 
         console.print()
         print_info("Built-in default exclusions:")
-        # Combine both default lists
-        all_defaults = set(DEFAULT_EXCLUDE_PATTERNS)
-        for pattern in sorted(all_defaults):
+        for pattern in sorted(DEFAULT_EXCLUDE_PATTERNS):
             console.print(f"  [dim]•[/dim] {pattern}", style="dim")
 
         console.print()

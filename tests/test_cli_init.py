@@ -63,24 +63,37 @@ def test_init_does_not_copy_templates(temp_project_dir: Path) -> None:
 
 
 def test_init_with_claude_agent(temp_project_dir: Path) -> None:
-    """Test init with Claude agent creates command files in native directory."""
+    """Test init with Claude agent creates skill files in native directory.
+
+    Note: Claude has has_skills=True, so skill files are installed instead
+    of command prompt files. Skills go to .claude/skills/ directory.
+    Default features are rules-management and codebase-intelligence.
+    """
     init_command(force=False, agent=["claude"], no_interactive=True)
-    commands_dir = temp_project_dir / ".claude" / "commands"
-    assert commands_dir.exists()
-    assert (commands_dir / "oak.rfc-create.md").exists()
-    assert (commands_dir / "oak.rfc-list.md").exists()
-    assert (commands_dir / "oak.rfc-validate.md").exists()
+    # Claude uses skills in .claude/skills/, not commands
+    skills_dir = temp_project_dir / ".claude" / "skills"
+    assert skills_dir.exists()
+    # Check for skills from installed features (rules-management, codebase-intelligence)
+    assert (skills_dir / "adding-project-rules" / "SKILL.md").exists()
+    assert (skills_dir / "finding-related-code" / "SKILL.md").exists()
 
 
 def test_init_with_multiple_agents(temp_project_dir: Path) -> None:
-    """Test init with multiple agents creates command files for all."""
-    init_command(force=False, agent=["claude", "copilot"], no_interactive=True)
-    claude_dir = temp_project_dir / ".claude" / "commands"
-    assert claude_dir.exists()
-    assert (claude_dir / "oak.rfc-create.md").exists()
-    copilot_dir = temp_project_dir / ".github" / "agents"
-    assert copilot_dir.exists()
-    assert (copilot_dir / "oak.rfc-create.agent.md").exists()
+    """Test init with multiple agents creates appropriate files for each.
+
+    Both Claude and Copilot have has_skills=True, so they get skill files.
+    Cursor does NOT have skills, so it gets command files.
+    Default features are rules-management and codebase-intelligence.
+    """
+    init_command(force=False, agent=["claude", "cursor"], no_interactive=True)
+    # Claude gets skills (has_skills=True) in .claude/skills/
+    skills_dir = temp_project_dir / ".claude" / "skills"
+    assert skills_dir.exists()
+    assert (skills_dir / "adding-project-rules" / "SKILL.md").exists()
+    # Cursor gets commands (no skills support) in .cursor/commands/
+    cursor_dir = temp_project_dir / ".cursor" / "commands"
+    assert cursor_dir.exists()
+    assert (cursor_dir / "oak.add-project-rule.md").exists()
 
 
 def test_init_with_force_flag(temp_project_dir: Path) -> None:

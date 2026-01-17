@@ -56,19 +56,22 @@ HELP_TEXT = """
 For more information, visit: https://github.com/sirkirby/open-agent-kit
 """
 
-NEXT_STEPS_INIT = """[bold green]Next Steps[/bold green]
+NEXT_STEPS_INIT = """[bold green]What's Next?[/bold green]
 
-1. Review your configuration:
-   [dim]$ cat {config_file}[/dim]
+OAK enhances your AI coding assistants with skills and project context.
 
-2. Create your first RFC:
-   [dim]$ oak rfc create "Your RFC description"[/dim]
+[bold]For agents with skills support (Claude, Copilot, Gemini):[/bold]
+  Skills are automatically discovered. Use them naturally:
+  [dim]• "add a project rule about test coverage"[/dim]
+  [dim]• "create an RFC for the new authentication system"[/dim]
 
-3. List available templates:
-   [dim]$ ls {templates_dir}/rfc/[/dim]
+[bold]For agents with commands (Cursor, Windsurf, Codex):[/bold]
+  Type [cyan]/oak[/cyan] to see available commands.
 
-4. Customize templates:
-   [dim]Edit files in {templates_dir}/[/dim]"""
+[bold]Manage features:[/bold]
+  [dim]$ oak feature list[/dim]     # See installed features
+  [dim]$ oak feature add[/dim]      # Add new features
+  [dim]$ oak upgrade[/dim]          # Keep OAK updated"""
 
 # =============================================================================
 # Success Messages

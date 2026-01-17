@@ -45,13 +45,19 @@ async def get_status() -> dict:
         }
 
     # Get index statistics
-    # Get index statistics
     chunks_indexed = 0
-    memories_stored = 0
+    memories_chromadb = 0
     if state.vector_store:
         stats = state.vector_store.get_stats()
         chunks_indexed = stats.get("code_chunks", 0)
-        memories_stored = stats.get("memory_observations", 0)
+        memories_chromadb = stats.get("memory_observations", 0)
+
+    # Get memory stats from SQLite (source of truth)
+    memories_sqlite = 0
+    memories_unembedded = 0
+    if state.activity_store:
+        memories_sqlite = state.activity_store.count_observations()
+        memories_unembedded = state.activity_store.count_unembedded_observations()
 
     # Use accurate file count from state (tracked by watcher/indexer)
     files_indexed = state.index_status.file_count
@@ -72,7 +78,9 @@ async def get_status() -> dict:
         "index_stats": {
             "files_indexed": files_indexed,
             "chunks_indexed": chunks_indexed,
-            "memories_stored": memories_stored,
+            "memories_stored": memories_sqlite,  # SQLite is source of truth
+            "memories_chromadb": memories_chromadb,
+            "memories_unembedded": memories_unembedded,
             "last_indexed": state.index_status.last_indexed,
             "duration_seconds": state.index_status.duration_seconds,
             "status": state.index_status.status,

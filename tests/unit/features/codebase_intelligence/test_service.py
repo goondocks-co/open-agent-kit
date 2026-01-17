@@ -113,46 +113,6 @@ class TestOakManagedHookDetection:
 
 
 # =============================================================================
-# Constitution Section Tests
-# =============================================================================
-
-
-class TestConstitutionSection:
-    """Test constitution section generation."""
-
-    def test_get_ci_constitution_section_content(self, ci_service: CodebaseIntelligenceService):
-        """Test that constitution section contains required elements."""
-        section = ci_service._get_ci_constitution_section()
-
-        # Verify key sections exist
-        assert "## Codebase Intelligence" in section
-        assert "oak ci context" in section
-        assert "oak ci search" in section
-        assert "oak ci remember" in section
-
-    def test_get_ci_constitution_section_has_memory_types(
-        self, ci_service: CodebaseIntelligenceService
-    ):
-        """Test that constitution section includes all memory types."""
-        section = ci_service._get_ci_constitution_section()
-
-        memory_types = ["gotcha", "bug_fix", "decision", "discovery", "trade_off"]
-        for mtype in memory_types:
-            assert mtype in section
-
-    def test_get_ci_constitution_section_has_workflow(
-        self, ci_service: CodebaseIntelligenceService
-    ):
-        """Test that constitution section includes workflow guidance."""
-        section = ci_service._get_ci_constitution_section()
-
-        assert "### Required Workflow" in section
-        assert "### Search Commands" in section
-        assert "### Storing Observations" in section
-        assert "### Guidelines" in section
-
-
-# =============================================================================
 # Config File Cleanup Tests
 # =============================================================================
 

@@ -159,10 +159,8 @@ class CodebaseIndexer:
         self.vector_store = vector_store
         self.config = config or IndexerConfig()
 
-        # Load .gitignore patterns if file exists
-        gitignore_patterns = self._load_gitignore()
-        if gitignore_patterns:
-            self.config.ignore_patterns.extend(gitignore_patterns)
+        # Note: .gitignore patterns are loaded fresh at index time in discover_files()
+        # This ensures gitignore changes are picked up without daemon restart
 
         self.chunker = CodeChunker(chunker_config)
         self._stats = IndexStats()
@@ -255,6 +253,57 @@ class CodebaseIndexer:
             logger.warning(f"Path validation failed for {filepath}: {e}")
             return False
 
+    def _get_ignore_pattern(self, path: Path, patterns: list[str] | None = None) -> str | None:
+        """Get the pattern that causes a path to be ignored.
+
+        Args:
+            path: Path to check (relative to project root).
+            patterns: Optional list of patterns to check against.
+                     If None, uses self.config.ignore_patterns.
+
+        Returns:
+            The matching pattern, or None if not ignored.
+        """
+        path_str = str(path)
+        path_parts = path.parts
+
+        check_patterns = patterns if patterns is not None else self.config.ignore_patterns
+        for pattern in check_patterns:
+            # Check full path match (e.g., "docs/**" matches "docs/file.py")
+            if fnmatch.fnmatch(path_str, pattern):
+                return pattern
+
+            # Check just the filename (e.g., "*.log" matches "app.log")
+            if fnmatch.fnmatch(path.name, pattern):
+                return pattern
+
+            # Check if any path component matches the pattern exactly
+            # This handles simple directory names like "docs" or "vendor"
+            # which should exclude files like "docs/file.py" or "vendor/lib/code.py"
+            if pattern in path_parts:
+                return pattern
+
+            # Check glob pattern against each path component
+            # This handles patterns like "node_*" matching "node_modules"
+            for part in path_parts:
+                if fnmatch.fnmatch(part, pattern):
+                    return pattern
+
+            # Check if pattern is a path prefix (handles patterns like ".claude/commands")
+            # This matches files like ".claude/commands/foo.md"
+            if "/" in pattern or "\\" in pattern:
+                # Normalize pattern to use forward slashes for comparison
+                normalized_pattern = pattern.replace("\\", "/")
+                normalized_path = path_str.replace("\\", "/")
+                # Check if path starts with pattern (as a directory prefix)
+                if normalized_path.startswith(normalized_pattern + "/"):
+                    return pattern
+                # Also check exact match for the directory itself
+                if normalized_path == normalized_pattern:
+                    return pattern
+
+        return None
+
     def _should_ignore(self, path: Path) -> bool:
         """Check if a path should be ignored.
 
@@ -264,16 +313,7 @@ class CodebaseIndexer:
         Returns:
             True if path should be ignored.
         """
-        path_str = str(path)
-
-        for pattern in self.config.ignore_patterns:
-            if fnmatch.fnmatch(path_str, pattern):
-                return True
-            # Also check just the filename
-            if fnmatch.fnmatch(path.name, pattern):
-                return True
-
-        return False
+        return self._get_ignore_pattern(path) is not None
 
     def _should_index_file(self, filepath: Path) -> bool:
         """Check if a file should be indexed.
@@ -305,6 +345,16 @@ class CodebaseIndexer:
         Returns:
             List of file paths to index.
         """
+        # Load gitignore patterns fresh each time (picks up changes without restart)
+        gitignore_patterns = self._load_gitignore()
+
+        # Merge config patterns with gitignore for this discovery run
+        # This ensures gitignore is always respected, even if config patterns change
+        all_patterns = list(self.config.ignore_patterns)
+        for pattern in gitignore_patterns:
+            if pattern not in all_patterns:
+                all_patterns.append(pattern)
+
         files = []
 
         for filepath in self.project_root.rglob("*"):
@@ -319,7 +369,11 @@ class CodebaseIndexer:
 
             # Check ignore patterns FIRST - skip early without logging warnings
             # This prevents noise from files already excluded by .gitignore or config
-            if self._should_ignore(relative):
+            ignored_by = self._get_ignore_pattern(relative, all_patterns)
+            if ignored_by:
+                # Only log if file has indexable extension (reduces noise)
+                if filepath.suffix.lower() in INDEXABLE_EXTENSIONS:
+                    logger.debug(f"Excluded {relative} (pattern: {ignored_by})")
                 continue
 
             # Security: Validate path safety (symlink and traversal protection)
@@ -360,7 +414,7 @@ class CodebaseIndexer:
             relative_path = filepath
 
         try:
-            chunks = self.chunker.chunk_file(filepath)
+            chunks = self.chunker.chunk_file(filepath, display_path=str(relative_path))
             if not chunks:
                 return 0
 
@@ -500,7 +554,7 @@ class CodebaseIndexer:
             relative_path = filepath
 
         try:
-            chunks = self.chunker.chunk_file(filepath)
+            chunks = self.chunker.chunk_file(filepath, display_path=str(relative_path))
             if not chunks:
                 return []
 
@@ -511,7 +565,7 @@ class CodebaseIndexer:
             return chunks
 
         except (OSError, ValueError, TypeError) as e:
-            logger.warning(f"Failed to chunk {filepath}: {e}")
+            logger.warning(f"Failed to chunk {relative_path}: {e}")
             self._stats.errors += 1
             return []
 

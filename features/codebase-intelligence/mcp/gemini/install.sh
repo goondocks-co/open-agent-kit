@@ -7,9 +7,9 @@
 #   OAK_MCP_COMMAND   - Full command to run the MCP server
 #
 # Gemini CLI MCP registration:
-#   gemini mcp add <name> --scope project -- <command> [args...]
+#   gemini mcp add [options] <name> <commandOrUrl> [args...]
 #
-# See: https://geminicli.com/docs/tools/mcp-server/
+# See: https://github.com/google-gemini/gemini-cli
 
 set -e
 
@@ -25,7 +25,7 @@ fi
 # Check if gemini CLI is available
 if ! command -v gemini &> /dev/null; then
     echo "Warning: gemini CLI not found, skipping MCP registration" >&2
-    echo "Install Gemini CLI to enable MCP: https://geminicli.com/" >&2
+    echo "Install Gemini CLI to enable MCP: https://github.com/google-gemini/gemini-cli" >&2
     exit 0
 fi
 
@@ -33,12 +33,17 @@ fi
 cd "$OAK_PROJECT_ROOT"
 
 # Remove existing registration if present (idempotent)
-gemini mcp remove "$OAK_MCP_NAME" --scope project 2>/dev/null || true
+gemini mcp remove --scope project "$OAK_MCP_NAME" 2>/dev/null || true
 
 # Register the MCP server with project scope
 # Note: We use --scope project so it's only available in this project
+# Format: gemini mcp add [options] <name> <commandOrUrl> [args...]
 echo "Registering MCP server '$OAK_MCP_NAME' for Gemini CLI..."
-gemini mcp add "$OAK_MCP_NAME" --scope project -- $OAK_MCP_COMMAND
+gemini mcp add --scope project "$OAK_MCP_NAME" $OAK_MCP_COMMAND
+
+# Clean up .orig backup files created by gemini CLI
+# The gemini CLI creates .orig backups when modifying settings.json
+rm -f "$OAK_PROJECT_ROOT/.gemini/settings.json.orig" 2>/dev/null || true
 
 echo "MCP server registered successfully"
 echo "  Name: $OAK_MCP_NAME"

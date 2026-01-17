@@ -19,8 +19,8 @@ class ValidateRemovalStage(BaseStage):
     is_critical = True
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Always run for removal."""
-        return True
+        """Skip if cleanup_only mode (oak not initialized)."""
+        return not context.options.get("cleanup_only", False)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Validate oak is initialized."""
@@ -45,8 +45,8 @@ class PlanRemovalStage(BaseStage):
     is_critical = True
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Always run for removal."""
-        return True
+        """Skip if cleanup_only mode (no state to plan from)."""
+        return not context.options.get("cleanup_only", False)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Analyze what needs to be removed."""
@@ -122,8 +122,8 @@ class TriggerPreRemoveHooksStage(BaseStage):
     is_critical = False
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Always run for removal."""
-        return True
+        """Skip if cleanup_only mode (no feature service without .oak)."""
+        return not context.options.get("cleanup_only", False)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Trigger pre-remove hooks."""
@@ -152,8 +152,8 @@ class RemoveSkillsStage(BaseStage):
     counterpart_stage = "install_skills"
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Always run - check for work inside _execute."""
-        return True
+        """Skip if cleanup_only mode (depends on plan_removal)."""
+        return not context.options.get("cleanup_only", False)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Remove all installed skills."""
@@ -200,8 +200,8 @@ class RemoveCreatedFilesStage(BaseStage):
     counterpart_stage = "install_features"  # Files created during feature installation
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Always run - check for work inside _execute."""
-        return True
+        """Skip if cleanup_only mode (depends on plan_removal)."""
+        return not context.options.get("cleanup_only", False)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Remove created files."""
@@ -232,6 +232,57 @@ class RemoveCreatedFilesStage(BaseStage):
         return StageOutcome.success(
             f"Removed {removed_count} file(s)",
             data={"removed_count": removed_count, "failed": failed},
+        )
+
+
+class RemoveAgentSettingsStage(BaseStage):
+    """Remove OAK-managed settings from agent config files."""
+
+    name = "remove_agent_settings"
+    display_name = "Removing agent settings"
+    order = StageOrder.REMOVE_AGENT_SETTINGS_CLEANUP
+    applicable_flows = {FlowType.REMOVE}
+    is_critical = False
+    lifecycle = StageLifecycle.CLEANUP
+    counterpart_stage = "install_agent_settings"
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Always run for removal."""
+        return True
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Remove OAK settings from all agent config files."""
+        from open_agent_kit.services.agent_service import AgentService
+        from open_agent_kit.services.agent_settings_service import AgentSettingsService
+
+        agent_service = AgentService(context.project_root)
+        settings_service = AgentSettingsService(context.project_root)
+
+        # Get all available agents
+        try:
+            available_agents = agent_service.list_available_agents()
+        except Exception as e:
+            return StageOutcome.success(
+                "No agents to clean up",
+                data={"error": str(e)},
+            )
+
+        if not available_agents:
+            return StageOutcome.skipped("No agents configured")
+
+        # Remove settings for all agents
+        results = settings_service.remove_settings_for_agents(available_agents)
+        cleaned_count = sum(1 for v in results.values() if v)
+
+        if cleaned_count > 0:
+            return StageOutcome.success(
+                f"Cleaned up settings for {cleaned_count} agent(s)",
+                data={"results": results},
+            )
+
+        return StageOutcome.success(
+            "No agent settings to clean up",
+            data={"results": results},
         )
 
 
@@ -337,13 +388,13 @@ class RemoveOakDirStage(BaseStage):
     display_name = "Removing oak configuration"
     order = StageOrder.REMOVE_OAK_DIR
     applicable_flows = {FlowType.REMOVE}
-    is_critical = True
+    is_critical = False  # Not critical in cleanup_only mode
     lifecycle = StageLifecycle.CLEANUP
     counterpart_stage = "create_oak_dir"
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Always run for removal."""
-        return True
+        """Skip if cleanup_only mode (no .oak to remove)."""
+        return not context.options.get("cleanup_only", False)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Remove the .oak directory."""
@@ -375,7 +426,7 @@ def get_removal_stages() -> list[BaseStage]:
         TriggerPreRemoveHooksStage(),
         RemoveSkillsStage(),
         RemoveCreatedFilesStage(),
-        # Note: IDE settings removal was removed - agent settings handles cleanup
+        RemoveAgentSettingsStage(),
         CleanupDirectoriesStage(),
         RemoveOakDirStage(),
     ]

@@ -65,6 +65,8 @@ class FileWatcher:
     def _should_watch_file(self, filepath: Path) -> bool:
         """Check if a file should trigger re-indexing.
 
+        Uses the indexer's ignore patterns for consistency.
+
         Args:
             filepath: Path to check.
 
@@ -75,21 +77,13 @@ class FileWatcher:
         if filepath.suffix.lower() not in INDEXABLE_EXTENSIONS:
             return False
 
-        # Ignore paths in common non-code directories
-        path_parts = filepath.parts
-        ignore_dirs = {
-            ".git",
-            ".oak",
-            "node_modules",
-            "__pycache__",
-            ".venv",
-            "venv",
-            "dist",
-            "build",
-            ".next",
-            "coverage",
-        }
-        if any(part in ignore_dirs for part in path_parts):
+        # Use indexer's ignore check for consistency with indexing
+        try:
+            relative = filepath.relative_to(self.project_root)
+            if self.indexer._should_ignore(relative):
+                return False
+        except ValueError:
+            # Path is not relative to project root
             return False
 
         return True

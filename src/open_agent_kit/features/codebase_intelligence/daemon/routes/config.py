@@ -105,94 +105,99 @@ async def update_config(request: Request) -> dict:
     except (ValueError, json.JSONDecodeError):
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
+    logger.debug(f"Config update request: {list(data.keys())}")
     config = load_ci_config(state.project_root)
     embedding_changed = False
     summarization_changed = False
 
-    # Update embedding settings
-    if "provider" in data:
-        config.embedding.provider = data["provider"]
-        embedding_changed = True
-    if "model" in data:
-        config.embedding.model = data["model"]
-        # Reset max_chunk_chars to auto-detect from new model
-        config.embedding.max_chunk_chars = None
-        embedding_changed = True
-    if "dimensions" in data and data["dimensions"] is not None:
-        # Accept dimensions from UI (discovered during model selection)
-        config.embedding.dimensions = data["dimensions"]
-    elif "model" in data:
-        # Model changed but no dimensions provided - will auto-detect on first use
-        # This is a fallback, UI should always pass dimensions from model discovery
-        config.embedding.dimensions = None
-        logger.warning(
-            f"Model changed to {data['model']} but no dimensions provided. "
-            "Consider passing dimensions from model discovery."
-        )
-    if "base_url" in data:
-        config.embedding.base_url = data["base_url"]
-        embedding_changed = True
-    if "fallback_enabled" in data:
-        config.embedding.fallback_enabled = data["fallback_enabled"]
-    if "context_tokens" in data:
-        config.embedding.context_tokens = data["context_tokens"]
-        embedding_changed = True
-    if "max_chunk_chars" in data:
-        config.embedding.max_chunk_chars = data["max_chunk_chars"]
-        embedding_changed = True
+    # Update embedding settings (nested object: { embedding: { provider, model, ... } })
+    if "embedding" in data and isinstance(data["embedding"], dict):
+        emb = data["embedding"]
+        if "provider" in emb:
+            config.embedding.provider = emb["provider"]
+            embedding_changed = True
+        if "model" in emb:
+            config.embedding.model = emb["model"]
+            config.embedding.max_chunk_chars = None  # Reset for new model
+            embedding_changed = True
+        if "base_url" in emb:
+            config.embedding.base_url = emb["base_url"]
+            embedding_changed = True
+        if "dimensions" in emb and emb["dimensions"] is not None:
+            config.embedding.dimensions = emb["dimensions"]
+        if "fallback_enabled" in emb:
+            config.embedding.fallback_enabled = emb["fallback_enabled"]
+        if "context_tokens" in emb:
+            config.embedding.context_tokens = emb["context_tokens"]
+            embedding_changed = True
+        if "max_chunk_chars" in emb:
+            config.embedding.max_chunk_chars = emb["max_chunk_chars"]
+            embedding_changed = True
 
-    # Update summarization settings (nested under "summarization" key or flat)
-    sum_data = data.get("summarization", data)
-    if "summarization_enabled" in sum_data or "sum_enabled" in data:
-        config.summarization.enabled = sum_data.get(
-            "summarization_enabled", data.get("sum_enabled")
-        )
-        summarization_changed = True
-    if "summarization_provider" in sum_data or "sum_provider" in data:
-        config.summarization.provider = sum_data.get(
-            "summarization_provider", data.get("sum_provider")
-        )
-        summarization_changed = True
-    if "summarization_model" in sum_data or "sum_model" in data:
-        config.summarization.model = sum_data.get("summarization_model", data.get("sum_model"))
-        summarization_changed = True
-    if "summarization_base_url" in sum_data or "sum_base_url" in data:
-        config.summarization.base_url = sum_data.get(
-            "summarization_base_url", data.get("sum_base_url")
-        )
-        summarization_changed = True
-
-    # Handle nested summarization object format from UI
+    # Update summarization settings (nested object: { summarization: { enabled, provider, ... } })
     if "summarization" in data and isinstance(data["summarization"], dict):
-        sum_obj = data["summarization"]
-        if "enabled" in sum_obj:
-            config.summarization.enabled = sum_obj["enabled"]
+        summ = data["summarization"]
+        if "enabled" in summ:
+            config.summarization.enabled = summ["enabled"]
             summarization_changed = True
-        if "provider" in sum_obj:
-            config.summarization.provider = sum_obj["provider"]
+        if "provider" in summ:
+            config.summarization.provider = summ["provider"]
             summarization_changed = True
-        if "model" in sum_obj:
-            config.summarization.model = sum_obj["model"]
+        if "model" in summ:
+            config.summarization.model = summ["model"]
             summarization_changed = True
-        if "base_url" in sum_obj:
-            config.summarization.base_url = sum_obj["base_url"]
+        if "base_url" in summ:
+            config.summarization.base_url = summ["base_url"]
             summarization_changed = True
-        if "context_tokens" in sum_obj:
-            # Allow setting to None to clear explicit value
-            config.summarization.context_tokens = sum_obj["context_tokens"]
+        if "context_tokens" in summ:
+            config.summarization.context_tokens = summ["context_tokens"]
             summarization_changed = True
+
+    # Handle log_level updates (top-level key)
+    log_level_changed = False
+    if "log_level" in data:
+        new_level = data["log_level"].upper()
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
+        if new_level in valid_levels and new_level != config.log_level:
+            config.log_level = new_level
+            log_level_changed = True
 
     save_ci_config(state.project_root, config)
 
-    # NOTE: Do NOT update state.ci_config here!
-    # restart_daemon() needs to compare old vs new config to detect changes.
-    # It will update state.ci_config after the comparison.
+    # Auto-apply embedding changes by triggering restart
+    # This provides better UX - user doesn't need to manually click restart
+    if embedding_changed:
+        # Import restart handler and call it directly
+        restart_result = await restart_daemon()
+        return {
+            "status": "updated",
+            "embedding": {
+                "provider": config.embedding.provider,
+                "model": config.embedding.model,
+                "base_url": config.embedding.base_url,
+                "max_chunk_chars": config.embedding.get_max_chunk_chars(),
+            },
+            "summarization": {
+                "enabled": config.summarization.enabled,
+                "provider": config.summarization.provider,
+                "model": config.summarization.model,
+                "base_url": config.summarization.base_url,
+                "context_tokens": config.summarization.context_tokens,
+            },
+            "log_level": config.log_level,
+            "embedding_changed": embedding_changed,
+            "summarization_changed": summarization_changed,
+            "log_level_changed": log_level_changed,
+            "auto_applied": True,
+            "indexing_started": restart_result.get("indexing_started", False),
+            "message": restart_result.get("message", "Configuration saved and applied."),
+        }
 
     message = "Configuration saved."
-    if embedding_changed:
-        message += " Restart daemon and rebuild index to apply embedding changes."
-    elif summarization_changed:
+    if summarization_changed:
         message += " Summarization changes take effect immediately."
+    elif log_level_changed:
+        message = f"Log level changed to {config.log_level}. Restart daemon to apply."
 
     return {
         "status": "updated",
@@ -209,8 +214,11 @@ async def update_config(request: Request) -> dict:
             "base_url": config.summarization.base_url,
             "context_tokens": config.summarization.context_tokens,
         },
+        "log_level": config.log_level,
         "embedding_changed": embedding_changed,
         "summarization_changed": summarization_changed,
+        "log_level_changed": log_level_changed,
+        "auto_applied": False,
         "message": message,
     }
 
@@ -502,6 +510,7 @@ async def restart_daemon() -> dict:
     # Track old chunk parameters to detect changes that require re-indexing
     old_context_tokens = old_config.embedding.get_context_tokens() if old_config else None
     old_max_chunk = old_config.embedding.get_max_chunk_chars() if old_config else None
+    old_exclude_patterns = set(old_config.exclude_patterns) if old_config else set()
 
     logger.info(f"Reloading configuration (current model: {old_model_name})...")
 
@@ -516,6 +525,7 @@ async def restart_daemon() -> dict:
     state.ci_config = ci_config
 
     model_changed = old_model_name != new_model_name
+    new_exclude_patterns = set(ci_config.exclude_patterns)
 
     # Check if chunk parameters changed (requires re-indexing even if model is same)
     chunk_params_changed = (
@@ -527,11 +537,19 @@ async def restart_daemon() -> dict:
             f"max_chunk {old_max_chunk}->{new_max_chunk}"
         )
 
+    # Check if exclusion patterns changed (requires re-indexing)
+    exclusions_changed = old_exclude_patterns != new_exclude_patterns
+    if exclusions_changed:
+        added = new_exclude_patterns - old_exclude_patterns
+        removed = old_exclude_patterns - new_exclude_patterns
+        logger.info(f"Exclusion patterns changed: added={list(added)}, removed={list(removed)}")
+
     index_cleared = False
 
-    # Clear index if model changed (requires new embeddings) or chunk params changed
-    # (chunk IDs include position, so old chunks won't be replaced - need clean slate)
-    if (model_changed or chunk_params_changed) and state.vector_store:
+    # Clear index if model changed (requires new embeddings), chunk params changed
+    # (chunk IDs include position, so old chunks won't be replaced - need clean slate),
+    # or exclusions changed (need to remove previously indexed files)
+    if (model_changed or chunk_params_changed or exclusions_changed) and state.vector_store:
         if model_changed:
             logger.warning(
                 f"Embedding model changed from {old_model_name} to {new_model_name}. "
@@ -575,6 +593,15 @@ async def restart_daemon() -> dict:
             ChunkerConfig(max_chunk_chars=ci_config.embedding.get_max_chunk_chars())
         )
 
+        # Update indexer ignore patterns with new exclusions from config
+        # Note: .gitignore patterns are loaded fresh at index time in discover_files()
+        combined_patterns = ci_config.get_combined_exclude_patterns()
+        state.indexer.config.ignore_patterns = combined_patterns
+        logger.info(
+            f"Updated indexer with {len(combined_patterns)} config exclude patterns "
+            f"(gitignore loaded at index time)"
+        )
+
     # Check if index is empty (first-time setup)
     index_empty = False
     indexing_started = False
@@ -602,10 +629,26 @@ async def restart_daemon() -> dict:
             logger.info("Starting background indexing after chunk parameter change")
         else:
             logger.info("Starting background indexing after config save")
+    else:
+        # Even if we don't need to re-index, ensure file watcher is running
+        # This handles the case where daemon started without valid provider
+        # and user later configured it
+        import asyncio
+
+        from open_agent_kit.features.codebase_intelligence.daemon.server import (
+            _start_file_watcher,
+        )
+
+        asyncio.create_task(_start_file_watcher())
+        logger.debug("Ensuring file watcher is running")
 
     # Determine message based on what happened
     if indexing_started and index_empty:
         message = "Configuration saved! Indexing your codebase for the first time..."
+    elif indexing_started and exclusions_changed:
+        message = (
+            "Exclusion patterns changed. " "Re-indexing your codebase with updated exclusions..."
+        )
     elif indexing_started and index_cleared:
         message = (
             f"Model changed from {old_model_name} to {new_model_name}. "
@@ -625,6 +668,8 @@ async def restart_daemon() -> dict:
         message = (
             f"Model changed to {new_model_name}. " "Please rebuild the index to re-embed your code."
         )
+    elif exclusions_changed:
+        message = "Exclusion patterns updated. Restart to apply changes."
     else:
         message = "Configuration reloaded successfully."
 
@@ -638,6 +683,7 @@ async def restart_daemon() -> dict:
         },
         "model_changed": model_changed,
         "chunk_params_changed": chunk_params_changed,
+        "exclusions_changed": exclusions_changed,
         "index_cleared": index_cleared,
         "indexing_started": indexing_started,
         "message": message,
@@ -706,6 +752,46 @@ async def _query_llm_models(
                 "owned_by": model.get("owned_by"),
             }
         )
+
+    # If provider is Ollama, try to enrich with real context window
+    if provider == "ollama":
+        base_api_url = url.replace("/v1", "")
+        for model in llm_models:
+            try:
+                # Call /api/show for each model to get precise context
+                show_resp = await client.post(
+                    f"{base_api_url}/api/show", json={"name": model["name"]}
+                )
+                if show_resp.status_code == 200:
+                    details = show_resp.json()
+                    # Ollama returns 'context_length' in model_info, or 'parameters' string
+                    # But usually 'details' object has quantization, etc.
+                    # The 'model_info' key typically contains the GGUF metadata
+                    model_info = details.get("model_info", {})
+
+                    # Try to find context length in standard GGUF keys or namespaced keys
+                    ctx = None
+
+                    # 1. Check direct keys
+                    if "context_length" in model_info:
+                        ctx = model_info["context_length"]
+                    elif "llama.context_length" in model_info:
+                        ctx = model_info["llama.context_length"]
+                    else:
+                        # 2. Search for any key ending in .context_length (e.g. nomic-bert.context_length)
+                        for k, v in model_info.items():
+                            if k.endswith(".context_length"):
+                                ctx = v
+                                break
+
+                    # 3. Fallback to details object if available
+                    if not ctx:
+                        ctx = details.get("details", {}).get("context_length")
+
+                    if ctx:
+                        model["context_window"] = int(ctx)
+            except Exception:
+                pass  # Fallback to default/heuristics if 'show' fails
 
     return {"success": True, "models": llm_models}
 
@@ -906,3 +992,128 @@ async def discover_context_tokens(request: Request) -> dict:
             "error": f"Discovery failed: {e}",
             "suggestion": "Check provider connectivity or enter manually",
         }
+
+
+# =============================================================================
+# Exclusions Management Endpoints
+# =============================================================================
+
+
+@router.get("/api/config/exclusions")
+async def get_exclusions() -> dict:
+    """Get current exclusion patterns.
+
+    Returns both user-configured patterns and built-in defaults.
+    """
+    from open_agent_kit.features.codebase_intelligence.config import (
+        DEFAULT_EXCLUDE_PATTERNS,
+        load_ci_config,
+    )
+
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=500, detail="Project root not set")
+
+    config = load_ci_config(state.project_root)
+
+    return {
+        "user_patterns": config.get_user_exclude_patterns(),
+        "default_patterns": list(DEFAULT_EXCLUDE_PATTERNS),
+        "all_patterns": config.get_combined_exclude_patterns(),
+    }
+
+
+@router.put("/api/config/exclusions")
+async def update_exclusions(request: Request) -> dict:
+    """Update exclusion patterns.
+
+    Accepts JSON with:
+    - add: list of patterns to add
+    - remove: list of patterns to remove
+    """
+    from open_agent_kit.features.codebase_intelligence.config import (
+        DEFAULT_EXCLUDE_PATTERNS,
+        load_ci_config,
+        save_ci_config,
+    )
+
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=500, detail="Project root not set")
+
+    try:
+        data = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
+
+    config = load_ci_config(state.project_root)
+
+    added = []
+    removed = []
+    already_exists = []
+    not_found = []
+
+    # Add patterns
+    patterns_to_add = data.get("add", [])
+    for pattern in patterns_to_add:
+        if pattern not in config.exclude_patterns:
+            config.exclude_patterns.append(pattern)
+            added.append(pattern)
+        else:
+            already_exists.append(pattern)
+
+    # Remove patterns
+    patterns_to_remove = data.get("remove", [])
+    for pattern in patterns_to_remove:
+        if pattern in config.exclude_patterns:
+            # Don't allow removing default patterns
+            if pattern in DEFAULT_EXCLUDE_PATTERNS:
+                not_found.append(f"{pattern} (built-in, cannot remove)")
+            else:
+                config.exclude_patterns.remove(pattern)
+                removed.append(pattern)
+        else:
+            not_found.append(pattern)
+
+    save_ci_config(state.project_root, config)
+
+    return {
+        "status": "updated",
+        "added": added,
+        "removed": removed,
+        "already_exists": already_exists,
+        "not_found": not_found,
+        "user_patterns": config.get_user_exclude_patterns(),
+        "message": (
+            "Exclusions updated. Restart daemon and rebuild index to apply changes."
+            if added or removed
+            else "No changes made."
+        ),
+    }
+
+
+@router.post("/api/config/exclusions/reset")
+async def reset_exclusions() -> dict:
+    """Reset exclusion patterns to defaults."""
+    from open_agent_kit.features.codebase_intelligence.config import (
+        DEFAULT_EXCLUDE_PATTERNS,
+        load_ci_config,
+        save_ci_config,
+    )
+
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=500, detail="Project root not set")
+
+    config = load_ci_config(state.project_root)
+    config.exclude_patterns = DEFAULT_EXCLUDE_PATTERNS.copy()
+    save_ci_config(state.project_root, config)
+
+    return {
+        "status": "reset",
+        "default_patterns": DEFAULT_EXCLUDE_PATTERNS,
+        "message": "Exclusion patterns reset to defaults. Restart daemon and rebuild index to apply.",
+    }

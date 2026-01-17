@@ -94,6 +94,8 @@ async def build_index(request: IndexRequest) -> IndexResponse:
         )
 
         state.index_status.set_ready(duration=result.duration_seconds)
+        # Update file count - this was missing and caused dashboard stats to not update
+        state.index_status.file_count = result.files_processed
         # Store AST chunking statistics
         state.index_status.ast_stats = {
             "ast_success": result.ast_success,

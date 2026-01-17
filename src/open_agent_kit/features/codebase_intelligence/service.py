@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import webbrowser
 from pathlib import Path
 from typing import Any, cast
 
@@ -56,6 +57,29 @@ class CodebaseIntelligenceService:
             self._port = get_project_port(self.project_root, self.ci_data_dir)
         return self._port
 
+    def _is_test_environment(self) -> bool:
+        """Check if we're running in a test or CI environment.
+
+        Returns:
+            True if running in pytest, CI, or non-interactive environment.
+        """
+        import sys
+
+        # Check if pytest is loaded (most reliable for pytest runs)
+        if "pytest" in sys.modules:
+            return True
+
+        # Check for common test/CI environment variables
+        test_indicators = [
+            "PYTEST_CURRENT_TEST",  # Set by pytest
+            "CI",  # Common CI indicator
+            "GITHUB_ACTIONS",  # GitHub Actions
+            "GITLAB_CI",  # GitLab CI
+            "JENKINS_URL",  # Jenkins
+            "OAK_TESTING",  # Our own testing flag
+        ]
+        return any(os.environ.get(var) for var in test_indicators)
+
     def _load_hook_template(self, agent: str) -> dict[str, Any] | None:
         """Load hook template for an agent and substitute port placeholder.
 
@@ -94,9 +118,8 @@ class CodebaseIntelligenceService:
     def initialize(self) -> dict:
         """Called when feature is enabled (on_feature_enabled hook).
 
-        Sets up the CI data directory, amends the constitution with CI workflow
-        guidance, installs agent hooks, and starts the daemon. Gitignore patterns
-        are handled declaratively via the manifest 'gitignore' field.
+        Sets up the CI data directory, installs agent hooks, and starts the daemon.
+        Gitignore patterns are handled declaratively via the manifest 'gitignore' field.
 
         Returns:
             Result dictionary with status.
@@ -106,21 +129,19 @@ class CodebaseIntelligenceService:
         # Create data directory
         self.ci_data_dir.mkdir(parents=True, exist_ok=True)
 
-        # Amend constitution with CI workflow guidance
-        amendment_added = self._amend_constitution_with_ci_workflow()
-
         # Note: .gitignore is handled declaratively via manifest.yaml gitignore field
         # The feature_service adds .oak/ci/ on enable and removes it on disable
 
         # Get configured agents and call ensure_daemon to install hooks + start daemon
         # This ensures CI is fully operational whether called from oak init or oak feature add
+        # Pass open_browser=True for interactive initialization
         daemon_result = {}
         try:
             from open_agent_kit.services.config_service import ConfigService
 
             config_service = ConfigService(self.project_root)
             agents = config_service.get_agents()
-            daemon_result = self.ensure_daemon(agents)
+            daemon_result = self.ensure_daemon(agents, open_browser=True)
         except Exception as e:
             logger.warning(f"Failed to ensure daemon during initialize: {e}")
             daemon_result = {"status": "warning", "message": str(e)}
@@ -128,178 +149,8 @@ class CodebaseIntelligenceService:
         return {
             "status": "success",
             "message": "CI feature initialized",
-            "constitution_amended": amendment_added,
             **daemon_result,
         }
-
-    def _amend_constitution_with_ci_workflow(self) -> bool:
-        """Amend the constitution with Codebase Intelligence workflow guidance.
-
-        This adds a section to the constitution that instructs agents to use
-        oak ci commands for semantic search and context retrieval. This is
-        the multi-agent approach - all agents reference the constitution.
-
-        Returns:
-            True if amendment was added, False if skipped (no constitution or already has CI section).
-        """
-        from open_agent_kit.services.constitution_service import ConstitutionService
-
-        constitution_service = ConstitutionService(self.project_root)
-
-        # Check if constitution exists
-        if not constitution_service.exists():
-            logger.info("No constitution found, skipping CI workflow amendment")
-            return False
-
-        # Check if CI section already exists (avoid duplicate amendments)
-        try:
-            content = constitution_service.get_content()
-            if "## Codebase Intelligence" in content or "oak ci context" in content:
-                logger.info("Constitution already has CI workflow section, skipping")
-                return False
-        except Exception as e:
-            logger.warning(f"Failed to check constitution content: {e}")
-            return False
-
-        # Add CI workflow amendment
-        try:
-            constitution_service.add_amendment(
-                summary="Added Codebase Intelligence workflow guidance",
-                rationale=(
-                    "Codebase Intelligence provides semantic code search and persistent memory. "
-                    "This amendment instructs agents to use CI tools for efficient code discovery "
-                    "and context retrieval before implementing changes."
-                ),
-                amendment_type="minor",
-                author="OAK Codebase Intelligence",
-                section="Codebase Intelligence",
-                impact="Agents will use oak ci commands for code discovery instead of grep/find",
-            )
-
-            # Append the actual CI workflow section to the constitution
-            current_content = constitution_service.get_content()
-            ci_section = self._get_ci_constitution_section()
-
-            # Insert before the Amendments section if it exists
-            if "# Amendments" in current_content:
-                updated_content = current_content.replace(
-                    "# Amendments",
-                    f"{ci_section}\n\n# Amendments",
-                )
-            else:
-                updated_content = current_content + f"\n\n{ci_section}"
-
-            constitution_service.update_content(updated_content)
-            logger.info("Added CI workflow section to constitution")
-            return True
-
-        except Exception as e:
-            logger.warning(f"Failed to amend constitution: {e}")
-            return False
-
-    def _get_ci_constitution_section(self) -> str:
-        """Get the Codebase Intelligence section content for the constitution.
-
-        Returns:
-            Markdown content for the CI workflow section.
-        """
-        return """## Codebase Intelligence
-
-This project uses Codebase Intelligence (CI) for semantic code search and persistent memory.
-**Always use CI tools before implementing changes to understand existing patterns.**
-
-### Required Workflow
-
-**Before starting any implementation task:**
-```bash
-oak ci context "description of your task"
-```
-
-This returns relevant code patterns, past decisions, and known gotchas for your task.
-
-### Search Commands
-
-| Command | When to Use |
-|---------|-------------|
-| `oak ci search "query"` | Find code patterns and implementations |
-| `oak ci search "query" --type code` | Search only code |
-| `oak ci search "query" --type memory` | Search past decisions and learnings |
-
-### Storing Observations
-
-When you discover something important, store it for future sessions:
-
-```bash
-oak ci remember "observation" -t <type> [-c file_path]
-```
-
-Memory types:
-- `gotcha` - Non-obvious behaviors that could trip someone up
-- `bug_fix` - How a bug was resolved
-- `decision` - Design choices with rationale
-- `discovery` - Learned facts about the codebase
-- `trade_off` - Compromises and why they were made
-
-### Guidelines
-
-1. **Call `oak ci context` before suggesting implementations** - understand existing patterns first
-2. **Trust memories** - past gotchas and decisions exist for good reason
-3. **Follow existing patterns** - match code style found in similar implementations
-4. **Store observations proactively** - when you discover something important, store it immediately:
-
-```bash
-# When you find a gotcha or non-obvious behavior
-oak ci remember "Description of what you learned" -t gotcha -c relevant_file.py
-
-# When you make a design decision
-oak ci remember "Chose X approach because Y" -t decision -c feature_name
-
-# When you fix a tricky bug
-oak ci remember "Bug was caused by X, fixed by Y" -t bug_fix -c file.py
-```
-
-**Proactive capture is essential** - don't wait until the end of a session. Store observations as you work so future sessions benefit from your learnings."""
-
-    def _remove_ci_from_constitution(self) -> bool:
-        """Remove the Codebase Intelligence section from the constitution.
-
-        Called during cleanup when the feature is disabled.
-
-        Returns:
-            True if section was removed, False if not found or no constitution.
-        """
-        from open_agent_kit.services.constitution_service import ConstitutionService
-
-        constitution_service = ConstitutionService(self.project_root)
-
-        if not constitution_service.exists():
-            return False
-
-        try:
-            content = constitution_service.get_content()
-
-            # Check if CI section exists
-            if "## Codebase Intelligence" not in content:
-                return False
-
-            # Remove the CI section (from ## Codebase Intelligence to next ## or # Amendments)
-            import re
-
-            # Pattern to match the entire CI section including its content
-            # Matches from "## Codebase Intelligence" to the next "## " or "# Amendments"
-            pattern = r"\n?## Codebase Intelligence\n.*?(?=\n## |\n# Amendments|$)"
-            updated_content = re.sub(pattern, "", content, flags=re.DOTALL)
-
-            # Clean up any double newlines created by removal
-            updated_content = re.sub(r"\n{3,}", "\n\n", updated_content)
-
-            constitution_service.update_content(updated_content.strip() + "\n")
-            logger.info("Removed CI section from constitution")
-            return True
-
-        except Exception as e:
-            logger.warning(f"Failed to remove CI section from constitution: {e}")
-            return False
 
     def cleanup(self, agents: list[str] | None = None) -> dict:
         """Called when feature is disabled (on_feature_disabled hook).
@@ -309,7 +160,6 @@ oak ci remember "Bug was caused by X, fixed by Y" -t bug_fix -c file.py
         2. Removes CI data directory (database, config)
         3. Removes agent hooks
         4. Removes MCP server registrations
-        5. Removes CI section from constitution
 
         Args:
             agents: List of configured agents to remove hooks from.
@@ -329,7 +179,6 @@ oak ci remember "Bug was caused by X, fixed by Y" -t bug_fix -c file.py
             "data_removed": False,
             "hooks_removed": {},
             "mcp_removed": {},
-            "constitution_cleaned": False,
         }
 
         # 1. Stop the daemon
@@ -369,22 +218,13 @@ oak ci remember "Bug was caused by X, fixed by Y" -t bug_fix -c file.py
             if removed_mcp:
                 print_success(f"  MCP servers removed from: {', '.join(removed_mcp)}")
 
-        # 5. Remove CI section from constitution
-        try:
-            if self._remove_ci_from_constitution():
-                results["constitution_cleaned"] = True
-                print_success("  CI section removed from constitution")
-        except Exception as e:
-            logger.warning(f"Failed to clean constitution: {e}")
-            print_warning(f"  Could not clean constitution: {e}")
-
         return {
             "status": "success",
             "message": "CI feature cleaned up",
             **results,
         }
 
-    def ensure_daemon(self, agents: list[str] | None = None) -> dict:
+    def ensure_daemon(self, agents: list[str] | None = None, open_browser: bool = False) -> dict:
         """Ensure the daemon is running and agent hooks are installed.
 
         Called from initialize() during feature enable. Handles both daemon
@@ -392,6 +232,8 @@ oak ci remember "Bug was caused by X, fixed by Y" -t bug_fix -c file.py
 
         Args:
             agents: List of configured agents.
+            open_browser: If True, open browser to config page after daemon starts.
+                          Only set True for interactive initialization.
 
         Returns:
             Result dictionary with status.
@@ -410,6 +252,17 @@ oak ci remember "Bug was caused by X, fixed by Y" -t bug_fix -c file.py
                 print_success(f"CI daemon running at http://localhost:{port}")
                 print_info(f"  Dashboard: http://localhost:{port}/ui")
                 daemon_result = {"status": "success", "message": "CI daemon is running"}
+
+                # Auto-launch browser to config page for initial setup
+                # Only if explicitly requested AND not in test/CI environment
+                if open_browser and not self._is_test_environment():
+                    config_url = f"http://localhost:{port}/config"
+                    print_info("  Opening config page in browser...")
+                    try:
+                        webbrowser.open(config_url)
+                    except Exception as browser_err:
+                        logger.warning(f"Could not open browser: {browser_err}")
+                        print_info(f"  Open {config_url} to configure embedding settings")
             else:
                 log_file = manager.log_file
                 print_warning(f"CI daemon failed to start. Check logs: {log_file}")

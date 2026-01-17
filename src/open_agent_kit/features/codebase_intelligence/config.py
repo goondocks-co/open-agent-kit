@@ -35,8 +35,13 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 from open_agent_kit.features.codebase_intelligence.exceptions import (
     ValidationError,
 )
+from open_agent_kit.models.agent_manifest import AgentManifest
 
 logger = logging.getLogger(__name__)
+
+# Package agents directory (where agent manifests are stored)
+_PACKAGE_ROOT = Path(__file__).parent.parent.parent.parent.parent
+_AGENTS_DIR = _PACKAGE_ROOT / "agents"
 
 # Type alias for valid providers
 ProviderType = Literal["ollama", "openai", "fastembed"]
@@ -367,6 +372,50 @@ class EmbeddingConfig:
         return self.dimensions
 
 
+def _get_oak_managed_paths() -> list[str]:
+    """Get paths managed by OAK from all agent manifests.
+
+    Reads all agent manifests and collects OAK-managed paths (commands, skills,
+    settings files) that should be excluded from code indexing.
+
+    Returns:
+        List of relative paths that OAK manages across all supported agents.
+    """
+    paths: set[str] = set()
+
+    try:
+        if not _AGENTS_DIR.exists():
+            logger.debug(f"Agents directory not found: {_AGENTS_DIR}")
+            return []
+
+        for agent_dir in _AGENTS_DIR.iterdir():
+            if not agent_dir.is_dir():
+                continue
+
+            manifest_path = agent_dir / "manifest.yaml"
+            if not manifest_path.exists():
+                continue
+
+            try:
+                manifest = AgentManifest.load(manifest_path)
+                agent_paths = manifest.get_oak_managed_paths()
+                paths.update(agent_paths)
+                logger.debug(f"Agent {manifest.name} managed paths: {agent_paths}")
+            except Exception as e:
+                logger.warning(f"Failed to load manifest for {agent_dir.name}: {e}")
+
+    except Exception as e:
+        logger.warning(f"Error scanning agent manifests: {e}")
+
+    return sorted(paths)
+
+
+# OAK-managed paths derived from agent manifests
+# These are directories/files that OAK installs (commands, skills, settings)
+# User-generated files like AGENT.md and constitution are NOT excluded
+_OAK_MANAGED_PATHS = _get_oak_managed_paths()
+
+
 # Default patterns to exclude from indexing
 DEFAULT_EXCLUDE_PATTERNS = [
     # Version control and tools
@@ -374,6 +423,9 @@ DEFAULT_EXCLUDE_PATTERNS = [
     ".git/**",
     ".oak",
     ".oak/**",
+    # OAK-managed agent directories (derived from agent manifests)
+    # Includes: commands, skills, settings files for all supported agents
+    *_OAK_MANAGED_PATHS,
     # Dependencies
     "node_modules",
     "node_modules/**",
@@ -495,6 +547,27 @@ class CIConfig:
             "exclude_patterns": self.exclude_patterns,
             "log_level": self.log_level,
         }
+
+    def get_combined_exclude_patterns(self) -> list[str]:
+        """Get combined exclusion patterns (user patterns merged with defaults).
+
+        Returns:
+            List of all exclusion patterns with defaults first, then user additions.
+            Duplicates are removed.
+        """
+        combined = list(DEFAULT_EXCLUDE_PATTERNS)
+        for pattern in self.exclude_patterns:
+            if pattern not in combined:
+                combined.append(pattern)
+        return combined
+
+    def get_user_exclude_patterns(self) -> list[str]:
+        """Get only user-added exclusion patterns (not in defaults).
+
+        Returns:
+            List of patterns that were added by the user.
+        """
+        return [p for p in self.exclude_patterns if p not in DEFAULT_EXCLUDE_PATTERNS]
 
     def get_effective_log_level(self) -> str:
         """Get effective log level, considering environment variable overrides.

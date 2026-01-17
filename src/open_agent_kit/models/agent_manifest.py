@@ -72,9 +72,13 @@ class AgentCapabilities(BaseModel):
         default=False,
         description="Whether agent supports SKILL.md files for domain expertise",
     )
+    skills_folder: str | None = Field(
+        default=None,
+        description="Override base folder for skills (e.g., '.agent' for Gemini). If None, uses installation.folder",
+    )
     skills_directory: str = Field(
         default="skills",
-        description="Subdirectory within agent folder for skills (e.g., 'skills' -> .claude/skills/)",
+        description="Subdirectory within skills folder for skills (e.g., 'skills' -> .claude/skills/)",
     )
 
 
@@ -366,3 +370,50 @@ class AgentManifest(BaseModel):
         """
         data = self.model_dump(exclude_none=True, exclude_defaults=False)
         return yaml.dump(data, default_flow_style=False, sort_keys=False)
+
+    def get_oak_managed_paths(self) -> list[str]:
+        """Get paths managed by OAK that should be excluded from code indexing.
+
+        These are directories and files that OAK installs/manages (commands, skills,
+        settings) - not user-generated content like AGENT.md or constitution files.
+
+        Returns:
+            List of relative paths that OAK manages for this agent.
+            Only includes project-relative paths (excludes home directory paths like ~/.codex/).
+        """
+        paths: list[str] = []
+        folder = self.installation.folder.rstrip("/")
+
+        # Skip paths outside project root (e.g., ~/.codex/)
+        if folder.startswith("~") or folder.startswith("/"):
+            return paths
+
+        # Commands directory (always managed by OAK)
+        commands_dir = f"{folder}/{self.installation.commands_subfolder}"
+        paths.append(commands_dir)
+
+        # Skills directory (if agent supports skills)
+        if self.capabilities.has_skills and self.capabilities.skills_directory:
+            # Use skills_folder override if specified, otherwise use installation folder
+            skills_base = self.capabilities.skills_folder or folder
+            skills_base = skills_base.rstrip("/")
+            # Skip paths outside project root
+            if not skills_base.startswith("~") and not skills_base.startswith("/"):
+                skills_dir = f"{skills_base}/{self.capabilities.skills_directory}"
+                paths.append(skills_dir)
+
+        # Settings file (if auto_approve is configured)
+        if self.settings.get("auto_approve", {}).get("file"):
+            settings_file = self.settings["auto_approve"]["file"]
+            # Skip home directory paths
+            if not settings_file.startswith("~") and not settings_file.startswith("/"):
+                paths.append(settings_file)
+
+        # MCP config file (if configured)
+        if self.mcp and self.mcp.config_file:
+            mcp_file = self.mcp.config_file
+            # Skip home directory paths
+            if not mcp_file.startswith("~") and not mcp_file.startswith("/"):
+                paths.append(mcp_file)
+
+        return paths

@@ -5,7 +5,7 @@ description: "Semantic search and persistent memory for AI assistants. Provides 
 version: "1.0.0"
 default_enabled: false  # Opt-in due to external dependencies (Ollama)
 dependencies:
-  - constitution
+  - rules-management
 
 # Python packages required by this feature
 # These are installed directly when the feature is enabled
@@ -45,16 +45,22 @@ prerequisites:
     models:
       - nomic-embed-text
 
-# User-invocable slash commands for agents
+# User-invocable slash commands for agents WITHOUT skills support
+# Agents with skills support use SKILL.md files instead (installed via skill_service)
+# These commands mirror the skills for feature parity across agent types
 commands:
-  - ci  # Helps agents use CI for search, context, and memory
+  - discover-code-relationships  # Mirror of discovering-code-relationships skill
+  - find-related-code            # Mirror of finding-related-code skill
+  - analyze-code-change-impacts  # Mirror of analyzing-code-change-impacts skill
 
 # Skills are installed to agents with has_skills capability (Claude Code)
-# These guide the agent on WHEN to use the oak ci CLI commands via Bash
-# Skills use allowed-tools to restrict Claude to Bash execution
+# Lean, focused skills that leverage semantic understanding (what grep can't do)
+# Note: Generic search removed - agents use grep/search well already
+# These skills add value through semantic relationship discovery
 skills:
-  - codebase-awareness  # Guides semantic search and context retrieval
-  - memory-capture      # Guides observation capture and storage
+  - discovering-code-relationships  # Find semantic connections between components
+  - finding-related-code            # Find conceptually similar code
+  - analyzing-code-change-impacts   # Assess change impact semantically
 
 # MCP tools are available but optional - CLI commands (oak ci) are preferred
 # The daemon exposes MCP tools for agents that don't support Bash:

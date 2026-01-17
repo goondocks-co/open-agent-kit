@@ -1,0 +1,44 @@
+# Strategic Planning Feature Manifest
+# Merged from: plan + rfc features
+name: strategic-planning
+display_name: "Strategic Planning"
+description: "Unified SDD workflow supporting implementation planning, RFCs, research phases, structured task generation, and export to issue trackers."
+version: "2.0.0"
+default_enabled: true
+dependencies:
+  - rules-management
+
+# CLI commands - simplified to mirror lean skills
+# Note: Heavy plan-* commands removed (agents have native plan mode)
+commands:
+  - create-rfc
+  - review-rfc
+
+# Skills are installed to agents with has_skills capability when feature is enabled
+# Lean, focused skills for RFC/ADR workflows (user-invoked)
+# Note: Generic planning removed - agents have native plan mode
+skills:
+  - creating-rfcs
+  - reviewing-rfcs
+
+# Templates from both plan and rfc features
+templates:
+  # Plan templates
+  - early_triage.md
+  - issue_context.md
+  - clarifying_questions.md
+  - constitution_compliance.md
+  - codebase_exploration.md
+  - plan_structure.md
+  - research_strategy.md
+  - final_report.md
+  # RFC templates
+  - architecture.md
+  - engineering.md
+  - feature.md
+  - process.md
+
+# Feature-specific default configuration
+config_defaults:
+  plan_directory: oak/plan
+  rfc_directory: oak/rfc

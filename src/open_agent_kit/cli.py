@@ -9,12 +9,12 @@ from rich.console import Console
 
 from open_agent_kit.commands.ci_cmd import ci_app
 from open_agent_kit.commands.config_cmd import config_app
-from open_agent_kit.commands.constitution_cmd import constitution_app
 from open_agent_kit.commands.feature_cmd import feature_app
 from open_agent_kit.commands.init_cmd import init_command
 from open_agent_kit.commands.plan_cmd import plan_app
 from open_agent_kit.commands.remove_cmd import remove_command
 from open_agent_kit.commands.rfc_cmd import rfc_app
+from open_agent_kit.commands.rules_cmd import rules_app
 from open_agent_kit.commands.skill_cmd import skill_app
 from open_agent_kit.commands.upgrade_cmd import upgrade_command
 from open_agent_kit.config.messages import HELP_TEXT
@@ -34,10 +34,10 @@ app = typer.Typer(
 )
 
 # Add command groups
-app.add_typer(rfc_app, name="rfc")
+app.add_typer(rules_app, name="rules")
 app.add_typer(plan_app, name="plan")
+app.add_typer(rfc_app, name="rfc")
 app.add_typer(config_app, name="config")
-app.add_typer(constitution_app, name="constitution")
 app.add_typer(feature_app, name="feature")
 app.add_typer(skill_app, name="skill")
 app.add_typer(ci_app, name="ci")
@@ -124,7 +124,7 @@ def remove(
         False,
         "--force",
         "-f",
-        help="Skip confirmation prompt",
+        help="Skip confirmation and bypass initialization check (for orphaned cleanup)",
     ),
 ) -> None:
     """Remove open-agent-kit from the current project.
@@ -132,6 +132,8 @@ def remove(
     Removes all oak-managed assets including configuration, agent directories,
     and agent instruction files. User content in the oak/ directory (constitution,
     RFCs, plans) is preserved.
+
+    Use --force to clean up orphaned settings files when oak is not initialized.
     """
     remove_command(force=force)
 

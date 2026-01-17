@@ -13,8 +13,10 @@ def test_ui_root_serves_html():
     assert response.status_code == 200
     # The content-type might vary slightly depending on OS, but should be text/html
     assert "text/html" in response.headers["content-type"]
-    assert "<!DOCTYPE html>" in response.text
-    assert "Codebase Intelligence" in response.text
+    # Vite generates lowercase doctype
+    assert "<!doctype html>" in response.text.lower()
+    # New UI uses "Oak CI" title
+    assert "oak ci" in response.text.lower()
 
 
 def test_root_redirects_or_serves_html():
@@ -27,25 +29,25 @@ def test_root_redirects_or_serves_html():
 
 
 def test_static_files_mounted():
-    """Test that static files are correctly mounted and accessible."""
+    """Test that static files are correctly mounted and accessible.
+
+    Note: The UI is now built with Vite, so assets are in /static/assets/
+    with hashed filenames. We test that static mount works by checking
+    for known static files.
+    """
     app = create_app()
     client = TestClient(app)
 
-    # Test CSS
-    response = client.get("/static/css/style.css")
-    assert response.status_code == 200
-    assert "text/css" in response.headers["content-type"]
-    assert ":root" in response.text
-
-    # Test JS
-    response = client.get("/static/js/app.js")
-    assert response.status_code == 200
-    assert (
-        "javascript" in response.headers["content-type"]
-        or "application/javascript" in response.headers["content-type"]
-    )
-
-    # Test index.html via static route
+    # Test that index.html is accessible via static mount
     response = client.get("/static/index.html")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+    # Test that logo.png is accessible
+    response = client.get("/logo.png")
+    assert response.status_code == 200
+    assert "image/png" in response.headers["content-type"]
+
+    # Test that favicon.png is accessible
+    response = client.get("/favicon.png")
+    assert response.status_code == 200

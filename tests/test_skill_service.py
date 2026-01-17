@@ -21,7 +21,7 @@ def temp_project(tmp_path):
         """
 version: "1.0"
 agents: [claude]
-features: [plan]
+features: [strategic-planning]
 skills:
   installed: []
   auto_install: true
@@ -64,18 +64,18 @@ def mock_agent_manifest_no_skills():
 @pytest.fixture
 def package_skills_dir(tmp_path):
     """Create a temporary package features directory with skills."""
-    # Create features/plan/skills structure
+    # Create features/strategic-planning/skills structure
     features_dir = tmp_path / "features"
     features_dir.mkdir()
 
-    plan_dir = features_dir / "plan"
+    plan_dir = features_dir / "strategic-planning"
     plan_dir.mkdir()
 
     # Create feature manifest
     (plan_dir / "manifest.yaml").write_text(
         """
-name: plan
-description: Planning feature
+name: strategic-planning
+description: Strategic planning feature
 version: 1.0.0
 """
     )
@@ -177,7 +177,7 @@ class TestSkillServiceDiscovery:
         service = SkillService(temp_project)
         service.package_features_dir = package_skills_dir
 
-        skills = service.get_skills_for_feature("plan")
+        skills = service.get_skills_for_feature("strategic-planning")
         assert len(skills) == 2
         assert "test-skill" in skills
         assert "other-skill" in skills
@@ -196,7 +196,7 @@ class TestSkillServiceDiscovery:
         service.package_features_dir = package_skills_dir
 
         feature = service.get_feature_for_skill("test-skill")
-        assert feature == "plan"
+        assert feature == "strategic-planning"
 
     def test_get_feature_for_skill_not_found(self, temp_project, package_skills_dir):
         """Return None for skill not in any feature."""
@@ -288,9 +288,9 @@ class TestSkillServiceInstallation:
             skills_dir = temp_project / ".claude" / "skills"
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
-            result = service.install_skills_for_feature("plan")
+            result = service.install_skills_for_feature("strategic-planning")
 
-        assert result["feature_name"] == "plan"
+        assert result["feature_name"] == "strategic-planning"
         assert len(result["skills_available"]) == 2
         assert "test-skill" in result["skills_installed"]
         assert "other-skill" in result["skills_installed"]
@@ -365,9 +365,9 @@ class TestSkillServiceRemoval:
         with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
-            result = service.remove_skills_for_feature("plan")
+            result = service.remove_skills_for_feature("strategic-planning")
 
-        assert result["feature_name"] == "plan"
+        assert result["feature_name"] == "strategic-planning"
         assert "test-skill" in result["skills_removed"]
         assert "other-skill" in result["skills_removed"]
 
@@ -536,6 +536,88 @@ class TestGetSkillService:
         assert isinstance(service, SkillService)
 
 
+class TestSkillsFolderOverride:
+    """Tests for skills_folder override functionality (e.g., Gemini/Antigravity)."""
+
+    @pytest.fixture
+    def mock_gemini_manifest(self):
+        """Create a mock Gemini agent manifest with skills_folder override."""
+        return AgentManifest(
+            name="gemini",
+            display_name="Gemini CLI",
+            description="Google Gemini CLI agent",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True,
+                skills_folder=".agent",  # Antigravity uses .agent/skills/
+                skills_directory="skills",
+            ),
+            installation=AgentInstallation(folder=".gemini/"),
+        )
+
+    def test_skills_folder_override_path(self, temp_project, mock_gemini_manifest):
+        """Test that skills_folder override is used for skill installation path."""
+        from open_agent_kit.services.agent_service import AgentService
+
+        service = SkillService(temp_project)
+
+        # Update config to use gemini agent
+        config = service.config_service.load_config()
+        config.agents = ["gemini"]
+        service.config_service.save_config(config)
+
+        # Mock agent service to return gemini manifest
+        with patch.object(AgentService, "get_agent_manifest") as mock_get_manifest:
+            mock_get_manifest.return_value = mock_gemini_manifest
+
+            agents_with_skills = service._get_agents_with_skills_support()
+
+        assert len(agents_with_skills) == 1
+        agent_name, skills_path, skills_subdir = agents_with_skills[0]
+        assert agent_name == "gemini"
+        # Skills should go to .agent/skills/ not .gemini/skills/
+        assert skills_path == temp_project / ".agent" / "skills"
+        assert skills_subdir == "skills"
+
+    def test_install_skill_with_skills_folder_override(
+        self, temp_project, package_skills_dir, mock_gemini_manifest
+    ):
+        """Test that skills are installed to the overridden skills folder."""
+        service = SkillService(temp_project)
+        service.package_features_dir = package_skills_dir
+
+        # Skills should go to .agent/skills/ for Gemini
+        skills_dir = temp_project / ".agent" / "skills"
+
+        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+            mock_agents.return_value = [("gemini", skills_dir, "skills")]
+
+            result = service.install_skill("test-skill")
+
+        assert result["skill_name"] == "test-skill"
+        assert not result["skipped"]
+        assert "gemini" in result["agents"]
+
+        # Verify skill was written to .agent/skills/ not .gemini/skills/
+        installed_skill = skills_dir / "test-skill" / "SKILL.md"
+        assert installed_skill.exists()
+
+        # Verify .gemini/skills/ was NOT created
+        gemini_skills = temp_project / ".gemini" / "skills" / "test-skill"
+        assert not gemini_skills.exists()
+
+    def test_oak_managed_paths_with_skills_folder_override(self, mock_gemini_manifest):
+        """Test that get_oak_managed_paths returns correct path with skills_folder override."""
+        paths = mock_gemini_manifest.get_oak_managed_paths()
+
+        # Should include .agent/skills (not .gemini/skills)
+        assert ".agent/skills" in paths
+        assert ".gemini/skills" not in paths
+
+        # Should still include .gemini/commands for commands
+        assert ".gemini/commands" in paths
+
+
 class TestManifestSkillsConsistency:
     """Integration tests validating manifest skills match directory contents.
 
@@ -551,11 +633,11 @@ class TestManifestSkillsConsistency:
         # Navigate from tests/ to features/
         return Path(__file__).parent.parent / "features"
 
-    def test_plan_manifest_skills_match_directories(self, package_features_path):
-        """Validate plan feature manifest skills match skill directories."""
+    def test_strategic_planning_manifest_skills_match_directories(self, package_features_path):
+        """Validate strategic-planning feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "plan"
+        feature_dir = package_features_path / "strategic-planning"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"
@@ -571,16 +653,16 @@ class TestManifestSkillsConsistency:
         manifest_skills = sorted(manifest.skills)
 
         assert manifest_skills == actual_skills, (
-            f"plan manifest skills mismatch:\n"
+            f"strategic-planning manifest skills mismatch:\n"
             f"  In manifest but not directory: {set(manifest_skills) - set(actual_skills)}\n"
             f"  In directory but not manifest: {set(actual_skills) - set(manifest_skills)}"
         )
 
-    def test_rfc_manifest_skills_match_directories(self, package_features_path):
-        """Validate rfc feature manifest skills match skill directories."""
+    def test_rules_management_manifest_skills_match_directories(self, package_features_path):
+        """Validate rules-management feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "rfc"
+        feature_dir = package_features_path / "rules-management"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"
@@ -594,16 +676,16 @@ class TestManifestSkillsConsistency:
         manifest_skills = sorted(manifest.skills)
 
         assert manifest_skills == actual_skills, (
-            f"rfc manifest skills mismatch:\n"
+            f"rules-management manifest skills mismatch:\n"
             f"  In manifest but not directory: {set(manifest_skills) - set(actual_skills)}\n"
             f"  In directory but not manifest: {set(actual_skills) - set(manifest_skills)}"
         )
 
-    def test_constitution_manifest_skills_match_directories(self, package_features_path):
-        """Validate constitution feature manifest skills match skill directories."""
+    def test_codebase_intelligence_manifest_skills_match_directories(self, package_features_path):
+        """Validate codebase-intelligence feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "constitution"
+        feature_dir = package_features_path / "codebase-intelligence"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"
@@ -617,7 +699,7 @@ class TestManifestSkillsConsistency:
         manifest_skills = sorted(manifest.skills)
 
         assert manifest_skills == actual_skills, (
-            f"constitution manifest skills mismatch:\n"
+            f"codebase-intelligence manifest skills mismatch:\n"
             f"  In manifest but not directory: {set(manifest_skills) - set(actual_skills)}\n"
             f"  In directory but not manifest: {set(actual_skills) - set(manifest_skills)}"
         )

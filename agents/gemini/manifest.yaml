@@ -30,6 +30,12 @@ capabilities:
   context_handling: large       # large | medium | small - excellent context window (1M+)
   model_consistency: high       # high | medium | variable - first-party models are consistent
 
+  # Skills support (Google Antigravity - Agent Skills standard)
+  # Compatible with Claude Code SKILL.md format
+  has_skills: true              # Gemini/Antigravity supports SKILL.md files
+  skills_folder: ".agent"       # Antigravity uses .agent/ for workspace skills
+  skills_directory: "skills"    # .agent/skills/
+
 settings:
   # Auto-approval settings for oak commands
   auto_approve:

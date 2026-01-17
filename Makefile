@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-minimal install-global install-global-dev sync lock uninstall test test-fast test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart
+.PHONY: help venv setup setup-minimal install-global install-global-dev sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart
 
 # Default target
 help:
@@ -27,9 +27,10 @@ help:
 	@echo "    make uninstall      Remove dev environment and stale global installs"
 	@echo ""
 	@echo "  Testing:"
-	@echo "    make test         Run all tests with coverage"
-	@echo "    make test-fast    Run tests without coverage (faster)"
-	@echo "    make test-cov     Run tests and open coverage report"
+	@echo "    make test          Run all tests with coverage"
+	@echo "    make test-fast     Run tests in parallel without coverage (fastest)"
+	@echo "    make test-parallel Run tests in parallel with coverage"
+	@echo "    make test-cov      Run tests and open coverage report"
 	@echo ""
 	@echo "  Code Quality:"
 	@echo "    make lint         Run ruff linter"
@@ -111,7 +112,10 @@ test:
 	uv run pytest tests/ -v
 
 test-fast:
-	uv run pytest tests/ -v --no-cov
+	uv run pytest tests/ -v --no-cov -n auto
+
+test-parallel:
+	uv run pytest tests/ -v -n auto
 
 test-cov:
 	uv run pytest tests/ -v
@@ -180,3 +184,17 @@ ci-restart: ci-stop
 	@sleep 1
 	@echo "Starting CI daemon..."
 	uv run oak ci start
+
+# UI Development targets
+ui-build:
+	cd src/open_agent_kit/features/codebase_intelligence/daemon/ui && npm install && npm run build
+
+ui-check:
+	$(MAKE) ui-build
+	@if [ -n "$$(git status --porcelain src/open_agent_kit/features/codebase_intelligence/daemon/static)" ]; then \
+		echo "Error: UI assets are out of sync. Please run 'make ui-build' and commit the changes."; \
+		exit 1; \
+	fi
+
+ui-dev:
+	cd src/open_agent_kit/features/codebase_intelligence/daemon/ui && npm run dev

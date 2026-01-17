@@ -390,31 +390,58 @@ def _display_next_steps(agents: list[str]) -> None:
         style="green",
     )
 
-    # Display Agent Commands panel if agents were selected
+    # Display Agent Configuration panel if agents were selected
     if agents:
         agent_service = AgentService()
-        agent_info_lines = []
+        skills_agents = []
+        command_agents = []
+
         for agent in agents:
             try:
                 manifest = agent_service.get_agent_manifest(agent.lower())
-                folder = manifest.installation.folder
-                commands_subfolder = manifest.installation.commands_subfolder
                 display_name = manifest.display_name
-                agent_info_lines.append(
-                    f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
-                )
-            except ValueError:
-                agent_info_lines.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
 
-        agent_list = "\n".join(agent_info_lines)
+                if manifest.capabilities.has_skills:
+                    # Skills-capable agent - show skills directory
+                    skills_base = (
+                        manifest.capabilities.skills_folder or manifest.installation.folder
+                    )
+                    skills_base = skills_base.rstrip("/")
+                    skills_dir = manifest.capabilities.skills_directory
+                    skills_agents.append(
+                        f"  • [cyan]{display_name}[/cyan]: {skills_base}/{skills_dir}/"
+                    )
+                else:
+                    # Command-only agent - show commands directory
+                    folder = manifest.installation.folder
+                    commands_subfolder = manifest.installation.commands_subfolder
+                    command_agents.append(
+                        f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
+                    )
+            except ValueError:
+                command_agents.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
+
+        # Build the panel content
+        panel_parts = ["[bold green]OAK Configured[/bold green]\n"]
+
+        if skills_agents:
+            panel_parts.append(
+                f"[bold]Skills installed ({len(skills_agents)}):[/bold]\n"
+                + "\n".join(skills_agents)
+            )
+            panel_parts.append("\nSkills are auto-discovered by your AI assistant.")
+
+        if command_agents:
+            panel_parts.append(
+                f"\n[bold]Commands installed ({len(command_agents)}):[/bold]\n"
+                + "\n".join(command_agents)
+            )
+            panel_parts.append(
+                "\nType [cyan]/oak[/cyan] in your AI assistant to see available commands."
+            )
 
         print_panel(
-            f"[bold green]Agent Commands Installed[/bold green]\n\n"
-            f"Commands have been installed for {len(agents)} agent(s):\n\n"
-            f"{agent_list}\n\n"
-            f"All commands start with [cyan]/oak.[/cyan] in your AI assistant.\n"
-            f"Examples: [dim]/oak.rfc-create, /oak.constitution-create[/dim]\n\n"
-            f"Type [cyan]/oak[/cyan] in your AI assistant to discover available commands!",
+            "\n".join(panel_parts),
             title="Ready to Use",
             style="green",
         )
@@ -435,25 +462,40 @@ def _display_additions_message(agents: list[str]) -> None:
     agent_service = AgentService()
     message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
 
-    # Add agents info
-    agent_info_lines = []
+    # Categorize agents by capability
+    skills_agents = []
+    command_agents = []
+
     for agent in agents:
         try:
             manifest = agent_service.get_agent_manifest(agent.lower())
-            folder = manifest.installation.folder
-            commands_subfolder = manifest.installation.commands_subfolder
             display_name = manifest.display_name
-            agent_info_lines.append(
-                f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
-            )
-        except ValueError:
-            agent_info_lines.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
 
-    agent_list = "\n".join(agent_info_lines)
-    message_parts.append(
-        f"\n**Agents Added ({len(agents)}):**\n{agent_list}\n"
-        f"You can now use open-agent-kit commands in these AI assistants!"
-    )
+            if manifest.capabilities.has_skills:
+                skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
+                skills_base = skills_base.rstrip("/")
+                skills_dir = manifest.capabilities.skills_directory
+                skills_agents.append(
+                    f"  • [cyan]{display_name}[/cyan]: {skills_base}/{skills_dir}/"
+                )
+            else:
+                folder = manifest.installation.folder
+                commands_subfolder = manifest.installation.commands_subfolder
+                command_agents.append(
+                    f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
+                )
+        except ValueError:
+            command_agents.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
+
+    if skills_agents:
+        message_parts.append(
+            f"\n[bold]Skills added ({len(skills_agents)}):[/bold]\n" + "\n".join(skills_agents)
+        )
+
+    if command_agents:
+        message_parts.append(
+            f"\n[bold]Commands added ({len(command_agents)}):[/bold]\n" + "\n".join(command_agents)
+        )
 
     print_panel(
         "\n".join(message_parts),

@@ -338,13 +338,13 @@ class TestGetTemplatePath:
 
         # Mock package features directory with a template
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_templates = mock_pkg_dir / "rfc" / "templates"
-        rfc_templates.mkdir(parents=True)
-        template_file = rfc_templates / "test.md"
+        planning_templates = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_templates.mkdir(parents=True)
+        template_file = planning_templates / "test.md"
         template_file.write_text("content")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
-            result = service.get_template_path("rfc/test.md")
+            result = service.get_template_path("strategic-planning/test.md")
             assert result == template_file
 
     def test_get_template_path_returns_none_if_not_found(self, tmp_path: Path) -> None:
@@ -361,13 +361,13 @@ class TestGetTemplatePath:
         service = TemplateService(project_root=tmp_path)
 
         # Create project template (should be ignored)
-        project_feature_dir = tmp_path / ".oak" / "features" / "rfc" / "templates"
+        project_feature_dir = tmp_path / ".oak" / "features" / "strategic-planning" / "templates"
         project_feature_dir.mkdir(parents=True)
         project_file = project_feature_dir / "test.md"
         project_file.write_text("project template")
 
         # Template should NOT be found since project templates are not searched
-        result = service.get_template_path("rfc/test.md")
+        result = service.get_template_path("strategic-planning/test.md")
         assert result is None or result != project_file
 
     def test_get_template_path_without_feature_prefix_searches_all(self, tmp_path: Path) -> None:
@@ -376,10 +376,10 @@ class TestGetTemplatePath:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_templates = mock_pkg_dir / "rfc" / "templates"
-        rfc_templates.mkdir(parents=True)
-        template_file = rfc_templates / "test.md"
-        template_file.write_text("rfc template")
+        planning_templates = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_templates.mkdir(parents=True)
+        template_file = planning_templates / "test.md"
+        template_file.write_text("strategic-planning template")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             result = service.get_template_path("test.md")
@@ -417,13 +417,13 @@ class TestListTemplates:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_dir = mock_pkg_dir / "rfc" / "templates"
-        rfc_dir.mkdir(parents=True)
-        (rfc_dir / "test.md").write_text("content")
+        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir.mkdir(parents=True)
+        (planning_dir / "test.md").write_text("content")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()
-            assert "rfc/test.md" in templates
+            assert "strategic-planning/test.md" in templates
 
     def test_list_templates_finds_yaml(self, tmp_path: Path) -> None:
         """Test that list_templates finds YAML files from package."""
@@ -431,13 +431,13 @@ class TestListTemplates:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        const_dir = mock_pkg_dir / "constitution" / "templates"
-        const_dir.mkdir(parents=True)
-        (const_dir / "config.yaml").write_text("key: value")
+        rules_dir = mock_pkg_dir / "rules-management" / "templates"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "config.yaml").write_text("key: value")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()
-            assert "constitution/config.yaml" in templates
+            assert "rules-management/config.yaml" in templates
 
     def test_list_templates_finds_json(self, tmp_path: Path) -> None:
         """Test that list_templates finds JSON files from package."""
@@ -445,13 +445,13 @@ class TestListTemplates:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        plan_dir = mock_pkg_dir / "plan" / "templates"
-        plan_dir.mkdir(parents=True)
-        (plan_dir / "config.json").write_text("{}")
+        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir.mkdir(parents=True)
+        (planning_dir / "config.json").write_text("{}")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()
-            assert "plan/config.json" in templates
+            assert "strategic-planning/config.json" in templates
 
     def test_list_templates_with_category_filter(self, tmp_path: Path) -> None:
         """Test filtering templates by category."""
@@ -459,19 +459,19 @@ class TestListTemplates:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_dir = mock_pkg_dir / "rfc" / "templates"
-        rfc_dir.mkdir(parents=True)
-        (rfc_dir / "template1.md").write_text("rfc")
+        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir.mkdir(parents=True)
+        (planning_dir / "template1.md").write_text("planning")
 
-        plan_dir = mock_pkg_dir / "plan" / "templates"
-        plan_dir.mkdir(parents=True)
-        (plan_dir / "template2.md").write_text("plan")
+        rules_dir = mock_pkg_dir / "rules-management" / "templates"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "template2.md").write_text("rules")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
-            # Filter by rfc category
-            templates = service.list_templates(category="rfc")
-            assert any(t.startswith("rfc/") for t in templates)
-            assert not any(t.startswith("plan/") for t in templates)
+            # Filter by strategic-planning category
+            templates = service.list_templates(category="strategic-planning")
+            assert any(t.startswith("strategic-planning/") for t in templates)
+            assert not any(t.startswith("rules-management/") for t in templates)
 
     def test_list_templates_sorted(self, tmp_path: Path) -> None:
         """Test that returned templates are sorted."""
@@ -479,15 +479,19 @@ class TestListTemplates:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_dir = mock_pkg_dir / "rfc" / "templates"
-        rfc_dir.mkdir(parents=True)
-        (rfc_dir / "zebra.md").write_text("z")
-        (rfc_dir / "apple.md").write_text("a")
+        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir.mkdir(parents=True)
+        (planning_dir / "zebra.md").write_text("z")
+        (planning_dir / "apple.md").write_text("a")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()
             # Filter to just our test templates
-            our_templates = [t for t in templates if t in ["rfc/apple.md", "rfc/zebra.md"]]
+            our_templates = [
+                t
+                for t in templates
+                if t in ["strategic-planning/apple.md", "strategic-planning/zebra.md"]
+            ]
             assert our_templates == sorted(our_templates)
 
     def test_list_templates_avoids_duplicates(self, tmp_path: Path) -> None:
@@ -496,14 +500,14 @@ class TestListTemplates:
 
         # Mock package features directory
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_dir = mock_pkg_dir / "rfc" / "templates"
-        rfc_dir.mkdir(parents=True)
-        (rfc_dir / "test.md").write_text("content")
+        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir.mkdir(parents=True)
+        (planning_dir / "test.md").write_text("content")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()
             # Count occurrences of our template
-            count = sum(1 for t in templates if t == "rfc/test.md")
+            count = sum(1 for t in templates if t == "strategic-planning/test.md")
             assert count == 1
 
     def test_list_templates_custom_dir(self, tmp_path: Path) -> None:
@@ -521,13 +525,13 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Create project template (should be ignored)
-        project_dir = tmp_path / ".oak" / "features" / "rfc" / "templates"
+        project_dir = tmp_path / ".oak" / "features" / "strategic-planning" / "templates"
         project_dir.mkdir(parents=True)
         (project_dir / "project_only.md").write_text("project template")
 
         templates = service.list_templates()
         # Project-only template should NOT be in the list
-        assert "rfc/project_only.md" not in templates
+        assert "strategic-planning/project_only.md" not in templates
 
 
 class TestGetTemplateSourcePath:
@@ -539,12 +543,12 @@ class TestGetTemplateSourcePath:
 
         with patch.object(service, "package_features_dir", tmp_path / "package_features"):
             # Create mock package template
-            pkg_dir = tmp_path / "package_features" / "rfc" / "templates"
+            pkg_dir = tmp_path / "package_features" / "strategic-planning" / "templates"
             pkg_dir.mkdir(parents=True)
             pkg_file = pkg_dir / "test.md"
             pkg_file.write_text("package template")
 
-            result = service.get_template_source_path("rfc/test.md")
+            result = service.get_template_source_path("strategic-planning/test.md")
             assert result == pkg_file
 
     def test_get_template_source_path_not_found_raises_error(self, tmp_path: Path) -> None:
@@ -559,8 +563,8 @@ class TestGetTemplateSourcePath:
         service = TemplateService(project_root=tmp_path)
 
         with patch.object(service, "package_features_dir", tmp_path / "package_features"):
-            # Create mock template in rfc feature
-            pkg_dir = tmp_path / "package_features" / "rfc" / "templates"
+            # Create mock template in strategic-planning feature
+            pkg_dir = tmp_path / "package_features" / "strategic-planning" / "templates"
             pkg_dir.mkdir(parents=True)
             pkg_file = pkg_dir / "test.md"
             pkg_file.write_text("content")
@@ -784,25 +788,25 @@ class TestIntegration:
     These tests use mocking to simulate package templates.
     """
 
-    def test_full_rfc_rendering_workflow(self, tmp_path: Path) -> None:
-        """Test complete workflow of finding and rendering an RFC template."""
+    def test_full_plan_rendering_workflow(self, tmp_path: Path) -> None:
+        """Test complete workflow of finding and rendering a plan template."""
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory with a template
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rfc_dir = mock_pkg_dir / "rfc" / "templates"
-        rfc_dir.mkdir(parents=True)
-        template_file = rfc_dir / "simple.md"
-        template_file.write_text("# RFC-{{ number }}: {{ title }}\n\nAuthor: {{ author }}")
+        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir.mkdir(parents=True)
+        template_file = planning_dir / "simple.md"
+        template_file.write_text("# Plan-{{ number }}: {{ title }}\n\nAuthor: {{ author }}")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             # Need to recreate the environment with the mocked directory
             # Use render_string with the template content directly for this test
             template_content = template_file.read_text()
             result = service.render_string(
-                template_content, {"number": "001", "title": "Test RFC", "author": "John Doe"}
+                template_content, {"number": "001", "title": "Test Plan", "author": "John Doe"}
             )
-            assert "RFC-001: Test RFC" in result
+            assert "Plan-001: Test Plan" in result
             assert "Author: John Doe" in result
 
     def test_multiple_features_coexistence(self, tmp_path: Path) -> None:
@@ -811,16 +815,16 @@ class TestIntegration:
 
         # Mock package features directory with templates in multiple features
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        for feature in ["rfc", "constitution", "plan"]:
+        for feature in ["strategic-planning", "rules-management", "codebase-intelligence"]:
             feature_dir = mock_pkg_dir / feature / "templates"
             feature_dir.mkdir(parents=True)
             (feature_dir / f"{feature}.md").write_text(f"# {feature} template")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()
-            assert "rfc/rfc.md" in templates
-            assert "constitution/constitution.md" in templates
-            assert "plan/plan.md" in templates
+            assert "strategic-planning/strategic-planning.md" in templates
+            assert "rules-management/rules-management.md" in templates
+            assert "codebase-intelligence/codebase-intelligence.md" in templates
 
     def test_template_with_filters_and_globals(self, tmp_path: Path) -> None:
         """Test template rendering with multiple filters and globals."""

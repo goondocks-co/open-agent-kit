@@ -752,11 +752,20 @@ class VectorStore:
         """
         self._ensure_initialized()
 
+        # Handle race condition where collection may be deleted during reindex
+        try:
+            code_count = self._code_collection.count() if self._code_collection else 0
+        except Exception:
+            code_count = 0
+
+        try:
+            memory_count = self._memory_collection.count() if self._memory_collection else 0
+        except Exception:
+            memory_count = 0
+
         return {
-            "code_chunks": self._code_collection.count() if self._code_collection else 0,
-            "memory_observations": (
-                self._memory_collection.count() if self._memory_collection else 0
-            ),
+            "code_chunks": code_count,
+            "memory_observations": memory_count,
             "persist_directory": str(self.persist_directory),
         }
 

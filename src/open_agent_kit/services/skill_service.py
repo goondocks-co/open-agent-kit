@@ -69,10 +69,12 @@ class SkillService:
         for agent_name in config.agents:
             manifest = agent_service.get_agent_manifest(agent_name)
             if manifest and manifest.capabilities.has_skills:
-                # Build the skills directory path: {agent_folder}/{skills_directory}
-                agent_folder = manifest.installation.folder.rstrip("/")
+                # Build the skills directory path
+                # Use skills_folder override if specified, otherwise use installation.folder
+                skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
+                skills_base = skills_base.rstrip("/")
                 skills_subdir = manifest.capabilities.skills_directory
-                skills_path = self.project_root / agent_folder / skills_subdir
+                skills_path = self.project_root / skills_base / skills_subdir
                 agents_with_skills.append((agent_name, skills_path, skills_subdir))
 
         return agents_with_skills
@@ -474,10 +476,12 @@ class SkillService:
             if not manifest.capabilities.has_skills:
                 continue
 
-            # Build the skills directory path: {agent_folder}/{skills_directory}
-            agent_folder = manifest.installation.folder.rstrip("/")
+            # Build the skills directory path
+            # Use skills_folder override if specified, otherwise use installation.folder
+            skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
+            skills_base = skills_base.rstrip("/")
             skills_subdir = manifest.capabilities.skills_directory
-            skills_dir = self.project_root / agent_folder / skills_subdir
+            skills_dir = self.project_root / skills_base / skills_subdir
 
             if not skills_dir.exists():
                 continue

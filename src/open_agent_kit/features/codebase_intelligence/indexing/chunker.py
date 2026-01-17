@@ -384,16 +384,23 @@ class CodeChunker:
         suffix = filepath.suffix.lower()
         return LANGUAGE_MAP.get(suffix, "unknown")
 
-    def chunk_file(self, filepath: Path, content: str | None = None) -> list[CodeChunk]:
+    def chunk_file(
+        self,
+        filepath: Path,
+        content: str | None = None,
+        display_path: str | None = None,
+    ) -> list[CodeChunk]:
         """Chunk a file into semantic units.
 
         Args:
             filepath: Path to the file.
             content: Optional pre-loaded content.
+            display_path: Optional relative path for logging (defaults to filepath.name).
 
         Returns:
             List of code chunks.
         """
+        log_path = display_path or filepath.name
         if content is None:
             try:
                 content = filepath.read_text(encoding="utf-8")
@@ -403,7 +410,7 @@ class CodeChunker:
 
         # Skip empty or whitespace-only files
         if not content or not content.strip():
-            logger.debug(f"Skipping empty file: {filepath}")
+            logger.debug(f"Skipping empty file: {log_path}")
             return []
 
         language = self.detect_language(filepath)
@@ -444,17 +451,15 @@ class CodeChunker:
             ast_config = LANGUAGE_AST_CONFIG.get(language, {})
             pkg = ast_config.get("package", "unknown")
             logger.debug(
-                f"Chunked {filepath.name}: {len(chunks)} chunks " f"(AST: {language} via {pkg})"
+                f"Chunked {log_path}: {len(chunks)} chunks " f"(AST: {language} via {pkg})"
             )
         elif attempted_ast:
             logger.debug(
-                f"Chunked {filepath.name}: {len(chunks)} chunks "
+                f"Chunked {log_path}: {len(chunks)} chunks "
                 f"(AST fallback→line-based: {language})"
             )
         else:
-            logger.debug(
-                f"Chunked {filepath.name}: {len(chunks)} chunks " f"(line-based: {language})"
-            )
+            logger.debug(f"Chunked {log_path}: {len(chunks)} chunks " f"(line-based: {language})")
 
         # Split any oversized chunks to fit within embedding model limits
         result = []

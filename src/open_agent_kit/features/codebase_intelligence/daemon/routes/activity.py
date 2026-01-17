@@ -366,14 +366,12 @@ async def reprocess_memories(
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    results = {
-        "success": True,
-        "batches_recovered": 0,
-        "batches_queued": 0,
-        "batches_processed": 0,
-        "observations_created": 0,
-        "message": "",
-    }
+    # Use typed local variables to avoid mypy issues with dict value types
+    batches_recovered = 0
+    batches_queued = 0
+    batches_processed = 0
+    observations_created = 0
+    message = ""
 
     try:
         conn = state.activity_store._get_connection()
@@ -391,10 +389,10 @@ async def reprocess_memories(
                 cursor.execute(
                     "UPDATE prompt_batches SET status = 'completed' WHERE status = 'active'"
                 )
-            results["batches_recovered"] = cursor.rowcount
+            batches_recovered = cursor.rowcount
             conn.commit()
-            if results["batches_recovered"] > 0:
-                logger.info(f"Recovered {results['batches_recovered']} stuck batches")
+            if batches_recovered > 0:
+                logger.info(f"Recovered {batches_recovered} stuck batches")
 
         # Step 2: Reset processed flag on completed batches
         if batch_ids:
@@ -405,47 +403,51 @@ async def reprocess_memories(
             )
         else:
             # Reset ALL completed batches, not just those with processed=1
-            cursor.execute(
-                "UPDATE prompt_batches SET processed = 0 WHERE status = 'completed'"
-            )
+            cursor.execute("UPDATE prompt_batches SET processed = 0 WHERE status = 'completed'")
 
-        results["batches_queued"] = cursor.rowcount
+        batches_queued = cursor.rowcount
         conn.commit()
 
-        logger.info(f"Queued {results['batches_queued']} prompt batches for memory reprocessing")
+        logger.info(f"Queued {batches_queued} prompt batches for memory reprocessing")
 
         # Step 3: Optionally trigger immediate processing
-        if process_immediately and state.processor:
+        if process_immediately and state.activity_processor:
             logger.info("Triggering immediate processing...")
-            process_results = state.processor.process_pending_batches(max_batches=100)
-            results["batches_processed"] = len(process_results)
-            results["observations_created"] = sum(r.observations_extracted for r in process_results)
+            process_results = state.activity_processor.process_pending_batches(max_batches=100)
+            batches_processed = len(process_results)
+            observations_created = sum(r.observations_extracted for r in process_results)
             logger.info(
-                f"Immediate processing: {results['batches_processed']} batches → "
-                f"{results['observations_created']} observations"
+                f"Immediate processing: {batches_processed} batches → "
+                f"{observations_created} observations"
             )
 
         # Build message
         parts = []
-        if results["batches_recovered"] > 0:
-            parts.append(f"recovered {results['batches_recovered']} stuck batches")
-        if results["batches_queued"] > 0:
-            parts.append(f"queued {results['batches_queued']} batches")
-        if results["batches_processed"] > 0:
+        if batches_recovered > 0:
+            parts.append(f"recovered {batches_recovered} stuck batches")
+        if batches_queued > 0:
+            parts.append(f"queued {batches_queued} batches")
+        if batches_processed > 0:
             parts.append(
-                f"processed {results['batches_processed']} batches → "
-                f"{results['observations_created']} observations"
+                f"processed {batches_processed} batches → " f"{observations_created} observations"
             )
 
         if parts:
-            results["message"] = f"Reprocessing: {', '.join(parts)}."
+            message = f"Reprocessing: {', '.join(parts)}."
         else:
-            results["message"] = "No batches needed reprocessing."
+            message = "No batches needed reprocessing."
 
-        if not process_immediately and results["batches_queued"] > 0:
-            results["message"] += " Memories will be regenerated in the next processing cycle (60s)."
+        if not process_immediately and batches_queued > 0:
+            message += " Memories will be regenerated in the next processing cycle (60s)."
 
-        return results
+        return {
+            "success": True,
+            "batches_recovered": batches_recovered,
+            "batches_queued": batches_queued,
+            "batches_processed": batches_processed,
+            "observations_created": observations_created,
+            "message": message,
+        }
 
     except (OSError, ValueError, TypeError) as e:
         logger.error(f"Failed to queue batches for reprocessing: {e}")

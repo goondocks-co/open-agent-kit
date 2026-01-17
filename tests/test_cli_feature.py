@@ -18,7 +18,10 @@ class TestFeatureList:
         result = runner.invoke(app, ["feature", "list"])
 
         assert result.exit_code == 0
-        assert "Constitution" in result.stdout or "constitution" in result.stdout.lower()
+        assert (
+            "rules-management" in result.stdout.lower()
+            or "rules management" in result.stdout.lower()
+        )
 
     def test_feature_list_shows_status(self, initialized_project: Path) -> None:
         """Test that feature list shows installation status."""
@@ -47,7 +50,7 @@ class TestFeatureAdd:
         config.agents = ["claude"]
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "add", "constitution"])
+        result = runner.invoke(app, ["feature", "add", "rules-management"])
 
         # May already be installed or succeed
         assert result.exit_code == 0
@@ -60,11 +63,14 @@ class TestFeatureAdd:
         config.features.enabled = []  # Start fresh
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "add", "rfc"])
+        result = runner.invoke(app, ["feature", "add", "strategic-planning"])
 
         assert result.exit_code == 0
-        # RFC should trigger constitution installation
-        assert "constitution" in result.stdout.lower() or "rfc" in result.stdout.lower()
+        # strategic-planning should trigger rules-management installation
+        assert (
+            "rules-management" in result.stdout.lower()
+            or "strategic-planning" in result.stdout.lower()
+        )
 
     def test_feature_add_invalid(self, initialized_project: Path) -> None:
         """Test adding an invalid feature fails."""
@@ -78,10 +84,10 @@ class TestFeatureAdd:
         config_service = ConfigService(initialized_project)
         config = config_service.load_config()
         config.agents = ["claude"]
-        config.features.enabled = ["constitution"]
+        config.features.enabled = ["rules-management"]
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "add", "constitution"])
+        result = runner.invoke(app, ["feature", "add", "rules-management"])
 
         assert result.exit_code == 0
         assert "already installed" in result.stdout.lower()
@@ -94,14 +100,14 @@ class TestFeatureAdd:
         config.features.enabled = []
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "add", "constitution"])
+        result = runner.invoke(app, ["feature", "add", "rules-management"])
 
         assert result.exit_code == 1
         assert "no agents" in result.stdout.lower()
 
     def test_feature_add_not_initialized(self, temp_project_dir: Path) -> None:
         """Test feature add fails when OAK not initialized."""
-        result = runner.invoke(app, ["feature", "add", "constitution"])
+        result = runner.invoke(app, ["feature", "add", "rules-management"])
 
         assert result.exit_code == 1
         assert "not initialized" in result.stdout.lower()
@@ -115,10 +121,10 @@ class TestFeatureRemove:
         config_service = ConfigService(initialized_project)
         config = config_service.load_config()
         config.agents = ["claude"]
-        config.features.enabled = ["constitution"]
+        config.features.enabled = ["rules-management"]
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "remove", "constitution", "--force"])
+        result = runner.invoke(app, ["feature", "remove", "rules-management", "--force"])
 
         assert result.exit_code == 0
 
@@ -129,7 +135,7 @@ class TestFeatureRemove:
         config.features.enabled = []
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "remove", "rfc", "--force"])
+        result = runner.invoke(app, ["feature", "remove", "strategic-planning", "--force"])
 
         assert result.exit_code == 0
         assert "not installed" in result.stdout.lower()
@@ -139,13 +145,13 @@ class TestFeatureRemove:
         config_service = ConfigService(initialized_project)
         config = config_service.load_config()
         config.agents = ["claude"]
-        config.features.enabled = ["constitution", "rfc"]
+        config.features.enabled = ["rules-management", "strategic-planning"]
         config_service.save_config(config)
 
-        result = runner.invoke(app, ["feature", "remove", "constitution", "--force"])
+        result = runner.invoke(app, ["feature", "remove", "rules-management", "--force"])
 
         assert result.exit_code == 1
-        assert "required" in result.stdout.lower() or "rfc" in result.stdout.lower()
+        assert "required" in result.stdout.lower() or "strategic-planning" in result.stdout.lower()
 
     def test_feature_remove_invalid(self, initialized_project: Path) -> None:
         """Test removing an invalid feature fails."""
@@ -155,7 +161,7 @@ class TestFeatureRemove:
 
     def test_feature_remove_not_initialized(self, temp_project_dir: Path) -> None:
         """Test feature remove fails when OAK not initialized."""
-        result = runner.invoke(app, ["feature", "remove", "constitution", "--force"])
+        result = runner.invoke(app, ["feature", "remove", "rules-management", "--force"])
 
         assert result.exit_code == 1
         assert "not initialized" in result.stdout.lower()
@@ -169,14 +175,14 @@ class TestFeatureRefresh:
         config_service = ConfigService(initialized_project)
         config = config_service.load_config()
         config.agents = ["claude"]
-        config.features.enabled = ["constitution"]
+        config.features.enabled = ["rules-management"]
         config_service.save_config(config)
 
         # Install the feature first
         from open_agent_kit.services.feature_service import FeatureService
 
         feature_service = FeatureService(initialized_project)
-        feature_service.install_feature("constitution", ["claude"])
+        feature_service.install_feature("rules-management", ["claude"])
 
         result = runner.invoke(app, ["feature", "refresh"])
 
@@ -201,7 +207,7 @@ class TestFeatureRefresh:
         config_service = ConfigService(initialized_project)
         config = config_service.load_config()
         config.agents = []
-        config.features.enabled = ["constitution"]
+        config.features.enabled = ["rules-management"]
         config_service.save_config(config)
 
         result = runner.invoke(app, ["feature", "refresh"])
@@ -221,15 +227,15 @@ class TestFeatureRefresh:
         config_service = ConfigService(initialized_project)
         config = config_service.load_config()
         config.agents = ["claude"]
-        config.features.enabled = ["constitution", "rfc"]
+        config.features.enabled = ["rules-management", "strategic-planning"]
         config_service.save_config(config)
 
         # Install features
         from open_agent_kit.services.feature_service import FeatureService
 
         feature_service = FeatureService(initialized_project)
-        feature_service.install_feature("constitution", ["claude"])
-        feature_service.install_feature("rfc", ["claude"])
+        feature_service.install_feature("rules-management", ["claude"])
+        feature_service.install_feature("strategic-planning", ["claude"])
 
         result = runner.invoke(app, ["feature", "refresh"])
 

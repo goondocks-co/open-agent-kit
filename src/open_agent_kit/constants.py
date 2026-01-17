@@ -279,74 +279,68 @@ DECISION_DEFAULT_TESTING_RATIONALE = (
 # Feature Configuration
 # =============================================================================
 
-SUPPORTED_FEATURES = ["constitution", "rfc", "plan", "codebase-intelligence"]
-DEFAULT_FEATURES = ["constitution", "rfc", "plan"]
+SUPPORTED_FEATURES = ["codebase-intelligence", "rules-management", "strategic-planning"]
+DEFAULT_FEATURES = ["codebase-intelligence"]
 CORE_FEATURE = "core"
 
+# Legacy feature name mapping for backward compatibility during migration
+LEGACY_FEATURE_NAMES = {
+    "constitution": "rules-management",
+    "rfc": "strategic-planning",
+    "plan": "strategic-planning",
+}
+
 FEATURE_CONFIG = {
-    "constitution": {
-        "name": "Constitution Management",
-        "description": "Create, validate, and maintain project constitutions",
-        "default_enabled": True,
-        "dependencies": [],
-        "commands": ["constitution-create", "constitution-validate", "constitution-amend"],
-    },
-    "rfc": {
-        "name": "RFC Management",
-        "description": "Create, list, and validate Request for Comments documents",
-        "default_enabled": True,
-        "dependencies": ["constitution"],
-        "commands": ["rfc-create", "rfc-list", "rfc-validate"],
-    },
-    "plan": {
-        "name": "Planning",
-        "description": "Unified SDD workflow supporting both issue-first (GitHub/Azure DevOps) and idea-first planning with research phases, structured task generation, and export to issue trackers",
-        "default_enabled": True,
-        "dependencies": ["constitution"],
-        "commands": [
-            "plan-create",
-            "plan-research",
-            "plan-tasks",
-            "plan-implement",
-            "plan-export",
-            "plan-validate",
-        ],
-    },
     "codebase-intelligence": {
         "name": "Codebase Intelligence",
         "description": "Semantic search and persistent memory for AI assistants. Provides context-aware code retrieval and cross-session knowledge management via MCP tools.",
-        "default_enabled": False,
-        "dependencies": ["constitution"],
-        "commands": ["ci"],  # User command for agents to use CI search/context/memory
+        "default_enabled": True,
+        "dependencies": ["rules-management"],
+        "commands": [
+            "discover-code-relationships",
+            "find-related-code",
+            "analyze-code-change-impacts",
+        ],
         "pip_extras": ["codebase-intelligence"],
+    },
+    "rules-management": {
+        "name": "Rules Management",
+        "description": "Create, validate, and maintain AI agent rules files (constitution.md)",
+        "default_enabled": True,
+        "dependencies": [],
+        "commands": ["add-project-rule", "remove-project-rule"],
+    },
+    "strategic-planning": {
+        "name": "Strategic Planning",
+        "description": "Unified SDD workflow supporting RFCs and ADRs for formal planning documentation",
+        "default_enabled": False,
+        "dependencies": ["rules-management"],
+        "commands": ["create-rfc", "review-rfc"],
     },
 }
 
 FEATURE_DISPLAY_NAMES = {
-    "constitution": "Constitution Management",
-    "rfc": "RFC Management",
-    "plan": "Planning",
     "codebase-intelligence": "Codebase Intelligence",
+    "rules-management": "Rules Management",
+    "strategic-planning": "Strategic Planning",
 }
 
 # =============================================================================
 # Upgrade Configuration
 # =============================================================================
 
-UPGRADE_TEMPLATE_CATEGORIES = ["rfc", "constitution", "commands"]
+UPGRADE_TEMPLATE_CATEGORIES = ["rules-management", "strategic-planning", "commands"]
 UPGRADE_COMMAND_NAMES = [
-    "rfc-create",
-    "rfc-list",
-    "rfc-validate",
-    "constitution-create",
-    "constitution-validate",
-    "constitution-amend",
-    "plan-create",
-    "plan-research",
-    "plan-tasks",
-    "plan-implement",
-    "plan-export",
-    "plan-validate",
+    # Rules management commands
+    "add-project-rule",
+    "remove-project-rule",
+    # Strategic planning commands
+    "create-rfc",
+    "review-rfc",
+    # Codebase intelligence commands
+    "discover-code-relationships",
+    "find-related-code",
+    "analyze-code-change-impacts",
 ]
 
 # =============================================================================

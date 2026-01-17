@@ -65,5 +65,5 @@ def test_agent_service_paths(temp_project):
     assert commands_dir == temp_project / ".github" / "agents"
 
     # Check filename
-    filename = service.get_command_filename("copilot", "rfc-create")
-    assert filename == "oak.rfc-create.agent.md"
+    filename = service.get_command_filename("copilot", "create-rfc")
+    assert filename == "oak.create-rfc.agent.md"
