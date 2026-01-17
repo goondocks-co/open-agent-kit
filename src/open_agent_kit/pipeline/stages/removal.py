@@ -140,6 +140,66 @@ class TriggerPreRemoveHooksStage(BaseStage):
             )
 
 
+class CleanupCiArtifactsStage(BaseStage):
+    """Clean up CI artifacts (hooks, MCP) even if feature wasn't fully installed.
+
+    This stage handles cleanup of codebase-intelligence artifacts that may have
+    been created even when the feature failed to install (e.g., pip packages failed).
+    It runs unconditionally during removal and delegates to the existing CI service
+    cleanup methods when available.
+    """
+
+    name = "cleanup_ci_artifacts"
+    display_name = "Cleaning up CI artifacts"
+    order = StageOrder.CLEANUP_CI_ARTIFACTS
+    applicable_flows = {FlowType.REMOVE}
+    is_critical = False
+    lifecycle = StageLifecycle.CLEANUP
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Always run during removal to clean up any leftover CI artifacts."""
+        return True
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Clean up CI hooks and MCP server registrations using existing CI service."""
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService(context.project_root)
+
+        try:
+            available_agents = agent_service.list_available_agents()
+        except Exception:
+            available_agents = ["claude", "cursor", "gemini", "copilot", "codex"]
+
+        # Use CI service cleanup if packages are available
+        try:
+            from open_agent_kit.features.codebase_intelligence.service import (
+                CodebaseIntelligenceService,
+            )
+
+            ci_service = CodebaseIntelligenceService(context.project_root)
+
+            # Remove hooks using existing CI service method
+            hook_results = ci_service._remove_agent_hooks(available_agents)
+            cleaned_hooks = [a for a, s in hook_results.items() if s == "removed"]
+
+            # Remove MCP servers using existing CI service method
+            mcp_results = ci_service.remove_mcp_server(available_agents)
+            cleaned_mcp = [a for a, s in mcp_results.items() if s == "removed"]
+
+            if cleaned_hooks or cleaned_mcp:
+                return StageOutcome.success(
+                    f"Cleaned up CI artifacts (hooks: {len(cleaned_hooks)}, mcp: {len(cleaned_mcp)})",
+                    data={"cleaned_hooks": cleaned_hooks, "cleaned_mcp": cleaned_mcp},
+                )
+
+        except ImportError:
+            # CI packages not installed - skip (artifacts likely don't exist)
+            pass
+
+        return StageOutcome.success("No CI artifacts to clean up")
+
+
 class RemoveSkillsStage(BaseStage):
     """Remove all installed skills."""
 
@@ -424,6 +484,7 @@ def get_removal_stages() -> list[BaseStage]:
         ValidateRemovalStage(),
         PlanRemovalStage(),
         TriggerPreRemoveHooksStage(),
+        CleanupCiArtifactsStage(),
         RemoveSkillsStage(),
         RemoveCreatedFilesStage(),
         RemoveAgentSettingsStage(),

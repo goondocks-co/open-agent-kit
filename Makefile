@@ -2,7 +2,7 @@
 # Common development tasks for the project
 #
 # Prerequisites:
-#   - Python 3.13+
+#   - Python 3.13 (3.14+ not yet supported due to dependency constraints)
 #   - uv (https://docs.astral.sh/uv/getting-started/installation/)
 #
 # Quick start:
@@ -15,7 +15,7 @@
 help:
 	@echo "open-agent-kit development commands"
 	@echo ""
-	@echo "Prerequisites: Python 3.13+, uv (https://docs.astral.sh/uv)"
+	@echo "Prerequisites: Python 3.13, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
 	@echo "    make setup          Install ALL dependencies including CI feature (recommended)"
@@ -82,13 +82,13 @@ install-global:
 	@echo "Installing oak globally via uv tool..."
 	@echo "(For development, use 'make setup' instead - changes are picked up automatically)"
 	@echo "(CI feature dependencies will be installed when you enable the feature)"
-	uv tool install --editable . --force
+	uv tool install --editable . --force --python 3.13
 	@echo "\n'oak' is now available globally from any directory."
 
 install-global-dev:
 	@echo "Installing oak globally with all dev dependencies..."
 	@echo "(For development, use 'make setup' instead - changes are picked up automatically)"
-	uv tool install --editable . --force --with ".[codebase-intelligence,ci-parsers]"
+	uv tool install --editable . --force --python 3.13 --with ".[codebase-intelligence,ci-parsers]"
 	@echo "\n'oak' is now available globally with CI feature pre-installed."
 
 sync:

@@ -74,6 +74,7 @@ class StageOrder:
     VALIDATE_REMOVAL = 1000
     PLAN_REMOVAL = 1010
     TRIGGER_PRE_REMOVE_HOOKS = 1020
+    CLEANUP_CI_ARTIFACTS = 1025  # Clean up CI hooks/MCP files even if feature not installed
     REMOVE_SKILLS = 1030
     REMOVE_CREATED_FILES = 1040
     REMOVE_AGENT_SETTINGS_CLEANUP = 1050  # Clean up agent settings files

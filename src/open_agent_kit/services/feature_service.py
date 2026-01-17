@@ -59,6 +59,47 @@ class FeatureService:
         # /Users/<user>/.local/share/uv/tools/open-agent-kit/...
         return ".local/share/uv/tools/" in sys.executable
 
+    def _get_install_source(self) -> str | None:
+        """Get the install source if OAK was installed from a non-PyPI source.
+
+        Detects:
+        - Local file paths (`uv tool install /path/to/oak`)
+        - Editable installs (`pip install -e .`)
+        - Git URLs (`uv tool install git+https://github.com/...`)
+
+        This allows feature dependency installation to work without requiring
+        PyPI publication.
+
+        Returns:
+            Install source (local path or git URL) if non-PyPI install, None otherwise
+        """
+        try:
+            from importlib.metadata import distribution
+
+            dist = distribution("open-agent-kit")
+
+            # Check direct_url.json (PEP 610) for non-PyPI installs
+            direct_url = dist.read_text("direct_url.json")
+            if direct_url:
+                import json
+
+                url_info = json.loads(direct_url)
+                url = url_info.get("url", "")
+
+                # Local file path install
+                if url.startswith("file://"):
+                    return str(url[7:])  # Strip file:// prefix, return path string
+
+                # Git URL install (vcs_info present means it's a VCS install)
+                if url_info.get("vcs_info"):
+                    vcs = url_info["vcs_info"].get("vcs", "git")
+                    # Return the full git URL for uv tool install
+                    return f"{vcs}+{url}"
+
+            return None
+        except Exception:
+            return None
+
     def _install_pip_packages(self, packages: list[str], feature_name: str) -> bool:
         """Install pip packages for a feature into OAK's Python environment.
 
@@ -131,6 +172,9 @@ class FeatureService:
         uv tool environments are isolated and cannot be modified with `uv pip install`.
         We need to use `uv tool install --upgrade --with` to add packages.
 
+        For editable installs, we use `uv tool install -e <path>` instead of the
+        package name to avoid trying to fetch from PyPI.
+
         Args:
             packages: List of package specs to install
             feature_name: Name of the feature (for logging)
@@ -150,9 +194,36 @@ class FeatureService:
         for pkg in packages:
             with_args.extend(["--with", pkg])
 
+        # Check if this is a non-PyPI install (local path or git URL)
+        install_source = self._get_install_source()
+
+        # Get current Python version to ensure consistency
+        import sys
+
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+
         try:
-            # Upgrade the tool with additional packages
-            cmd = ["uv", "tool", "install", "open-agent-kit", "--upgrade"] + with_args
+            if install_source:
+                # Non-PyPI install: use the original source (local path or git URL)
+                print_info(f"(detected install source: {install_source})")
+                cmd = [
+                    "uv", "tool", "install", install_source,
+                    "--upgrade", "--python", python_version
+                ] + with_args
+                manual_cmd = (
+                    f"uv tool install {install_source} --upgrade "
+                    f"--python {python_version} {' '.join(with_args)}"
+                )
+            else:
+                # PyPI install: use package name (only works if published to PyPI)
+                cmd = [
+                    "uv", "tool", "install", "open-agent-kit",
+                    "--upgrade", "--python", python_version
+                ] + with_args
+                manual_cmd = (
+                    f"uv tool install open-agent-kit --upgrade "
+                    f"--python {python_version} {' '.join(with_args)}"
+                )
 
             result = subprocess.run(
                 cmd,
@@ -170,7 +241,7 @@ class FeatureService:
                 print_warning(f"  Command: {' '.join(cmd)}")
                 print_warning(f"  Error: {error_msg}")
                 print_warning("\nTry manually running:")
-                print_warning(f"  uv tool install open-agent-kit --upgrade {' '.join(with_args)}")
+                print_warning(f"  {manual_cmd}")
                 return False
         except Exception as e:
             print_warning(f"Failed to install packages for '{feature_name}': {e}")

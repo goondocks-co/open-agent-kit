@@ -7,7 +7,7 @@ name = "open-agent-kit"
 dynamic = ["version"]
 description = "CLI toolkit for AI-powered development workflows - spec-driven development, RFC/ARC management, and shared conventions across AI coding agents"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 license = {text = "MIT"}
 authors = [
     {name = "Chris Kirby"}

@@ -28,13 +28,19 @@ class ReconcileMcpServersStage(BaseStage):
     is_critical = False
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are agents and features configured."""
-        # Only run if codebase-intelligence feature is enabled
+        """Run if there are agents and codebase-intelligence is installed.
+
+        We check if codebase-intelligence is in the INSTALLED features (from config),
+        not just in selections. This prevents registering MCP servers when feature
+        installation failed (e.g., pip packages failed to install).
+        """
         if not context.selections.agents:
             return False
-        if not context.selections.features:
-            return False
-        return "codebase-intelligence" in context.selections.features
+
+        # Check if codebase-intelligence is actually installed
+        config_service = self._get_config_service(context)
+        config = config_service.load_config()
+        return "codebase-intelligence" in config.features.enabled
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Reconcile MCP server registrations for all configured agents."""
