@@ -22,11 +22,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 
 if TYPE_CHECKING:
-    from open_agent_kit.features.codebase_intelligence.config import CIConfig
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
-    from open_agent_kit.features.codebase_intelligence.embeddings.base import (
-        EmbeddingProvider,
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -143,49 +139,6 @@ async def _start_file_watcher() -> None:
         logger.warning(f"Failed to start file watcher: {e}")
 
 
-async def _detect_and_persist_dimensions(
-    provider: "EmbeddingProvider",
-    ci_config: "CIConfig",
-    project_root: Path,
-) -> int | None:
-    """Detect embedding dimensions and persist to config file.
-
-    This ensures dimensions are always saved in config.yaml so they remain
-    consistent across daemon restarts, preventing spurious dimension mismatches.
-
-    Args:
-        provider: The embedding provider to test.
-        ci_config: Current CI configuration.
-        project_root: Project root directory.
-
-    Returns:
-        Detected dimensions, or None if detection failed.
-    """
-    from open_agent_kit.features.codebase_intelligence.config import save_ci_config
-    from open_agent_kit.features.codebase_intelligence.embeddings.base import (
-        EmbeddingProvider,
-    )
-
-    # Type hint for the provider parameter
-    embedding_provider: EmbeddingProvider = provider
-
-    try:
-        # Make a test embedding to detect dimensions
-        result = embedding_provider.embed(["test"])
-        if result.embeddings and len(result.embeddings) > 0:
-            detected_dims = len(result.embeddings[0])
-
-            # Update config and save
-            ci_config.embedding.dimensions = detected_dims
-            save_ci_config(project_root, ci_config)
-
-            return detected_dims
-    except (OSError, RuntimeError, ValueError, TypeError) as e:
-        logger.warning(f"Failed to detect embedding dimensions: {e}")
-
-    return None
-
-
 async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
     """Check for SQLite/ChromaDB mismatch and rebuild if needed.
 
@@ -239,8 +192,7 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
                 state.activity_processor.rebuild_chromadb_from_sqlite,
             )
             logger.info(
-                f"ChromaDB rebuild complete: {stats['embedded']} embedded, "
-                f"{stats['failed']} failed"
+                f"ChromaDB rebuild complete: {stats['embedded']} embedded, {stats['failed']} failed"
             )
         # If there are unembedded observations, process them
         elif unembedded_count > 0:
@@ -360,19 +312,42 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             state.embedding_chain = EmbeddingProviderChain(providers=[primary_provider])
             provider_available = True
 
-            # Auto-detect and persist dimensions if not set in config
-            # This ensures dimensions are always saved for consistent behavior across restarts
-            if ci_config.embedding.dimensions is None:
-                try:
-                    detected_dims = await _detect_and_persist_dimensions(
-                        primary_provider, ci_config, project_root
-                    )
-                    if detected_dims:
+            # Verify dimensions on startup - detect actual model output dimensions
+            # and update config if not set, or warn if there's a mismatch
+            config_dims = ci_config.embedding.dimensions
+            try:
+                # Do a test embedding to detect actual model dimensions
+                test_result = primary_provider.embed(["dimension test"])
+                if test_result.embeddings and len(test_result.embeddings) > 0:
+                    detected_dims = len(test_result.embeddings[0])
+
+                    if config_dims is None:
+                        # Auto-detect and save if not configured
+                        from open_agent_kit.features.codebase_intelligence.config import (
+                            save_ci_config,
+                        )
+
+                        ci_config.embedding.dimensions = detected_dims
+                        save_ci_config(project_root, ci_config)
                         logger.info(
                             f"Auto-detected and saved embedding dimensions: {detected_dims}"
                         )
-                except (OSError, RuntimeError, ValueError) as e:
-                    logger.warning(f"Could not auto-detect dimensions: {e}")
+                    elif config_dims != detected_dims:
+                        # Config has explicit dimensions that don't match model output
+                        # Update config to match reality - the model outputs what it outputs
+                        from open_agent_kit.features.codebase_intelligence.config import (
+                            save_ci_config,
+                        )
+
+                        logger.warning(
+                            f"Config dimensions ({config_dims}) don't match actual model "
+                            f"output ({detected_dims}). This model doesn't support dimension "
+                            f"truncation - updating config to {detected_dims}."
+                        )
+                        ci_config.embedding.dimensions = detected_dims
+                        save_ci_config(project_root, ci_config)
+            except (OSError, RuntimeError, ValueError) as e:
+                logger.warning(f"Could not verify dimensions: {e}")
 
             logger.info(
                 f"Created embedding provider: {primary_provider.name} "
@@ -444,8 +419,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 state.background_tasks.append(task)
             else:
                 logger.info(
-                    "Skipping auto-index - provider not available. "
-                    "Save settings to start indexing."
+                    "Skipping auto-index - provider not available. Save settings to start indexing."
                 )
 
             # Initialize activity store and processor

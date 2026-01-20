@@ -29,6 +29,21 @@ from open_agent_kit.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _feature_name_to_dir(feature_name: str) -> str:
+    """Convert feature name to directory name (hyphens to underscores).
+
+    Feature names use hyphens (codebase-intelligence) but Python packages
+    use underscores (codebase_intelligence).
+
+    Args:
+        feature_name: Feature name with hyphens
+
+    Returns:
+        Directory name with underscores
+    """
+    return feature_name.replace("-", "_")
+
+
 class UpgradeCategoryResults(TypedDict):
     upgraded: list[str]
     failed: list[str]
@@ -137,7 +152,8 @@ class UpgradeService:
         self.agent_settings_service = AgentSettingsService(project_root=project_root)
 
         # Package features directory (source of truth for commands)
-        self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+        # Path: services/upgrade_service.py -> services/ -> open_agent_kit/
+        self.package_features_dir = Path(__file__).parent.parent / FEATURES_DIR
 
     def is_initialized(self) -> bool:
         """Check if open-agent-kit is initialized.
@@ -317,7 +333,11 @@ class UpgradeService:
                     # Get feature display name for comment
                     from open_agent_kit.models.feature import FeatureManifest
 
-                    manifest_path = self.package_features_dir / feature_name / "manifest.yaml"
+                    manifest_path = (
+                        self.package_features_dir
+                        / _feature_name_to_dir(feature_name)
+                        / "manifest.yaml"
+                    )
                     display_name = feature_name
                     if manifest_path.exists():
                         try:
@@ -407,7 +427,9 @@ class UpgradeService:
         for feature_name in enabled_features:
             feature_config = FEATURE_CONFIG.get(feature_name, {})
             command_names = cast(list[str], feature_config.get("commands", []))
-            feature_commands_dir = self.package_features_dir / feature_name / "commands"
+            feature_commands_dir = (
+                self.package_features_dir / _feature_name_to_dir(feature_name) / "commands"
+            )
 
             if not feature_commands_dir.exists():
                 continue
@@ -489,7 +511,9 @@ class UpgradeService:
 
         # Check each feature's declared gitignore entries
         for feature_name in enabled_features:
-            manifest_path = self.package_features_dir / feature_name / "manifest.yaml"
+            manifest_path = (
+                self.package_features_dir / _feature_name_to_dir(feature_name) / "manifest.yaml"
+            )
             if not manifest_path.exists():
                 continue
 
@@ -617,7 +641,9 @@ class UpgradeService:
 
         # Check each enabled feature for hooks
         for feature_name in enabled_features:
-            feature_hooks_dir = self.package_features_dir / feature_name / "hooks"
+            feature_hooks_dir = (
+                self.package_features_dir / _feature_name_to_dir(feature_name) / "hooks"
+            )
             if not feature_hooks_dir.exists():
                 continue
 
@@ -751,7 +777,7 @@ class UpgradeService:
 
         # Check each enabled feature for MCP configurations
         for feature_name in enabled_features:
-            feature_mcp_dir = self.package_features_dir / feature_name / "mcp"
+            feature_mcp_dir = self.package_features_dir / _feature_name_to_dir(feature_name) / "mcp"
             if not feature_mcp_dir.exists():
                 continue
 
@@ -812,7 +838,9 @@ class UpgradeService:
         from open_agent_kit.models.agent_manifest import AgentManifest
 
         # Load MCP config to get server name
-        mcp_config_path = self.package_features_dir / feature_name / "mcp" / "mcp.yaml"
+        mcp_config_path = (
+            self.package_features_dir / _feature_name_to_dir(feature_name) / "mcp" / "mcp.yaml"
+        )
         if not mcp_config_path.exists():
             return False
 
@@ -827,7 +855,8 @@ class UpgradeService:
 
         # Load agent manifest to get MCP config location
         try:
-            agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+            # Path: services/upgrade_service.py -> services/ -> open_agent_kit/
+            agents_dir = Path(__file__).parent.parent / "agents"
             manifest = AgentManifest.load(agents_dir / agent / "manifest.yaml")
         except Exception:
             return False

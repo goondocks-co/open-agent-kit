@@ -281,7 +281,8 @@ class UpgradeGitignoreStage(BaseStage):
             entries_by_feature.setdefault(feature, []).append(item["entry"])
 
         # Package features directory for manifest lookup
-        package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+        # Path: pipeline/stages/upgrade.py -> stages/ -> pipeline/ -> open_agent_kit/
+        package_features_dir = Path(__file__).parent.parent.parent / FEATURES_DIR
 
         upgraded: list[str] = []
         failed: list[str] = []
@@ -289,7 +290,9 @@ class UpgradeGitignoreStage(BaseStage):
         for feature_name, entries in entries_by_feature.items():
             try:
                 # Get feature display name for comment
-                manifest_path = package_features_dir / feature_name / "manifest.yaml"
+                # Convert hyphenated name to underscored directory name
+                feature_dir = feature_name.replace("-", "_")
+                manifest_path = package_features_dir / feature_dir / "manifest.yaml"
                 display_name = feature_name
                 if manifest_path.exists():
                     try:

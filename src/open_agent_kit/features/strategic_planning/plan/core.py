@@ -29,6 +29,15 @@ from open_agent_kit.config.paths import (
     PLAN_TASKS_FILENAME,
 )
 from open_agent_kit.config.settings import git_settings
+from open_agent_kit.features.strategic_planning.plan.exceptions import PlanServiceError
+from open_agent_kit.features.strategic_planning.plan.export import ExportOperationsMixin
+from open_agent_kit.features.strategic_planning.plan.parsing import parse_plan_file
+from open_agent_kit.features.strategic_planning.plan.rendering import (
+    render_issue_plan,
+    render_plan_file,
+)
+from open_agent_kit.features.strategic_planning.plan.research import ResearchOperationsMixin
+from open_agent_kit.features.strategic_planning.plan.tasks import TaskOperationsMixin
 from open_agent_kit.models.issue import Issue
 from open_agent_kit.models.plan import (
     IssueReference,
@@ -42,12 +51,6 @@ from open_agent_kit.models.plan import (
 )
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.issue_providers.base import IssueProviderError
-from open_agent_kit.services.plan.exceptions import PlanServiceError
-from open_agent_kit.services.plan.export import ExportOperationsMixin
-from open_agent_kit.services.plan.parsing import parse_plan_file
-from open_agent_kit.services.plan.rendering import render_issue_plan, render_plan_file
-from open_agent_kit.services.plan.research import ResearchOperationsMixin
-from open_agent_kit.services.plan.tasks import TaskOperationsMixin
 from open_agent_kit.utils import ensure_dir, sanitize_filename
 
 

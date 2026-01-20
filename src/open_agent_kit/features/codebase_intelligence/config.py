@@ -40,7 +40,8 @@ from open_agent_kit.models.agent_manifest import AgentManifest
 logger = logging.getLogger(__name__)
 
 # Package agents directory (where agent manifests are stored)
-_PACKAGE_ROOT = Path(__file__).parent.parent.parent.parent.parent
+# Path: features/codebase_intelligence/config.py -> codebase_intelligence/ -> features/ -> open_agent_kit/
+_PACKAGE_ROOT = Path(__file__).parent.parent.parent
 _AGENTS_DIR = _PACKAGE_ROOT / "agents"
 
 # Type alias for valid providers

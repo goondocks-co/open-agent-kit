@@ -36,7 +36,8 @@ from open_agent_kit.utils import (
 logger = logging.getLogger(__name__)
 
 # Path to agent manifests in the package
-AGENTS_DIR = Path(__file__).parent.parent.parent.parent / "agents"
+# Path: services/agent_settings_service.py -> services/ -> open_agent_kit/
+AGENTS_DIR = Path(__file__).parent.parent / "agents"
 
 
 class AgentSettingsService:
@@ -59,7 +60,8 @@ class AgentSettingsService:
 
         # Package directories
         self.agents_dir = AGENTS_DIR
-        self.core_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR / "core"
+        # Path: services/agent_settings_service.py -> services/ -> open_agent_kit/
+        self.core_dir = Path(__file__).parent.parent / FEATURES_DIR / "core"
 
         # Cache for loaded manifests
         self._manifest_cache: dict[str, dict[str, Any]] = {}

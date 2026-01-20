@@ -572,9 +572,13 @@ class TestDaemonManagerEnsureDataDir:
 class TestDaemonManagerStart:
     """Test daemon start functionality."""
 
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
-    def test_start_returns_true_when_already_running(self, mock_is_running, tmp_path: Path):
+    def test_start_returns_true_when_already_running(
+        self, mock_is_running, mock_check_deps, tmp_path: Path
+    ):
         """Test that start returns True if daemon is already running."""
+        mock_check_deps.return_value = []  # No missing deps
         manager = DaemonManager(tmp_path)
         mock_is_running.return_value = True
 
@@ -582,12 +586,16 @@ class TestDaemonManagerStart:
 
         assert result is True
 
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
     )
-    def test_start_raises_when_port_in_use(self, mock_port_in_use, mock_is_running, tmp_path: Path):
+    def test_start_raises_when_port_in_use(
+        self, mock_port_in_use, mock_is_running, mock_check_deps, tmp_path: Path
+    ):
         """Test that start raises RuntimeError when port is in use by another process."""
+        mock_check_deps.return_value = []  # No missing deps
         manager = DaemonManager(tmp_path)
         mock_is_running.return_value = False
         mock_port_in_use.return_value = True
@@ -595,6 +603,7 @@ class TestDaemonManagerStart:
         with pytest.raises(RuntimeError, match="already in use"):
             manager.start()
 
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
@@ -604,9 +613,16 @@ class TestDaemonManagerStart:
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._wait_for_startup"
     )
     def test_start_without_wait(
-        self, mock_wait, mock_popen, mock_port_in_use, mock_is_running, tmp_path: Path
+        self,
+        mock_wait,
+        mock_popen,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
     ):
         """Test start with wait=False returns immediately."""
+        mock_check_deps.return_value = []  # No missing deps
         manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
         mock_is_running.return_value = False
         mock_port_in_use.return_value = False

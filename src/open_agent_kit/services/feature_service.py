@@ -22,6 +22,21 @@ from open_agent_kit.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _feature_name_to_dir(feature_name: str) -> str:
+    """Convert feature name to directory name (hyphens to underscores).
+
+    Feature names use hyphens (codebase-intelligence) but Python packages
+    use underscores (codebase_intelligence).
+
+    Args:
+        feature_name: Feature name with hyphens
+
+    Returns:
+        Directory name with underscores
+    """
+    return feature_name.replace("-", "_")
+
+
 class FeatureService:
     """Service for managing OAK features with dependency resolution.
 
@@ -39,7 +54,8 @@ class FeatureService:
         self.state_service = StateService(project_root)
 
         # Package features directory (where feature manifests/templates are stored)
-        self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+        # Path: services/feature_service.py -> services/ -> open_agent_kit/
+        self.package_features_dir = Path(__file__).parent.parent / FEATURES_DIR
         self._template_service: TemplateService | None = None
 
     @property
@@ -207,8 +223,13 @@ class FeatureService:
                 # Non-PyPI install: use the original source (local path or git URL)
                 print_info(f"(detected install source: {install_source})")
                 cmd = [
-                    "uv", "tool", "install", install_source,
-                    "--upgrade", "--python", python_version
+                    "uv",
+                    "tool",
+                    "install",
+                    install_source,
+                    "--upgrade",
+                    "--python",
+                    python_version,
                 ] + with_args
                 manual_cmd = (
                     f"uv tool install {install_source} --upgrade "
@@ -217,8 +238,13 @@ class FeatureService:
             else:
                 # PyPI install: use package name (only works if published to PyPI)
                 cmd = [
-                    "uv", "tool", "install", "open-agent-kit",
-                    "--upgrade", "--python", python_version
+                    "uv",
+                    "tool",
+                    "install",
+                    "open-agent-kit",
+                    "--upgrade",
+                    "--python",
+                    python_version,
                 ] + with_args
                 manual_cmd = (
                     f"uv tool install open-agent-kit --upgrade "
@@ -347,7 +373,8 @@ class FeatureService:
         Returns:
             FeatureManifest or None if not found
         """
-        manifest_path = self.package_features_dir / feature_name / FEATURE_MANIFEST_FILE
+        feature_dir = _feature_name_to_dir(feature_name)
+        manifest_path = self.package_features_dir / feature_dir / FEATURE_MANIFEST_FILE
         if manifest_path.exists():
             return FeatureManifest.load(manifest_path)
 
@@ -484,7 +511,8 @@ class FeatureService:
         Returns:
             Path to feature's commands directory
         """
-        return self.package_features_dir / feature_name / "commands"
+        feature_dir = _feature_name_to_dir(feature_name)
+        return self.package_features_dir / feature_dir / "commands"
 
     def get_feature_templates_dir(self, feature_name: str) -> Path:
         """Get templates directory for a feature.
@@ -495,7 +523,8 @@ class FeatureService:
         Returns:
             Path to feature's templates directory
         """
-        return self.package_features_dir / feature_name / "templates"
+        feature_dir = _feature_name_to_dir(feature_name)
+        return self.package_features_dir / feature_dir / "templates"
 
     def get_feature_commands(self, feature_name: str) -> list[str]:
         """Get list of command names for a feature.
@@ -660,8 +689,19 @@ class FeatureService:
         # Trigger feature enabled hook if this is a new install
         if was_disabled:
             try:
-                self.trigger_feature_enabled_hook(feature_name)
+                hook_result = self.trigger_feature_enabled_hook(feature_name)
+                # Check if any hooks failed and surface the error
+                for f_name, result in hook_result.items():
+                    if not result.get("success"):
+                        from open_agent_kit.utils import print_warning
+
+                        error = result.get("error", "Unknown error")
+                        print_warning(f"Feature hook for {f_name} failed: {error}")
+                        logger.warning(f"Feature hook for {f_name} failed: {error}")
             except Exception as e:
+                from open_agent_kit.utils import print_warning
+
+                print_warning(f"Failed to run initialization hook for {feature_name}: {e}")
                 logger.warning(f"Failed to trigger feature enabled hook for {feature_name}: {e}")
 
         # Auto-install associated skills if enabled
@@ -1044,7 +1084,7 @@ class FeatureService:
         Returns:
             Result from the action
         """
-        from open_agent_kit.services.constitution_service import ConstitutionService
+        from open_agent_kit.features.rules_management.constitution import ConstitutionService
 
         constitution_service = ConstitutionService(self.project_root)
 

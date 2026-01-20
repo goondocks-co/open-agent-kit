@@ -618,12 +618,12 @@ class RFCService:
         Returns:
             RFC template content
         """
-        return f"""# RFC-{context['rfc_number']}: {context['title']}
+        return f"""# RFC-{context["rfc_number"]}: {context["title"]}
 
-**Author:** {context['author']}
-**Date:** {context['date']}
-**Status:** {context['status']}
-**Tags:** {', '.join(context['tags'])}
+**Author:** {context["author"]}
+**Date:** {context["date"]}
+**Status:** {context["status"]}
+**Tags:** {", ".join(context["tags"])}
 
 ## Summary
 

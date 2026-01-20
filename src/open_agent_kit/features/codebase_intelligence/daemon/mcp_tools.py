@@ -353,8 +353,7 @@ class MCPToolHandler:
 
         if not context_parts:
             context_parts.append(
-                "No specific context found for this task. "
-                "This may be a new area of the codebase."
+                "No specific context found for this task. This may be a new area of the codebase."
             )
 
         return "\n".join(context_parts)

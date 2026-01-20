@@ -450,16 +450,13 @@ class CodeChunker:
         if used_ast:
             ast_config = LANGUAGE_AST_CONFIG.get(language, {})
             pkg = ast_config.get("package", "unknown")
-            logger.debug(
-                f"Chunked {log_path}: {len(chunks)} chunks " f"(AST: {language} via {pkg})"
-            )
+            logger.debug(f"Chunked {log_path}: {len(chunks)} chunks (AST: {language} via {pkg})")
         elif attempted_ast:
             logger.debug(
-                f"Chunked {log_path}: {len(chunks)} chunks "
-                f"(AST fallback→line-based: {language})"
+                f"Chunked {log_path}: {len(chunks)} chunks (AST fallback→line-based: {language})"
             )
         else:
-            logger.debug(f"Chunked {log_path}: {len(chunks)} chunks " f"(line-based: {language})")
+            logger.debug(f"Chunked {log_path}: {len(chunks)} chunks (line-based: {language})")
 
         # Split any oversized chunks to fit within embedding model limits
         result = []

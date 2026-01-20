@@ -36,9 +36,9 @@ import yaml
 logger = logging.getLogger(__name__)
 
 # Default paths (relative to package)
-DEFAULT_FEATURE_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent.parent / "features" / "codebase-intelligence"
-)
+# Config is now co-located with Python code in the same feature directory
+# Path: activity/prompts.py -> activity/ -> codebase_intelligence/
+DEFAULT_FEATURE_DIR = Path(__file__).parent.parent
 DEFAULT_PROMPTS_DIR = DEFAULT_FEATURE_DIR / "prompts"
 DEFAULT_SCHEMA_PATH = DEFAULT_FEATURE_DIR / "schema.yaml"
 

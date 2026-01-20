@@ -1,5 +1,13 @@
 """Services for open-agent-kit business logic."""
 
+# Feature-specific services (re-exported for backward compatibility)
+from open_agent_kit.features.rules_management.constitution import ConstitutionService
+from open_agent_kit.features.strategic_planning.plan import (
+    PlanService,
+    PlanServiceError,
+    get_plan_service,
+)
+from open_agent_kit.features.strategic_planning.rfc import RFCService, get_rfc_service
 from open_agent_kit.services.agent_file_service import AgentFileService
 from open_agent_kit.services.agent_service import AgentService, get_agent_service
 from open_agent_kit.services.agent_settings_service import (
@@ -7,9 +15,6 @@ from open_agent_kit.services.agent_settings_service import (
     get_agent_settings_service,
 )
 from open_agent_kit.services.config_service import ConfigService, get_config_service
-from open_agent_kit.services.constitution_service import ConstitutionService
-from open_agent_kit.services.plan import PlanService, PlanServiceError, get_plan_service
-from open_agent_kit.services.rfc_service import RFCService, get_rfc_service
 from open_agent_kit.services.state_service import StateService, get_state_service
 from open_agent_kit.services.template_service import TemplateService, get_template_service
 from open_agent_kit.services.validation_service import ValidationService

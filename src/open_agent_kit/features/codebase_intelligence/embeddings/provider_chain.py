@@ -55,6 +55,16 @@ def create_provider_from_config(config: EmbeddingConfig) -> EmbeddingProvider:
             api_key=config.api_key,
             dimensions=config.dimensions,
         )
+    elif provider_type == "lmstudio":
+        from open_agent_kit.features.codebase_intelligence.embeddings.lmstudio import (
+            LMStudioProvider,
+        )
+
+        return LMStudioProvider(
+            model=config.model,
+            base_url=config.base_url,
+            dimensions=config.dimensions,
+        )
     elif provider_type == "fastembed":
         return FastEmbedProvider(model=config.model)
     else:
@@ -215,7 +225,7 @@ class EmbeddingProviderChain(EmbeddingProvider):
                 return result
             except EmbeddingError as e:
                 self._track_usage(provider.name, success=False)
-                logger.warning(f"Provider {provider.name} failed: {e}. " "Trying next provider...")
+                logger.warning(f"Provider {provider.name} failed: {e}. Trying next provider...")
                 last_error = e
 
         # All providers failed

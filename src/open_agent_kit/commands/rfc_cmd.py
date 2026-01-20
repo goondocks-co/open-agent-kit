@@ -14,8 +14,8 @@ from open_agent_kit.config.messages import (
     USAGE_EXAMPLES,
     WARNING_MESSAGES,
 )
+from open_agent_kit.features.strategic_planning.rfc import RFCService
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.services.rfc_service import RFCService
 from open_agent_kit.utils import (
     StepTracker,
     dir_exists,
@@ -223,7 +223,7 @@ def list_rfcs(
     if not dir_exists(rfc_dir):
         print_warning(WARNING_MESSAGES["rfc_dir_not_found"].format(dir=rfc_dir))
         print_info(INFO_MESSAGES["no_rfcs_created"])
-        print_muted(f'\n{HINTS["create_first_rfc"]}')
+        print_muted(f"\n{HINTS['create_first_rfc']}")
         return
 
     # Get RFCs

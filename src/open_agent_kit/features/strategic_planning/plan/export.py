@@ -17,14 +17,14 @@ from open_agent_kit.config.paths import (
     PLAN_ISSUE_SUMMARY_FILENAME,
 )
 from open_agent_kit.constants import ISSUE_PROVIDER_CONFIG_MAP
+from open_agent_kit.features.strategic_planning.plan.exceptions import PlanServiceError
+from open_agent_kit.features.strategic_planning.plan.parsing import detect_issue_changes
+from open_agent_kit.features.strategic_planning.plan.rendering import render_issue_summary
 from open_agent_kit.models.config import IssueConfig
 from open_agent_kit.models.issue import Issue
 from open_agent_kit.models.plan import PlanStatus
 from open_agent_kit.services.issue_providers import AzureDevOpsProvider, GitHubIssuesProvider
 from open_agent_kit.services.issue_providers.base import IssueProvider, IssueProviderError
-from open_agent_kit.services.plan.exceptions import PlanServiceError
-from open_agent_kit.services.plan.parsing import detect_issue_changes
-from open_agent_kit.services.plan.rendering import render_issue_summary
 from open_agent_kit.utils import ensure_dir
 
 if TYPE_CHECKING:

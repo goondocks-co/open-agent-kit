@@ -326,8 +326,14 @@ class TestHookStages:
     """Tests for hook stages."""
 
     def test_reconcile_feature_hooks_stage(self, tmp_path: Path):
-        """Test ReconcileFeatureHooksStage runs when agents and features configured."""
+        """Test ReconcileFeatureHooksStage runs when codebase-intelligence is installed."""
         from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
+        from open_agent_kit.services.config_service import ConfigService
+
+        # Create config with codebase-intelligence enabled
+        config_service = ConfigService(tmp_path)
+        config_service.create_default_config()
+        config_service.add_features(["codebase-intelligence"])
 
         stage = ReconcileFeatureHooksStage()
 
@@ -336,7 +342,7 @@ class TestHookStages:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude", "codex"],
-                features=["constitution"],
+                features=["codebase-intelligence"],
             ),
         )
         assert stage.should_run(context) is True

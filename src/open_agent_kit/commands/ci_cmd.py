@@ -1375,8 +1375,7 @@ def ci_mcp(
     valid_transports = {"stdio", "sse", "streamable-http"}
     if transport not in valid_transports:
         print_error(
-            f"Invalid transport: {transport}. "
-            f"Must be one of: {', '.join(sorted(valid_transports))}"
+            f"Invalid transport: {transport}. Must be one of: {', '.join(sorted(valid_transports))}"
         )
         raise typer.Exit(code=1)
     run_mcp_server(project_root, transport=cast(MCPTransport, transport))

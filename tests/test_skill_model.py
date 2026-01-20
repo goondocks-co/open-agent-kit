@@ -354,7 +354,10 @@ class TestSkillManifestSerialization:
     def test_serialize_default_version_omitted(self):
         """Default version (1.0.0) is not included in output."""
         manifest = SkillManifest(
-            name="test-skill", description="A skill", version="1.0.0", body="Body"  # Default
+            name="test-skill",
+            description="A skill",
+            version="1.0.0",
+            body="Body",  # Default
         )
         content = manifest.to_skill_file()
         assert "version:" not in content

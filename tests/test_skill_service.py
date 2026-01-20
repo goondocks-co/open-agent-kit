@@ -64,11 +64,12 @@ def mock_agent_manifest_no_skills():
 @pytest.fixture
 def package_skills_dir(tmp_path):
     """Create a temporary package features directory with skills."""
-    # Create features/strategic-planning/skills structure
+    # Create features/strategic_planning/skills structure
+    # Note: Directory uses underscores (Python package convention)
     features_dir = tmp_path / "features"
     features_dir.mkdir()
 
-    plan_dir = features_dir / "strategic-planning"
+    plan_dir = features_dir / "strategic_planning"
     plan_dir.mkdir()
 
     # Create feature manifest
@@ -196,7 +197,8 @@ class TestSkillServiceDiscovery:
         service.package_features_dir = package_skills_dir
 
         feature = service.get_feature_for_skill("test-skill")
-        assert feature == "strategic-planning"
+        # Feature name from directory uses underscores (Python package convention)
+        assert feature == "strategic_planning"
 
     def test_get_feature_for_skill_not_found(self, temp_project, package_skills_dir):
         """Return None for skill not in any feature."""
@@ -630,14 +632,14 @@ class TestManifestSkillsConsistency:
         """Get the real package features directory."""
         from pathlib import Path
 
-        # Navigate from tests/ to features/
-        return Path(__file__).parent.parent / "features"
+        # Navigate from tests/ to src/open_agent_kit/features/
+        return Path(__file__).parent.parent / "src" / "open_agent_kit" / "features"
 
     def test_strategic_planning_manifest_skills_match_directories(self, package_features_path):
         """Validate strategic-planning feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "strategic-planning"
+        feature_dir = package_features_path / "strategic_planning"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"
@@ -662,7 +664,7 @@ class TestManifestSkillsConsistency:
         """Validate rules-management feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "rules-management"
+        feature_dir = package_features_path / "rules_management"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"
@@ -685,7 +687,7 @@ class TestManifestSkillsConsistency:
         """Validate codebase-intelligence feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "codebase-intelligence"
+        feature_dir = package_features_path / "codebase_intelligence"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"

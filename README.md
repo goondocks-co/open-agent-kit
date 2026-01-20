@@ -38,12 +38,15 @@ Open Agent Kit brings multi-agent spec-driven development, SDLC integration, ski
 
 ### Using uv (Recommended)
 
+> **Note:** Python 3.13 is required. The `--python 3.13` flag is necessary because
+> [uv ignores upper bounds](https://github.com/astral-sh/uv/issues/14110) in `requires-python`.
+
 ```bash
 # Install via SSH (requires SSH key configured with GitHub)
-uv tool install git+ssh://git@github.com/sirkirby/open-agent-kit.git
+uv tool install --python 3.13 git+ssh://git@github.com/sirkirby/open-agent-kit.git
 
 # Or via HTTPS
-uv tool install git+https://github.com/sirkirby/open-agent-kit.git
+uv tool install --python 3.13 git+https://github.com/sirkirby/open-agent-kit.git
 ```
 
 ### Using pip
@@ -403,7 +406,7 @@ If you see `ModuleNotFoundError` for packages like `httpx` after upgrading:
 
 ```bash
 # Reinstall with force flag to update all dependencies
-uv tool install --force --editable .
+uv tool install --python 3.13 --force --editable .
 ```
 
 This can happen when new dependencies are added to the package but the global installation wasn't updated.
@@ -442,7 +445,7 @@ If you're developing Open Agent Kit and changes aren't reflected:
 **For dependency or entry point changes:** Reinstall with force:
 
 ```bash
-uv tool install --force --editable .
+uv tool install --python 3.13 --force --editable .
 ```
 
 ### Permission denied errors

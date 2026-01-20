@@ -16,17 +16,11 @@ from open_agent_kit.features.codebase_intelligence.daemon.manager import get_pro
 logger = logging.getLogger(__name__)
 
 # Path to the feature's hooks templates directory
-HOOKS_TEMPLATE_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent
-    / "features"
-    / "codebase-intelligence"
-    / "hooks"
-)
+# Config is now co-located with Python code in the same feature directory
+HOOKS_TEMPLATE_DIR = Path(__file__).parent / "hooks"
 
 # Path to the feature's MCP configuration directory
-MCP_TEMPLATE_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent / "features" / "codebase-intelligence" / "mcp"
-)
+MCP_TEMPLATE_DIR = Path(__file__).parent / "mcp"
 
 
 class CodebaseIntelligenceService:
@@ -121,10 +115,40 @@ class CodebaseIntelligenceService:
         Sets up the CI data directory, installs agent hooks, and starts the daemon.
         Gitignore patterns are handled declaratively via the manifest 'gitignore' field.
 
+        This method will auto-install CI dependencies if they're not present.
+
         Returns:
             Result dictionary with status.
         """
+        from rich.console import Console
+
+        from open_agent_kit.features.codebase_intelligence.deps import (
+            check_ci_dependencies,
+            ensure_ci_dependencies,
+        )
+
+        console = Console()
         logger.info("Initializing Codebase Intelligence feature")
+
+        # Check and install dependencies if needed
+        missing_deps = check_ci_dependencies()
+        if missing_deps:
+            console.print(
+                f"[yellow]Installing CI dependencies: {', '.join(missing_deps)}...[/yellow]"
+            )
+            try:
+                if not ensure_ci_dependencies(auto_install=True):
+                    return {
+                        "status": "error",
+                        "message": "Failed to install CI dependencies. Check logs for details.",
+                    }
+                console.print("[green]CI dependencies installed successfully[/green]")
+            except Exception as e:
+                logger.error(f"Failed to install CI dependencies: {e}")
+                return {
+                    "status": "error",
+                    "message": f"Failed to install CI dependencies: {e}",
+                }
 
         # Create data directory
         self.ci_data_dir.mkdir(parents=True, exist_ok=True)

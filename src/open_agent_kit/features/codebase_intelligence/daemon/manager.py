@@ -14,6 +14,13 @@ from typing import IO, Any
 
 logger = logging.getLogger(__name__)
 
+
+class MissingDependenciesError(RuntimeError):
+    """Raised when CI daemon dependencies are not installed."""
+
+    pass
+
+
 # Port range for CI daemons: 37800-38799 (1000 ports)
 DEFAULT_PORT = 37800
 PORT_RANGE_START = 37800
@@ -275,7 +282,20 @@ class DaemonManager:
 
         Raises:
             RuntimeError: If daemon is already running or fails to start.
+            MissingDependenciesError: If CI dependencies are not installed.
         """
+        # Check dependencies before attempting to start
+        from open_agent_kit.features.codebase_intelligence.deps import (
+            check_ci_dependencies,
+        )
+
+        missing = check_ci_dependencies()
+        if missing:
+            raise MissingDependenciesError(
+                f"CI daemon requires: {', '.join(missing)}\n\n"
+                "Run 'oak init' to auto-install dependencies."
+            )
+
         # Acquire lock before checking if daemon is running. This prevents
         # a race condition where two processes could both decide to start
         # a daemon between the check and the actual startup.
@@ -371,27 +391,24 @@ class DaemonManager:
     def stop(self) -> bool:
         """Stop the daemon.
 
-        Tries multiple approaches:
+        Tries project-specific approaches only:
         1. Use PID file if available
         2. Find process by port if no PID file
-        3. Kill any uvicorn process for codebase_intelligence
+
+        Note: We intentionally do NOT use global process search (pgrep) as that
+        could kill daemons from other projects. If both PID file and port lookup
+        fail, we assume no daemon is running for this project.
 
         Returns:
             True if daemon was stopped successfully.
         """
         pid = self._read_pid()
 
-        # If no PID file, try to find by port
+        # If no PID file, try to find by port (project-specific)
         if not pid:
             pid = self._find_pid_by_port()
             if pid:
                 logger.info(f"Found daemon PID {pid} by port {self.port}")
-
-        # Still no PID, try to find any CI daemon process
-        if not pid:
-            pid = self._find_ci_daemon_pid()
-            if pid:
-                logger.info(f"Found CI daemon PID {pid} by process search")
 
         if not pid:
             logger.info("No daemon process found")
@@ -427,9 +444,14 @@ class DaemonManager:
         return True
 
     def _find_pid_by_port(self) -> int | None:
-        """Find daemon PID by checking what's listening on our port."""
-        import subprocess
+        """Find daemon PID by checking what's listening on our port.
 
+        Uses lsof to find the process listening on the daemon's port.
+        This is project-specific since each project gets a unique port.
+
+        Returns:
+            PID of the process on the port, or None if not found.
+        """
         try:
             # Use lsof to find process on port
             result = subprocess.run(
@@ -440,16 +462,29 @@ class DaemonManager:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return int(result.stdout.strip().split()[0])
-        except (ValueError, OSError, FileNotFoundError):
-            pass
+            logger.debug(f"No process found on port {self.port}")
+        except FileNotFoundError:
+            logger.warning("lsof not found - cannot find daemon by port")
+        except (ValueError, OSError) as e:
+            logger.debug(f"Failed to find daemon by port: {e}")
         return None
 
     def _find_ci_daemon_pid(self) -> int | None:
-        """Find any running CI daemon process."""
-        import subprocess
+        """Find any running CI daemon process globally.
 
+        WARNING: This method performs a GLOBAL process search using pgrep.
+        It will find ANY codebase_intelligence daemon running on the system,
+        not just the one for this project. This should NOT be used for normal
+        stop operations - use _find_pid_by_port() instead for project-specific
+        daemon lookup.
+
+        This method is kept for diagnostic purposes and explicit orphan cleanup.
+
+        Returns:
+            PID of the first matching CI daemon process, or None if not found.
+        """
         try:
-            # Search for uvicorn codebase_intelligence process
+            # Search for uvicorn codebase_intelligence process (GLOBAL search!)
             result = subprocess.run(
                 ["pgrep", "-f", "uvicorn.*codebase_intelligence"],
                 capture_output=True,

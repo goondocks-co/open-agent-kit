@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-minimal install-global install-global-dev sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart
+.PHONY: help venv setup setup-minimal install-global install-global-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart
 
 # Default target
 help:
@@ -21,7 +21,8 @@ help:
 	@echo "    make setup          Install ALL dependencies including CI feature (recommended)"
 	@echo "    make setup-minimal  Install only core dev dependencies (no CI feature)"
 	@echo "    make venv           Setup virtual environment and show activation command"
-	@echo "    make install-global Install 'oak' globally via uv tool (for end-users)"
+	@echo "    make install-global      Install 'oak' globally via uv tool (base only)"
+	@echo "    make install-global-full Install 'oak' globally with CI dependencies (for dev)"
 	@echo "    make sync           Sync dependencies with lockfile"
 	@echo "    make lock           Update lockfile after changing pyproject.toml"
 	@echo "    make uninstall      Remove dev environment and stale global installs"
@@ -71,6 +72,7 @@ setup:
 	@echo "CI feature dev workflow:"
 	@echo "  make ci-dev      Run daemon with hot reload (auto-restarts on code changes)"
 	@echo "  make ci-restart  Manual restart after code changes"
+	@echo "  make ui-restart  Build UI and restart daemon (for UI changes)"
 
 setup-minimal:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
@@ -79,15 +81,13 @@ setup-minimal:
 	@echo "For full dev setup with CI feature: make setup"
 
 install-global:
-	@echo "Installing oak globally via uv tool..."
-	@echo "(For development, use 'make setup' instead - changes are picked up automatically)"
-	@echo "(CI feature dependencies will be installed when you enable the feature)"
+	@echo "Installing oak globally via uv tool (base install)..."
+	@echo "(CI dependencies will be auto-installed when you enable the feature)"
 	uv tool install --editable . --force --python 3.13
 	@echo "\n'oak' is now available globally from any directory."
 
-install-global-dev:
-	@echo "Installing oak globally with all dev dependencies..."
-	@echo "(For development, use 'make setup' instead - changes are picked up automatically)"
+install-global-full:
+	@echo "Installing oak globally with all CI dependencies..."
 	uv tool install --editable . --force --python 3.13 --with ".[codebase-intelligence,ci-parsers]"
 	@echo "\n'oak' is now available globally with CI feature pre-installed."
 
@@ -177,8 +177,7 @@ ci-start:
 	uv run oak ci start
 
 ci-stop:
-	@echo "Stopping CI daemon..."
-	@pkill -f "uvicorn.*codebase_intelligence" 2>/dev/null && echo "Daemon stopped." || echo "No daemon running."
+	uv run oak ci stop
 
 ci-restart: ci-stop
 	@sleep 1
@@ -198,3 +197,7 @@ ui-check:
 
 ui-dev:
 	cd src/open_agent_kit/features/codebase_intelligence/daemon/ui && npm run dev
+
+# Combo target: build UI and restart daemon (for UI development workflow)
+ui-restart: ui-build ci-restart
+	@echo "UI rebuilt and daemon restarted."

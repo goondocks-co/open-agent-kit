@@ -50,8 +50,9 @@ class AgentService:
         self.config_service = ConfigService(project_root)
         self.state_service = StateService(project_root)
 
-        # Package directories
-        self.package_root = Path(__file__).parent.parent.parent.parent
+        # Package directories - relative to open_agent_kit package root
+        # Path: services/agent_service.py -> services/ -> open_agent_kit/
+        self.package_root = Path(__file__).parent.parent
         self.package_agents_dir = self.package_root / "agents"
         self.package_features_dir = self.package_root / "features"
 
@@ -96,7 +97,7 @@ class AgentService:
         if not manifest_path.exists():
             available = self.list_available_agents()
             raise ValueError(
-                f"Unknown agent type: {agent_type}. " f"Available agents: {', '.join(available)}"
+                f"Unknown agent type: {agent_type}. Available agents: {', '.join(available)}"
             )
 
         manifest = AgentManifest.load(manifest_path)

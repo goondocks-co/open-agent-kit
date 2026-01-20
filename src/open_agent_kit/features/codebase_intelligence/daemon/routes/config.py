@@ -1,7 +1,18 @@
-"""Configuration management routes for the CI daemon."""
+"""Configuration management routes for the CI daemon.
 
+Event Handlers:
+    _on_embedding_model_changed: Called when embedding model/dimensions change.
+        Handles ChromaDB reinitialization and triggers re-embedding of all data.
+
+    _on_index_params_changed: Called when chunk params or exclusions change.
+        Clears code index for re-chunking (memories preserved).
+"""
+
+import asyncio
 import json
 import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
@@ -9,10 +20,151 @@ from fastapi import APIRouter, HTTPException, Request
 
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
+from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingError
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["config"])
+
+
+@dataclass
+class ConfigChangeResult:
+    """Result of a configuration change event handler."""
+
+    index_cleared: bool = False
+    memories_reset: int = 0
+    indexing_scheduled: bool = False
+    memory_rebuild_scheduled: bool = False
+
+
+async def _on_embedding_model_changed(
+    state: "DaemonState",
+    old_model: str,
+    new_model: str,
+) -> ConfigChangeResult:
+    """Handle embedding model change event.
+
+    When the embedding model changes, all existing embeddings become invalid
+    because different models produce incompatible vector representations.
+
+    This handler coordinates the rebuild process:
+    1. Explicitly clears the code index (update_embedding_provider only clears
+       when dimensions change, not model name)
+    2. Schedules background code re-indexing via _background_index()
+    3. Schedules memory re-embedding via rebuild_chromadb_from_sqlite()
+       (which handles resetting embedded flags internally)
+
+    Note: rebuild_chromadb_from_sqlite(reset_embedded_flags=True) is the single
+    source of truth for memory rebuild - it resets flags and re-embeds atomically.
+
+    Args:
+        state: Daemon state with stores and processors.
+        old_model: Previous model name.
+        new_model: New model name.
+
+    Returns:
+        ConfigChangeResult with actions taken.
+    """
+    result = ConfigChangeResult()
+
+    logger.info(f"Embedding model changed: {old_model} -> {new_model}")
+
+    # Explicitly clear the code index - this is necessary because:
+    # - update_embedding_provider() only clears collections when DIMENSIONS change
+    # - Model name changes (same dims) also require clearing since embeddings are incompatible
+    # - This ensures _background_index() sees 0 chunks and performs a full rebuild
+    if state.vector_store:
+        state.vector_store.clear_code_index()
+        logger.info("Cleared code index (memories preserved)")
+    result.index_cleared = True
+
+    # Schedule code re-indexing
+    if state.indexer and state.vector_store:
+        from open_agent_kit.features.codebase_intelligence.daemon.server import (
+            _background_index,
+        )
+
+        asyncio.create_task(_background_index())
+        result.indexing_scheduled = True
+        logger.info("Scheduled code re-indexing with new embedding model")
+
+    # Schedule memory re-embedding using rebuild_chromadb_from_sqlite
+    # This is the canonical way to rebuild memories - it handles:
+    # 1. Resetting all embedded flags (reset_embedded_flags=True)
+    # 2. Re-embedding all observations with the new model
+    # 3. Marking each as embedded after success
+    if state.activity_processor and state.activity_store:
+        total_observations = state.activity_store.count_observations()
+        if total_observations > 0:
+            processor = state.activity_processor  # Capture for closure
+
+            async def _rebuild_memories() -> None:
+                loop = asyncio.get_event_loop()
+                try:
+                    # reset_embedded_flags=True ensures all observations are re-embedded
+                    stats = await loop.run_in_executor(
+                        None,
+                        lambda: processor.rebuild_chromadb_from_sqlite(reset_embedded_flags=True),
+                    )
+                    logger.info(
+                        f"Memory re-embedding complete: {stats['embedded']} embedded, "
+                        f"{stats['failed']} failed, {stats['total']} total"
+                    )
+                except (OSError, ValueError, RuntimeError) as e:
+                    logger.error(f"Memory re-embedding failed: {e}")
+
+            asyncio.create_task(_rebuild_memories())
+            result.memory_rebuild_scheduled = True
+            result.memories_reset = total_observations  # Will be reset by rebuild
+            logger.info(f"Scheduled re-embedding of {total_observations} memory observations")
+
+    return result
+
+
+async def _on_index_params_changed(
+    state: "DaemonState",
+    reason: str,
+) -> ConfigChangeResult:
+    """Handle index parameter change event (chunk size, exclusions).
+
+    When chunking parameters or exclusion patterns change, the code index
+    needs to be rebuilt but memories are preserved (they don't depend on
+    chunk parameters).
+
+    Args:
+        state: Daemon state with stores and processors.
+        reason: Description of what changed (for logging).
+
+    Returns:
+        ConfigChangeResult with actions taken.
+    """
+    result = ConfigChangeResult()
+
+    logger.info(f"Index parameters changed: {reason}")
+
+    # Clear code index only (memories preserved)
+    if state.vector_store:
+        try:
+            state.vector_store.clear_code_index()
+            result.index_cleared = True
+            logger.info("Code index cleared (memories preserved)")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.error(f"Failed to clear code index: {e}")
+
+    # Schedule re-indexing
+    if state.indexer and state.vector_store:
+        from open_agent_kit.features.codebase_intelligence.daemon.server import (
+            _background_index,
+        )
+
+        asyncio.create_task(_background_index())
+        result.indexing_scheduled = True
+        logger.info("Scheduled code re-indexing after parameter change")
+
+    return result
 
 
 def _validate_localhost_url(url: str) -> bool:
@@ -124,7 +276,10 @@ async def update_config(request: Request) -> dict:
             config.embedding.base_url = emb["base_url"]
             embedding_changed = True
         if "dimensions" in emb and emb["dimensions"] is not None:
+            old_dims = config.embedding.dimensions
             config.embedding.dimensions = emb["dimensions"]
+            if old_dims != emb["dimensions"]:
+                embedding_changed = True
         if "fallback_enabled" in emb:
             config.embedding.fallback_enabled = emb["fallback_enabled"]
         if "context_tokens" in emb:
@@ -137,6 +292,7 @@ async def update_config(request: Request) -> dict:
     # Update summarization settings (nested object: { summarization: { enabled, provider, ... } })
     if "summarization" in data and isinstance(data["summarization"], dict):
         summ = data["summarization"]
+        logger.debug(f"Summarization update request: {summ}")
         if "enabled" in summ:
             config.summarization.enabled = summ["enabled"]
             summarization_changed = True
@@ -150,6 +306,9 @@ async def update_config(request: Request) -> dict:
             config.summarization.base_url = summ["base_url"]
             summarization_changed = True
         if "context_tokens" in summ:
+            logger.info(
+                f"Setting summarization.context_tokens to: {summ['context_tokens']} (type: {type(summ['context_tokens']).__name__})"
+            )
             config.summarization.context_tokens = summ["context_tokens"]
             summarization_changed = True
 
@@ -163,6 +322,9 @@ async def update_config(request: Request) -> dict:
             log_level_changed = True
 
     save_ci_config(state.project_root, config)
+    logger.info(
+        f"Config saved. summarization.context_tokens = {config.summarization.context_tokens}"
+    )
 
     # Auto-apply embedding changes by triggering restart
     # This provides better UX - user doesn't need to manually click restart
@@ -306,9 +468,17 @@ async def _query_openai_compat(client: httpx.AsyncClient, url: str, key: str | N
     embedding_models = []
     for model in all_models:
         model_id = model.get("id", "")
-        has_embed_in_name = "embed" in model_id.lower()
+        model_lower = model_id.lower()
 
-        if has_embed_in_name:
+        # LM Studio uses "text-embedding-" prefix for actual embedding models
+        # Models with just "embed" in the name (like "nomic-embed-code") aren't treated as embeddings
+        is_text_embedding = model_lower.startswith("text-embedding-")
+        is_jina_embedding = "jina" in model_lower and "embedding" in model_lower
+
+        # For OpenAI proper: ada-002, text-embedding-3-small/large
+        is_openai_embedding = "ada" in model_lower or model_lower.startswith("text-embedding-")
+
+        if is_text_embedding or is_jina_embedding or is_openai_embedding:
             # Heuristic dimension guessing based on common model names
             dimensions = 768  # Default
             if "text-embedding-3-small" in model_id:
@@ -317,6 +487,12 @@ async def _query_openai_compat(client: httpx.AsyncClient, url: str, key: str | N
                 dimensions = 3072
             elif "ada" in model_id:
                 dimensions = 1536
+            elif "1.5b" in model_lower or "large" in model_lower:
+                dimensions = 1024
+            elif "granite" in model_lower:
+                dimensions = 768
+            elif "gemma" in model_lower:
+                dimensions = 768
 
             embedding_models.append(
                 {
@@ -326,6 +502,50 @@ async def _query_openai_compat(client: httpx.AsyncClient, url: str, key: str | N
                     "provider": "openai",
                 }
             )
+
+    return {"success": True, "models": embedding_models}
+
+
+async def _query_lmstudio(client: httpx.AsyncClient, url: str) -> dict:
+    """Query LM Studio API for embedding models.
+
+    LM Studio requires the 'text-embedding-' prefix for embedding models.
+    """
+    response = await client.get(f"{url}/v1/models")
+    if response.status_code != 200:
+        return {"success": False, "error": f"API returned status {response.status_code}"}
+
+    data = response.json()
+    all_models = data.get("data", [])
+
+    embedding_models = []
+    for model in all_models:
+        model_id = model.get("id", "")
+        model_lower = model_id.lower()
+
+        # LM Studio only treats models with text-embedding- prefix as embedding models
+        if not model_lower.startswith("text-embedding-"):
+            continue
+
+        # Heuristic dimension guessing
+        dimensions = 768  # Default
+        if "1.5b" in model_lower or "large" in model_lower:
+            dimensions = 1024
+        if "small" in model_lower or "mini" in model_lower:
+            dimensions = 384
+        if "3-large" in model_lower:
+            dimensions = 3072
+        if "3-small" in model_lower:
+            dimensions = 1536
+
+        embedding_models.append(
+            {
+                "name": model_id,
+                "display_name": model_id.replace("text-embedding-", ""),
+                "dimensions": dimensions,
+                "provider": "lmstudio",
+            }
+        )
 
     return {"success": True, "models": embedding_models}
 
@@ -354,6 +574,8 @@ async def list_provider_models(
         async with httpx.AsyncClient(timeout=5.0) as client:
             if provider == "ollama":
                 result = await _query_ollama(client, url)
+            elif provider == "lmstudio":
+                result = await _query_lmstudio(client, url)
             else:
                 result = await _query_openai_compat(client, url, api_key)
 
@@ -464,7 +686,7 @@ async def test_config(request: Request) -> dict:
             "message": f"Successfully generated embedding with {actual_dims} dimensions.",
         }
 
-    except (ValueError, RuntimeError, OSError, TimeoutError) as e:
+    except (ValueError, RuntimeError, OSError, TimeoutError, EmbeddingError) as e:
         logger.debug(f"Embedding test failed: {e}")
         error_str = str(e)
 
@@ -480,6 +702,17 @@ async def test_config(request: Request) -> dict:
                 "success": False,
                 "error": f"Cannot connect to Ollama at {test_config.base_url}",
                 "suggestion": "Make sure Ollama is running: ollama serve",
+            }
+
+        # Handle LM Studio "no models loaded" error - this is expected for on-demand loading
+        if "no models loaded" in error_str.lower():
+            return {
+                "success": True,  # Config is valid, model just needs to load on first use
+                "provider": provider.name,
+                "dimensions": None,  # Unknown until model loads
+                "model": test_config.model,
+                "message": "Configuration valid. Model will load on first use (on-demand loading).",
+                "pending_load": True,  # Flag indicating model needs to load
             }
 
         return {
@@ -506,13 +739,14 @@ async def restart_daemon() -> dict:
 
     old_config = state.ci_config
     old_model_name = old_config.embedding.model if old_config else "unknown"
+    old_dims = (old_config.embedding.get_dimensions() or 768) if old_config else 768
 
     # Track old chunk parameters to detect changes that require re-indexing
     old_context_tokens = old_config.embedding.get_context_tokens() if old_config else None
     old_max_chunk = old_config.embedding.get_max_chunk_chars() if old_config else None
     old_exclude_patterns = set(old_config.exclude_patterns) if old_config else set()
 
-    logger.info(f"Reloading configuration (current model: {old_model_name})...")
+    logger.info(f"Reloading configuration (current model: {old_model_name}, dims: {old_dims})...")
 
     ci_config = load_ci_config(state.project_root)
     new_model_name = ci_config.embedding.model
@@ -524,14 +758,21 @@ async def restart_daemon() -> dict:
 
     state.ci_config = ci_config
 
+    # Embedding config changed if model name OR dimensions changed
+    # Either change invalidates all existing embeddings
     model_changed = old_model_name != new_model_name
+    dims_changed = old_dims != new_dims
+    embedding_config_changed = model_changed or dims_changed
+
+    if dims_changed and not model_changed:
+        logger.info(f"Embedding dimensions changed: {old_dims} -> {new_dims}")
     new_exclude_patterns = set(ci_config.exclude_patterns)
 
-    # Check if chunk parameters changed (requires re-indexing even if model is same)
+    # Check if chunk parameters changed (requires re-indexing even if embedding is same)
     chunk_params_changed = (
         old_context_tokens != new_context_tokens or old_max_chunk != new_max_chunk
     )
-    if chunk_params_changed and not model_changed:
+    if chunk_params_changed and not embedding_config_changed:
         logger.info(
             f"Chunk parameters changed: context {old_context_tokens}->{new_context_tokens}, "
             f"max_chunk {old_max_chunk}->{new_max_chunk}"
@@ -544,26 +785,8 @@ async def restart_daemon() -> dict:
         removed = old_exclude_patterns - new_exclude_patterns
         logger.info(f"Exclusion patterns changed: added={list(added)}, removed={list(removed)}")
 
-    index_cleared = False
-
-    # Clear index if model changed (requires new embeddings), chunk params changed
-    # (chunk IDs include position, so old chunks won't be replaced - need clean slate),
-    # or exclusions changed (need to remove previously indexed files)
-    if (model_changed or chunk_params_changed or exclusions_changed) and state.vector_store:
-        if model_changed:
-            logger.warning(
-                f"Embedding model changed from {old_model_name} to {new_model_name}. "
-                "Clearing existing index..."
-            )
-        else:
-            logger.info("Chunk parameters changed. Clearing existing index for re-chunking...")
-        try:
-            state.vector_store.clear_code_index()
-            index_cleared = True
-            logger.info("Code index cleared (memories preserved).")
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.error(f"Failed to clear index: {e}")
-
+    # Create the new provider FIRST - this must happen before any ChromaDB operations
+    # so that dimension changes are properly detected and handled
     try:
         primary_provider = create_provider_from_config(ci_config.embedding)
         logger.info(
@@ -580,21 +803,20 @@ async def restart_daemon() -> dict:
     # Create single-provider chain (no built-in fallback)
     state.embedding_chain = EmbeddingProviderChain(providers=[primary_provider])
 
+    # Update vector store with new provider - this handles dimension changes
+    # and reinitializes ChromaDB collections when embedding dimensions change
     if state.vector_store:
-        state.vector_store.embedding_provider = state.embedding_chain
+        state.vector_store.update_embedding_provider(state.embedding_chain)
 
+    # Update indexer configuration
     if state.indexer:
         from open_agent_kit.features.codebase_intelligence.indexing.chunker import (
             ChunkerConfig,
         )
 
-        # Update chunker with new config
         state.indexer.chunker = state.indexer.chunker.__class__(
             ChunkerConfig(max_chunk_chars=ci_config.embedding.get_max_chunk_chars())
         )
-
-        # Update indexer ignore patterns with new exclusions from config
-        # Note: .gitignore patterns are loaded fresh at index time in discover_files()
         combined_patterns = ci_config.get_combined_exclude_patterns()
         state.indexer.config.ignore_patterns = combined_patterns
         logger.info(
@@ -602,71 +824,87 @@ async def restart_daemon() -> dict:
             f"(gitignore loaded at index time)"
         )
 
-    # Check if index is empty (first-time setup)
+    # ========================================================================
+    # Dispatch config change events
+    # ========================================================================
+    change_result = ConfigChangeResult()
+
+    # Check if index is empty (first-time setup triggers indexing)
     index_empty = False
-    indexing_started = False
     if state.vector_store:
         stats = state.vector_store.get_stats()
         index_empty = stats.get("code_chunks", 0) == 0
 
-    # Determine if we should index:
-    # 1. No index exists (first-time setup) -> index
-    # 2. Model changed (index was cleared above) -> rebuild with new embeddings
-    # 3. Chunk parameters changed (index was cleared above) -> rebuild with new chunk sizes
-    # 4. No changes -> do NOT re-index
-    should_index = index_empty or index_cleared
-
-    if should_index and state.indexer and state.vector_store:
-        import asyncio
-
+    if embedding_config_changed:
+        # Event: Embedding config changed (model or dimensions) - triggers full re-embedding
+        change_result = await _on_embedding_model_changed(
+            state, f"{old_model_name} ({old_dims}d)", f"{new_model_name} ({new_dims}d)"
+        )
+    elif chunk_params_changed or exclusions_changed:
+        # Event: Index params changed - triggers code re-indexing only
+        reason = []
+        if chunk_params_changed:
+            reason.append(f"chunk params (context: {new_context_tokens}, max: {new_max_chunk})")
+        if exclusions_changed:
+            reason.append("exclusion patterns")
+        change_result = await _on_index_params_changed(state, ", ".join(reason))
+    elif index_empty and state.indexer and state.vector_store:
+        # First-time setup - trigger initial indexing
         from open_agent_kit.features.codebase_intelligence.daemon.server import (
             _background_index,
         )
 
         asyncio.create_task(_background_index())
-        indexing_started = True
-        if chunk_params_changed and not model_changed and not index_empty:
-            logger.info("Starting background indexing after chunk parameter change")
-        else:
-            logger.info("Starting background indexing after config save")
-    else:
-        # Even if we don't need to re-index, ensure file watcher is running
-        # This handles the case where daemon started without valid provider
-        # and user later configured it
-        import asyncio
+        change_result.indexing_scheduled = True
+        logger.info("Starting initial indexing after config save")
 
-        from open_agent_kit.features.codebase_intelligence.daemon.server import (
-            _start_file_watcher,
-        )
+    # Ensure file watcher is running regardless of other changes
+    from open_agent_kit.features.codebase_intelligence.daemon.server import (
+        _start_file_watcher,
+    )
 
-        asyncio.create_task(_start_file_watcher())
-        logger.debug("Ensuring file watcher is running")
+    asyncio.create_task(_start_file_watcher())
+
+    # Convenience aliases for message generation
+    index_cleared = change_result.index_cleared
+    indexing_started = change_result.indexing_scheduled
 
     # Determine message based on what happened
     if indexing_started and index_empty:
         message = "Configuration saved! Indexing your codebase for the first time..."
     elif indexing_started and exclusions_changed:
-        message = (
-            "Exclusion patterns changed. " "Re-indexing your codebase with updated exclusions..."
-        )
-    elif indexing_started and index_cleared:
-        message = (
-            f"Model changed from {old_model_name} to {new_model_name}. "
-            "Re-indexing your codebase with the new model..."
-        )
+        message = "Exclusion patterns changed. Re-indexing your codebase with updated exclusions..."
+    elif indexing_started and embedding_config_changed:
+        if dims_changed and not model_changed:
+            message = (
+                f"Embedding dimensions changed ({old_dims} -> {new_dims}). "
+                "Re-indexing your codebase with new dimensions..."
+            )
+        else:
+            message = (
+                f"Model changed from {old_model_name} to {new_model_name}. "
+                "Re-indexing your codebase with the new model..."
+            )
     elif indexing_started and chunk_params_changed:
         message = (
             f"Chunk settings changed (context: {new_context_tokens}, max_chunk: {new_max_chunk}). "
             "Re-indexing your codebase with new chunk sizes..."
         )
-    elif model_changed and index_cleared:
+    elif embedding_config_changed and index_cleared:
+        if dims_changed and not model_changed:
+            message = (
+                f"Embedding dimensions changed ({old_dims} -> {new_dims}). "
+                "Index cleared - click 'Rebuild Index' to re-embed your code."
+            )
+        else:
+            message = (
+                f"Model changed from {old_model_name} to {new_model_name}. "
+                "Index cleared - click 'Rebuild Index' to re-embed your code."
+            )
+    elif embedding_config_changed:
         message = (
-            f"Model changed from {old_model_name} to {new_model_name}. "
-            "Index cleared - click 'Rebuild Index' to re-embed your code."
-        )
-    elif model_changed:
-        message = (
-            f"Model changed to {new_model_name}. " "Please rebuild the index to re-embed your code."
+            f"Embedding config changed to {new_model_name} ({new_dims}d). "
+            "Please rebuild the index to re-embed your code."
         )
     elif exclusions_changed:
         message = "Exclusion patterns updated. Restart to apply changes."
@@ -682,6 +920,8 @@ async def restart_daemon() -> dict:
             "max_chunk_chars": ci_config.embedding.get_max_chunk_chars(),
         },
         "model_changed": model_changed,
+        "dims_changed": dims_changed,
+        "embedding_config_changed": embedding_config_changed,
         "chunk_params_changed": chunk_params_changed,
         "exclusions_changed": exclusions_changed,
         "index_cleared": index_cleared,
@@ -710,8 +950,9 @@ async def _query_llm_models(
         headers["Authorization"] = f"Bearer {api_key}"
 
     # Use OpenAI-compatible /v1/models endpoint
+    # All providers (Ollama, LM Studio, OpenAI-compat) use /v1/models
     api_url = url.rstrip("/")
-    if provider == "ollama" and not api_url.endswith("/v1"):
+    if not api_url.endswith("/v1"):
         api_url = f"{api_url}/v1"
 
     response = await client.get(f"{api_url}/models", headers=headers)
@@ -902,11 +1143,28 @@ async def test_summarization_config(request: Request) -> dict:
         )
 
         if result.success:
+            # Get context window - try summarizer's cached value first, then discover
+            context_window = summarizer._context_window
+            if not context_window:
+                # Fallback to explicit discovery (works better with Ollama native API)
+                from open_agent_kit.features.codebase_intelligence.summarization import (
+                    discover_model_context,
+                )
+
+                resolved_model = summarizer._resolved_model or model
+                context_window = discover_model_context(
+                    model=resolved_model,
+                    base_url=base_url,
+                    provider=provider,
+                    api_key=api_key,
+                )
+                logger.info(f"Discovered context window for {resolved_model}: {context_window}")
+
             return {
                 "success": True,
                 "provider": provider,
                 "model": summarizer._resolved_model or model,
-                "context_window": summarizer._context_window,
+                "context_window": context_window,
                 "message": f"Successfully tested summarization with {model}",
             }
         else:

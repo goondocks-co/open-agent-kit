@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 
 from open_agent_kit.config.settings import validation_settings
+from open_agent_kit.features.strategic_planning.rfc import RFCService
 from open_agent_kit.models.rfc import RFCStatus
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.services.rfc_service import RFCService
 from open_agent_kit.utils import read_file, write_file
 
 

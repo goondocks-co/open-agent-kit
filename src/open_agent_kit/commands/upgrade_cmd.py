@@ -634,7 +634,7 @@ def _display_whats_new(results: UpgradeResults) -> None:
 
         release_url = f"{PROJECT_URL}/releases/tag/v{VERSION}"
         message_parts.append(
-            f"\n[dim]{UPGRADE_MESSAGES['release_notes']}[/dim]\n" f"[cyan]{release_url}[/cyan]"
+            f"\n[dim]{UPGRADE_MESSAGES['release_notes']}[/dim]\n[cyan]{release_url}[/cyan]"
         )
 
         print_panel(

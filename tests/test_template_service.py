@@ -337,8 +337,10 @@ class TestGetTemplatePath:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory with a template
+        # Note: Directory uses underscores (Python package convention),
+        # but feature name in path uses hyphens (canonical name)
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_templates = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_templates = mock_pkg_dir / "strategic_planning" / "templates"
         planning_templates.mkdir(parents=True)
         template_file = planning_templates / "test.md"
         template_file.write_text("content")
@@ -375,8 +377,9 @@ class TestGetTemplatePath:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores (Python package convention)
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_templates = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_templates = mock_pkg_dir / "strategic_planning" / "templates"
         planning_templates.mkdir(parents=True)
         template_file = planning_templates / "test.md"
         template_file.write_text("strategic-planning template")
@@ -416,8 +419,9 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir = mock_pkg_dir / "strategic_planning" / "templates"
         planning_dir.mkdir(parents=True)
         (planning_dir / "test.md").write_text("content")
 
@@ -430,8 +434,9 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        rules_dir = mock_pkg_dir / "rules-management" / "templates"
+        rules_dir = mock_pkg_dir / "rules_management" / "templates"
         rules_dir.mkdir(parents=True)
         (rules_dir / "config.yaml").write_text("key: value")
 
@@ -444,8 +449,9 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir = mock_pkg_dir / "strategic_planning" / "templates"
         planning_dir.mkdir(parents=True)
         (planning_dir / "config.json").write_text("{}")
 
@@ -458,12 +464,13 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir = mock_pkg_dir / "strategic_planning" / "templates"
         planning_dir.mkdir(parents=True)
         (planning_dir / "template1.md").write_text("planning")
 
-        rules_dir = mock_pkg_dir / "rules-management" / "templates"
+        rules_dir = mock_pkg_dir / "rules_management" / "templates"
         rules_dir.mkdir(parents=True)
         (rules_dir / "template2.md").write_text("rules")
 
@@ -478,8 +485,9 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir = mock_pkg_dir / "strategic_planning" / "templates"
         planning_dir.mkdir(parents=True)
         (planning_dir / "zebra.md").write_text("z")
         (planning_dir / "apple.md").write_text("a")
@@ -499,8 +507,9 @@ class TestListTemplates:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir = mock_pkg_dir / "strategic_planning" / "templates"
         planning_dir.mkdir(parents=True)
         (planning_dir / "test.md").write_text("content")
 
@@ -543,7 +552,8 @@ class TestGetTemplateSourcePath:
 
         with patch.object(service, "package_features_dir", tmp_path / "package_features"):
             # Create mock package template
-            pkg_dir = tmp_path / "package_features" / "strategic-planning" / "templates"
+            # Note: Directory uses underscores but canonical name uses hyphens
+            pkg_dir = tmp_path / "package_features" / "strategic_planning" / "templates"
             pkg_dir.mkdir(parents=True)
             pkg_file = pkg_dir / "test.md"
             pkg_file.write_text("package template")
@@ -564,7 +574,8 @@ class TestGetTemplateSourcePath:
 
         with patch.object(service, "package_features_dir", tmp_path / "package_features"):
             # Create mock template in strategic-planning feature
-            pkg_dir = tmp_path / "package_features" / "strategic-planning" / "templates"
+            # Note: Directory uses underscores but canonical name uses hyphens
+            pkg_dir = tmp_path / "package_features" / "strategic_planning" / "templates"
             pkg_dir.mkdir(parents=True)
             pkg_file = pkg_dir / "test.md"
             pkg_file.write_text("content")
@@ -793,8 +804,9 @@ class TestIntegration:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory with a template
+        # Note: Directory uses underscores but canonical name uses hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        planning_dir = mock_pkg_dir / "strategic-planning" / "templates"
+        planning_dir = mock_pkg_dir / "strategic_planning" / "templates"
         planning_dir.mkdir(parents=True)
         template_file = planning_dir / "simple.md"
         template_file.write_text("# Plan-{{ number }}: {{ title }}\n\nAuthor: {{ author }}")
@@ -814,11 +826,18 @@ class TestIntegration:
         service = TemplateService(project_root=tmp_path)
 
         # Mock package features directory with templates in multiple features
+        # Note: Directories use underscores but canonical names use hyphens
         mock_pkg_dir = tmp_path / "mock_package" / "features"
-        for feature in ["strategic-planning", "rules-management", "codebase-intelligence"]:
-            feature_dir = mock_pkg_dir / feature / "templates"
+        # Map canonical name (hyphens) to directory name (underscores)
+        features = [
+            ("strategic-planning", "strategic_planning"),
+            ("rules-management", "rules_management"),
+            ("codebase-intelligence", "codebase_intelligence"),
+        ]
+        for canonical_name, dir_name in features:
+            feature_dir = mock_pkg_dir / dir_name / "templates"
             feature_dir.mkdir(parents=True)
-            (feature_dir / f"{feature}.md").write_text(f"# {feature} template")
+            (feature_dir / f"{canonical_name}.md").write_text(f"# {canonical_name} template")
 
         with patch.object(service, "package_features_dir", mock_pkg_dir):
             templates = service.list_templates()

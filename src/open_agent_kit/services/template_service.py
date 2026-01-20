@@ -15,6 +15,21 @@ from open_agent_kit.utils import file_exists, write_file
 logger = logging.getLogger(__name__)
 
 
+def _feature_name_to_dir(feature_name: str) -> str:
+    """Convert feature name to directory name (hyphens to underscores).
+
+    Feature names use hyphens (codebase-intelligence) but Python packages
+    use underscores (codebase_intelligence).
+
+    Args:
+        feature_name: Feature name with hyphens
+
+    Returns:
+        Directory name with underscores
+    """
+    return feature_name.replace("-", "_")
+
+
 class TemplateService:
     """Service for managing and rendering templates."""
 
@@ -36,7 +51,8 @@ class TemplateService:
 
         # Package features directory (templates are read directly from here)
         # Templates are no longer copied to .oak/features/ - they stay in the package
-        self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+        # Path: services/template_service.py -> services/ -> open_agent_kit/
+        self.package_features_dir = Path(__file__).parent.parent / FEATURES_DIR
 
         # Setup Jinja2 environment
         self.env = self._create_environment()
@@ -57,7 +73,8 @@ class TemplateService:
 
         # Add package feature template directories (source of truth)
         for feature_name in SUPPORTED_FEATURES:
-            package_feature_templates = self.package_features_dir / feature_name / "templates"
+            feature_dir = _feature_name_to_dir(feature_name)
+            package_feature_templates = self.package_features_dir / feature_dir / "templates"
             if package_feature_templates.exists():
                 template_dirs.append(str(package_feature_templates))
 
@@ -151,16 +168,18 @@ class TemplateService:
 
         if len(parts) == 2:
             feature_name, filename = parts
+            feature_dir = _feature_name_to_dir(feature_name)
 
             # Check package feature templates
-            package_feature_path = self.package_features_dir / feature_name / "templates" / filename
+            package_feature_path = self.package_features_dir / feature_dir / "templates" / filename
             if file_exists(package_feature_path):
                 return package_feature_path
         else:
             # Search all package feature directories
             for feature_name in SUPPORTED_FEATURES:
+                feature_dir = _feature_name_to_dir(feature_name)
                 package_feature_path = (
-                    self.package_features_dir / feature_name / "templates" / template_name
+                    self.package_features_dir / feature_dir / "templates" / template_name
                 )
                 if file_exists(package_feature_path):
                     return package_feature_path
@@ -202,7 +221,8 @@ class TemplateService:
 
         # List from package feature templates (source of truth)
         for feature_name in SUPPORTED_FEATURES:
-            package_feature_templates_dir = self.package_features_dir / feature_name / "templates"
+            feature_dir = _feature_name_to_dir(feature_name)
+            package_feature_templates_dir = self.package_features_dir / feature_dir / "templates"
             if package_feature_templates_dir.exists():
                 for ext in extensions:
                     for path in package_feature_templates_dir.glob(ext):
@@ -242,15 +262,15 @@ class TemplateService:
 
         if len(parts) == 2:
             feature_name, filename = parts
-            package_path = self.package_features_dir / feature_name / "templates" / filename
+            feature_dir = _feature_name_to_dir(feature_name)
+            package_path = self.package_features_dir / feature_dir / "templates" / filename
             if file_exists(package_path):
                 return package_path
         else:
             # Search all features
             for feature_name in SUPPORTED_FEATURES:
-                package_path = (
-                    self.package_features_dir / feature_name / "templates" / template_name
-                )
+                feature_dir = _feature_name_to_dir(feature_name)
+                package_path = self.package_features_dir / feature_dir / "templates" / template_name
                 if file_exists(package_path):
                     return package_path
 

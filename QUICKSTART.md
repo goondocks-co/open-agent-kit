@@ -6,9 +6,12 @@ Get started with open-agent-kit in under 5 minutes.
 
 ### Using uv (Recommended)
 
+> **Note:** Python 3.13 is required. The `--python 3.13` flag is necessary because
+> [uv ignores upper bounds](https://github.com/astral-sh/uv/issues/14110) in `requires-python`.
+
 ```bash
 # Install via HTTPS
-uv tool install git+https://github.com/sirkirby/open-agent-kit.git
+uv tool install --python 3.13 git+https://github.com/sirkirby/open-agent-kit.git
 
 # Verify installation
 oak --version
@@ -152,8 +155,8 @@ oak upgrade --templates --force
 # Check if installed
 which oak
 
-# Reinstall if needed
-uv tool install git+ssh://git@github.com/sirkirby/open-agent-kit.git
+# Reinstall if needed (Python 3.13 required)
+uv tool install --python 3.13 git+ssh://git@github.com/sirkirby/open-agent-kit.git
 ```
 
 ### .oak directory not found

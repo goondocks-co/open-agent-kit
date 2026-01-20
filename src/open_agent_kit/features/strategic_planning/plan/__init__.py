@@ -10,7 +10,7 @@ Public API:
     PROVIDER_REGISTRY: Available issue provider implementations
 
 Example:
-    >>> from open_agent_kit.services.plan import PlanService, PlanServiceError
+    >>> from open_agent_kit.features.strategic_planning.plan import PlanService, PlanServiceError
     >>> service = PlanService(project_root=Path.cwd())
     >>> try:
     ...     manifest = service.create_plan("auth-redesign", "Authentication Redesign")
@@ -18,13 +18,13 @@ Example:
     ...     print(f"Failed: {e}")
 """
 
-from open_agent_kit.services.plan.core import PlanService, get_plan_service
-from open_agent_kit.services.plan.exceptions import PlanServiceError
-from open_agent_kit.services.plan.export import PROVIDER_REGISTRY
+from open_agent_kit.features.strategic_planning.plan.core import PlanService, get_plan_service
+from open_agent_kit.features.strategic_planning.plan.exceptions import PlanServiceError
+from open_agent_kit.features.strategic_planning.plan.export import PROVIDER_REGISTRY
 
 # Re-export parsing functions for backward compatibility
 # Legacy underscore-prefixed aliases for existing code
-from open_agent_kit.services.plan.parsing import (
+from open_agent_kit.features.strategic_planning.plan.parsing import (
     _detect_issue_changes,
     _parse_list_items,
     _parse_plan_file,
@@ -36,7 +36,7 @@ from open_agent_kit.services.plan.parsing import (
 # Re-export rendering functions for backward compatibility
 # These were previously module-level functions in plan_service.py
 # Legacy underscore-prefixed aliases for existing code
-from open_agent_kit.services.plan.rendering import (
+from open_agent_kit.features.strategic_planning.plan.rendering import (
     _clean_html,
     _format_timestamp,
     _render_issue_plan,

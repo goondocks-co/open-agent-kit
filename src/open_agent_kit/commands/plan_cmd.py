@@ -831,16 +831,13 @@ def refresh_plan(
         console.print("  [yellow]•[/yellow] Description updated\n")
 
     if changes["state_changed"]:
-        console.print(
-            f"  [yellow]•[/yellow] State changed: " f"{old_item.state} → {new_item.state}\n"
-        )
+        console.print(f"  [yellow]•[/yellow] State changed: {old_item.state} → {new_item.state}\n")
 
     if changes["acceptance_criteria_changed"]:
         old_count = len(old_item.acceptance_criteria)
         new_count = len(new_item.acceptance_criteria)
         console.print(
-            f"  [yellow]•[/yellow] Acceptance criteria updated: "
-            f"{old_count} → {new_count} items\n"
+            f"  [yellow]•[/yellow] Acceptance criteria updated: {old_count} → {new_count} items\n"
         )
 
     if changes["tags_changed"]:
@@ -863,8 +860,7 @@ def refresh_plan(
 
     if changes["priority_changed"]:
         console.print(
-            f"  [yellow]•[/yellow] Priority changed: "
-            f"{old_item.priority} → {new_item.priority}\n"
+            f"  [yellow]•[/yellow] Priority changed: {old_item.priority} → {new_item.priority}\n"
         )
 
     if changes["milestone_changed"]:
@@ -890,9 +886,7 @@ def refresh_plan(
     context_path = service.get_issue_context_path(name)
     summary_path = service.get_issue_summary_path(name)
     print_success(
-        f"Refreshed context for plan '{name}'\n"
-        f"  Updated: {context_path}\n"
-        f"  Updated: {summary_path}"
+        f"Refreshed context for plan '{name}'\n  Updated: {context_path}\n  Updated: {summary_path}"
     )
 
 
@@ -1247,7 +1241,7 @@ def _save_validation_results(
 **Title:** {issue_obj.title}
 **Branch:** {branch_name}
 **Validated:** {timestamp}
-**Status:** {'⚠️  Issues Found' if issues else '✅ Passed'}
+**Status:** {"⚠️  Issues Found" if issues else "✅ Passed"}
 
 ## Summary
 
@@ -1258,7 +1252,7 @@ def _save_validation_results(
 **Plan:** {plan_name}
 **Branch:** {branch_name}
 **Validated:** {timestamp}
-**Status:** {'⚠️  Issues Found' if issues else '✅ Passed'}
+**Status:** {"⚠️  Issues Found" if issues else "✅ Passed"}
 
 ## Summary
 

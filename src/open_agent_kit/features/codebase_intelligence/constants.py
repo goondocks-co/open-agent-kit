@@ -42,10 +42,12 @@ COLLECTION_MEMORY: Final[str] = "memory"
 
 PROVIDER_OLLAMA: Final[str] = "ollama"
 PROVIDER_OPENAI: Final[str] = "openai"
+PROVIDER_LMSTUDIO: Final[str] = "lmstudio"
 PROVIDER_FASTEMBED: Final[str] = "fastembed"
 VALID_PROVIDERS: Final[tuple[str, ...]] = (
     PROVIDER_OLLAMA,
     PROVIDER_OPENAI,
+    PROVIDER_LMSTUDIO,
     PROVIDER_FASTEMBED,
 )
 
@@ -196,9 +198,11 @@ TAG_SESSION_SUMMARY: Final[str] = "session-summary"
 
 SUMMARIZATION_PROVIDER_OLLAMA: Final[str] = "ollama"
 SUMMARIZATION_PROVIDER_OPENAI: Final[str] = "openai"
+SUMMARIZATION_PROVIDER_LMSTUDIO: Final[str] = "lmstudio"
 VALID_SUMMARIZATION_PROVIDERS: Final[tuple[str, ...]] = (
     SUMMARIZATION_PROVIDER_OLLAMA,
     SUMMARIZATION_PROVIDER_OPENAI,
+    SUMMARIZATION_PROVIDER_LMSTUDIO,
 )
 
 # Default summarization configuration

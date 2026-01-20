@@ -8,9 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from open_agent_kit.features.strategic_planning.plan.exceptions import PlanServiceError
+from open_agent_kit.features.strategic_planning.plan.rendering import render_tasks
 from open_agent_kit.models.plan import PlanStatus, PlanTask
-from open_agent_kit.services.plan.exceptions import PlanServiceError
-from open_agent_kit.services.plan.rendering import render_tasks
 
 if TYPE_CHECKING:
     from open_agent_kit.models.plan import Plan

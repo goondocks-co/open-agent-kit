@@ -263,8 +263,7 @@ PLAN_ERROR_MESSAGES = {
 PLAN_INFO_MESSAGES = {
     "plan_branch_exists": "Branch {branch} already exists. Switching to it.",
     "plan_encourage_web_search": (
-        "Web search is strongly encouraged for comprehensive research. "
-        "Use available search tools."
+        "Web search is strongly encouraged for comprehensive research. Use available search tools."
     ),
     "plan_encourage_background": "Consider using background agents for context-efficient research.",
     "plan_encourage_mcp": "MCP tools are available for enhanced research capabilities.",

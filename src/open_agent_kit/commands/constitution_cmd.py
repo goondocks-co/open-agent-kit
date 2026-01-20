@@ -5,8 +5,8 @@ import json
 import typer
 
 from open_agent_kit.config.messages import ERROR_MESSAGES, INFO_MESSAGES, SUCCESS_MESSAGES
+from open_agent_kit.features.rules_management.constitution import ConstitutionService
 from open_agent_kit.services.agent_file_service import AgentFileService
-from open_agent_kit.services.constitution_service import ConstitutionService
 from open_agent_kit.services.validation_service import ValidationService
 from open_agent_kit.utils import (
     get_project_root,

@@ -28,58 +28,6 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 
-def _start_ci_and_open_settings(project_root: Path) -> None:
-    """Start CI daemon and open browser to settings tab.
-
-    Called after codebase-intelligence feature is installed to guide
-    the user through initial configuration.
-    """
-    import time
-    import webbrowser
-
-    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
-        DaemonManager,
-        get_project_port,
-    )
-
-    ci_data_dir = project_root / OAK_DIR / "ci"
-    port = get_project_port(project_root, ci_data_dir)
-    manager = DaemonManager(project_root=project_root, port=port, ci_data_dir=ci_data_dir)
-
-    console.print()
-    print_info("Starting Codebase Intelligence daemon...")
-
-    if manager.start(wait=True):
-        settings_url = f"http://localhost:{port}/ui?tab=settings"
-        print_info(f"Opening settings: {settings_url}")
-
-        # Give daemon a moment to fully initialize
-        time.sleep(0.5)
-
-        # Try to open browser
-        try:
-            webbrowser.open(settings_url)
-            console.print()
-            console.print(
-                "[bold]Configure your embedding provider to start indexing.[/bold]",
-                style="cyan",
-            )
-            console.print(
-                "If the browser didn't open, visit: " + settings_url,
-                style="dim",
-            )
-        except OSError as e:
-            logger.warning(f"Failed to open browser: {e}")
-            console.print()
-            console.print(
-                f"[bold]Open this URL to configure:[/bold] {settings_url}",
-                style="cyan",
-            )
-    else:
-        print_info(f"Daemon could not start. Check logs: {manager.log_file}")
-        print_info("Run 'oak ci start' to try again.")
-
-
 feature_app = typer.Typer(
     name="feature",
     help="Manage OAK features (RFC, Constitution, Issues)",
@@ -228,10 +176,6 @@ def feature_add(
         raise typer.Exit(code=1)
 
     tracker.finish(FEATURE_MESSAGES["feature_added"].format(feature=name_lower))
-
-    # Special handling for codebase-intelligence: start daemon and open settings
-    if name_lower == "codebase-intelligence":
-        _start_ci_and_open_settings(project_root)
 
 
 @feature_app.command("refresh")

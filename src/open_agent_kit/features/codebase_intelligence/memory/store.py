@@ -271,6 +271,34 @@ class VectorStore:
 
         logger.info(f"Recreated collection '{collection_name}' for {dims}-dim embeddings")
 
+    def update_embedding_provider(self, new_provider: EmbeddingProvider) -> None:
+        """Update the embedding provider and reinitialize if dimensions changed.
+
+        This should be called when switching embedding models/providers to ensure
+        ChromaDB collections are recreated with the correct dimensions.
+
+        Args:
+            new_provider: New embedding provider to use.
+        """
+        old_dims = self.embedding_provider.dimensions if self.embedding_provider else None
+        new_dims = new_provider.dimensions
+
+        self.embedding_provider = new_provider
+
+        # If dimensions changed and we're already initialized, reinitialize collections
+        if self._client is not None and old_dims != new_dims:
+            logger.info(
+                f"Embedding dimensions changed ({old_dims} -> {new_dims}), "
+                "reinitializing ChromaDB collections..."
+            )
+            # Force reinitialization by clearing client state
+            self._client = None
+            self._code_collection = None
+            self._memory_collection = None
+            # Reinitialize with new dimensions
+            self._ensure_initialized()
+            logger.info(f"ChromaDB reinitialized with {new_dims} dimensions")
+
     def add_code_chunks(self, chunks: list[CodeChunk]) -> int:
         """Add code chunks to the index.
 
@@ -434,7 +462,7 @@ class VectorStore:
             if progress_callback:
                 progress_callback(batch_end, total_chunks)
 
-            logger.debug(f"Processed batch {batch_start//batch_size + 1}: {len(batch)} chunks")
+            logger.debug(f"Processed batch {batch_start // batch_size + 1}: {len(batch)} chunks")
 
         logger.info(f"Added {total_added} code chunks to index in batches of {batch_size}")
         return total_added

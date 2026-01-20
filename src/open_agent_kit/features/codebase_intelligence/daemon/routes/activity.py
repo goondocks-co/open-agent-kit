@@ -429,7 +429,7 @@ async def reprocess_memories(
             parts.append(f"queued {batches_queued} batches")
         if batches_processed > 0:
             parts.append(
-                f"processed {batches_processed} batches → " f"{observations_created} observations"
+                f"processed {batches_processed} batches → {observations_created} observations"
             )
 
         if parts:

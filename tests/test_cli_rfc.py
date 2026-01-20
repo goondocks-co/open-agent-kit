@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from open_agent_kit.services.rfc_service import RFCService
+from open_agent_kit.features.strategic_planning.rfc import RFCService
 
 
 def test_rfc_create_generates_file(initialized_project: Path, sample_rfc_data: dict) -> None:

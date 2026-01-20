@@ -47,10 +47,11 @@ PLAN_ISSUE_SUMMARY_FILENAME = "summary.md"
 PLAN_ISSUE_RELATED_DIR = "related"
 
 # =============================================================================
-# Features Structure
+# Package Structure
 # =============================================================================
 
 FEATURES_DIR = "features"
+AGENTS_DIR = "agents"
 FEATURE_MANIFEST_FILE = "manifest.yaml"
 FEATURE_COMMANDS_SUBDIR = "commands"
 FEATURE_TEMPLATES_SUBDIR = "templates"
@@ -97,7 +98,8 @@ GIT_COMMIT_MESSAGE_TEMPLATE = "docs: Add {rfc_number} - {title}"
 # =============================================================================
 # Template Paths
 # =============================================================================
+# Template paths are relative to the feature's templates/ directory
 
-CONSTITUTION_TEMPLATE_BASE = "constitution/base_constitution.md"
-CONSTITUTION_TEMPLATE_AGENT_INSTRUCTIONS = "constitution/agent_instructions.md"
-CONSTITUTION_TEMPLATE_DECISION_POINTS = "constitution/decision_points.yaml"
+CONSTITUTION_TEMPLATE_BASE = "base_constitution.md"
+CONSTITUTION_TEMPLATE_AGENT_INSTRUCTIONS = "agent_instructions.md"
+CONSTITUTION_TEMPLATE_DECISION_POINTS = "decision_points.yaml"

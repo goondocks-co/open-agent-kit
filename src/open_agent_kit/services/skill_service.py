@@ -31,6 +31,21 @@ from open_agent_kit.utils import ensure_dir, write_file
 logger = logging.getLogger(__name__)
 
 
+def _feature_name_to_dir(feature_name: str) -> str:
+    """Convert feature name to directory name (hyphens to underscores).
+
+    Feature names use hyphens (codebase-intelligence) but Python packages
+    use underscores (codebase_intelligence).
+
+    Args:
+        feature_name: Feature name with hyphens
+
+    Returns:
+        Directory name with underscores
+    """
+    return feature_name.replace("-", "_")
+
+
 class SkillService:
     """Service for managing Agent Skills.
 
@@ -50,7 +65,8 @@ class SkillService:
 
         # Package features directory (where feature manifests/templates/skills are stored)
         # Skills are read directly from the package and installed to agent directories
-        self.package_features_dir = Path(__file__).parent.parent.parent.parent / FEATURES_DIR
+        # Path: services/skill_service.py -> services/ -> open_agent_kit/
+        self.package_features_dir = Path(__file__).parent.parent / FEATURES_DIR
 
     def _get_agents_with_skills_support(self) -> list[tuple[str, Path, str]]:
         """Get configured agents that support skills.
@@ -96,7 +112,8 @@ class SkillService:
         Returns:
             Path to feature's skills directory
         """
-        return self.package_features_dir / feature_name / SKILLS_DIR
+        feature_dir = _feature_name_to_dir(feature_name)
+        return self.package_features_dir / feature_dir / SKILLS_DIR
 
     def list_available_skills(self) -> list[SkillManifest]:
         """List all available skills from all features in the package.

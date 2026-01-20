@@ -2,18 +2,18 @@
 
 This module maintains backward compatibility for code that imports from
 `open_agent_kit.services.plan_service`. All functionality has been moved
-to the `open_agent_kit.services.plan` package.
+to the `open_agent_kit.features.strategic_planning.plan` package.
 
 New code should import directly from the package:
-    from open_agent_kit.services.plan import PlanService, PlanServiceError
+    from open_agent_kit.features.strategic_planning.plan import PlanService, PlanServiceError
 
 Deprecation Notice:
     This module will be removed in a future version. Please update imports
-    to use `open_agent_kit.services.plan` instead.
+    to use `open_agent_kit.features.strategic_planning.plan` instead.
 """
 
 # Re-export everything from the new package location
-from open_agent_kit.services.plan import (
+from open_agent_kit.features.strategic_planning.plan import (
     PROVIDER_REGISTRY,
     PlanService,
     PlanServiceError,
