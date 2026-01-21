@@ -60,7 +60,10 @@ def mock_activity_store():
 
 @pytest.fixture
 def mock_vector_store():
-    """Mock vector store."""
+    """Mock vector store.
+
+    Returns mock data with all fields required by RetrievalEngine.
+    """
     mock = MagicMock()
     mock.get_stats.return_value = {
         "code_chunks": 100,
@@ -84,6 +87,8 @@ def mock_vector_store():
             "observation": "Important gotcha",
             "memory_type": "gotcha",
             "context": None,
+            "relevance": 0.85,
+            "token_estimate": 10,
         }
     ]
     mock.search_code.return_value = [
@@ -91,6 +96,12 @@ def mock_vector_store():
             "id": "code-1",
             "filepath": "src/main.py",
             "name": "main_function",
+            "chunk_type": "function",
+            "start_line": 1,
+            "end_line": 10,
+            "content": "def main(): pass",
+            "relevance": 0.9,
+            "token_estimate": 20,
         }
     ]
     return mock
@@ -294,11 +305,15 @@ class TestPromptSubmitHook:
 
     def test_prompt_submit_injects_memory_context(self, client, setup_state_with_mocks):
         """Test that memory context is injected into response."""
-        # Configure mock to return memories
+        # Configure mock to return memories (include all fields required by RetrievalEngine)
         setup_state_with_mocks.vector_store.search_memory.return_value = [
             {
+                "id": "mem-test",
                 "observation": "Bug: error handling broken",
                 "memory_type": "bug_fix",
+                "context": None,
+                "relevance": 0.85,
+                "token_estimate": 10,
             }
         ]
 
@@ -458,10 +473,15 @@ class TestPostToolUseHook:
 
     def test_post_tool_use_injects_file_memories(self, client, setup_state_with_mocks):
         """Test that memories about files are injected for file operations."""
+        # Include all fields required by RetrievalEngine
         setup_state_with_mocks.vector_store.search_memory.return_value = [
             {
+                "id": "mem-file",
                 "observation": "Be careful with error handling in this file",
                 "memory_type": "gotcha",
+                "context": None,
+                "relevance": 0.85,
+                "token_estimate": 10,
             }
         ]
 

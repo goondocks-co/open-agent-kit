@@ -5,9 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RefreshCw, Pause, Play, Bug, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { LOG_LEVELS } from "@/lib/constants";
+
+/** Delay before refetching logs after restart (ms) */
+const RESTART_REFETCH_DELAY_MS = 1000;
+
+/** Default number of log lines to display */
+const DEFAULT_LOG_LINES = 100;
+
+/** Log line options for the dropdown */
+const LOG_LINE_OPTIONS = [50, 100, 500] as const;
 
 export default function Logs() {
-    const [lines, setLines] = useState(100);
+    const [lines, setLines] = useState(DEFAULT_LOG_LINES);
     const [autoScroll, setAutoScroll] = useState(true);
     const [isTogglingDebug, setIsTogglingDebug] = useState(false);
     const logsEndRef = useRef<HTMLDivElement>(null);
@@ -16,7 +26,7 @@ export default function Logs() {
     const { data, isLoading, isError, refetch, isFetching } = useLogs(lines);
     const { data: config } = useConfig();
 
-    const isDebugEnabled = config?.log_level === "DEBUG";
+    const isDebugEnabled = config?.log_level === LOG_LEVELS.DEBUG;
 
     const handleToggleDebug = async () => {
         if (!config) return;
@@ -26,7 +36,7 @@ export default function Logs() {
             await restartDaemon();
             queryClient.invalidateQueries({ queryKey: ["config"] });
             // Refetch logs after restart
-            setTimeout(() => refetch(), 1000);
+            setTimeout(() => refetch(), RESTART_REFETCH_DELAY_MS);
         } catch (e) {
             console.error("Failed to toggle debug:", e);
         } finally {
@@ -80,9 +90,9 @@ export default function Logs() {
                         value={lines}
                         onChange={(e) => setLines(Number(e.target.value))}
                     >
-                        <option value={50}>50 lines</option>
-                        <option value={100}>100 lines</option>
-                        <option value={500}>500 lines</option>
+                        {LOG_LINE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option} lines</option>
+                        ))}
                     </select>
                 </div>
             </div>

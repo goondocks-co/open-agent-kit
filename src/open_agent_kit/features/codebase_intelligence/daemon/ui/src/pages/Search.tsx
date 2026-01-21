@@ -1,23 +1,29 @@
 import { useState } from "react";
 import { useSearch } from "@/hooks/use-search";
 import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/config-components";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search as SearchIcon, FileText, Loader2, AlertCircle } from "lucide-react";
-
-// Inline Input component for speed if not exists
-const InputField = ({ className, ...props }: any) => (
-    <input
-        className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-        {...props}
-    />
-);
+import {
+    FALLBACK_MESSAGES,
+    SCORE_DISPLAY_PRECISION,
+    CONFIDENCE_FILTER_OPTIONS,
+    CONFIDENCE_BADGE_CLASSES,
+    DOC_TYPE_BADGE_CLASSES,
+    DOC_TYPE_LABELS,
+    type ConfidenceFilter,
+    type ConfidenceLevel,
+    type DocType,
+} from "@/lib/constants";
 
 export default function Search() {
     const [query, setQuery] = useState("");
     const [debouncedQuery, setDebouncedQuery] = useState("");
+    const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all");
+    const [applyDocTypeWeights, setApplyDocTypeWeights] = useState(true);
 
-    const { data: results, isLoading, error } = useSearch(debouncedQuery);
+    const { data: results, isLoading, error } = useSearch(debouncedQuery, confidenceFilter, applyDocTypeWeights);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -50,12 +56,32 @@ export default function Search() {
             </div>
 
             <form onSubmit={handleSearch} className="flex gap-2">
-                <InputField
+                <Input
                     placeholder="e.g. 'How is authentication handled?'"
                     value={query}
-                    onChange={(e: any) => setQuery(e.target.value)}
+                    onChange={(e) => setQuery(e.target.value)}
                     className="flex-1"
                 />
+                <Select
+                    value={confidenceFilter}
+                    onChange={(e) => setConfidenceFilter(e.target.value as ConfidenceFilter)}
+                    className="w-40"
+                >
+                    {CONFIDENCE_FILTER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
+                </Select>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+                    <input
+                        type="checkbox"
+                        checked={applyDocTypeWeights}
+                        onChange={(e) => setApplyDocTypeWeights(e.target.checked)}
+                        className="rounded border-gray-300"
+                    />
+                    Weight by type
+                </label>
                 <Button type="submit" disabled={!query || isLoading}>
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <SearchIcon className="w-4 h-4 mr-2" />}
                     Search
@@ -75,12 +101,20 @@ export default function Search() {
                                         <CardTitle className="text-sm font-mono flex items-center gap-2">
                                             <span className="text-primary">{match.filepath}</span>
                                             {match.name && <span className="text-muted-foreground">({match.name})</span>}
-                                            <span className="ml-auto text-xs text-muted-foreground">Score: {match.relevance?.toFixed(4)}</span>
+                                            <span className="ml-auto flex items-center gap-2">
+                                                <span className={`text-xs px-2 py-0.5 rounded ${DOC_TYPE_BADGE_CLASSES[match.doc_type as DocType] || ""}`}>
+                                                    {DOC_TYPE_LABELS[match.doc_type as DocType] || match.doc_type}
+                                                </span>
+                                                <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || ""}`}>
+                                                    {match.confidence}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">Score: {match.relevance?.toFixed(SCORE_DISPLAY_PRECISION)}</span>
+                                            </span>
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-4">
                                         <pre className="text-xs overflow-x-auto p-2 bg-muted/50 rounded-md">
-                                            {match.preview || "No preview available"}
+                                            {match.preview || FALLBACK_MESSAGES.NO_PREVIEW}
                                         </pre>
                                     </CardContent>
                                 </Card>
@@ -100,7 +134,12 @@ export default function Search() {
                                     <CardHeader className="py-3 bg-muted/30">
                                         <CardTitle className="text-sm font-medium flex items-center gap-2">
                                             <span className="capitalize badge">{match.memory_type}</span>
-                                            <span className="ml-auto text-xs text-muted-foreground">Score: {match.relevance?.toFixed(4)}</span>
+                                            <span className="ml-auto flex items-center gap-2">
+                                                <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || ""}`}>
+                                                    {match.confidence}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">Score: {match.relevance?.toFixed(SCORE_DISPLAY_PRECISION)}</span>
+                                            </span>
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-4 text-sm">
@@ -113,7 +152,7 @@ export default function Search() {
                 )}
 
                 {debouncedQuery && !isLoading && (!results?.code?.length && !results?.memory?.length) ? (
-                    <div className="text-center py-12 text-muted-foreground">No results found for "{debouncedQuery}"</div>
+                    <div className="text-center py-12 text-muted-foreground">{FALLBACK_MESSAGES.NO_RESULTS} for "{debouncedQuery}"</div>
                 ) : null}
             </div>
         </div>

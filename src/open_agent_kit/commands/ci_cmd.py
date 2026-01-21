@@ -1397,16 +1397,24 @@ def ci_search(
     format_output: str = typer.Option(
         "json", "--format", "-f", help="Output format: 'json' or 'text'"
     ),
+    no_weight: bool = typer.Option(
+        False,
+        "--no-weight",
+        "-w",
+        help="Disable doc_type weighting (useful for translation searches)",
+    ),
 ) -> None:
     """Search the codebase and memories using semantic similarity.
 
     Find relevant code implementations, past decisions, gotchas, and learnings.
-    Results are ranked by relevance score.
+    Results are ranked by relevance score. By default, i18n/config files are
+    down-weighted; use --no-weight to disable this for translation searches.
 
     Examples:
         oak ci search "authentication middleware"
         oak ci search "error handling patterns" --type code
         oak ci search "database connection" -n 5 -f text
+        oak ci search "translation strings" --no-weight
     """
     import json
 
@@ -1429,6 +1437,7 @@ def ci_search(
                     "query": query,
                     "search_type": search_type,
                     "limit": min(max(1, limit), 50),
+                    "apply_doc_type_weights": not no_weight,
                 },
             )
             response.raise_for_status()
@@ -1573,16 +1582,21 @@ def ci_context(
         2000, "--max-tokens", "-m", help="Maximum tokens of context to return"
     ),
     format_output: str = typer.Option("json", "--format", help="Output format: 'json' or 'text'"),
+    no_weight: bool = typer.Option(
+        False, "--no-weight", "-w", help="Disable doc_type weighting (useful for non-code tasks)"
+    ),
 ) -> None:
     """Get relevant context for your current task.
 
     Call this when starting work on something to retrieve related code,
-    past decisions, and applicable project guidelines.
+    past decisions, and applicable project guidelines. By default,
+    i18n/config files are down-weighted; use --no-weight to disable this.
 
     Examples:
         oak ci context "implementing user logout"
         oak ci context "fixing authentication bug" -f src/auth.py
         oak ci context "adding database migration" -f models.py -f db.py -m 4000
+        oak ci context "updating translation strings" --no-weight
     """
     import json
 
@@ -1598,9 +1612,10 @@ def ci_context(
         raise typer.Exit(code=1)
 
     try:
-        data = {
+        data: dict[str, Any] = {
             "task": task,
             "max_tokens": max_tokens,
+            "apply_doc_type_weights": not no_weight,
         }
         if files:
             data["current_files"] = list(files)

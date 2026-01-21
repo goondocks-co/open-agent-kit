@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 build/
+.ruff_cache/
 
 # Auto-generated version file (hatch-vcs)
 src/open_agent_kit/_version.py
@@ -87,6 +88,7 @@ release-files/
 *.bak
 *.swp
 *~
+.logs/
 
 # Environment variables
 .env

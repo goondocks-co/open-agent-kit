@@ -1,62 +1,35 @@
-# Claude Code Instructions for open-agent-kit
+# AGENTS.md
 
-Claude is treated as a senior engineer on this project. Everything below points back to
-[.constitution.md](.constitution.md), which remains the single source of truth for
-architecture, coding standards, workflows, and governance.
+You are an AI coding agent working in this repository.
 
----
+## Source of truth (hard rules)
 
-## 1. Orientation
+Read and follow **`.constitution.md`**. It contains the non-negotiable architecture, workflow, and quality rules for this project.
 
-1. Read `.constitution.md` before touching code or drafting an RFC.
-2. Use the companion playbooks when you need deeper detail:
-   - Feature delivery: `docs/development/features.md`
-   - Migration workflow: `docs/development/migrations.md`
-3. Keep `README.md`, `QUICKSTART.md`, and `docs/` handy for user-facing context.
+- If anything in your default behavior conflicts with `.constitution.md`, **`.constitution.md` wins**.
+- If you are unsure how to apply a rule to a change, **stop and ask** rather than guessing.
 
----
+## How to work in this repo (required)
 
-## 2. Claude's Role
+1. **Read** `.constitution.md` before making changes.
+2. **Search first**: find the closest existing pattern and copy it (per the constitution’s anchor-file guidance).
+3. Implement the change following the constitution’s golden paths and “no magic literals” rule.
+4. Run the quality gate:
+   - `make check` must pass.
+5. Update docs to prevent drift:
+   - If behavior/workflows changed, update `README` and/or the relevant feature docs.
+6. If you needed to deviate:
+   - Prefer updating `.constitution.md` or the relevant playbook so the new pattern becomes the standard.
 
-- Generate and review RFCs with the structure defined in `.constitution.md` §VI.
-- Implement features, fix bugs, and write tests following the layered architecture in
-  `.constitution.md` §III and the coding standards in §IV.
-- Keep responses explanatory—summarize reasoning, reference the sections you followed, and
-  highlight follow-up steps for the user.
+## Absolute requirements (do not violate)
 
----
+- Treat the constitution as **hard rules** with only narrow lanes for deviation.
+- **No magic strings or numbers anywhere** (including tests).
+- Prefer the “proper” engineering approach—no shortcuts.
+- Commands should be idempotent by default.
+- Templates managed by OAK are overwritten on upgrade (no user overrides).
 
-## 3. Standard Workflow (Pointer Summary)
+## Output expectations
 
-1. **Clarify requirements.** Ask for missing inputs (issue ID, constraints, success
-   metrics) before acting.
-2. **Inspect the repo.** Use the prescribed tooling to read files, run targeted commands, or
-   gather context from `oak` CLI utilities.
-3. **Implement to spec.** Apply the constants-first rule, Google-style docstrings, and testing
-   expectations described in `.constitution.md` §IV.
-4. **Validate.** Run the required checks (`ruff`, `black`, `mypy`, `pytest`) when the task
-   involves code changes. Mention anything you could not execute.
-5. **Document outcomes.** Update README/QUICKSTART/docs only when behavior changes; update the
-   constitution only when standards change.
-
----
-
-## 4. RFC Coverage
-
-- **Creation:** Follow the template requirements (header, objective, problem, proposed
-  solution, implementation plan, risks, and alternatives). Include mermaid diagrams and file
-  references when helpful.
-- **Review:** Use the checklist and feedback format from `.constitution.md` §VI. Findings come
-  first, ordered by severity.
-
----
-
-## 5. Resources
-
-- `.constitution.md` – canonical standards
-- `docs/development/features.md` – feature delivery playbook
-- `docs/development/migrations.md` – migration playbook
-- `README.md`, `QUICKSTART.md`, `docs/architecture.md` – user and architectural references
-
-Pin these links in your workspace so future updates stay centralized and duplication across
-agent files is minimized.
+- Produce clear, structured changes.
+- If you introduce or modify user-facing messages, they must come from the project’s centralized message/constants pattern as defined in `.constitution.md`.

@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-minimal install-global install-global-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart
+.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart
 
 # Default target
 help:
@@ -18,14 +18,12 @@ help:
 	@echo "Prerequisites: Python 3.13, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make setup          Install ALL dependencies including CI feature (recommended)"
-	@echo "    make setup-minimal  Install only core dev dependencies (no CI feature)"
-	@echo "    make venv           Setup virtual environment and show activation command"
-	@echo "    make install-global      Install 'oak' globally via uv tool (base only)"
-	@echo "    make install-global-full Install 'oak' globally with CI dependencies (for dev)"
-	@echo "    make sync           Sync dependencies with lockfile"
-	@echo "    make lock           Update lockfile after changing pyproject.toml"
-	@echo "    make uninstall      Remove dev environment and stale global installs"
+	@echo "    make setup         Install minimal dev dependencies (recommended for development)"
+	@echo "    make setup-full    Install all dependencies including optional features"
+	@echo "    make venv          Setup virtual environment and show activation command"
+	@echo "    make sync          Sync dependencies with lockfile"
+	@echo "    make lock          Update lockfile after changing pyproject.toml"
+	@echo "    make uninstall     Remove dev environment and clean build artifacts"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test          Run all tests with coverage"
@@ -34,21 +32,27 @@ help:
 	@echo "    make test-cov      Run tests and open coverage report"
 	@echo ""
 	@echo "  Code Quality:"
-	@echo "    make lint         Run ruff linter"
-	@echo "    make format       Format code with black and ruff --fix"
-	@echo "    make format-check Check formatting without changes (CI mode)"
-	@echo "    make typecheck    Run mypy type checking"
-	@echo "    make check        Run all CI checks (format-check, typecheck, test)"
+	@echo "    make lint          Run ruff linter"
+	@echo "    make format        Format code with black and ruff --fix"
+	@echo "    make format-check  Check formatting without changes (CI mode)"
+	@echo "    make typecheck     Run mypy type checking"
+	@echo "    make check         Run all CI checks (format-check, typecheck, test)"
 	@echo ""
 	@echo "  Build:"
-	@echo "    make build        Build package"
-	@echo "    make clean        Remove build artifacts and cache"
+	@echo "    make build         Build package"
+	@echo "    make clean         Remove build artifacts and cache"
 	@echo ""
 	@echo "  Codebase Intelligence (CI daemon):"
-	@echo "    make ci-dev       Run daemon with hot reload (development)"
-	@echo "    make ci-start     Start the daemon"
-	@echo "    make ci-stop      Stop the daemon"
-	@echo "    make ci-restart   Stop and start the daemon (picks up code changes)"
+	@echo "    make ci-dev        Run daemon with hot reload (development)"
+	@echo "    make ci-start      Start the daemon"
+	@echo "    make ci-stop       Stop the daemon"
+	@echo "    make ci-restart    Stop and start the daemon (picks up code changes)"
+	@echo ""
+	@echo "  UI Development:"
+	@echo "    make ui-build      Build UI static assets"
+	@echo "    make ui-check      Verify UI assets are in sync (for CI)"
+	@echo "    make ui-dev        Run UI development server with hot reload"
+	@echo "    make ui-restart    Build UI and restart daemon"
 
 # Setup targets
 venv:
@@ -64,8 +68,19 @@ venv:
 
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	uv sync --extra dev
+	@echo "\nMinimal setup complete! Core dev dependencies installed."
+	@echo "Run 'make check' to verify everything works."
+	@echo "For development, activate venv: source .venv/bin/activate"
+	@echo ""
+	@echo "To install optional features:"
+	@echo "  make setup-full           Install all dependencies (for full-stack dev)"
+	@echo "  oak init --enable-ci      Install CI feature via oak installer (tests installer)"
+
+setup-full:
+	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
 	uv sync --all-extras
-	@echo "\nSetup complete! All features installed (including CI)."
+	@echo "\nFull setup complete! All features installed (including CI)."
 	@echo "Run 'make check' to verify everything works."
 	@echo "For development, activate venv: source .venv/bin/activate"
 	@echo ""
@@ -74,25 +89,9 @@ setup:
 	@echo "  make ci-restart  Manual restart after code changes"
 	@echo "  make ui-restart  Build UI and restart daemon (for UI changes)"
 
-setup-minimal:
-	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	uv sync --extra dev
-	@echo "\nMinimal setup complete (no CI feature deps)."
-	@echo "For full dev setup with CI feature: make setup"
-
-install-global:
-	@echo "Installing oak globally via uv tool (base install)..."
-	@echo "(CI dependencies will be auto-installed when you enable the feature)"
-	uv tool install --editable . --force --python 3.13
-	@echo "\n'oak' is now available globally from any directory."
-
-install-global-full:
-	@echo "Installing oak globally with all CI dependencies..."
-	uv tool install --editable . --force --python 3.13 --with ".[codebase-intelligence,ci-parsers]"
-	@echo "\n'oak' is now available globally with CI feature pre-installed."
-
 sync:
 	uv sync --all-extras
+	@echo "All dependencies synced with lockfile."
 
 lock:
 	uv lock
@@ -100,12 +99,11 @@ lock:
 
 uninstall:
 	uv pip uninstall open-agent-kit 2>/dev/null || true
-	uv tool uninstall open-agent-kit 2>/dev/null || true
 	rm -rf .venv
-	@# Clean up stale pip --user installations
+	@# Clean up any stale installations
 	@rm -f ~/.local/bin/oak 2>/dev/null || true
-	@echo "Dev environment and global installs removed."
-	@echo "To reinstall: make setup && make install-tool"
+	@echo "Dev environment removed."
+	@echo "To reinstall: make setup"
 
 # Testing targets
 test:

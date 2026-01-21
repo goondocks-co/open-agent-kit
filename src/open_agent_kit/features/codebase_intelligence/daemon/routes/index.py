@@ -69,39 +69,20 @@ async def build_index(request: IndexRequest) -> IndexResponse:
 
         logger.info(f"Index build request: full_rebuild={request.full_rebuild}")
 
-        state.index_status.set_indexing()
-
-    # Capture indexer to satisfy type narrowing in lambda
-    indexer = state.indexer
-
     try:
-
-        def progress_callback(current: int, total: int) -> None:
-            state.index_status.update_progress(current, total)
-
         loop = asyncio.get_event_loop()
 
-        # Add timeout protection to prevent runaway indexing
+        # Run unified index build in executor with timeout
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 None,
-                lambda: indexer.build_index(
-                    full_rebuild=request.full_rebuild,
-                    progress_callback=progress_callback,
-                ),
+                lambda: state.run_index_build(full_rebuild=request.full_rebuild),
             ),
             timeout=DEFAULT_INDEXING_TIMEOUT_SECONDS,
         )
 
-        state.index_status.set_ready(duration=result.duration_seconds)
-        # Update file count - this was missing and caused dashboard stats to not update
-        state.index_status.file_count = result.files_processed
-        # Store AST chunking statistics
-        state.index_status.ast_stats = {
-            "ast_success": result.ast_success,
-            "ast_fallback": result.ast_fallback,
-            "line_based": result.line_based,
-        }
+        if result is None:
+            raise HTTPException(status_code=500, detail="Index build failed")
 
         return IndexResponse(
             status="completed",

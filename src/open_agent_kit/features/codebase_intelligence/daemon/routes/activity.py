@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query
 
+from open_agent_kit.features.codebase_intelligence.daemon.constants import (
+    ErrorMessages,
+    Pagination,
+    SessionStatus,
+    Timing,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.models import (
     ActivityItem,
     ActivityListResponse,
@@ -83,8 +89,10 @@ def _prompt_batch_to_item(batch: PromptBatch, activity_count: int = 0) -> Prompt
 
 @router.get("/api/activity/sessions", response_model=SessionListResponse)
 async def list_sessions(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    limit: int = Query(
+        default=Pagination.DEFAULT_LIMIT, ge=Pagination.MIN_LIMIT, le=Pagination.SESSIONS_MAX
+    ),
+    offset: int = Query(default=Pagination.DEFAULT_OFFSET, ge=0),
     status: str | None = Query(default=None, description="Filter by status (active, completed)"),
 ) -> SessionListResponse:
     """List recent sessions with optional status filter.
@@ -94,7 +102,7 @@ async def list_sessions(
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     logger.debug(f"Listing sessions: limit={limit}, offset={offset}, status={status}")
 
@@ -139,7 +147,7 @@ async def get_session(session_id: str) -> SessionDetailResponse:
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     logger.debug(f"Getting session: {session_id}")
 
@@ -147,13 +155,15 @@ async def get_session(session_id: str) -> SessionDetailResponse:
         # Get session
         session = state.activity_store.get_session(session_id)
         if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
 
         # Get stats
         stats = state.activity_store.get_session_stats(session_id)
 
         # Get recent activities
-        activities = state.activity_store.get_session_activities(session_id=session_id, limit=50)
+        activities = state.activity_store.get_session_activities(
+            session_id=session_id, limit=Pagination.DEFAULT_LIMIT * 2
+        )
         activity_items = [_activity_to_item(a) for a in activities]
 
         # Get prompt batches
@@ -185,15 +195,17 @@ async def get_session(session_id: str) -> SessionDetailResponse:
 )
 async def list_session_activities(
     session_id: str,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    limit: int = Query(
+        default=Pagination.DEFAULT_LIMIT * 2, ge=Pagination.MIN_LIMIT, le=Pagination.ACTIVITIES_MAX
+    ),
+    offset: int = Query(default=Pagination.DEFAULT_OFFSET, ge=0),
     tool_name: str | None = Query(default=None, description="Filter by tool name"),
 ) -> ActivityListResponse:
     """List activities for a specific session."""
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     logger.debug(
         f"Listing activities for session {session_id}: "
@@ -231,13 +243,15 @@ async def list_session_activities(
 )
 async def list_prompt_batch_activities(
     batch_id: int,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(
+        default=Pagination.DEFAULT_LIMIT * 2, ge=Pagination.MIN_LIMIT, le=Pagination.ACTIVITIES_MAX
+    ),
 ) -> ActivityListResponse:
     """List activities for a specific prompt batch."""
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     logger.debug(f"Listing activities for prompt batch {batch_id}")
 
@@ -264,7 +278,9 @@ async def list_prompt_batch_activities(
 async def search_activities(
     query: str = Query(..., min_length=1, description="Search query"),
     session_id: str | None = Query(default=None, description="Limit to specific session"),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(
+        default=Pagination.DEFAULT_LIMIT * 2, ge=Pagination.MIN_LIMIT, le=Pagination.SEARCH_MAX
+    ),
 ) -> ActivitySearchResponse:
     """Full-text search across activities.
 
@@ -273,7 +289,7 @@ async def search_activities(
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     logger.info(f"Searching activities: query='{query}', session={session_id}")
 
@@ -303,21 +319,23 @@ async def get_activity_stats() -> dict:
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     try:
         # Get recent sessions to calculate stats
-        sessions = state.activity_store.get_recent_sessions(limit=100)
+        sessions = state.activity_store.get_recent_sessions(limit=Pagination.STATS_SESSION_LIMIT)
 
         total_sessions = len(sessions)
-        active_sessions = len([s for s in sessions if s.status == "active"])
-        completed_sessions = len([s for s in sessions if s.status == "completed"])
+        active_sessions = len([s for s in sessions if s.status == SessionStatus.ACTIVE])
+        completed_sessions = len([s for s in sessions if s.status == SessionStatus.COMPLETED])
 
         # Calculate total activities and tool breakdown
         total_activities = 0
         tool_counts: dict[str, int] = {}
 
-        for session in sessions[:20]:  # Limit to recent 20 for perf
+        for session in sessions[
+            : Pagination.STATS_DETAIL_LIMIT
+        ]:  # Limit to recent sessions for perf
             try:
                 stats = state.activity_store.get_session_stats(session.id)
                 total_activities += stats.get("activity_count", 0)
@@ -364,7 +382,7 @@ async def reprocess_memories(
     state = get_state()
 
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
     # Use typed local variables to avoid mypy issues with dict value types
     batches_recovered = 0
@@ -438,7 +456,7 @@ async def reprocess_memories(
             message = "No batches needed reprocessing."
 
         if not process_immediately and batches_queued > 0:
-            message += " Memories will be regenerated in the next processing cycle (60s)."
+            message += f" Memories will be regenerated in the next processing cycle ({Timing.MEMORY_PROCESS_INTERVAL_SECONDS}s)."
 
         return {
             "success": True,

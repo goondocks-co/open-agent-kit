@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
+import { API_ENDPOINTS, STATUS_POLL_INTERVAL_MS } from "@/lib/constants";
 
 export interface IndexStats {
     files_indexed: number;
@@ -34,7 +35,7 @@ export interface DaemonStatus {
 export function useStatus() {
     return useQuery<DaemonStatus>({
         queryKey: ["status"],
-        queryFn: () => fetchJson("/api/status"),
-        refetchInterval: 2000, // Poll every 2s
+        queryFn: () => fetchJson(API_ENDPOINTS.STATUS),
+        refetchInterval: STATUS_POLL_INTERVAL_MS,
     });
 }

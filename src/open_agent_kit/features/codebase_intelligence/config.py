@@ -22,6 +22,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
+    DEFAULT_RELEVANCE_THRESHOLD,
     DEFAULT_SUMMARIZATION_BASE_URL,
     DEFAULT_SUMMARIZATION_MODEL,
     DEFAULT_SUMMARIZATION_PROVIDER,
@@ -219,6 +220,7 @@ class EmbeddingConfig:
         fallback_enabled: Reserved for future use (currently ignored).
         context_tokens: Max input tokens (auto-detect from known models).
         max_chunk_chars: Max chars per chunk (auto-detect from model).
+        relevance_threshold: Minimum similarity score for search results (model-aware default if None).
     """
 
     provider: str = DEFAULT_PROVIDER
@@ -229,6 +231,7 @@ class EmbeddingConfig:
     fallback_enabled: bool = False
     context_tokens: int | None = None
     max_chunk_chars: int | None = None
+    relevance_threshold: float | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -326,6 +329,7 @@ class EmbeddingConfig:
             fallback_enabled=data.get("fallback_enabled", False),
             context_tokens=data.get("context_tokens"),
             max_chunk_chars=data.get("max_chunk_chars"),
+            relevance_threshold=data.get("relevance_threshold"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -339,6 +343,7 @@ class EmbeddingConfig:
             "fallback_enabled": self.fallback_enabled,
             "context_tokens": self.context_tokens,
             "max_chunk_chars": self.max_chunk_chars,
+            "relevance_threshold": self.relevance_threshold,
         }
 
     def get_context_tokens(self) -> int:
@@ -371,6 +376,33 @@ class EmbeddingConfig:
         Dimensions are auto-detected on first embedding test if not set.
         """
         return self.dimensions
+
+    def get_relevance_threshold(self, model_threshold_lookup: float | None = None) -> float:
+        """Get effective relevance threshold for search filtering.
+
+        Resolution priority:
+        1. User-configured threshold (explicit override in config)
+        2. Model-specific threshold from lookup table (passed in)
+        3. Conservative default for unknown models
+
+        Args:
+            model_threshold_lookup: Optional threshold from model metadata lookup.
+                Callers should use get_model_relevance_threshold() from
+                daemon.routes.config to get this value.
+
+        Returns:
+            Effective relevance threshold (0.0-1.0).
+        """
+        # Priority 1: User explicit override
+        if self.relevance_threshold is not None:
+            return self.relevance_threshold
+
+        # Priority 2: Model-specific lookup (passed by caller)
+        if model_threshold_lookup is not None:
+            return model_threshold_lookup
+
+        # Priority 3: Conservative default for unknown models
+        return DEFAULT_RELEVANCE_THRESHOLD
 
 
 def _get_oak_managed_paths() -> list[str]:
@@ -472,6 +504,15 @@ DEFAULT_EXCLUDE_PATTERNS = [
     ".next/**",
     "coverage/**",
     "*.egg-info/**",
+    # Localization/translation files (cause search pollution with repeated content)
+    "translations/**",
+    "locales/**",
+    "locale/**",
+    "i18n/**",
+    "l10n/**",
+    "*.po",
+    "*.pot",
+    "*.mo",
 ]
 
 

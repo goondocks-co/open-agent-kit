@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
+import {
+    API_ENDPOINTS,
+    getSessionDetailEndpoint,
+    PAGINATION,
+} from "@/lib/constants";
 
 export interface ActivityItem {
     id: string;
@@ -51,27 +56,33 @@ export interface SessionListResponse {
     offset: number;
 }
 
-export function useSessions(limit: number = 20, offset: number = 0) {
+/** Refetch interval for session lists (5 seconds) */
+const SESSION_REFETCH_INTERVAL_MS = 5000;
+
+/** Refetch interval for activity stats (10 seconds) */
+const STATS_REFETCH_INTERVAL_MS = 10000;
+
+export function useSessions(limit: number = PAGINATION.DEFAULT_LIMIT, offset: number = PAGINATION.DEFAULT_OFFSET) {
     return useQuery<SessionListResponse>({
         queryKey: ["sessions", limit, offset],
-        queryFn: () => fetchJson(`/api/activity/sessions?limit=${limit}&offset=${offset}`),
-        refetchInterval: 5000,
+        queryFn: () => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?limit=${limit}&offset=${offset}`),
+        refetchInterval: SESSION_REFETCH_INTERVAL_MS,
     });
 }
 
 export function useSession(sessionId: string | undefined) {
     return useQuery<SessionDetailResponse>({
         queryKey: ["session", sessionId],
-        queryFn: () => fetchJson(`/api/activity/sessions/${sessionId}`),
+        queryFn: () => fetchJson(getSessionDetailEndpoint(sessionId!)),
         enabled: !!sessionId,
-        refetchInterval: 5000,
+        refetchInterval: SESSION_REFETCH_INTERVAL_MS,
     });
 }
 
 export function useActivityStats() {
     return useQuery<any>({
         queryKey: ["activity_stats"],
-        queryFn: () => fetchJson(`/api/activity/stats`),
-        refetchInterval: 10000,
-    })
+        queryFn: () => fetchJson(API_ENDPOINTS.ACTIVITY_STATS),
+        refetchInterval: STATS_REFETCH_INTERVAL_MS,
+    });
 }

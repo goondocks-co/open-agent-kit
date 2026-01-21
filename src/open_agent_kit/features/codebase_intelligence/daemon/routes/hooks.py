@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Request
 
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +130,9 @@ def _build_session_context(state: Any, include_memories: bool = True) -> str:
             )
 
         # Include recent session summaries (provides continuity across sessions)
-        if include_memories:
+        if include_memories and state.retrieval_engine:
             try:
-                session_summaries, _ = state.vector_store.list_memories(
+                session_summaries, _ = state.retrieval_engine.list_memories(
                     limit=5,
                     memory_types=["session_summary"],
                 )
@@ -143,17 +144,24 @@ def _build_session_context(state: Any, include_memories: bool = True) -> str:
                 logger.debug(f"Failed to fetch session summaries for injection: {e}")
 
         # Include recent memories (gotchas, decisions, etc.) - excluding session summaries
-        if include_memories and memory_count > 0:
+        if include_memories and memory_count > 0 and state.retrieval_engine:
             try:
-                recent = state.vector_store.search_memory(
+                # Search with base threshold, then filter by confidence
+                # For session start, include high and medium confidence (broader context)
+                result = state.retrieval_engine.search(
                     query="important gotchas decisions bugs",
-                    limit=10,
-                    relevance_threshold=0.1,  # Lower threshold to get more results
+                    search_type="memory",
+                    limit=15,  # Fetch more, filter by confidence
                 )
-                # Filter out session summaries (we show them separately)
-                recent = [m for m in recent if m.get("memory_type") != "session_summary"]
+                # Filter to high and medium confidence, exclude session summaries
+                confident_memories = RetrievalEngine.filter_by_confidence(
+                    result.memory, min_confidence="medium"
+                )
+                recent = [
+                    m for m in confident_memories if m.get("memory_type") != "session_summary"
+                ]
                 if recent:
-                    mem_text = _format_memories_for_injection(recent)
+                    mem_text = _format_memories_for_injection(recent[:10])  # Cap at 10
                     if mem_text:
                         parts.append(mem_text)
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
@@ -251,7 +259,7 @@ async def hook_prompt_submit(request: Request) -> dict:
     agent = body.get("agent", "unknown")
 
     # Skip if no prompt or very short
-    if not prompt or len(prompt) < 10:
+    if not prompt or len(prompt) < 2:
         return {"status": "ok", "context": {}}
 
     logger.debug(f"Prompt submit: {prompt[:50]}...")
@@ -324,19 +332,25 @@ async def hook_prompt_submit(request: Request) -> dict:
     context: dict[str, Any] = {}
 
     # Search for relevant memories based on prompt
-    if state.vector_store:
+    if state.retrieval_engine:
         try:
-            # Search for relevant memories
-            memories = state.vector_store.search_memory(
+            # Search with base threshold, then filter by confidence
+            # For prompt injection, only include HIGH confidence (precision over recall)
+            result = state.retrieval_engine.search(
                 query=prompt,
-                limit=5,
-                relevance_threshold=0.4,  # Higher threshold for relevance
+                search_type="memory",
+                limit=10,  # Fetch more, filter by confidence
             )
 
-            if memories:
+            # Filter to high confidence only for prompt injection (avoid noise)
+            high_confidence_memories = RetrievalEngine.filter_by_confidence(
+                result.memory, min_confidence="high"
+            )
+
+            if high_confidence_memories:
                 # Format as injection context
                 mem_lines = []
-                for mem in memories:
+                for mem in high_confidence_memories[:5]:  # Cap at 5
                     mem_type = mem.get("memory_type", "note")
                     obs = mem.get("observation", "")
                     mem_lines.append(f"- [{mem_type}] {obs}")
@@ -345,7 +359,10 @@ async def hook_prompt_submit(request: Request) -> dict:
                     context["injected_context"] = (
                         "**Relevant memories for this task:**\n" + "\n".join(mem_lines)
                     )
-                    logger.info(f"Injecting {len(memories)} relevant memories for prompt")
+                    logger.info(
+                        f"Injecting {len(high_confidence_memories[:5])} high-confidence "
+                        f"memories for prompt"
+                    )
 
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.debug(f"Failed to search memories for prompt: {e}")
@@ -509,19 +526,25 @@ async def hook_post_tool_use(request: Request) -> dict:
 
     # Inject relevant context for file operations
     injected_context = None
-    if tool_name in ("Read", "Edit", "Write") and state.vector_store:
+    if tool_name in ("Read", "Edit", "Write") and state.retrieval_engine:
         file_path = tool_input.get("file_path", "")
         if file_path:
             try:
-                # Search for memories about this file
-                memories = state.vector_store.search_memory(
+                # Search for memories about this file, filter by confidence
+                # For file operations, include high and medium confidence
+                search_res = state.retrieval_engine.search(
                     query=f"file:{file_path}",
-                    limit=3,
-                    relevance_threshold=0.3,
+                    search_type="memory",
+                    limit=8,  # Fetch more, filter by confidence
                 )
-                if memories:
+                # Filter to high and medium confidence
+                confident_memories = RetrievalEngine.filter_by_confidence(
+                    search_res.memory, min_confidence="medium"
+                )
+
+                if confident_memories:
                     mem_lines = []
-                    for mem in memories:
+                    for mem in confident_memories[:3]:  # Cap at 3
                         mem_type = mem.get("memory_type", "note")
                         obs = mem.get("observation", "")
                         if mem_type == "gotcha":
@@ -533,7 +556,10 @@ async def hook_post_tool_use(request: Request) -> dict:
                         injected_context = f"**Memories about {file_path}:**\n" + "\n".join(
                             mem_lines
                         )
-                        logger.debug(f"Injecting {len(memories)} memories for {file_path}")
+                        logger.debug(
+                            f"Injecting {len(confident_memories[:3])} confident memories "
+                            f"for {file_path}"
+                        )
 
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
                 logger.debug(f"Failed to search memories for file context: {e}")
@@ -780,29 +806,34 @@ async def hook_before_prompt(request: Request) -> dict:
     context: dict[str, Any] = {}
 
     # Search for relevant context based on prompt
-    if prompt_preview and state.vector_store:
+    if prompt_preview and state.retrieval_engine:
         try:
-            # Search for relevant code
-            code_results = state.vector_store.search_code(
+            # Search for both code and memories, filter by confidence
+            # For notify context, only include HIGH confidence (precision over recall)
+            result = state.retrieval_engine.search(
                 query=prompt_preview,
-                limit=3,
-                relevance_threshold=0.4,
+                search_type="all",
+                limit=10,  # Fetch more, filter by confidence
             )
-            if code_results:
+
+            # Filter to high confidence for notify context
+            high_confidence_code = RetrievalEngine.filter_by_confidence(
+                result.code, min_confidence="high"
+            )
+            high_confidence_memories = RetrievalEngine.filter_by_confidence(
+                result.memory, min_confidence="high"
+            )
+
+            if high_confidence_code:
                 context["relevant_code"] = [
-                    {"file": r.get("filepath", ""), "name": r.get("name", "")} for r in code_results
+                    {"file": r.get("filepath", ""), "name": r.get("name", "")}
+                    for r in high_confidence_code[:3]  # Cap at 3
                 ]
 
-            # Search for relevant memories
-            memory_results = state.vector_store.search_memory(
-                query=prompt_preview,
-                limit=3,
-                relevance_threshold=0.4,
-            )
-            if memory_results:
+            if high_confidence_memories:
                 context["relevant_memories"] = [
                     {"observation": r.get("observation", ""), "type": r.get("memory_type", "")}
-                    for r in memory_results
+                    for r in high_confidence_memories[:3]  # Cap at 3
                 ]
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.warning(f"Failed to search for context: {e}")

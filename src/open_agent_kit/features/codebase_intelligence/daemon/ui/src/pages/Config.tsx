@@ -2,26 +2,33 @@ import { useState, useEffect } from "react";
 import { useConfig, useUpdateConfig, useExclusions, useUpdateExclusions, resetExclusions, restartDaemon, listProviderModels, listSummarizationModels, testEmbeddingConfig, testSummarizationConfig } from "@/hooks/use-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { AlertCircle, Save, Loader2, CheckCircle2, RotateCw, Plug, Plus, X, RotateCcw, FolderX } from "lucide-react";
+import { AlertCircle, Save, Loader2, CheckCircle2, Plus, X, RotateCcw, FolderX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-
-// Simple Label/Input helpers
-const Label = ({ children, className }: any) => (
-    <label className={cn("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)}>
-        {children}
-    </label>
-);
-
-const Input = ({ className, ...props }: any) => (
-    <input className={cn("flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", className)} {...props} />
-);
-
-const Select = ({ className, children, ...props }: any) => (
-    <select className={cn("flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", className)} {...props}>
-        {children}
-    </select>
-);
+import {
+    Label,
+    Input,
+    StepHeader,
+    TestResult,
+    ProviderSelect,
+    UrlInputWithRefresh,
+    ModelSelect,
+    TestButton,
+    ReadyBadge,
+} from "@/components/ui/config-components";
+import {
+    CONFIG_SECTIONS,
+    CHUNK_SIZE_WARNING_THRESHOLD,
+    DEFAULT_EMBEDDING_MODEL_PLACEHOLDER,
+    DEFAULT_SUMMARIZATION_MODEL_PLACEHOLDER,
+    DEFAULT_CONTEXT_WINDOW_PLACEHOLDER,
+    DEFAULT_CHUNK_SIZE_PLACEHOLDER,
+    DEFAULT_DIMENSIONS_PLACEHOLDER,
+    LARGE_CONTEXT_WINDOW_PLACEHOLDER,
+    getDefaultProviderUrl,
+    calculateChunkSize,
+    toApiNumber,
+} from "@/lib/constants";
 
 export default function Config() {
     const { data: config, isLoading } = useConfig();
@@ -67,7 +74,7 @@ export default function Config() {
             const context = Number(emb.max_tokens);
             if (chunk >= context) {
                 errors.push("Chunk size must be smaller than context window");
-            } else if (chunk > context * 0.9) {
+            } else if (chunk > context * CHUNK_SIZE_WARNING_THRESHOLD) {
                 warnings.push("Chunk size is close to context limit - consider reducing");
             }
         }
@@ -169,14 +176,7 @@ export default function Config() {
         // Auto-update base URL when provider changes (embedding or summarization)
         let updates: any = { [field]: value };
         if (field === 'provider') {
-            const urlDefaults: Record<string, string> = {
-                ollama: 'http://localhost:11434',
-                lmstudio: 'http://localhost:1234',
-                openai: 'http://localhost:1234',
-            };
-            if (urlDefaults[value]) {
-                updates.base_url = urlDefaults[value];
-            }
+            updates.base_url = getDefaultProviderUrl(value);
             // Clear model when provider changes
             updates.model = '';
         }
@@ -191,11 +191,11 @@ export default function Config() {
         setIsDirty(true);
         setMessage(null);
         // Clear test results if key fields change
-        if (section === 'embedding' && (field === 'provider' || field === 'base_url' || field === 'model')) {
+        if (section === CONFIG_SECTIONS.EMBEDDING && (field === 'provider' || field === 'base_url' || field === 'model')) {
             setEmbeddingTestResult(null);
             setEmbeddingModels([]);
         }
-        if (section === 'summarization' && (field === 'provider' || field === 'base_url' || field === 'model')) {
+        if (section === CONFIG_SECTIONS.SUMMARIZATION && (field === 'provider' || field === 'base_url' || field === 'model')) {
             setSumTestResult(null);
             setSummarizationModels([]);
         }
@@ -231,12 +231,12 @@ export default function Config() {
         const dimensions = model?.dimensions || "";
         const context = model?.context_window || "";
         // Only calculate chunk_size if we have a real context value
-        const chunkSize = context ? Math.floor(Number(context) * 0.8) : "";
+        const chunkSize = context ? calculateChunkSize(Number(context)) : "";
 
         setFormData((prev: any) => ({
             ...prev,
-            embedding: {
-                ...prev.embedding,
+            [CONFIG_SECTIONS.EMBEDDING]: {
+                ...prev[CONFIG_SECTIONS.EMBEDDING],
                 model: modelName,
                 dimensions: dimensions,
                 max_tokens: context,
@@ -251,7 +251,7 @@ export default function Config() {
     const handleTestEmbedding = async () => {
         setIsTestingEmbedding(true);
         try {
-            const res = await testEmbeddingConfig(formData.embedding) as any;
+            const res = await testEmbeddingConfig(formData[CONFIG_SECTIONS.EMBEDDING]) as any;
             setEmbeddingTestResult(res);
             if (res.success) {
                 // Only update values that come back from the API
@@ -261,15 +261,15 @@ export default function Config() {
                 }
                 if (res.context_window) {
                     updates.max_tokens = res.context_window;
-                    // Auto-calculate chunk_size as 80% of context
-                    updates.chunk_size = Math.floor(res.context_window * 0.8);
+                    // Auto-calculate chunk_size using standard percentage
+                    updates.chunk_size = calculateChunkSize(res.context_window);
                 }
 
                 if (Object.keys(updates).length > 0) {
                     setFormData((prev: any) => ({
                         ...prev,
-                        embedding: {
-                            ...prev.embedding,
+                        [CONFIG_SECTIONS.EMBEDDING]: {
+                            ...prev[CONFIG_SECTIONS.EMBEDDING],
                             ...updates
                         }
                     }));
@@ -311,8 +311,8 @@ export default function Config() {
 
         setFormData((prev: any) => ({
             ...prev,
-            summarization: {
-                ...prev.summarization,
+            [CONFIG_SECTIONS.SUMMARIZATION]: {
+                ...prev[CONFIG_SECTIONS.SUMMARIZATION],
                 model: modelName,
                 max_tokens: context
             }
@@ -325,7 +325,7 @@ export default function Config() {
     const handleTestSum = async () => {
         setIsTestingSum(true);
         try {
-            const res = await testSummarizationConfig(formData.summarization) as any;
+            const res = await testSummarizationConfig(formData[CONFIG_SECTIONS.SUMMARIZATION]) as any;
             setSumTestResult(res);
 
             // Only populate context window from API - no heuristics
@@ -339,7 +339,7 @@ export default function Config() {
 
                 // Then check if the discovered model has context_window
                 if (!detectedContext) {
-                    const model = summarizationModels.find(m => m.id === formData.summarization.model);
+                    const model = summarizationModels.find(m => m.id === formData[CONFIG_SECTIONS.SUMMARIZATION].model);
                     if (model?.context_window) {
                         detectedContext = model.context_window;
                     }
@@ -349,8 +349,8 @@ export default function Config() {
                 if (detectedContext) {
                     setFormData((prev: any) => ({
                         ...prev,
-                        summarization: {
-                            ...prev.summarization,
+                        [CONFIG_SECTIONS.SUMMARIZATION]: {
+                            ...prev[CONFIG_SECTIONS.SUMMARIZATION],
                             max_tokens: detectedContext
                         }
                     }));
@@ -367,36 +367,31 @@ export default function Config() {
 
     const handleSave = async () => {
         try {
-            // Helper to convert UI field values to API-safe values
-            // Empty string, NaN, or undefined become null; valid numbers pass through
-            const toApiNumber = (value: any): number | null => {
-                if (value === "" || value === undefined || value === null) return null;
-                const num = typeof value === "number" ? value : parseInt(value, 10);
-                return isNaN(num) ? null : num;
-            };
+            const emb = formData[CONFIG_SECTIONS.EMBEDDING];
+            const sum = formData[CONFIG_SECTIONS.SUMMARIZATION];
 
             // Debug: log what we're about to save
-            console.log("[Config Save] formData.summarization.max_tokens:", formData.summarization.max_tokens, typeof formData.summarization.max_tokens);
-            console.log("[Config Save] toApiNumber result:", toApiNumber(formData.summarization.max_tokens));
+            console.log("[Config Save] formData.summarization.max_tokens:", sum.max_tokens, typeof sum.max_tokens);
+            console.log("[Config Save] toApiNumber result:", toApiNumber(sum.max_tokens));
 
             // Transform UI field names back to API field names
             const apiPayload = {
-                embedding: {
-                    provider: formData.embedding.provider,
-                    model: formData.embedding.model,
-                    base_url: formData.embedding.base_url,
-                    dimensions: toApiNumber(formData.embedding.dimensions),
+                [CONFIG_SECTIONS.EMBEDDING]: {
+                    provider: emb.provider,
+                    model: emb.model,
+                    base_url: emb.base_url,
+                    dimensions: toApiNumber(emb.dimensions),
                     // UI uses max_tokens/chunk_size, API expects context_tokens/max_chunk_chars
-                    context_tokens: toApiNumber(formData.embedding.max_tokens),
-                    max_chunk_chars: toApiNumber(formData.embedding.chunk_size),
+                    context_tokens: toApiNumber(emb.max_tokens),
+                    max_chunk_chars: toApiNumber(emb.chunk_size),
                 },
-                summarization: {
-                    enabled: formData.summarization.enabled,
-                    provider: formData.summarization.provider,
-                    model: formData.summarization.model,
-                    base_url: formData.summarization.base_url,
+                [CONFIG_SECTIONS.SUMMARIZATION]: {
+                    enabled: sum.enabled,
+                    provider: sum.provider,
+                    model: sum.model,
+                    base_url: sum.base_url,
                     // UI uses max_tokens, API expects context_tokens
-                    context_tokens: toApiNumber(formData.summarization.max_tokens),
+                    context_tokens: toApiNumber(sum.max_tokens),
                 },
             };
             console.log("[Config Save] Sending apiPayload:", JSON.stringify(apiPayload, null, 2));
@@ -435,157 +430,108 @@ export default function Config() {
                             <CardTitle>Embedding Settings</CardTitle>
                             <CardDescription>Configure the model used for semantic search code indexing.</CardDescription>
                         </div>
-                        {embeddingValidation.isValid && (
-                            <div className="flex items-center gap-2 text-green-600">
-                                <CheckCircle2 className="h-5 w-5" />
-                                <span className="text-sm font-medium">Ready</span>
-                            </div>
-                        )}
+                        <ReadyBadge show={embeddingValidation.isValid} />
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {/* Step 1: Provider & Connect */}
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                            <span className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded-full text-xs",
-                                (formData.embedding.provider && formData.embedding.base_url) ? "bg-green-600 text-white" : "bg-muted-foreground/20"
-                            )}>1</span>
-                            Connect to Provider
-                        </div>
+                        <StepHeader
+                            step={1}
+                            title="Connect to Provider"
+                            isComplete={Boolean(formData[CONFIG_SECTIONS.EMBEDDING].provider && formData[CONFIG_SECTIONS.EMBEDDING].base_url)}
+                        />
                         <div className="grid grid-cols-2 gap-4 pl-7">
                             <div className="space-y-2">
                                 <Label>Provider</Label>
-                                <Select
-                                    value={formData.embedding.provider}
-                                    onChange={(e: any) => handleChange("embedding", "provider", e.target.value)}
-                                >
-                                    <option value="ollama">Ollama</option>
-                                    <option value="lmstudio">LM Studio</option>
-                                    <option value="openai">OpenAI Compatible</option>
-                                </Select>
+                                <ProviderSelect
+                                    value={formData[CONFIG_SECTIONS.EMBEDDING].provider}
+                                    onChange={(provider) => {
+                                        handleChange(CONFIG_SECTIONS.EMBEDDING, "provider", provider);
+                                    }}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <Label>Base URL</Label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        value={formData.embedding.base_url}
-                                        onChange={(e: any) => handleChange("embedding", "base_url", e.target.value)}
-                                        placeholder="http://localhost:11434"
-                                    />
-                                    <Button variant="outline" size="icon" onClick={handleDiscoverEmbedding} title="Load Models">
-                                        {isDiscoveringEmbedding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                                    </Button>
-                                </div>
+                                <UrlInputWithRefresh
+                                    value={formData[CONFIG_SECTIONS.EMBEDDING].base_url}
+                                    onChange={(url) => handleChange(CONFIG_SECTIONS.EMBEDDING, "base_url", url)}
+                                    onRefresh={handleDiscoverEmbedding}
+                                    isRefreshing={isDiscoveringEmbedding}
+                                />
                             </div>
                         </div>
                     </div>
 
                     {/* Step 2: Select Model */}
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                            <span className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded-full text-xs",
-                                formData.embedding.model ? "bg-green-600 text-white" : "bg-muted-foreground/20"
-                            )}>2</span>
-                            Select Model
-                        </div>
-                        <div className="pl-7 space-y-2">
-                            {embeddingModels.length > 0 ? (
-                                <Select
-                                    value={formData.embedding.model}
-                                    onChange={(e: any) => handleModelSelect(e.target.value)}
-                                >
-                                    <option value="" disabled>Select a model...</option>
-                                    {embeddingModels.map(m => (
-                                        <option key={m.name} value={m.name}>
-                                            {m.name} ({m.dimensions} dims) - {m.provider}
-                                        </option>
-                                    ))}
-                                </Select>
-                            ) : (
-                                <Input
-                                    value={formData.embedding.model}
-                                    onChange={(e: any) => handleChange("embedding", "model", e.target.value)}
-                                    placeholder="e.g. nomic-embed-text"
-                                />
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                                {embeddingModels.length === 0 ? "Models will auto-load. Click refresh if discovery fails." : "Select a model from the dropdown."}
-                            </p>
+                        <StepHeader
+                            step={2}
+                            title="Select Model"
+                            isComplete={Boolean(formData[CONFIG_SECTIONS.EMBEDDING].model)}
+                        />
+                        <div className="pl-7">
+                            <ModelSelect
+                                value={formData[CONFIG_SECTIONS.EMBEDDING].model}
+                                models={embeddingModels}
+                                onChange={(modelId) => handleModelSelect(modelId)}
+                                placeholder={DEFAULT_EMBEDDING_MODEL_PLACEHOLDER}
+                                showDimensions
+                                helpText={embeddingModels.length === 0
+                                    ? "Models will auto-load. Click refresh if discovery fails."
+                                    : "Select a model from the dropdown."}
+                            />
                         </div>
                     </div>
 
                     {/* Step 3: Test & Configure */}
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                            <span className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded-full text-xs",
-                                embeddingTestResult?.success ? "bg-green-600 text-white" : "bg-muted-foreground/20"
-                            )}>3</span>
-                            Test & Configure
-                        </div>
+                        <StepHeader
+                            step={3}
+                            title="Test & Configure"
+                            isComplete={Boolean(embeddingTestResult?.success)}
+                        />
                         <div className="pl-7 grid grid-cols-2 gap-4 bg-muted/30 p-4 rounded-md border border-dashed">
                             <div className="space-y-2">
                                 <Label>Dimensions</Label>
                                 <Input
                                     type="number"
-                                    value={formData.embedding.dimensions || ''}
-                                    onChange={(e: any) => handleChange("embedding", "dimensions", parseInt(e.target.value))}
-                                    placeholder="Auto-detect"
+                                    value={formData[CONFIG_SECTIONS.EMBEDDING].dimensions || ''}
+                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.EMBEDDING, "dimensions", parseInt(e.target.value))}
+                                    placeholder={DEFAULT_DIMENSIONS_PLACEHOLDER}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label>Chunk Size</Label>
                                 <Input
                                     type="number"
-                                    value={formData.embedding.chunk_size || ''}
-                                    onChange={(e: any) => handleChange("embedding", "chunk_size", parseInt(e.target.value))}
-                                    placeholder="e.g. 512"
+                                    value={formData[CONFIG_SECTIONS.EMBEDDING].chunk_size || ''}
+                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.EMBEDDING, "chunk_size", parseInt(e.target.value))}
+                                    placeholder={DEFAULT_CHUNK_SIZE_PLACEHOLDER}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label>Context Window</Label>
                                 <Input
                                     type="number"
-                                    value={formData.embedding.max_tokens || ''}
-                                    onChange={(e: any) => handleChange("embedding", "max_tokens", parseInt(e.target.value))}
-                                    placeholder="e.g. 8192"
+                                    value={formData[CONFIG_SECTIONS.EMBEDDING].max_tokens || ''}
+                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.EMBEDDING, "max_tokens", parseInt(e.target.value))}
+                                    placeholder={DEFAULT_CONTEXT_WINDOW_PLACEHOLDER}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <div className="h-full flex items-end">
-                                    <Button
-                                        variant="secondary"
-                                        className="w-full"
+                                    <TestButton
                                         onClick={handleTestEmbedding}
-                                        disabled={isTestingEmbedding || !formData.embedding.model}
-                                    >
-                                        {isTestingEmbedding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plug className="mr-2 h-4 w-4" />}
-                                        Test & Detect
-                                    </Button>
+                                        isTesting={isTestingEmbedding}
+                                        disabled={!formData[CONFIG_SECTIONS.EMBEDDING].model}
+                                    />
                                 </div>
                             </div>
                             <p className="col-span-2 text-xs text-muted-foreground">
                                 Click Test & Detect to auto-fill dimensions. If context window isn't detected, enter it manually.
                             </p>
-                            {embeddingTestResult && (
-                                <div className={cn(
-                                    "col-span-2 text-sm p-3 rounded flex items-start gap-2",
-                                    embeddingTestResult.success && embeddingTestResult.pending_load ? "bg-yellow-500/10 text-yellow-700" :
-                                    embeddingTestResult.success ? "bg-green-500/10 text-green-700" : "bg-red-500/10 text-red-700"
-                                )}>
-                                    {embeddingTestResult.success ? <CheckCircle2 className="w-4 h-4 mt-0.5" /> : <AlertCircle className="w-4 h-4 mt-0.5" />}
-                                    <div>
-                                        <p className="font-medium">
-                                            {embeddingTestResult.success && embeddingTestResult.pending_load ? "Configuration Valid" :
-                                             embeddingTestResult.success ? "Connection Successful" : "Test Failed"}
-                                        </p>
-                                        <p>{embeddingTestResult.success ? embeddingTestResult.message : embeddingTestResult.error}</p>
-                                        {embeddingTestResult.suggestion && <p className="mt-1 font-semibold">{embeddingTestResult.suggestion}</p>}
-                                    </div>
-                                </div>
-                            )}
+                            <TestResult result={embeddingTestResult} />
                         </div>
                     </div>
                 </CardContent>
@@ -599,8 +545,8 @@ export default function Config() {
                             <input
                                 type="checkbox"
                                 id="sum_enabled"
-                                checked={formData.summarization.enabled}
-                                onChange={(e) => handleChange("summarization", "enabled", e.target.checked)}
+                                checked={formData[CONFIG_SECTIONS.SUMMARIZATION].enabled}
+                                onChange={(e) => handleChange(CONFIG_SECTIONS.SUMMARIZATION, "enabled", e.target.checked)}
                                 className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                             />
                             <div>
@@ -608,135 +554,89 @@ export default function Config() {
                                 <CardDescription>Enable LLM-powered activity summarization (optional).</CardDescription>
                             </div>
                         </div>
-                        {formData.summarization.enabled && summarizationValidation.isValid && (
-                            <div className="flex items-center gap-2 text-green-600">
-                                <CheckCircle2 className="h-5 w-5" />
-                                <span className="text-sm font-medium">Ready</span>
-                            </div>
-                        )}
+                        <ReadyBadge show={formData[CONFIG_SECTIONS.SUMMARIZATION].enabled && summarizationValidation.isValid} />
                     </div>
                 </CardHeader>
-                <CardContent className={cn("space-y-6 transition-all", !formData.summarization.enabled && "opacity-50 pointer-events-none")}>
+                <CardContent className={cn("space-y-6 transition-all", !formData[CONFIG_SECTIONS.SUMMARIZATION].enabled && "opacity-50 pointer-events-none")}>
                     {/* Step 1: Provider & Connect */}
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                            <span className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded-full text-xs",
-                                (formData.summarization.provider && formData.summarization.base_url) ? "bg-green-600 text-white" : "bg-muted-foreground/20"
-                            )}>1</span>
-                            Connect to Provider
-                        </div>
+                        <StepHeader
+                            step={1}
+                            title="Connect to Provider"
+                            isComplete={Boolean(formData[CONFIG_SECTIONS.SUMMARIZATION].provider && formData[CONFIG_SECTIONS.SUMMARIZATION].base_url)}
+                        />
                         <div className="grid grid-cols-2 gap-4 pl-7">
                             <div className="space-y-2">
                                 <Label>Provider</Label>
-                                <Select
-                                    value={formData.summarization.provider}
-                                    onChange={(e: any) => handleChange("summarization", "provider", e.target.value)}
-                                >
-                                    <option value="ollama">Ollama</option>
-                                    <option value="lmstudio">LM Studio</option>
-                                    <option value="openai">OpenAI Compatible</option>
-                                </Select>
+                                <ProviderSelect
+                                    value={formData[CONFIG_SECTIONS.SUMMARIZATION].provider}
+                                    onChange={(provider) => {
+                                        handleChange(CONFIG_SECTIONS.SUMMARIZATION, "provider", provider);
+                                    }}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <Label>Base URL</Label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        value={formData.summarization.base_url}
-                                        onChange={(e: any) => handleChange("summarization", "base_url", e.target.value)}
-                                    />
-                                    <Button variant="outline" size="icon" onClick={handleDiscoverSum} title="Load Models">
-                                        {isDiscoveringSum ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                                    </Button>
-                                </div>
+                                <UrlInputWithRefresh
+                                    value={formData[CONFIG_SECTIONS.SUMMARIZATION].base_url}
+                                    onChange={(url) => handleChange(CONFIG_SECTIONS.SUMMARIZATION, "base_url", url)}
+                                    onRefresh={handleDiscoverSum}
+                                    isRefreshing={isDiscoveringSum}
+                                />
                             </div>
                         </div>
                     </div>
 
                     {/* Step 2: Select Model */}
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                            <span className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded-full text-xs",
-                                formData.summarization.model ? "bg-green-600 text-white" : "bg-muted-foreground/20"
-                            )}>2</span>
-                            Select Model
-                        </div>
-                        <div className="pl-7 space-y-2">
-                            {summarizationModels.length > 0 ? (
-                                <Select
-                                    value={formData.summarization.model}
-                                    onChange={(e: any) => handleSumModelSelect(e.target.value)}
-                                >
-                                    <option value="" disabled>Select a model...</option>
-                                    {summarizationModels.map(m => (
-                                        <option key={m.id} value={m.id}>
-                                            {m.name}
-                                        </option>
-                                    ))}
-                                </Select>
-                            ) : (
-                                <Input
-                                    value={formData.summarization.model}
-                                    onChange={(e: any) => handleChange("summarization", "model", e.target.value)}
-                                    placeholder="e.g. qwen2.5:3b"
-                                />
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                                {summarizationModels.length === 0 ? "Models will auto-load. Click refresh if discovery fails." : "Select a model from the dropdown."}
-                            </p>
+                        <StepHeader
+                            step={2}
+                            title="Select Model"
+                            isComplete={Boolean(formData[CONFIG_SECTIONS.SUMMARIZATION].model)}
+                        />
+                        <div className="pl-7">
+                            <ModelSelect
+                                value={formData[CONFIG_SECTIONS.SUMMARIZATION].model}
+                                models={summarizationModels}
+                                onChange={(modelId) => handleSumModelSelect(modelId)}
+                                placeholder={DEFAULT_SUMMARIZATION_MODEL_PLACEHOLDER}
+                                helpText={summarizationModels.length === 0
+                                    ? "Models will auto-load. Click refresh if discovery fails."
+                                    : "Select a model from the dropdown."}
+                            />
                         </div>
                     </div>
 
                     {/* Step 3: Test & Configure */}
                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                            <span className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded-full text-xs",
-                                sumTestResult?.success ? "bg-green-600 text-white" : "bg-muted-foreground/20"
-                            )}>3</span>
-                            Test & Configure
-                        </div>
+                        <StepHeader
+                            step={3}
+                            title="Test & Configure"
+                            isComplete={Boolean(sumTestResult?.success)}
+                        />
                         <div className="pl-7 grid grid-cols-2 gap-4 bg-muted/30 p-4 rounded-md border border-dashed">
                             <div className="space-y-2">
                                 <Label>Context Window</Label>
                                 <Input
                                     type="number"
-                                    value={formData.summarization.max_tokens || ''}
-                                    onChange={(e: any) => handleChange("summarization", "max_tokens", parseInt(e.target.value))}
-                                    placeholder="e.g. 32768"
+                                    value={formData[CONFIG_SECTIONS.SUMMARIZATION].max_tokens || ''}
+                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.SUMMARIZATION, "max_tokens", parseInt(e.target.value))}
+                                    placeholder={LARGE_CONTEXT_WINDOW_PLACEHOLDER}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <div className="h-full flex items-end">
-                                    <Button
-                                        variant="secondary"
-                                        className="w-full"
+                                    <TestButton
                                         onClick={handleTestSum}
-                                        disabled={isTestingSum || !formData.summarization.model}
-                                    >
-                                        {isTestingSum ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plug className="mr-2 h-4 w-4" />}
-                                        Test & Detect
-                                    </Button>
+                                        isTesting={isTestingSum}
+                                        disabled={!formData[CONFIG_SECTIONS.SUMMARIZATION].model}
+                                    />
                                 </div>
                             </div>
                             <p className="col-span-2 text-xs text-muted-foreground">
                                 Click Test & Detect to verify connection. If context window isn't detected, enter it manually.
                             </p>
-                            {sumTestResult && (
-                                <div className={cn(
-                                    "col-span-2 text-sm p-3 rounded flex items-start gap-2",
-                                    sumTestResult.success ? "bg-green-500/10 text-green-700" : "bg-red-500/10 text-red-700"
-                                )}>
-                                    {sumTestResult.success ? <CheckCircle2 className="w-4 h-4 mt-0.5" /> : <AlertCircle className="w-4 h-4 mt-0.5" />}
-                                    <div>
-                                        <p className="font-medium">
-                                        {sumTestResult.success ? "Connection Successful" : "Test Failed"}
-                                    </p>
-                                    <p>{sumTestResult.success ? sumTestResult.message || "LLM is accessible" : sumTestResult.error}</p>
-                                </div>
-                            </div>
-                        )}
+                            <TestResult result={sumTestResult} />
                         </div>
                     </div>
                 </CardContent>

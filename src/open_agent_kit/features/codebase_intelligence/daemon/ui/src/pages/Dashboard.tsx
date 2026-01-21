@@ -1,38 +1,33 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-components";
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { Check, FileCode, Database, Cpu, Clock, Activity, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function formatRelativeTime(dateString: string): string {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffSeconds < 60) return "just now";
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return "yesterday";
-    return `${diffDays}d ago`;
-}
+import {
+    formatRelativeTime,
+    formatUptime,
+    SESSION_STATUS,
+    SESSION_STATUS_LABELS,
+    SYSTEM_STATUS_LABELS,
+    FALLBACK_MESSAGES,
+    DEFAULT_AGENT_NAME,
+    PAGINATION,
+} from "@/lib/constants";
 
 function SessionRow({ session }: { session: SessionItem }) {
-    const isActive = session.status === "active";
+    const isActive = session.status === SESSION_STATUS.ACTIVE;
+    const statusType = isActive ? "active" : "completed";
+    const statusLabel = SESSION_STATUS_LABELS[session.status as keyof typeof SESSION_STATUS_LABELS] || "done";
+
     return (
         <div className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
-            <div className={cn(
-                "w-2 h-2 rounded-full flex-shrink-0",
-                isActive ? "bg-yellow-500 animate-pulse" : "bg-green-500"
-            )} />
+            <StatusDot status={statusType} />
             <Terminal className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">
-                        {session.agent || "claude-code"}
+                        {session.agent || DEFAULT_AGENT_NAME}
                     </span>
                     <span className="text-xs text-muted-foreground">
                         {formatRelativeTime(session.started_at)}
@@ -47,36 +42,20 @@ function SessionRow({ session }: { session: SessionItem }) {
                     </p>
                 )}
             </div>
-            <span className={cn(
-                "text-xs px-2 py-0.5 rounded-full flex-shrink-0",
-                isActive ? "bg-yellow-500/10 text-yellow-600" : "bg-green-500/10 text-green-600"
-            )}>
-                {isActive ? "active" : "done"}
-            </span>
+            <StatusBadge status={statusType} label={statusLabel} />
         </div>
     );
 }
 
-const StatCard = ({ title, value, icon: Icon, subtext, loading }: any) => (
-    <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{title}</CardTitle>
-            <Icon className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-            <div className="text-2xl font-bold">{loading ? "..." : value}</div>
-            {subtext && <p className="text-xs text-muted-foreground">{subtext}</p>}
-        </CardContent>
-    </Card>
-);
-
 export default function Dashboard() {
     const { data: status, isLoading, isError } = useStatus();
-    const { data: sessionsData, isLoading: sessionsLoading } = useSessions(5);
+    const { data: sessionsData, isLoading: sessionsLoading } = useSessions(PAGINATION.DASHBOARD_SESSION_LIMIT);
 
     const isIndexing = status?.indexing;
     const indexStats = status?.index_stats;
     const sessions = sessionsData?.sessions || [];
+    const systemStatus = isIndexing ? "indexing" : "ready";
+    const systemStatusLabel = isIndexing ? SYSTEM_STATUS_LABELS.indexing : SYSTEM_STATUS_LABELS.ready;
 
     return (
         <div className="space-y-6">
@@ -89,11 +68,9 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <div className={cn("w-3 h-3 rounded-full transition-colors",
-                        isIndexing ? "bg-yellow-500 animate-pulse" : "bg-green-500"
-                    )} />
+                    <StatusDot status={systemStatus} className="w-3 h-3" />
                     <span className="text-sm font-medium">
-                        {isIndexing ? "Indexing..." : "System Ready"}
+                        {systemStatusLabel}
                     </span>
                 </div>
             </div>
@@ -128,7 +105,7 @@ export default function Dashboard() {
                 />
                 <StatCard
                     title="Uptime"
-                    value={status ? `${Math.floor(status.uptime_seconds / 60)}m` : "0m"}
+                    value={status ? formatUptime(status.uptime_seconds) : "0m"}
                     icon={Clock}
                     subtext="Session duration"
                     loading={isLoading}
@@ -148,12 +125,12 @@ export default function Dashboard() {
                     <CardContent>
                         {sessionsLoading ? (
                             <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
-                                Loading sessions...
+                                {FALLBACK_MESSAGES.LOADING}
                             </div>
                         ) : sessions.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground text-sm border-2 border-dashed rounded-md">
                                 <Activity className="w-8 h-8 mb-2 opacity-50" />
-                                No sessions recorded yet
+                                {FALLBACK_MESSAGES.NO_SESSIONS}
                             </div>
                         ) : (
                             <div className="space-y-1">

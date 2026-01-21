@@ -103,13 +103,20 @@ version-file = "src/open_agent_kit/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/open_agent_kit"]
-# Include non-Python files in wheel (config, templates, manifests)
+# Include non-Python files in wheel (config, templates, manifests, static assets)
 artifacts = [
     "src/open_agent_kit/agents/**/*.yaml",
     "src/open_agent_kit/features/**/*.yaml",
     "src/open_agent_kit/features/**/*.md",
     "src/open_agent_kit/features/**/*.json",
     "src/open_agent_kit/features/**/*.sh",
+    # CI daemon UI static files
+    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.html",
+    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.css",
+    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.js",
+    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.png",
+    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.svg",
+    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.ico",
 ]
 # Exclude node_modules and other development artifacts
 exclude = [
@@ -117,9 +124,6 @@ exclude = [
     "**/ui/src/**",
     "**/.vite/**",
 ]
-# Force include CI daemon UI static files (explicit mapping)
-[tool.hatch.build.targets.wheel.force-include]
-"src/open_agent_kit/features/codebase_intelligence/daemon/static" = "open_agent_kit/features/codebase_intelligence/daemon/static"
 
 [tool.hatch.build.targets.sdist]
 include = [

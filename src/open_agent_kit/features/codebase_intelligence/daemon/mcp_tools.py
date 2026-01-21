@@ -5,16 +5,15 @@ Exposes tools that AI agents can call via MCP protocol:
 - oak_remember: Store observations for future retrieval
 - oak_context: Get relevant context for current task
 
-These tools are the primary interface for all agents, more universal
-than skills which are only supported in Claude Code.
+These tools use RetrievalEngine directly (same process, no HTTP overhead).
 """
 
 import logging
-from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
 
@@ -171,18 +170,16 @@ MCP_TOOLS = [
 class MCPToolHandler:
     """Handler for MCP tool calls.
 
-    Processes tool calls and returns results in MCP-compatible format.
+    Uses RetrievalEngine directly for all operations (same process).
     """
 
-    def __init__(self, vector_store: Any, embedding_chain: Any) -> None:
+    def __init__(self, retrieval_engine: RetrievalEngine) -> None:
         """Initialize handler.
 
         Args:
-            vector_store: VectorStore instance for searching.
-            embedding_chain: EmbeddingProviderChain for embeddings.
+            retrieval_engine: RetrievalEngine instance for all operations.
         """
-        self.vector_store = vector_store
-        self.embedding_chain = embedding_chain
+        self.engine = retrieval_engine
 
     def handle_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle an MCP tool call.
@@ -223,63 +220,36 @@ class MCPToolHandler:
         """Handle oak_search tool call."""
         input_data = OakSearchInput(**args)
 
-        results: dict[str, list[dict[str, Any]]] = {"code": [], "memory": []}
-
-        if input_data.search_type in ("all", "code"):
-            code_results = self.vector_store.search_code(
-                query=input_data.query,
-                limit=input_data.limit,
-            )
-            results["code"] = [
-                {
-                    "file": r["filepath"],
-                    "name": r.get("name", ""),
-                    "type": r.get("chunk_type", ""),
-                    "lines": f"{r.get('start_line', 0)}-{r.get('end_line', 0)}",
-                    "relevance": round(r["relevance"], 2),
-                    "preview": (
-                        r["content"][:200] + "..." if len(r["content"]) > 200 else r["content"]
-                    ),
-                }
-                for r in code_results
-            ]
-
-        if input_data.search_type in ("all", "memory"):
-            memory_results = self.vector_store.search_memory(
-                query=input_data.query,
-                limit=input_data.limit,
-            )
-            results["memory"] = [
-                {
-                    "type": r.get("memory_type", ""),
-                    "observation": r["observation"],
-                    "context": r.get("context", ""),
-                    "relevance": round(r["relevance"], 2),
-                }
-                for r in memory_results
-            ]
+        # Use engine directly
+        result = self.engine.search(
+            query=input_data.query,
+            search_type=input_data.search_type,
+            limit=input_data.limit,
+        )
 
         # Format as readable text
         output = [f"Search results for: {input_data.query}\n"]
 
-        if results["code"]:
+        if result.code:
             output.append("## Code Results\n")
-            for r in results["code"]:
+            for r in result.code:
+                lines = f"{r.get('start_line', 0)}-{r.get('end_line', 0)}"
+                preview = r.get("content", "")[:200]
+                if len(r.get("content", "")) > 200:
+                    preview += "..."
                 output.append(
-                    f"- **{r['file']}** ({r['type']}: {r['name']}) "
-                    f"[lines {r['lines']}] (relevance: {r['relevance']})\n"
-                    f"  ```\n  {r['preview']}\n  ```\n"
+                    f"- **{r['filepath']}** ({r['chunk_type']}: {r.get('name', '')}) "
+                    f"[lines {lines}] (relevance: {round(r['relevance'], 2)})\n"
+                    f"  ```\n  {preview}\n  ```\n"
                 )
 
-        if results["memory"]:
+        if result.memory:
             output.append("## Memories\n")
-            for r in results["memory"]:
-                output.append(
-                    f"- [{r['type']}] {r['observation']}"
-                    f"{' (context: ' + r['context'] + ')' if r['context'] else ''}\n"
-                )
+            for r in result.memory:
+                context_str = f" (context: {r.get('context', '')})" if r.get("context") else ""
+                output.append(f"- [{r['memory_type']}] {r['observation']}{context_str}\n")
 
-        if not results["code"] and not results["memory"]:
+        if not result.code and not result.memory:
             output.append("No results found.")
 
         return "\n".join(output)
@@ -288,17 +258,12 @@ class MCPToolHandler:
         """Handle oak_remember tool call."""
         input_data = OakRememberInput(**args)
 
-        from open_agent_kit.features.codebase_intelligence.memory.store import MemoryObservation
-
-        observation = MemoryObservation(
-            id=str(uuid4()),
+        # Use engine directly
+        observation_id = self.engine.remember(
             observation=input_data.observation,
             memory_type=input_data.memory_type,
             context=input_data.context,
-            created_at=datetime.now(),
         )
-
-        observation_id = self.vector_store.add_memory(observation)
 
         return (
             f"Observation stored successfully.\n"
@@ -311,34 +276,28 @@ class MCPToolHandler:
         """Handle oak_context tool call."""
         input_data = OakContextInput(**args)
 
-        # Build context from multiple sources
+        # Use engine directly
+        result = self.engine.get_task_context(
+            task=input_data.task,
+            current_files=input_data.current_files,
+            max_tokens=input_data.max_tokens,
+        )
+
+        # Format context parts
         context_parts = []
 
-        # Search for relevant code
-        code_results = self.vector_store.search_code(
-            query=input_data.task,
-            limit=5,
-        )
-
-        if code_results:
+        if result.code:
             context_parts.append("## Relevant Code\n")
-            for r in code_results:
+            for r in result.code:
                 context_parts.append(
-                    f"### {r['filepath']} ({r.get('chunk_type', 'code')}: {r.get('name', '')})\n"
-                    f"Lines {r.get('start_line', 0)}-{r.get('end_line', 0)} "
-                    f"(relevance: {round(r['relevance'], 2)})\n\n"
-                    f"```{r.get('language', '')}\n{r['content']}\n```\n"
+                    f"### {r['file_path']} ({r.get('chunk_type', 'code')}: {r.get('name', '')})\n"
+                    f"Line {r.get('start_line', 0)} "
+                    f"(relevance: {round(r['relevance'], 2)})\n"
                 )
 
-        # Search for relevant memories
-        memory_results = self.vector_store.search_memory(
-            query=input_data.task,
-            limit=5,
-        )
-
-        if memory_results:
+        if result.memories:
             context_parts.append("## Related Memories\n")
-            for r in memory_results:
+            for r in result.memories:
                 emoji = {
                     "gotcha": "⚠️",
                     "bug_fix": "🐛",

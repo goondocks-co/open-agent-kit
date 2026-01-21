@@ -46,39 +46,21 @@ async def _background_index() -> None:
         return
 
     logger.info("Starting background indexing...")
-    state.index_status.set_indexing()
-
-    # Capture indexer to satisfy type narrowing in lambda
-    indexer = state.indexer
 
     try:
-
-        def progress_callback(current: int, total: int) -> None:
-            state.index_status.update_progress(current, total)
-
-        # Run indexing in thread pool to not block event loop
-        # Add timeout protection to prevent runaway indexing
+        # Run unified index build in executor with timeout
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 None,
-                lambda: indexer.build_index(
-                    full_rebuild=True,
-                    progress_callback=progress_callback,
-                ),
+                lambda: state.run_index_build(full_rebuild=True),
             ),
             timeout=DEFAULT_INDEXING_TIMEOUT_SECONDS,
         )
 
-        state.index_status.set_ready(duration=result.duration_seconds)
-        state.index_status.file_count = result.files_processed
-        logger.info(
-            f"Background indexing complete: {result.chunks_indexed} chunks "
-            f"from {result.files_processed} files"
-        )
-
-        # Start file watcher for incremental updates
-        await _start_file_watcher()
+        if result is not None:
+            # Start file watcher for incremental updates
+            await _start_file_watcher()
 
     except TimeoutError:
         logger.error(f"Background indexing timed out after {DEFAULT_INDEXING_TIMEOUT_SECONDS}s")
@@ -88,7 +70,7 @@ async def _background_index() -> None:
         state.index_status.set_error()
     finally:
         # Only update file count from DB if it wasn't set by successful indexing
-        # This prevents overwriting the accurate count from build_index() result
+        # This prevents overwriting the accurate count from run_index_build() result
         if state.index_status.file_count == 0 and state.vector_store:
             try:
                 state.index_status.file_count = state.vector_store.count_unique_files()

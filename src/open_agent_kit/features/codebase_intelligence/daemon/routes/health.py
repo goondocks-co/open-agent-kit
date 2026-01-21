@@ -4,6 +4,11 @@ import logging
 
 from fastapi import APIRouter, Query
 
+from open_agent_kit.features.codebase_intelligence.daemon.constants import (
+    DaemonStatus,
+    LogLimits,
+    Paths,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.models import HealthResponse
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
@@ -18,7 +23,7 @@ async def health_check() -> HealthResponse:
     state = get_state()
     uptime = state.uptime_seconds
     return HealthResponse(
-        status="healthy",
+        status=DaemonStatus.HEALTHY,
         uptime_seconds=uptime,
         project_root=str(state.project_root) if state.project_root else None,
     )
@@ -69,7 +74,7 @@ async def get_status() -> dict:
         state.index_status.file_count = files_indexed
 
     return {
-        "status": "running",
+        "status": DaemonStatus.RUNNING,
         "indexing": state.index_status.is_indexing,
         "embedding_provider": embedding_provider,
         "embedding_stats": embedding_stats,
@@ -99,12 +104,18 @@ async def get_status() -> dict:
 
 
 @router.get("/api/logs")
-async def get_logs(lines: int = Query(default=50, ge=1, le=500)) -> dict:
+async def get_logs(
+    lines: int = Query(
+        default=LogLimits.DEFAULT_LINES,
+        ge=LogLimits.MIN_LINES,
+        le=LogLimits.MAX_LINES,
+    )
+) -> dict:
     """Get recent daemon logs."""
     state = get_state()
-    log_file = state.project_root
-    if log_file:
-        log_file = log_file / ".oak" / "ci" / "daemon.log"
+    log_file = None
+    if state.project_root:
+        log_file = Paths.get_log_path(state.project_root)
 
     log_content = ""
     if log_file and log_file.exists():

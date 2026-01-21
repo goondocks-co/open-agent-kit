@@ -5,6 +5,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from open_agent_kit.features.codebase_intelligence.retrieval.engine import Confidence
+
 
 class ChunkType(str, Enum):
     """Types of code chunks."""
@@ -60,7 +62,27 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Search query")
     limit: int = Field(default=20, ge=1, le=100)
     search_type: str = Field(default="all", pattern="^(all|code|memory)$")
-    relevance_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    # None means use model-aware default threshold
+    relevance_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0-1). None uses model-specific default.",
+    )
+    apply_doc_type_weights: bool = Field(
+        default=True,
+        description="Apply doc_type weighting to deprioritize i18n/config files. Disable for translation searches.",
+    )
+
+
+class DocType(str, Enum):
+    """Document type classification for search result filtering/weighting."""
+
+    CODE = "code"
+    I18N = "i18n"
+    CONFIG = "config"
+    TEST = "test"
+    DOCS = "docs"
 
 
 class CodeResult(BaseModel):
@@ -74,6 +96,8 @@ class CodeResult(BaseModel):
     end_line: int
     tokens: int
     relevance: float
+    confidence: Confidence = Confidence.MEDIUM
+    doc_type: DocType = DocType.CODE
     preview: str | None = None
 
 
@@ -85,6 +109,7 @@ class MemoryResult(BaseModel):
     summary: str
     tokens: int
     relevance: float
+    confidence: Confidence = Confidence.MEDIUM
     created_at: datetime | None = None
 
 
@@ -227,6 +252,10 @@ class ContextRequest(BaseModel):
     task: str = Field(..., min_length=1, description="Description of the task")
     current_files: list[str] = Field(default_factory=list, description="Files being viewed/edited")
     max_tokens: int = Field(default=2000, ge=100, le=10000)
+    apply_doc_type_weights: bool = Field(
+        default=True,
+        description="Apply doc_type weighting to deprioritize i18n/config files. Disable for non-code tasks.",
+    )
 
 
 class ContextCodeResult(BaseModel):

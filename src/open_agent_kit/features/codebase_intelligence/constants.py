@@ -109,7 +109,7 @@ CI_PORT_FILE: Final[str] = "daemon.port"
 
 DEFAULT_SEARCH_LIMIT: Final[int] = 20
 MAX_SEARCH_LIMIT: Final[int] = 100
-DEFAULT_RELEVANCE_THRESHOLD: Final[float] = 0.3
+DEFAULT_RELEVANCE_THRESHOLD: Final[float] = 0.05
 
 DEFAULT_CONTEXT_LIMIT: Final[int] = 10
 DEFAULT_CONTEXT_MEMORY_LIMIT: Final[int] = 5
@@ -191,6 +191,33 @@ HOOK_EVENT_STOP: Final[str] = "stop"
 # Tags for auto-captured observations
 TAG_AUTO_CAPTURED: Final[str] = "auto-captured"
 TAG_SESSION_SUMMARY: Final[str] = "session-summary"
+
+# =============================================================================
+# Confidence Levels (model-agnostic)
+# =============================================================================
+
+# Confidence levels for search results.
+# These are model-agnostic and based on relative positioning within
+# a result set, not absolute similarity scores (which vary significantly
+# across embedding models like nomic-embed-text vs bge-m3).
+CONFIDENCE_HIGH: Final[str] = "high"
+CONFIDENCE_MEDIUM: Final[str] = "medium"
+CONFIDENCE_LOW: Final[str] = "low"
+VALID_CONFIDENCE_LEVELS: Final[tuple[str, ...]] = (
+    CONFIDENCE_HIGH,
+    CONFIDENCE_MEDIUM,
+    CONFIDENCE_LOW,
+)
+
+# Thresholds for confidence bands (based on normalized position in result set)
+# These define what percentage of the score range qualifies for each level
+CONFIDENCE_HIGH_THRESHOLD: Final[float] = 0.7  # Top 30% of score range
+CONFIDENCE_MEDIUM_THRESHOLD: Final[float] = 0.4  # Top 60% of score range
+# Minimum gap ratio to boost confidence (gap to next / total range)
+CONFIDENCE_GAP_BOOST_THRESHOLD: Final[float] = 0.15
+# Minimum score range to use range-based calculation (below this, use fallback)
+CONFIDENCE_MIN_MEANINGFUL_RANGE: Final[float] = 0.001
+
 
 # =============================================================================
 # Summarization Providers

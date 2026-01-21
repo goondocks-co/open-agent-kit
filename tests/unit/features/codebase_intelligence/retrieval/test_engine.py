@@ -1,0 +1,1308 @@
+"""Tests for the RetrievalEngine module.
+
+Tests the central retrieval abstraction that handles all search operations
+for the Codebase Intelligence feature.
+"""
+
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from open_agent_kit.features.codebase_intelligence.constants import (
+    DEFAULT_RELEVANCE_THRESHOLD,
+    SEARCH_TYPE_ALL,
+    SEARCH_TYPE_CODE,
+    SEARCH_TYPE_MEMORY,
+)
+from open_agent_kit.features.codebase_intelligence.retrieval.engine import (
+    Confidence,
+    ContextResult,
+    FetchResult,
+    RetrievalConfig,
+    RetrievalEngine,
+    SearchResult,
+)
+
+# =============================================================================
+# Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mock_vector_store() -> MagicMock:
+    """Provide a mock vector store with pre-configured responses.
+
+    Returns:
+        MagicMock configured for VectorStore interface.
+    """
+    mock = MagicMock()
+
+    # Default search_code response
+    mock.search_code.return_value = [
+        {
+            "id": "code-1",
+            "chunk_type": "function",
+            "name": "process_data",
+            "filepath": "src/utils.py",
+            "start_line": 10,
+            "end_line": 25,
+            "content": "def process_data(input):\n    return input.strip()",
+            "relevance": 0.85,
+            "token_estimate": 50,
+        },
+        {
+            "id": "code-2",
+            "chunk_type": "class",
+            "name": "DataProcessor",
+            "filepath": "src/processor.py",
+            "start_line": 1,
+            "end_line": 50,
+            "content": "class DataProcessor:\n    pass",
+            "relevance": 0.75,
+            "token_estimate": 100,
+        },
+    ]
+
+    # Default search_memory response
+    mock.search_memory.return_value = [
+        {
+            "id": "mem-1",
+            "memory_type": "gotcha",
+            "observation": "Always validate input before processing",
+            "relevance": 0.90,
+            "token_estimate": 20,
+            "context": "src/utils.py",
+        },
+        {
+            "id": "mem-2",
+            "memory_type": "decision",
+            "observation": "Chose async pattern for I/O operations",
+            "relevance": 0.70,
+            "token_estimate": 30,
+            "context": None,
+        },
+    ]
+
+    # Default get_by_ids response
+    mock.get_by_ids.return_value = []
+
+    # Default list_memories response
+    mock.list_memories.return_value = ([], 0)
+
+    # Default add_memory response
+    mock.add_memory.return_value = "new-mem-id"
+
+    return mock
+
+
+@pytest.fixture
+def default_config() -> RetrievalConfig:
+    """Provide default retrieval configuration.
+
+    Returns:
+        RetrievalConfig with default values.
+    """
+    return RetrievalConfig()
+
+
+@pytest.fixture
+def custom_config() -> RetrievalConfig:
+    """Provide custom retrieval configuration.
+
+    Returns:
+        RetrievalConfig with custom values.
+    """
+    return RetrievalConfig(
+        default_limit=10,
+        max_context_tokens=1000,
+        relevance_threshold=0.5,
+        preview_length=100,
+    )
+
+
+@pytest.fixture
+def engine(mock_vector_store: MagicMock) -> RetrievalEngine:
+    """Provide a RetrievalEngine with mock vector store.
+
+    Args:
+        mock_vector_store: Mock vector store fixture.
+
+    Returns:
+        RetrievalEngine instance for testing.
+    """
+    return RetrievalEngine(vector_store=mock_vector_store)
+
+
+@pytest.fixture
+def engine_with_custom_config(
+    mock_vector_store: MagicMock, custom_config: RetrievalConfig
+) -> RetrievalEngine:
+    """Provide a RetrievalEngine with custom configuration.
+
+    Args:
+        mock_vector_store: Mock vector store fixture.
+        custom_config: Custom configuration fixture.
+
+    Returns:
+        RetrievalEngine instance with custom config.
+    """
+    return RetrievalEngine(vector_store=mock_vector_store, config=custom_config)
+
+
+# =============================================================================
+# RetrievalConfig Tests
+# =============================================================================
+
+
+class TestRetrievalConfig:
+    """Tests for RetrievalConfig dataclass."""
+
+    def test_default_values(self) -> None:
+        """Test that default values are set correctly."""
+        config = RetrievalConfig()
+
+        assert config.default_limit == 20
+        assert config.max_context_tokens == 2000
+        assert config.relevance_threshold == DEFAULT_RELEVANCE_THRESHOLD
+        assert config.preview_length == 200
+
+    def test_custom_values(self) -> None:
+        """Test that custom values are applied correctly."""
+        config = RetrievalConfig(
+            default_limit=10,
+            max_context_tokens=5000,
+            relevance_threshold=0.7,
+            preview_length=500,
+        )
+
+        assert config.default_limit == 10
+        assert config.max_context_tokens == 5000
+        assert config.relevance_threshold == 0.7
+        assert config.preview_length == 500
+
+
+# =============================================================================
+# Result Dataclass Tests
+# =============================================================================
+
+
+class TestSearchResult:
+    """Tests for SearchResult dataclass."""
+
+    def test_default_values(self) -> None:
+        """Test that default values are set correctly."""
+        result = SearchResult(query="test query")
+
+        assert result.query == "test query"
+        assert result.code == []
+        assert result.memory == []
+        assert result.total_tokens_available == 0
+
+    def test_with_results(self) -> None:
+        """Test that results can be set."""
+        result = SearchResult(
+            query="test",
+            code=[{"id": "1"}],
+            memory=[{"id": "2"}],
+            total_tokens_available=100,
+        )
+
+        assert len(result.code) == 1
+        assert len(result.memory) == 1
+        assert result.total_tokens_available == 100
+
+
+class TestFetchResult:
+    """Tests for FetchResult dataclass."""
+
+    def test_default_values(self) -> None:
+        """Test that default values are set correctly."""
+        result = FetchResult()
+
+        assert result.results == []
+        assert result.total_tokens == 0
+
+    def test_with_results(self) -> None:
+        """Test that results can be set."""
+        result = FetchResult(
+            results=[{"id": "1", "content": "test"}],
+            total_tokens=50,
+        )
+
+        assert len(result.results) == 1
+        assert result.total_tokens == 50
+
+
+class TestContextResult:
+    """Tests for ContextResult dataclass."""
+
+    def test_default_values(self) -> None:
+        """Test that default values are set correctly."""
+        result = ContextResult(task="implement feature")
+
+        assert result.task == "implement feature"
+        assert result.code == []
+        assert result.memories == []
+        assert result.guidelines == []
+        assert result.total_tokens == 0
+
+    def test_with_all_fields(self) -> None:
+        """Test that all fields can be set."""
+        result = ContextResult(
+            task="fix bug",
+            code=[{"file_path": "src/main.py"}],
+            memories=[{"observation": "test"}],
+            guidelines=["follow conventions"],
+            total_tokens=200,
+        )
+
+        assert result.task == "fix bug"
+        assert len(result.code) == 1
+        assert len(result.memories) == 1
+        assert len(result.guidelines) == 1
+        assert result.total_tokens == 200
+
+
+# =============================================================================
+# RetrievalEngine Initialization Tests
+# =============================================================================
+
+
+class TestRetrievalEngineInit:
+    """Tests for RetrievalEngine initialization."""
+
+    def test_init_with_store_only(self, mock_vector_store: MagicMock) -> None:
+        """Test initialization with only vector store."""
+        engine = RetrievalEngine(vector_store=mock_vector_store)
+
+        assert engine.store == mock_vector_store
+        assert engine.config is not None
+        assert engine.config.default_limit == 20  # Default value
+
+    def test_init_with_custom_config(
+        self, mock_vector_store: MagicMock, custom_config: RetrievalConfig
+    ) -> None:
+        """Test initialization with custom configuration."""
+        engine = RetrievalEngine(vector_store=mock_vector_store, config=custom_config)
+
+        assert engine.store == mock_vector_store
+        assert engine.config == custom_config
+        assert engine.config.default_limit == 10  # Custom value
+
+
+class TestGetThreshold:
+    """Tests for the _get_threshold method."""
+
+    def test_returns_config_threshold_when_no_override(
+        self, engine_with_custom_config: RetrievalEngine
+    ) -> None:
+        """Test that config threshold is used when no override provided."""
+        threshold = engine_with_custom_config._get_threshold()
+
+        assert threshold == 0.5  # Custom config value
+
+    def test_returns_override_when_provided(
+        self, engine_with_custom_config: RetrievalEngine
+    ) -> None:
+        """Test that override value is used when provided."""
+        threshold = engine_with_custom_config._get_threshold(override=0.8)
+
+        assert threshold == 0.8
+
+    def test_override_zero_is_respected(self, engine: RetrievalEngine) -> None:
+        """Test that zero override is not treated as falsy."""
+        threshold = engine._get_threshold(override=0.0)
+
+        assert threshold == 0.0
+
+
+# =============================================================================
+# Search Method Tests
+# =============================================================================
+
+
+class TestSearch:
+    """Tests for the search method."""
+
+    def test_search_all_returns_code_and_memory(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that search with 'all' type returns both code and memory."""
+        result = engine.search(query="test query", search_type=SEARCH_TYPE_ALL)
+
+        assert result.query == "test query"
+        assert len(result.code) == 2
+        assert len(result.memory) == 2
+        mock_vector_store.search_code.assert_called_once()
+        mock_vector_store.search_memory.assert_called_once()
+
+    def test_search_code_only(self, engine: RetrievalEngine, mock_vector_store: MagicMock) -> None:
+        """Test that search with 'code' type only returns code results."""
+        result = engine.search(query="test query", search_type=SEARCH_TYPE_CODE)
+
+        assert len(result.code) == 2
+        assert len(result.memory) == 0
+        mock_vector_store.search_code.assert_called_once()
+        mock_vector_store.search_memory.assert_not_called()
+
+    def test_search_memory_only(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that search with 'memory' type only returns memory results."""
+        result = engine.search(query="test query", search_type=SEARCH_TYPE_MEMORY)
+
+        assert len(result.code) == 0
+        assert len(result.memory) == 2
+        mock_vector_store.search_code.assert_not_called()
+        mock_vector_store.search_memory.assert_called_once()
+
+    def test_search_uses_default_limit(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that default limit is used when not specified."""
+        engine.search(query="test")
+
+        mock_vector_store.search_code.assert_called_once()
+        call_kwargs = mock_vector_store.search_code.call_args.kwargs
+        assert call_kwargs["limit"] == 20  # Default limit
+
+    def test_search_uses_custom_limit(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that custom limit is passed to store."""
+        engine.search(query="test", limit=5)
+
+        call_kwargs = mock_vector_store.search_code.call_args.kwargs
+        assert call_kwargs["limit"] == 5
+
+    def test_search_uses_threshold_override(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that threshold override is passed to store."""
+        engine.search(query="test", relevance_threshold=0.9)
+
+        call_kwargs = mock_vector_store.search_code.call_args.kwargs
+        assert call_kwargs["relevance_threshold"] == 0.9
+
+    def test_search_calculates_total_tokens(self, engine: RetrievalEngine) -> None:
+        """Test that total_tokens_available is calculated correctly."""
+        result = engine.search(query="test", search_type=SEARCH_TYPE_ALL)
+
+        # code: 50 + 100 = 150, memory: 20 + 30 = 50, total = 200
+        assert result.total_tokens_available == 200
+
+    def test_search_maps_code_fields_correctly(self, engine: RetrievalEngine) -> None:
+        """Test that code result fields are mapped correctly."""
+        result = engine.search(query="test", search_type=SEARCH_TYPE_CODE)
+
+        code_result = result.code[0]
+        assert code_result["id"] == "code-1"
+        assert code_result["chunk_type"] == "function"
+        assert code_result["name"] == "process_data"
+        assert code_result["filepath"] == "src/utils.py"
+        assert code_result["start_line"] == 10
+        assert code_result["end_line"] == 25
+        assert code_result["tokens"] == 50
+        assert code_result["relevance"] == 0.85
+        assert "def process_data" in code_result["content"]
+
+    def test_search_maps_memory_fields_correctly(self, engine: RetrievalEngine) -> None:
+        """Test that memory result fields are mapped correctly."""
+        result = engine.search(query="test", search_type=SEARCH_TYPE_MEMORY)
+
+        mem_result = result.memory[0]
+        assert mem_result["id"] == "mem-1"
+        assert mem_result["memory_type"] == "gotcha"
+        assert mem_result["observation"] == "Always validate input before processing"
+        assert mem_result["tokens"] == 20
+        assert mem_result["relevance"] == 0.90
+
+    def test_search_handles_empty_results(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that empty results are handled correctly."""
+        mock_vector_store.search_code.return_value = []
+        mock_vector_store.search_memory.return_value = []
+
+        result = engine.search(query="nonexistent")
+
+        assert result.code == []
+        assert result.memory == []
+        assert result.total_tokens_available == 0
+
+
+# =============================================================================
+# Fetch Method Tests
+# =============================================================================
+
+
+class TestFetch:
+    """Tests for the fetch method."""
+
+    def test_fetch_returns_code_items(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that fetch retrieves code items correctly."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": "def test(): pass"}],  # code collection
+            [],  # memory collection
+        ]
+
+        result = engine.fetch(ids=["code-1"])
+
+        assert len(result.results) == 1
+        assert result.results[0]["id"] == "code-1"
+        assert result.results[0]["content"] == "def test(): pass"
+
+    def test_fetch_returns_memory_items(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that fetch retrieves memory items correctly."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [],  # code collection
+            [{"id": "mem-1", "content": "Important observation"}],  # memory collection
+        ]
+
+        result = engine.fetch(ids=["mem-1"])
+
+        assert len(result.results) == 1
+        assert result.results[0]["id"] == "mem-1"
+
+    def test_fetch_calculates_tokens(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that tokens are calculated correctly (len/4)."""
+        content = "a" * 100  # 100 chars = 25 tokens
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": content}],
+            [],
+        ]
+
+        result = engine.fetch(ids=["code-1"])
+
+        assert result.results[0]["tokens"] == 25
+        assert result.total_tokens == 25
+
+    def test_fetch_multiple_ids(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test fetching multiple IDs from both collections."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": "code content"}],
+            [{"id": "mem-1", "content": "memory content"}],
+        ]
+
+        result = engine.fetch(ids=["code-1", "mem-1"])
+
+        assert len(result.results) == 2
+        assert result.total_tokens > 0
+
+    def test_fetch_empty_ids(self, engine: RetrievalEngine, mock_vector_store: MagicMock) -> None:
+        """Test fetching with empty ID list."""
+        mock_vector_store.get_by_ids.return_value = []
+
+        result = engine.fetch(ids=[])
+
+        assert result.results == []
+        assert result.total_tokens == 0
+
+
+# =============================================================================
+# Get Task Context Tests
+# =============================================================================
+
+
+class TestGetTaskContext:
+    """Tests for the get_task_context method."""
+
+    def test_returns_context_result(self, engine: RetrievalEngine) -> None:
+        """Test that method returns ContextResult."""
+        result = engine.get_task_context(task="implement feature")
+
+        assert isinstance(result, ContextResult)
+        assert result.task == "implement feature"
+
+    def test_includes_code_results(self, engine: RetrievalEngine) -> None:
+        """Test that code results are included."""
+        result = engine.get_task_context(task="test task")
+
+        assert len(result.code) > 0
+        assert result.code[0]["file_path"] == "src/utils.py"
+
+    def test_includes_memory_results(self, engine: RetrievalEngine) -> None:
+        """Test that memory results are included."""
+        result = engine.get_task_context(task="test task")
+
+        assert len(result.memories) > 0
+        assert result.memories[0]["memory_type"] == "gotcha"
+
+    def test_respects_max_tokens(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that max_tokens limit is respected."""
+        # Configure large token results
+        mock_vector_store.search_code.return_value = [
+            {
+                "id": f"code-{i}",
+                "chunk_type": "function",
+                "name": f"func_{i}",
+                "filepath": "src/main.py",
+                "start_line": 1,
+                "end_line": 10,
+                "content": "x" * 1000,  # Large content
+                "relevance": 0.9,
+                "token_estimate": 500,  # 500 tokens each
+            }
+            for i in range(10)
+        ]
+
+        result = engine.get_task_context(task="test", max_tokens=1000)
+
+        # Should only include items up to max_tokens
+        total_tokens = sum(500 for _ in result.code)
+        assert total_tokens <= 1000
+
+    def test_builds_query_with_current_files(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that current_files are included in search query."""
+        engine.get_task_context(
+            task="fix bug",
+            current_files=["src/main.py", "src/utils.py"],
+        )
+
+        call_kwargs = mock_vector_store.search_code.call_args.kwargs
+        query = call_kwargs["query"]
+        assert "fix bug" in query
+        assert "main.py" in query
+        assert "utils.py" in query
+
+    def test_adds_guidelines_when_constitution_exists(
+        self, engine: RetrievalEngine, tmp_path: Path
+    ) -> None:
+        """Test that guidelines are added when .constitution.md exists."""
+        constitution = tmp_path / ".constitution.md"
+        constitution.write_text("# Project Constitution")
+
+        result = engine.get_task_context(
+            task="test task",
+            project_root=tmp_path,
+        )
+
+        assert len(result.guidelines) > 0
+        assert ".constitution.md" in result.guidelines[0]
+
+    def test_no_guidelines_without_constitution(
+        self, engine: RetrievalEngine, tmp_path: Path
+    ) -> None:
+        """Test that no guidelines are added when .constitution.md doesn't exist."""
+        result = engine.get_task_context(
+            task="test task",
+            project_root=tmp_path,
+        )
+
+        assert len(result.guidelines) == 0
+
+    def test_uses_config_max_tokens_when_not_specified(
+        self, engine_with_custom_config: RetrievalEngine
+    ) -> None:
+        """Test that config max_context_tokens is used as default."""
+        result = engine_with_custom_config.get_task_context(task="test")
+
+        # Custom config has max_context_tokens=1000
+        # Total tokens should be limited by this
+        assert result.total_tokens <= 1000
+
+
+# =============================================================================
+# Remember Method Tests
+# =============================================================================
+
+
+class TestRemember:
+    """Tests for the remember method."""
+
+    def test_stores_observation(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that observation is stored in vector store."""
+        result_id = engine.remember(
+            observation="Important discovery",
+            memory_type="discovery",
+        )
+
+        assert result_id == "new-mem-id"
+        mock_vector_store.add_memory.assert_called_once()
+
+    def test_creates_memory_observation(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that MemoryObservation is created correctly."""
+        engine.remember(
+            observation="Test observation",
+            memory_type="gotcha",
+            context="src/main.py",
+            tags=["important", "bug"],
+        )
+
+        call_args = mock_vector_store.add_memory.call_args[0][0]
+        assert call_args.observation == "Test observation"
+        assert call_args.memory_type == "gotcha"
+        assert call_args.context == "src/main.py"
+        assert call_args.tags == ["important", "bug"]
+
+    def test_generates_unique_id(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that unique ID is generated for observation."""
+        engine.remember(observation="Test")
+
+        call_args = mock_vector_store.add_memory.call_args[0][0]
+        assert call_args.id is not None
+        assert len(call_args.id) > 0
+
+    def test_sets_created_at_timestamp(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that created_at timestamp is set."""
+        before = datetime.now()
+        engine.remember(observation="Test")
+        after = datetime.now()
+
+        call_args = mock_vector_store.add_memory.call_args[0][0]
+        assert before <= call_args.created_at <= after
+
+    def test_default_memory_type(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that default memory type is 'discovery'."""
+        engine.remember(observation="Test")
+
+        call_args = mock_vector_store.add_memory.call_args[0][0]
+        assert call_args.memory_type == "discovery"
+
+
+# =============================================================================
+# List Memories Tests
+# =============================================================================
+
+
+class TestListMemories:
+    """Tests for the list_memories method."""
+
+    def test_returns_memories_and_total(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that method returns tuple of memories and total count."""
+        mock_vector_store.list_memories.return_value = (
+            [{"id": "mem-1", "observation": "test"}],
+            10,
+        )
+
+        memories, total = engine.list_memories()
+
+        assert len(memories) == 1
+        assert total == 10
+
+    def test_passes_limit_and_offset(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that limit and offset are passed to store."""
+        engine.list_memories(limit=25, offset=50)
+
+        mock_vector_store.list_memories.assert_called_once_with(
+            limit=25,
+            offset=50,
+            memory_types=None,
+            exclude_types=None,
+        )
+
+    def test_passes_memory_types_filter(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that memory_types filter is passed to store."""
+        engine.list_memories(memory_types=["gotcha", "bug_fix"])
+
+        call_kwargs = mock_vector_store.list_memories.call_args.kwargs
+        assert call_kwargs["memory_types"] == ["gotcha", "bug_fix"]
+
+    def test_passes_exclude_types_filter(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that exclude_types filter is passed to store."""
+        engine.list_memories(exclude_types=["session_summary"])
+
+        call_kwargs = mock_vector_store.list_memories.call_args.kwargs
+        assert call_kwargs["exclude_types"] == ["session_summary"]
+
+    def test_default_pagination_values(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test default pagination values."""
+        engine.list_memories()
+
+        mock_vector_store.list_memories.assert_called_once_with(
+            limit=50,
+            offset=0,
+            memory_types=None,
+            exclude_types=None,
+        )
+
+
+# =============================================================================
+# Progressive Disclosure Method Tests
+# =============================================================================
+
+
+class TestSearchIndex:
+    """Tests for the search_index method (Layer 1)."""
+
+    def test_returns_index_level_results(self, engine: RetrievalEngine) -> None:
+        """Test that search_index returns compact index-level results."""
+        result = engine.search_index(query="test query")
+
+        assert "query" in result
+        assert "code" in result
+        assert "memory" in result
+        assert "total_tokens_available" in result
+
+    def test_code_results_have_index_fields(self, engine: RetrievalEngine) -> None:
+        """Test that code results have index-level fields."""
+        result = engine.search_index(query="test", search_type="code")
+
+        code_result = result["code"][0]
+        assert "id" in code_result
+        assert "type" in code_result
+        assert "name" in code_result
+        assert "filepath" in code_result
+        assert "lines" in code_result
+        assert "tokens" in code_result
+        assert "relevance" in code_result
+        # Should NOT have full content
+        assert "content" not in code_result
+
+    def test_memory_results_have_summary(self, engine: RetrievalEngine) -> None:
+        """Test that memory results have truncated summary."""
+        result = engine.search_index(query="test", search_type="memory")
+
+        mem_result = result["memory"][0]
+        assert "id" in mem_result
+        assert "type" in mem_result
+        assert "summary" in mem_result
+        assert "tokens" in mem_result
+        assert "relevance" in mem_result
+
+    def test_truncates_long_observations(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that long observations are truncated in summary."""
+        long_observation = "x" * 200  # Over 100 char limit
+        mock_vector_store.search_memory.return_value = [
+            {
+                "id": "mem-1",
+                "memory_type": "discovery",
+                "observation": long_observation,
+                "relevance": 0.9,
+                "token_estimate": 50,
+            }
+        ]
+
+        result = engine.search_index(query="test", search_type="memory")
+
+        summary = result["memory"][0]["summary"]
+        assert len(summary) <= 103  # 100 chars + "..."
+        assert summary.endswith("...")
+
+    def test_relevance_is_rounded(self, engine: RetrievalEngine) -> None:
+        """Test that relevance scores are rounded to 2 decimal places."""
+        result = engine.search_index(query="test")
+
+        code_relevance = result["code"][0]["relevance"]
+        mem_relevance = result["memory"][0]["relevance"]
+        assert code_relevance == round(code_relevance, 2)
+        assert mem_relevance == round(mem_relevance, 2)
+
+
+class TestGetChunkContext:
+    """Tests for the get_chunk_context method (Layer 2)."""
+
+    def test_returns_context_structure(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that method returns proper context structure."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": "test", "name": "func"}],  # code
+            [],  # memory
+        ]
+
+        result = engine.get_chunk_context(chunk_ids=["code-1"])
+
+        assert "chunks" in result
+        assert "related" in result
+        assert "total_tokens" in result
+
+    def test_fetches_from_both_collections(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that chunks are fetched from both code and memory."""
+        mock_vector_store.get_by_ids.return_value = []
+
+        engine.get_chunk_context(chunk_ids=["code-1", "mem-1"])
+
+        # Should call get_by_ids twice (code and memory collections)
+        assert mock_vector_store.get_by_ids.call_count == 2
+
+    def test_truncates_preview(
+        self, engine_with_custom_config: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that preview is truncated according to config."""
+        long_content = "x" * 200  # Over 100 char preview_length
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": long_content, "name": "func"}],
+            [],
+        ]
+
+        result = engine_with_custom_config.get_chunk_context(chunk_ids=["code-1"])
+
+        preview = result["chunks"][0]["preview"]
+        assert len(preview) <= 103  # 100 + "..."
+        assert preview.endswith("...")
+
+    def test_finds_related_chunks(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that related chunks are found based on content."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": "def process(): pass", "name": "process"}],
+            [],
+        ]
+        mock_vector_store.search_code.return_value = [
+            {
+                "id": "code-2",
+                "chunk_type": "function",
+                "name": "related_func",
+                "filepath": "src/other.py",
+                "relevance": 0.8,
+            }
+        ]
+
+        result = engine.get_chunk_context(chunk_ids=["code-1"])
+
+        assert len(result["related"]) > 0
+        assert result["related"][0]["id"] == "code-2"
+
+    def test_excludes_requested_chunks_from_related(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that requested chunks are not in related results."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": "test", "name": "func"}],
+            [],
+        ]
+        mock_vector_store.search_code.return_value = [
+            {
+                "id": "code-1",
+                "chunk_type": "function",
+                "name": "func",
+                "filepath": "src/main.py",
+                "relevance": 0.9,
+            },
+            {
+                "id": "code-2",
+                "chunk_type": "function",
+                "name": "other",
+                "filepath": "src/other.py",
+                "relevance": 0.8,
+            },
+        ]
+
+        result = engine.get_chunk_context(chunk_ids=["code-1"])
+
+        related_ids = [r["id"] for r in result["related"]]
+        assert "code-1" not in related_ids
+
+    def test_processes_memory_chunks(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that memory chunks are processed correctly."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [],  # No code chunks
+            [
+                {
+                    "id": "mem-1",
+                    "content": "Important gotcha about caching",
+                    "memory_type": "gotcha",
+                }
+            ],  # Memory chunks
+        ]
+
+        result = engine.get_chunk_context(chunk_ids=["mem-1"])
+
+        assert len(result["chunks"]) == 1
+        chunk = result["chunks"][0]
+        assert chunk["id"] == "mem-1"
+        assert chunk["type"] == "memory"
+        assert chunk["memory_type"] == "gotcha"
+        assert chunk["observation"] == "Important gotcha about caching"
+        assert chunk["tokens"] > 0
+        assert result["total_tokens"] > 0
+
+
+class TestFetchFull:
+    """Tests for the fetch_full method (Layer 3)."""
+
+    def test_returns_full_content(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that fetch_full returns complete content."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [
+                {
+                    "id": "code-1",
+                    "content": "def full_function():\n    return True",
+                    "name": "full_function",
+                    "filepath": "src/main.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "language": "python",
+                }
+            ],
+            [],
+        ]
+
+        result = engine.fetch_full(ids=["code-1"])
+
+        assert len(result["items"]) == 1
+        item = result["items"][0]
+        assert item["type"] == "code"
+        assert item["content"] == "def full_function():\n    return True"
+        assert item["filepath"] == "src/main.py"
+        assert item["start_line"] == 1
+        assert item["end_line"] == 2
+        assert item["language"] == "python"
+
+    def test_returns_memory_items(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that fetch_full returns memory items correctly."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [],
+            [
+                {
+                    "id": "mem-1",
+                    "content": "Important observation about caching",
+                    "memory_type": "gotcha",
+                    "context": "src/cache.py",
+                }
+            ],
+        ]
+
+        result = engine.fetch_full(ids=["mem-1"])
+
+        assert len(result["items"]) == 1
+        item = result["items"][0]
+        assert item["type"] == "memory"
+        assert item["observation"] == "Important observation about caching"
+        assert item["memory_type"] == "gotcha"
+        assert item["context"] == "src/cache.py"
+
+    def test_calculates_total_tokens(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that total_tokens is calculated correctly."""
+        content = "x" * 100  # 100 chars = 25 tokens
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": content}],
+            [],
+        ]
+
+        result = engine.fetch_full(ids=["code-1"])
+
+        assert result["total_tokens"] == 25
+        assert result["items"][0]["tokens"] == 25
+
+    def test_fetches_from_both_collections(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that items are fetched from both code and memory."""
+        mock_vector_store.get_by_ids.side_effect = [
+            [{"id": "code-1", "content": "code"}],
+            [{"id": "mem-1", "content": "memory"}],
+        ]
+
+        result = engine.fetch_full(ids=["code-1", "mem-1"])
+
+        assert len(result["items"]) == 2
+        types = [item["type"] for item in result["items"]]
+        assert "code" in types
+        assert "memory" in types
+
+
+# =============================================================================
+# Confidence Calculation Tests
+# =============================================================================
+
+
+class TestConfidenceEnum:
+    """Tests for the Confidence enum."""
+
+    def test_confidence_values(self) -> None:
+        """Test that confidence enum has expected values."""
+        assert Confidence.HIGH.value == "high"
+        assert Confidence.MEDIUM.value == "medium"
+        assert Confidence.LOW.value == "low"
+
+
+class TestCalculateConfidence:
+    """Tests for the calculate_confidence static method."""
+
+    def test_single_result_is_high(self) -> None:
+        """Test that a single result gets HIGH confidence."""
+        confidence = RetrievalEngine.calculate_confidence([0.85], 0)
+        assert confidence == Confidence.HIGH
+
+    def test_empty_scores_returns_medium(self) -> None:
+        """Test that empty scores list returns MEDIUM."""
+        confidence = RetrievalEngine.calculate_confidence([], 0)
+        assert confidence == Confidence.MEDIUM
+
+    def test_out_of_bounds_index_returns_medium(self) -> None:
+        """Test that out of bounds index returns MEDIUM."""
+        confidence = RetrievalEngine.calculate_confidence([0.9, 0.8], 5)
+        assert confidence == Confidence.MEDIUM
+
+    def test_top_result_with_clear_gap_is_high(self) -> None:
+        """Test that top result with clear gap gets HIGH confidence."""
+        # First result clearly better than second
+        scores = [0.95, 0.70, 0.65, 0.60]
+        confidence = RetrievalEngine.calculate_confidence(scores, 0)
+        assert confidence == Confidence.HIGH
+
+    def test_top_result_in_tight_cluster(self) -> None:
+        """Test confidence for top result in tight cluster."""
+        # All scores very close - still HIGH for first result
+        scores = [0.091, 0.090, 0.089, 0.088]
+        confidence = RetrievalEngine.calculate_confidence(scores, 0)
+        assert confidence == Confidence.HIGH
+
+    def test_middle_result_in_top_range_is_medium(self) -> None:
+        """Test that middle result in top 60% gets MEDIUM."""
+        scores = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5]
+        # Index 2 (0.8) is at normalized position 0.6 (top 60%)
+        confidence = RetrievalEngine.calculate_confidence(scores, 2)
+        assert confidence == Confidence.MEDIUM
+
+    def test_bottom_result_is_low(self) -> None:
+        """Test that result in bottom 40% gets LOW."""
+        scores = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3]
+        # Last result should be LOW
+        confidence = RetrievalEngine.calculate_confidence(scores, 7)
+        assert confidence == Confidence.LOW
+
+    def test_all_same_score_fallback(self) -> None:
+        """Test fallback behavior when all scores are the same."""
+        scores = [0.5, 0.5, 0.5, 0.5, 0.5]
+        # First result should be HIGH
+        assert RetrievalEngine.calculate_confidence(scores, 0) == Confidence.HIGH
+        # Early results should be MEDIUM
+        assert RetrievalEngine.calculate_confidence(scores, 1) == Confidence.MEDIUM
+        # Later results should be LOW
+        assert RetrievalEngine.calculate_confidence(scores, 4) == Confidence.LOW
+
+    def test_two_results_with_gap(self) -> None:
+        """Test two results where first has clear advantage."""
+        scores = [0.9, 0.5]
+        confidence_0 = RetrievalEngine.calculate_confidence(scores, 0)
+        confidence_1 = RetrievalEngine.calculate_confidence(scores, 1)
+        assert confidence_0 == Confidence.HIGH
+        assert confidence_1 == Confidence.LOW
+
+    def test_realistic_nomic_scores(self) -> None:
+        """Test with realistic nomic-embed-text scores (~0.09 range)."""
+        # Simulating actual nomic-embed-text results
+        scores = [0.0916, 0.0900, 0.0872, 0.0870]
+
+        # First result should be HIGH (top of range)
+        assert RetrievalEngine.calculate_confidence(scores, 0) == Confidence.HIGH
+        # Second might be HIGH or MEDIUM depending on gap
+        conf_1 = RetrievalEngine.calculate_confidence(scores, 1)
+        assert conf_1 in (Confidence.HIGH, Confidence.MEDIUM)
+        # Last results should be LOW (bottom of range)
+        assert RetrievalEngine.calculate_confidence(scores, 3) == Confidence.LOW
+
+
+class TestCalculateConfidenceBatch:
+    """Tests for the calculate_confidence_batch static method."""
+
+    def test_returns_list_of_confidences(self) -> None:
+        """Test that batch method returns list of confidences."""
+        scores = [0.9, 0.7, 0.5, 0.3]
+        confidences = RetrievalEngine.calculate_confidence_batch(scores)
+
+        assert len(confidences) == 4
+        assert all(isinstance(c, Confidence) for c in confidences)
+
+    def test_empty_scores(self) -> None:
+        """Test batch with empty scores."""
+        confidences = RetrievalEngine.calculate_confidence_batch([])
+        assert confidences == []
+
+    def test_batch_matches_individual(self) -> None:
+        """Test that batch results match individual calculations."""
+        scores = [0.95, 0.80, 0.65, 0.50, 0.35]
+        batch_results = RetrievalEngine.calculate_confidence_batch(scores)
+
+        for i, batch_conf in enumerate(batch_results):
+            individual_conf = RetrievalEngine.calculate_confidence(scores, i)
+            assert batch_conf == individual_conf
+
+
+class TestGetConfidenceStats:
+    """Tests for the get_confidence_stats static method."""
+
+    def test_empty_scores(self) -> None:
+        """Test stats for empty scores list."""
+        stats = RetrievalEngine.get_confidence_stats([])
+
+        assert stats["count"] == 0
+        assert stats["high"] == 0
+        assert stats["medium"] == 0
+        assert stats["low"] == 0
+
+    def test_counts_confidence_levels(self) -> None:
+        """Test that confidence levels are counted correctly."""
+        # Spread scores to get different confidences
+        scores = [1.0, 0.9, 0.6, 0.3, 0.1]
+        stats = RetrievalEngine.get_confidence_stats(scores)
+
+        assert stats["count"] == 5
+        # Total should equal count
+        assert stats["high"] + stats["medium"] + stats["low"] == 5
+
+    def test_includes_score_statistics(self) -> None:
+        """Test that score statistics are included."""
+        scores = [0.9, 0.7, 0.5]
+        stats = RetrievalEngine.get_confidence_stats(scores)
+
+        assert stats["score_range"] == 0.4  # 0.9 - 0.5
+        assert stats["mean_score"] == pytest.approx(0.7)
+        assert stats["std_score"] > 0
+
+    def test_single_score_std_is_zero(self) -> None:
+        """Test that single score has zero std."""
+        stats = RetrievalEngine.get_confidence_stats([0.85])
+
+        assert stats["std_score"] == 0.0
+
+
+class TestFilterByConfidence:
+    """Tests for the filter_by_confidence static method."""
+
+    def test_filter_high_only(self) -> None:
+        """Test filtering for high confidence only."""
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2", "confidence": "medium"},
+            {"id": "3", "confidence": "low"},
+            {"id": "4", "confidence": "high"},
+        ]
+
+        filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="high")
+
+        assert len(filtered) == 2
+        assert all(r["confidence"] == "high" for r in filtered)
+
+    def test_filter_medium_includes_high(self) -> None:
+        """Test filtering for medium includes high and medium."""
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2", "confidence": "medium"},
+            {"id": "3", "confidence": "low"},
+        ]
+
+        filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="medium")
+
+        assert len(filtered) == 2
+        assert {"1", "2"} == {r["id"] for r in filtered}
+
+    def test_filter_low_returns_all(self) -> None:
+        """Test filtering for low returns all results."""
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2", "confidence": "medium"},
+            {"id": "3", "confidence": "low"},
+        ]
+
+        filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="low")
+
+        assert len(filtered) == 3
+
+    def test_filter_all_returns_all(self) -> None:
+        """Test filtering for 'all' returns all results."""
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2", "confidence": "low"},
+        ]
+
+        filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="all")
+
+        assert len(filtered) == 2
+
+    def test_filter_empty_list(self) -> None:
+        """Test filtering empty list."""
+        filtered = RetrievalEngine.filter_by_confidence([], min_confidence="high")
+
+        assert filtered == []
+
+    def test_missing_confidence_treated_as_low(self) -> None:
+        """Test that results without confidence field are treated as low."""
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2"},  # No confidence field
+        ]
+
+        filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="high")
+
+        assert len(filtered) == 1
+        assert filtered[0]["id"] == "1"
+
+
+class TestSearchWithConfidence:
+    """Tests for search method confidence integration."""
+
+    def test_search_results_include_confidence(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that search results include confidence field."""
+        result = engine.search(query="test", search_type="all")
+
+        # Check code results have confidence
+        for code_result in result.code:
+            assert "confidence" in code_result
+            assert code_result["confidence"] in ("high", "medium", "low")
+
+        # Check memory results have confidence
+        for mem_result in result.memory:
+            assert "confidence" in mem_result
+            assert mem_result["confidence"] in ("high", "medium", "low")
+
+    def test_search_confidence_reflects_scores(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
+        """Test that confidence reflects relative score positions."""
+        # Configure mock with spread scores
+        mock_vector_store.search_code.return_value = [
+            {"id": "1", "relevance": 0.95, "token_estimate": 10, "chunk_type": "function"},
+            {"id": "2", "relevance": 0.50, "token_estimate": 10, "chunk_type": "function"},
+            {"id": "3", "relevance": 0.20, "token_estimate": 10, "chunk_type": "function"},
+        ]
+        mock_vector_store.search_memory.return_value = []
+
+        result = engine.search(query="test", search_type="code")
+
+        # First result should be high confidence
+        assert result.code[0]["confidence"] == "high"
+        # Last result should be low confidence
+        assert result.code[2]["confidence"] == "low"

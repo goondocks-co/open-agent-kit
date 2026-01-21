@@ -1,5 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
+import {
+    API_ENDPOINTS,
+    LOG_LEVELS,
+} from "@/lib/constants";
 
 export interface Config {
     embedding: {
@@ -23,7 +27,7 @@ export interface Config {
 export function useConfig() {
     return useQuery<Config>({
         queryKey: ["config"],
-        queryFn: () => fetchJson("/api/config"),
+        queryFn: () => fetchJson(API_ENDPOINTS.CONFIG),
     });
 }
 
@@ -31,17 +35,17 @@ export function useConfig() {
 export async function listProviderModels(provider: string, baseUrl: string, apiKey?: string) {
     const params = new URLSearchParams({ provider, base_url: baseUrl });
     if (apiKey) params.append("api_key", apiKey);
-    return fetchJson(`/api/providers/models?${params.toString()}`);
+    return fetchJson(`${API_ENDPOINTS.PROVIDERS_MODELS}?${params.toString()}`);
 }
 
 export async function listSummarizationModels(provider: string, baseUrl: string, apiKey?: string) {
     const params = new URLSearchParams({ provider, base_url: baseUrl });
     if (apiKey) params.append("api_key", apiKey);
-    return fetchJson(`/api/providers/summarization-models?${params.toString()}`);
+    return fetchJson(`${API_ENDPOINTS.PROVIDERS_SUMMARIZATION_MODELS}?${params.toString()}`);
 }
 
 export async function testEmbeddingConfig(config: any) {
-    return fetchJson("/api/config/test", {
+    return fetchJson(API_ENDPOINTS.CONFIG_TEST, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
@@ -49,7 +53,7 @@ export async function testEmbeddingConfig(config: any) {
 }
 
 export async function testSummarizationConfig(config: any) {
-    return fetchJson("/api/config/test-summarization", {
+    return fetchJson(API_ENDPOINTS.CONFIG_TEST_SUMMARIZATION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
@@ -60,7 +64,7 @@ export function useUpdateConfig() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (newConfig: Partial<Config>) =>
-            fetchJson("/api/config", {
+            fetchJson(API_ENDPOINTS.CONFIG, {
                 method: "PUT",
                 body: JSON.stringify(newConfig),
             }),
@@ -73,8 +77,8 @@ export function useUpdateConfig() {
 
 // Toggle debug logging
 export async function toggleDebugLogging(currentLevel: string): Promise<any> {
-    const newLevel = currentLevel === "DEBUG" ? "INFO" : "DEBUG";
-    return fetchJson("/api/config", {
+    const newLevel = currentLevel === LOG_LEVELS.DEBUG ? LOG_LEVELS.INFO : LOG_LEVELS.DEBUG;
+    return fetchJson(API_ENDPOINTS.CONFIG, {
         method: "PUT",
         body: JSON.stringify({ log_level: newLevel }),
     });
@@ -82,7 +86,7 @@ export async function toggleDebugLogging(currentLevel: string): Promise<any> {
 
 // Restart daemon to apply config changes
 export async function restartDaemon(): Promise<any> {
-    return fetchJson("/api/restart", {
+    return fetchJson(API_ENDPOINTS.RESTART, {
         method: "POST",
     });
 }
@@ -100,7 +104,7 @@ export interface ExclusionsResponse {
 export function useExclusions() {
     return useQuery<ExclusionsResponse>({
         queryKey: ["exclusions"],
-        queryFn: () => fetchJson("/api/config/exclusions"),
+        queryFn: () => fetchJson(API_ENDPOINTS.CONFIG_EXCLUSIONS),
     });
 }
 
@@ -108,7 +112,7 @@ export function useUpdateExclusions() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (data: { add?: string[]; remove?: string[] }) =>
-            fetchJson("/api/config/exclusions", {
+            fetchJson(API_ENDPOINTS.CONFIG_EXCLUSIONS, {
                 method: "PUT",
                 body: JSON.stringify(data),
             }),
@@ -119,7 +123,7 @@ export function useUpdateExclusions() {
 }
 
 export async function resetExclusions(): Promise<any> {
-    return fetchJson("/api/config/exclusions/reset", {
+    return fetchJson(API_ENDPOINTS.CONFIG_EXCLUSIONS_RESET, {
         method: "POST",
     });
 }

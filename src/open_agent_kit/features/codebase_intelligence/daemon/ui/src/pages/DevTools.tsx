@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { API_ENDPOINTS, MEMORY_SYNC_STATUS, MESSAGE_TYPES } from "@/lib/constants";
+
+/** Refetch interval for memory stats (5 seconds) */
+const MEMORY_STATS_REFETCH_INTERVAL_MS = 5000;
 
 interface MemoryStats {
     sqlite: { total: number; embedded: number; unembedded: number };
@@ -15,48 +19,48 @@ interface MemoryStats {
 
 export default function DevTools() {
     const queryClient = useQueryClient();
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: typeof MESSAGE_TYPES.SUCCESS | typeof MESSAGE_TYPES.ERROR, text: string } | null>(null);
 
     // Fetch memory stats
     const { data: memoryStats } = useQuery<MemoryStats>({
         queryKey: ["memory-stats"],
-        queryFn: () => fetchJson("/api/devtools/memory-stats"),
-        refetchInterval: 5000, // Refresh every 5 seconds
+        queryFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_MEMORY_STATS),
+        refetchInterval: MEMORY_STATS_REFETCH_INTERVAL_MS,
     });
 
     const rebuildIndexFn = useMutation({
-        mutationFn: () => fetchJson("/api/devtools/rebuild-index", { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
-        onSuccess: () => setMessage({ type: 'success', text: "Index rebuild started in background." }),
-        onError: (err: any) => setMessage({ type: 'error', text: err.message || "Failed to start rebuild" })
+        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
+        onSuccess: () => setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Index rebuild started in background." }),
+        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to start rebuild" })
     });
 
     const rebuildMemoriesFn = useMutation({
-        mutationFn: () => fetchJson("/api/devtools/rebuild-memories", { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
+        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_MEMORIES, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
         onSuccess: (data: any) => {
-            setMessage({ type: 'success', text: data.message || "Memory re-embedding started." });
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || "Memory re-embedding started." });
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
             queryClient.invalidateQueries({ queryKey: ["status"] });
         },
-        onError: (err: any) => setMessage({ type: 'error', text: err.message || "Failed to rebuild memories" })
+        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to rebuild memories" })
     });
 
     const triggerProcessingFn = useMutation({
-        mutationFn: () => fetchJson("/api/devtools/trigger-processing", { method: "POST" }),
+        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_TRIGGER_PROCESSING, { method: "POST" }),
         onSuccess: (data: any) => {
-            setMessage({ type: 'success', text: `Triggered successfully. Processed ${data.processed_batches} batches.` });
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: `Triggered successfully. Processed ${data.processed_batches} batches.` });
             queryClient.invalidateQueries({ queryKey: ["status"] });
         },
-        onError: (err: any) => setMessage({ type: 'error', text: err.message || "Failed to trigger processing" })
+        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to trigger processing" })
     });
 
     const resetProcessingFn = useMutation({
-        mutationFn: () => fetchJson("/api/devtools/reset-processing", { method: "POST", body: JSON.stringify({ delete_memories: true }) }),
+        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_RESET_PROCESSING, { method: "POST", body: JSON.stringify({ delete_memories: true }) }),
         onSuccess: () => {
-            setMessage({ type: 'success', text: "Processing state reset. Observations deleted. Background job will re-process." });
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Processing state reset. Observations deleted. Background job will re-process." });
             queryClient.invalidateQueries({ queryKey: ["status"] });
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
         },
-        onError: (err: any) => setMessage({ type: 'error', text: err.message || "Failed to reset processing" })
+        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to reset processing" })
     });
 
     return (
@@ -67,9 +71,9 @@ export default function DevTools() {
             </div>
 
             {message && (
-                <Alert variant={message.type === 'error' ? "destructive" : "default"} className={message.type === 'success' ? "border-green-500 text-green-600 bg-green-50" : ""}>
-                    {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                    <AlertTitle>{message.type === 'success' ? "Success" : "Error"}</AlertTitle>
+                <Alert variant={message.type === MESSAGE_TYPES.ERROR ? "destructive" : "default"} className={message.type === MESSAGE_TYPES.SUCCESS ? "border-green-500 text-green-600 bg-green-50" : ""}>
+                    {message.type === MESSAGE_TYPES.SUCCESS ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                    <AlertTitle>{message.type === MESSAGE_TYPES.SUCCESS ? "Success" : "Error"}</AlertTitle>
                     <AlertDescription>{message.text}</AlertDescription>
                 </Alert>
             )}
@@ -83,9 +87,9 @@ export default function DevTools() {
                             {memoryStats.needs_rebuild && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
                         </CardTitle>
                         <CardDescription>
-                            {memoryStats.sync_status === "synced" && "All memories are synced."}
-                            {memoryStats.sync_status === "pending_embed" && `${memoryStats.sqlite.unembedded} memories pending embedding.`}
-                            {memoryStats.sync_status === "out_of_sync" && "ChromaDB is out of sync with SQLite."}
+                            {memoryStats.sync_status === MEMORY_SYNC_STATUS.SYNCED && "All memories are synced."}
+                            {memoryStats.sync_status === MEMORY_SYNC_STATUS.PENDING_EMBED && `${memoryStats.sqlite.unembedded} memories pending embedding.`}
+                            {memoryStats.sync_status === MEMORY_SYNC_STATUS.OUT_OF_SYNC && "ChromaDB is out of sync with SQLite."}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>

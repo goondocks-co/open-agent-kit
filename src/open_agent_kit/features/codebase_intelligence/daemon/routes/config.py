@@ -30,6 +30,196 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["config"])
 
 
+# =============================================================================
+# Shared Constants (DRY)
+# =============================================================================
+
+# Default provider URLs
+DEFAULT_PROVIDER_URLS: dict[str, str] = {
+    "ollama": "http://localhost:11434",
+    "lmstudio": "http://localhost:1234",
+    "openai": "https://api.openai.com",
+}
+
+# Known embedding model metadata: dimensions, context window (tokens), and relevance threshold
+# Used by model discovery and test endpoints to provide accurate metadata
+# relevance_threshold: Recommended minimum similarity score for search results
+#   - High-score models (BGE, OpenAI, E5, GTE): produce cosine similarity 0.4-0.8 → threshold 0.30-0.40
+#   - Low-score models (Nomic): produce cosine similarity 0.05-0.15 → threshold 0.05-0.08
+KNOWN_EMBEDDING_MODELS: dict[str, dict[str, int | float]] = {
+    # Nomic models - produce lower similarity scores
+    "nomic-embed-text": {"dimensions": 768, "context_window": 8192, "relevance_threshold": 0.08},
+    "nomic-embed-code": {"dimensions": 768, "context_window": 8192, "relevance_threshold": 0.08},
+    # BGE family (BAAI General Embedding) - high quality, higher scores
+    "bge-small": {"dimensions": 384, "context_window": 512, "relevance_threshold": 0.35},
+    "bge-base": {"dimensions": 768, "context_window": 512, "relevance_threshold": 0.35},
+    "bge-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.35},
+    "bge-m3": {"dimensions": 1024, "context_window": 8192, "relevance_threshold": 0.35},
+    # GTE family (General Text Embedding)
+    "gte-small": {"dimensions": 384, "context_window": 512, "relevance_threshold": 0.30},
+    "gte-base": {"dimensions": 768, "context_window": 512, "relevance_threshold": 0.30},
+    "gte-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.30},
+    "gte-qwen": {"dimensions": 1536, "context_window": 8192, "relevance_threshold": 0.30},
+    # E5 family (Microsoft)
+    "e5-small": {"dimensions": 384, "context_window": 512, "relevance_threshold": 0.30},
+    "e5-base": {"dimensions": 768, "context_window": 512, "relevance_threshold": 0.30},
+    "e5-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.30},
+    # Other common models
+    "mxbai-embed-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.30},
+    "all-minilm": {"dimensions": 384, "context_window": 256, "relevance_threshold": 0.25},
+    "snowflake-arctic-embed": {
+        "dimensions": 1024,
+        "context_window": 512,
+        "relevance_threshold": 0.25,
+    },
+    # OpenAI models
+    "text-embedding-3-small": {
+        "dimensions": 1536,
+        "context_window": 8191,
+        "relevance_threshold": 0.30,
+    },
+    "text-embedding-3-large": {
+        "dimensions": 3072,
+        "context_window": 8191,
+        "relevance_threshold": 0.30,
+    },
+    "text-embedding-ada-002": {
+        "dimensions": 1536,
+        "context_window": 8191,
+        "relevance_threshold": 0.30,
+    },
+    # LM Studio prefixed variants (maps to same underlying models)
+    "text-embedding-nomic-embed-text-v1.5": {
+        "dimensions": 768,
+        "context_window": 8192,
+        "relevance_threshold": 0.08,
+    },
+    "text-embedding-nomic-embed-code": {
+        "dimensions": 768,
+        "context_window": 8192,
+        "relevance_threshold": 0.08,
+    },
+    "text-embedding-bge-m3": {
+        "dimensions": 1024,
+        "context_window": 8192,
+        "relevance_threshold": 0.35,
+    },
+    "text-embedding-gte-qwen2": {
+        "dimensions": 1536,
+        "context_window": 8192,
+        "relevance_threshold": 0.30,
+    },
+}
+
+# Patterns that indicate a model is an embedding model (case-insensitive)
+# Used to filter embedding models from general model lists
+EMBEDDING_MODEL_PATTERNS: list[str] = [
+    "embed",  # nomic-embed-text, mxbai-embed-large, etc.
+    "embedding",  # text-embedding-3-small, etc.
+    "bge-",  # bge-m3, bge-small, bge-large (BAAI General Embedding)
+    "bge:",  # bge:latest
+    "gte-",  # gte-qwen (General Text Embedding)
+    "e5-",  # e5-large, e5-small (Microsoft)
+    "snowflake-arctic-embed",  # Snowflake embedding
+    "paraphrase",  # paraphrase-multilingual
+    "nomic-embed",  # Explicit nomic embedding
+    "arctic-embed",  # Arctic embedding
+    "mxbai-embed",  # mxbai embedding
+]
+
+
+def _get_known_model_metadata(model_name: str) -> dict[str, int | float | None]:
+    """Look up known model metadata by name (case-insensitive partial match).
+
+    Args:
+        model_name: Model name to look up.
+
+    Returns:
+        Dict with 'dimensions', 'context_window', and 'relevance_threshold' keys
+        (values may be None if model is unknown).
+    """
+    model_lower = model_name.lower()
+    for known_name, metadata in KNOWN_EMBEDDING_MODELS.items():
+        if known_name in model_lower or model_lower in known_name:
+            return {
+                "dimensions": metadata.get("dimensions"),
+                "context_window": metadata.get("context_window"),
+                "relevance_threshold": metadata.get("relevance_threshold"),
+            }
+    return {"dimensions": None, "context_window": None, "relevance_threshold": None}
+
+
+def get_model_relevance_threshold(model_name: str | None) -> float | None:
+    """Get recommended relevance threshold for a model.
+
+    Args:
+        model_name: Model name to look up.
+
+    Returns:
+        Recommended relevance threshold, or None if model is unknown.
+    """
+    if not model_name:
+        return None
+    metadata = _get_known_model_metadata(model_name)
+    threshold = metadata.get("relevance_threshold")
+    return float(threshold) if threshold is not None else None
+
+
+async def _query_ollama_model_info(
+    client: httpx.AsyncClient,
+    url: str,
+    model_name: str,
+) -> dict[str, int | None]:
+    """Query Ollama /api/show for model metadata.
+
+    Args:
+        client: HTTP client.
+        url: Ollama base URL.
+        model_name: Model name to query.
+
+    Returns:
+        Dict with 'dimensions' and 'context_window' keys (values may be None).
+    """
+    import re
+
+    result: dict[str, int | None] = {"dimensions": None, "context_window": None}
+
+    try:
+        response = await client.post(
+            f"{url}/api/show",
+            json={"name": model_name},
+        )
+        if response.status_code != 200:
+            return result
+
+        data = response.json()
+        model_info = data.get("model_info", {})
+
+        # Get embedding dimensions
+        if "embedding_length" in model_info:
+            result["dimensions"] = model_info["embedding_length"]
+
+        # Get context window from model_info
+        for key, value in model_info.items():
+            key_lower = key.lower()
+            if "context" in key_lower and isinstance(value, int):
+                result["context_window"] = value
+                break
+
+        # Fallback: Check parameters for num_ctx
+        if result["context_window"] is None:
+            params = data.get("parameters", "")
+            if params and "num_ctx" in params:
+                match = re.search(r"num_ctx\s+(\d+)", params)
+                if match:
+                    result["context_window"] = int(match.group(1))
+
+    except Exception as e:
+        logger.debug(f"Failed to query Ollama /api/show for {model_name}: {e}")
+
+    return result
+
+
 @dataclass
 class ConfigChangeResult:
     """Result of a configuration change event handler."""
@@ -394,18 +584,6 @@ async def _query_ollama(client: httpx.AsyncClient, url: str) -> dict:
     data = response.json()
     all_models = data.get("models", [])
 
-    # Known embedding model name patterns (case-insensitive)
-    # These are models known to produce embeddings even if not indicated in API
-    embedding_patterns = [
-        "embed",  # nomic-embed-text, mxbai-embed-large, etc.
-        "bge-",  # bge-m3, bge-small, bge-large (BAAI General Embedding)
-        "bge:",  # bge:latest
-        "gte-",  # gte-qwen (General Text Embedding)
-        "e5-",  # e5-large, e5-small (Microsoft)
-        "snowflake-arctic-embed",  # Snowflake embedding
-        "paraphrase",  # paraphrase-multilingual
-    ]
-
     # Filter for embedding models based on API response and naming
     embedding_models = []
     for model in all_models:
@@ -417,21 +595,22 @@ async def _query_ollama(client: httpx.AsyncClient, url: str) -> dict:
         # Detection: embedding_length in API response or known embedding pattern in name
         details = model.get("details", {})
         has_embedding_details = details.get("embedding_length") is not None
-        has_embedding_pattern = any(pattern in name_lower for pattern in embedding_patterns)
+        has_embedding_pattern = any(pattern in name_lower for pattern in EMBEDDING_MODEL_PATTERNS)
 
         if has_embedding_details or has_embedding_pattern:
-            # Get dimensions from API or use heuristic
+            # Get dimensions from API first
             dimensions = details.get("embedding_length")
+
+            # Try known models for dimensions/context
+            known_meta = _get_known_model_metadata(name)
             if not dimensions:
-                # Heuristics for common embedding models
+                dimensions = known_meta.get("dimensions")
+            if not dimensions:
+                # Heuristics for unknown models
                 if "minilm" in name_lower or "384" in name or "small" in name_lower:
                     dimensions = 384
-                elif "bge-m3" in name_lower:
-                    dimensions = 1024  # bge-m3 uses 1024 dimensions
                 elif "large" in name_lower or "1024" in name:
                     dimensions = 1024
-                elif "nomic-embed-text" in name_lower:
-                    dimensions = 768
                 else:
                     dimensions = 768  # Default
 
@@ -444,10 +623,18 @@ async def _query_ollama(client: httpx.AsyncClient, url: str) -> dict:
                     "display_name": short_name,
                     "full_name": name,
                     "dimensions": dimensions,
+                    "context_window": known_meta.get("context_window"),
                     "size": size_str,
                     "provider": "ollama",
                 }
             )
+
+    # Enrich with context_window from /api/show for models that don't have known context
+    for model in embedding_models:
+        if model.get("context_window") is None:
+            show_info = await _query_ollama_model_info(client, url, model["full_name"])
+            if show_info.get("context_window"):
+                model["context_window"] = show_info["context_window"]
 
     return {"success": True, "models": embedding_models}
 
@@ -470,35 +657,36 @@ async def _query_openai_compat(client: httpx.AsyncClient, url: str, key: str | N
         model_id = model.get("id", "")
         model_lower = model_id.lower()
 
-        # LM Studio uses "text-embedding-" prefix for actual embedding models
-        # Models with just "embed" in the name (like "nomic-embed-code") aren't treated as embeddings
+        # Detection: text-embedding prefix, jina embedding, or OpenAI ada model
         is_text_embedding = model_lower.startswith("text-embedding-")
         is_jina_embedding = "jina" in model_lower and "embedding" in model_lower
-
-        # For OpenAI proper: ada-002, text-embedding-3-small/large
         is_openai_embedding = "ada" in model_lower or model_lower.startswith("text-embedding-")
 
         if is_text_embedding or is_jina_embedding or is_openai_embedding:
-            # Heuristic dimension guessing based on common model names
-            dimensions = 768  # Default
-            if "text-embedding-3-small" in model_id:
-                dimensions = 1536
-            elif "text-embedding-3-large" in model_id:
-                dimensions = 3072
-            elif "ada" in model_id:
-                dimensions = 1536
-            elif "1.5b" in model_lower or "large" in model_lower:
-                dimensions = 1024
-            elif "granite" in model_lower:
-                dimensions = 768
-            elif "gemma" in model_lower:
-                dimensions = 768
+            # Try to get from known models first
+            known_meta = _get_known_model_metadata(model_id)
+            dimensions = known_meta.get("dimensions")
+            context_window = known_meta.get("context_window")
+
+            # Fallback heuristic dimension guessing
+            if dimensions is None:
+                if "1.5b" in model_lower or "large" in model_lower:
+                    dimensions = 1024
+                elif "small" in model_lower or "mini" in model_lower:
+                    dimensions = 384
+                else:
+                    dimensions = 768  # Default
+
+            # Check if API returned context_window
+            if context_window is None:
+                context_window = model.get("context_window") or model.get("context_length")
 
             embedding_models.append(
                 {
                     "name": model_id,
                     "display_name": model_id,
                     "dimensions": dimensions,
+                    "context_window": context_window,
                     "provider": "openai",
                 }
             )
@@ -527,22 +715,36 @@ async def _query_lmstudio(client: httpx.AsyncClient, url: str) -> dict:
         if not model_lower.startswith("text-embedding-"):
             continue
 
-        # Heuristic dimension guessing
-        dimensions = 768  # Default
-        if "1.5b" in model_lower or "large" in model_lower:
-            dimensions = 1024
-        if "small" in model_lower or "mini" in model_lower:
-            dimensions = 384
-        if "3-large" in model_lower:
-            dimensions = 3072
-        if "3-small" in model_lower:
-            dimensions = 1536
+        display_name = model_id.replace("text-embedding-", "")
+
+        # Try to get from known models first
+        known_meta = _get_known_model_metadata(model_id)
+        dimensions = known_meta.get("dimensions")
+        context_window = known_meta.get("context_window")
+
+        # Fallback heuristics for dimensions if not found
+        if dimensions is None:
+            if "1.5b" in model_lower or "large" in model_lower:
+                dimensions = 1024
+            elif "small" in model_lower or "mini" in model_lower:
+                dimensions = 384
+            elif "3-large" in model_lower:
+                dimensions = 3072
+            elif "3-small" in model_lower:
+                dimensions = 1536
+            else:
+                dimensions = 768  # Default
+
+        # Check if LM Studio API returned context_window
+        if context_window is None:
+            context_window = model.get("context_window") or model.get("context_length")
 
         embedding_models.append(
             {
                 "name": model_id,
-                "display_name": model_id.replace("text-embedding-", ""),
+                "display_name": display_name,
                 "dimensions": dimensions,
+                "context_window": context_window,
                 "provider": "lmstudio",
             }
         )
@@ -596,6 +798,53 @@ async def list_provider_models(
         }
 
 
+async def _discover_embedding_context(
+    provider: str,
+    model: str,
+    base_url: str,
+) -> int | None:
+    """Discover context window for an embedding model.
+
+    Tries multiple methods depending on provider:
+    - Known model metadata lookup (fastest)
+    - Ollama: /api/show endpoint (most reliable for unknown models)
+    - LM Studio/OpenAI: API response fields
+
+    Args:
+        provider: Provider type (ollama, lmstudio, openai).
+        model: Model name/identifier.
+        base_url: Provider base URL.
+
+    Returns:
+        Context window in tokens, or None if unable to discover.
+    """
+    url = base_url.rstrip("/")
+
+    # Check known models first (fastest path)
+    known_meta = _get_known_model_metadata(model)
+    if known_meta.get("context_window"):
+        context = known_meta["context_window"]
+        logger.debug(f"Found known context for {model}: {context}")
+        return int(context) if context is not None else None
+
+    # For Ollama, try to get context from /api/show
+    if provider == "ollama":
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                show_info = await _query_ollama_model_info(client, url, model)
+                if show_info.get("context_window"):
+                    logger.debug(
+                        f"Found context for {model}: {show_info['context_window']} from /api/show"
+                    )
+                    return show_info["context_window"]
+        except Exception as e:
+            logger.debug(f"Failed to get context from Ollama /api/show: {e}")
+
+    # Default fallback - return None to indicate manual entry needed
+    logger.debug(f"Could not discover context for {model}")
+    return None
+
+
 @router.post("/api/config/test")
 async def test_config(request: Request) -> dict:
     """Test an embedding configuration before applying it."""
@@ -611,6 +860,8 @@ async def test_config(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
     base_url = data.get("base_url", "http://localhost:11434")
+    provider_type = data.get("provider", "ollama")
+    model_name = data.get("model", "nomic-embed-text")
 
     # Security: Validate URL is localhost-only to prevent SSRF attacks
     if not _validate_localhost_url(base_url):
@@ -623,8 +874,8 @@ async def test_config(request: Request) -> dict:
     # Create config and handle validation errors
     try:
         test_config = EmbeddingConfig(
-            provider=data.get("provider", "ollama"),
-            model=data.get("model", "nomic-embed-text"),
+            provider=provider_type,
+            model=model_name,
             base_url=base_url,
         )
     except (ValueError, RuntimeError, OSError, ValidationError) as e:
@@ -678,10 +929,14 @@ async def test_config(request: Request) -> dict:
             else 0
         )
 
+        # Try to discover context window for the embedding model
+        context_window = await _discover_embedding_context(provider_type, model_name, base_url)
+
         return {
             "success": True,
             "provider": provider.name,
             "dimensions": actual_dims,
+            "context_window": context_window,
             "model": test_config.model,
             "message": f"Successfully generated embedding with {actual_dims} dimensions.",
         }
@@ -710,6 +965,7 @@ async def test_config(request: Request) -> dict:
                 "success": True,  # Config is valid, model just needs to load on first use
                 "provider": provider.name,
                 "dimensions": None,  # Unknown until model loads
+                "context_window": None,  # Unknown until model loads
                 "model": test_config.model,
                 "message": "Configuration valid. Model will load on first use (on-demand loading).",
                 "pending_load": True,  # Flag indicating model needs to load
@@ -966,23 +1222,12 @@ async def _query_llm_models(
     data = response.json()
     all_models = data.get("data", [])
 
-    # Filter for chat/completion models (exclude embedding models)
-    # Common embedding model patterns to filter out
-    embedding_patterns = [
-        "embed",
-        "embedding",  # Generic
-        "bge-",
-        "gte-",
-        "e5-",  # Popular embedding model families
-        "nomic-embed",
-        "arctic-embed",
-        "mxbai-embed",  # Specific models
-    ]
+    # Filter for chat/completion models (exclude embedding models using shared patterns)
     llm_models = []
     for model in all_models:
         model_id = model.get("id", "")
         # Skip embedding models - they can't do chat completions
-        if any(x in model_id.lower() for x in embedding_patterns):
+        if any(pattern in model_id.lower() for pattern in EMBEDDING_MODEL_PATTERNS):
             continue
 
         llm_models.append(

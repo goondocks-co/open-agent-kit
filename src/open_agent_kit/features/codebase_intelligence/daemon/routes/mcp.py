@@ -1,4 +1,8 @@
-"""MCP tool routes for the CI daemon."""
+"""MCP tool routes for the CI daemon.
+
+These routes expose MCP tool functionality via HTTP for external callers.
+The actual tool handlers use RetrievalEngine directly (same process).
+"""
 
 import json
 import logging
@@ -25,13 +29,16 @@ async def call_mcp_tool(
     request: Request,
     tool_name: str = Query(...),
 ) -> dict:
-    """Call an MCP tool."""
+    """Call an MCP tool.
+
+    The handler uses RetrievalEngine directly (same process, no HTTP overhead).
+    """
     from open_agent_kit.features.codebase_intelligence.daemon.mcp_tools import MCPToolHandler
 
     state = get_state()
 
-    if not state.vector_store or not state.embedding_chain:
-        raise HTTPException(status_code=503, detail="Vector store not initialized")
+    if not state.retrieval_engine:
+        raise HTTPException(status_code=503, detail="Retrieval engine not initialized")
 
     try:
         arguments = await request.json()
@@ -39,9 +46,7 @@ async def call_mcp_tool(
         logger.debug("Failed to parse JSON arguments")
         arguments = {}
 
-    handler = MCPToolHandler(
-        vector_store=state.vector_store,
-        embedding_chain=state.embedding_chain,
-    )
+    # Create handler with retrieval engine (direct access, no HTTP)
+    handler = MCPToolHandler(retrieval_engine=state.retrieval_engine)
 
     return handler.handle_tool_call(tool_name, arguments)

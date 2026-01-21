@@ -18,6 +18,7 @@ from threading import RLock
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    DEFAULT_RELEVANCE_THRESHOLD,
     INDEX_STATUS_IDLE,
 )
 
@@ -28,9 +29,13 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.config import CIConfig
     from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
-    from open_agent_kit.features.codebase_intelligence.indexing.indexer import CodebaseIndexer
+    from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
+        CodebaseIndexer,
+        IndexStats,
+    )
     from open_agent_kit.features.codebase_intelligence.indexing.watcher import FileWatcher
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
+    from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 
 @dataclass
@@ -295,6 +300,8 @@ class DaemonState:
     background_tasks: list["asyncio.Task[Any]"] = field(default_factory=list)
     # Lock for serializing index operations (prevents race conditions)
     index_lock: "asyncio.Lock | None" = None
+    # Cached retrieval engine instance
+    _retrieval_engine: "RetrievalEngine | None" = field(default=None, init=False, repr=False)
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -328,6 +335,147 @@ class DaemonState:
             and self.embedding_chain is not None
             and self.vector_store is not None
         )
+
+    @property
+    def retrieval_engine(self) -> "RetrievalEngine | None":
+        """Get the retrieval engine instance.
+
+        Lazily creates the engine when first accessed if vector_store is available.
+        The engine is configured with model-aware relevance threshold.
+
+        Returns:
+            RetrievalEngine instance, or None if vector_store not available.
+        """
+        if self._retrieval_engine is not None:
+            return self._retrieval_engine
+
+        if self.vector_store is None:
+            return None
+
+        # Create engine with model-aware config
+        from open_agent_kit.features.codebase_intelligence.retrieval.engine import (
+            RetrievalConfig,
+            RetrievalEngine,
+        )
+
+        config = RetrievalConfig(
+            relevance_threshold=self.get_effective_relevance_threshold(),
+        )
+        self._retrieval_engine = RetrievalEngine(
+            vector_store=self.vector_store,
+            config=config,
+        )
+        return self._retrieval_engine
+
+    def invalidate_retrieval_engine(self) -> None:
+        """Invalidate cached retrieval engine.
+
+        Call this when vector_store changes or threshold config changes.
+        """
+        self._retrieval_engine = None
+
+    def get_effective_relevance_threshold(self) -> float:
+        """Get the effective relevance threshold for search operations.
+
+        Resolution priority:
+        1. User-configured threshold in embedding config (explicit override)
+        2. Model-specific threshold from lookup table
+        3. Conservative default for unknown models
+
+        Returns:
+            Effective relevance threshold (0.0-1.0).
+        """
+        # Import here to avoid circular dependency
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.config import (
+            get_model_relevance_threshold,
+        )
+
+        # Check for user override in config
+        if self.ci_config and self.ci_config.embedding.relevance_threshold is not None:
+            return self.ci_config.embedding.relevance_threshold
+
+        # Look up model-specific threshold
+        model_name = self.ci_config.embedding.model if self.ci_config else None
+        model_threshold = get_model_relevance_threshold(model_name)
+        if model_threshold is not None:
+            return model_threshold
+
+        # Fallback to conservative default
+        return DEFAULT_RELEVANCE_THRESHOLD
+
+    def run_index_build(
+        self,
+        full_rebuild: bool = True,
+        timeout_seconds: float | None = None,
+    ) -> "IndexStats | None":
+        """Run index build with proper status management.
+
+        This is the single, canonical way to run an index build. All code paths
+        (daemon startup, API endpoints, devtools) should use this method to ensure
+        consistent status tracking and error handling.
+
+        Args:
+            full_rebuild: If True, clear existing index first.
+            timeout_seconds: Optional timeout (uses default if None).
+
+        Returns:
+            IndexStats on success, None on failure.
+
+        Note:
+            This is a synchronous method. For async contexts, run it in an executor.
+        """
+        if not self.indexer:
+            import logging
+
+            logging.getLogger(__name__).error("Cannot run index build: indexer not initialized")
+            return None
+
+        # Check if already indexing
+        if self.index_status.is_indexing:
+            import logging
+
+            logging.getLogger(__name__).warning("Index build already in progress, skipping")
+            return None
+
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Set status to indexing
+            self.index_status.set_indexing()
+            logger.info(f"Index build started (full_rebuild={full_rebuild})")
+
+            # Progress callback updates status
+            def progress_callback(current: int, total: int) -> None:
+                self.index_status.update_progress(current, total)
+
+            # Run the actual build
+            stats: IndexStats = self.indexer.build_index(
+                full_rebuild=full_rebuild,
+                progress_callback=progress_callback,
+            )
+
+            # Update status with results
+            self.index_status.file_count = stats.files_processed
+            self.index_status.ast_stats = {
+                "ast_success": stats.ast_success,
+                "ast_fallback": stats.ast_fallback,
+                "line_based": stats.line_based,
+            }
+            self.index_status.set_ready(duration=stats.duration_seconds)
+
+            logger.info(
+                f"Index build complete: {stats.chunks_indexed} chunks "
+                f"from {stats.files_processed} files in {stats.duration_seconds:.1f}s"
+            )
+
+            return stats
+
+        except Exception as e:
+            logger.exception(f"Index build failed: {e}")
+            self.index_status.set_error()
+            return None
 
     def get_session(self, session_id: str) -> SessionInfo | None:
         """Get session by ID.
@@ -387,6 +535,7 @@ class DaemonState:
         self.activity_processor = None
         self.background_tasks = []
         self.index_lock = None
+        self._retrieval_engine = None
 
 
 # Global daemon state instance

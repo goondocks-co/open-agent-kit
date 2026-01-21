@@ -10,6 +10,7 @@ from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_EMBEDDING_BATCH_SIZE,
+    DEFAULT_RELEVANCE_THRESHOLD,
 )
 from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingProvider
 
@@ -18,6 +19,114 @@ logger = logging.getLogger(__name__)
 # Collection names
 CODE_COLLECTION = "oak_code"
 MEMORY_COLLECTION = "oak_memory"
+
+
+# =============================================================================
+# Document Type Classification
+# =============================================================================
+
+# Doc types for filtering/weighting search results
+DOC_TYPE_CODE = "code"
+DOC_TYPE_I18N = "i18n"
+DOC_TYPE_CONFIG = "config"
+DOC_TYPE_TEST = "test"
+DOC_TYPE_DOCS = "docs"
+
+# Patterns for doc_type classification (checked in order)
+# More specific patterns should come first
+DOC_TYPE_PATTERNS: list[tuple[str, list[str]]] = [
+    # i18n/localization files (check BEFORE config to catch .json in translation dirs)
+    (
+        DOC_TYPE_I18N,
+        [
+            "translations/",
+            "locales/",
+            "locale/",
+            "i18n/",
+            "l10n/",
+            "/lang/",
+            "/languages/",
+        ],
+    ),
+    # Test files
+    (
+        DOC_TYPE_TEST,
+        [
+            "tests/",
+            "test/",
+            "__tests__/",
+            "spec/",
+            "test_",
+            "_test.",
+            ".test.",
+            ".spec.",
+        ],
+    ),
+    # Documentation (check BEFORE config to catch .md files)
+    (
+        DOC_TYPE_DOCS,
+        [
+            "docs/",
+            "doc/",
+            "documentation/",
+            "readme",  # README.md, readme.txt, etc.
+            "changelog",
+            "contributing",
+            "license",
+            ".md",  # All markdown files are docs
+            ".rst",  # reStructuredText
+        ],
+    ),
+    # Config files (by extension, checked after path patterns)
+    (
+        DOC_TYPE_CONFIG,
+        [
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".env",
+            ".config.",
+        ],
+    ),
+]
+
+
+def classify_doc_type(filepath: str) -> str:
+    """Classify a file into a document type based on path patterns.
+
+    Args:
+        filepath: The file path to classify.
+
+    Returns:
+        One of: code, i18n, config, test, docs
+    """
+    filepath_lower = filepath.lower()
+
+    for doc_type, patterns in DOC_TYPE_PATTERNS:
+        for pattern in patterns:
+            if pattern in filepath_lower:
+                return doc_type
+
+    return DOC_TYPE_CODE
+
+
+def get_short_path(filepath: str, max_segments: int = 3) -> str:
+    """Get shortened path with last N segments.
+
+    Args:
+        filepath: Full file path.
+        max_segments: Maximum number of path segments to keep.
+
+    Returns:
+        Shortened path like "services/backup_services.py"
+    """
+    parts = Path(filepath).parts
+    if len(parts) <= max_segments:
+        return filepath
+    return str(Path(*parts[-max_segments:]))
 
 
 @dataclass
@@ -41,6 +150,62 @@ class CodeChunk:
         """Estimate tokens (~4 chars per token)."""
         return len(self.content) // 4
 
+    @property
+    def doc_type(self) -> str:
+        """Classify document type based on filepath."""
+        return classify_doc_type(self.filepath)
+
+    @property
+    def file_name(self) -> str:
+        """Get just the filename from path."""
+        return Path(self.filepath).name
+
+    @property
+    def short_path(self) -> str:
+        """Get shortened path (last 3 segments)."""
+        return get_short_path(self.filepath)
+
+    def get_embedding_text(self) -> str:
+        """Generate document envelope text for embedding.
+
+        Creates a structured text that includes semantic anchors:
+        - File name
+        - Symbol names (function/class)
+        - Kind (function, class, module)
+        - Docstring if present
+        - The actual code
+
+        This improves embedding quality by including metadata that
+        developers naturally search for.
+        """
+        parts = []
+
+        # File context (short path to avoid noise)
+        parts.append(f"file: {self.file_name}")
+
+        # Symbol name if present
+        if self.name:
+            parts.append(f"symbol: {self.name}")
+
+        # Kind/type
+        parts.append(f"kind: {self.chunk_type}")
+
+        # Language
+        parts.append(f"language: {self.language}")
+
+        # Separator
+        parts.append("---")
+
+        # Docstring if present (important semantic signal)
+        if self.docstring:
+            parts.append(self.docstring.strip())
+            parts.append("---")
+
+        # The actual code
+        parts.append(self.content)
+
+        return "\n".join(parts)
+
     def to_metadata(self) -> dict[str, Any]:
         """Convert to ChromaDB metadata format."""
         return {
@@ -53,6 +218,7 @@ class CodeChunk:
             "parent_id": self.parent_id or "",
             "has_docstring": bool(self.docstring),
             "token_estimate": self.token_estimate,
+            "doc_type": self.doc_type,
         }
 
     @staticmethod
@@ -328,9 +494,11 @@ class VectorStore:
 
         chunks = unique_chunks
 
-        # Generate embeddings for all chunks
-        contents = [chunk.content for chunk in chunks]
-        result = self.embedding_provider.embed(contents)
+        # Generate embeddings using document envelope (includes metadata for better search)
+        # But store original content for display/retrieval
+        embedding_texts = [chunk.get_embedding_text() for chunk in chunks]
+        original_contents = [chunk.content for chunk in chunks]
+        result = self.embedding_provider.embed(embedding_texts)
 
         # Get actual dimensions from embeddings
         actual_dims = result.dimensions
@@ -341,8 +509,9 @@ class VectorStore:
         self._handle_dimension_mismatch(CODE_COLLECTION, actual_dims)
 
         # Prepare data for ChromaDB
+        # Store original content as documents (for display), embeddings from enriched text
         ids = [chunk.id for chunk in chunks]
-        documents = contents
+        documents = original_contents
         embeddings = result.embeddings
         metadatas = [chunk.to_metadata() for chunk in chunks]
 
@@ -414,9 +583,11 @@ class VectorStore:
             batch_end = min(batch_start + batch_size, total_chunks)
             batch = unique_chunks[batch_start:batch_end]
 
-            # Generate embeddings for this batch
-            contents = [chunk.content for chunk in batch]
-            result = self.embedding_provider.embed(contents)
+            # Generate embeddings using document envelope (includes metadata for better search)
+            # But store original content for display/retrieval
+            embedding_texts = [chunk.get_embedding_text() for chunk in batch]
+            original_contents = [chunk.content for chunk in batch]
+            result = self.embedding_provider.embed(embedding_texts)
 
             # Get actual dimensions
             actual_dims = result.dimensions
@@ -428,8 +599,9 @@ class VectorStore:
                 self._handle_dimension_mismatch(CODE_COLLECTION, actual_dims)
 
             # Prepare data for ChromaDB
+            # Store original content as documents (for display), embeddings from enriched text
             ids = [chunk.id for chunk in batch]
-            documents = contents
+            documents = original_contents
             embeddings = result.embeddings
             metadatas = [chunk.to_metadata() for chunk in batch]
 
@@ -517,7 +689,7 @@ class VectorStore:
         self,
         query: str,
         limit: int = 20,
-        relevance_threshold: float = 0.3,
+        relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD,
     ) -> list[dict]:
         """Search code chunks.
 
@@ -565,7 +737,7 @@ class VectorStore:
         self,
         query: str,
         limit: int = 10,
-        relevance_threshold: float = 0.3,
+        relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD,
         memory_types: list[str] | None = None,
     ) -> list[dict]:
         """Search memory observations.

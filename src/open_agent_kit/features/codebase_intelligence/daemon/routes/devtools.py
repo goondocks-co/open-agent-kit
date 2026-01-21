@@ -30,8 +30,12 @@ async def rebuild_index(
             status_code=503, detail="Indexer not initialized (check vector store config)"
         )
 
-    # We run this in background so request returns immediately
-    background_tasks.add_task(state.indexer.build_index, full_rebuild=request.full_rebuild)
+    # Check if already indexing
+    if state.index_status.is_indexing:
+        return {"status": "already_running", "message": "Index rebuild already in progress"}
+
+    # Use unified run_index_build method (runs in background)
+    background_tasks.add_task(state.run_index_build, full_rebuild=request.full_rebuild)
     return {"status": "started", "message": "Index rebuild started in background"}
 
 
