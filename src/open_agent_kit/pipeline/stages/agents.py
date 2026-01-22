@@ -42,6 +42,9 @@ class CleanupObsoleteCommandsStage(BaseStage):
     When commands are renamed or removed from features, this stage cleans up
     the old command files from agent directories. Only removes oak.* prefixed
     files that don't match any current feature command.
+
+    Commands are sub-agents (specialized expertise) installed for ALL agents.
+    They are separate from skills (domain knowledge for workflows).
     """
 
     name = StageResultRegistry.CLEANUP_OBSOLETE_COMMANDS
@@ -60,11 +63,12 @@ class CleanupObsoleteCommandsStage(BaseStage):
         agent_service = self._get_agent_service(context)
 
         # Get all valid command names from feature config
-        valid_commands = set(agent_service.get_all_command_names())
+        # All commands are valid for all agents (commands are sub-agents, not skill fallbacks)
+        all_valid_commands = set(agent_service.get_all_command_names())
 
         removed_total = 0
         for agent_type in context.selections.agents:
-            removed = agent_service.remove_obsolete_commands(agent_type, valid_commands)
+            removed = agent_service.remove_obsolete_commands(agent_type, all_valid_commands)
             removed_total += len(removed)
 
         if removed_total > 0:

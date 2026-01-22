@@ -189,22 +189,28 @@ async def hook_session_start(request: Request) -> dict:
     session_id = body.get("session_id") or str(uuid4())
     source = body.get("source", "startup")  # startup, resume, clear, compact
 
-    logger.info(f"Session start: {session_id} from {agent} (source={source})")
+    # Prominent logging for session-start lifecycle tracking
+    logger.info("[SESSION-START] ========== Session starting ==========")
+    logger.info(f"[SESSION-START] session_id={session_id}, agent={agent}, source={source}")
+    logger.debug(f"[SESSION-START] Raw request body: {body}")
 
     # Create session tracking (in-memory)
     state.create_session(session_id, agent)
 
-    # Create session in activity store (persistent SQLite)
+    # Create or resume session in activity store (persistent SQLite)
     if state.activity_store and state.project_root:
         try:
-            state.activity_store.create_session(
+            _, created = state.activity_store.get_or_create_session(
                 session_id=session_id,
                 agent=agent,
                 project_root=str(state.project_root),
             )
-            logger.debug(f"Created activity session: {session_id}")
+            if created:
+                logger.debug(f"Created activity session: {session_id}")
+            else:
+                logger.debug(f"Resumed activity session: {session_id}")
         except (OSError, ValueError, RuntimeError) as e:
-            logger.debug(f"Failed to create activity session: {e}")
+            logger.warning(f"Failed to create/resume activity session: {e}")
 
     # Build context response with injected_context for Claude
     context: dict[str, Any] = {
@@ -219,6 +225,7 @@ async def hook_session_start(request: Request) -> dict:
     injected = _build_session_context(state, include_memories=inject_full_context)
     if injected:
         context["injected_context"] = injected
+        logger.debug(f"[INJECT:session-start] Content:\n{injected}")
 
     # Add metadata (not injected, just for reference)
     if state.project_root:
@@ -356,13 +363,13 @@ async def hook_prompt_submit(request: Request) -> dict:
                     mem_lines.append(f"- [{mem_type}] {obs}")
 
                 if mem_lines:
-                    context["injected_context"] = (
-                        "**Relevant memories for this task:**\n" + "\n".join(mem_lines)
-                    )
+                    injected_text = "**Relevant memories for this task:**\n" + "\n".join(mem_lines)
+                    context["injected_context"] = injected_text
                     logger.info(
                         f"Injecting {len(high_confidence_memories[:5])} high-confidence "
                         f"memories for prompt"
                     )
+                    logger.debug(f"[INJECT:prompt-submit] Content:\n{injected_text}")
 
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.debug(f"Failed to search memories for prompt: {e}")
@@ -560,6 +567,7 @@ async def hook_post_tool_use(request: Request) -> dict:
                             f"Injecting {len(confident_memories[:3])} confident memories "
                             f"for {file_path}"
                         )
+                        logger.debug(f"[INJECT:post-tool-use] Content:\n{injected_context}")
 
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
                 logger.debug(f"Failed to search memories for file context: {e}")
@@ -691,7 +699,10 @@ async def hook_session_end(request: Request) -> dict:
     session_id = body.get("session_id")
     agent = body.get("agent", "unknown")
 
-    logger.info(f"Session end: {session_id} from {agent}")
+    # Prominent logging for session-end to debug if Claude Code is calling this hook
+    logger.info("[SESSION-END] ========== Session ending ==========")
+    logger.info(f"[SESSION-END] session_id={session_id}, agent={agent}")
+    logger.debug(f"[SESSION-END] Raw request body: {body}")
 
     result: dict[str, Any] = {"status": "ok"}
 

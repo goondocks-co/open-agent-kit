@@ -74,7 +74,7 @@ def test_init_with_claude_agent(temp_project_dir: Path) -> None:
     skills_dir = temp_project_dir / ".claude" / "skills"
     assert skills_dir.exists()
     # Check for skills from installed features (rules-management, codebase-intelligence)
-    assert (skills_dir / "adding-project-rules" / "SKILL.md").exists()
+    assert (skills_dir / "project-rules" / "SKILL.md").exists()
     assert (skills_dir / "finding-related-code" / "SKILL.md").exists()
 
 
@@ -82,18 +82,22 @@ def test_init_with_multiple_agents(temp_project_dir: Path) -> None:
     """Test init with multiple agents creates appropriate files for each.
 
     Both Claude and Copilot have has_skills=True, so they get skill files.
-    Cursor does NOT have skills, so it gets command files.
+    All agents get command files (sub-agents like backend-python-expert).
     Default features are rules-management and codebase-intelligence.
     """
     init_command(force=False, agent=["claude", "cursor"], no_interactive=True)
     # Claude gets skills (has_skills=True) in .claude/skills/
     skills_dir = temp_project_dir / ".claude" / "skills"
     assert skills_dir.exists()
-    assert (skills_dir / "adding-project-rules" / "SKILL.md").exists()
-    # Cursor gets commands (no skills support) in .cursor/commands/
+    assert (skills_dir / "project-rules" / "SKILL.md").exists()
+    # Claude also gets commands (sub-agents) in .claude/commands/
+    claude_commands_dir = temp_project_dir / ".claude" / "commands"
+    assert claude_commands_dir.exists()
+    assert (claude_commands_dir / "oak.backend-python-expert.md").exists()
+    # Cursor also gets commands (sub-agents) in .cursor/commands/
     cursor_dir = temp_project_dir / ".cursor" / "commands"
     assert cursor_dir.exists()
-    assert (cursor_dir / "oak.add-project-rule.md").exists()
+    assert (cursor_dir / "oak.backend-python-expert.md").exists()
 
 
 def test_init_with_force_flag(temp_project_dir: Path) -> None:

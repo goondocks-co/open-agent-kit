@@ -73,6 +73,22 @@ class LogLimits:
     MAX_LINES = 500
 
 
+class LogFiles:
+    """Available log files for viewing."""
+
+    DAEMON = "daemon"
+    HOOKS = "hooks"
+
+    # Valid log file identifiers
+    VALID_FILES = [DAEMON, HOOKS]
+
+    # Display names for UI
+    DISPLAY_NAMES = {
+        DAEMON: "Daemon Log",
+        HOOKS: "Hook Events",
+    }
+
+
 # =============================================================================
 # Pagination Defaults
 # =============================================================================
@@ -127,6 +143,7 @@ class Paths:
     OAK_DIR = ".oak"
     CI_DIR = "ci"
     LOG_FILE = "daemon.log"
+    HOOKS_LOG_FILE = "hooks.log"
     CONFIG_FILE = "ci_config.yaml"
     DB_FILE = "activity.db"
     CHROMA_DIR = "chroma"
@@ -135,6 +152,11 @@ class Paths:
     def get_log_path(cls, project_root: Path) -> Path:
         """Get the daemon log file path."""
         return project_root / cls.OAK_DIR / cls.CI_DIR / cls.LOG_FILE
+
+    @classmethod
+    def get_hooks_log_path(cls, project_root: Path) -> Path:
+        """Get the hooks event log file path."""
+        return project_root / cls.OAK_DIR / cls.CI_DIR / cls.HOOKS_LOG_FILE
 
     @classmethod
     def get_config_path(cls, project_root: Path) -> Path:

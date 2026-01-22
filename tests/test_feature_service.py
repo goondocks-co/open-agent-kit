@@ -140,27 +140,31 @@ class TestFeatureInstallation:
     def test_install_feature_basic(self, initialized_project: Path) -> None:
         """Test basic feature installation.
 
-        Note: We use 'cursor' agent because it doesn't have has_skills=True,
-        which means it uses command prompts instead of SKILL.md files.
-        Copilot now has has_skills=True like Claude.
+        Commands (sub-agents) are installed for all agents.
+        We test with codebase-intelligence which has the backend-python-expert command.
         """
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)
 
-        # Setup agent - use cursor which doesn't have skills
+        # Setup agent
         config = config_service.load_config()
         config.agents = ["cursor"]
         config_service.save_config(config)
 
-        # Install rules-management
-        results = service.install_feature("rules-management", ["cursor"])
+        # Install codebase-intelligence (which has commands)
+        # First ensure dependency rules-management is in place
+        if "rules-management" not in config.features.enabled:
+            config.features.enabled.append("rules-management")
+            config_service.save_config(config)
+        results = service.install_feature("codebase-intelligence", ["cursor"])
 
         assert "commands_installed" in results
         assert len(results["commands_installed"]) > 0
+        assert "backend-python-expert" in results["commands_installed"]
         assert "cursor" in results["agents"]
 
         # Verify feature is marked as installed
-        assert service.is_feature_installed("rules-management")
+        assert service.is_feature_installed("codebase-intelligence")
 
     def test_install_feature_creates_directories(self, initialized_project: Path) -> None:
         """Test that install creates necessary directories.
@@ -234,24 +238,26 @@ class TestFeatureRemoval:
     def test_remove_feature_removes_agent_commands(self, initialized_project: Path) -> None:
         """Test that removal cleans up agent command files.
 
-        Note: We use 'cursor' agent because it doesn't have has_skills=True,
-        which means it uses command prompts instead of SKILL.md files.
-        Copilot now has has_skills=True like Claude.
+        Commands (sub-agents) are installed for all agents.
+        We test with codebase-intelligence which has the backend-python-expert command.
         """
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)
 
         config = config_service.load_config()
         config.agents = ["cursor"]
+        # Ensure dependency is in place
+        if "rules-management" not in config.features.enabled:
+            config.features.enabled.append("rules-management")
         config_service.save_config(config)
-        service.install_feature("rules-management", ["cursor"])
+        service.install_feature("codebase-intelligence", ["cursor"])
 
         # Verify command file exists before removal
-        command_file = initialized_project / ".cursor" / "commands" / "oak.add-project-rule.md"
+        command_file = initialized_project / ".cursor" / "commands" / "oak.backend-python-expert.md"
         assert command_file.exists()
 
         # Remove
-        service.remove_feature("rules-management", ["cursor"])
+        service.remove_feature("codebase-intelligence", ["cursor"])
 
         # Verify command file is removed
         assert not command_file.exists()

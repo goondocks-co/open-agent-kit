@@ -2,7 +2,11 @@
 
 This service manages skills (reusable agent capabilities) that are bundled with
 features. Skills are only installed to agents that have the `has_skills` capability
-defined in their manifest (currently only Claude Code).
+defined in their manifest. Currently supported agents include:
+- Claude Code (.claude/skills/)
+- Codex CLI (.codex/skills/)
+- GitHub Copilot (.github/skills/)
+- Gemini CLI (.agent/skills/)
 
 Directory structure:
 - Package skills: {package_root}/features/{feature}/skills/{skill_name}/SKILL.md
@@ -26,7 +30,7 @@ from open_agent_kit.config.paths import (
 )
 from open_agent_kit.models.skill import SkillManifest
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.utils import ensure_dir, write_file
+from open_agent_kit.utils import copy_dir, ensure_dir, write_file
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +198,28 @@ class SkillService:
 
         return None
 
+    def _find_skill_dir_in_features(self, skill_name: str) -> Path | None:
+        """Find a skill's directory path by searching all feature directories.
+
+        Args:
+            skill_name: Name of the skill
+
+        Returns:
+            Path to skill directory or None if not found
+        """
+        if not self.package_features_dir.exists():
+            return None
+
+        for feature_dir in self.package_features_dir.iterdir():
+            if not feature_dir.is_dir():
+                continue
+
+            skill_dir = feature_dir / SKILLS_DIR / skill_name
+            if skill_dir.exists() and (skill_dir / SKILL_MANIFEST_FILE).exists():
+                return skill_dir
+
+        return None
+
     def get_feature_for_skill(self, skill_name: str) -> str | None:
         """Get the feature name that contains a given skill.
 
@@ -294,19 +320,21 @@ class SkillService:
             results["already_installed"] = True
             return results
 
-        # Get skill manifest from package
-        manifest = self.get_skill_manifest(skill_name)
-        if not manifest:
+        # Find source skill directory in package
+        source_skill_dir = self._find_skill_dir_in_features(skill_name)
+        if not source_skill_dir:
             results["error"] = f"Skill not found: {skill_name}"
             return results
 
-        # Install to each agent's skills directory
+        # Install to each agent's skills directory (copy entire directory)
         for agent_name, skills_dir, _ in agents_with_skills:
-            skill_dir = skills_dir / skill_name
-            ensure_dir(skill_dir)
-            skill_file = skill_dir / SKILL_MANIFEST_FILE
-            write_file(skill_file, manifest.to_skill_file())
-            results["installed_to"].append(str(skill_file.relative_to(self.project_root)))
+            dest_skill_dir = skills_dir / skill_name
+            # Remove existing directory if present (clean install)
+            if dest_skill_dir.exists():
+                shutil.rmtree(dest_skill_dir)
+            # Copy entire skill directory including subdirectories
+            copy_dir(source_skill_dir, dest_skill_dir, overwrite=True)
+            results["installed_to"].append(str(dest_skill_dir.relative_to(self.project_root)))
             results["agents"].append(agent_name)
 
         # Update config to mark skill as installed
@@ -556,18 +584,19 @@ class SkillService:
         installed_skills = self.list_installed_skills()
 
         for skill_name in installed_skills:
-            # Get latest manifest from package
-            manifest = self.get_skill_manifest(skill_name)
-            if not manifest:
+            # Find source skill directory in package
+            source_skill_dir = self._find_skill_dir_in_features(skill_name)
+            if not source_skill_dir:
                 results["errors"].append(f"Skill not found in package: {skill_name}")
                 continue
 
-            # Re-install to all agents with skills support
+            # Re-install to all agents with skills support (copy entire directory)
             for agent_name, skills_dir, _ in agents_with_skills:
-                skill_dir = skills_dir / skill_name
-                ensure_dir(skill_dir)
-                skill_file = skill_dir / SKILL_MANIFEST_FILE
-                write_file(skill_file, manifest.to_skill_file())
+                dest_skill_dir = skills_dir / skill_name
+                # Remove existing directory and copy fresh (handles subdirectory changes)
+                if dest_skill_dir.exists():
+                    shutil.rmtree(dest_skill_dir)
+                copy_dir(source_skill_dir, dest_skill_dir, overwrite=True)
                 if agent_name not in results["agents"]:
                     results["agents"].append(agent_name)
 
@@ -620,23 +649,81 @@ class SkillService:
         else:
             results["old_version"] = "unknown"
 
-        # Get latest manifest from package
-        manifest = self.get_skill_manifest(skill_name)
-        if not manifest:
+        # Find source skill directory in package
+        source_skill_dir = self._find_skill_dir_in_features(skill_name)
+        if not source_skill_dir:
             results["error"] = f"Skill not found in package: {skill_name}"
             return results
 
-        results["new_version"] = manifest.version
+        # Get new version from package manifest
+        manifest = self.get_skill_manifest(skill_name)
+        if manifest:
+            results["new_version"] = manifest.version
+        else:
+            results["new_version"] = "unknown"
 
-        # Re-install to all agents with skills support
+        # Re-install to all agents with skills support (copy entire directory)
         for agent_name, skills_dir, _ in agents_with_skills:
-            skill_dir = skills_dir / skill_name
-            ensure_dir(skill_dir)
-            skill_file = skill_dir / SKILL_MANIFEST_FILE
-            write_file(skill_file, manifest.to_skill_file())
+            dest_skill_dir = skills_dir / skill_name
+            # Remove existing directory and copy fresh (handles subdirectory changes)
+            if dest_skill_dir.exists():
+                shutil.rmtree(dest_skill_dir)
+            copy_dir(source_skill_dir, dest_skill_dir, overwrite=True)
             results["agents"].append(agent_name)
 
         results["upgraded"] = True
+        return results
+
+    def remove_obsolete_skills(self) -> dict[str, Any]:
+        """Remove skills that are installed but no longer exist in any feature.
+
+        This handles cases like renamed skills (e.g., adding-project-rules -> project-rules)
+        where the old skill should be removed and the new one installed.
+
+        Returns:
+            Dictionary with removal results:
+            {
+                'skills_removed': ['old-skill-name'],
+                'agents': ['claude'],
+                'errors': []
+            }
+        """
+        from open_agent_kit.constants import SUPPORTED_FEATURES
+
+        results: dict[str, Any] = {
+            "skills_removed": [],
+            "agents": [],
+            "errors": [],
+        }
+
+        # Get all valid skills from enabled features
+        config = self.config_service.load_config()
+        enabled_features = (
+            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
+        )
+
+        all_valid_skills: set[str] = set()
+        for feature_name in enabled_features:
+            feature_skills = self.get_skills_for_feature(feature_name)
+            all_valid_skills.update(feature_skills)
+
+        # Get currently installed skills
+        installed_skills = set(self.list_installed_skills())
+
+        # Find obsolete skills (installed but not in any feature)
+        obsolete_skills = installed_skills - all_valid_skills
+
+        # Remove each obsolete skill
+        for skill_name in obsolete_skills:
+            remove_result = self.remove_skill(skill_name)
+            if "error" in remove_result:
+                results["errors"].append(remove_result["error"])
+            elif not remove_result.get("not_installed"):
+                results["skills_removed"].append(skill_name)
+                for agent in remove_result.get("agents", []):
+                    if agent not in results["agents"]:
+                        results["agents"].append(agent)
+
         return results
 
     def create_skill_scaffold(

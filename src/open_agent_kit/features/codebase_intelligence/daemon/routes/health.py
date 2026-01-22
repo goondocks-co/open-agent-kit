@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 
 from open_agent_kit.features.codebase_intelligence.daemon.constants import (
     DaemonStatus,
+    LogFiles,
     LogLimits,
     Paths,
 )
@@ -109,13 +110,31 @@ async def get_logs(
         default=LogLimits.DEFAULT_LINES,
         ge=LogLimits.MIN_LINES,
         le=LogLimits.MAX_LINES,
-    )
+    ),
+    file: str = Query(
+        default=LogFiles.DAEMON,
+        description="Log file to retrieve: 'daemon' or 'hooks'",
+    ),
 ) -> dict:
-    """Get recent daemon logs."""
+    """Get recent logs from specified log file.
+
+    Args:
+        lines: Number of lines to retrieve (1-500)
+        file: Which log file to read ('daemon' or 'hooks')
+    """
     state = get_state()
+
+    # Validate file parameter
+    if file not in LogFiles.VALID_FILES:
+        file = LogFiles.DAEMON
+
+    # Get the appropriate log file path
     log_file = None
     if state.project_root:
-        log_file = Paths.get_log_path(state.project_root)
+        if file == LogFiles.HOOKS:
+            log_file = Paths.get_hooks_log_path(state.project_root)
+        else:
+            log_file = Paths.get_log_path(state.project_root)
 
     log_content = ""
     if log_file and log_file.exists():
@@ -126,10 +145,19 @@ async def get_logs(
         except (OSError, UnicodeDecodeError) as e:
             log_content = f"Error reading log file: {e}"
     else:
-        log_content = "No log file found"
+        if file == LogFiles.HOOKS:
+            log_content = "No hook events logged yet. Hook events will appear here when SessionStart, SessionEnd, etc. fire."
+        else:
+            log_content = "No log file found"
 
     return {
         "log_file": str(log_file) if log_file else None,
+        "log_type": file,
+        "log_type_display": LogFiles.DISPLAY_NAMES.get(file, file),
         "lines": lines,
         "content": log_content,
+        "available_logs": [
+            {"id": log_id, "name": LogFiles.DISPLAY_NAMES[log_id]}
+            for log_id in LogFiles.VALID_FILES
+        ],
     }

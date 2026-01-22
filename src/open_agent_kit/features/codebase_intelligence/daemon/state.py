@@ -18,7 +18,6 @@ from threading import RLock
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
-    DEFAULT_RELEVANCE_THRESHOLD,
     INDEX_STATUS_IDLE,
 )
 
@@ -341,7 +340,6 @@ class DaemonState:
         """Get the retrieval engine instance.
 
         Lazily creates the engine when first accessed if vector_store is available.
-        The engine is configured with model-aware relevance threshold.
 
         Returns:
             RetrievalEngine instance, or None if vector_store not available.
@@ -352,56 +350,21 @@ class DaemonState:
         if self.vector_store is None:
             return None
 
-        # Create engine with model-aware config
         from open_agent_kit.features.codebase_intelligence.retrieval.engine import (
-            RetrievalConfig,
             RetrievalEngine,
         )
 
-        config = RetrievalConfig(
-            relevance_threshold=self.get_effective_relevance_threshold(),
-        )
         self._retrieval_engine = RetrievalEngine(
             vector_store=self.vector_store,
-            config=config,
         )
         return self._retrieval_engine
 
     def invalidate_retrieval_engine(self) -> None:
         """Invalidate cached retrieval engine.
 
-        Call this when vector_store changes or threshold config changes.
+        Call this when vector_store changes.
         """
         self._retrieval_engine = None
-
-    def get_effective_relevance_threshold(self) -> float:
-        """Get the effective relevance threshold for search operations.
-
-        Resolution priority:
-        1. User-configured threshold in embedding config (explicit override)
-        2. Model-specific threshold from lookup table
-        3. Conservative default for unknown models
-
-        Returns:
-            Effective relevance threshold (0.0-1.0).
-        """
-        # Import here to avoid circular dependency
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.config import (
-            get_model_relevance_threshold,
-        )
-
-        # Check for user override in config
-        if self.ci_config and self.ci_config.embedding.relevance_threshold is not None:
-            return self.ci_config.embedding.relevance_threshold
-
-        # Look up model-specific threshold
-        model_name = self.ci_config.embedding.model if self.ci_config else None
-        model_threshold = get_model_relevance_threshold(model_name)
-        if model_threshold is not None:
-            return model_threshold
-
-        # Fallback to conservative default
-        return DEFAULT_RELEVANCE_THRESHOLD
 
     def run_index_build(
         self,
@@ -472,6 +435,10 @@ class DaemonState:
 
             return stats
 
+        except TimeoutError:
+            logger.error("Index build timed out")
+            self.index_status.set_error()
+            raise
         except Exception as e:
             logger.exception(f"Index build failed: {e}")
             self.index_status.set_error()

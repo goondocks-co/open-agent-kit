@@ -92,11 +92,13 @@ def upgrade_command(
         or plan.get("agent_settings")
         or skill_plan.get("install")
         or skill_plan.get("upgrade")
+        or skill_plan.get("obsolete")
         or plan.get("hooks")
         or plan.get("mcp_servers")
         or plan.get("gitignore")
         or plan.get("migrations")
         or plan.get("structural_repairs")
+        or plan.get("legacy_commands_cleanup")
         or plan.get("version_outdated")
     )
 
@@ -181,6 +183,7 @@ def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
         "agent_settings": {"upgraded": [], "failed": []},
         "migrations": {"upgraded": [], "failed": []},
         "obsolete_removed": {"upgraded": [], "failed": []},
+        "legacy_commands_removed": {"upgraded": [], "failed": []},
         "skills": {"upgraded": [], "failed": []},
         "hooks": {"upgraded": [], "failed": []},
         "mcp_servers": {"upgraded": [], "failed": []},
@@ -190,6 +193,12 @@ def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
     }
 
     # Collect from each stage result
+    legacy_cmd_result = context.get_result("cleanup_legacy_commands", {})
+    if legacy_cmd_result:
+        results["legacy_commands_removed"]["upgraded"] = [
+            f"Removed {legacy_cmd_result.get('removed_count', 0)} legacy command(s)"
+        ]
+
     cmd_result = context.get_result("upgrade_commands", {})
     if cmd_result:
         results["commands"]["upgraded"] = cmd_result.get("upgraded", [])
@@ -268,6 +277,19 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
             f"  • {UPGRADE_MESSAGES['update_to_version'].format(version=package_ver)}"
         )
 
+    # Legacy commands to remove
+    if plan.get("legacy_commands_cleanup"):
+        legacy_items = []
+        for cleanup_item in plan["legacy_commands_cleanup"]:
+            agent = cleanup_item["agent"]
+            for cmd in cleanup_item["commands"]:
+                legacy_items.append(f"  • {agent}: {cmd['file']}")
+        if legacy_items:
+            legacy_list = "\n".join(legacy_items)
+            sections.append(
+                f"[cyan]Legacy Commands to Remove[/cyan] ({len(legacy_items)} files)\n{legacy_list}"
+            )
+
     # Command upgrades
     if plan["commands"]:
         command_list = "\n".join([f"  • {cmd['agent']}: {cmd['file']}" for cmd in plan["commands"]])
@@ -318,6 +340,14 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
         )
         sections.append(
             f"[cyan]Skills to Upgrade[/cyan] ({len(skills_to_upgrade)} skill(s))\n{upgrade_list}"
+        )
+
+    # Obsolete skills to remove (renamed or removed from features)
+    skills_to_remove = skill_plan.get("obsolete", [])
+    if skills_to_remove:
+        remove_list = "\n".join([f"  • {s['skill']} ({s['reason']})" for s in skills_to_remove])
+        sections.append(
+            f"[cyan]Obsolete Skills to Remove[/cyan] ({len(skills_to_remove)} skill(s))\n{remove_list}"
         )
 
     # Feature hooks

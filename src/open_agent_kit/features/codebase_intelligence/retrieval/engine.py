@@ -25,7 +25,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CONFIDENCE_MEDIUM,
     CONFIDENCE_MEDIUM_THRESHOLD,
     CONFIDENCE_MIN_MEANINGFUL_RANGE,
-    DEFAULT_RELEVANCE_THRESHOLD,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
@@ -78,15 +77,10 @@ class Confidence(str, Enum):
 
 @dataclass
 class RetrievalConfig:
-    """Configuration for retrieval operations.
-
-    The relevance_threshold should be set based on the embedding model.
-    Use get_model_relevance_threshold() from daemon.routes.config for model-aware values.
-    """
+    """Configuration for retrieval operations."""
 
     default_limit: int = 20
     max_context_tokens: int = 2000
-    relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD
     preview_length: int = 200
 
 
@@ -143,17 +137,6 @@ class RetrievalEngine:
         """
         self.store = vector_store
         self.config = config or RetrievalConfig()
-
-    def _get_threshold(self, override: float | None = None) -> float:
-        """Get effective relevance threshold.
-
-        Args:
-            override: Optional per-call threshold override.
-
-        Returns:
-            Threshold to use for this operation.
-        """
-        return override if override is not None else self.config.relevance_threshold
 
     # =========================================================================
     # Confidence Calculation (model-agnostic)
@@ -304,7 +287,6 @@ class RetrievalEngine:
         query: str,
         search_type: str = SEARCH_TYPE_ALL,
         limit: int | None = None,
-        relevance_threshold: float | None = None,
         apply_doc_type_weights: bool = True,
     ) -> SearchResult:
         """Search code and/or memories.
@@ -317,7 +299,6 @@ class RetrievalEngine:
             query: Natural language search query.
             search_type: 'all', 'code', or 'memory'.
             limit: Maximum results per category.
-            relevance_threshold: Override threshold for this search.
             apply_doc_type_weights: Whether to apply doc_type weighting (default True).
                 Set to False when searching for specific file types like translations,
                 or in skills/hooks where the weighting isn't appropriate.
@@ -326,7 +307,6 @@ class RetrievalEngine:
             SearchResult with code and memory results, each including confidence.
         """
         limit = limit or self.config.default_limit
-        threshold = self._get_threshold(relevance_threshold)
 
         result = SearchResult(query=query)
 
@@ -334,7 +314,6 @@ class RetrievalEngine:
             code_results = self.store.search_code(
                 query=query,
                 limit=limit,
-                relevance_threshold=threshold,
             )
 
             # Apply doc_type weighting to scores (if enabled)
@@ -378,7 +357,6 @@ class RetrievalEngine:
             memory_results = self.store.search_memory(
                 query=query,
                 limit=limit,
-                relevance_threshold=threshold,
             )
 
             # Calculate confidence for memory results
@@ -450,7 +428,6 @@ class RetrievalEngine:
         task: str,
         current_files: list[str] | None = None,
         max_tokens: int | None = None,
-        relevance_threshold: float | None = None,
         project_root: Any | None = None,
         apply_doc_type_weights: bool = True,
     ) -> ContextResult:
@@ -465,7 +442,6 @@ class RetrievalEngine:
             task: Description of the task.
             current_files: Files currently being worked on.
             max_tokens: Maximum tokens to return.
-            relevance_threshold: Override threshold for searches.
             project_root: Project root path for guidelines check.
             apply_doc_type_weights: Whether to apply doc_type weighting (default True).
                 Set to False when working with specific file types like translations.
@@ -474,7 +450,6 @@ class RetrievalEngine:
             ContextResult with code, memories, and guidelines.
         """
         max_tokens = max_tokens or self.config.max_context_tokens
-        threshold = self._get_threshold(relevance_threshold)
 
         result = ContextResult(task=task)
 
@@ -488,7 +463,6 @@ class RetrievalEngine:
         code_results = self.store.search_code(
             query=search_query,
             limit=10,
-            relevance_threshold=threshold,
         )
 
         # Apply doc_type weighting if enabled
@@ -521,7 +495,6 @@ class RetrievalEngine:
         memory_results = self.store.search_memory(
             query=search_query,
             limit=5,
-            relevance_threshold=threshold,
         )
 
         for r in memory_results:
@@ -616,7 +589,6 @@ class RetrievalEngine:
         query: str,
         search_type: str = "all",
         limit: int | None = None,
-        relevance_threshold: float | None = None,
     ) -> dict[str, Any]:
         """Layer 1: Search and return index-level summaries.
 
@@ -627,13 +599,11 @@ class RetrievalEngine:
             query: Natural language search query.
             search_type: 'all', 'code', or 'memory'.
             limit: Maximum results per category.
-            relevance_threshold: Override threshold for this search.
 
         Returns:
             Dictionary with code and memory results at index level.
         """
         limit = limit or self.config.default_limit
-        threshold = self._get_threshold(relevance_threshold)
 
         result: dict[str, Any] = {
             "query": query,
@@ -646,7 +616,6 @@ class RetrievalEngine:
             code_results = self.store.search_code(
                 query=query,
                 limit=limit,
-                relevance_threshold=threshold,
             )
             for r in code_results:
                 result["code"].append(
@@ -666,7 +635,6 @@ class RetrievalEngine:
             memory_results = self.store.search_memory(
                 query=query,
                 limit=limit,
-                relevance_threshold=threshold,
             )
             for r in memory_results:
                 result["memory"].append(

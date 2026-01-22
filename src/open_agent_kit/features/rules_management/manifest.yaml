@@ -6,42 +6,13 @@ version: "2.0.0"
 default_enabled: true
 dependencies: []
 
-# CLI commands - simplified to mirror lean skills
-commands:
-  - add-project-rule
-  - remove-project-rule
-
 # Skills are installed to agents with has_skills capability when feature is enabled
-# Lean, focused skills that add value without getting in the way
+# Comprehensive skill for creating and maintaining project constitutions
 skills:
-  - adding-project-rules
-  - removing-project-rules
+  - project-rules
 
-templates:
-  - base_constitution.md
-  - agent_instructions.md
-  - decision_points.yaml
-  # Includes for modular, capability-aware prompts
-  - includes/cli_discovery.md
-  - includes/flow_control_high.md
-  - includes/flow_control_basic.md
-  - includes/workflow_overview_high.md
-  - includes/workflow_overview_basic.md
-  - includes/project_analysis.md
-  - includes/research_phase.md
-  - includes/relevance_assessment.md
-  - includes/decision_gathering_high.md
-  - includes/decision_gathering_basic.md
-  - includes/generation_phase.md
-  - includes/completion_high.md
-  - includes/completion_basic.md
-  - includes/amend_workflow_high.md
-  - includes/amend_workflow_basic.md
-  - includes/research_amendment.md
-  - includes/validate_workflow_high.md
-  - includes/validate_workflow_basic.md
-  - includes/validate_quality_rubric.md
-  - includes/validate_fix_guidelines.md
+# Templates section removed - skill teaches agents to write constitutions directly
+# using examples in skills/project-rules/references/
 
 # Feature lifecycle hooks
 hooks:

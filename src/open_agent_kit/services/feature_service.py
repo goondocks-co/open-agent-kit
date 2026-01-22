@@ -619,8 +619,9 @@ class FeatureService:
             if added:
                 results["gitignore_added"] = added
 
-        # Install commands for each agent (only for agents WITHOUT skills support)
-        # Agents with skills support get SKILL.md files instead via skill_service
+        # Install commands for each agent
+        # Commands are sub-agents (specialized expertise), separate from skills (domain knowledge)
+        # All agents receive commands - they are not a fallback for skill-less agents
         from open_agent_kit.services.agent_service import AgentService
 
         agent_service = AgentService(self.project_root)
@@ -628,21 +629,6 @@ class FeatureService:
         commands_dir = self.get_feature_commands_dir(feature_name)
 
         for agent_type in agents:
-            # Check if agent has skills support - if so, skip command installation
-            # Skills are installed separately via skill_service
-            try:
-                agent_manifest = agent_service.get_agent_manifest(agent_type)
-                if agent_manifest.capabilities.has_skills:
-                    logger.debug(
-                        f"Skipping command installation for {agent_type} "
-                        f"(has skills support, using SKILL.md instead)"
-                    )
-                    results["agents"].append(agent_type)
-                    continue
-            except Exception as e:
-                logger.warning(f"Failed to check agent capabilities for {agent_type}: {e}")
-                # Fall through to command installation if we can't check capabilities
-
             agent_commands_dir = agent_service.create_agent_commands_dir(agent_type)
 
             for command_name in manifest.commands:

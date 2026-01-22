@@ -122,37 +122,6 @@ class ExportMode(str, Enum):
         return [m.value for m in cls]
 
 
-class ValidationPriority(str, Enum):
-    """Validation issue priority levels."""
-
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-    @classmethod
-    def values(cls) -> list[str]:
-        """Return list of all priorities."""
-        return [p.value for p in cls]
-
-
-class ValidationCategory(str, Enum):
-    """Validation issue categories."""
-
-    STRUCTURE = "structure"
-    METADATA = "metadata"
-    TOKENS = "tokens"
-    DATES = "dates"
-    LANGUAGE = "language"
-    VERSIONING = "versioning"
-    QUALITY = "quality"
-    CONSISTENCY = "consistency"
-
-    @classmethod
-    def values(cls) -> list[str]:
-        """Return list of all categories."""
-        return [c.value for c in cls]
-
-
 class IssueProvider(str, Enum):
     """Supported issue tracking providers."""
 

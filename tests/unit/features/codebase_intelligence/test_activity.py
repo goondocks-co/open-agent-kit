@@ -24,6 +24,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     Activity,
     ActivityStore,
     Session,
+    StoredObservation,
 )
 
 # =============================================================================
@@ -1453,3 +1454,311 @@ class TestActivityIntegration:
         # 2 batches * 1 edit = 2 edits total
         assert stats["reads"] == 4
         assert stats["edits"] == 2
+
+
+# =============================================================================
+# ActivityStore Tests: Backup and Restore
+# =============================================================================
+
+
+class TestActivityStoreBackup:
+    """Test backup (export) and restore (import) functionality."""
+
+    def test_export_to_sql_creates_file(self, activity_store: ActivityStore, temp_db: Path):
+        """Test that export_to_sql creates a SQL file."""
+        # Create some test data
+        activity_store.create_session(
+            session_id="backup-test-1",
+            agent="claude",
+            project_root="/test/project",
+        )
+        activity_store.create_prompt_batch(
+            session_id="backup-test-1",
+            user_prompt="Test prompt",
+        )
+
+        # Export to SQL
+        backup_path = temp_db.parent / "backup.sql"
+        count = activity_store.export_to_sql(backup_path)
+
+        assert backup_path.exists()
+        assert count >= 2  # At least session and prompt batch
+        content = backup_path.read_text()
+        assert "INSERT INTO sessions" in content
+        assert "INSERT INTO prompt_batches" in content
+
+    def test_export_to_sql_includes_observations(
+        self, activity_store: ActivityStore, temp_db: Path
+    ):
+        """Test that export includes memory observations."""
+        import uuid
+
+        # Create session and observation
+        activity_store.create_session(
+            session_id="backup-test-2",
+            agent="claude",
+            project_root="/test/project",
+        )
+        obs = StoredObservation(
+            id=str(uuid.uuid4()),
+            session_id="backup-test-2",
+            observation="Test observation for backup",
+            memory_type="discovery",
+            context="test_context",
+        )
+        activity_store.store_observation(obs)
+
+        # Export to SQL
+        backup_path = temp_db.parent / "backup.sql"
+        count = activity_store.export_to_sql(backup_path)
+
+        assert count >= 2  # session + observation
+        content = backup_path.read_text()
+        assert "INSERT INTO memory_observations" in content
+        assert "Test observation for backup" in content
+
+    def test_export_excludes_activities_by_default(
+        self, activity_store: ActivityStore, temp_db: Path
+    ):
+        """Test that activities table is excluded by default."""
+        # Create session with activities
+        activity_store.create_session(
+            session_id="backup-test-3",
+            agent="claude",
+            project_root="/test/project",
+        )
+        activity = Activity(
+            session_id="backup-test-3",
+            tool_name="Read",
+            tool_input={"path": "/test/file.py"},
+            file_path="/test/file.py",
+            duration_ms=100,
+            success=True,
+        )
+        activity_store.add_activity(activity)
+
+        # Export without activities
+        backup_path = temp_db.parent / "backup.sql"
+        activity_store.export_to_sql(backup_path, include_activities=False)
+
+        content = backup_path.read_text()
+        assert "INSERT INTO sessions" in content
+        assert "INSERT INTO activities" not in content
+
+    def test_export_includes_activities_when_requested(
+        self, activity_store: ActivityStore, temp_db: Path
+    ):
+        """Test that activities can be included in export."""
+        # Create session with activities
+        activity_store.create_session(
+            session_id="backup-test-4",
+            agent="claude",
+            project_root="/test/project",
+        )
+        activity = Activity(
+            session_id="backup-test-4",
+            tool_name="Read",
+            tool_input={"path": "/test/file.py"},
+            file_path="/test/file.py",
+            duration_ms=100,
+            success=True,
+        )
+        activity_store.add_activity(activity)
+
+        # Export with activities
+        backup_path = temp_db.parent / "backup.sql"
+        activity_store.export_to_sql(backup_path, include_activities=True)
+
+        content = backup_path.read_text()
+        assert "INSERT INTO activities" in content
+
+    def test_import_from_sql_restores_data(self, temp_db: Path):
+        """Test that import_from_sql restores data to a fresh database."""
+        import uuid
+
+        # Create source store with data
+        source_store = ActivityStore(temp_db)
+        source_store.create_session(
+            session_id="import-test-1",
+            agent="claude",
+            project_root="/test/project",
+        )
+        source_store.create_prompt_batch(
+            session_id="import-test-1",
+            user_prompt="Test prompt for import",
+        )
+        obs = StoredObservation(
+            id=str(uuid.uuid4()),
+            session_id="import-test-1",
+            observation="Test observation for import",
+            memory_type="discovery",
+        )
+        source_store.store_observation(obs)
+
+        # Export
+        backup_path = temp_db.parent / "backup.sql"
+        source_store.export_to_sql(backup_path)
+        source_store.close()
+
+        # Create fresh target store
+        target_db = temp_db.parent / "target.db"
+        target_store = ActivityStore(target_db)
+
+        # Import
+        count = target_store.import_from_sql(backup_path)
+
+        assert count >= 3  # session + prompt batch + observation
+
+        # Verify data was restored
+        session = target_store.get_session("import-test-1")
+        assert session is not None
+        assert session.agent == "claude"
+
+        # Verify observation was restored
+        obs_count = target_store.count_observations()
+        assert obs_count >= 1
+
+        target_store.close()
+
+    def test_import_marks_observations_as_unembedded(self, temp_db: Path):
+        """Test that imported observations are marked as unembedded for ChromaDB rebuild."""
+        import uuid
+
+        # Create source store with embedded observation
+        source_store = ActivityStore(temp_db)
+        source_store.create_session(
+            session_id="embed-test-1",
+            agent="claude",
+            project_root="/test/project",
+        )
+        obs_id = str(uuid.uuid4())
+        obs = StoredObservation(
+            id=obs_id,
+            session_id="embed-test-1",
+            observation="Embedded observation",
+            memory_type="discovery",
+        )
+        source_store.store_observation(obs)
+        # Mark as embedded in source
+        source_store.mark_observation_embedded(obs_id)
+
+        # Verify it's embedded in source
+        assert source_store.count_embedded_observations() == 1
+
+        # Export
+        backup_path = temp_db.parent / "backup.sql"
+        source_store.export_to_sql(backup_path)
+        source_store.close()
+
+        # Create fresh target and import
+        target_db = temp_db.parent / "target.db"
+        target_store = ActivityStore(target_db)
+        target_store.import_from_sql(backup_path)
+
+        # Verify observations are unembedded after import (for ChromaDB rebuild)
+        assert target_store.count_unembedded_observations() >= 1
+
+        target_store.close()
+
+    def test_import_handles_duplicates_gracefully(
+        self, activity_store: ActivityStore, temp_db: Path
+    ):
+        """Test that import handles duplicate records without failing."""
+        # Create initial data
+        activity_store.create_session(
+            session_id="dup-test-1",
+            agent="claude",
+            project_root="/test/project",
+        )
+
+        # Export
+        backup_path = temp_db.parent / "backup.sql"
+        activity_store.export_to_sql(backup_path)
+
+        # Import again (should not fail on duplicate)
+        # Count may be 0 due to duplicates being skipped, but should not raise
+        activity_store.import_from_sql(backup_path)
+
+    def test_export_escapes_special_characters(self, activity_store: ActivityStore, temp_db: Path):
+        """Test that export properly escapes SQL special characters."""
+        import uuid
+
+        # Create session with special characters
+        activity_store.create_session(
+            session_id="escape-test-1",
+            agent="claude",
+            project_root="/test/project",
+        )
+        obs = StoredObservation(
+            id=str(uuid.uuid4()),
+            session_id="escape-test-1",
+            observation="Test with 'single quotes' and special chars: \"; DROP TABLE;",
+            memory_type="discovery",
+        )
+        activity_store.store_observation(obs)
+
+        # Export should not fail
+        backup_path = temp_db.parent / "backup.sql"
+        count = activity_store.export_to_sql(backup_path)
+        assert count >= 2
+
+        # Content should be valid SQL
+        content = backup_path.read_text()
+        assert "single quotes" in content
+        # Single quotes should be escaped
+        assert "''" in content or "single quotes" in content
+
+    def test_roundtrip_preserves_data_integrity(self, temp_db: Path):
+        """Test that export->import roundtrip preserves data integrity."""
+        import uuid
+
+        # Create source with comprehensive data
+        source_store = ActivityStore(temp_db)
+        source_store.create_session(
+            session_id="roundtrip-test-1",
+            agent="claude",
+            project_root="/test/project",
+        )
+        batch = source_store.create_prompt_batch(
+            session_id="roundtrip-test-1",
+            user_prompt="Complex prompt with details",
+        )
+        obs = StoredObservation(
+            id=str(uuid.uuid4()),
+            session_id="roundtrip-test-1",
+            observation="Important observation",
+            memory_type="gotcha",
+            context="specific_context",
+            tags=["tag1", "tag2"],
+        )
+        source_store.store_observation(obs)
+        source_store.end_prompt_batch(batch.id)
+        source_store.end_session("roundtrip-test-1", summary="Session summary")
+
+        # Get original counts
+        orig_sessions = len(source_store.get_recent_sessions(limit=100))
+        orig_observations = source_store.count_observations()
+
+        # Export
+        backup_path = temp_db.parent / "backup.sql"
+        source_store.export_to_sql(backup_path)
+        source_store.close()
+
+        # Import to fresh database
+        target_db = temp_db.parent / "roundtrip_target.db"
+        target_store = ActivityStore(target_db)
+        target_store.import_from_sql(backup_path)
+
+        # Verify counts match
+        target_sessions = len(target_store.get_recent_sessions(limit=100))
+        target_observations = target_store.count_observations()
+
+        assert target_sessions == orig_sessions
+        assert target_observations == orig_observations
+
+        # Verify specific data
+        session = target_store.get_session("roundtrip-test-1")
+        assert session.summary == "Session summary"
+        assert session.status == "completed"
+
+        target_store.close()

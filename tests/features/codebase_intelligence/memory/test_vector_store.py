@@ -345,59 +345,14 @@ class TestVectorStoreBatchEmbedding:
 
 
 class TestVectorStoreSearchRelevance:
-    """Test search relevance filtering."""
+    """Test search relevance scoring."""
 
-    def test_search_filters_by_relevance_threshold(
+    def test_search_returns_all_results_with_relevance_scores(
         self,
         temp_vector_store_dir: Path,
         mock_embedding_provider: MagicMock,
     ):
-        """Test that search results are filtered by relevance threshold.
-
-        Args:
-            temp_vector_store_dir: Temporary directory for store.
-            mock_embedding_provider: Mock embedding provider.
-        """
-        # Create store and inject mocks
-        store = VectorStore(
-            persist_directory=temp_vector_store_dir,
-            embedding_provider=mock_embedding_provider,
-        )
-
-        # Mock collection with search results
-        mock_collection = MagicMock()
-        mock_collection.count.return_value = 5
-
-        # Return results with varying distances (distance = 1 - similarity)
-        # Lower distance = higher relevance
-        mock_collection.query.return_value = {
-            "ids": [["id1", "id2", "id3"]],
-            "documents": [["doc1", "doc2", "doc3"]],
-            "distances": [[0.1, 0.5, 0.8]],  # Relevances: 0.9, 0.5, 0.2
-            "metadatas": [[{"filepath": "a.py"}, {"filepath": "b.py"}, {"filepath": "c.py"}]],
-        }
-
-        store._client = MagicMock()
-        store._code_collection = mock_collection
-        store._memory_collection = MagicMock()
-
-        # Search with relevance threshold
-        results = store.search_code(query="test", limit=10, relevance_threshold=0.6)
-
-        # Only results with relevance >= 0.6 should be returned
-        # id1 has relevance 0.9 (passes)
-        # id2 has relevance 0.5 (filtered out)
-        # id3 has relevance 0.2 (filtered out)
-        assert len(results) == 1
-        assert results[0]["id"] == "id1"
-        assert results[0]["relevance"] == 0.9
-
-    def test_search_returns_all_when_threshold_low(
-        self,
-        temp_vector_store_dir: Path,
-        mock_embedding_provider: MagicMock,
-    ):
-        """Test that low threshold returns all results.
+        """Test that search returns all results with relevance scores.
 
         Args:
             temp_vector_store_dir: Temporary directory for store.
@@ -422,11 +377,14 @@ class TestVectorStoreSearchRelevance:
         store._code_collection = mock_collection
         store._memory_collection = MagicMock()
 
-        # Search with very low threshold
-        results = store.search_code(query="test", limit=10, relevance_threshold=0.0)
+        # Search returns all results with relevance scores
+        results = store.search_code(query="test", limit=10)
 
-        # All results should be returned
+        # All results should be returned with relevance scores
         assert len(results) == 3
+        assert results[0]["relevance"] == 0.9
+        assert results[1]["relevance"] == 0.5
+        assert results[2]["relevance"] == pytest.approx(0.2, rel=0.01)
 
 
 class TestVectorStoreCollectionSeparation:

@@ -2052,3 +2052,112 @@ def ci_test(
 
     if tests_failed > 0:
         raise typer.Exit(code=1)
+
+
+@ci_app.command("backup")
+def ci_backup(
+    include_activities: bool = typer.Option(
+        False,
+        "--include-activities",
+        "-a",
+        help="Include activities table (can be large)",
+    ),
+    output: str | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output path (default: oak/data/ci_history.sql)",
+    ),
+) -> None:
+    """Export CI database to SQL backup file.
+
+    Exports sessions, prompts, and memory observations. Use --include-activities
+    to also include the activities table (warning: can be large).
+
+    The backup file is text-based, can be committed to git, and will be
+    automatically restored when the feature is re-enabled.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_HISTORY_BACKUP_DIR,
+        CI_HISTORY_BACKUP_FILE,
+    )
+
+    project_root = Path.cwd()
+    _check_oak_initialized(project_root)
+    _check_ci_enabled(project_root)
+
+    db_path = project_root / OAK_DIR / "ci" / "activities.db"
+    if not db_path.exists():
+        print_error("No CI database found. Start the daemon first: oak ci start")
+        raise typer.Exit(code=1)
+
+    if output:
+        backup_path = Path(output)
+    else:
+        backup_path = project_root / CI_HISTORY_BACKUP_DIR / CI_HISTORY_BACKUP_FILE
+
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print_info(f"Exporting CI database to {backup_path}...")
+    if include_activities:
+        print_info("  Including activities table (may be large)")
+
+    store = ActivityStore(db_path)
+    count = store.export_to_sql(backup_path, include_activities=include_activities)
+    store.close()
+
+    print_success(f"Exported {count} records to {backup_path}")
+    print_info("  This file can be committed to git for version control")
+
+
+@ci_app.command("restore")
+def ci_restore(
+    input_path: str | None = typer.Option(
+        None,
+        "--input",
+        "-i",
+        help="Input path (default: oak/data/ci_history.sql)",
+    ),
+) -> None:
+    """Restore CI database from SQL backup file.
+
+    Imports sessions, prompts, and memory observations from backup.
+    ChromaDB will be rebuilt automatically on next daemon startup.
+
+    This is automatically done when re-enabling the codebase-intelligence
+    feature, but you can also restore manually.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_HISTORY_BACKUP_DIR,
+        CI_HISTORY_BACKUP_FILE,
+    )
+
+    project_root = Path.cwd()
+    _check_oak_initialized(project_root)
+    _check_ci_enabled(project_root)
+
+    db_path = project_root / OAK_DIR / "ci" / "activities.db"
+    if not db_path.exists():
+        print_error("No CI database found. Start the daemon first: oak ci start")
+        raise typer.Exit(code=1)
+
+    if input_path:
+        backup_path = Path(input_path)
+    else:
+        backup_path = project_root / CI_HISTORY_BACKUP_DIR / CI_HISTORY_BACKUP_FILE
+
+    if not backup_path.exists():
+        print_error(f"Backup file not found: {backup_path}")
+        raise typer.Exit(code=1)
+
+    print_info(f"Restoring CI database from {backup_path}...")
+
+    store = ActivityStore(db_path)
+    count = store.import_from_sql(backup_path)
+    store.close()
+
+    print_success(f"Restored {count} records from {backup_path}")
+    print_info("  ChromaDB will rebuild on next daemon startup")
+    print_info("  Restart daemon to apply: oak ci restart")

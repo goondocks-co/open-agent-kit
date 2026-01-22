@@ -474,6 +474,44 @@ class ActivityStore:
         row = cursor.fetchone()
         return Session.from_row(row) if row else None
 
+    def get_or_create_session(
+        self, session_id: str, agent: str, project_root: str
+    ) -> tuple[Session, bool]:
+        """Get existing session or create new one.
+
+        Handles session resumption gracefully - if session exists, returns it.
+        If it was previously ended, reactivates it.
+
+        Args:
+            session_id: Unique session identifier.
+            agent: Agent name (claude, cursor, etc.).
+            project_root: Project root directory.
+
+        Returns:
+            Tuple of (Session, created) where created is True if new session.
+        """
+        existing = self.get_session(session_id)
+        if existing:
+            # Reactivate if previously ended
+            if existing.status == "completed":
+                with self._transaction() as conn:
+                    conn.execute(
+                        """
+                        UPDATE sessions
+                        SET status = 'active', ended_at = NULL
+                        WHERE id = ?
+                        """,
+                        (session_id,),
+                    )
+                existing.status = "active"
+                existing.ended_at = None
+                logger.debug(f"Reactivated session {session_id}")
+            return existing, False
+
+        # Create new session
+        session = self.create_session(session_id, agent, project_root)
+        return session, True
+
     def end_session(self, session_id: str, summary: str | None = None) -> None:
         """Mark session as completed.
 
@@ -740,6 +778,67 @@ class ActivityStore:
             )
 
         return len(recovered_ids)
+
+    def recover_stale_sessions(self, timeout_seconds: int = 3600) -> list[str]:
+        """Auto-end sessions that have been inactive for too long.
+
+        This handles cases where the SessionEnd hook didn't fire (crash, network
+        disconnect, user closed terminal without proper exit).
+
+        A session is considered stale if:
+        - It has activities and the most recent activity is older than timeout_seconds
+        - It has NO activities and was created more than timeout_seconds ago
+
+        Args:
+            timeout_seconds: Sessions inactive longer than this are auto-ended.
+
+        Returns:
+            List of recovered session IDs (for state synchronization).
+        """
+        import time
+
+        cutoff_epoch = time.time() - timeout_seconds
+
+        # Find active sessions with no recent activity
+        # IMPORTANT: For sessions with no activities, check created_at_epoch
+        # to avoid marking brand new sessions as stale
+        conn = self._get_connection()
+        cursor = conn.execute(
+            """
+            SELECT s.id, MAX(a.timestamp_epoch) as last_activity, s.created_at_epoch
+            FROM sessions s
+            LEFT JOIN activities a ON s.id = a.session_id
+            WHERE s.status = 'active'
+            GROUP BY s.id
+            HAVING (last_activity IS NOT NULL AND last_activity < ?)
+                OR (last_activity IS NULL AND s.created_at_epoch < ?)
+            """,
+            (cutoff_epoch, cutoff_epoch),
+        )
+        stale_sessions = [(row[0], row[1], row[2]) for row in cursor.fetchall()]
+
+        if not stale_sessions:
+            return []
+
+        recovered_ids = []
+        with self._transaction() as conn:
+            for session_id, _last_activity, _created_at in stale_sessions:
+                conn.execute(
+                    """
+                    UPDATE sessions
+                    SET status = 'completed', ended_at = ?
+                    WHERE id = ? AND status = 'active'
+                    """,
+                    (datetime.now().isoformat(), session_id),
+                )
+                recovered_ids.append(session_id)
+
+        logger.info(
+            f"Recovered {len(recovered_ids)} stale sessions "
+            f"(inactive > {timeout_seconds}s): {[s[:8] for s in recovered_ids]}"
+        )
+
+        return recovered_ids
 
     def recover_orphaned_activities(self) -> int:
         """Associate orphaned activities (NULL batch) with appropriate batches.
@@ -1308,6 +1407,133 @@ class ActivityStore:
         cursor = conn.execute("SELECT COUNT(*) FROM memory_observations WHERE embedded = FALSE")
         result = cursor.fetchone()
         return int(result[0]) if result else 0
+
+    # ==========================================================================
+    # Backup and Restore Operations
+    # ==========================================================================
+
+    def export_to_sql(self, output_path: Path, include_activities: bool = False) -> int:
+        """Export valuable tables to SQL dump file.
+
+        Exports sessions, prompt_batches, and memory_observations to a SQL file
+        that can be used to restore data after feature removal/reinstall.
+        The file is text-based and can be committed to git.
+
+        Args:
+            output_path: Path to write SQL dump file.
+            include_activities: If True, include activities table (can be large).
+
+        Returns:
+            Number of records exported.
+        """
+        logger.info(
+            f"Exporting database: include_activities={include_activities}, path={output_path}"
+        )
+
+        conn = self._get_connection()
+        total_count = 0
+
+        # Tables to export (order matters for foreign keys)
+        tables = ["sessions", "prompt_batches", "memory_observations"]
+        if include_activities:
+            tables.append("activities")
+
+        # Generate INSERT statements
+        lines: list[str] = []
+        lines.append("-- OAK Codebase Intelligence History Backup")
+        lines.append(f"-- Exported: {datetime.now().isoformat()}")
+        lines.append(f"-- Schema version: {SCHEMA_VERSION}")
+        lines.append("")
+
+        for table in tables:
+            cursor = conn.execute(f"SELECT * FROM {table}")  # noqa: S608 - trusted table names
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+
+            if rows:
+                lines.append(f"-- {table} ({len(rows)} records)")
+                for row in rows:
+                    values = []
+                    for val in row:
+                        if val is None:
+                            values.append("NULL")
+                        elif isinstance(val, (int, float)):
+                            values.append(str(val))
+                        elif isinstance(val, bool):
+                            values.append("1" if val else "0")
+                        else:
+                            # Escape single quotes for SQL
+                            escaped = str(val).replace("'", "''")
+                            values.append(f"'{escaped}'")
+
+                    cols_str = ", ".join(columns)
+                    vals_str = ", ".join(values)
+                    lines.append(f"INSERT INTO {table} ({cols_str}) VALUES ({vals_str});")
+
+                total_count += len(rows)
+                lines.append("")
+
+            logger.debug(f"Exported {len(rows)} records from {table}")
+
+        # Write to file
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("\n".join(lines), encoding="utf-8")
+
+        logger.info(f"Export complete: {total_count} records to {output_path}")
+        return total_count
+
+    def import_from_sql(self, backup_path: Path) -> int:
+        """Import data from SQL backup into existing database.
+
+        The database should already have the current schema (via _ensure_schema).
+        This method imports data only, not schema. All imported observations
+        are marked as unembedded to trigger ChromaDB rebuild.
+
+        Args:
+            backup_path: Path to SQL backup file.
+
+        Returns:
+            Number of records imported.
+        """
+        logger.info(f"Importing from backup: {backup_path}")
+
+        content = backup_path.read_text(encoding="utf-8")
+        lines = content.split("\n")
+
+        # Extract INSERT statements
+        insert_statements: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("INSERT INTO"):
+                insert_statements.append(stripped)
+
+        logger.debug(f"Found {len(insert_statements)} INSERT statements")
+
+        total_imported = 0
+        failed_count = 0
+
+        with self._transaction() as conn:
+            for stmt in insert_statements:
+                try:
+                    # For memory_observations, mark as unembedded
+                    if "INSERT INTO memory_observations" in stmt:
+                        # Replace embedded value to FALSE for rebuild
+                        # The embedded column is typically the last one
+                        stmt = stmt.replace(", 1);", ", 0);")
+                        stmt = stmt.replace(", TRUE);", ", FALSE);")
+
+                    conn.execute(stmt)
+                    total_imported += 1
+                except sqlite3.Error as e:
+                    # Log but continue - some records may conflict
+                    logger.debug(f"Skipping duplicate or invalid record: {e}")
+                    failed_count += 1
+
+        if failed_count > 0:
+            logger.warning(f"Skipped {failed_count} records during import (duplicates/conflicts)")
+
+        logger.info(f"Import complete: {total_imported} records restored from {backup_path}")
+        return total_imported
 
     def close(self) -> None:
         """Close database connection."""

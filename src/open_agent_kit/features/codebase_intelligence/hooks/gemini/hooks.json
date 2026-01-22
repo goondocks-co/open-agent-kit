@@ -14,7 +14,7 @@
         ]
       }
     ],
-    "PostToolUse": [
+    "AfterTool": [
       {
         "matcher": "*",
         "hooks": [
@@ -27,7 +27,7 @@
         ]
       }
     ],
-    "Stop": [
+    "AfterAgent": [
       {
         "matcher": "*",
         "hooks": [
@@ -36,6 +36,19 @@
             "type": "command",
             "command": "cat | jq -c '{agent: \"gemini\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/stop -H 'Content-Type: application/json' -d @-",
             "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-session-end",
+            "type": "command",
+            "command": "cat | jq -c '{agent: \"gemini\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-end -H 'Content-Type: application/json' -d @-",
+            "timeout": 15000
           }
         ]
       }

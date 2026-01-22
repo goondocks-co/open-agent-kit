@@ -871,7 +871,7 @@ tests/
 
 ## References
 
-- [Constitution](.constitution.md) - Project standards and patterns
+- [Constitution](oak/constitution.md) - Project standards and patterns
 - [RFC Workflow](rfc-workflow.md) - RFC process documentation
 - [Releasing](development/releasing.md) - Release process
 - [Python Style Guide (PEP 8)](https://pep8.org/)

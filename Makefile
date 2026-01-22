@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart
+.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart dogfood-reset
 
 # Default target
 help:
@@ -53,6 +53,9 @@ help:
 	@echo "    make ui-check      Verify UI assets are in sync (for CI)"
 	@echo "    make ui-dev        Run UI development server with hot reload"
 	@echo "    make ui-restart    Build UI and restart daemon"
+	@echo ""
+	@echo "  Dogfooding:"
+	@echo "    make dogfood-reset Reset oak environment (reinstall with all features)"
 
 # Setup targets
 venv:
@@ -199,3 +202,16 @@ ui-dev:
 # Combo target: build UI and restart daemon (for UI development workflow)
 ui-restart: ui-build ci-restart
 	@echo "UI rebuilt and daemon restarted."
+
+# Dogfooding target - reset oak environment (preserves oak/ user content)
+dogfood-reset:
+	@echo "Resetting oak dogfooding environment..."
+	-uv run oak ci stop 2>/dev/null || true
+	-uv run oak remove --force 2>/dev/null || true
+	uv sync --all-extras
+	uv run oak init --agent claude --no-interactive
+	uv run oak feature add codebase-intelligence
+	uv run oak feature add rules-management
+	uv run oak feature add strategic-planning
+	@echo ""
+	@echo "Dogfooding environment reset. Run 'make ci-dev' to start daemon with hot reload."

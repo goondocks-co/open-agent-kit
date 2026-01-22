@@ -49,7 +49,7 @@ function SessionRow({ session }: { session: SessionItem }) {
 
 export default function Dashboard() {
     const { data: status, isLoading, isError } = useStatus();
-    const { data: sessionsData, isLoading: sessionsLoading } = useSessions(PAGINATION.DASHBOARD_SESSION_LIMIT);
+    const { data: sessionsData, isLoading: sessionsLoading, isError: sessionsError } = useSessions(PAGINATION.DASHBOARD_SESSION_LIMIT);
 
     const isIndexing = status?.indexing;
     const indexStats = status?.index_stats;
@@ -78,6 +78,12 @@ export default function Dashboard() {
             {isError && (
                 <div className="p-4 rounded-md bg-destructive/10 text-destructive border border-destructive/20">
                     Failed to connect to daemon. Is it running?
+                </div>
+            )}
+
+            {!isError && sessionsError && (
+                <div className="p-4 rounded-md bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
+                    Activity tracking unavailable. Configure embedding and summarization models in Configuration to enable session tracking.
                 </div>
             )}
 
@@ -123,7 +129,12 @@ export default function Dashboard() {
                         )}
                     </CardHeader>
                     <CardContent>
-                        {sessionsLoading ? (
+                        {sessionsError ? (
+                            <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground text-sm border-2 border-dashed rounded-md">
+                                <Activity className="w-8 h-8 mb-2 opacity-50" />
+                                <span>Configure models to track sessions</span>
+                            </div>
+                        ) : sessionsLoading ? (
                             <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
                                 {FALLBACK_MESSAGES.LOADING}
                             </div>

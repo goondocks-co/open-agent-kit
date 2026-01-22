@@ -19,7 +19,7 @@ Welcome to the open-agent-kit documentation. This directory contains comprehensi
 ### Contributing
 
 - **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute
-- **[Constitution](../.constitution.md)** - Project standards and principles
+- **[Constitution](../oak/constitution.md)** - Project standards and principles
 - **[Releasing](development/releasing.md)** - How to create releases
 
 ### For AI Agents
@@ -37,7 +37,7 @@ Welcome to the open-agent-kit documentation. This directory contains comprehensi
 
 ### Reference
 
-- **[Project Constitution](../.constitution.md)** - Central reference for all standards
+- **[Project Constitution](../oak/constitution.md)** - Central reference for all standards
 - **[License](../LICENSE)** - MIT License (Internal Use)
 
 ---
@@ -221,7 +221,7 @@ If you find issues with documentation:
 
 For code-related questions:
 
-1. **Read the constitution**: [.constitution.md](../.constitution.md)
+1. **Read the constitution**: [.constitution.md](../oak/constitution.md)
 2. **Check existing code**: Look for similar patterns
 3. **Review tests**: Often show usage examples
 4. **Ask the team**: Open an issue or discussion

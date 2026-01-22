@@ -70,24 +70,15 @@ async def search_get(
     query: str = Query(..., min_length=1),
     limit: int = Query(default=20, ge=1, le=100),
     search_type: str = Query(default="all", pattern="^(all|code|memory)$"),
-    relevance_threshold: float | None = Query(
-        default=None, ge=0.0, le=1.0, description="Min similarity (0-1). Omit for model default."
-    ),
     apply_doc_type_weights: bool = Query(
         default=True, description="Apply doc_type weighting. Disable for translation searches."
     ),
 ) -> SearchResponse:
-    """Perform semantic search (GET endpoint for UI).
-
-    The relevance_threshold parameter controls the minimum similarity score for results.
-    If omitted (None), uses a model-aware default threshold from the lookup table
-    or user configuration.
-    """
+    """Perform semantic search (GET endpoint for UI)."""
     request = SearchRequest(
         query=query,
         limit=limit,
         search_type=search_type,
-        relevance_threshold=relevance_threshold,
         apply_doc_type_weights=apply_doc_type_weights,
     )
     return await search_post(request)
@@ -100,12 +91,11 @@ async def search_post(request: SearchRequest) -> SearchResponse:
 
     logger.info(f"Search request: {request.query}")
 
-    # Use engine for search (handles threshold resolution internally if None passed)
+    # Use engine for search
     result = engine.search(
         query=request.query,
         search_type=request.search_type,
         limit=request.limit,
-        relevance_threshold=request.relevance_threshold,
         apply_doc_type_weights=request.apply_doc_type_weights,
     )
 

@@ -97,9 +97,3 @@ GIT_COMMIT_MESSAGE_TEMPLATE = "docs: Add {rfc_number} - {title}"
 
 # =============================================================================
 # Template Paths
-# =============================================================================
-# Template paths are relative to the feature's templates/ directory
-
-CONSTITUTION_TEMPLATE_BASE = "base_constitution.md"
-CONSTITUTION_TEMPLATE_AGENT_INSTRUCTIONS = "agent_instructions.md"
-CONSTITUTION_TEMPLATE_DECISION_POINTS = "decision_points.yaml"

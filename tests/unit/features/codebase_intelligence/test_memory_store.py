@@ -598,21 +598,6 @@ class TestSearchCode:
 
         assert len(results) <= 5
 
-    def test_search_code_threshold_filtering(
-        self,
-        vector_store: VectorStore,
-        mock_chromadb_client: MagicMock,
-    ):
-        """Test that relevance threshold filters results."""
-        with patch("chromadb.PersistentClient", return_value=mock_chromadb_client):
-            with patch("chromadb.config.Settings"):
-                # With high threshold, should filter out low-scoring results
-                results = vector_store.search_code("test", relevance_threshold=0.9)
-
-        # Mock returns distance 0.1 and 0.2, so similarity 0.9 and 0.8
-        # With threshold 0.9, only first result should pass
-        assert len(results) <= 1
-
     def test_search_empty_query(
         self,
         vector_store: VectorStore,

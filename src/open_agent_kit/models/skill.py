@@ -9,14 +9,17 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class SkillManifest(BaseModel):
-    """Skill manifest model representing a Claude Agent Skill's metadata and content.
+    """Skill manifest model representing an Agent Skill's metadata and content.
 
-    Skills are Claude Agent's native capability system that provides domain knowledge
-    and expertise to enhance agent performance. Each skill is a SKILL.md file with
-    YAML frontmatter containing metadata and markdown body containing the skill content.
+    Skills are native capability systems that provide domain knowledge and expertise
+    to enhance agent performance. Each skill is a SKILL.md file with YAML frontmatter
+    containing metadata and markdown body containing the skill content.
+
+    Skills are supported by agents like Claude Code, Codex CLI, GitHub Copilot, and
+    Gemini CLI. The SKILL.md format is standardized across these agents.
 
     The name field must follow strict naming conventions to ensure compatibility
-    with Claude's skill system. The description provides Claude with context about
+    across skill systems. The description provides agents with context about
     when and how to use the skill.
 
     Example SKILL.md structure:
@@ -24,6 +27,7 @@ class SkillManifest(BaseModel):
         name: planning-workflow
         description: Guide strategic implementation planning with structured phases
         allowed-tools: Read, Write, Bash
+        user-invocable: true
         ---
 
         # Planning Workflow
@@ -39,6 +43,10 @@ class SkillManifest(BaseModel):
     allowed_tools: list[str] = Field(
         default_factory=list,
         description="Optional list of tool names this skill is allowed to use",
+    )
+    user_invocable: bool = Field(
+        default=True,
+        description="Whether the skill can be explicitly invoked by users (e.g., via /skills or $ mention)",
     )
     body: str = Field(default="", description="Markdown content after frontmatter (skill content)")
 
@@ -268,6 +276,11 @@ class SkillManifest(BaseModel):
         else:
             frontmatter["allowed_tools"] = []
 
+        # Parse user-invocable if present (convert hyphenated key to underscore)
+        if "user-invocable" in frontmatter:
+            frontmatter["user_invocable"] = frontmatter["user-invocable"]
+            del frontmatter["user-invocable"]
+
         return frontmatter, body
 
     def to_skill_file(self) -> str:
@@ -280,7 +293,7 @@ class SkillManifest(BaseModel):
             SKILL.md file content as string
         """
         # Build frontmatter dict (only include fields that go in YAML)
-        frontmatter_dict = {
+        frontmatter_dict: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
         }
@@ -288,6 +301,9 @@ class SkillManifest(BaseModel):
         # Add allowed-tools if present (convert list to comma-separated string)
         if self.allowed_tools:
             frontmatter_dict["allowed-tools"] = ", ".join(self.allowed_tools)
+
+        # Add user-invocable (use hyphenated key for YAML output)
+        frontmatter_dict["user-invocable"] = self.user_invocable
 
         # Add version if not default
         if self.version != "1.0.0":

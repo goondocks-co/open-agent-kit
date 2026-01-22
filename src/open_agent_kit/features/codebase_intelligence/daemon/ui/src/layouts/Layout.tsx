@@ -1,7 +1,8 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Database, FileTerminal, Settings, Sun, Moon, Laptop, Wrench } from "lucide-react";
+import { LayoutDashboard, Search, Database, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
+import { useStatus } from "@/hooks/use-status";
 
 const NavItem = ({ to, icon: Icon, label, active }: { to: string; icon: any; label: string; active: boolean }) => (
     <Link
@@ -21,6 +22,11 @@ const NavItem = ({ to, icon: Icon, label, active }: { to: string; icon: any; lab
 export function Layout() {
     const location = useLocation();
     const { setTheme, theme } = useTheme();
+    const { data: status } = useStatus();
+
+    const projectName = status?.project_root
+        ? status.project_root.split('/').pop()
+        : null;
 
     const navItems = [
         { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -35,11 +41,19 @@ export function Layout() {
         <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans">
             {/* Sidebar */}
             <aside className="w-64 border-r bg-card flex flex-col">
-                <div className="p-6 border-b flex items-center gap-2">
-                    <div className="w-8 h-8 flex items-center justify-center">
-                        <img src="/logo.png" alt="Oak CI" className="w-8 h-8 object-contain" />
+                <div className="p-6 border-b">
+                    <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 flex items-center justify-center">
+                            <img src="/logo.png" alt="Oak CI" className="w-8 h-8 object-contain" />
+                        </div>
+                        <span className="font-bold text-lg tracking-tight">Oak CI</span>
                     </div>
-                    <span className="font-bold text-lg tracking-tight">Oak CI</span>
+                    {projectName && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+                            <Folder className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate" title={status?.project_root}>{projectName}</span>
+                        </div>
+                    )}
                 </div>
 
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto">

@@ -1,7 +1,7 @@
 # Migration Playbook
 
 Use this guide whenever a change requires one-time alterations to existing user projects.
-It expands on the migration summary in `.constitution.md`.
+It expands on the migration summary in `oak/constitution.md`.
 
 ## When to Create a Migration
 

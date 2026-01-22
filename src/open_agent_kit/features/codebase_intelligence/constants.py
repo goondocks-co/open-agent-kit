@@ -109,7 +109,6 @@ CI_PORT_FILE: Final[str] = "daemon.port"
 
 DEFAULT_SEARCH_LIMIT: Final[int] = 20
 MAX_SEARCH_LIMIT: Final[int] = 100
-DEFAULT_RELEVANCE_THRESHOLD: Final[float] = 0.05
 
 DEFAULT_CONTEXT_LIMIT: Final[int] = 10
 DEFAULT_CONTEXT_MEMORY_LIMIT: Final[int] = 5
@@ -149,11 +148,21 @@ DEFAULT_INDEXING_TIMEOUT_SECONDS: Final[float] = 3600.0
 # Resiliency and Recovery
 # =============================================================================
 
-# Auto-end batches stuck in 'active' status longer than this (30 minutes)
-BATCH_ACTIVE_TIMEOUT_SECONDS: Final[int] = 1800
+# Auto-end batches stuck in 'active' status longer than this (5 minutes)
+# This is a safety net - batches should normally be closed by Stop hook or
+# the next UserPromptSubmit. A shorter timeout ensures eventual consistency.
+BATCH_ACTIVE_TIMEOUT_SECONDS: Final[int] = 300
 
 # Auto-end sessions inactive longer than this (1 hour)
 SESSION_INACTIVE_TIMEOUT_SECONDS: Final[int] = 3600
+
+# =============================================================================
+# Backup Configuration
+# =============================================================================
+
+# Backup file location (in preserved oak/ directory, committed to git)
+CI_HISTORY_BACKUP_DIR: Final[str] = "oak/data"
+CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"
 
 # =============================================================================
 # Logging

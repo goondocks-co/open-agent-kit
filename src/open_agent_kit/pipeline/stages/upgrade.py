@@ -162,6 +162,58 @@ class UpgradeStructuralRepairsStage(BaseStage):
         )
 
 
+class CleanupLegacyCommandsStage(BaseStage):
+    """Clean up legacy commands that no longer exist in feature config.
+
+    Removes oak.* command files that don't match any current valid command
+    from FEATURE_CONFIG. This cleans up commands that were removed or renamed
+    during feature updates (e.g., legacy skill-fallback commands).
+    """
+
+    name = "cleanup_legacy_commands"
+    display_name = "Cleaning up legacy commands"
+    order = 195  # Before UpgradeCommandsStage
+    applicable_flows = {FlowType.UPGRADE}
+    is_critical = False
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Run if there are legacy commands to clean up."""
+        if context.dry_run:
+            return False
+        plan_result = context.get_result("plan_upgrade", {})
+        plan = plan_result.get("plan", {})
+        return bool(plan.get("legacy_commands_cleanup"))
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Remove legacy commands for skills-capable agents."""
+        from open_agent_kit.services.upgrade_service import UpgradeService
+
+        upgrade_service = UpgradeService(context.project_root)
+        plan_result = context.get_result("plan_upgrade", {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
+
+        cleanup_items = plan.get("legacy_commands_cleanup", [])
+        removed_total = 0
+
+        for item in cleanup_items:
+            agent = item["agent"]
+            commands = item["commands"]
+            for cmd_info in commands:
+                try:
+                    upgrade_service._remove_legacy_command(agent, cmd_info["file"])
+                    removed_total += 1
+                except Exception:
+                    pass  # Best effort cleanup
+
+        if removed_total > 0:
+            return StageOutcome.success(
+                f"Removed {removed_total} legacy command(s) for skills-capable agents",
+                data={"removed_count": removed_total},
+            )
+
+        return StageOutcome.success("No legacy commands to clean up")
+
+
 class UpgradeCommandsStage(BaseStage):
     """Upgrade agent command templates."""
 
@@ -317,7 +369,7 @@ class UpgradeGitignoreStage(BaseStage):
 
 
 class UpgradeSkillsStage(BaseStage):
-    """Install and upgrade skills."""
+    """Install, upgrade, and remove obsolete skills."""
 
     name = "upgrade_skills"
     display_name = "Upgrading skills"
@@ -326,22 +378,31 @@ class UpgradeSkillsStage(BaseStage):
     is_critical = False
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are skills to install or upgrade."""
+        """Run if there are skills to install, upgrade, or remove."""
         if context.dry_run:
             return False
         plan_result = context.get_result("plan_upgrade", {})
         plan = plan_result.get("plan", {})
         skill_plan = plan.get("skills", {})
-        return bool(skill_plan.get("install") or skill_plan.get("upgrade"))
+        return bool(
+            skill_plan.get("install") or skill_plan.get("upgrade") or skill_plan.get("obsolete")
+        )
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Install and upgrade skills."""
+        """Install, upgrade, and remove obsolete skills."""
         from open_agent_kit.services.upgrade_service import UpgradeService
 
         upgrade_service = UpgradeService(context.project_root)
         plan_result = context.get_result("plan_upgrade", {})
         plan: dict[str, Any] = plan_result.get("plan", {})
         skill_plan = plan.get("skills", {})
+
+        # Process obsolete skill removals first (cleanup renamed/removed skills)
+        remove_result = process_items(
+            skill_plan.get("obsolete", []),
+            lambda info: upgrade_service._remove_obsolete_skill(info["skill"]),
+            lambda info: info["skill"],
+        )
 
         # Process skill installations
         install_result = process_items(
@@ -358,12 +419,22 @@ class UpgradeSkillsStage(BaseStage):
         )
 
         # Combine results
-        all_succeeded = install_result.succeeded + upgrade_result.succeeded
-        all_failed = install_result.failed + upgrade_result.failed
+        all_succeeded = (
+            install_result.succeeded + upgrade_result.succeeded + remove_result.succeeded
+        )
+        all_failed = install_result.failed + upgrade_result.failed + remove_result.failed
 
-        message = format_count_message("Upgraded", len(all_succeeded), len(all_failed), "skill")
+        message = format_count_message("Processed", len(all_succeeded), len(all_failed), "skill")
 
-        return StageOutcome.success(message, data={"upgraded": all_succeeded, "failed": all_failed})
+        return StageOutcome.success(
+            message,
+            data={
+                "installed": install_result.succeeded,
+                "upgraded": upgrade_result.succeeded,
+                "removed": remove_result.succeeded,
+                "failed": all_failed,
+            },
+        )
 
 
 class UpgradeHooksStage(BaseStage):
@@ -556,6 +627,7 @@ def get_upgrade_stages() -> list[BaseStage]:
         PlanUpgradeStage(),
         TriggerPreUpgradeHooksStage(),
         UpgradeStructuralRepairsStage(),
+        CleanupLegacyCommandsStage(),  # Remove commands for skills-capable agents
         UpgradeCommandsStage(),  # Upgrades outdated command templates
         # Note: Template upgrade stages removed - templates are read from package
         # Note: UpgradeAgentSettingsStage removed - handled by reconciliation

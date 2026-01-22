@@ -21,6 +21,11 @@
       {
         "command": "curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/stop -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\"}'"
       }
+    ],
+    "sessionEnd": [
+      {
+        "command": "curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-end -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\"}'"
+      }
     ]
   }
 }

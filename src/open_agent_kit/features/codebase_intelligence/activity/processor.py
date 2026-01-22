@@ -1283,6 +1283,7 @@ class ActivityProcessor:
             try:
                 from open_agent_kit.features.codebase_intelligence.constants import (
                     BATCH_ACTIVE_TIMEOUT_SECONDS,
+                    SESSION_INACTIVE_TIMEOUT_SECONDS,
                 )
 
                 # Recovery: Auto-end batches stuck in 'active' too long
@@ -1291,6 +1292,27 @@ class ActivityProcessor:
                 )
                 if stuck_count:
                     logger.info(f"Recovered {stuck_count} stuck batches")
+
+                # Recovery: Auto-end sessions inactive too long
+                recovered_session_ids = self.activity_store.recover_stale_sessions(
+                    timeout_seconds=SESSION_INACTIVE_TIMEOUT_SECONDS
+                )
+                if recovered_session_ids:
+                    logger.info(f"Recovered {len(recovered_session_ids)} stale sessions")
+                    # Generate summaries for recovered sessions (eventual consistency)
+                    # This handles cases where SessionEnd hook didn't fire
+                    for session_id in recovered_session_ids:
+                        try:
+                            summary = self.process_session_summary(session_id)
+                            if summary:
+                                logger.info(
+                                    f"Generated summary for recovered session "
+                                    f"{session_id[:8]}: {summary[:50]}..."
+                                )
+                        except (OSError, ValueError, TypeError, RuntimeError) as e:
+                            logger.warning(
+                                f"Failed to summarize recovered session {session_id[:8]}: {e}"
+                            )
 
                 # Recovery: Associate orphaned activities with batches
                 orphan_count = self.activity_store.recover_orphaned_activities()

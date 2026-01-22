@@ -360,15 +360,6 @@ class TestGetLogs:
 
         assert response.status_code == 422
 
-    def test_get_logs_file_not_found(self, client):
-        """Test retrieving logs when file doesn't exist."""
-        # Using fresh daemon state from fixture (no log file)
-        response = client.get("/api/logs")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "No log file found" in data["content"] or data["log_file"] is None
-
     def test_get_logs_includes_file_path(
         self, client, setup_state_fully_initialized, tmp_path: Path
     ):

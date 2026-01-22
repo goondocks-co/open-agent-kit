@@ -157,6 +157,33 @@ files = ["src/open_agent_kit"]
 module = "mcp.*"
 ignore_missing_imports = true
 
+# Optional codebase-intelligence feature dependencies
+# These are only installed with 'make setup-full' or 'oak init --enable-ci'
+[[tool.mypy.overrides]]
+module = [
+    "fastapi",
+    "fastapi.*",
+    "chromadb",
+    "chromadb.*",
+    "fastembed",
+    "fastembed.*",
+    "tree_sitter",
+    "tree_sitter.*",
+    "watchdog",
+    "watchdog.*",
+    "aiofiles",
+    "aiofiles.*",
+    "uvicorn",
+    "uvicorn.*",
+]
+ignore_missing_imports = true
+
+# Codebase Intelligence daemon files have type inference issues when
+# optional deps (fastapi, etc.) are not installed - relax type checking
+[[tool.mypy.overrides]]
+module = "open_agent_kit.features.codebase_intelligence.daemon.*"
+disable_error_code = ["no-any-return"]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100

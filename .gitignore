@@ -74,8 +74,6 @@ ehthumbs.db
 Thumbs.db
 
 # open-agent-kit specific
-.oak/
-oak/
 *.tar.gz
 packages/
 release-artifacts/

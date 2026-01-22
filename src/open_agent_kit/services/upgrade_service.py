@@ -55,6 +55,7 @@ class UpgradeResults(TypedDict):
     agent_settings: UpgradeCategoryResults
     migrations: UpgradeCategoryResults
     obsolete_removed: UpgradeCategoryResults
+    legacy_commands_removed: UpgradeCategoryResults
     skills: UpgradeCategoryResults
     hooks: UpgradeCategoryResults
     mcp_servers: UpgradeCategoryResults
@@ -87,11 +88,19 @@ class UpgradePlanSkillItem(TypedDict):
     feature: str
 
 
+class UpgradePlanObsoleteSkill(TypedDict):
+    """An obsolete skill to be removed."""
+
+    skill: str
+    reason: str
+
+
 class UpgradePlanSkills(TypedDict):
     """Skills upgrade plan."""
 
     install: list[UpgradePlanSkillItem]
     upgrade: list[UpgradePlanSkillItem]
+    obsolete: list[UpgradePlanObsoleteSkill]
 
 
 class UpgradePlanGitignoreItem(TypedDict):
@@ -117,6 +126,20 @@ class UpgradePlanMcpItem(TypedDict):
     feature: str
 
 
+class UpgradePlanLegacyCommandItem(TypedDict):
+    """A command file to remove for a skills-capable agent."""
+
+    file: str
+    path: Path
+
+
+class UpgradePlanLegacyCommandsCleanup(TypedDict):
+    """Legacy commands cleanup for a skills-capable agent."""
+
+    agent: str
+    commands: list[UpgradePlanLegacyCommandItem]
+
+
 class UpgradePlan(TypedDict):
     """Structure returned by plan_upgrade()."""
 
@@ -131,6 +154,7 @@ class UpgradePlan(TypedDict):
     gitignore: list[UpgradePlanGitignoreItem]
     migrations: list[UpgradePlanMigration]
     structural_repairs: list[str]
+    legacy_commands_cleanup: list[UpgradePlanLegacyCommandsCleanup]
     version_outdated: bool
     current_version: str
     package_version: str
@@ -195,12 +219,13 @@ class UpgradeService:
             "templates_customized": False,
             "obsolete_templates": [],
             "agent_settings": [],
-            "skills": {"install": [], "upgrade": []},
+            "skills": {"install": [], "upgrade": [], "obsolete": []},
             "hooks": [],
             "mcp_servers": [],
             "gitignore": [],
             "migrations": [],
             "structural_repairs": [],
+            "legacy_commands_cleanup": [],
             "version_outdated": version_outdated,
             "current_version": current_version,
             "package_version": VERSION,
@@ -208,6 +233,10 @@ class UpgradeService:
 
         # Check for structural issues (missing feature directories, old structure)
         plan["structural_repairs"] = self._get_structural_repairs()
+
+        # Plan legacy command cleanup for skills-capable agents
+        # This must run before command upgrades to remove obsolete commands
+        plan["legacy_commands_cleanup"] = self._get_legacy_commands_for_cleanup()
 
         # Plan agent command upgrades
         if commands:
@@ -270,6 +299,7 @@ class UpgradeService:
             "agent_settings": {"upgraded": [], "failed": []},
             "migrations": {"upgraded": [], "failed": []},
             "obsolete_removed": {"upgraded": [], "failed": []},
+            "legacy_commands_removed": {"upgraded": [], "failed": []},
             "skills": {"upgraded": [], "failed": []},
             "hooks": {"upgraded": [], "failed": []},
             "mcp_servers": {"upgraded": [], "failed": []},
@@ -403,6 +433,9 @@ class UpgradeService:
     def _get_upgradeable_commands(self, agent: str) -> list[UpgradePlanCommand]:
         """Get agent commands that can be upgraded.
 
+        Commands are sub-agents (specialized expertise) installed for all agents.
+        They are separate from skills (domain knowledge for workflows).
+
         Args:
             agent: Agent type name
 
@@ -475,6 +508,86 @@ class UpgradeService:
 
         return upgradeable
 
+    def _get_legacy_commands_for_cleanup(self) -> list[UpgradePlanLegacyCommandsCleanup]:
+        """Get legacy commands that should be removed during upgrade.
+
+        Removes ALL oak.* commands that don't match current valid commands
+        from FEATURE_CONFIG. This cleans up commands that were removed or
+        renamed in feature updates.
+
+        Returns:
+            List of legacy command cleanup items, one per agent with commands to remove
+        """
+        cleanup: list[UpgradePlanLegacyCommandsCleanup] = []
+        configured_agents = self.config_service.get_agents()
+
+        # Get all valid command names from current feature config
+        valid_commands: set[str] = set()
+        for feature_config in FEATURE_CONFIG.values():
+            valid_commands.update(cast(list[str], feature_config.get("commands", [])))
+
+        for agent in configured_agents:
+            # Get existing commands for this agent
+            try:
+                commands_dir = self.agent_service.get_agent_commands_dir(agent)
+                if not commands_dir.exists():
+                    continue
+            except ValueError:
+                continue
+
+            # Find oak.* command files that don't match any current valid command
+            commands_to_remove: list[UpgradePlanLegacyCommandItem] = []
+            for cmd_file in commands_dir.iterdir():
+                if cmd_file.is_file() and cmd_file.name.startswith("oak."):
+                    # Extract command name from filename (e.g., oak.create-rfc.md -> create-rfc)
+                    filename = cmd_file.name
+                    if filename.endswith(".agent.md"):
+                        command_name = filename[4:-9]  # Remove "oak." and ".agent.md"
+                    elif filename.endswith(".md"):
+                        command_name = filename[4:-3]  # Remove "oak." and ".md"
+                    else:
+                        continue
+
+                    # Mark as legacy if not in current valid commands
+                    if command_name not in valid_commands:
+                        commands_to_remove.append(
+                            {
+                                "file": cmd_file.name,
+                                "path": cmd_file,
+                            }
+                        )
+
+            if commands_to_remove:
+                cleanup.append(
+                    {
+                        "agent": agent,
+                        "commands": commands_to_remove,
+                    }
+                )
+
+        return cleanup
+
+    def _remove_legacy_command(self, agent: str, filename: str) -> bool:
+        """Remove a legacy command file for a skills-capable agent.
+
+        Args:
+            agent: Agent type name
+            filename: Command filename to remove (e.g., "oak.rfc-create.md")
+
+        Returns:
+            True if removed successfully, False otherwise
+        """
+        try:
+            commands_dir = self.agent_service.get_agent_commands_dir(agent)
+            cmd_path = commands_dir / filename
+            if cmd_path.exists():
+                cmd_path.unlink()
+                logger.debug(f"Removed legacy command {filename} for {agent}")
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to remove legacy command {filename} for {agent}: {e}")
+        return False
+
     def _get_missing_gitignore_entries(self) -> list[UpgradePlanGitignoreItem]:
         """Get gitignore entries declared by features that are missing from .gitignore.
 
@@ -534,18 +647,19 @@ class UpgradeService:
         return missing
 
     def _get_upgradeable_skills(self) -> UpgradePlanSkills:
-        """Get skills that need to be installed or upgraded.
+        """Get skills that need to be installed, upgraded, or removed.
 
         Checks all enabled features for skills that:
         - Are not installed yet (need installation)
         - Are installed but differ from package version (need upgrade)
+        - Are installed but no longer exist in any feature (obsolete, need removal)
 
         Returns:
-            UpgradePlanSkills with install and upgrade lists
+            UpgradePlanSkills with install, upgrade, and obsolete lists
         """
         from open_agent_kit.services.skill_service import SkillService
 
-        result: UpgradePlanSkills = {"install": [], "upgrade": []}
+        result: UpgradePlanSkills = {"install": [], "upgrade": [], "obsolete": []}
 
         # Check if any agent supports skills
         skill_service = SkillService(self.project_root)
@@ -561,7 +675,13 @@ class UpgradeService:
         # Get currently installed skills
         installed_skills = set(skill_service.list_installed_skills())
 
-        # Check each enabled feature for skills
+        # Build set of all valid skills from enabled features
+        all_valid_skills: set[str] = set()
+        for feature_name in enabled_features:
+            feature_skills = skill_service.get_skills_for_feature(feature_name)
+            all_valid_skills.update(feature_skills)
+
+        # Check each enabled feature for skills to install/upgrade
         for feature_name in enabled_features:
             feature_skills = skill_service.get_skills_for_feature(feature_name)
 
@@ -584,10 +704,23 @@ class UpgradeService:
                             }
                         )
 
+        # Find obsolete skills (installed but no longer in any feature)
+        for skill_name in installed_skills:
+            if skill_name not in all_valid_skills:
+                result["obsolete"].append(
+                    {
+                        "skill": skill_name,
+                        "reason": "No longer exists in any enabled feature",
+                    }
+                )
+
         return result
 
     def _skill_needs_upgrade(self, skill_service: SkillService, skill_name: str) -> bool:
         """Check if an installed skill differs from the package version.
+
+        Compares the entire skill directory, not just SKILL.md, to detect changes
+        in subdirectories like references/, scripts/, etc.
 
         Args:
             skill_service: SkillService instance
@@ -596,30 +729,57 @@ class UpgradeService:
         Returns:
             True if skill content differs from package version
         """
-        from open_agent_kit.models.skill import SkillManifest
-
-        # Get package manifest
-        package_manifest = skill_service.get_skill_manifest(skill_name)
-        if not package_manifest:
+        # Get package skill directory
+        package_skill_dir = skill_service._find_skill_dir_in_features(skill_name)
+        if not package_skill_dir:
             return False
 
-        # Get installed manifest from first agent with skills support
+        # Get installed skill directory from first agent with skills support
         agents_with_skills = skill_service._get_agents_with_skills_support()
         if not agents_with_skills:
             return False
 
         _, skills_dir, _ = agents_with_skills[0]
-        installed_skill_file = skills_dir / skill_name / "SKILL.md"
+        installed_skill_dir = skills_dir / skill_name
 
-        if not installed_skill_file.exists():
+        if not installed_skill_dir.exists():
             return False
 
-        try:
-            installed_manifest = SkillManifest.load(installed_skill_file)
-            # Compare serialized content
-            return package_manifest.to_skill_file() != installed_manifest.to_skill_file()
-        except (FileNotFoundError, ValueError):
-            return False
+        # Compare directory contents
+        return self._skill_dirs_differ(package_skill_dir, installed_skill_dir)
+
+    def _skill_dirs_differ(self, package_dir: Path, installed_dir: Path) -> bool:
+        """Check if two skill directories have different content.
+
+        Compares all files in both directories recursively.
+
+        Args:
+            package_dir: Package skill directory
+            installed_dir: Installed skill directory
+
+        Returns:
+            True if directories differ
+        """
+        # Get all files in package directory (relative paths)
+        package_files = {
+            f.relative_to(package_dir): f for f in package_dir.rglob("*") if f.is_file()
+        }
+        installed_files = {
+            f.relative_to(installed_dir): f for f in installed_dir.rglob("*") if f.is_file()
+        }
+
+        # Check if file sets differ
+        if set(package_files.keys()) != set(installed_files.keys()):
+            return True
+
+        # Compare file contents
+        for rel_path in package_files:
+            package_file = package_files[rel_path]
+            installed_file = installed_files[rel_path]
+            if self._files_differ(package_file, installed_file):
+                return True
+
+        return False
 
     def _get_upgradeable_hooks(self) -> list[UpgradePlanHookItem]:
         """Get feature hooks that need to be upgraded.
@@ -937,6 +1097,20 @@ class UpgradeService:
 
         skill_service = SkillService(self.project_root)
         result = skill_service.upgrade_skill(skill_name)
+
+        if "error" in result:
+            raise ValueError(result["error"])
+
+    def _remove_obsolete_skill(self, skill_name: str) -> None:
+        """Remove an obsolete skill that no longer exists in any feature.
+
+        Args:
+            skill_name: Name of the skill to remove
+        """
+        from open_agent_kit.services.skill_service import SkillService
+
+        skill_service = SkillService(self.project_root)
+        result = skill_service.remove_skill(skill_name)
 
         if "error" in result:
             raise ValueError(result["error"])

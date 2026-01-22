@@ -1,0 +1,130 @@
+version: 0.5.2.dev5+gcf4d87aa3.d20260122
+agents:
+- claude
+agent_capabilities:
+  claude:
+    has_background_agents: true
+    has_native_web: true
+    has_mcp: true
+    research_strategy: Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)
+    custom: {}
+rfc:
+  directory: oak/rfc
+  template: engineering
+  auto_number: true
+  number_format: sequential
+  validate_on_create: true
+issue:
+  azure_devops:
+    default_branch: main
+  github:
+    default_branch: main
+plan:
+  directory: oak/plan
+constitution:
+  directory: oak
+features:
+  enabled:
+  - rules-management
+  - codebase-intelligence
+  - strategic-planning
+skills:
+  installed:
+  - project-rules
+  - analyzing-code-change-impacts
+  - finding-related-code
+  - creating-rfcs
+  - reviewing-rfcs
+  auto_install: true
+codebase_intelligence:
+  embedding:
+    provider: ollama
+    model: bge-m3
+    base_url: http://localhost:11434
+    dimensions: 1024
+    api_key: null
+    fallback_enabled: false
+    context_tokens: 8192
+    max_chunk_chars: 6553
+  summarization:
+    enabled: true
+    provider: ollama
+    model: gpt-oss:latest
+    base_url: http://localhost:11434
+    api_key: null
+    timeout: 180.0
+    context_tokens: 131072
+  index_on_startup: true
+  watch_files: true
+  exclude_patterns:
+  - .git
+  - .git/**
+  - .oak
+  - .oak/**
+  - .agent/skills
+  - .claude/commands
+  - .claude/settings.local.json
+  - .claude/skills
+  - .codex/prompts
+  - .codex/skills
+  - .cursor/commands
+  - .cursor/mcp.json
+  - .cursor/settings.json
+  - .gemini/commands
+  - .gemini/settings.json
+  - .github/agents
+  - .github/skills
+  - .mcp.json
+  - .vscode/mcp.json
+  - .vscode/settings.json
+  - .windsurf/commands
+  - .windsurf/settings.json
+  - node_modules
+  - node_modules/**
+  - __pycache__
+  - __pycache__/**
+  - .mypy_cache
+  - .mypy_cache/**
+  - .pytest_cache
+  - .pytest_cache/**
+  - .ruff_cache
+  - .ruff_cache/**
+  - htmlcov
+  - htmlcov/**
+  - .venv
+  - .venv/**
+  - venv
+  - venv/**
+  - .env
+  - .env.*
+  - '*.env'
+  - '*.pem'
+  - '*.key'
+  - '*.crt'
+  - '*.p12'
+  - '*.pfx'
+  - '*.jks'
+  - '*.keystore'
+  - '*.pyc'
+  - '*.pyo'
+  - '*.min.js'
+  - '*.min.css'
+  - '*.map'
+  - '*.lock'
+  - package-lock.json
+  - yarn.lock
+  - pnpm-lock.yaml
+  - dist/**
+  - build/**
+  - .next/**
+  - coverage/**
+  - '*.egg-info/**'
+  - translations/**
+  - locales/**
+  - locale/**
+  - i18n/**
+  - l10n/**
+  - '*.po'
+  - '*.pot'
+  - '*.mo'
+  log_level: DEBUG

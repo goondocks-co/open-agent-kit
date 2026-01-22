@@ -599,7 +599,9 @@ class CodebaseIndexer:
             relative_path = filepath
 
         # Remove existing chunks for this file
-        self.vector_store.delete_code_by_filepath(str(relative_path))
+        deleted_count = self.vector_store.delete_code_by_filepath(str(relative_path))
+        if deleted_count > 0:
+            logger.debug(f"Deleted {deleted_count} existing chunks for {relative_path}")
 
         # Re-index
         return self.index_file(filepath)

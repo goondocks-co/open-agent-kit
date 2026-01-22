@@ -42,7 +42,10 @@ def client():
 def mock_activity_store():
     """Mock activity store."""
     mock = MagicMock()
-    mock.create_session.return_value = MagicMock(id="session-123")
+    mock_session = MagicMock(id="session-123")
+    mock.create_session.return_value = mock_session
+    # get_or_create_session returns (session, created) tuple
+    mock.get_or_create_session.return_value = (mock_session, True)
     mock.create_prompt_batch.return_value = MagicMock(id=1)
     mock.end_prompt_batch.return_value = None
     mock.end_session.return_value = None
@@ -189,7 +192,7 @@ class TestSessionStartHook:
         assert data["status"] == "ok"
 
     def test_session_start_creates_activity_session(self, client, setup_state_with_mocks):
-        """Test that activity store is called to create session."""
+        """Test that activity store is called to create or resume session."""
         session_id = str(uuid4())
         payload = {
             "agent": "claude",
@@ -198,8 +201,8 @@ class TestSessionStartHook:
         response = client.post("/api/oak/ci/session-start", json=payload)
 
         assert response.status_code == 200
-        # Verify activity store was called
-        setup_state_with_mocks.activity_store.create_session.assert_called_once()
+        # Verify activity store was called (uses get_or_create_session for resume support)
+        setup_state_with_mocks.activity_store.get_or_create_session.assert_called_once()
 
     def test_session_start_includes_index_stats(self, client, setup_state_with_mocks):
         """Test that index stats are included in response."""

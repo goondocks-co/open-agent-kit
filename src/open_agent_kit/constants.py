@@ -5,7 +5,6 @@ This module contains:
 - Feature configuration (SUPPORTED_FEATURES, FEATURE_CONFIG, etc.)
 - Issue provider and IDE configuration derived from enums
 - Validation patterns and heuristics
-- Decision context keys for constitution generation
 - Upgrade configuration
 - Default config template
 
@@ -118,9 +117,7 @@ VALIDATION_STOPWORDS = frozenset(
     }
 )
 
-# Constitution sections
-# Note: "Metadata" is NOT in this list because it's parsed separately
-# and validated via _validate_metadata() in validation_service.py
+# Constitution sections used for parsing
 CONSTITUTION_REQUIRED_SECTIONS = [
     "Principles",
     "Architecture",
@@ -130,62 +127,9 @@ CONSTITUTION_REQUIRED_SECTIONS = [
     "Governance",
 ]
 
-# Constitution metadata
-CONSTITUTION_METADATA_PROJECT_NAME = "project_name"
-CONSTITUTION_METADATA_VERSION = "version"
-CONSTITUTION_METADATA_RATIFICATION_DATE = "ratification_date"
-CONSTITUTION_METADATA_LAST_AMENDMENT = "last_amendment"
-
-CONSTITUTION_REQUIRED_METADATA = [
-    CONSTITUTION_METADATA_PROJECT_NAME,
-    CONSTITUTION_METADATA_VERSION,
-    CONSTITUTION_METADATA_RATIFICATION_DATE,
-]
-
-CONSTITUTION_METADATA_OPTIONAL = [
-    CONSTITUTION_METADATA_LAST_AMENDMENT,
-]
-
-# Regex patterns
-CONSTITUTION_VERSION_PATTERN = r"^\d+\.\d+\.\d+$"
-CONSTITUTION_DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+# RFC regex patterns
 RFC_NUMBER_PATTERN = r"^(?:RFC-)?(\d{3,4}|20\d{2}-\d{3})$"
 RFC_FILENAME_PATTERN = r"^RFC-(\d{3,4}|20\d{2}-\d{3})-(.+)\.md$"
-
-# Quality heuristics
-CONSTITUTION_NORMATIVE_SECTIONS = [
-    "Principles",
-    "Architecture",
-    "Code Standards",
-    "Testing",
-    "Governance",
-]
-
-CONSTITUTION_NORMATIVE_KEYWORDS = [
-    "MUST",
-    "MUST NOT",
-    "SHALL",
-    "SHALL NOT",
-    "MAY",
-]
-
-CONSTITUTION_VAGUE_POLICY_PATTERNS = [
-    r"\btry to\b",
-    r"\bstrive\b",
-    r"\bendeavor\b",
-    r"\baspire\b",
-    r"\bideally\b",
-    r"\bencourage\b",
-]
-
-NON_DECLARATIVE_PATTERNS = [
-    r"\bshould\b",
-    r"\bcould\b",
-    r"\bmight\b",
-    r"\bmaybe\b",
-    r"\bperhaps\b",
-    r"\bpossibly\b",
-]
 
 # RFC quality
 RFC_PLACEHOLDER_KEYWORDS = [
@@ -223,58 +167,6 @@ REQUIRED_RFC_SECTIONS = [
     "## Unresolved Questions",
 ]
 
-# Constitution tokens
-CONSTITUTION_TOKENS = [
-    "{{PROJECT_NAME}}",
-    "{{PROJECT_DESCRIPTION}}",
-    "{{VERSION}}",
-    "{{DATE}}",
-    "{{AUTHOR}}",
-    "{{TECH_STACK}}",
-]
-
-# =============================================================================
-# Constitution Decision Context
-# =============================================================================
-
-DECISION_TESTING_STRATEGY = "testing_strategy"
-DECISION_COVERAGE_TARGET = "coverage_target"
-DECISION_COVERAGE_STRICT = "coverage_strict"
-DECISION_HAS_E2E_INFRASTRUCTURE = "has_e2e_infrastructure"
-DECISION_E2E_PLANNED = "e2e_planned"
-DECISION_CRITICAL_INTEGRATION_POINTS = "critical_integration_points"
-DECISION_TDD_REQUIRED = "tdd_required"
-DECISION_TESTING_RATIONALE = "testing_rationale"
-DECISION_CODE_REVIEW_POLICY = "code_review_policy"
-DECISION_NUM_REVIEWERS = "num_reviewers"
-DECISION_REVIEWER_QUALIFICATIONS = "reviewer_qualifications"
-DECISION_HOTFIX_DEFINITION = "hotfix_definition"
-DECISION_DOCUMENTATION_LEVEL = "documentation_level"
-DECISION_ADR_REQUIRED = "adr_required"
-DECISION_DOCSTRING_STYLE = "docstring_style"
-DECISION_CI_ENFORCEMENT = "ci_enforcement"
-DECISION_REQUIRED_CHECKS = "required_checks"
-DECISION_CI_PLATFORM = "ci_platform"
-DECISION_ARCHITECTURAL_PATTERN = "architectural_pattern"
-DECISION_ERROR_HANDLING_PATTERN = "error_handling_pattern"
-DECISION_DEPENDENCY_INJECTION = "dependency_injection"
-DECISION_DOMAIN_EVENTS = "domain_events"
-DECISION_FEATURE_ORGANIZATION = "feature_organization"
-DECISION_LAYER_ORGANIZATION = "layer_organization"
-DECISION_CODING_PRINCIPLES = "coding_principles"
-DECISION_ARCHITECTURAL_RATIONALE = "architectural_rationale"
-
-# Decision defaults
-DECISION_DEFAULT_TESTING_STRATEGY = "balanced"
-DECISION_DEFAULT_CODE_REVIEW_POLICY = "standard"
-DECISION_DEFAULT_NUM_REVIEWERS = 1
-DECISION_DEFAULT_DOCUMENTATION_LEVEL = "standard"
-DECISION_DEFAULT_DOCSTRING_STYLE = "google"
-DECISION_DEFAULT_CI_ENFORCEMENT = "standard"
-DECISION_DEFAULT_TESTING_RATIONALE = (
-    "Balanced approach to testing ensures reliability while maintaining velocity"
-)
-
 # =============================================================================
 # Feature Configuration
 # =============================================================================
@@ -296,11 +188,7 @@ FEATURE_CONFIG = {
         "description": "Semantic search and persistent memory for AI assistants. Provides context-aware code retrieval and cross-session knowledge management via MCP tools.",
         "default_enabled": True,
         "dependencies": ["rules-management"],
-        "commands": [
-            "discover-code-relationships",
-            "find-related-code",
-            "analyze-code-change-impacts",
-        ],
+        "commands": ["backend-python-expert"],  # Sub-agent command
         "pip_extras": ["codebase-intelligence"],
     },
     "rules-management": {
@@ -308,14 +196,14 @@ FEATURE_CONFIG = {
         "description": "Create, validate, and maintain AI agent rules files (constitution.md)",
         "default_enabled": True,
         "dependencies": [],
-        "commands": ["add-project-rule", "remove-project-rule"],
+        "commands": [],  # Skills only - no sub-agent commands
     },
     "strategic-planning": {
         "name": "Strategic Planning",
         "description": "Unified SDD workflow supporting RFCs and ADRs for formal planning documentation",
         "default_enabled": False,
         "dependencies": ["rules-management"],
-        "commands": ["create-rfc", "review-rfc"],
+        "commands": [],  # Skills only - no sub-agent commands
     },
 }
 
@@ -331,16 +219,8 @@ FEATURE_DISPLAY_NAMES = {
 
 UPGRADE_TEMPLATE_CATEGORIES = ["rules-management", "strategic-planning", "commands"]
 UPGRADE_COMMAND_NAMES = [
-    # Rules management commands
-    "add-project-rule",
-    "remove-project-rule",
-    # Strategic planning commands
-    "create-rfc",
-    "review-rfc",
-    # Codebase intelligence commands
-    "discover-code-relationships",
-    "find-related-code",
-    "analyze-code-change-impacts",
+    # Sub-agent commands (codebase-intelligence feature)
+    "backend-python-expert",
 ]
 
 # =============================================================================

@@ -10,7 +10,6 @@ from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_EMBEDDING_BATCH_SIZE,
-    DEFAULT_RELEVANCE_THRESHOLD,
 )
 from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingProvider
 
@@ -689,14 +688,12 @@ class VectorStore:
         self,
         query: str,
         limit: int = 20,
-        relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD,
     ) -> list[dict]:
         """Search code chunks.
 
         Args:
             query: Search query.
             limit: Maximum results to return.
-            relevance_threshold: Minimum relevance score.
 
         Returns:
             List of search results with metadata.
@@ -718,9 +715,6 @@ class VectorStore:
             distance = results["distances"][0][i] if results["distances"] else 0
             relevance = 1 - distance  # Cosine distance to similarity
 
-            if relevance < relevance_threshold:
-                continue
-
             metadata = results["metadatas"][0][i] if results["metadatas"] else {}
             search_results.append(
                 {
@@ -737,7 +731,6 @@ class VectorStore:
         self,
         query: str,
         limit: int = 10,
-        relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD,
         memory_types: list[str] | None = None,
     ) -> list[dict]:
         """Search memory observations.
@@ -745,7 +738,6 @@ class VectorStore:
         Args:
             query: Search query.
             limit: Maximum results to return.
-            relevance_threshold: Minimum relevance score.
             memory_types: Filter by memory types.
 
         Returns:
@@ -772,9 +764,6 @@ class VectorStore:
         for i, doc_id in enumerate(results["ids"][0]):
             distance = results["distances"][0][i] if results["distances"] else 0
             relevance = 1 - distance
-
-            if relevance < relevance_threshold:
-                continue
 
             metadata = results["metadatas"][0][i] if results["metadatas"] else {}
             # Parse tags from comma-separated string back to list

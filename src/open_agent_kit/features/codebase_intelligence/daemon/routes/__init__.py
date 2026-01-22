@@ -8,11 +8,15 @@ This package contains the FastAPI routers split by domain:
 - mcp: MCP tool endpoints
 - config: Configuration management endpoints
 - activity: SQLite activity browsing endpoints
+- backup: Database backup and restore endpoints
 - ui: Web dashboard
 """
 
 from open_agent_kit.features.codebase_intelligence.daemon.routes.activity import (
     router as activity_router,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.routes.backup import (
+    router as backup_router,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.config import (
     router as config_router,
@@ -30,6 +34,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.ui import route
 
 __all__ = [
     "activity_router",
+    "backup_router",
     "health_router",
     "search_router",
     "index_router",

@@ -73,6 +73,7 @@ class ReconcileSkillsStage(BaseStage):
     This stage ensures reality matches desired state:
     - All skills-capable agents have skills for all configured features
     - Missing skills are created, existing skills are preserved
+    - Obsolete skills (no longer in any feature) are removed
 
     This is idempotent - running multiple times has no additional effect.
     """
@@ -97,17 +98,23 @@ class ReconcileSkillsStage(BaseStage):
         if not skill_service._has_skills_capable_agent():
             return StageOutcome.skipped("No skills-capable agents configured")
 
+        # First, remove obsolete skills (skills no longer in any feature)
+        obsolete_removed = skill_service.remove_obsolete_skills()
+        skills_removed = obsolete_removed.get("skills_removed", [])
+
         # Refresh skills - ensures all skills-capable agents have all skills
         # This is idempotent - only creates missing skills
         result = skill_service.refresh_skills()
         skills_refreshed = result.get("skills_refreshed", [])
         installed_skills = skill_service.list_installed_skills()
 
-        if skills_refreshed:
+        if skills_refreshed or skills_removed:
             return StageOutcome.success(
-                f"Reconciled skills ({len(skills_refreshed)} added, {len(installed_skills)} total)",
+                f"Reconciled skills ({len(skills_refreshed)} added, "
+                f"{len(skills_removed)} removed, {len(installed_skills)} total)",
                 data={
                     "skills_added": skills_refreshed,
+                    "skills_removed": skills_removed,
                     "total_skills": len(installed_skills),
                     "agents": result.get("agents", []),
                 },
@@ -117,6 +124,7 @@ class ReconcileSkillsStage(BaseStage):
                 f"Skills up to date ({len(installed_skills)} installed)",
                 data={
                     "skills_added": [],
+                    "skills_removed": [],
                     "total_skills": len(installed_skills),
                     "agents": [],
                 },

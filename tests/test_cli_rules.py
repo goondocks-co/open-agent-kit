@@ -1,4 +1,7 @@
-"""Tests for rules CLI commands (formerly rules)."""
+"""Tests for rules CLI commands.
+
+Tests for the utility commands: analyze, sync-agents, detect-existing.
+"""
 
 import json
 from pathlib import Path
@@ -12,11 +15,67 @@ from open_agent_kit.config.paths import CONSTITUTION_FILENAME
 # Default directory for test fixtures (matching config default)
 CONSTITUTION_DIR = "oak"
 
+# Sample constitution content for testing
+SAMPLE_CONSTITUTION = """# Test Project Engineering Constitution
+
+## Metadata
+
+- **Project:** Test Project
+- **Version:** 1.0.0
+- **Status:** Ratified
+- **Ratification Date:** 2025-01-01
+- **Last Amendment:** N/A
+- **Author:** Test Author
+
+---
+
+## Principles
+
+All code MUST pass automated checks.
+
+## Architecture
+
+Components MUST be loosely coupled.
+
+## Code Standards
+
+Follow PEP 8 guidelines.
+
+## Testing
+
+All new code MUST have tests.
+
+## Documentation
+
+Code SHOULD be self-documenting.
+
+## Governance
+
+All changes MUST be reviewed.
+"""
+
 
 @pytest.fixture
 def cli_runner() -> CliRunner:
     """Create CLI test runner."""
     return CliRunner()
+
+
+@pytest.fixture
+def constitution_file(initialized_project: Path) -> Path:
+    """Create a sample constitution file.
+
+    Args:
+        initialized_project: Initialized project directory
+
+    Returns:
+        Path to created constitution file
+    """
+    constitution_dir = initialized_project / CONSTITUTION_DIR
+    constitution_dir.mkdir(parents=True, exist_ok=True)
+    constitution_path = constitution_dir / CONSTITUTION_FILENAME
+    constitution_path.write_text(SAMPLE_CONSTITUTION, encoding="utf-8")
+    return constitution_path
 
 
 @pytest.fixture
@@ -35,402 +94,171 @@ def initialized_project_with_agent(temp_project_dir: Path) -> Path:
     return temp_project_dir
 
 
-def test_rules_create_file_basic(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test creating rules file with basic parameters."""
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "create-file",
-            "--project-name",
-            "Test Project",
-            "--author",
-            "Test Author",
-        ],
-    )
+@pytest.fixture
+def constitution_file_with_agent(initialized_project_with_agent: Path) -> Path:
+    """Create a sample constitution file in an agent-initialized project.
+
+    Args:
+        initialized_project_with_agent: Initialized project directory with agent
+
+    Returns:
+        Path to created constitution file
+    """
+    constitution_dir = initialized_project_with_agent / CONSTITUTION_DIR
+    constitution_dir.mkdir(parents=True, exist_ok=True)
+    constitution_path = constitution_dir / CONSTITUTION_FILENAME
+    constitution_path.write_text(SAMPLE_CONSTITUTION, encoding="utf-8")
+    return constitution_path
+
+
+# =============================================================================
+# analyze command tests
+# =============================================================================
+
+
+def test_rules_analyze_greenfield(cli_runner: CliRunner, initialized_project: Path) -> None:
+    """Test analyze command for greenfield project."""
+    result = cli_runner.invoke(app, ["rules", "analyze"])
     assert result.exit_code == 0
-    rules_path = initialized_project / CONSTITUTION_DIR / CONSTITUTION_FILENAME
-    assert rules_path.exists()
-    # Normalize paths for Windows comparison (resolves short paths)
-    expected_path = str(rules_path.resolve())
-    assert expected_path in result.stdout or str(rules_path) in result.stdout
+    assert "greenfield" in result.stdout.lower()
 
 
-def test_rules_create_file_with_optional_fields(
-    cli_runner: CliRunner, initialized_project: Path
-) -> None:
-    """Test creating rules with optional fields."""
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "create-file",
-            "--project-name",
-            "Test Project",
-            "--author",
-            "Author",
-            "--tech-stack",
-            "Python, FastAPI",
-            "--description",
-            "Test description",
-        ],
-    )
-    assert result.exit_code == 0
-    rules_path = initialized_project / CONSTITUTION_DIR / CONSTITUTION_FILENAME
-    assert rules_path.exists()
-    content = rules_path.read_text(encoding="utf-8")
-    assert "Python, FastAPI" in content
-    assert "Test description" in content
-
-
-def test_rules_create_file_already_exists(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test that creating rules when it exists fails."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(
-        app, ["rules", "create-file", "--project-name", "Test2", "--author", "Author2"]
-    )
-    assert result.exit_code != 0
-    assert "already exists" in result.stdout.lower()
-
-
-def test_rules_get_content(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test getting rules content."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(app, ["rules", "get-content"])
-    assert result.exit_code == 0
-    assert "# Test Engineering Constitution" in result.stdout
-    assert "## Metadata" in result.stdout
-    assert "## Principles" in result.stdout
-
-
-def test_rules_get_content_not_exists(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test getting content when rules doesn't exist."""
-    result = cli_runner.invoke(app, ["rules", "get-content"])
-    assert result.exit_code != 0
-    assert "not found" in result.stdout.lower()
-
-
-def test_rules_validate_valid(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test validating rules command works."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(app, ["rules", "validate"])
-    assert "issues" in result.stdout.lower() or "valid" in result.stdout.lower()
-
-
-def test_rules_validate_json_output(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test validation with JSON output."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(app, ["rules", "validate", "--json"])
+def test_rules_analyze_json_output(cli_runner: CliRunner, initialized_project: Path) -> None:
+    """Test analyze command with JSON output."""
+    result = cli_runner.invoke(app, ["rules", "analyze", "--json"])
     assert result.exit_code == 0
     output = json.loads(result.stdout)
-    assert "is_valid" in output
-    assert "issues" in output
-    assert isinstance(output["is_valid"], bool)
-    assert isinstance(output["issues"], list)
+    assert "classification" in output
+    assert "oak_installed" in output
+    assert "test_infrastructure" in output
+    assert "ci_cd" in output
 
 
-def test_rules_validate_not_exists(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test validating non-existent rules."""
-    result = cli_runner.invoke(app, ["rules", "validate"])
-    assert result.exit_code != 0
-    assert "not found" in result.stdout.lower()
+def test_rules_analyze_with_tests(cli_runner: CliRunner, initialized_project: Path) -> None:
+    """Test analyze command detects test infrastructure."""
+    # Add tests directory
+    (initialized_project / "tests").mkdir()
+    (initialized_project / "tests" / "test_example.py").write_text("# test file")
 
-
-def test_rules_get_version(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test getting rules version."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(app, ["rules", "get-version"])
+    result = cli_runner.invoke(app, ["rules", "analyze", "--json"])
     assert result.exit_code == 0
-    assert "1.0.0" in result.stdout
+    output = json.loads(result.stdout)
+    assert output["test_infrastructure"]["found"] is True
 
 
-def test_rules_get_version_not_exists(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test getting version when rules doesn't exist."""
-    result = cli_runner.invoke(app, ["rules", "get-version"])
-    assert result.exit_code != 0
+def test_rules_analyze_with_ci(cli_runner: CliRunner, initialized_project: Path) -> None:
+    """Test analyze command detects CI/CD workflows."""
+    # Add GitHub Actions workflow
+    (initialized_project / ".github" / "workflows").mkdir(parents=True)
+    (initialized_project / ".github" / "workflows" / "ci.yml").write_text("name: CI")
 
-
-def test_rules_add_amendment_minor(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test adding a minor amendment."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Add security requirements",
-            "--rationale",
-            "Security audit found gaps",
-            "--type",
-            "minor",
-            "--author",
-            "Security Team",
-        ],
-    )
+    result = cli_runner.invoke(app, ["rules", "analyze", "--json"])
     assert result.exit_code == 0
-    assert "1.1.0" in result.stdout
+    output = json.loads(result.stdout)
+    assert output["ci_cd"]["found"] is True
 
 
-def test_rules_add_amendment_with_optional_fields(
+def test_rules_analyze_with_constitution(
+    cli_runner: CliRunner, initialized_project: Path, constitution_file: Path
+) -> None:
+    """Test analyze command reports constitution status."""
+    result = cli_runner.invoke(app, ["rules", "analyze", "--json"])
+    assert result.exit_code == 0
+    output = json.loads(result.stdout)
+    assert output["has_constitution"] is True
+
+
+# =============================================================================
+# detect-existing command tests
+# =============================================================================
+
+
+def test_rules_detect_existing_no_agents(cli_runner: CliRunner, initialized_project: Path) -> None:
+    """Test detect-existing when no agents are detected."""
+    result = cli_runner.invoke(app, ["rules", "detect-existing"])
+    assert result.exit_code == 0
+
+
+def test_rules_detect_existing_json_output(
     cli_runner: CliRunner, initialized_project: Path
 ) -> None:
-    """Test adding amendment with optional fields."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Add testing requirements",
-            "--rationale",
-            "Need better coverage",
-            "--type",
-            "minor",
-            "--author",
-            "Tech Lead",
-            "--section",
-            "Testing",
-            "--impact",
-            "Teams must write more tests",
-        ],
-    )
+    """Test detect-existing with JSON output."""
+    result = cli_runner.invoke(app, ["rules", "detect-existing", "--json"])
     assert result.exit_code == 0
-    rules_path = initialized_project / CONSTITUTION_DIR / CONSTITUTION_FILENAME
-    content = rules_path.read_text(encoding="utf-8")
-    assert "Add testing requirements" in content
-    assert "Testing" in content
-    assert "Teams must write more tests" in content
+    output = json.loads(result.stdout)
+    assert isinstance(output, dict)
 
 
-def test_rules_add_amendment_major(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test adding a major amendment."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Remove requirement",
-            "--rationale",
-            "No longer needed",
-            "--type",
-            "major",
-            "--author",
-            "Lead",
-        ],
-    )
+def test_rules_detect_existing_with_claude(
+    cli_runner: CliRunner, initialized_project_with_agent: Path
+) -> None:
+    """Test detect-existing detects claude agent files."""
+    result = cli_runner.invoke(app, ["rules", "detect-existing", "--json"])
     assert result.exit_code == 0
-    assert "2.0.0" in result.stdout
+    output = json.loads(result.stdout)
+    assert "claude" in output
 
 
-def test_rules_add_amendment_patch(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test adding a patch amendment."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Clarify wording",
-            "--rationale",
-            "Ambiguous",
-            "--type",
-            "patch",
-            "--author",
-            "Editor",
-        ],
-    )
-    assert result.exit_code == 0
-    assert "1.0.1" in result.stdout
-
-
-def test_rules_add_amendment_invalid_type(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test adding amendment with invalid type fails."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Test",
-            "--rationale",
-            "Test",
-            "--type",
-            "invalid",
-            "--author",
-            "Author",
-        ],
-    )
-    assert result.exit_code != 0
-    assert "invalid" in result.stdout.lower()
-
-
-def test_rules_add_amendment_not_exists(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test adding amendment when rules doesn't exist."""
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Test",
-            "--rationale",
-            "Test",
-            "--type",
-            "minor",
-            "--author",
-            "Author",
-        ],
-    )
-    assert result.exit_code != 0
-    assert "not found" in result.stdout.lower()
-
-
-def test_rules_list_agent_files_json(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test listing agent files with JSON output."""
+def test_rules_detect_existing_human_readable(
+    cli_runner: CliRunner, initialized_project: Path
+) -> None:
+    """Test detect-existing human-readable output."""
+    # Create .claude directory
     (initialized_project / ".claude").mkdir()
-    (initialized_project / ".github").mkdir()
-    result = cli_runner.invoke(app, ["rules", "list-agent-files", "--json"])
+
+    result = cli_runner.invoke(app, ["rules", "detect-existing"])
     assert result.exit_code == 0
-    output = json.loads(result.stdout)
-    assert isinstance(output, dict)
-    assert "claude" in output
-    assert "copilot" in output
+    assert "claude" in result.stdout.lower() or "checking" in result.stdout.lower()
 
 
-def test_rules_list_agent_files_no_agents(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test listing agent files when no agents detected."""
-    result = cli_runner.invoke(app, ["rules", "list-agent-files", "--json"])
-    assert result.exit_code == 0
-    output = json.loads(result.stdout)
-    assert isinstance(output, dict)
-    assert len(output) == 0
+# =============================================================================
+# sync-agents command tests
+# =============================================================================
 
 
-def test_rules_generate_agent_files(
-    cli_runner: CliRunner, initialized_project_with_agent: Path
-) -> None:
-    """Test generating agent instruction files."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(app, ["rules", "generate-agent-files"])
-    assert result.exit_code == 0
-    assert "claude" in result.stdout.lower()
-    agent_file = initialized_project_with_agent / "CLAUDE.md"
-    assert agent_file.exists()
-
-
-def test_rules_generate_agent_files_json_output(
-    cli_runner: CliRunner, initialized_project_with_agent: Path
-) -> None:
-    """Test generating agent files with JSON output."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    result = cli_runner.invoke(app, ["rules", "generate-agent-files", "--json"])
-    assert result.exit_code == 0
-    output = json.loads(result.stdout)
-    assert isinstance(output, dict)
-    assert "claude" in output
-
-
-def test_rules_generate_agent_files_not_exists(
+def test_rules_sync_agents_no_constitution(
     cli_runner: CliRunner, initialized_project: Path
 ) -> None:
-    """Test generating agent files when rules doesn't exist."""
-    result = cli_runner.invoke(app, ["rules", "generate-agent-files"])
+    """Test sync-agents fails when no constitution exists."""
+    result = cli_runner.invoke(app, ["rules", "sync-agents"])
     assert result.exit_code != 0
-    assert "not found" in result.stdout.lower()
+    assert "no constitution" in result.stdout.lower()
 
 
-def test_rules_update_agent_files(
-    cli_runner: CliRunner, initialized_project_with_agent: Path
+def test_rules_sync_agents_dry_run(
+    cli_runner: CliRunner, constitution_file_with_agent: Path
 ) -> None:
-    """Test updating agent instruction files."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    cli_runner.invoke(app, ["rules", "generate-agent-files"])
-    cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Test",
-            "--rationale",
-            "Test",
-            "--type",
-            "minor",
-            "--author",
-            "Author",
-        ],
-    )
-    result = cli_runner.invoke(app, ["rules", "update-agent-files"])
+    """Test sync-agents dry run mode."""
+    result = cli_runner.invoke(app, ["rules", "sync-agents", "--dry-run"])
     assert result.exit_code == 0
-    assert "claude" in result.stdout.lower()
-    agent_file = initialized_project_with_agent / "CLAUDE.md"
-    assert agent_file.exists()
-    content = agent_file.read_text(encoding="utf-8")
-    # Agent file content references the constitution.md file
-    assert "constitution" in content.lower()
-    cli_runner.invoke(app, ["rules", "generate-agent-files"])
-    content = agent_file.read_text(encoding="utf-8")
-    assert "1.1.0" in content
+    assert "dry run" in result.stdout.lower()
 
 
-def test_rules_update_agent_files_json_output(
-    cli_runner: CliRunner, initialized_project_with_agent: Path
+def test_rules_sync_agents_dry_run_json(
+    cli_runner: CliRunner, constitution_file_with_agent: Path
 ) -> None:
-    """Test updating agent files with JSON output."""
-    cli_runner.invoke(app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"])
-    cli_runner.invoke(app, ["rules", "generate-agent-files"])
-    result = cli_runner.invoke(app, ["rules", "update-agent-files", "--json"])
+    """Test sync-agents dry run with JSON output."""
+    result = cli_runner.invoke(app, ["rules", "sync-agents", "--dry-run", "--json"])
     assert result.exit_code == 0
     output = json.loads(result.stdout)
     assert isinstance(output, dict)
-    assert "claude" in output or "skipped" in output
 
 
-def test_rules_update_agent_files_not_exists(
-    cli_runner: CliRunner, initialized_project: Path
+def test_rules_sync_agents_execution(
+    cli_runner: CliRunner, constitution_file_with_agent: Path
 ) -> None:
-    """Test updating agent files when rules doesn't exist."""
-    result = cli_runner.invoke(app, ["rules", "update-agent-files"])
-    assert result.exit_code != 0
-    assert "not found" in result.stdout.lower()
+    """Test sync-agents actually syncs agent files."""
+    result = cli_runner.invoke(app, ["rules", "sync-agents"])
+    assert result.exit_code == 0
 
 
-def test_rules_commands_work_in_sequence(cli_runner: CliRunner, initialized_project: Path) -> None:
-    """Test that rules commands work correctly in sequence."""
-    result = cli_runner.invoke(
-        app, ["rules", "create-file", "--project-name", "Test", "--author", "Author"]
-    )
+def test_rules_sync_agents_json_output(
+    cli_runner: CliRunner, constitution_file_with_agent: Path
+) -> None:
+    """Test sync-agents with JSON output."""
+    result = cli_runner.invoke(app, ["rules", "sync-agents", "--json"])
     assert result.exit_code == 0
-    result = cli_runner.invoke(app, ["rules", "get-version"])
-    assert result.exit_code == 0
-    assert "1.0.0" in result.stdout
-    result = cli_runner.invoke(app, ["rules", "validate"])
-    assert "issues" in result.stdout.lower() or "valid" in result.stdout.lower()
-    result = cli_runner.invoke(
-        app,
-        [
-            "rules",
-            "add-amendment",
-            "--summary",
-            "Test",
-            "--rationale",
-            "Test",
-            "--type",
-            "minor",
-            "--author",
-            "Author",
-        ],
-    )
-    assert result.exit_code == 0
-    result = cli_runner.invoke(app, ["rules", "get-version"])
-    assert result.exit_code == 0
-    assert "1.1.0" in result.stdout
-    result = cli_runner.invoke(app, ["rules", "get-content"])
-    assert result.exit_code == 0
-    assert "Amendment 1.1.0" in result.stdout
+    output = json.loads(result.stdout)
+    assert isinstance(output, dict)
+    # Should have at least one of: created, updated, skipped
+    assert any(key in output for key in ["created", "updated", "skipped", "errors"])

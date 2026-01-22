@@ -1,20 +1,5 @@
 # Open Agent Kit
 
-```bash
-╭─────────────────────────────────────────────────────────╮
-│                                                         │
-│              ██████╗  █████╗ ██╗  ██╗                   │
-│             ██╔═══██╗██╔══██╗██║ ██╔╝                   │
-│             ██║   ██║███████║█████╔╝                    │
-│             ██║   ██║██╔══██║██╔═██╗                    │
-│             ╚██████╔╝██║  ██║██║  ██╗                   │
-│              ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝                   │
-│                                                         │
-│   Open Agent Kit - AI-Powered Development Workflows.    │
-│                                                         │
-╰─────────────────────────────────────────────────────────╯
-```
-
 [![PR Check](https://github.com/sirkirby/open-agent-kit/actions/workflows/pr-check.yml/badge.svg)](https://github.com/sirkirby/open-agent-kit/actions/workflows/pr-check.yml)
 [![Release](https://github.com/sirkirby/open-agent-kit/actions/workflows/release.yml/badge.svg)](https://github.com/sirkirby/open-agent-kit/actions/workflows/release.yml)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/sirkirby/open-agent-kit?sort=semver)
@@ -22,17 +7,42 @@
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue?style=flat-square)](https://www.python.org/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff)
 
-**AI-Powered Development Workflows**
+**The Intelligence Layer for AI Agents**
 
-Open Agent Kit brings multi-agent spec-driven development, SDLC integration, skills, and other valuable workflows to your local AI coding assistants. Use Constitution commands to establish multi-agent project rules and standards (works with AGENTS.md, CLAUDE.md, copilot_instructions.md, etc), Use RFC agent commands to codify architectural decisions, and integrate issues, stories, and tasks from Azure DevOps or GitHub Issues - all through your favorite AI agent (Claude, Copilot, Cursor, Codex, Gemini/Antigravity, Windsurf).
+Open Agent Kit (OAK) gives your AI coding assistants (Claude, Copilot, Cursor, etc.) **sight** and **memory**. It runs locally as a background service, indexing your codebase and remembering past decisions to prevent agents from making the same mistakes twice.
+
+![OAK CI Dashboard](docs/images/ci-dashboard.png)
+
+## Why OAK?
+
+AI agents typically "forget" everything when you start a new session. OAK solves this:
+
+1.  **Persistent Memory**: OAK remembers "gotchas", architectural decisions, and bug fixes across sessions.
+2.  **Semantic Search**: Agents can find code by *concept* ("where is auth?") rather than just regex.
+3.  **Live Auto-Capture**: OAK watches your agent's actions and automatically records new learnings.
+
+## Quick Start
+Add the intelligence layer to any project:
+
+```bash
+# Initialize with Codebase Intelligence
+oak init --feature codebase-intelligence
+
+# Start the daemon
+oak ci start
+```
 
 ## Features
 
-- **Multi-Agent Support**: Work with Claude, Copilot, Cursor, Codex, Gemini, and Windsurf in the same project seamlessly
-- **Engineering Constitution**: Build cross-agent coding standards, architectural patterns, and team conventions. Easily amend and version your constitution.
-- **AI-Driven Workflows**: Leverage AI agents to guide you through complex workflows with interactive prompts and validations. Leverages oak CLI under the hood for scaffolding, validation, integrations, and consistency
-- **Beautiful CLI**: Rich, interactive command-line interface for project setup, agent configuration, and easy updates
-- **Project-Based**: Simple `.oak` installation directory and `oak` asset directory structure
+- **Codebase Intelligence**: Semantic code search, AST-aware indexing, and persistent memory.
+- **Agent Skills**: OAK installs specialized capabilities for your agent:
+    - **Constitution**: `project-rules` skill to enforce standards.
+    - **RFCs**: `creating-rfcs` and `reviewing-rfcs` skills for technical decision making.
+    - **Plans**: Implementation planning skills.
+    - **Codebase**: `finding-related-code` and `impact-analysis` skills.
+- **Universal Compatibility**: Works with Claude Code, Cursor, Copilot, Windsurf, and any MCP-compatible agent.
+- **Auto-Configuration**: Automatically configures hooks, MCP servers, and IDE settings (VSCode/Cursor) during init.
+
 
 ## Installation
 
@@ -534,7 +544,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### For Contributors
 
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
-- [Project Constitution](.constitution.md) - Standards and principles
+- [Project Constitution](oak/constitution.md) - Standards and principles
 - [Releasing Guide](docs/development/releasing.md) - Release procedures
 - [Architecture](docs/architecture.md) - System design and component diagrams
 
@@ -542,3 +552,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - [GitHub Repository](https://github.com/sirkirby/open-agent-kit)
 - [Issue Tracker](https://github.com/sirkirby/open-agent-kit/issues)
+

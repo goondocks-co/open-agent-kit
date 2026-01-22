@@ -5,42 +5,25 @@ patterns, and governance. Constitutions serve as the central reference for how p
 are designed, built, and maintained.
 
 Key Classes:
-    ConstitutionService: Main service for constitution creation, validation, and amendment
-
-Dependencies:
-    - TemplateService: For rendering constitution templates
-    - ValidationService: For content validation
-    - AgentFileService: For generating/updating agent instruction files
+    ConstitutionService: Service for loading, parsing, and managing constitutions
 
 Constitution Structure:
-    - Version-controlled markdown document at oak/constitution.md
-    - Semantic versioning (MAJOR.MINOR.PATCH)
-    - Amendment history tracking
+    - Version-controlled markdown document (typically at .constitution.md or oak/constitution.md)
+    - Created and maintained by agents using the project-rules skill
     - Agent instruction files reference the constitution
 
-Amendment Types:
-    - major: Breaking changes requiring re-review
-    - minor: Backward-compatible additions
-    - patch: Small corrections or clarifications
-
-Workflow:
-    1. Create initial constitution: `oak constitution create`
-    2. Generate agent files: `oak constitution generate-agent-files`
-    3. Amend as needed: `oak constitution amend`
-    4. Update agent files: `oak constitution update-agent-files`
+Note:
+    Constitution creation and editing is handled by agents using the project-rules skill,
+    which provides examples of well-structured constitutions. This service handles:
+    - Loading and parsing existing constitutions
+    - Project analysis for classification
+    - Syncing agent instruction files with constitution
 
 Example:
     >>> service = ConstitutionService(project_root=Path.cwd())
-    >>> constitution = service.create_constitution(
-    ...     title="MyProject Constitution",
-    ...     author="Engineering Team",
-    ...     description="Standards and practices for MyProject"
-    ... )
-    >>> service.add_amendment(
-    ...     amendment_type="minor",
-    ...     summary="Added code review checklist",
-    ...     content="## Code Review\n\n..."
-    ... )
+    >>> if service.exists():
+    ...     constitution = service.load()
+    ...     print(f"Version: {constitution.metadata.version}")
 """
 
 import logging
@@ -48,25 +31,17 @@ import re
 from datetime import date
 from pathlib import Path
 
-from open_agent_kit.config.paths import (
-    CONSTITUTION_FILENAME,
-    CONSTITUTION_TEMPLATE_BASE,
-)
+from open_agent_kit.config.paths import CONSTITUTION_FILENAME
 from open_agent_kit.constants import CONSTITUTION_REQUIRED_SECTIONS
 from open_agent_kit.models.constitution import (
     Amendment,
-    AmendmentType,
     ConstitutionDocument,
     ConstitutionMetadata,
     ConstitutionSection,
-    ConstitutionStatus,
-    DecisionContext,
 )
 from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.services.template_service import TemplateService
 from open_agent_kit.utils import ensure_dir, file_exists, read_file, write_file
-from open_agent_kit.utils.version import increment_version
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +57,6 @@ class ConstitutionService:
         """
         self.project_root = project_root or Path.cwd()
         self.config_service = ConfigService(project_root)
-        self.template_service = TemplateService(project_root=project_root)
 
     def gather_existing_conventions_context(self) -> dict[str, str | None]:
         """Gather existing agent instructions to use as context for constitution generation.
@@ -150,141 +124,6 @@ class ConstitutionService:
 
         content = read_file(constitution_path)
         return self._parse_constitution(content, constitution_path)
-
-    def create(
-        self,
-        project_name: str,
-        author: str,
-        tech_stack: str | None = None,
-        description: str | None = None,
-        decision_context: DecisionContext | None = None,
-    ) -> ConstitutionDocument:
-        """Create a new constitution document with optional decision context.
-
-        Args:
-            project_name: Name of the project
-            author: Author name
-            tech_stack: Optional technology stack description
-            description: Optional project description
-            decision_context: Decision context as DecisionContext model.
-                            If not provided, sensible defaults are used.
-                            See decision_points.yaml for available options.
-
-        Returns:
-            Created ConstitutionDocument
-
-        Raises:
-            FileExistsError: If constitution already exists
-        """
-        constitution_path = self.get_constitution_path()
-
-        if file_exists(constitution_path):
-            raise FileExistsError(f"Constitution already exists at {constitution_path}")
-
-        # Create metadata
-        metadata = ConstitutionMetadata(
-            project_name=project_name,
-            version="1.0.0",
-            ratification_date=date.today(),
-            author=author,
-            last_amendment=None,
-            status=ConstitutionStatus.RATIFIED,
-            tech_stack=tech_stack,
-            description=description,
-        )
-
-        # Use provided decision context or defaults
-        decisions = decision_context if decision_context else DecisionContext.get_defaults()
-
-        # Render template with decision context
-        template_context = metadata.to_dict()
-        template_context.update(
-            {
-                "generation_date": date.today().isoformat(),
-            }
-        )
-
-        # Merge validated decision context using the model's to_template_context method
-        template_context.update(decisions.to_template_context())
-
-        content = self.template_service.render_template(
-            CONSTITUTION_TEMPLATE_BASE, template_context
-        )
-
-        # Parse sections from rendered content
-        sections = self._parse_sections(content)
-
-        # Create document
-        constitution = ConstitutionDocument(
-            metadata=metadata,
-            sections=sections,
-            file_path=constitution_path,
-        )
-
-        # Save to file
-        self._save(constitution)
-
-        return constitution
-
-    def add_amendment(
-        self,
-        summary: str,
-        rationale: str,
-        amendment_type: str,
-        author: str,
-        section: str | None = None,
-        impact: str | None = None,
-    ) -> Amendment:
-        """Add amendment to constitution.
-
-        Args:
-            summary: One-line amendment summary
-            rationale: Detailed amendment rationale
-            amendment_type: Type of amendment ("major", "minor", or "patch")
-            author: Amendment author
-            section: Optional section being amended
-            impact: Optional impact description
-
-        Returns:
-            Created Amendment
-
-        Raises:
-            FileNotFoundError: If constitution doesn't exist
-            ValueError: If amendment type is invalid
-        """
-        constitution = self.load()
-
-        # Validate and convert amendment type
-        try:
-            amend_type = AmendmentType(amendment_type.lower())
-        except ValueError as error:
-            raise ValueError(
-                f"Invalid amendment type: {amendment_type}. Must be 'major', 'minor', or 'patch'"
-            ) from error
-
-        # Increment version based on amendment type
-        current_version = constitution.get_latest_version()
-        new_version = increment_version(current_version, amendment_type)
-
-        # Create amendment
-        amendment = Amendment(
-            version=new_version,
-            date=date.today(),
-            type=amend_type,
-            summary=summary,
-            rationale=rationale,
-            author=author,
-            section=section,
-            impact=impact,
-        )
-
-        # Add to constitution
-        constitution.add_amendment(amendment)
-
-        # Save updated constitution
-        self._save(constitution)
-
-        return amendment
 
     def get_content(self) -> str:
         """Get raw constitution content.
@@ -367,10 +206,17 @@ class ConstitutionService:
         """
         metadata_dict = {}
 
-        # Extract project name from title
-        title_match = re.search(r"^# (.+?) Engineering Constitution", content, re.MULTILINE)
-        if title_match:
-            metadata_dict["project_name"] = title_match.group(1).strip()
+        # Extract project name from title (various formats)
+        title_patterns = [
+            r"^# (.+?) Engineering Constitution",
+            r"^# (.+?) Constitution",
+            r"^# Project Constitution.*?Project:\*\* (.+?)$",
+        ]
+        for pattern in title_patterns:
+            title_match = re.search(pattern, content, re.MULTILINE)
+            if title_match:
+                metadata_dict["project_name"] = title_match.group(1).strip()
+                break
 
         # Extract metadata fields
         version_match = re.search(r"^- \*\*Version:\*\* (.+)$", content, re.MULTILINE)
@@ -381,9 +227,23 @@ class ConstitutionService:
             r"^- \*\*Ratification Date:\*\* (.+)$", content, re.MULTILINE
         )
         if ratification_match:
-            metadata_dict["ratification_date"] = date.fromisoformat(
-                ratification_match.group(1).strip()
-            )
+            try:
+                metadata_dict["ratification_date"] = date.fromisoformat(
+                    ratification_match.group(1).strip()
+                )
+            except ValueError:
+                pass  # Invalid date format, skip
+
+        # Also check for "Last Updated" format
+        if "ratification_date" not in metadata_dict:
+            updated_match = re.search(r"^- \*\*Last Updated:\*\* (.+)$", content, re.MULTILINE)
+            if updated_match:
+                try:
+                    metadata_dict["ratification_date"] = date.fromisoformat(
+                        updated_match.group(1).strip()
+                    )
+                except ValueError:
+                    pass
 
         author_match = re.search(r"^- \*\*Author:\*\* (.+)$", content, re.MULTILINE)
         if author_match:
@@ -397,7 +257,10 @@ class ConstitutionService:
         if last_amendment_match:
             last_amend = last_amendment_match.group(1).strip()
             if last_amend != "N/A":
-                metadata_dict["last_amendment"] = date.fromisoformat(last_amend)
+                try:
+                    metadata_dict["last_amendment"] = date.fromisoformat(last_amend)
+                except ValueError:
+                    pass
 
         tech_stack_match = re.search(r"^- \*\*Tech Stack:\*\* (.+)$", content, re.MULTILINE)
         if tech_stack_match:
@@ -437,7 +300,7 @@ class ConstitutionService:
             end_pos = matches[i + 1].start() if i + 1 < len(matches) else content_end
             section_content = content[start_pos:end_pos].strip()
 
-            # Check if this is a required section
+            # Check if this is a required section (from old model - kept for compatibility)
             required = title in CONSTITUTION_REQUIRED_SECTIONS
 
             section = ConstitutionSection(
@@ -546,8 +409,8 @@ class ConstitutionService:
         """Analyze project for constitution creation workflow.
 
         Performs comprehensive project analysis to determine if the project is
-        greenfield, brownfield-minimal, or brownfield-mature. This replaces
-        multiple bash commands in the agent prompt with a single CLI call.
+        greenfield, brownfield-minimal, or brownfield-mature. This helps agents
+        understand the project context before creating a constitution.
 
         Returns:
             Dictionary with analysis results:
@@ -638,26 +501,20 @@ class ConstitutionService:
         results["ci_cd"]["found"] = len(results["ci_cd"]["workflows"]) > 0
 
         # Detect agent instruction files WITH content analysis
-        # Format: (path_or_pattern, is_glob)
-        # - Static files: ("AGENTS.md", False)
-        # - Glob patterns: (".cursor/rules/*.mdc", True)
         agent_instruction_patterns: list[tuple[str, bool]] = [
             ("AGENTS.md", False),
             ("CLAUDE.md", False),
             (".claude/CLAUDE.md", False),
-            (".github/copilot-instructions.md", False),  # Copilot repo-wide
-            (".github/instructions/*.instructions.md", True),  # Copilot path-specific
+            (".github/copilot-instructions.md", False),
+            (".github/instructions/*.instructions.md", True),
             ("GEMINI.md", False),
             (".windsurf/rules/rules.md", False),
-            (".cursor/rules/*.mdc", True),  # Cursor supports multiple .mdc files
+            (".cursor/rules/*.mdc", True),
         ]
 
-        # Helper function to analyze instruction file content
         def analyze_instruction_file(file_path: Path, display_path: str) -> None:
             try:
                 content = read_file(file_path)
-                # Check if content has substantial non-OAK content
-                # Filter out OAK references, empty lines, and comment-only lines
                 lines = content.split("\n")
                 non_oak_lines = [
                     line
@@ -681,21 +538,18 @@ class ConstitutionService:
             except OSError as e:
                 logger.warning(f"Failed to analyze instruction file {display_path}: {e}")
 
-        # Process all instruction patterns (both static files and globs)
         for pattern, is_glob in agent_instruction_patterns:
             if is_glob:
-                # Glob pattern - find all matching files
                 for matched_file in self.project_root.glob(pattern):
                     if matched_file.is_file():
                         relative_path = str(matched_file.relative_to(self.project_root))
                         analyze_instruction_file(matched_file, relative_path)
             else:
-                # Static file path
                 file_path = self.project_root / pattern
                 if file_path.exists():
                     analyze_instruction_file(file_path, pattern)
 
-        # Check for non-OAK agent commands (team-created prompts)
+        # Check for non-OAK agent commands
         agent_command_dirs = [
             (".github/agents", "*.prompt.md"),
             (".claude/commands", "*.md"),
@@ -716,11 +570,10 @@ class ConstitutionService:
                                 "path": str(cmd.relative_to(self.project_root)),
                                 "has_content": True,
                                 "oak_only": False,
-                                "non_oak_lines": -1,  # Not analyzed
+                                "non_oak_lines": -1,
                             }
                         )
 
-        # Determine if agent instructions have meaningful non-OAK content
         meaningful_instructions = [
             f for f in results["agent_instructions"]["files"] if not f["oak_only"]
         ]
@@ -754,7 +607,7 @@ class ConstitutionService:
                     results["project_files"]["files"].append(proj_file)
         results["project_files"]["found"] = len(results["project_files"]["files"]) > 0
 
-        # Detect application code directories (excluding .oak/, node_modules, etc.)
+        # Detect application code directories
         code_dirs = ["src", "lib", "app", "pkg", "cmd", "internal", "api", "core"]
         excluded_dirs = {
             ".oak",
@@ -842,19 +695,16 @@ class ConstitutionService:
                 "errors": ["error message", ...]
             }
         """
-        from open_agent_kit.services.agent_service import AgentService
-
         results: dict[str, list[str]] = {
             "created": [],
             "updated": [],
             "skipped": [],
-            "not_removed": [],  # Files we intentionally didn't remove
+            "not_removed": [],
             "errors": [],
         }
 
         # Check if constitution exists
         if not self.exists():
-            # No constitution yet - nothing to sync
             results["skipped"].append("(no constitution exists)")
             return results
 
@@ -866,16 +716,11 @@ class ConstitutionService:
             for agent in agents_removed:
                 results["not_removed"].append(agent)
 
-        # Update/create instruction files for added agents
-        # Actually, we should sync ALL configured agents, not just added ones,
-        # because the user might have deleted a file manually
         if agents_added:
-            # Use existing method which handles all cases correctly
             update_results = agent_service.update_agent_instructions_from_constitution(
                 constitution_path, mode="additive"
             )
 
-            # Map results
             results["created"] = update_results.get("created", [])
             results["updated"] = update_results.get("updated", [])
             results["skipped"] = update_results.get("skipped", [])

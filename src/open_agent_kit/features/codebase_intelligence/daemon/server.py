@@ -539,6 +539,7 @@ def create_app(
     # Include routers
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
         activity,
+        backup,
         devtools,
         health,
         hooks,
@@ -561,6 +562,7 @@ def create_app(
     app.include_router(hooks.router)
     app.include_router(mcp.router)
     app.include_router(devtools.router)
+    app.include_router(backup.router)
 
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)

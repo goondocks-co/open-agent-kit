@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from open_agent_kit.features.codebase_intelligence.constants import (
-    DEFAULT_RELEVANCE_THRESHOLD,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
@@ -117,7 +116,6 @@ def custom_config() -> RetrievalConfig:
     return RetrievalConfig(
         default_limit=10,
         max_context_tokens=1000,
-        relevance_threshold=0.5,
         preview_length=100,
     )
 
@@ -165,7 +163,6 @@ class TestRetrievalConfig:
 
         assert config.default_limit == 20
         assert config.max_context_tokens == 2000
-        assert config.relevance_threshold == DEFAULT_RELEVANCE_THRESHOLD
         assert config.preview_length == 200
 
     def test_custom_values(self) -> None:
@@ -173,13 +170,11 @@ class TestRetrievalConfig:
         config = RetrievalConfig(
             default_limit=10,
             max_context_tokens=5000,
-            relevance_threshold=0.7,
             preview_length=500,
         )
 
         assert config.default_limit == 10
         assert config.max_context_tokens == 5000
-        assert config.relevance_threshold == 0.7
         assert config.preview_length == 500
 
 
@@ -292,32 +287,6 @@ class TestRetrievalEngineInit:
         assert engine.config.default_limit == 10  # Custom value
 
 
-class TestGetThreshold:
-    """Tests for the _get_threshold method."""
-
-    def test_returns_config_threshold_when_no_override(
-        self, engine_with_custom_config: RetrievalEngine
-    ) -> None:
-        """Test that config threshold is used when no override provided."""
-        threshold = engine_with_custom_config._get_threshold()
-
-        assert threshold == 0.5  # Custom config value
-
-    def test_returns_override_when_provided(
-        self, engine_with_custom_config: RetrievalEngine
-    ) -> None:
-        """Test that override value is used when provided."""
-        threshold = engine_with_custom_config._get_threshold(override=0.8)
-
-        assert threshold == 0.8
-
-    def test_override_zero_is_respected(self, engine: RetrievalEngine) -> None:
-        """Test that zero override is not treated as falsy."""
-        threshold = engine._get_threshold(override=0.0)
-
-        assert threshold == 0.0
-
-
 # =============================================================================
 # Search Method Tests
 # =============================================================================
@@ -376,15 +345,6 @@ class TestSearch:
 
         call_kwargs = mock_vector_store.search_code.call_args.kwargs
         assert call_kwargs["limit"] == 5
-
-    def test_search_uses_threshold_override(
-        self, engine: RetrievalEngine, mock_vector_store: MagicMock
-    ) -> None:
-        """Test that threshold override is passed to store."""
-        engine.search(query="test", relevance_threshold=0.9)
-
-        call_kwargs = mock_vector_store.search_code.call_args.kwargs
-        assert call_kwargs["relevance_threshold"] == 0.9
 
     def test_search_calculates_total_tokens(self, engine: RetrievalEngine) -> None:
         """Test that total_tokens_available is calculated correctly."""

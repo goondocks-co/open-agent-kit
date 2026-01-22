@@ -266,12 +266,6 @@ class TestAPIDefaultsConstants:
         assert isinstance(constants.MAX_SEARCH_LIMIT, int)
         assert constants.MAX_SEARCH_LIMIT >= constants.DEFAULT_SEARCH_LIMIT
 
-    def test_default_relevance_threshold_defined(self):
-        """Test that DEFAULT_RELEVANCE_THRESHOLD constant exists."""
-        assert hasattr(constants, "DEFAULT_RELEVANCE_THRESHOLD")
-        assert isinstance(constants.DEFAULT_RELEVANCE_THRESHOLD, float)
-        assert 0 <= constants.DEFAULT_RELEVANCE_THRESHOLD <= 1
-
     def test_default_context_limit_defined(self):
         """Test that DEFAULT_CONTEXT_LIMIT constant exists."""
         assert hasattr(constants, "DEFAULT_CONTEXT_LIMIT")

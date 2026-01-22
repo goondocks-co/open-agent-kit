@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/hooks.json",
-  "$comment": "Codebase Intelligence hooks for Claude Code. {{PORT}} is replaced with the project-specific daemon port. OAK hooks are identified by the /api/oak/ci/ URL pattern.",
+  "$comment": "Codebase Intelligence hooks for Claude Code. {{PORT}} is replaced with the project-specific daemon port. {{PROJECT_ROOT}} is replaced with the project directory. OAK hooks are identified by the /api/oak/ci/ URL pattern. Hook events are logged to .oak/ci/hooks.log for debugging.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "(curl -sf http://localhost:{{PORT}}/api/health >/dev/null 2>&1 || oak ci start --quiet >/dev/null 2>&1 || true) && cat | jq -c '{agent: \"claude\", session_id: .session_id, source: .source}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-start -H 'Content-Type: application/json' -d @- | jq -c '{hookSpecificOutput: {hookEventName: \"SessionStart\", additionalContext: .context.injected_context}}'",
+            "command": "INPUT=$(cat); HOOK_LOG=\"{{PROJECT_ROOT}}/.oak/ci/hooks.log\"; echo \"[SessionStart] $(date '+%Y-%m-%d %H:%M:%S') session_id=$(echo \"$INPUT\" | jq -r '.session_id // \"new\"') source=$(echo \"$INPUT\" | jq -r '.source // \"startup\"')\" >> \"$HOOK_LOG\" 2>&1; (curl -sf http://localhost:{{PORT}}/api/health >/dev/null 2>&1 || oak ci start --quiet >/dev/null 2>&1 || true) && echo \"$INPUT\" | jq -c '{agent: \"claude\", session_id: .session_id, source: .source}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-start -H 'Content-Type: application/json' -d @- | tee -a \"$HOOK_LOG\" | jq -c '{hookSpecificOutput: {hookEventName: \"SessionStart\", additionalContext: .context.injected_context}}'",
             "timeout": 30
           }
         ]
@@ -21,7 +21,7 @@
           {
             "type": "command",
             "command": "cat | jq -c '{agent: \"claude\", session_id: .session_id, prompt: .prompt}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/prompt-submit -H 'Content-Type: application/json' -d @- | jq -c 'if .context.injected_context then {hookSpecificOutput: {hookEventName: \"UserPromptSubmit\", additionalContext: .context.injected_context}} else {} end'",
-            "timeout": 5
+            "timeout": 15
           }
         ]
       }
@@ -33,7 +33,7 @@
           {
             "type": "command",
             "command": "cat | jq -c '{agent: \"claude\", session_id: .session_id, tool_name: .tool_name, tool_input: .tool_input, tool_output_b64: ((.tool_response // {}) | tostring | @base64)}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/post-tool-use -H 'Content-Type: application/json' -d @- | jq -c 'if .injected_context then {hookSpecificOutput: {hookEventName: \"PostToolUse\", additionalContext: .injected_context}} else {} end'",
-            "timeout": 3
+            "timeout": 5
           }
         ]
       }
@@ -45,7 +45,19 @@
           {
             "type": "command",
             "command": "cat | jq -c '{agent: \"claude\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/stop -H 'Content-Type: application/json' -d @-",
-            "timeout": 5
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); HOOK_LOG=\"{{PROJECT_ROOT}}/.oak/ci/hooks.log\"; echo \"[SessionEnd] $(date '+%Y-%m-%d %H:%M:%S') session_id=$(echo \"$INPUT\" | jq -r '.session_id // \"unknown\"')\" >> \"$HOOK_LOG\" 2>&1; echo \"$INPUT\" | jq -c '{agent: \"claude\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-end -H 'Content-Type: application/json' -d @- >> \"$HOOK_LOG\" 2>&1; echo '' >> \"$HOOK_LOG\"",
+            "timeout": 15
           }
         ]
       }

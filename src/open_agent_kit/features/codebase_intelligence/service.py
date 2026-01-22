@@ -75,13 +75,17 @@ class CodebaseIntelligenceService:
         return any(os.environ.get(var) for var in test_indicators)
 
     def _load_hook_template(self, agent: str) -> dict[str, Any] | None:
-        """Load hook template for an agent and substitute port placeholder.
+        """Load hook template for an agent and substitute placeholders.
 
         Args:
             agent: Agent name (claude, cursor, gemini).
 
         Returns:
-            Hook configuration with {{PORT}} replaced, or None if not found.
+            Hook configuration with placeholders replaced, or None if not found.
+
+        Placeholders:
+            {{PORT}} - Replaced with the daemon port number.
+            {{PROJECT_ROOT}} - Replaced with the project root directory path.
         """
         template_file = HOOKS_TEMPLATE_DIR / agent / "hooks.json"
         if not template_file.exists():
@@ -90,8 +94,9 @@ class CodebaseIntelligenceService:
 
         try:
             template_content = template_file.read_text()
-            # Replace {{PORT}} placeholder with actual port
+            # Replace placeholders with actual values
             processed = re.sub(r"\{\{PORT\}\}", str(self.port), template_content)
+            processed = re.sub(r"\{\{PROJECT_ROOT\}\}", str(self.project_root), processed)
             return cast(dict[str, Any], json.loads(processed))
         except Exception as e:
             logger.error(f"Failed to load hook template for {agent}: {e}")
@@ -153,6 +158,13 @@ class CodebaseIntelligenceService:
         # Create data directory
         self.ci_data_dir.mkdir(parents=True, exist_ok=True)
 
+        # Restore history from backup if exists
+        # This must happen before daemon starts so data is available
+        try:
+            self._restore_history_backup()
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to restore history backup: {e}")
+
         # Note: .gitignore is handled declaratively via manifest.yaml gitignore field
         # The feature_service adds .oak/ci/ on enable and removes it on disable
 
@@ -176,14 +188,76 @@ class CodebaseIntelligenceService:
             **daemon_result,
         }
 
+    def _export_history_backup(self) -> None:
+        """Export activity history before cleanup.
+
+        Exports sessions, prompts, and memory observations to a SQL file
+        in the preserved oak/data/ directory. This allows data to be
+        restored when the feature is re-enabled.
+        """
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_HISTORY_BACKUP_DIR,
+            CI_HISTORY_BACKUP_FILE,
+        )
+
+        db_path = self.ci_data_dir / "activities.db"
+        if not db_path.exists():
+            logger.debug("No activities database found, skipping backup export")
+            return
+
+        backup_dir = self.project_root / CI_HISTORY_BACKUP_DIR
+        backup_path = backup_dir / CI_HISTORY_BACKUP_FILE
+
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+
+            logger.info("Exporting CI history before cleanup...")
+            store = ActivityStore(db_path)
+            count = store.export_to_sql(backup_path, include_activities=False)
+            store.close()
+            logger.info(f"CI history exported to {backup_path} ({count} records)")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to export CI history: {e}")
+
+    def _restore_history_backup(self) -> None:
+        """Restore activity history from backup if exists.
+
+        Imports sessions, prompts, and memory observations from the SQL
+        backup file. ChromaDB will be rebuilt automatically from the
+        restored observations (they are marked as unembedded).
+        """
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_HISTORY_BACKUP_DIR,
+            CI_HISTORY_BACKUP_FILE,
+        )
+
+        backup_path = self.project_root / CI_HISTORY_BACKUP_DIR / CI_HISTORY_BACKUP_FILE
+        if not backup_path.exists():
+            logger.debug(f"No backup found at {backup_path}")
+            return
+
+        db_path = self.ci_data_dir / "activities.db"
+
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+
+            logger.info(f"Restoring CI history from {backup_path}")
+            store = ActivityStore(db_path)
+            count = store.import_from_sql(backup_path)
+            store.close()
+            logger.info(f"CI history restored: {count} records")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to restore CI history: {e}")
+
     def cleanup(self, agents: list[str] | None = None) -> dict:
         """Called when feature is disabled (on_feature_disabled hook).
 
         Performs full cleanup:
-        1. Stops the daemon
-        2. Removes CI data directory (database, config)
-        3. Removes agent hooks
-        4. Removes MCP server registrations
+        1. Exports history to backup (preserves valuable data)
+        2. Stops the daemon
+        3. Removes CI data directory (database, config)
+        4. Removes agent hooks
+        5. Removes MCP server registrations
 
         Args:
             agents: List of configured agents to remove hooks from.
@@ -203,7 +277,17 @@ class CodebaseIntelligenceService:
             "data_removed": False,
             "hooks_removed": {},
             "mcp_removed": {},
+            "history_exported": False,
         }
+
+        # 0. Export history before cleanup
+        try:
+            self._export_history_backup()
+            results["history_exported"] = True
+            print_success("  History exported to oak/data/ci_history.sql")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to export history: {e}")
+            print_warning(f"  Could not export history: {e}")
 
         # 1. Stop the daemon
         try:

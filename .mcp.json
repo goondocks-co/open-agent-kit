@@ -1,3 +1,15 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "oak-ci": {
+      "type": "stdio",
+      "command": "oak",
+      "args": [
+        "ci",
+        "mcp",
+        "--project",
+        "/Users/chris/Repos/open-agent-kit"
+      ],
+      "env": {}
+    }
+  }
 }

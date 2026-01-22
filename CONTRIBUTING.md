@@ -43,7 +43,7 @@ Run `make help` to see all available commands:
    git checkout -b feature/your-feature-name
    ```
 
-2. **Make changes** following the [coding standards](.constitution.md)
+2. **Make changes** following the [coding standards](oak/constitution.md)
 
 3. **Run checks before committing**
    ```bash
@@ -95,7 +95,7 @@ Provide:
 | Topic | Documentation |
 |-------|---------------|
 | Architecture & patterns | [docs/architecture.md](docs/architecture.md) |
-| Coding standards | [.constitution.md](.constitution.md) |
+| Coding standards | [.constitution.md](oak/constitution.md) |
 | Release process | [docs/development/releasing.md](docs/development/releasing.md) |
 | Feature development | [docs/development/features.md](docs/development/features.md) |
 

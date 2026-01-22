@@ -62,13 +62,6 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Search query")
     limit: int = Field(default=20, ge=1, le=100)
     search_type: str = Field(default="all", pattern="^(all|code|memory)$")
-    # None means use model-aware default threshold
-    relevance_threshold: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Minimum similarity score (0-1). None uses model-specific default.",
-    )
     apply_doc_type_weights: bool = Field(
         default=True,
         description="Apply doc_type weighting to deprioritize i18n/config files. Disable for translation searches.",

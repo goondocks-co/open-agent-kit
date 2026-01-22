@@ -3,9 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle } from "lucide-react";
+import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, HardDrive, Download, Upload } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { API_ENDPOINTS, MEMORY_SYNC_STATUS, MESSAGE_TYPES } from "@/lib/constants";
+import { useBackupStatus, useCreateBackup, useRestoreBackup } from "@/hooks/use-backup";
 
 /** Refetch interval for memory stats (5 seconds) */
 const MEMORY_STATS_REFETCH_INTERVAL_MS = 5000;
@@ -20,6 +23,7 @@ interface MemoryStats {
 export default function DevTools() {
     const queryClient = useQueryClient();
     const [message, setMessage] = useState<{ type: typeof MESSAGE_TYPES.SUCCESS | typeof MESSAGE_TYPES.ERROR, text: string } | null>(null);
+    const [includeActivities, setIncludeActivities] = useState(false);
 
     // Fetch memory stats
     const { data: memoryStats } = useQuery<MemoryStats>({
@@ -27,6 +31,11 @@ export default function DevTools() {
         queryFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_MEMORY_STATS),
         refetchInterval: MEMORY_STATS_REFETCH_INTERVAL_MS,
     });
+
+    // Backup hooks
+    const { data: backupStatus, refetch: refetchBackupStatus } = useBackupStatus();
+    const createBackupFn = useCreateBackup();
+    const restoreBackupFn = useRestoreBackup();
 
     const rebuildIndexFn = useMutation({
         mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
@@ -192,6 +201,106 @@ export default function DevTools() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Database Backup */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <HardDrive className="h-5 w-5" />
+                        Database Backup
+                    </CardTitle>
+                    <CardDescription>
+                        Export and restore session history, prompts, and memories. Backups are preserved when the feature is removed.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {backupStatus && (
+                        <div className="text-sm text-muted-foreground">
+                            {backupStatus.backup_exists ? (
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                        <span>Backup exists</span>
+                                    </div>
+                                    <div className="text-xs pl-6">
+                                        {backupStatus.backup_size_bytes && (
+                                            <span>{(backupStatus.backup_size_bytes / 1024).toFixed(1)} KB</span>
+                                        )}
+                                        {backupStatus.last_modified && (
+                                            <span className="ml-2">• Last modified: {new Date(backupStatus.last_modified).toLocaleString()}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                    <span>No backup file found</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                        <Checkbox
+                            id="include-activities"
+                            checked={includeActivities}
+                            onCheckedChange={(checked) => setIncludeActivities(!!checked)}
+                        />
+                        <Label htmlFor="include-activities" className="text-sm">
+                            Include activities table (larger file)
+                        </Label>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                createBackupFn.mutate(
+                                    { include_activities: includeActivities },
+                                    {
+                                        onSuccess: (data) => {
+                                            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+                                            refetchBackupStatus();
+                                        },
+                                        onError: (err) => {
+                                            setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message });
+                                        },
+                                    }
+                                );
+                            }}
+                            disabled={createBackupFn.isPending}
+                        >
+                            <Download className="h-4 w-4 mr-2" />
+                            {createBackupFn.isPending ? "Backing up..." : "Create Backup"}
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                restoreBackupFn.mutate(
+                                    {},
+                                    {
+                                        onSuccess: (data) => {
+                                            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+                                        },
+                                        onError: (err) => {
+                                            setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message });
+                                        },
+                                    }
+                                );
+                            }}
+                            disabled={restoreBackupFn.isPending || !backupStatus?.backup_exists}
+                        >
+                            <Upload className="h-4 w-4 mr-2" />
+                            {restoreBackupFn.isPending ? "Restoring..." : "Restore from Backup"}
+                        </Button>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                        Backups are saved to <code className="bg-muted px-1 rounded">oak/data/ci_history.sql</code> and can be committed to git.
+                    </p>
+                </CardContent>
+            </Card>
         </div>
     );
 }

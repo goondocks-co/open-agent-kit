@@ -41,74 +41,39 @@ DEFAULT_PROVIDER_URLS: dict[str, str] = {
     "openai": "https://api.openai.com",
 }
 
-# Known embedding model metadata: dimensions, context window (tokens), and relevance threshold
+# Known embedding model metadata: dimensions and context window (tokens)
 # Used by model discovery and test endpoints to provide accurate metadata
-# relevance_threshold: Recommended minimum similarity score for search results
-#   - High-score models (BGE, OpenAI, E5, GTE): produce cosine similarity 0.4-0.8 → threshold 0.30-0.40
-#   - Low-score models (Nomic): produce cosine similarity 0.05-0.15 → threshold 0.05-0.08
-KNOWN_EMBEDDING_MODELS: dict[str, dict[str, int | float]] = {
-    # Nomic models - produce lower similarity scores
-    "nomic-embed-text": {"dimensions": 768, "context_window": 8192, "relevance_threshold": 0.08},
-    "nomic-embed-code": {"dimensions": 768, "context_window": 8192, "relevance_threshold": 0.08},
-    # BGE family (BAAI General Embedding) - high quality, higher scores
-    "bge-small": {"dimensions": 384, "context_window": 512, "relevance_threshold": 0.35},
-    "bge-base": {"dimensions": 768, "context_window": 512, "relevance_threshold": 0.35},
-    "bge-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.35},
-    "bge-m3": {"dimensions": 1024, "context_window": 8192, "relevance_threshold": 0.35},
+KNOWN_EMBEDDING_MODELS: dict[str, dict[str, int]] = {
+    # Nomic models
+    "nomic-embed-text": {"dimensions": 768, "context_window": 8192},
+    "nomic-embed-code": {"dimensions": 768, "context_window": 8192},
+    # BGE family (BAAI General Embedding)
+    "bge-small": {"dimensions": 384, "context_window": 512},
+    "bge-base": {"dimensions": 768, "context_window": 512},
+    "bge-large": {"dimensions": 1024, "context_window": 512},
+    "bge-m3": {"dimensions": 1024, "context_window": 8192},
     # GTE family (General Text Embedding)
-    "gte-small": {"dimensions": 384, "context_window": 512, "relevance_threshold": 0.30},
-    "gte-base": {"dimensions": 768, "context_window": 512, "relevance_threshold": 0.30},
-    "gte-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.30},
-    "gte-qwen": {"dimensions": 1536, "context_window": 8192, "relevance_threshold": 0.30},
+    "gte-small": {"dimensions": 384, "context_window": 512},
+    "gte-base": {"dimensions": 768, "context_window": 512},
+    "gte-large": {"dimensions": 1024, "context_window": 512},
+    "gte-qwen": {"dimensions": 1536, "context_window": 8192},
     # E5 family (Microsoft)
-    "e5-small": {"dimensions": 384, "context_window": 512, "relevance_threshold": 0.30},
-    "e5-base": {"dimensions": 768, "context_window": 512, "relevance_threshold": 0.30},
-    "e5-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.30},
+    "e5-small": {"dimensions": 384, "context_window": 512},
+    "e5-base": {"dimensions": 768, "context_window": 512},
+    "e5-large": {"dimensions": 1024, "context_window": 512},
     # Other common models
-    "mxbai-embed-large": {"dimensions": 1024, "context_window": 512, "relevance_threshold": 0.30},
-    "all-minilm": {"dimensions": 384, "context_window": 256, "relevance_threshold": 0.25},
-    "snowflake-arctic-embed": {
-        "dimensions": 1024,
-        "context_window": 512,
-        "relevance_threshold": 0.25,
-    },
+    "mxbai-embed-large": {"dimensions": 1024, "context_window": 512},
+    "all-minilm": {"dimensions": 384, "context_window": 256},
+    "snowflake-arctic-embed": {"dimensions": 1024, "context_window": 512},
     # OpenAI models
-    "text-embedding-3-small": {
-        "dimensions": 1536,
-        "context_window": 8191,
-        "relevance_threshold": 0.30,
-    },
-    "text-embedding-3-large": {
-        "dimensions": 3072,
-        "context_window": 8191,
-        "relevance_threshold": 0.30,
-    },
-    "text-embedding-ada-002": {
-        "dimensions": 1536,
-        "context_window": 8191,
-        "relevance_threshold": 0.30,
-    },
+    "text-embedding-3-small": {"dimensions": 1536, "context_window": 8191},
+    "text-embedding-3-large": {"dimensions": 3072, "context_window": 8191},
+    "text-embedding-ada-002": {"dimensions": 1536, "context_window": 8191},
     # LM Studio prefixed variants (maps to same underlying models)
-    "text-embedding-nomic-embed-text-v1.5": {
-        "dimensions": 768,
-        "context_window": 8192,
-        "relevance_threshold": 0.08,
-    },
-    "text-embedding-nomic-embed-code": {
-        "dimensions": 768,
-        "context_window": 8192,
-        "relevance_threshold": 0.08,
-    },
-    "text-embedding-bge-m3": {
-        "dimensions": 1024,
-        "context_window": 8192,
-        "relevance_threshold": 0.35,
-    },
-    "text-embedding-gte-qwen2": {
-        "dimensions": 1536,
-        "context_window": 8192,
-        "relevance_threshold": 0.30,
-    },
+    "text-embedding-nomic-embed-text-v1.5": {"dimensions": 768, "context_window": 8192},
+    "text-embedding-nomic-embed-code": {"dimensions": 768, "context_window": 8192},
+    "text-embedding-bge-m3": {"dimensions": 1024, "context_window": 8192},
+    "text-embedding-gte-qwen2": {"dimensions": 1536, "context_window": 8192},
 }
 
 # Patterns that indicate a model is an embedding model (case-insensitive)
@@ -128,14 +93,14 @@ EMBEDDING_MODEL_PATTERNS: list[str] = [
 ]
 
 
-def _get_known_model_metadata(model_name: str) -> dict[str, int | float | None]:
+def _get_known_model_metadata(model_name: str) -> dict[str, int | None]:
     """Look up known model metadata by name (case-insensitive partial match).
 
     Args:
         model_name: Model name to look up.
 
     Returns:
-        Dict with 'dimensions', 'context_window', and 'relevance_threshold' keys
+        Dict with 'dimensions' and 'context_window' keys
         (values may be None if model is unknown).
     """
     model_lower = model_name.lower()
@@ -144,25 +109,8 @@ def _get_known_model_metadata(model_name: str) -> dict[str, int | float | None]:
             return {
                 "dimensions": metadata.get("dimensions"),
                 "context_window": metadata.get("context_window"),
-                "relevance_threshold": metadata.get("relevance_threshold"),
             }
-    return {"dimensions": None, "context_window": None, "relevance_threshold": None}
-
-
-def get_model_relevance_threshold(model_name: str | None) -> float | None:
-    """Get recommended relevance threshold for a model.
-
-    Args:
-        model_name: Model name to look up.
-
-    Returns:
-        Recommended relevance threshold, or None if model is unknown.
-    """
-    if not model_name:
-        return None
-    metadata = _get_known_model_metadata(model_name)
-    threshold = metadata.get("relevance_threshold")
-    return float(threshold) if threshold is not None else None
+    return {"dimensions": None, "context_window": None}
 
 
 async def _query_ollama_model_info(
