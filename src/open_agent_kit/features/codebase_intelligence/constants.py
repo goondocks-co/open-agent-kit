@@ -23,10 +23,12 @@ from typing import Final
 SEARCH_TYPE_ALL: Final[str] = "all"
 SEARCH_TYPE_CODE: Final[str] = "code"
 SEARCH_TYPE_MEMORY: Final[str] = "memory"
+SEARCH_TYPE_PLANS: Final[str] = "plans"
 VALID_SEARCH_TYPES: Final[tuple[str, ...]] = (
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
+    SEARCH_TYPE_PLANS,
 )
 
 # =============================================================================
@@ -95,10 +97,13 @@ SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
 
 HOOK_FILENAME: Final[str] = "hooks.json"
 SETTINGS_FILENAME: Final[str] = "settings.json"
+CURSOR_HOOKS_DIRNAME: Final[str] = "hooks"
+CURSOR_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
 
 # CI data directory structure (relative to .oak/)
 CI_DATA_DIR: Final[str] = "ci"
 CI_CHROMA_DIR: Final[str] = "chroma"
+CI_ACTIVITIES_DB_FILENAME: Final[str] = "activities.db"
 CI_LOG_FILE: Final[str] = "daemon.log"
 CI_PID_FILE: Final[str] = "daemon.pid"
 CI_PORT_FILE: Final[str] = "daemon.port"
@@ -113,6 +118,17 @@ MAX_SEARCH_LIMIT: Final[int] = 100
 DEFAULT_CONTEXT_LIMIT: Final[int] = 10
 DEFAULT_CONTEXT_MEMORY_LIMIT: Final[int] = 5
 DEFAULT_MAX_CONTEXT_TOKENS: Final[int] = 2000
+
+# Preview and summary lengths
+DEFAULT_PREVIEW_LENGTH: Final[int] = 200
+DEFAULT_SUMMARY_PREVIEW_LENGTH: Final[int] = 100
+DEFAULT_RELATED_QUERY_LENGTH: Final[int] = 500
+
+# Memory listing defaults
+DEFAULT_MEMORY_LIST_LIMIT: Final[int] = 50
+
+# Related chunks limit
+DEFAULT_RELATED_CHUNKS_LIMIT: Final[int] = 5
 
 # Token estimation: ~4 characters per token
 CHARS_PER_TOKEN_ESTIMATE: Final[int] = 4
@@ -133,6 +149,9 @@ CHUNK_TYPE_UNKNOWN: Final[str] = "unknown"
 # NOTE: Memory types are now defined in schema.yaml (features/codebase-intelligence/schema.yaml)
 # and loaded dynamically. The MemoryType enum in daemon/models.py provides validation.
 # See: open_agent_kit.features.codebase_intelligence.activity.prompts.CISchema
+
+# Special memory type for plans (indexed from prompt_batches, not memory_observations)
+MEMORY_TYPE_PLAN: Final[str] = "plan"
 
 # =============================================================================
 # Batching and Performance
@@ -196,6 +215,29 @@ HOOK_EVENT_SESSION_END: Final[str] = "session-end"
 HOOK_EVENT_POST_TOOL_USE: Final[str] = "post-tool-use"
 HOOK_EVENT_BEFORE_PROMPT: Final[str] = "before-prompt"
 HOOK_EVENT_STOP: Final[str] = "stop"
+HOOK_EVENT_PROMPT_SUBMIT: Final[str] = "prompt-submit"
+
+# Hook origins for deduplication when multiple configs fire
+HOOK_ORIGIN_CLAUDE_CONFIG: Final[str] = "claude_config"
+HOOK_ORIGIN_CURSOR_CONFIG: Final[str] = "cursor_config"
+
+# Hook payload field names
+HOOK_FIELD_SESSION_ID: Final[str] = "session_id"
+HOOK_FIELD_CONVERSATION_ID: Final[str] = "conversation_id"
+HOOK_FIELD_AGENT: Final[str] = "agent"
+HOOK_FIELD_PROMPT: Final[str] = "prompt"
+HOOK_FIELD_TOOL_NAME: Final[str] = "tool_name"
+HOOK_FIELD_TOOL_INPUT: Final[str] = "tool_input"
+HOOK_FIELD_TOOL_OUTPUT_B64: Final[str] = "tool_output_b64"
+HOOK_FIELD_HOOK_ORIGIN: Final[str] = "hook_origin"
+HOOK_FIELD_HOOK_EVENT_NAME: Final[str] = "hook_event_name"
+HOOK_FIELD_GENERATION_ID: Final[str] = "generation_id"
+HOOK_FIELD_TOOL_USE_ID: Final[str] = "tool_use_id"
+
+# Hook deduplication configuration
+HOOK_DEDUP_CACHE_MAX: Final[int] = 500
+HOOK_DEDUP_HASH_ALGORITHM: Final[str] = "sha256"
+HOOK_DROP_LOG_TAG: Final[str] = "[DROP]"
 
 # Tags for auto-captured observations
 TAG_AUTO_CAPTURED: Final[str] = "auto-captured"
@@ -251,3 +293,35 @@ DEFAULT_SUMMARIZATION_BASE_URL: Final[str] = "http://localhost:11434"
 DEFAULT_SUMMARIZATION_TIMEOUT: Final[float] = 180.0
 # Extended timeout for first LLM request when model may need loading (warmup)
 WARMUP_TIMEOUT_MULTIPLIER: Final[float] = 2.0
+
+# =============================================================================
+# Prompt Source Types
+# =============================================================================
+# Source types categorize prompts by origin for different processing strategies.
+# - user: User-initiated prompts (extract memories normally)
+# - agent_notification: Background agent completions (preserve but skip memory extraction)
+# - plan: Plan mode activities (extract plan as decision memory)
+# - system: System messages (skip memory extraction)
+
+PROMPT_SOURCE_USER: Final[str] = "user"
+PROMPT_SOURCE_AGENT: Final[str] = "agent_notification"
+PROMPT_SOURCE_SYSTEM: Final[str] = "system"
+PROMPT_SOURCE_PLAN: Final[str] = "plan"
+
+VALID_PROMPT_SOURCES: Final[tuple[str, ...]] = (
+    PROMPT_SOURCE_USER,
+    PROMPT_SOURCE_AGENT,
+    PROMPT_SOURCE_SYSTEM,
+    PROMPT_SOURCE_PLAN,
+)
+
+# =============================================================================
+# Internal Message Detection
+# =============================================================================
+# Prefixes used to detect internal/system messages that should not generate memories.
+# Plan detection is handled dynamically via AgentService.get_all_plan_directories().
+
+INTERNAL_MESSAGE_PREFIXES: Final[tuple[str, ...]] = (
+    "<task-notification>",  # Background agent completion messages
+    "<system-",  # System reminder/prompt messages
+)

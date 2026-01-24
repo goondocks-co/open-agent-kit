@@ -24,6 +24,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     ContextMemoryResult,
     ContextRequest,
     ContextResponse,
+    DeleteMemoryResponse,
     DocType,
     FetchRequest,
     FetchResponse,
@@ -32,6 +33,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     MemoryListItem,
     MemoryResult,
     MemoryType,
+    PlanResult,
     RememberRequest,
     RememberResponse,
     SearchRequest,
@@ -69,7 +71,7 @@ def _get_retrieval_engine() -> tuple["RetrievalEngine", "DaemonState"]:
 async def search_get(
     query: str = Query(..., min_length=1),
     limit: int = Query(default=20, ge=1, le=100),
-    search_type: str = Query(default="all", pattern="^(all|code|memory)$"),
+    search_type: str = Query(default="all", pattern="^(all|code|memory|plans)$"),
     apply_doc_type_weights: bool = Query(
         default=True, description="Apply doc_type weighting. Disable for translation searches."
     ),
@@ -129,10 +131,25 @@ async def search_post(request: SearchRequest) -> SearchResponse:
         for r in result.memory
     ]
 
+    plan_results = [
+        PlanResult(
+            id=r["id"],
+            relevance=r["relevance"],
+            confidence=Confidence(r.get("confidence", "medium")),
+            title=r.get("title", "Untitled Plan"),
+            preview=r.get("preview", ""),
+            session_id=r.get("session_id"),
+            created_at=r.get("created_at"),
+            tokens=r.get("tokens", 0),
+        )
+        for r in result.plans
+    ]
+
     return SearchResponse(
         query=result.query,
         code=code_results,
         memory=memory_results,
+        plans=plan_results,
         total_tokens_available=result.total_tokens_available,
     )
 
@@ -280,3 +297,47 @@ async def get_context(request: ContextRequest) -> ContextResponse:
         guidelines=result.guidelines,
         total_tokens=result.total_tokens,
     )
+
+
+@router.delete("/api/memories/{memory_id}", response_model=DeleteMemoryResponse)
+async def delete_memory(memory_id: str) -> DeleteMemoryResponse:
+    """Delete a memory observation from both SQLite and ChromaDB.
+
+    Args:
+        memory_id: The UUID of the memory to delete.
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+
+    logger.info(f"Deleting memory: {memory_id}")
+
+    try:
+        # Check if memory exists in SQLite
+        observation = state.activity_store.get_observation(memory_id)
+        if not observation:
+            raise HTTPException(status_code=404, detail="Memory not found")
+
+        # Delete from SQLite
+        deleted = state.activity_store.delete_observation(memory_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Memory not found")
+
+        # Delete from ChromaDB
+        if state.vector_store:
+            state.vector_store.delete_memories([memory_id])
+
+        logger.info(f"Deleted memory {memory_id} from SQLite and ChromaDB")
+
+        return DeleteMemoryResponse(
+            success=True,
+            deleted_count=1,
+            message="Memory deleted successfully",
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to delete memory: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e

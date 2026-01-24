@@ -199,6 +199,8 @@ class TestProcessSessionSummary:
     def mock_activity_store(self):
         """Create a mock activity store."""
         mock = MagicMock()
+        # Default: no existing session summary (handles resumed session logic)
+        mock.get_latest_session_summary.return_value = None
         return mock
 
     @pytest.fixture
@@ -509,3 +511,147 @@ class TestProcessSessionSummary:
         assert result == "Summary with surrounding quotes"
         assert not result.startswith('"')
         assert not result.endswith('"')
+
+    def test_process_session_summary_skips_if_already_summarized_no_new_batches(
+        self, mock_activity_store, mock_vector_store, mock_summarizer
+    ):
+        """Test that resumed sessions with no new activity skip summarization."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor import (
+            ActivityProcessor,
+        )
+        from open_agent_kit.features.codebase_intelligence.activity.store import (
+            PromptBatch,
+            Session,
+            StoredObservation,
+        )
+
+        now = datetime.now()
+        summary_time = now - timedelta(minutes=10)  # Summary was created 10 mins ago
+
+        mock_session = Session(
+            id="session-123",
+            agent="claude",
+            project_root="/test/project",
+            started_at=now - timedelta(hours=2),
+            ended_at=now,
+        )
+
+        # Existing summary from before
+        existing_summary = StoredObservation(
+            id="summary-old",
+            session_id="session-123",
+            observation="Previous session summary",
+            memory_type="session_summary",
+            created_at=summary_time,
+        )
+
+        # Batch that's older than the summary (already covered)
+        old_batch = PromptBatch(
+            id=1,
+            session_id="session-123",
+            prompt_number=1,
+            user_prompt="Old work",
+            started_at=now - timedelta(hours=1),  # Before summary_time
+        )
+
+        mock_activity_store.get_session.return_value = mock_session
+        mock_activity_store.get_session_prompt_batches.return_value = [old_batch]
+        mock_activity_store.get_latest_session_summary.return_value = existing_summary
+
+        processor = ActivityProcessor(
+            activity_store=mock_activity_store,
+            vector_store=mock_vector_store,
+            summarizer=mock_summarizer,
+        )
+
+        result = processor.process_session_summary("session-123")
+
+        # Should skip - no new batches since last summary
+        assert result is None
+        mock_summarizer.summarize.assert_not_called()
+
+    def test_process_session_summary_only_summarizes_new_batches_on_resume(
+        self, mock_activity_store, mock_vector_store, mock_summarizer
+    ):
+        """Test that resumed sessions only summarize batches created after last summary."""
+        from unittest.mock import patch
+
+        from open_agent_kit.features.codebase_intelligence.activity.processor import (
+            ActivityProcessor,
+        )
+        from open_agent_kit.features.codebase_intelligence.activity.store import (
+            PromptBatch,
+            Session,
+            StoredObservation,
+        )
+
+        now = datetime.now()
+        summary_time = now - timedelta(minutes=30)  # Summary was created 30 mins ago
+
+        mock_session = Session(
+            id="session-123",
+            agent="claude",
+            project_root="/test/project",
+            started_at=now - timedelta(hours=2),
+            ended_at=now,
+        )
+
+        # Existing summary from first session leg
+        existing_summary = StoredObservation(
+            id="summary-old",
+            session_id="session-123",
+            observation="Previous session summary",
+            memory_type="session_summary",
+            created_at=summary_time,
+        )
+
+        # Old batch (before summary - already covered)
+        old_batch = PromptBatch(
+            id=1,
+            session_id="session-123",
+            prompt_number=1,
+            user_prompt="Old work from first leg",
+            started_at=now - timedelta(hours=1),
+            classification="implementation",
+        )
+
+        # New batch (after summary - from resumed session)
+        new_batch = PromptBatch(
+            id=2,
+            session_id="session-123",
+            prompt_number=2,
+            user_prompt="New work after resume",
+            started_at=now - timedelta(minutes=5),  # After summary_time
+            classification="debugging",
+        )
+
+        mock_activity_store.get_session.return_value = mock_session
+        mock_activity_store.get_session_prompt_batches.return_value = [old_batch, new_batch]
+        mock_activity_store.get_latest_session_summary.return_value = existing_summary
+        mock_activity_store.get_session_stats.return_value = {
+            "total_activities": 10,
+            "files_read": ["test.py"],
+            "files_modified": ["test.py"],
+            "files_created": [],
+        }
+
+        with patch.object(
+            ActivityProcessor,
+            "_call_llm",
+            return_value={
+                "success": True,
+                "raw_response": "Resumed session: debugged test.py issues",
+            },
+        ):
+            processor = ActivityProcessor(
+                activity_store=mock_activity_store,
+                vector_store=mock_vector_store,
+                summarizer=mock_summarizer,
+            )
+
+            result = processor.process_session_summary("session-123")
+
+        # Should generate summary for new work
+        assert result == "Resumed session: debugged test.py issues"
+        # Verify it was stored
+        mock_activity_store.store_observation.assert_called_once()

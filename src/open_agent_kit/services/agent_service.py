@@ -121,6 +121,52 @@ class AgentService:
         manifest = self.get_agent_manifest(agent_type)
         return self.project_root / manifest.get_commands_dir()
 
+    def get_all_plan_directories(self) -> dict[str, str]:
+        """Get plan directories for all available agents.
+
+        Plans are where agents store implementation plans during plan mode.
+        This enables dynamic detection of plan files across all supported agents
+        without hardcoding plan directory patterns.
+
+        Returns:
+            Dictionary mapping agent_type to plans directory path.
+            Example: {'claude': '.claude/plans', 'cursor': '.cursor/plans'}
+        """
+        result = {}
+        for agent_type in self.list_available_agents():
+            try:
+                manifest = self.get_agent_manifest(agent_type)
+                result[agent_type] = manifest.get_plans_dir()
+            except ValueError:
+                # Skip agents with invalid manifests
+                continue
+        return result
+
+    def get_all_plan_execution_prefixes(self) -> dict[str, str]:
+        """Get plan execution prefixes for all available agents.
+
+        Plan execution prefixes identify auto-injected prompts when an agent
+        implements an approved plan (e.g., Claude Code's "Implement the following plan:").
+        This enables detection of plan execution prompts for special handling
+        (categorizing as 'plan' source type instead of 'user').
+
+        Returns:
+            Dictionary mapping agent_type to plan execution prefix.
+            Example: {'claude': 'Implement the following plan:'}
+            Only includes agents that have a plan_execution_prefix defined.
+        """
+        result = {}
+        for agent_type in self.list_available_agents():
+            try:
+                manifest = self.get_agent_manifest(agent_type)
+                prefix = manifest.capabilities.plan_execution_prefix
+                if prefix:
+                    result[agent_type] = prefix
+            except ValueError:
+                # Skip agents with invalid manifests
+                continue
+        return result
+
     def get_agents_from_config(self) -> list[str]:
         """Get configured agents from project config.
 

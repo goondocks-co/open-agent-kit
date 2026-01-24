@@ -54,6 +54,7 @@ def mock_activity_store():
         "tool_counts": {"Read": 10, "Edit": 5},
     }
     mock.add_activity.return_value = None
+    mock.add_activity_buffered.return_value = None
     mock.get_prompt_batch_stats.return_value = {
         "activity_count": 5,
         "tools_used": ["Read", "Edit"],
@@ -139,7 +140,7 @@ class TestSessionStartHook:
 
     def test_session_start_minimal_request(self, client, setup_state_with_mocks):
         """Test session start with minimal request body."""
-        payload = {}
+        payload = {"session_id": str(uuid4())}
         response = client.post("/api/oak/ci/session-start", json=payload)
 
         assert response.status_code == 200
@@ -168,6 +169,7 @@ class TestSessionStartHook:
         payload = {
             "agent": "claude",
             "source": "startup",
+            "session_id": str(uuid4()),
         }
         response = client.post("/api/oak/ci/session-start", json=payload)
 
@@ -183,6 +185,7 @@ class TestSessionStartHook:
         payload = {
             "agent": "claude",
             "source": "resume",
+            "session_id": str(uuid4()),
         }
         response = client.post("/api/oak/ci/session-start", json=payload)
 
@@ -206,7 +209,7 @@ class TestSessionStartHook:
 
     def test_session_start_includes_index_stats(self, client, setup_state_with_mocks):
         """Test that index stats are included in response."""
-        payload = {"agent": "claude"}
+        payload = {"agent": "claude", "session_id": str(uuid4())}
         response = client.post("/api/oak/ci/session-start", json=payload)
 
         assert response.status_code == 200
@@ -225,23 +228,60 @@ class TestSessionStartHook:
         # Should still succeed with graceful fallback
         assert response.status_code == 200
 
-    def test_session_start_generates_session_id_if_missing(self, client, setup_state_with_mocks):
-        """Test that session_id is generated if not provided."""
+    def test_session_start_drops_when_session_id_missing(self, client, setup_state_with_mocks):
+        """Test that session-start drops when session_id is missing."""
         response = client.post("/api/oak/ci/session-start", json={})
 
         data = response.json()
-        session_id = data["session_id"]
-        # Should be a valid UUID string
-        assert len(session_id) > 0
-        assert session_id != "unknown"
+        assert data["status"] == "ok"
+        assert data.get("context") == {}
+        assert "session_id" not in data
 
     def test_session_start_project_root_included(self, client, setup_state_with_mocks):
         """Test that project_root is included if set."""
-        response = client.post("/api/oak/ci/session-start", json={})
+        response = client.post(
+            "/api/oak/ci/session-start",
+            json={"session_id": str(uuid4())},
+        )
 
         data = response.json()
         assert "project_root" in data["context"]
         assert data["context"]["project_root"] == "/tmp/test_project"
+
+    def test_session_start_duplicate_hook_idempotent(self, client, setup_state_with_mocks):
+        """Test that duplicate SessionStart hooks are handled idempotently."""
+        session_id = str(uuid4())
+        payload = {
+            "agent": "claude",
+            "session_id": session_id,
+            "source": "startup",
+        }
+
+        # First call - creates session
+        response1 = client.post("/api/oak/ci/session-start", json=payload)
+        assert response1.status_code == 200
+        data1 = response1.json()
+        assert data1["session_id"] == session_id
+
+        # Simulate existing session in memory and DB
+        state = get_state()
+        assert session_id in state.sessions
+
+        # Mock get_session to return existing session (simulating duplicate hook)
+        mock_existing_session = MagicMock(id=session_id, status="active")
+        setup_state_with_mocks.activity_store.get_session.return_value = mock_existing_session
+        setup_state_with_mocks.activity_store.get_or_create_session.return_value = (
+            mock_existing_session,
+            False,
+        )
+
+        # Second call - should handle duplicate gracefully
+        response2 = client.post("/api/oak/ci/session-start", json=payload)
+        assert response2.status_code == 200
+        data2 = response2.json()
+        assert data2["session_id"] == session_id
+        # Should still return valid response
+        assert data2["status"] == "ok"
 
 
 # =============================================================================
@@ -442,8 +482,8 @@ class TestPostToolUseHook:
         response = client.post("/api/oak/ci/post-tool-use", json=payload)
 
         assert response.status_code == 200
-        # Verify activity was added
-        setup_state_with_mocks.activity_store.add_activity.assert_called()
+        # Verify activity was added (using buffered insert for performance)
+        setup_state_with_mocks.activity_store.add_activity_buffered.assert_called()
 
     def test_post_tool_use_detects_errors_in_output(self, client, setup_state_with_mocks):
         """Test that errors are detected in tool output."""

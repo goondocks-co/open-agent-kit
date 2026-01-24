@@ -15,7 +15,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_ACTIVITIES_DB_FILENAME,
+    CI_CHROMA_DIR,
+    CI_DATA_DIR,
+    CI_LOG_FILE,
     DEFAULT_INDEXING_TIMEOUT_SECONDS,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
@@ -277,7 +282,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Configure logging based on config and environment
     effective_log_level = ci_config.get_effective_log_level()
-    log_file = project_root / ".oak" / "ci" / "daemon.log"
+    log_file = project_root / OAK_DIR / CI_DATA_DIR / CI_LOG_FILE
     _configure_logging(effective_log_level, log_file=log_file)
     state.log_level = effective_log_level
 
@@ -351,7 +356,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state.embedding_chain = None
 
     # Initialize vector store (requires embedding provider)
-    ci_data_dir = project_root / ".oak" / "ci" / "chroma"
+    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR / CI_CHROMA_DIR
 
     if state.embedding_chain is None:
         logger.warning("Skipping vector store initialization - no embedding provider")
@@ -414,7 +419,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     create_summarizer_from_config,
                 )
 
-                activity_db_path = project_root / ".oak" / "ci" / "activities.db"
+                activity_db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
                 state.activity_store = ActivityStore(activity_db_path)
                 logger.info(f"Activity store initialized at {activity_db_path}")
 

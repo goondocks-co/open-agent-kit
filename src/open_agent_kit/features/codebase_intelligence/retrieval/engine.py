@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CHARS_PER_TOKEN_ESTIMATE,
     CONFIDENCE_GAP_BOOST_THRESHOLD,
     CONFIDENCE_HIGH,
     CONFIDENCE_HIGH_THRESHOLD,
@@ -25,9 +26,20 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CONFIDENCE_MEDIUM,
     CONFIDENCE_MEDIUM_THRESHOLD,
     CONFIDENCE_MIN_MEANINGFUL_RANGE,
+    DEFAULT_CONTEXT_LIMIT,
+    DEFAULT_CONTEXT_MEMORY_LIMIT,
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_MEMORY_LIST_LIMIT,
+    DEFAULT_PREVIEW_LENGTH,
+    DEFAULT_RELATED_CHUNKS_LIMIT,
+    DEFAULT_RELATED_QUERY_LENGTH,
+    DEFAULT_SEARCH_LIMIT,
+    DEFAULT_SUMMARY_PREVIEW_LENGTH,
+    MEMORY_TYPE_PLAN,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
+    SEARCH_TYPE_PLANS,
 )
 from open_agent_kit.features.codebase_intelligence.memory.store import (
     DOC_TYPE_CODE,
@@ -79,9 +91,9 @@ class Confidence(str, Enum):
 class RetrievalConfig:
     """Configuration for retrieval operations."""
 
-    default_limit: int = 20
-    max_context_tokens: int = 2000
-    preview_length: int = 200
+    default_limit: int = DEFAULT_SEARCH_LIMIT
+    max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS
+    preview_length: int = DEFAULT_PREVIEW_LENGTH
 
 
 @dataclass
@@ -91,6 +103,7 @@ class SearchResult:
     query: str
     code: list[dict[str, Any]] = field(default_factory=list)
     memory: list[dict[str, Any]] = field(default_factory=list)
+    plans: list[dict[str, Any]] = field(default_factory=list)
     total_tokens_available: int = 0
 
 
@@ -354,10 +367,13 @@ class RetrievalEngine:
                 result.total_tokens_available += r.get("token_estimate", 0)
 
         if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_MEMORY):
+            # Search memories, excluding plans (they have their own category)
             memory_results = self.store.search_memory(
                 query=query,
                 limit=limit,
             )
+            # Filter out plans from memory results (they go in the plans category)
+            memory_results = [r for r in memory_results if r.get("memory_type") != MEMORY_TYPE_PLAN]
 
             # Calculate confidence for memory results
             memory_scores = [r["relevance"] for r in memory_results]
@@ -374,6 +390,41 @@ class RetrievalEngine:
                         "confidence": (
                             memory_confidences[i].value if memory_confidences else "medium"
                         ),
+                    }
+                )
+                result.total_tokens_available += r.get("token_estimate", 0)
+
+        # Plans search (uses memory collection with type filter)
+        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_PLANS):
+            plan_results = self.store.search_memory(
+                query=query,
+                limit=limit,
+                memory_types=[MEMORY_TYPE_PLAN],  # Filter to plans only
+            )
+
+            # Calculate confidence for plan results
+            plan_scores = [r["relevance"] for r in plan_results]
+            plan_confidences = self.calculate_confidence_batch(plan_scores)
+
+            for i, r in enumerate(plan_results):
+                # Get preview from observation (plan content)
+                observation = r.get("observation", "")
+                preview = (
+                    observation[:DEFAULT_PREVIEW_LENGTH] + "..."
+                    if len(observation) > DEFAULT_PREVIEW_LENGTH
+                    else observation
+                )
+
+                result.plans.append(
+                    {
+                        "id": r["id"],
+                        "relevance": r["relevance"],
+                        "confidence": (plan_confidences[i].value if plan_confidences else "medium"),
+                        "title": r.get("title", "Untitled Plan"),
+                        "preview": preview,
+                        "session_id": r.get("session_id"),
+                        "created_at": r.get("created_at"),
+                        "tokens": r.get("token_estimate", 0),
                     }
                 )
                 result.total_tokens_available += r.get("token_estimate", 0)
@@ -397,7 +448,7 @@ class RetrievalEngine:
         code_items = self.store.get_by_ids(ids, collection="code")
         for item in code_items:
             content = item.get("content", "")
-            tokens = len(content) // 4
+            tokens = len(content) // CHARS_PER_TOKEN_ESTIMATE
             result.results.append(
                 {
                     "id": item["id"],
@@ -411,7 +462,7 @@ class RetrievalEngine:
         memory_items = self.store.get_by_ids(ids, collection="memory")
         for item in memory_items:
             content = item.get("content", "")
-            tokens = len(content) // 4
+            tokens = len(content) // CHARS_PER_TOKEN_ESTIMATE
             result.results.append(
                 {
                     "id": item["id"],
@@ -462,7 +513,7 @@ class RetrievalEngine:
         # Search for relevant code
         code_results = self.store.search_code(
             query=search_query,
-            limit=10,
+            limit=DEFAULT_CONTEXT_LIMIT,
         )
 
         # Apply doc_type weighting if enabled
@@ -494,7 +545,7 @@ class RetrievalEngine:
         # Search for relevant memories
         memory_results = self.store.search_memory(
             query=search_query,
-            limit=5,
+            limit=DEFAULT_CONTEXT_MEMORY_LIMIT,
         )
 
         for r in memory_results:
@@ -555,7 +606,7 @@ class RetrievalEngine:
 
     def list_memories(
         self,
-        limit: int = 50,
+        limit: int = DEFAULT_MEMORY_LIST_LIMIT,
         offset: int = 0,
         memory_types: list[str] | None = None,
         exclude_types: list[str] | None = None,
@@ -642,8 +693,8 @@ class RetrievalEngine:
                         "id": r["id"],
                         "type": r.get("memory_type", "unknown"),
                         "summary": (
-                            r["observation"][:100] + "..."
-                            if len(r["observation"]) > 100
+                            r["observation"][:DEFAULT_SUMMARY_PREVIEW_LENGTH] + "..."
+                            if len(r["observation"]) > DEFAULT_SUMMARY_PREVIEW_LENGTH
                             else r["observation"]
                         ),
                         "tokens": r.get("token_estimate", 0),
@@ -678,8 +729,9 @@ class RetrievalEngine:
 
         for chunk in code_chunks:
             preview = chunk.get("content", "")
-            if len(preview) > self.config.preview_length:
-                preview = preview[: self.config.preview_length] + "..."
+            preview_length = self.config.preview_length
+            if len(preview) > preview_length:
+                preview = preview[:preview_length] + "..."
 
             result["chunks"].append(
                 {
@@ -688,10 +740,10 @@ class RetrievalEngine:
                     "name": chunk.get("name", ""),
                     "filepath": chunk.get("filepath", ""),
                     "preview": preview,
-                    "tokens": len(chunk.get("content", "")) // 4,
+                    "tokens": len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE,
                 }
             )
-            result["total_tokens"] += len(chunk.get("content", "")) // 4
+            result["total_tokens"] += len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE
 
         for chunk in memory_chunks:
             result["chunks"].append(
@@ -700,18 +752,18 @@ class RetrievalEngine:
                     "type": "memory",
                     "memory_type": chunk.get("memory_type", ""),
                     "observation": chunk.get("content", ""),
-                    "tokens": len(chunk.get("content", "")) // 4,
+                    "tokens": len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE,
                 }
             )
-            result["total_tokens"] += len(chunk.get("content", "")) // 4
+            result["total_tokens"] += len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE
 
         # Find related chunks by searching with first chunk's content
         if code_chunks:
             first_content = code_chunks[0].get("content", "")
             if first_content:
                 related = self.store.search_code(
-                    query=first_content[:500],
-                    limit=5,
+                    query=first_content[:DEFAULT_RELATED_QUERY_LENGTH],
+                    limit=DEFAULT_RELATED_CHUNKS_LIMIT,
                 )
                 for r in related:
                     if r["id"] not in chunk_ids:
@@ -759,10 +811,10 @@ class RetrievalEngine:
                     "end_line": item.get("end_line", 0),
                     "language": item.get("language", ""),
                     "content": content,
-                    "tokens": len(content) // 4,
+                    "tokens": len(content) // CHARS_PER_TOKEN_ESTIMATE,
                 }
             )
-            result["total_tokens"] += len(content) // 4
+            result["total_tokens"] += len(content) // CHARS_PER_TOKEN_ESTIMATE
 
         for item in memory_items:
             observation = item.get("content", "")
@@ -773,9 +825,9 @@ class RetrievalEngine:
                     "memory_type": item.get("memory_type", ""),
                     "observation": observation,
                     "context": item.get("context", ""),
-                    "tokens": len(observation) // 4,
+                    "tokens": len(observation) // CHARS_PER_TOKEN_ESTIMATE,
                 }
             )
-            result["total_tokens"] += len(observation) // 4
+            result["total_tokens"] += len(observation) // CHARS_PER_TOKEN_ESTIMATE
 
         return result

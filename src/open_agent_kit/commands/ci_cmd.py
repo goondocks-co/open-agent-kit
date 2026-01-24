@@ -11,6 +11,10 @@ from rich.console import Console
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.constants import SKIP_DIRECTORIES
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_ACTIVITIES_DB_FILENAME,
+    CI_DATA_DIR,
+)
 from open_agent_kit.utils import (
     dir_exists,
     print_error,
@@ -44,7 +48,7 @@ def _check_oak_initialized(project_root: Path) -> None:
 
 def _check_ci_enabled(project_root: Path) -> None:
     """Check if Codebase Intelligence feature is enabled."""
-    ci_dir = project_root / OAK_DIR / "ci"
+    ci_dir = project_root / OAK_DIR / CI_DATA_DIR
     if not dir_exists(ci_dir):
         print_error(
             "Codebase Intelligence is not enabled. "
@@ -60,7 +64,7 @@ def _get_daemon_manager(project_root: Path) -> "DaemonManager":
         get_project_port,
     )
 
-    ci_data_dir = project_root / OAK_DIR / "ci"
+    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
     port = get_project_port(project_root, ci_data_dir)
     return DaemonManager(project_root=project_root, port=port, ci_data_dir=ci_data_dir)
 
@@ -211,7 +215,7 @@ def ci_start(
     # In quiet mode, don't show errors for uninitialized projects
     if quiet:
         oak_dir = project_root / OAK_DIR
-        ci_dir = oak_dir / "ci"
+        ci_dir = oak_dir / CI_DATA_DIR
         if not oak_dir.exists() or not ci_dir.exists():
             return  # Silently exit if not configured
 
@@ -334,7 +338,7 @@ def ci_reset(
     _check_oak_initialized(project_root)
     _check_ci_enabled(project_root)
 
-    ci_data_dir = project_root / OAK_DIR / "ci"
+    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
     chroma_dir = ci_data_dir / "chroma"
 
     if not force:
@@ -1392,7 +1396,7 @@ def ci_search(
     query: str = typer.Argument(..., help="Natural language search query"),
     limit: int = typer.Option(10, "--limit", "-n", help="Maximum results to return"),
     search_type: str = typer.Option(
-        "all", "--type", "-t", help="Search type: 'all', 'code', or 'memory'"
+        "all", "--type", "-t", help="Search type: 'all', 'code', 'memory', or 'plans'"
     ),
     format_output: str = typer.Option(
         "json", "--format", "-f", help="Output format: 'json' or 'text'"
@@ -1404,9 +1408,9 @@ def ci_search(
         help="Disable doc_type weighting (useful for translation searches)",
     ),
 ) -> None:
-    """Search the codebase and memories using semantic similarity.
+    """Search the codebase, memories, and plans using semantic similarity.
 
-    Find relevant code implementations, past decisions, gotchas, and learnings.
+    Find relevant code implementations, past decisions, gotchas, learnings, and plans.
     Results are ranked by relevance score. By default, i18n/config files are
     down-weighted; use --no-weight to disable this for translation searches.
 
@@ -1415,6 +1419,7 @@ def ci_search(
         oak ci search "error handling patterns" --type code
         oak ci search "database connection" -n 5 -f text
         oak ci search "translation strings" --no-weight
+        oak ci search "design goals" --type plans
     """
     import json
 
@@ -1449,6 +1454,7 @@ def ci_search(
                 # Human-readable format
                 code_results = result.get("code", [])
                 memory_results = result.get("memory", [])
+                plan_results = result.get("plans", [])
 
                 if code_results:
                     print_header(f"Code Results ({len(code_results)})")
@@ -1474,7 +1480,27 @@ def ci_search(
                         console.print(f"\n[bold][{memory_type}][/bold] {observation[:100]}")
                         console.print(f"  Score: {score:.1%}", style="dim")
 
-                if not code_results and not memory_results:
+                if plan_results:
+                    console.print()
+                    print_header(f"Plan Results ({len(plan_results)})")
+                    for item in plan_results:
+                        confidence = item.get("confidence", "medium")
+                        title = item.get("title", "Untitled Plan")
+                        preview = item.get("preview", "")[:100]
+                        # Color code confidence levels
+                        confidence_style = {
+                            "high": "green",
+                            "medium": "yellow",
+                            "low": "red",
+                        }.get(confidence, "dim")
+                        console.print(
+                            f"\n[{confidence_style}]{confidence.upper()}[/{confidence_style}] "
+                            f"[bold]{title}[/bold]"
+                        )
+                        if preview:
+                            console.print(f"  {preview}...", style="dim")
+
+                if not code_results and not memory_results and not plan_results:
                     print_warning("No results found.")
 
     except httpx.ConnectError:
@@ -2087,7 +2113,7 @@ def ci_backup(
     _check_oak_initialized(project_root)
     _check_ci_enabled(project_root)
 
-    db_path = project_root / OAK_DIR / "ci" / "activities.db"
+    db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)
@@ -2138,7 +2164,7 @@ def ci_restore(
     _check_oak_initialized(project_root)
     _check_ci_enabled(project_root)
 
-    db_path = project_root / OAK_DIR / "ci" / "activities.db"
+    db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)

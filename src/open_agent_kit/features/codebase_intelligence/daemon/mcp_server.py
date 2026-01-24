@@ -15,6 +15,8 @@ from typing import Any, Literal, cast
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
 from open_agent_kit.features.codebase_intelligence.daemon.manager import (
     DaemonManager,
     get_project_port,
@@ -32,7 +34,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
     Returns:
         FastMCP server instance configured with CI tools.
     """
-    ci_data_dir = project_root / ".oak" / "ci"
+    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
     port = get_project_port(project_root, ci_data_dir)
     base_url = f"http://localhost:{port}"
 

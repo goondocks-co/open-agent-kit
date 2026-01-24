@@ -27,6 +27,8 @@ export interface SessionItem {
     ended_at: string | null;
     status: string;
     summary: string | null;
+    title: string | null;
+    first_prompt_preview: string | null;
     prompt_batch_count: number;
     activity_count: number;
 }
@@ -37,6 +39,9 @@ export interface PromptBatchItem {
     prompt_number: number;
     user_prompt: string | null;
     classification: string | null;
+    source_type: string;  // user, agent_notification, plan, system
+    plan_file_path: string | null;  // Path to plan file (for source_type='plan')
+    plan_content: string | null;  // Full plan content (stored for self-contained CI)
     started_at: string;
     ended_at: string | null;
     activity_count: number;

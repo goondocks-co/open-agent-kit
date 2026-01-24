@@ -12,6 +12,9 @@ import time
 from pathlib import Path
 from typing import IO, Any
 
+from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +68,7 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
     Returns:
         Port number for this project.
     """
-    data_dir = ci_data_dir or (project_root / ".oak" / "ci")
+    data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
     port_file = data_dir / PORT_FILE
 
     # Check for stored port
@@ -109,7 +112,7 @@ class DaemonManager:
         """
         self.project_root = project_root
         self.port = port
-        self.ci_data_dir = ci_data_dir or (project_root / ".oak" / "ci")
+        self.ci_data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
         self.pid_file = self.ci_data_dir / PID_FILE
         self.log_file = self.ci_data_dir / LOG_FILE
         self.lock_file = self.ci_data_dir / LOCK_FILE

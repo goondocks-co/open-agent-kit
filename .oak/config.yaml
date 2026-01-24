@@ -1,12 +1,17 @@
-version: 0.5.2.dev5+gcf4d87aa3.d20260122
-agents:
-- claude
+version: 0.5.2.dev6+g12cd88b4f.d20260124
+agents: [claude, cursor]
 agent_capabilities:
   claude:
     has_background_agents: true
     has_native_web: true
     has_mcp: true
     research_strategy: Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)
+    custom: {}
+  cursor:
+    has_background_agents: true
+    has_native_web: false
+    has_mcp: true
+    research_strategy: Deep research via MCP web-search + background agents
     custom: {}
 rfc:
   directory: oak/rfc
@@ -24,10 +29,7 @@ plan:
 constitution:
   directory: oak
 features:
-  enabled:
-  - rules-management
-  - codebase-intelligence
-  - strategic-planning
+  enabled: [rules-management, codebase-intelligence, strategic-planning]
 skills:
   installed:
   - project-rules

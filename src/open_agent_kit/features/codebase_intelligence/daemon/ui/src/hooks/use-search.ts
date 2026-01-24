@@ -1,6 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
-import { API_ENDPOINTS, type ConfidenceLevel, type ConfidenceFilter, CONFIDENCE_LEVELS, type DocType } from "@/lib/constants";
+import {
+    API_ENDPOINTS,
+    type ConfidenceLevel,
+    type ConfidenceFilter,
+    CONFIDENCE_LEVELS,
+    type DocType,
+    type SearchType,
+    SEARCH_TYPES,
+} from "@/lib/constants";
 
 export interface CodeResult {
     id: string;
@@ -23,10 +31,21 @@ export interface MemoryResult {
     confidence: ConfidenceLevel;
 }
 
+export interface PlanResult {
+    id: string;
+    title: string;
+    preview: string;
+    relevance: number;
+    confidence: ConfidenceLevel;
+    session_id: string | null;
+    created_at: string | null;
+}
+
 export interface SearchResponse {
     query: string;
     code: CodeResult[];
     memory: MemoryResult[];
+    plans: PlanResult[];
     total_tokens_available: number;
 }
 
@@ -63,12 +82,13 @@ function filterByConfidence<T extends { confidence: ConfidenceLevel }>(
 export function useSearch(
     query: string,
     confidenceFilter: ConfidenceFilter = "all",
-    applyDocTypeWeights: boolean = true
+    applyDocTypeWeights: boolean = true,
+    searchType: SearchType = SEARCH_TYPES.ALL
 ) {
     const queryResult = useQuery<SearchResponse>({
-        queryKey: ["search", query, applyDocTypeWeights],
+        queryKey: ["search", query, applyDocTypeWeights, searchType],
         queryFn: () => fetchJson(
-            `${API_ENDPOINTS.SEARCH}?query=${encodeURIComponent(query)}&apply_doc_type_weights=${applyDocTypeWeights}`
+            `${API_ENDPOINTS.SEARCH}?query=${encodeURIComponent(query)}&apply_doc_type_weights=${applyDocTypeWeights}&search_type=${searchType}`
         ),
         enabled: query.length > MIN_SEARCH_QUERY_LENGTH,
         staleTime: SEARCH_STALE_TIME_MS,
@@ -78,8 +98,9 @@ export function useSearch(
     const filteredData = queryResult.data
         ? {
               ...queryResult.data,
-              code: filterByConfidence(queryResult.data.code, confidenceFilter),
-              memory: filterByConfidence(queryResult.data.memory, confidenceFilter),
+              code: filterByConfidence(queryResult.data.code || [], confidenceFilter),
+              memory: filterByConfidence(queryResult.data.memory || [], confidenceFilter),
+              plans: filterByConfidence(queryResult.data.plans || [], confidenceFilter),
           }
         : undefined;
 

@@ -254,6 +254,48 @@ class MemoryObservation:
         }
 
 
+@dataclass
+class PlanObservation:
+    """A plan to be indexed for semantic search.
+
+    Plans are stored in prompt_batches (SQLite) and indexed in oak_memory (ChromaDB)
+    with memory_type='plan'. This enables semantic search of plans alongside
+    code and memories to understand the "why" behind code changes.
+    """
+
+    id: str
+    session_id: str
+    title: str  # Extracted from filename or first heading
+    content: str  # Full plan text
+    file_path: str | None = None
+    created_at: datetime | None = None
+
+    @property
+    def token_estimate(self) -> int:
+        """Estimate tokens (~4 chars per token)."""
+        return len(self.content) // 4
+
+    def get_embedding_text(self) -> str:
+        """Generate text for embedding.
+
+        Plans are already LLM-generated, so we embed the full content
+        with a title prefix for better semantic matching.
+        """
+        return f"Plan: {self.title}\n\n{self.content}"
+
+    def to_metadata(self) -> dict[str, Any]:
+        """Convert to ChromaDB metadata format."""
+        return {
+            "memory_type": "plan",
+            "context": self.file_path or "",
+            "session_id": self.session_id,
+            "title": self.title,
+            "created_at": self.created_at.isoformat() if self.created_at else "",
+            "token_estimate": self.token_estimate,
+            "tags": "",  # Plans don't have tags
+        }
+
+
 class VectorStore:
     """ChromaDB-based vector store for code and memory.
 
@@ -684,6 +726,57 @@ class VectorStore:
         logger.info(f"Added memory observation: {observation.id}")
         return observation.id
 
+    def add_plan(self, plan: PlanObservation) -> str:
+        """Add a plan to the memory collection for semantic search.
+
+        Plans are embedded as full text (already LLM-generated) and stored
+        with memory_type='plan' to distinguish from other memories.
+        This enables semantic search of plans alongside code and memories.
+
+        Args:
+            plan: The plan observation to store.
+
+        Returns:
+            The plan ID.
+        """
+        self._ensure_initialized()
+
+        # Generate embedding from enriched text
+        embedding_text = plan.get_embedding_text()
+        result = self.embedding_provider.embed([embedding_text])
+
+        # Get actual dimensions
+        actual_dims = result.dimensions
+        if result.embeddings is not None and len(result.embeddings) > 0:
+            actual_dims = len(result.embeddings[0])
+
+        # Check for dimension mismatch
+        self._handle_dimension_mismatch(MEMORY_COLLECTION, actual_dims)
+
+        # Upsert with dimension mismatch recovery
+        try:
+            self._memory_collection.upsert(
+                ids=[plan.id],
+                documents=[plan.content],
+                embeddings=result.embeddings,
+                metadatas=[plan.to_metadata()],
+            )
+        except (RuntimeError, ValueError, TypeError) as e:
+            if "dimension" in str(e).lower():
+                logger.warning(f"Dimension mismatch on plan insert, recreating: {e}")
+                self._recreate_collection(MEMORY_COLLECTION, actual_dims)
+                self._memory_collection.upsert(
+                    ids=[plan.id],
+                    documents=[plan.content],
+                    embeddings=result.embeddings,
+                    metadatas=[plan.to_metadata()],
+                )
+            else:
+                raise
+
+        logger.info(f"Added plan to memory index: {plan.id} ({plan.title})")
+        return plan.id
+
     def search_code(
         self,
         query: str,
@@ -911,6 +1004,34 @@ class VectorStore:
 
         self._code_collection.delete(ids=results["ids"])
         return len(results["ids"])
+
+    def delete_memories(self, observation_ids: list[str]) -> int:
+        """Delete memories from ChromaDB by their observation IDs.
+
+        Args:
+            observation_ids: List of observation IDs to delete.
+
+        Returns:
+            Number of memories deleted.
+        """
+        if not observation_ids:
+            return 0
+
+        self._ensure_initialized()
+
+        # Filter to only IDs that exist in the collection
+        existing = self._memory_collection.get(
+            ids=observation_ids,
+            include=[],
+        )
+
+        existing_ids = existing["ids"] if existing["ids"] else []
+        if not existing_ids:
+            return 0
+
+        self._memory_collection.delete(ids=existing_ids)
+        logger.info(f"Deleted {len(existing_ids)} memories from ChromaDB")
+        return len(existing_ids)
 
     def count_unique_files(self) -> int:
         """Count unique files in the code index.

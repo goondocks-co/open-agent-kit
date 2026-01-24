@@ -1,8 +1,9 @@
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-components";
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
-import { Check, FileCode, Database, Cpu, Clock, Activity, Terminal } from "lucide-react";
+import { Check, FileCode, Database, Cpu, Clock, Activity, Terminal, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     formatRelativeTime,
@@ -21,7 +22,10 @@ function SessionRow({ session }: { session: SessionItem }) {
     const statusLabel = SESSION_STATUS_LABELS[session.status as keyof typeof SESSION_STATUS_LABELS] || "done";
 
     return (
-        <div className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+        <Link
+            to={`/data/sessions/${session.id}`}
+            className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0 hover:bg-accent/5 rounded-md px-2 -mx-2 transition-colors group"
+        >
             <StatusDot status={statusType} />
             <Terminal className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div className="flex-1 min-w-0">
@@ -33,7 +37,11 @@ function SessionRow({ session }: { session: SessionItem }) {
                         {formatRelativeTime(session.started_at)}
                     </span>
                 </div>
-                {session.summary ? (
+                {session.title ? (
+                    <p className="text-xs text-muted-foreground truncate">{session.title}</p>
+                ) : session.first_prompt_preview ? (
+                    <p className="text-xs text-muted-foreground truncate">{session.first_prompt_preview}</p>
+                ) : session.summary ? (
                     <p className="text-xs text-muted-foreground truncate">{session.summary}</p>
                 ) : (
                     <p className="text-xs text-muted-foreground">
@@ -43,7 +51,8 @@ function SessionRow({ session }: { session: SessionItem }) {
                 )}
             </div>
             <StatusBadge status={statusType} label={statusLabel} />
-        </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        </Link>
     );
 }
 

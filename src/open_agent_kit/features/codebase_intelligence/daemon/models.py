@@ -61,7 +61,7 @@ class SearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, description="Search query")
     limit: int = Field(default=20, ge=1, le=100)
-    search_type: str = Field(default="all", pattern="^(all|code|memory)$")
+    search_type: str = Field(default="all", pattern="^(all|code|memory|plans)$")
     apply_doc_type_weights: bool = Field(
         default=True,
         description="Apply doc_type weighting to deprioritize i18n/config files. Disable for translation searches.",
@@ -106,12 +106,30 @@ class MemoryResult(BaseModel):
     created_at: datetime | None = None
 
 
+class PlanResult(BaseModel):
+    """Plan search result.
+
+    Plans represent the "intention" layer - the why behind code changes.
+    They are indexed from prompt_batches with source_type='plan'.
+    """
+
+    id: str
+    relevance: float
+    confidence: Confidence = Confidence.MEDIUM
+    title: str
+    preview: str
+    session_id: str | None = None
+    created_at: datetime | None = None
+    tokens: int = 0
+
+
 class SearchResponse(BaseModel):
     """Search results."""
 
     query: str
     code: list[CodeResult] = Field(default_factory=list)
     memory: list[MemoryResult] = Field(default_factory=list)
+    plans: list[PlanResult] = Field(default_factory=list)
     total_tokens_available: int = 0
 
 
@@ -300,13 +318,23 @@ class ActivityItem(BaseModel):
 
 
 class PromptBatchItem(BaseModel):
-    """Prompt batch - activities from a single user prompt."""
+    """Prompt batch - activities from a single user prompt.
+
+    Source types categorize batches for different processing strategies:
+    - user: User-initiated prompts (extract memories normally)
+    - agent_notification: Background agent completions (preserve but skip memory extraction)
+    - plan: Plan mode activities (extract plan as decision memory)
+    - system: System messages (skip memory extraction)
+    """
 
     id: str
     session_id: str
     prompt_number: int
     user_prompt: str | None = None
     classification: str | None = None
+    source_type: str = "user"  # user, agent_notification, plan, system
+    plan_file_path: str | None = None  # Path to plan file (for source_type='plan')
+    plan_content: str | None = None  # Full plan content (stored for self-contained CI)
     started_at: datetime
     ended_at: datetime | None = None
     activity_count: int = 0
@@ -322,6 +350,8 @@ class SessionItem(BaseModel):
     ended_at: datetime | None = None
     status: str = "active"
     summary: str | None = None
+    title: str | None = None
+    first_prompt_preview: str | None = None
     prompt_batch_count: int = 0
     activity_count: int = 0
 
@@ -368,3 +398,43 @@ class ActivitySearchResponse(BaseModel):
     query: str
     activities: list[ActivityItem] = Field(default_factory=list)
     total: int = 0
+
+
+# ============================================================================
+# Delete Response Models
+# ============================================================================
+
+
+class DeleteResponse(BaseModel):
+    """Base response for delete operations."""
+
+    success: bool = True
+    deleted_count: int = 0
+    message: str = ""
+
+
+class DeleteSessionResponse(DeleteResponse):
+    """Response for session deletion with cascade counts."""
+
+    batches_deleted: int = 0
+    activities_deleted: int = 0
+    memories_deleted: int = 0
+
+
+class DeleteBatchResponse(DeleteResponse):
+    """Response for prompt batch deletion with cascade counts."""
+
+    activities_deleted: int = 0
+    memories_deleted: int = 0
+
+
+class DeleteActivityResponse(DeleteResponse):
+    """Response for activity deletion."""
+
+    memory_deleted: bool = False
+
+
+class DeleteMemoryResponse(DeleteResponse):
+    """Response for memory deletion."""
+
+    pass

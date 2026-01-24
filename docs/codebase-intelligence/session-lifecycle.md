@@ -4,8 +4,10 @@ This document describes the complete session lifecycle for Codebase Intelligence
 
 ## Overview
 
-Sessions track all activity within a Claude Code invocation. The lifecycle is driven by:
-1. **Hooks** - Events fired by Claude Code that we respond to
+Sessions track all activity within an agent invocation. While the diagrams reference Claude Code,
+the same lifecycle applies to Cursor and Gemini via equivalent hook events. The lifecycle is driven by:
+
+1. **Hooks** - Events fired by the agent that we respond to
 2. **Background Jobs** - Periodic cleanup and processing tasks
 3. **State Management** - Dual tracking in memory and SQLite
 

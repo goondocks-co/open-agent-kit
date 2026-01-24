@@ -145,6 +145,13 @@ class OakConfig(BaseModel):
         default_factory=SkillsConfig,
         description="Skills configuration",
     )
+    # Passthrough field for codebase-intelligence feature config
+    # Stored here to preserve it when OakConfig.save() is called
+    # The CI feature has its own config models and save/load logic
+    codebase_intelligence: dict[str, Any] | None = Field(
+        default=None,
+        description="Codebase Intelligence configuration (managed by CI feature)",
+    )
 
     @classmethod
     def load(cls, config_path: Path) -> "OakConfig":

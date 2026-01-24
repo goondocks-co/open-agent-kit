@@ -1,14 +1,36 @@
 """AI agent integration hooks for the CI daemon (claude-mem inspired)."""
 
+import hashlib
 import json
 import logging
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from fastapi import APIRouter, Request
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    HOOK_DEDUP_CACHE_MAX,
+    HOOK_DEDUP_HASH_ALGORITHM,
+    HOOK_DROP_LOG_TAG,
+    HOOK_EVENT_POST_TOOL_USE,
+    HOOK_EVENT_PROMPT_SUBMIT,
+    HOOK_EVENT_SESSION_END,
+    HOOK_EVENT_SESSION_START,
+    HOOK_EVENT_STOP,
+    HOOK_FIELD_CONVERSATION_ID,
+    HOOK_FIELD_GENERATION_ID,
+    HOOK_FIELD_HOOK_ORIGIN,
+    HOOK_FIELD_PROMPT,
+    HOOK_FIELD_SESSION_ID,
+    HOOK_FIELD_TOOL_INPUT,
+    HOOK_FIELD_TOOL_NAME,
+    HOOK_FIELD_TOOL_OUTPUT_B64,
+    HOOK_FIELD_TOOL_USE_ID,
+    PROMPT_SOURCE_PLAN,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
+from open_agent_kit.features.codebase_intelligence.prompt_classifier import classify_prompt
 from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
@@ -32,6 +54,18 @@ def _parse_tool_output(tool_output: str) -> dict[str, Any] | None:
         return None
     except (json.JSONDecodeError, TypeError):
         return None
+
+
+def _hash_value(value: str) -> str:
+    """Create a stable hash for dedupe keys."""
+    hasher = hashlib.new(HOOK_DEDUP_HASH_ALGORITHM)
+    hasher.update(value.encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def _build_dedupe_key(event_name: str, session_id: str, parts: list[str]) -> str:
+    """Build a dedupe key for hook events."""
+    return "|".join([event_name, session_id, *parts])
 
 
 def _format_memories_for_injection(memories: list[dict], max_items: int = 10) -> str:
@@ -186,18 +220,56 @@ async def hook_session_start(request: Request) -> dict:
         body = {}
 
     agent = body.get("agent", "unknown")
-    session_id = body.get("session_id") or str(uuid4())
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
     source = body.get("source", "startup")  # startup, resume, clear, compact
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped session-start: missing session_id")
+        return {"status": "ok", "context": {}}
+
+    dedupe_key = _build_dedupe_key(
+        HOOK_EVENT_SESSION_START,
+        session_id,
+        [agent, source],
+    )
+    if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+        logger.debug(
+            "Deduped session-start session=%s agent=%s source=%s",
+            session_id,
+            agent,
+            source,
+        )
+        return {"status": "ok", "session_id": session_id, "context": {}}
 
     # Prominent logging for session-start lifecycle tracking
     logger.info("[SESSION-START] ========== Session starting ==========")
     logger.info(f"[SESSION-START] session_id={session_id}, agent={agent}, source={source}")
     logger.debug(f"[SESSION-START] Raw request body: {body}")
 
-    # Create session tracking (in-memory)
-    state.create_session(session_id, agent)
+    # Check if session already exists (idempotency check for duplicate hooks)
+    existing_in_memory = session_id in state.sessions
+    existing_in_db = False
+    if state.activity_store:
+        existing_db_session = state.activity_store.get_session(session_id)
+        existing_in_db = existing_db_session is not None
 
-    # Create or resume session in activity store (persistent SQLite)
+    if existing_in_memory or existing_in_db:
+        logger.warning(
+            f"[SESSION-START] Duplicate hook detected for session_id={session_id} "
+            f"(in_memory={existing_in_memory}, in_db={existing_in_db}). "
+            "This is safe - returning existing session."
+        )
+
+    # Create or get session tracking (in-memory) - idempotent
+    if not existing_in_memory:
+        state.create_session(session_id, agent)
+    else:
+        # Update last_activity for existing session
+        existing_session = state.sessions[session_id]
+        existing_session.last_activity = datetime.now()
+        logger.debug(f"Updated existing in-memory session: {session_id}")
+
+    # Create or resume session in activity store (persistent SQLite) - idempotent
     if state.activity_store and state.project_root:
         try:
             _, created = state.activity_store.get_or_create_session(
@@ -261,22 +333,47 @@ async def hook_prompt_submit(request: Request) -> dict:
         logger.debug("Failed to parse JSON body in prompt-submit")
         body = {}
 
-    session_id = body.get("session_id")
-    prompt = body.get("prompt", "")
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    prompt = body.get(HOOK_FIELD_PROMPT, "")
     agent = body.get("agent", "unknown")
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    generation_id = body.get(HOOK_FIELD_GENERATION_ID, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped prompt-submit: missing session_id")
+        return {"status": "ok", "context": {}}
 
     # Skip if no prompt or very short
     if not prompt or len(prompt) < 2:
         return {"status": "ok", "context": {}}
 
-    logger.debug(f"Prompt submit: {prompt[:50]}...")
+    prompt_hash = _hash_value(prompt)
+
+    dedupe_parts = [prompt_hash]
+    if generation_id:
+        dedupe_parts = [generation_id, prompt_hash]
+    dedupe_key = _build_dedupe_key(HOOK_EVENT_PROMPT_SUBMIT, session_id, dedupe_parts)
+    if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+        logger.debug(
+            "Deduped prompt-submit session=%s origin=%s key=%s",
+            session_id,
+            hook_origin,
+            dedupe_key,
+        )
+        return {"status": "ok", "context": {}}
 
     # Get or create session tracking
     # Auto-create session if it doesn't exist (e.g., after daemon restart)
     session = state.get_session(session_id) if session_id else None
+
+    logger.debug(f"Prompt submit: {prompt[:50]}...")
     if session_id and not session:
         logger.info(f"Auto-creating session {session_id} (daemon may have restarted)")
         session = state.create_session(session_id, agent)
+
+    if session:
+        session.last_generation_id = generation_id or None
+        session.last_prompt_hash = prompt_hash
 
     # Create new prompt batch in activity store
     prompt_batch_id = None
@@ -321,13 +418,41 @@ async def hook_prompt_submit(request: Request) -> dict:
                     logger.debug(f"[REALTIME] Scheduling async task for previous batch {batch_id}")
                     asyncio.create_task(_process_previous())
 
-            # Create new prompt batch with full user prompt
+            # Detect prompt source type for categorization using PromptClassifier
+            # This handles: internal messages (task-notification, system) and
+            # plan execution prompts (auto-injected by plan mode)
+            classification = classify_prompt(prompt)
+            source_type = classification.source_type
+
+            # Extract plan content if this is a plan prompt (plan embedded in prompt)
+            # The plan content is after the prefix (e.g., "Implement the following plan:\n\n")
+            plan_content = None
+            if source_type == PROMPT_SOURCE_PLAN and classification.matched_prefix:
+                # Strip the prefix and any leading whitespace to get the actual plan
+                prefix_len = len(classification.matched_prefix)
+                plan_content = prompt[prefix_len:].lstrip()
+                logger.debug(f"Extracted plan content from prompt ({len(plan_content)} chars)")
+
+            # Create new prompt batch with full user prompt and source type
             batch = state.activity_store.create_prompt_batch(
                 session_id=session_id,
                 user_prompt=prompt,  # Full prompt, truncated to 10K in store
+                source_type=source_type,
+                plan_content=plan_content,  # Plan content if extracted from prompt
             )
             prompt_batch_id = batch.id
-            logger.info(f"Created prompt batch {prompt_batch_id} for session {session_id}")
+
+            # Log with additional context for plan execution detection
+            if classification.agent_type:
+                logger.info(
+                    f"Created prompt batch {prompt_batch_id} (source={source_type}, "
+                    f"agent={classification.agent_type}) for session {session_id}"
+                )
+            else:
+                logger.info(
+                    f"Created prompt batch {prompt_batch_id} (source={source_type}) "
+                    f"for session {session_id}"
+                )
 
             # Update session with current batch ID
             if session:
@@ -390,11 +515,16 @@ async def hook_post_tool_use(request: Request) -> dict:
         logger.debug("Failed to parse JSON body in post-tool-use")
         body = {}
 
-    session_id = body.get("session_id")
-    tool_name = body.get("tool_name", "")
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    tool_name = body.get(HOOK_FIELD_TOOL_NAME, "")
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped post-tool-use: missing session_id")
+        return {"status": "ok", "observations_captured": 0}
 
     # Handle tool_input - could be dict (from JSON) or string
-    tool_input = body.get("tool_input", {})
+    tool_input = body.get(HOOK_FIELD_TOOL_INPUT, {})
     if isinstance(tool_input, str):
         try:
             tool_input = json.loads(tool_input)
@@ -404,7 +534,7 @@ async def hook_post_tool_use(request: Request) -> dict:
         tool_input = {}
 
     # Handle tool_output - check for base64-encoded version first
-    tool_output_b64 = body.get("tool_output_b64", "")
+    tool_output_b64 = body.get(HOOK_FIELD_TOOL_OUTPUT_B64, "")
     if tool_output_b64:
         try:
             tool_output = base64.b64decode(tool_output_b64).decode("utf-8", errors="replace")
@@ -423,6 +553,41 @@ async def hook_post_tool_use(request: Request) -> dict:
         f"input={has_input} | output={has_output} ({output_len} chars) | "
         f"session={session_id or 'none'}"
     )
+    if session_id and tool_use_id:
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_POST_TOOL_USE,
+            session_id,
+            [tool_use_id],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped post-tool-use session=%s origin=%s token=%s",
+                session_id,
+                hook_origin,
+                tool_use_id,
+            )
+            return {"status": "ok", "observations_captured": 0}
+    elif session_id:
+        signature_payload = {
+            HOOK_FIELD_TOOL_NAME: tool_name,
+            HOOK_FIELD_TOOL_INPUT: tool_input,
+            HOOK_FIELD_TOOL_OUTPUT_B64: tool_output_b64 or tool_output,
+        }
+        signature = json.dumps(signature_payload, sort_keys=True, default=str)
+        dedupe_token = _hash_value(signature)
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_POST_TOOL_USE,
+            session_id,
+            [dedupe_token],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped post-tool-use session=%s origin=%s token=%s",
+                session_id,
+                hook_origin,
+                dedupe_token,
+            )
+            return {"status": "ok", "observations_captured": 0}
 
     # Debug: log full details for troubleshooting
     if logger.isEnabledFor(logging.DEBUG):
@@ -521,8 +686,34 @@ async def hook_post_tool_use(request: Request) -> dict:
                 success=not is_error,
                 error_message=error_msg,
             )
-            state.activity_store.add_activity(activity)
+            # Use buffered insert for better performance (auto-flushes at batch size)
+            state.activity_store.add_activity_buffered(activity)
             logger.debug(f"Stored activity: {tool_name} (batch={prompt_batch_id})")
+
+            # Detect plan mode: if Write to a plan directory, mark batch as plan
+            # and capture plan content for self-contained CI storage
+            if tool_name == "Write" and prompt_batch_id:
+                file_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
+                if file_path:
+                    detection = detect_plan(file_path)
+                    if detection.is_plan:
+                        # Get plan content from tool_input (Write tool includes content)
+                        plan_content = (
+                            tool_input.get("content", "") if isinstance(tool_input, dict) else ""
+                        )
+                        state.activity_store.update_prompt_batch_source_type(
+                            prompt_batch_id,
+                            PROMPT_SOURCE_PLAN,
+                            plan_file_path=file_path,
+                            plan_content=plan_content,
+                        )
+                        location = "global" if detection.is_global else "project"
+                        content_len = len(plan_content) if plan_content else 0
+                        logger.info(
+                            f"Detected {location} plan mode for {detection.agent_type}, "
+                            f"batch {prompt_batch_id} marked as plan with file {file_path} "
+                            f"({content_len} chars stored)"
+                        )
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.debug(f"Failed to store activity: {e}")
@@ -618,17 +809,42 @@ async def hook_stop(request: Request) -> dict:
         logger.debug("Failed to parse JSON body in stop hook")
         body = {}
 
-    session_id = body.get("session_id")
+    session_id = body.get("session_id") or body.get("conversation_id")
 
     result: dict[str, Any] = {"status": "ok"}
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped stop hook: missing session_id")
+        return result
 
     session = state.get_session(session_id) if session_id else None
     if not session:
         return result
 
+    # Flush any buffered activities before ending the batch
+    if state.activity_store:
+        try:
+            flushed_ids = state.activity_store.flush_activity_buffer()
+            if flushed_ids:
+                logger.debug(f"Flushed {len(flushed_ids)} buffered activities before batch end")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to flush activity buffer: {e}")
+
     # End current prompt batch and queue for processing
     prompt_batch_id = session.current_prompt_batch_id
     if prompt_batch_id and state.activity_store:
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_STOP,
+            session_id,
+            [str(prompt_batch_id)],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped stop hook session=%s batch=%s",
+                session_id,
+                prompt_batch_id,
+            )
+            result["prompt_batch_id"] = prompt_batch_id
+            return result
         try:
             state.activity_store.end_prompt_batch(prompt_batch_id)
             logger.info(f"Ended prompt batch {prompt_batch_id}")
@@ -696,15 +912,34 @@ async def hook_session_end(request: Request) -> dict:
         logger.debug("Failed to parse JSON body in session-end hook")
         body = {}
 
-    session_id = body.get("session_id")
+    session_id = body.get("session_id") or body.get("conversation_id")
     agent = body.get("agent", "unknown")
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped session-end: missing session_id")
+        return {"status": "ok"}
 
     # Prominent logging for session-end to debug if Claude Code is calling this hook
     logger.info("[SESSION-END] ========== Session ending ==========")
     logger.info(f"[SESSION-END] session_id={session_id}, agent={agent}")
     logger.debug(f"[SESSION-END] Raw request body: {body}")
 
+    # Flush any buffered activities before ending the session
+    if state.activity_store:
+        try:
+            flushed_ids = state.activity_store.flush_activity_buffer()
+            if flushed_ids:
+                logger.debug(f"Flushed {len(flushed_ids)} buffered activities on session end")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to flush activity buffer on session end: {e}")
+
     result: dict[str, Any] = {"status": "ok"}
+    if not session_id:
+        return result
+
+    dedupe_key = _build_dedupe_key(HOOK_EVENT_SESSION_END, session_id, [])
+    if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+        logger.debug("Deduped session-end session=%s agent=%s", session_id, agent)
+        return result
 
     session = state.get_session(session_id) if session_id else None
     if not session:

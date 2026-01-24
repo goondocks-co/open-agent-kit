@@ -1,30 +1,35 @@
 {
-  "$comment": "Codebase Intelligence hooks for Cursor. {{PORT}} is replaced with the project-specific daemon port. OAK hooks are identified by the /api/oak/ci/ URL pattern.",
+  "$comment": "Codebase Intelligence hooks for Cursor. {{PORT}} is replaced with the project-specific daemon port. {{PROJECT_ROOT}} is replaced with the project directory. OAK hooks are identified by the /api/oak/ci/ URL pattern. Hook events are logged to .oak/ci/hooks.log for debugging.",
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh sessionStart"
+      }
+    ],
     "beforeSubmitPrompt": [
       {
-        "command": "(curl -sf http://localhost:{{PORT}}/api/health >/dev/null 2>&1 || oak ci start --quiet >/dev/null 2>&1 || true) && curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/before-prompt -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\"}'"
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh beforeSubmitPrompt"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/post-tool-use -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\", \"tool_name\": \"file_edit\"}'"
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh afterFileEdit"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/post-tool-use -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\", \"tool_name\": \"agent_response\"}'"
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh afterAgentResponse"
       }
     ],
     "stop": [
       {
-        "command": "curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/stop -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\"}'"
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh stop"
       }
     ],
     "sessionEnd": [
       {
-        "command": "curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-end -H \"Content-Type: application/json\" -d '{\"agent\": \"cursor\"}'"
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh sessionEnd"
       }
     ]
   }

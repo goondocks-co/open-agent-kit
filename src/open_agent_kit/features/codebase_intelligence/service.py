@@ -11,6 +11,12 @@ import webbrowser
 from pathlib import Path
 from typing import Any, cast
 
+from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DATA_DIR,
+    CURSOR_HOOK_SCRIPT_NAME,
+    CURSOR_HOOKS_DIRNAME,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
 
 logger = logging.getLogger(__name__)
@@ -37,7 +43,7 @@ class CodebaseIntelligenceService:
             project_root: Root directory of the OAK project.
         """
         self.project_root = project_root
-        self.ci_data_dir = project_root / ".oak" / "ci"
+        self.ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
         self._port: int | None = None
 
     @property
@@ -196,11 +202,12 @@ class CodebaseIntelligenceService:
         restored when the feature is re-enabled.
         """
         from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_ACTIVITIES_DB_FILENAME,
             CI_HISTORY_BACKUP_DIR,
             CI_HISTORY_BACKUP_FILE,
         )
 
-        db_path = self.ci_data_dir / "activities.db"
+        db_path = self.ci_data_dir / CI_ACTIVITIES_DB_FILENAME
         if not db_path.exists():
             logger.debug("No activities database found, skipping backup export")
             return
@@ -227,6 +234,7 @@ class CodebaseIntelligenceService:
         restored observations (they are marked as unembedded).
         """
         from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_ACTIVITIES_DB_FILENAME,
             CI_HISTORY_BACKUP_DIR,
             CI_HISTORY_BACKUP_FILE,
         )
@@ -236,7 +244,7 @@ class CodebaseIntelligenceService:
             logger.debug(f"No backup found at {backup_path}")
             return
 
-        db_path = self.ci_data_dir / "activities.db"
+        db_path = self.ci_data_dir / CI_ACTIVITIES_DB_FILENAME
 
         try:
             from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
@@ -461,12 +469,13 @@ class CodebaseIntelligenceService:
     def _is_oak_managed_hook(self, hook: dict, agent_type: str = "claude") -> bool:
         """Check if a hook is managed by OAK.
 
-        Identifies OAK hooks by URL patterns in the command:
-        - /api/oak/ci/ - current pattern (unique to OAK)
-        - /api/hook/ - legacy pattern (for cleanup during upgrade/removal)
+        Identifies OAK hooks by patterns in the command:
+        - /api/oak/ci/ - current URL pattern for Claude/Gemini (unique to OAK)
+        - /api/hook/ - legacy URL pattern (for cleanup during upgrade/removal)
+        - oak-ci-hook.sh - Cursor shell script pattern
 
-        Both patterns are checked to ensure proper cleanup when transitioning
-        from old to new hook formats.
+        All patterns are checked to ensure proper cleanup when transitioning
+        from old to new hook formats or between agent types.
 
         Args:
             hook: Hook configuration dict.
@@ -483,8 +492,8 @@ class CodebaseIntelligenceService:
             # Claude/Gemini: nested {hooks: [{command: "..."}]} structure
             command = hook.get("hooks", [{}])[0].get("command", "")
 
-        # Check for OAK CI URL patterns (current and legacy for cleanup)
-        oak_patterns = ["/api/oak/ci/", "/api/hook/"]
+        # Check for OAK CI patterns (URL patterns for Claude/Gemini, script pattern for Cursor)
+        oak_patterns = ["/api/oak/ci/", "/api/hook/", "oak-ci-hook.sh"]
         return any(pattern in command for pattern in oak_patterns)
 
     def _update_claude_hooks(self) -> None:
@@ -536,8 +545,11 @@ class CodebaseIntelligenceService:
         """Update Cursor settings with CI hooks."""
         settings_dir = self.project_root / ".cursor"
         hooks_file = settings_dir / "hooks.json"
+        hooks_script_dir = settings_dir / CURSOR_HOOKS_DIRNAME
+        hooks_script_path = hooks_script_dir / CURSOR_HOOK_SCRIPT_NAME
 
         settings_dir.mkdir(exist_ok=True)
+        hooks_script_dir.mkdir(parents=True, exist_ok=True)
 
         # Load existing hooks or create new
         if hooks_file.exists():
@@ -571,6 +583,18 @@ class CodebaseIntelligenceService:
 
             # Add new CI hooks
             hooks["hooks"][event].extend(new_hooks)
+
+        hook_script_template = HOOKS_TEMPLATE_DIR / "cursor" / CURSOR_HOOK_SCRIPT_NAME
+        if not hook_script_template.exists():
+            logger.error(f"Cursor hook script template missing: {hook_script_template}")
+            return
+
+        hooks_script_path.write_text(
+            hook_script_template.read_text()
+            .replace("{{PORT}}", str(self.port))
+            .replace("{{PROJECT_ROOT}}", str(self.project_root))
+        )
+        hooks_script_path.chmod(0o755)
 
         with open(hooks_file, "w") as f:
             json.dump(hooks, f, indent=2)

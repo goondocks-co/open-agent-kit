@@ -23,6 +23,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     ActivityItem,
     ActivityListResponse,
     ActivitySearchResponse,
+    DeleteActivityResponse,
+    DeleteBatchResponse,
+    DeleteSessionResponse,
     PromptBatchItem,
     SessionDetailResponse,
     SessionItem,
@@ -58,7 +61,11 @@ def _activity_to_item(activity: Activity) -> ActivityItem:
     )
 
 
-def _session_to_item(session: Session, stats: dict | None = None) -> SessionItem:
+def _session_to_item(
+    session: Session,
+    stats: dict | None = None,
+    first_prompt_preview: str | None = None,
+) -> SessionItem:
     """Convert Session dataclass to SessionItem Pydantic model."""
     return SessionItem(
         id=session.id,
@@ -68,6 +75,8 @@ def _session_to_item(session: Session, stats: dict | None = None) -> SessionItem
         ended_at=session.ended_at,
         status=session.status,
         summary=session.summary,
+        title=session.title,
+        first_prompt_preview=first_prompt_preview,
         prompt_batch_count=stats.get("prompt_batch_count", 0) if stats else 0,
         activity_count=stats.get("activity_count", 0) if stats else 0,
     )
@@ -81,6 +90,9 @@ def _prompt_batch_to_item(batch: PromptBatch, activity_count: int = 0) -> Prompt
         prompt_number=batch.prompt_number,
         user_prompt=batch.user_prompt,
         classification=batch.classification,
+        source_type=batch.source_type,
+        plan_file_path=batch.plan_file_path,
+        plan_content=batch.plan_content,
         started_at=batch.started_at,
         ended_at=batch.ended_at,
         activity_count=activity_count,
@@ -107,24 +119,30 @@ async def list_sessions(
     logger.debug(f"Listing sessions: limit={limit}, offset={offset}, status={status}")
 
     try:
-        # Get sessions from activity store
-        sessions = state.activity_store.get_recent_sessions(limit=limit + offset)
+        # Get sessions from activity store with SQL-level pagination and status filter
+        sessions = state.activity_store.get_recent_sessions(
+            limit=limit, offset=offset, status=status
+        )
 
-        # Apply offset manually (activity store doesn't support offset natively)
-        sessions = sessions[offset : offset + limit]
+        # Get stats in bulk (1 query instead of N queries) - eliminates N+1 pattern
+        session_ids = [s.id for s in sessions]
+        try:
+            stats_map = state.activity_store.get_bulk_session_stats(session_ids)
+        except (OSError, ValueError, RuntimeError):
+            stats_map = {}
 
-        # Filter by status if provided
-        if status:
-            sessions = [s for s in sessions if s.status == status]
+        # Get first prompts in bulk for session titles
+        try:
+            first_prompts_map = state.activity_store.get_bulk_first_prompts(session_ids)
+        except (OSError, ValueError, RuntimeError):
+            first_prompts_map = {}
 
-        # Build response with stats for each session
+        # Build response with stats and first prompts for each session
         items = []
         for session in sessions:
-            try:
-                stats = state.activity_store.get_session_stats(session.id)
-            except (OSError, ValueError, RuntimeError):
-                stats = {}
-            items.append(_session_to_item(session, stats))
+            stats = stats_map.get(session.id, {})
+            first_prompt = first_prompts_map.get(session.id)
+            items.append(_session_to_item(session, stats, first_prompt))
 
         # Get total count (approximation)
         total = len(items) + offset
@@ -175,8 +193,12 @@ async def get_session(session_id: str) -> SessionDetailResponse:
             batch_stats = state.activity_store.get_prompt_batch_stats(batch.id)
             batch_items.append(_prompt_batch_to_item(batch, batch_stats.get("activity_count", 0)))
 
+        # Get first prompt preview for session title
+        first_prompts_map = state.activity_store.get_bulk_first_prompts([session_id])
+        first_prompt = first_prompts_map.get(session_id)
+
         return SessionDetailResponse(
-            session=_session_to_item(session, stats),
+            session=_session_to_item(session, stats, first_prompt),
             stats=stats,
             recent_activities=activity_items,
             prompt_batches=batch_items,
@@ -469,4 +491,241 @@ async def reprocess_memories(
 
     except (OSError, ValueError, TypeError) as e:
         logger.error(f"Failed to queue batches for reprocessing: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/api/activity/prompt-batches/{batch_id}/promote")
+async def promote_batch_to_memory(batch_id: int) -> dict:
+    """Promote an agent batch to extract memories using LLM.
+
+    This endpoint allows manual promotion of background agent findings to the
+    memory store. Agent batches (source_type='agent_notification') are normally
+    skipped during memory extraction to prevent pollution. This endpoint forces
+    user-style LLM extraction on those batches.
+
+    Use this when a background agent discovered something valuable that should
+    be preserved in the memory store for future sessions.
+
+    Args:
+        batch_id: The prompt batch ID to promote.
+
+    Returns:
+        Dictionary with promotion results including observation count.
+
+    Raises:
+        HTTPException: If batch not found, not promotable, or processing fails.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.processor import (
+        promote_agent_batch_async,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    if not state.activity_processor:
+        raise HTTPException(
+            status_code=503,
+            detail="Activity processor not initialized - LLM extraction unavailable",
+        )
+
+    logger.info(f"Promoting agent batch to memory: {batch_id}")
+
+    try:
+        # Check batch exists
+        batch = state.activity_store.get_prompt_batch(batch_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Prompt batch not found")
+
+        # Promote using async wrapper
+        result = await promote_agent_batch_async(state.activity_processor, batch_id)
+
+        if not result.success:
+            raise HTTPException(
+                status_code=400,
+                detail=result.error or "Failed to promote batch",
+            )
+
+        return {
+            "success": True,
+            "batch_id": batch_id,
+            "observations_extracted": result.observations_extracted,
+            "activities_processed": result.activities_processed,
+            "classification": result.classification,
+            "duration_ms": result.duration_ms,
+            "message": f"Promoted batch {batch_id}: {result.observations_extracted} observations extracted",
+        }
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to promote batch: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# =============================================================================
+# Delete Endpoints
+# =============================================================================
+
+
+@router.delete("/api/activity/sessions/{session_id}", response_model=DeleteSessionResponse)
+async def delete_session(session_id: str) -> DeleteSessionResponse:
+    """Delete a session and all related data (cascade delete).
+
+    Deletes:
+    - The session record
+    - All prompt batches for this session
+    - All activities for this session
+    - All memory observations for this session (SQLite + ChromaDB)
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Deleting session: {session_id}")
+
+    try:
+        # Check session exists
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        # Get observation IDs for ChromaDB cleanup before deleting from SQLite
+        observation_ids = state.activity_store.get_session_observation_ids(session_id)
+
+        # Delete from SQLite (cascade)
+        result = state.activity_store.delete_session(session_id)
+
+        # Delete from ChromaDB
+        memories_deleted = 0
+        if observation_ids and state.vector_store:
+            memories_deleted = state.vector_store.delete_memories(observation_ids)
+
+        logger.info(
+            f"Deleted session {session_id}: "
+            f"{result['batches_deleted']} batches, "
+            f"{result['activities_deleted']} activities, "
+            f"{result['observations_deleted']} SQLite observations, "
+            f"{memories_deleted} ChromaDB memories"
+        )
+
+        return DeleteSessionResponse(
+            success=True,
+            deleted_count=1,
+            message=f"Session {session_id[:8]}... deleted successfully",
+            batches_deleted=result["batches_deleted"],
+            activities_deleted=result["activities_deleted"],
+            memories_deleted=result["observations_deleted"],
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to delete session: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.delete(
+    "/api/activity/prompt-batches/{batch_id}",
+    response_model=DeleteBatchResponse,
+)
+async def delete_prompt_batch(batch_id: int) -> DeleteBatchResponse:
+    """Delete a prompt batch and all related data (cascade delete).
+
+    Deletes:
+    - The prompt batch record
+    - All activities for this batch
+    - All memory observations for this batch (SQLite + ChromaDB)
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Deleting prompt batch: {batch_id}")
+
+    try:
+        # Check batch exists
+        batch = state.activity_store.get_prompt_batch(batch_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Prompt batch not found")
+
+        # Get observation IDs for ChromaDB cleanup before deleting from SQLite
+        observation_ids = state.activity_store.get_batch_observation_ids(batch_id)
+
+        # Delete from SQLite (cascade)
+        result = state.activity_store.delete_prompt_batch(batch_id)
+
+        # Delete from ChromaDB
+        memories_deleted = 0
+        if observation_ids and state.vector_store:
+            memories_deleted = state.vector_store.delete_memories(observation_ids)
+
+        logger.info(
+            f"Deleted prompt batch {batch_id}: "
+            f"{result['activities_deleted']} activities, "
+            f"{result['observations_deleted']} SQLite observations, "
+            f"{memories_deleted} ChromaDB memories"
+        )
+
+        return DeleteBatchResponse(
+            success=True,
+            deleted_count=1,
+            message=f"Prompt batch {batch_id} deleted successfully",
+            activities_deleted=result["activities_deleted"],
+            memories_deleted=result["observations_deleted"],
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to delete prompt batch: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.delete(
+    "/api/activity/activities/{activity_id}",
+    response_model=DeleteActivityResponse,
+)
+async def delete_activity(activity_id: int) -> DeleteActivityResponse:
+    """Delete a single activity.
+
+    If the activity has a linked observation, also deletes it from SQLite and ChromaDB.
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Deleting activity: {activity_id}")
+
+    try:
+        # Delete activity and get linked observation_id (if any)
+        observation_id = state.activity_store.delete_activity(activity_id)
+
+        if observation_id is None:
+            raise HTTPException(status_code=404, detail="Activity not found")
+
+        # If there was a linked observation, delete it too
+        memory_deleted = False
+        if observation_id:
+            state.activity_store.delete_observation(observation_id)
+            if state.vector_store:
+                state.vector_store.delete_memories([observation_id])
+            memory_deleted = True
+            logger.info(f"Also deleted linked observation: {observation_id}")
+
+        return DeleteActivityResponse(
+            success=True,
+            deleted_count=1,
+            message=f"Activity {activity_id} deleted successfully",
+            memory_deleted=memory_deleted,
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to delete activity: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

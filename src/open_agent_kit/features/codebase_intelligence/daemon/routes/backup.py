@@ -12,7 +12,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_ACTIVITIES_DB_FILENAME,
+    CI_DATA_DIR,
     CI_HISTORY_BACKUP_DIR,
     CI_HISTORY_BACKUP_FILE,
 )
@@ -85,8 +88,8 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    ci_data_dir = state.project_root / ".oak" / "ci"
-    db_path = ci_data_dir / "activities.db"
+    ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
+    db_path = ci_data_dir / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to backup")
 
@@ -128,8 +131,8 @@ async def restore_backup(request: RestoreRequest) -> dict[str, Any]:
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    ci_data_dir = state.project_root / ".oak" / "ci"
-    db_path = ci_data_dir / "activities.db"
+    ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
+    db_path = ci_data_dir / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to restore into")
 

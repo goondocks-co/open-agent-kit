@@ -52,6 +52,7 @@ def mock_activity_store():
     session1.ended_at = now - timedelta(hours=1)
     session1.status = "completed"
     session1.summary = "Implemented new feature"
+    session1.title = "Add user authentication feature"
 
     session2 = MagicMock()
     session2.id = "session-002"
@@ -61,16 +62,47 @@ def mock_activity_store():
     session2.ended_at = None
     session2.status = "active"
     session2.summary = None
+    session2.title = None
 
     mock.get_recent_sessions.return_value = [session1, session2]
     mock.get_session.return_value = session1
 
-    # Session stats
+    # Session stats (for individual queries)
     mock.get_session_stats.return_value = {
         "prompt_batch_count": 5,
         "activity_count": 23,
         "files_touched": 8,
         "tool_counts": {"Read": 10, "Edit": 8, "Bash": 5},
+    }
+
+    # Bulk session stats (for bulk queries - eliminates N+1 pattern)
+    mock.get_bulk_session_stats.return_value = {
+        "session-001": {
+            "prompt_batch_count": 5,
+            "activity_count": 23,
+            "files_touched": 8,
+            "reads": 10,
+            "edits": 8,
+            "writes": 0,
+            "errors": 0,
+            "tool_counts": {"Read": 10, "Edit": 8, "Bash": 5},
+        },
+        "session-002": {
+            "prompt_batch_count": 2,
+            "activity_count": 5,
+            "files_touched": 3,
+            "reads": 3,
+            "edits": 2,
+            "writes": 0,
+            "errors": 0,
+            "tool_counts": {"Read": 3, "Edit": 2},
+        },
+    }
+
+    # Bulk first prompts (for session titles)
+    mock.get_bulk_first_prompts.return_value = {
+        "session-001": "Write a new feature",
+        "session-002": "Debug the login flow",
     }
 
     # Sample activities
@@ -108,6 +140,9 @@ def mock_activity_store():
     batch1.prompt_number = 1
     batch1.user_prompt = "Write a new feature"
     batch1.classification = "code_implementation"
+    batch1.source_type = "user"
+    batch1.plan_file_path = None  # Plan file path (only set for plan source_type)
+    batch1.plan_content = None  # Plan content (only set for plan source_type)
     batch1.started_at = now - timedelta(hours=1, minutes=45)
     batch1.ended_at = now - timedelta(hours=1, minutes=15)
 
@@ -306,6 +341,7 @@ class TestGetSessionDetail:
         active_session.ended_at = None
         active_session.status = "active"
         active_session.summary = None
+        active_session.title = None
         setup_state_with_activity_store.activity_store.get_session.return_value = active_session
 
         response = client.get("/api/activity/sessions/active-session")

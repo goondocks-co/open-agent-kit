@@ -898,10 +898,10 @@ class UpgradeService:
         else:
             return False
 
-        # Parse source template (strip port placeholder for comparison)
+        # Parse source template (strip placeholders for comparison)
         try:
             source_hooks = json.loads(source_content).get("hooks", {})
-            # Normalize by removing port-specific values
+            # Normalize by removing port-specific values and placeholders
             source_normalized = re.sub(
                 r"localhost:\d+", "localhost:PORT", json.dumps(source_hooks, sort_keys=True)
             )
@@ -909,8 +909,14 @@ class UpgradeService:
                 r"localhost:\d+", "localhost:PORT", json.dumps(installed_hooks, sort_keys=True)
             )
 
-            # Also normalize the {{PORT}} placeholder
+            # Normalize the {{PORT}} placeholder
             source_normalized = source_normalized.replace("{{PORT}}", "PORT")
+
+            # Normalize the {{PROJECT_ROOT}} placeholder vs actual project path
+            # The installed hooks have the actual path, source has the placeholder
+            project_root_str = str(self.project_root)
+            source_normalized = source_normalized.replace("{{PROJECT_ROOT}}", "PROJECT_ROOT")
+            installed_normalized = installed_normalized.replace(project_root_str, "PROJECT_ROOT")
 
             return source_normalized != installed_normalized
         except (json.JSONDecodeError, re.error) as e:

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh sessionStart"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh beforeSubmitPrompt"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh afterFileEdit"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh afterAgentResponse"
+      }
+    ],
+    "stop": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh stop"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh sessionEnd"
+      }
+    ]
+  }
+}

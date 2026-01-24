@@ -13,9 +13,16 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.activity.store import (
     ActivityStore,
     StoredObservation,
+)
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_ACTIVITIES_DB_FILENAME,
+    CI_DATA_DIR,
+    CI_HISTORY_BACKUP_DIR,
+    CI_HISTORY_BACKUP_FILE,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
@@ -46,11 +53,11 @@ def temp_project(tmp_path: Path):
     project_root.mkdir()
 
     # Create .oak/ci directory structure
-    ci_dir = project_root / ".oak" / "ci"
+    ci_dir = project_root / OAK_DIR / CI_DATA_DIR
     ci_dir.mkdir(parents=True)
 
     # Create backup directory
-    backup_dir = project_root / "oak" / "data"
+    backup_dir = project_root / CI_HISTORY_BACKUP_DIR
     backup_dir.mkdir(parents=True)
 
     return project_root
@@ -65,7 +72,7 @@ def setup_state_with_activity_store(temp_project: Path):
     state.project_root = temp_project
 
     # Create a real activity store
-    db_path = temp_project / ".oak" / "ci" / "activities.db"
+    db_path = temp_project / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
     state.activity_store = ActivityStore(db_path)
 
     # Add some test data
@@ -116,7 +123,7 @@ class TestBackupStatus:
         state.activity_store = MagicMock()
 
         # Create a backup file
-        backup_path = temp_project / "oak" / "data" / "ci_history.sql"
+        backup_path = temp_project / CI_HISTORY_BACKUP_DIR / CI_HISTORY_BACKUP_FILE
         backup_path.write_text("-- Test backup\nINSERT INTO sessions VALUES (1);")
 
         response = client.get("/api/backup/status")
@@ -297,7 +304,7 @@ class TestBackupIntegration:
         state.project_root = temp_project
 
         # Create activity store with test data
-        db_path = temp_project / ".oak" / "ci" / "activities.db"
+        db_path = temp_project / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
         state.activity_store = ActivityStore(db_path)
 
         # Add comprehensive test data

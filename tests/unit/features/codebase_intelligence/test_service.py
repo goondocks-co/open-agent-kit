@@ -13,6 +13,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CURSOR_HOOK_SCRIPT_NAME,
+    CURSOR_HOOKS_DIRNAME,
+)
 from open_agent_kit.features.codebase_intelligence.service import (
     CodebaseIntelligenceService,
     execute_hook,
@@ -211,6 +215,16 @@ class TestHookUpdates:
             service._update_cursor_hooks()
 
         assert (tmp_path / ".cursor" / "hooks.json").exists()
+
+    def test_update_cursor_hooks_installs_hook_script(self, tmp_path: Path):
+        """Test that Cursor hook update installs the hook script."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        with patch.object(service, "_load_hook_template", return_value={"hooks": {}}):
+            service._update_cursor_hooks()
+
+        script_path = tmp_path / ".cursor" / CURSOR_HOOKS_DIRNAME / CURSOR_HOOK_SCRIPT_NAME
+        assert script_path.exists()
 
     def test_update_gemini_hooks_creates_settings_file(self, tmp_path: Path):
         """Test that Gemini hook update creates settings.json."""

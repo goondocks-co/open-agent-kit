@@ -81,6 +81,12 @@ class AgentCapabilities(BaseModel):
         description="Subdirectory within skills folder for skills (e.g., 'skills' -> .claude/skills/)",
     )
 
+    # Plan execution detection
+    plan_execution_prefix: str | None = Field(
+        default=None,
+        description="Prefix that identifies auto-injected plan execution prompts (e.g., 'Implement the following plan:')",
+    )
+
 
 class AgentInstallation(BaseModel):
     """Agent installation configuration.
@@ -95,6 +101,10 @@ class AgentInstallation(BaseModel):
     commands_subfolder: str = Field(
         default="commands",
         description="Subfolder for commands within agent folder",
+    )
+    plans_subfolder: str = Field(
+        default="plans",
+        description="Subfolder for plan files within agent folder (e.g., 'plans' -> .claude/plans/)",
     )
     file_extension: str = Field(
         default=".md",
@@ -259,6 +269,20 @@ class AgentManifest(BaseModel):
         """
         folder = self.installation.folder.rstrip("/")
         subfolder = self.installation.commands_subfolder
+        return f"{folder}/{subfolder}"
+
+    def get_plans_dir(self) -> str:
+        """Get the full plans directory path.
+
+        Plans are where agents store implementation plans during plan mode.
+        This enables detection of plan-related activities for special handling
+        (e.g., storing plans as decision memories rather than extracting arbitrary memories).
+
+        Returns:
+            Relative path to plans directory (e.g., '.claude/plans')
+        """
+        folder = self.installation.folder.rstrip("/")
+        subfolder = self.installation.plans_subfolder
         return f"{folder}/{subfolder}"
 
     def get_command_filename(self, command_name: str) -> str:

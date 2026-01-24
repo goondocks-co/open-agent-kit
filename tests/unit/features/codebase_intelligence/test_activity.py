@@ -228,6 +228,89 @@ class TestActivityStoreSessionOperations:
         session = activity_store.get_session("test-session-6")
         assert session.processed is True
 
+    def test_reactivate_session_if_needed_reactivates_completed(
+        self, activity_store: ActivityStore
+    ):
+        """Test that reactivate_session_if_needed reactivates a completed session."""
+        activity_store.create_session(
+            session_id="test-session-reactivate-1",
+            agent="claude",
+            project_root="/path",
+        )
+        activity_store.end_session("test-session-reactivate-1")
+
+        # Verify session is completed
+        session = activity_store.get_session("test-session-reactivate-1")
+        assert session.status == "completed"
+        assert session.ended_at is not None
+
+        # Reactivate
+        reactivated = activity_store.reactivate_session_if_needed("test-session-reactivate-1")
+        assert reactivated is True
+
+        # Verify session is now active
+        session = activity_store.get_session("test-session-reactivate-1")
+        assert session.status == "active"
+        assert session.ended_at is None
+
+    def test_reactivate_session_if_needed_noop_for_active(self, activity_store: ActivityStore):
+        """Test that reactivate_session_if_needed is a no-op for active sessions."""
+        activity_store.create_session(
+            session_id="test-session-reactivate-2",
+            agent="claude",
+            project_root="/path",
+        )
+
+        # Session is already active
+        session = activity_store.get_session("test-session-reactivate-2")
+        assert session.status == "active"
+
+        # Reactivate should be a no-op
+        reactivated = activity_store.reactivate_session_if_needed("test-session-reactivate-2")
+        assert reactivated is False
+
+        # Session should still be active
+        session = activity_store.get_session("test-session-reactivate-2")
+        assert session.status == "active"
+
+    def test_reactivate_session_if_needed_nonexistent(self, activity_store: ActivityStore):
+        """Test that reactivate_session_if_needed returns False for nonexistent session."""
+        reactivated = activity_store.reactivate_session_if_needed("nonexistent-session")
+        assert reactivated is False
+
+    def test_create_prompt_batch_reactivates_completed_session(self, activity_store: ActivityStore):
+        """Test that create_prompt_batch reactivates a completed session.
+
+        This is the main fix for the issue where activities are logged to
+        closed sessions without reopening them.
+        """
+        # Create and end a session
+        activity_store.create_session(
+            session_id="test-session-reactivate-on-batch",
+            agent="claude",
+            project_root="/path",
+        )
+        activity_store.end_session("test-session-reactivate-on-batch")
+
+        # Verify session is completed
+        session = activity_store.get_session("test-session-reactivate-on-batch")
+        assert session.status == "completed"
+
+        # Create a new prompt batch - this should reactivate the session
+        batch = activity_store.create_prompt_batch(
+            session_id="test-session-reactivate-on-batch",
+            user_prompt="New prompt after session was closed",
+        )
+
+        # Verify batch was created
+        assert batch.id is not None
+        assert batch.session_id == "test-session-reactivate-on-batch"
+
+        # Verify session was reactivated
+        session = activity_store.get_session("test-session-reactivate-on-batch")
+        assert session.status == "active"
+        assert session.ended_at is None
+
 
 # =============================================================================
 # ActivityStore Tests: Prompt Batch Operations
@@ -733,6 +816,66 @@ class TestActivityStoreStatistics:
         assert stats["writes"] == 1
         assert stats["files_touched"] >= 1
 
+    def test_get_bulk_session_stats(self, activity_store: ActivityStore):
+        """Test getting statistics for multiple sessions in bulk."""
+        # Create multiple sessions
+        session_ids = []
+        for i in range(3):
+            session_id = f"test-session-bulk{i}"
+            session_ids.append(session_id)
+            activity_store.create_session(
+                session_id=session_id,
+                agent="claude",
+                project_root="/path",
+            )
+
+            # Add activities to each session
+            for j in range(i + 1):  # Different number of activities per session
+                activity = Activity(
+                    session_id=session_id,
+                    tool_name="Read" if j == 0 else "Edit",
+                    tool_input={},
+                    file_path=f"/test/file{j}.py",
+                    duration_ms=100,
+                    success=True,
+                )
+                activity_store.add_activity(activity)
+
+        # Get bulk stats
+        stats_map = activity_store.get_bulk_session_stats(session_ids)
+
+        # Verify all sessions are in the result
+        assert len(stats_map) == 3
+        assert all(sid in stats_map for sid in session_ids)
+
+        # Verify stats for each session
+        assert stats_map["test-session-bulk0"]["activity_count"] == 1
+        assert stats_map["test-session-bulk1"]["activity_count"] == 2
+        assert stats_map["test-session-bulk2"]["activity_count"] == 3
+
+        # Verify tool counts
+        assert "Read" in stats_map["test-session-bulk0"]["tool_counts"]
+        assert stats_map["test-session-bulk0"]["tool_counts"]["Read"] == 1
+
+    def test_get_bulk_session_stats_empty_list(self, activity_store: ActivityStore):
+        """Test bulk stats with empty session list."""
+        stats_map = activity_store.get_bulk_session_stats([])
+        assert stats_map == {}
+
+    def test_get_bulk_session_stats_no_activities(self, activity_store: ActivityStore):
+        """Test bulk stats for sessions with no activities."""
+        session_id = "test-session-empty"
+        activity_store.create_session(
+            session_id=session_id,
+            agent="claude",
+            project_root="/path",
+        )
+
+        stats_map = activity_store.get_bulk_session_stats([session_id])
+        assert session_id in stats_map
+        assert stats_map[session_id]["activity_count"] == 0
+        assert stats_map[session_id]["tool_counts"] == {}
+
     def test_get_session_stats_with_errors(self, activity_store: ActivityStore):
         """Test session stats include error counts."""
         activity_store.create_session(
@@ -907,7 +1050,7 @@ class TestActivityProcessorSessionProcessing:
         assert result.success is True
         assert result.activities_processed == 0
 
-    @patch("open_agent_kit.features.codebase_intelligence.activity.processor.render_prompt")
+    @patch("open_agent_kit.features.codebase_intelligence.activity.processor.core.render_prompt")
     def test_process_session_with_activities(
         self,
         mock_render_prompt,
@@ -990,7 +1133,9 @@ class TestActivityProcessorBatchProcessing:
         assert result.success is True
         assert result.activities_processed == 0
 
-    @patch("open_agent_kit.features.codebase_intelligence.activity.processor.render_prompt")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.activity.processor.handlers.render_prompt"
+    )
     def test_process_prompt_batch_with_activities(
         self,
         mock_render_prompt,
@@ -1044,7 +1189,9 @@ class TestActivityProcessorBatchProcessing:
                         assert result.activities_processed == 2
                         assert result.prompt_batch_id == batch.id
 
-    @patch("open_agent_kit.features.codebase_intelligence.activity.processor.render_prompt")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.activity.processor.handlers.render_prompt"
+    )
     def test_process_prompt_batch_llm_error(
         self,
         mock_render_prompt,
@@ -1100,7 +1247,9 @@ class TestActivityProcessorBatchProcessing:
 class TestActivityProcessorPendingBatches:
     """Test processing multiple pending batches."""
 
-    @patch("open_agent_kit.features.codebase_intelligence.activity.processor.render_prompt")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.activity.processor.handlers.render_prompt"
+    )
     def test_process_pending_batches(
         self,
         mock_render_prompt,

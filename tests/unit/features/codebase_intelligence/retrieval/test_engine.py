@@ -299,13 +299,40 @@ class TestSearch:
         self, engine: RetrievalEngine, mock_vector_store: MagicMock
     ) -> None:
         """Test that search with 'all' type returns both code and memory."""
+        # Configure mock to return empty for plans search (second call)
+        mock_vector_store.search_memory.side_effect = [
+            # First call: regular memory search
+            [
+                {
+                    "id": "mem-1",
+                    "memory_type": "gotcha",
+                    "observation": "Always validate input before processing",
+                    "relevance": 0.90,
+                    "token_estimate": 20,
+                    "context": "src/utils.py",
+                },
+                {
+                    "id": "mem-2",
+                    "memory_type": "decision",
+                    "observation": "Chose async pattern for I/O operations",
+                    "relevance": 0.70,
+                    "token_estimate": 30,
+                    "context": None,
+                },
+            ],
+            # Second call: plans search (empty)
+            [],
+        ]
+
         result = engine.search(query="test query", search_type=SEARCH_TYPE_ALL)
 
         assert result.query == "test query"
         assert len(result.code) == 2
         assert len(result.memory) == 2
+        assert len(result.plans) == 0
         mock_vector_store.search_code.assert_called_once()
-        mock_vector_store.search_memory.assert_called_once()
+        # search_memory is called twice: once for memories, once for plans
+        assert mock_vector_store.search_memory.call_count == 2
 
     def test_search_code_only(self, engine: RetrievalEngine, mock_vector_store: MagicMock) -> None:
         """Test that search with 'code' type only returns code results."""
@@ -346,11 +373,38 @@ class TestSearch:
         call_kwargs = mock_vector_store.search_code.call_args.kwargs
         assert call_kwargs["limit"] == 5
 
-    def test_search_calculates_total_tokens(self, engine: RetrievalEngine) -> None:
+    def test_search_calculates_total_tokens(
+        self, engine: RetrievalEngine, mock_vector_store: MagicMock
+    ) -> None:
         """Test that total_tokens_available is calculated correctly."""
+        # Configure mock to return empty for plans search (second call)
+        mock_vector_store.search_memory.side_effect = [
+            # First call: regular memory search
+            [
+                {
+                    "id": "mem-1",
+                    "memory_type": "gotcha",
+                    "observation": "Always validate input before processing",
+                    "relevance": 0.90,
+                    "token_estimate": 20,
+                    "context": "src/utils.py",
+                },
+                {
+                    "id": "mem-2",
+                    "memory_type": "decision",
+                    "observation": "Chose async pattern for I/O operations",
+                    "relevance": 0.70,
+                    "token_estimate": 30,
+                    "context": None,
+                },
+            ],
+            # Second call: plans search (empty)
+            [],
+        ]
+
         result = engine.search(query="test", search_type=SEARCH_TYPE_ALL)
 
-        # code: 50 + 100 = 150, memory: 20 + 30 = 50, total = 200
+        # code: 50 + 100 = 150, memory: 20 + 30 = 50, plans: 0, total = 200
         assert result.total_tokens_available == 200
 
     def test_search_maps_code_fields_correctly(self, engine: RetrievalEngine) -> None:

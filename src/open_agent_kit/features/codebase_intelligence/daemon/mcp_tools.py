@@ -27,7 +27,7 @@ class OakSearchInput(BaseModel):
     query: str = Field(..., description="Natural language search query")
     search_type: str = Field(
         default="all",
-        description="Type of search: 'code', 'memory', or 'all'",
+        description="Type of search: 'code', 'memory', 'plans', or 'all'",
     )
     limit: int = Field(
         default=10,
@@ -90,9 +90,9 @@ MCP_TOOLS = [
                 },
                 "search_type": {
                     "type": "string",
-                    "enum": ["all", "code", "memory"],
+                    "enum": ["all", "code", "memory", "plans"],
                     "default": "all",
-                    "description": "Search code, memories, or both",
+                    "description": "Search code, memories, plans, or all. Options: 'all', 'code', 'memory', 'plans'",
                 },
                 "limit": {
                     "type": "integer",
@@ -249,7 +249,16 @@ class MCPToolHandler:
                 context_str = f" (context: {r.get('context', '')})" if r.get("context") else ""
                 output.append(f"- [{r['memory_type']}] {r['observation']}{context_str}\n")
 
-        if not result.code and not result.memory:
+        if result.plans:
+            output.append("## Plans\n")
+            for r in result.plans:
+                confidence = r.get("confidence", "medium")
+                output.append(
+                    f"- **{r.get('title', 'Untitled Plan')}** ({confidence})\n"
+                    f"  {r.get('preview', '')[:150]}...\n"
+                )
+
+        if not result.code and not result.memory and not result.plans:
             output.append("No results found.")
 
         return "\n".join(output)

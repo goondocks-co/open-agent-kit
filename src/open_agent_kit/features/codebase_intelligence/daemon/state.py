@@ -11,6 +11,7 @@ Benefits of this design:
 """
 
 import asyncio
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -143,6 +144,9 @@ class SessionInfo:
     last_activity: datetime | None = None
     # Current prompt batch ID for activity linking
     current_prompt_batch_id: int | None = None
+    # Last prompt identifiers for deduplication
+    last_prompt_hash: str | None = None
+    last_generation_id: str | None = None
     # Accumulated tool executions for LLM summarization
     tool_executions: list[ToolExecution] = field(default_factory=list)
     files_modified: set[str] = field(default_factory=set)
@@ -301,6 +305,9 @@ class DaemonState:
     index_lock: "asyncio.Lock | None" = None
     # Cached retrieval engine instance
     _retrieval_engine: "RetrievalEngine | None" = field(default=None, init=False, repr=False)
+    # Hook deduplication cache (key -> None, insertion ordered)
+    hook_event_cache: "OrderedDict[str, None]" = field(default_factory=OrderedDict)
+    _hook_event_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -365,6 +372,25 @@ class DaemonState:
         Call this when vector_store changes.
         """
         self._retrieval_engine = None
+
+    def should_dedupe_hook_event(self, key: str, max_entries: int) -> bool:
+        """Check and update hook dedupe cache for a key.
+
+        Args:
+            key: Deduplication key for the event.
+            max_entries: Maximum number of keys to keep.
+
+        Returns:
+            True if a duplicate event should be skipped.
+        """
+        with self._hook_event_lock:
+            if key in self.hook_event_cache:
+                return True
+
+            self.hook_event_cache[key] = None
+            while len(self.hook_event_cache) > max_entries:
+                self.hook_event_cache.popitem(last=False)
+        return False
 
     def run_index_build(
         self,
@@ -503,6 +529,7 @@ class DaemonState:
         self.background_tasks = []
         self.index_lock = None
         self._retrieval_engine = None
+        self.hook_event_cache = OrderedDict()
 
 
 # Global daemon state instance
