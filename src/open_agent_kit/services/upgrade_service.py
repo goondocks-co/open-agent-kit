@@ -839,7 +839,9 @@ class UpgradeService:
     def _hook_needs_upgrade(self, feature_name: str, agent: str, source_template: Path) -> bool:
         """Check if a feature's agent hook needs to be upgraded.
 
-        Compares the package hook template with what's currently installed.
+        Compares the package hook template (with placeholders substituted) with
+        what's currently installed. This uses the same processing as the actual
+        update to ensure consistent comparison.
 
         Args:
             feature_name: Name of the feature
@@ -852,11 +854,27 @@ class UpgradeService:
         import json
         import re
 
-        # Load source template
+        try:
+            from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+                get_project_port,
+            )
+
+            # Get the port used for this project (same as what update uses)
+            ci_data_dir = self.project_root / ".oak" / "ci"
+            port = get_project_port(self.project_root, ci_data_dir)
+        except ImportError:
+            # Codebase intelligence feature not available
+            return False
+
+        # Load and process source template (same as _load_hook_template in service.py)
         try:
             source_content = source_template.read_text()
-        except OSError as e:
-            logger.warning(f"Failed to read source template {source_template}: {e}")
+            # Substitute placeholders with actual values (same as update does)
+            processed = re.sub(r"\{\{PORT\}\}", str(port), source_content)
+            processed = re.sub(r"\{\{PROJECT_ROOT\}\}", str(self.project_root), processed)
+            source_hooks = json.loads(processed).get("hooks", {})
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Failed to load source template {source_template}: {e}")
             return False
 
         # Get installed hooks based on agent type
@@ -898,28 +916,49 @@ class UpgradeService:
         else:
             return False
 
-        # Parse source template (strip placeholders for comparison)
+        # Compare processed source hooks with installed hooks
+        # Extract only OAK-managed hooks from installed for comparison
+        # This allows other hooks (user-defined) to coexist without triggering upgrades
         try:
-            source_hooks = json.loads(source_content).get("hooks", {})
-            # Normalize by removing port-specific values and placeholders
-            source_normalized = re.sub(
-                r"localhost:\d+", "localhost:PORT", json.dumps(source_hooks, sort_keys=True)
-            )
-            installed_normalized = re.sub(
-                r"localhost:\d+", "localhost:PORT", json.dumps(installed_hooks, sort_keys=True)
-            )
+            # For each event in source, check if the OAK hooks match
+            for event, source_event_hooks in source_hooks.items():
+                installed_event_hooks = installed_hooks.get(event, [])
 
-            # Normalize the {{PORT}} placeholder
-            source_normalized = source_normalized.replace("{{PORT}}", "PORT")
+                # Extract OAK-managed hooks from installed (those with /api/oak/ci/ pattern)
+                oak_installed = []
+                for hook in installed_event_hooks:
+                    # Get command based on agent structure
+                    if agent == "cursor":
+                        command = hook.get("command", "")
+                    else:
+                        command = hook.get("hooks", [{}])[0].get("command", "")
+                    if "/api/oak/ci/" in command or "oak-ci-hook.sh" in command:
+                        oak_installed.append(hook)
 
-            # Normalize the {{PROJECT_ROOT}} placeholder vs actual project path
-            # The installed hooks have the actual path, source has the placeholder
-            project_root_str = str(self.project_root)
-            source_normalized = source_normalized.replace("{{PROJECT_ROOT}}", "PROJECT_ROOT")
-            installed_normalized = installed_normalized.replace(project_root_str, "PROJECT_ROOT")
+                # Compare counts - if different number of OAK hooks, needs upgrade
+                if len(source_event_hooks) != len(oak_installed):
+                    return True
 
-            return source_normalized != installed_normalized
-        except (json.JSONDecodeError, re.error) as e:
+                # Compare each hook's content
+                source_json = json.dumps(source_event_hooks, sort_keys=True)
+                installed_json = json.dumps(oak_installed, sort_keys=True)
+                if source_json != installed_json:
+                    return True
+
+            # Check if installed has events that source doesn't (orphaned OAK hooks)
+            for event in installed_hooks:
+                if event not in source_hooks:
+                    # Check if there are any OAK-managed hooks in this event
+                    for hook in installed_hooks[event]:
+                        if agent == "cursor":
+                            command = hook.get("command", "")
+                        else:
+                            command = hook.get("hooks", [{}])[0].get("command", "")
+                        if "/api/oak/ci/" in command or "oak-ci-hook.sh" in command:
+                            return True  # Orphaned OAK hook found
+
+            return False
+        except (TypeError, KeyError) as e:
             logger.warning(f"Failed to compare hooks content: {e}")
             return True
 

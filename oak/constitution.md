@@ -324,9 +324,25 @@ For every change:
 - `make check` passes (lint, format, typing, tests, etc.)
 - README is reviewed and updated if behavior, install, or workflows changed
 - Documentation is updated to prevent drift:
-  - If you touch a feature, update the feature’s doc (or create one if missing)
-- No “drive-by” changes without docs/tests when behavior changes
+  - If you touch a feature, update the feature's doc (or create one if missing)
+- No "drive-by" changes without docs/tests when behavior changes
 - No literals added anywhere (including tests)
+
+### 7.3 Development Tooling (Hard Rules)
+
+**Python Version:** OAK requires Python 3.13. The project's `.python-version` file enforces this.
+
+**Global Tool Reinstallation:** When reinstalling the global `oak` CLI after code changes, agents **must use the Makefile target**:
+
+```bash
+make tool-reinstall
+```
+
+**Never run raw `uv tool install` commands** — they will use the system default Python (which may be an unspported version) and omit required extras. The Makefile target ensures:
+
+- Python 3.13 is explicitly specified and all required dependencies are installed.
+
+**Project-scoped commands:** For project-scoped operations (`uv sync`, `uv run`, etc.), the `.python-version` file ensures the correct Python version is used automatically.
 
 ---
 

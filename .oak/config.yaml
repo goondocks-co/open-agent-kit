@@ -1,5 +1,7 @@
-version: 0.5.2.dev6+g12cd88b4f.d20260124
-agents: [claude, cursor]
+version: 0.5.2.dev8+g8d6b5ef40.d20260124
+agents:
+- claude
+- cursor
 agent_capabilities:
   claude:
     has_background_agents: true
@@ -29,7 +31,10 @@ plan:
 constitution:
   directory: oak
 features:
-  enabled: [rules-management, codebase-intelligence, strategic-planning]
+  enabled:
+  - rules-management
+  - codebase-intelligence
+  - strategic-planning
 skills:
   installed:
   - project-rules

@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart dogfood-reset
+.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart dogfood-reset tool-reinstall
 
 # Default target
 help:
@@ -56,6 +56,9 @@ help:
 	@echo ""
 	@echo "  Dogfooding:"
 	@echo "    make dogfood-reset Reset oak environment (reinstall with all features)"
+	@echo ""
+	@echo "  Global Tool:"
+	@echo "    make tool-reinstall  Reinstall global oak CLI with all extras (uses Python 3.13)"
 
 # Setup targets
 venv:
@@ -215,3 +218,12 @@ dogfood-reset:
 	uv run oak feature add strategic-planning
 	@echo ""
 	@echo "Dogfooding environment reset. Run 'make ci-dev' to start daemon with hot reload."
+
+# Global tool installation
+# Use this when you need to update the global `oak` CLI after code changes.
+# This ensures Python 3.13 is used (3.14 lacks wheels for some dependencies).
+tool-reinstall:
+	@echo "Reinstalling global oak CLI tool..."
+	uv tool install . --python 3.13 --with ".[codebase-intelligence]" --with ".[ci-parsers]" --reinstall
+	@echo ""
+	@echo "Global oak CLI reinstalled. Verify with: oak --version"
