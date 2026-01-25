@@ -61,6 +61,42 @@
           }
         ]
       }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); SAFE_INPUT=$(printf \"%s\" \"$INPUT\" | jq -c . 2>/dev/null || echo \"{}\"); printf \"%s\" \"$SAFE_INPUT\" | jq -c '{agent: \"claude\", session_id: (.session_id // .conversation_id), tool_name: .tool_name, tool_input: .tool_input, tool_use_id: .tool_use_id, error_message: (.error.message // .error // \"\"), hook_origin: \"claude_config\", hook_event_name: \"PostToolUseFailure\"}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/post-tool-use-failure -H 'Content-Type: application/json' -d @- >/dev/null || true; echo '{}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); SAFE_INPUT=$(printf \"%s\" \"$INPUT\" | jq -c . 2>/dev/null || echo \"{}\"); printf \"%s\" \"$SAFE_INPUT\" | jq -c '{agent: \"claude\", session_id: (.session_id // .conversation_id), agent_id: .agent_id, agent_type: .agent_type, hook_origin: \"claude_config\", hook_event_name: \"SubagentStart\"}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/subagent-start -H 'Content-Type: application/json' -d @- >/dev/null || true; echo '{}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); SAFE_INPUT=$(printf \"%s\" \"$INPUT\" | jq -c . 2>/dev/null || echo \"{}\"); printf \"%s\" \"$SAFE_INPUT\" | jq -c '{agent: \"claude\", session_id: (.session_id // .conversation_id), agent_id: .agent_id, agent_type: .agent_type, agent_transcript_path: .agent_transcript_path, stop_hook_active: .stop_hook_active, hook_origin: \"claude_config\", hook_event_name: \"SubagentStop\"}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/subagent-stop -H 'Content-Type: application/json' -d @- >/dev/null || true; echo '{}'",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

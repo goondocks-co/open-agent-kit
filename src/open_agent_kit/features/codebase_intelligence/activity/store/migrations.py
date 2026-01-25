@@ -1,0 +1,413 @@
+"""Database migration functions for activity store.
+
+Contains all migration logic for upgrading database schema versions.
+"""
+
+import logging
+import sqlite3
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
+    """Apply schema migrations from current version to latest.
+
+    Args:
+        conn: Database connection (within transaction).
+        from_version: Current schema version.
+    """
+    if from_version < 4:
+        migrate_v3_to_v4(conn)
+    if from_version < 5:
+        migrate_v4_to_v5(conn)
+    if from_version < 6:
+        migrate_v5_to_v6(conn)
+    if from_version < 7:
+        migrate_v6_to_v7(conn)
+    if from_version < 8:
+        migrate_v7_to_v8(conn)
+    if from_version < 9:
+        migrate_v8_to_v9(conn)
+    if from_version < 10:
+        migrate_v9_to_v10(conn)
+
+
+def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v3 to v4: Add source_type to prompt_batches.
+
+    Adds source_type column and backfills based on user_prompt content:
+    - Prompts starting with '<task-notification>' -> 'agent_notification'
+    - All others -> 'user'
+
+    Plan batches are detected dynamically using PlanDetector.
+    """
+    logger.info("Migrating activity store schema v3 -> v4: Adding source_type column")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(prompt_batches)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "source_type" in columns:
+        logger.info("source_type column already exists, skipping migration")
+        return
+
+    # Add the source_type column
+    conn.execute("ALTER TABLE prompt_batches ADD COLUMN source_type TEXT DEFAULT 'user'")
+
+    # Backfill agent_notification batches based on user_prompt content
+    cursor = conn.execute(
+        """
+        UPDATE prompt_batches
+        SET source_type = 'agent_notification'
+        WHERE user_prompt LIKE '<task-notification>%'
+    """
+    )
+    agent_count = cursor.rowcount
+
+    # Backfill plan batches using PlanDetector for dynamic pattern matching
+    plan_count = 0
+    try:
+        from open_agent_kit.features.codebase_intelligence.plan_detector import PlanDetector
+
+        detector = PlanDetector()
+
+        # Get all activities with Write to potential plan paths
+        cursor = conn.execute(
+            """
+            SELECT DISTINCT prompt_batch_id, file_path
+            FROM activities
+            WHERE tool_name = 'Write' AND file_path IS NOT NULL AND prompt_batch_id IS NOT NULL
+        """
+        )
+
+        plan_batch_ids: set[int] = set()
+        for row in cursor.fetchall():
+            batch_id, file_path = row
+            if detector.is_plan_file(file_path):
+                plan_batch_ids.add(batch_id)
+
+        # Update plan batches
+        if plan_batch_ids:
+            placeholders = ",".join("?" * len(plan_batch_ids))
+            cursor = conn.execute(
+                f"UPDATE prompt_batches SET source_type = 'plan' WHERE id IN ({placeholders})",
+                list(plan_batch_ids),
+            )
+            plan_count = cursor.rowcount
+    except Exception as e:
+        logger.warning(f"Plan detection during migration failed (non-fatal): {e}")
+
+    logger.info(
+        f"Migration v3->v4 complete: backfilled {agent_count} agent batches, "
+        f"{plan_count} plan batches"
+    )
+
+
+def migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v4 to v5: Add plan_file_path to prompt_batches.
+
+    Adds plan_file_path column and backfills from activities for plan batches.
+    Also backfills plan execution batches based on user_prompt content
+    (e.g., prompts starting with "Implement the following plan:").
+    """
+    logger.info("Migrating activity store schema v4 -> v5: Adding plan_file_path column")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(prompt_batches)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "plan_file_path" in columns:
+        logger.info("plan_file_path column already exists, skipping migration")
+        # Still run the plan execution backfill in case it wasn't done
+    else:
+        # Add the plan_file_path column
+        conn.execute("ALTER TABLE prompt_batches ADD COLUMN plan_file_path TEXT")
+
+    # Backfill plan execution batches based on user_prompt content
+    # Uses PromptClassifier to detect plan execution prefixes from agent manifests
+    plan_execution_count = 0
+    try:
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            PROMPT_SOURCE_PLAN,
+        )
+        from open_agent_kit.features.codebase_intelligence.prompt_classifier import (
+            PromptClassifier,
+        )
+
+        classifier = PromptClassifier()
+
+        # Get all batches that might be plan execution (not yet marked as plan)
+        cursor = conn.execute(
+            """
+            SELECT id, user_prompt FROM prompt_batches
+            WHERE source_type != 'plan' AND user_prompt IS NOT NULL
+            """
+        )
+        rows = cursor.fetchall()
+
+        for batch_id, user_prompt in rows:
+            result = classifier.classify(user_prompt)
+            if result.source_type == PROMPT_SOURCE_PLAN:
+                conn.execute(
+                    "UPDATE prompt_batches SET source_type = 'plan' WHERE id = ?",
+                    (batch_id,),
+                )
+                plan_execution_count += 1
+                prefix_preview = result.matched_prefix[:30] if result.matched_prefix else "N/A"
+                logger.debug(
+                    f"Backfilled batch {batch_id} as plan execution "
+                    f"(agent: {result.agent_type}, prefix: {prefix_preview}...)"
+                )
+
+    except Exception as e:
+        logger.warning(f"Plan execution backfill during migration failed (non-fatal): {e}")
+
+    # Backfill plan_file_path from activities for existing plan batches
+    # Find Write activities to plan directories for each plan batch
+    plan_path_count = 0
+    try:
+        from open_agent_kit.features.codebase_intelligence.plan_detector import PlanDetector
+
+        detector = PlanDetector()
+
+        # Get all plan batches (including newly backfilled ones)
+        cursor = conn.execute(
+            "SELECT id FROM prompt_batches WHERE source_type = 'plan' AND plan_file_path IS NULL"
+        )
+        plan_batch_ids = [row[0] for row in cursor.fetchall()]
+
+        for batch_id in plan_batch_ids:
+            # Find Write activity with plan path
+            cursor = conn.execute(
+                """
+                SELECT file_path FROM activities
+                WHERE prompt_batch_id = ? AND tool_name = 'Write' AND file_path IS NOT NULL
+                ORDER BY timestamp_epoch DESC
+                LIMIT 1
+                """,
+                (batch_id,),
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                file_path = row[0]
+                if detector.is_plan_file(file_path):
+                    conn.execute(
+                        "UPDATE prompt_batches SET plan_file_path = ? WHERE id = ?",
+                        (file_path, batch_id),
+                    )
+                    plan_path_count += 1
+    except Exception as e:
+        logger.warning(f"Plan file path backfill during migration failed (non-fatal): {e}")
+
+    logger.info(
+        f"Migration v4->v5 complete: backfilled {plan_execution_count} plan execution batches, "
+        f"{plan_path_count} plan file paths"
+    )
+
+
+def migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v5 to v6: Add plan_content to prompt_batches.
+
+    Adds plan_content column and backfills from plan files for existing plan batches.
+    This makes CI self-contained by storing plan content in the database.
+    """
+    logger.info("Migrating activity store schema v5 -> v6: Adding plan_content column")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(prompt_batches)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "plan_content" in columns:
+        logger.info("plan_content column already exists, skipping column creation")
+    else:
+        # Add the plan_content column
+        conn.execute("ALTER TABLE prompt_batches ADD COLUMN plan_content TEXT")
+
+    # Backfill plan_content from plan files for existing plan batches
+    content_count = 0
+    try:
+        # Get all plan batches with file paths but no content
+        cursor = conn.execute(
+            """
+            SELECT id, plan_file_path FROM prompt_batches
+            WHERE source_type = 'plan'
+              AND plan_file_path IS NOT NULL
+              AND (plan_content IS NULL OR plan_content = '')
+            """
+        )
+        rows = cursor.fetchall()
+
+        for batch_id, plan_file_path in rows:
+            try:
+                plan_path = Path(plan_file_path)
+                if plan_path.exists():
+                    plan_content = plan_path.read_text(encoding="utf-8")
+                    # Truncate to max length
+                    if len(plan_content) > 100000:
+                        plan_content = plan_content[:100000]
+                    conn.execute(
+                        "UPDATE prompt_batches SET plan_content = ? WHERE id = ?",
+                        (plan_content, batch_id),
+                    )
+                    content_count += 1
+                    logger.debug(f"Backfilled plan content for batch {batch_id}")
+            except Exception as e:
+                logger.debug(f"Could not read plan file for batch {batch_id}: {e}")
+    except Exception as e:
+        logger.warning(f"Plan content backfill during migration failed (non-fatal): {e}")
+
+    logger.info(f"Migration v5->v6 complete: backfilled {content_count} plan contents")
+
+
+def migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v6 to v7: Add plan_embedded to prompt_batches.
+
+    Adds plan_embedded column to track ChromaDB indexing status for plans.
+    This enables semantic search of plans alongside code and memories.
+    """
+    logger.info("Migrating activity store schema v6 -> v7: Adding plan_embedded column")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(prompt_batches)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "plan_embedded" in columns:
+        logger.info("plan_embedded column already exists, skipping migration")
+        return
+
+    # Add the plan_embedded column (default 0 = not embedded)
+    conn.execute("ALTER TABLE prompt_batches ADD COLUMN plan_embedded INTEGER DEFAULT 0")
+
+    logger.info("Migration v6->v7 complete: added plan_embedded column")
+
+
+def migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v7 to v8: Add composite indexes for performance.
+
+    Adds composite indexes for common query patterns to improve query performance:
+    - activities(session_id, processed) - for unprocessed activities by session
+    - activities(processed, timestamp_epoch) - for background processing
+    - activities(session_id, prompt_batch_id) - for batch queries
+    - memory_observations(embedded, created_at_epoch) - for rebuild operations
+    - prompt_batches(session_id, status, processed) - for session batch queries
+    """
+    logger.info("Migrating activity store schema v7 -> v8: Adding composite indexes")
+
+    # Composite indexes for common query patterns
+    indexes = [
+        # For: WHERE session_id = ? AND processed = FALSE
+        "CREATE INDEX IF NOT EXISTS idx_activities_session_processed ON activities(session_id, processed)",
+        # For: WHERE processed = FALSE AND timestamp_epoch > ?
+        "CREATE INDEX IF NOT EXISTS idx_activities_processed_timestamp ON activities(processed, timestamp_epoch)",
+        # For: WHERE session_id = ? AND prompt_batch_id = ?
+        "CREATE INDEX IF NOT EXISTS idx_activities_session_batch ON activities(session_id, prompt_batch_id)",
+        # For: WHERE embedded = FALSE ORDER BY created_at_epoch
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_embedded_epoch ON memory_observations(embedded, created_at_epoch)",
+        # For: WHERE session_id = ? AND status = ? AND processed = ?
+        "CREATE INDEX IF NOT EXISTS idx_prompt_batches_session_status ON prompt_batches(session_id, status, processed)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.OperationalError as e:
+            # Index might already exist, log warning but continue
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v7->v8 complete: added composite indexes")
+
+
+def migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v8 to v9: Add title column to sessions.
+
+    Adds a title column to store LLM-generated short session titles (10-20 words).
+    This provides user-friendly session names in the UI instead of GUIDs.
+    """
+    logger.info("Migrating activity store schema v8 -> v9: Adding session title column")
+
+    # Check if title column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(sessions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "title" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
+        logger.info("Migration v8->v9 complete: added title column to sessions")
+    else:
+        logger.info("Migration v8->v9: title column already exists, skipping")
+
+
+def migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v9 to v10: Add memory filtering indexes and FTS5.
+
+    Adds indexes for memory filtering/browsing:
+    - idx_memory_observations_type: Filter by memory_type
+    - idx_memory_observations_context: Filter by context/file
+    - idx_memory_observations_created: Sort by creation date
+    - idx_memory_observations_type_created: Combined type filter + date sort
+
+    Also adds FTS5 virtual table for full-text search on memories.
+    """
+    logger.info("Migrating activity store schema v9 -> v10: Adding memory filtering indexes + FTS5")
+
+    # Add indexes (idempotent - IF NOT EXISTS)
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_type ON memory_observations(memory_type)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_context ON memory_observations(context)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_created ON memory_observations(created_at_epoch DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_type_created ON memory_observations(memory_type, created_at_epoch DESC)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+            logger.debug(f"Created index: {index_sql.split('idx_')[1].split(' ')[0]}")
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    # Create FTS5 virtual table for memory search
+    try:
+        conn.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                observation,
+                context,
+                content='memory_observations',
+                content_rowid='rowid'
+            )
+        """
+        )
+        logger.debug("Created memories_fts virtual table")
+    except sqlite3.Error as e:
+        logger.warning(f"FTS5 table creation warning (may already exist): {e}")
+
+    # Create triggers to keep FTS in sync
+    triggers = [
+        """CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memory_observations BEGIN
+            INSERT INTO memories_fts(rowid, observation, context) VALUES (NEW.rowid, NEW.observation, NEW.context);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memory_observations BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, observation, context) VALUES ('delete', OLD.rowid, OLD.observation, OLD.context);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE ON memory_observations BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, observation, context) VALUES ('delete', OLD.rowid, OLD.observation, OLD.context);
+            INSERT INTO memories_fts(rowid, observation, context) VALUES (NEW.rowid, NEW.observation, NEW.context);
+        END""",
+    ]
+
+    for trigger_sql in triggers:
+        try:
+            conn.execute(trigger_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Trigger creation warning (may already exist): {e}")
+
+    # Populate FTS with existing memories
+    try:
+        conn.execute(
+            """
+            INSERT INTO memories_fts(rowid, observation, context)
+            SELECT rowid, observation, context FROM memory_observations
+        """
+        )
+        count = conn.execute("SELECT COUNT(*) FROM memory_observations").fetchone()[0]
+        logger.info(f"Migration v9->v10 complete: added indexes + FTS5, populated {count} memories")
+    except sqlite3.Error as e:
+        # May fail if FTS already populated - that's OK
+        logger.debug(f"FTS population note (may already be populated): {e}")
+        logger.info("Migration v9->v10 complete: added indexes + FTS5")

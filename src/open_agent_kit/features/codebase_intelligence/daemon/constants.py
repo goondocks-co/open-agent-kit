@@ -7,6 +7,13 @@ Constants-first approach per .constitution.md §IV:
 
 from pathlib import Path
 
+from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DATA_DIR,
+    CI_HOOKS_LOG_FILE,
+    CI_LOG_FILE,
+)
+
 # =============================================================================
 # Daemon Status Values
 # =============================================================================
@@ -137,41 +144,22 @@ class Timing:
 
 
 class Paths:
-    """Standard file and directory paths relative to project root."""
+    """Helper methods for constructing file paths.
 
-    # .oak directory structure
-    OAK_DIR = ".oak"
-    CI_DIR = "ci"
-    LOG_FILE = "daemon.log"
-    HOOKS_LOG_FILE = "hooks.log"
-    CONFIG_FILE = "ci_config.yaml"
-    DB_FILE = "activity.db"
-    CHROMA_DIR = "chroma"
+    Uses canonical constants from config.paths and codebase_intelligence.constants.
+    For database and ChromaDB paths, use constants from
+    open_agent_kit.features.codebase_intelligence.constants directly.
+    """
 
     @classmethod
     def get_log_path(cls, project_root: Path) -> Path:
         """Get the daemon log file path."""
-        return project_root / cls.OAK_DIR / cls.CI_DIR / cls.LOG_FILE
+        return project_root / OAK_DIR / CI_DATA_DIR / CI_LOG_FILE
 
     @classmethod
     def get_hooks_log_path(cls, project_root: Path) -> Path:
         """Get the hooks event log file path."""
-        return project_root / cls.OAK_DIR / cls.CI_DIR / cls.HOOKS_LOG_FILE
-
-    @classmethod
-    def get_config_path(cls, project_root: Path) -> Path:
-        """Get the CI config file path."""
-        return project_root / cls.OAK_DIR / cls.CI_DIR / cls.CONFIG_FILE
-
-    @classmethod
-    def get_db_path(cls, project_root: Path) -> Path:
-        """Get the activity database path."""
-        return project_root / cls.OAK_DIR / cls.CI_DIR / cls.DB_FILE
-
-    @classmethod
-    def get_chroma_path(cls, project_root: Path) -> Path:
-        """Get the ChromaDB directory path."""
-        return project_root / cls.OAK_DIR / cls.CI_DIR / cls.CHROMA_DIR
+        return project_root / OAK_DIR / CI_DATA_DIR / CI_HOOKS_LOG_FILE
 
 
 # =============================================================================

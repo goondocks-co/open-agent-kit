@@ -199,6 +199,7 @@ export const API_ENDPOINTS = {
 
     // Activity endpoints
     ACTIVITY_SESSIONS: "/api/activity/sessions",
+    ACTIVITY_PLANS: "/api/activity/plans",
     ACTIVITY_STATS: "/api/activity/stats",
     ACTIVITY_SEARCH: "/api/activity/search",
     ACTIVITY_REPROCESS: "/api/activity/reprocess-memories",
@@ -212,6 +213,8 @@ export const API_ENDPOINTS = {
 
     // Memory endpoints
     MEMORIES: "/api/memories",
+    MEMORIES_TAGS: "/api/memories/tags",
+    MEMORIES_BULK: "/api/memories/bulk",
 
     // DevTools endpoints
     DEVTOOLS_MEMORY_STATS: "/api/devtools/memory-stats",
@@ -259,6 +262,16 @@ export function getDeleteActivityEndpoint(activityId: number): string {
 /** Build delete memory endpoint */
 export function getDeleteMemoryEndpoint(memoryId: string): string {
     return `${API_ENDPOINTS.MEMORIES}/${memoryId}`;
+}
+
+/** Build archive memory endpoint */
+export function getArchiveMemoryEndpoint(memoryId: string): string {
+    return `${API_ENDPOINTS.MEMORIES}/${memoryId}/archive`;
+}
+
+/** Build unarchive memory endpoint */
+export function getUnarchiveMemoryEndpoint(memoryId: string): string {
+    return `${API_ENDPOINTS.MEMORIES}/${memoryId}/unarchive`;
 }
 
 /** Build promote batch endpoint */
@@ -404,6 +417,9 @@ export const SCORE_DISPLAY_PRECISION = 4;
 /** Character limit for activity content before truncation */
 export const ACTIVITY_TRUNCATION_LIMIT = 100;
 
+/** Character limit for memory observation before truncation */
+export const MEMORY_OBSERVATION_TRUNCATION_LIMIT = 200;
+
 /** Maximum length for session title display */
 export const SESSION_TITLE_MAX_LENGTH = 60;
 
@@ -518,6 +534,143 @@ export const SEARCH_TYPE_OPTIONS = [
     { value: SEARCH_TYPES.MEMORY, label: "Memories Only" },
     { value: SEARCH_TYPES.PLANS, label: "Plans Only" },
 ] as const;
+
+
+// =============================================================================
+// Memory Types (for filtering memories list)
+// =============================================================================
+
+/**
+ * Memory observation types.
+ * These match the memory_type values stored in the database.
+ */
+export const MEMORY_TYPES = {
+    GOTCHA: "gotcha",
+    DISCOVERY: "discovery",
+    BUG_FIX: "bug_fix",
+    DECISION: "decision",
+    TRADE_OFF: "trade_off",
+    SESSION_SUMMARY: "session_summary",
+    PLAN: "plan",
+} as const;
+
+export type MemoryType = typeof MEMORY_TYPES[keyof typeof MEMORY_TYPES];
+
+/** Human-readable memory type labels */
+export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
+    [MEMORY_TYPES.GOTCHA]: "Gotcha",
+    [MEMORY_TYPES.DISCOVERY]: "Discovery",
+    [MEMORY_TYPES.BUG_FIX]: "Bug Fix",
+    [MEMORY_TYPES.DECISION]: "Decision",
+    [MEMORY_TYPES.TRADE_OFF]: "Trade-off",
+    [MEMORY_TYPES.SESSION_SUMMARY]: "Session Summary",
+    [MEMORY_TYPES.PLAN]: "Plan",
+} as const;
+
+/** CSS classes for memory type badges */
+export const MEMORY_TYPE_BADGE_CLASSES: Record<MemoryType, string> = {
+    [MEMORY_TYPES.GOTCHA]: "bg-red-500/10 text-red-600",
+    [MEMORY_TYPES.DISCOVERY]: "bg-blue-500/10 text-blue-600",
+    [MEMORY_TYPES.BUG_FIX]: "bg-green-500/10 text-green-600",
+    [MEMORY_TYPES.DECISION]: "bg-purple-500/10 text-purple-600",
+    [MEMORY_TYPES.TRADE_OFF]: "bg-orange-500/10 text-orange-600",
+    [MEMORY_TYPES.SESSION_SUMMARY]: "bg-gray-500/10 text-gray-600",
+    [MEMORY_TYPES.PLAN]: "bg-amber-500/10 text-amber-600",
+} as const;
+
+/** Memory type filter options for Select dropdowns.
+ * Note: Plan is excluded here as plans have their own dedicated tab in Data Explorer.
+ * MEMORY_TYPES.PLAN and MEMORY_TYPE_BADGE_CLASSES.plan are kept for search result display.
+ */
+export const MEMORY_TYPE_FILTER_OPTIONS = [
+    { value: "all", label: "All Types" },
+    { value: MEMORY_TYPES.GOTCHA, label: MEMORY_TYPE_LABELS.gotcha },
+    { value: MEMORY_TYPES.DISCOVERY, label: MEMORY_TYPE_LABELS.discovery },
+    { value: MEMORY_TYPES.BUG_FIX, label: MEMORY_TYPE_LABELS.bug_fix },
+    { value: MEMORY_TYPES.DECISION, label: MEMORY_TYPE_LABELS.decision },
+    { value: MEMORY_TYPES.TRADE_OFF, label: MEMORY_TYPE_LABELS.trade_off },
+    { value: MEMORY_TYPES.SESSION_SUMMARY, label: MEMORY_TYPE_LABELS.session_summary },
+] as const;
+
+export type MemoryTypeFilter = "all" | MemoryType;
+
+
+// =============================================================================
+// Bulk Actions (for batch operations on memories)
+// =============================================================================
+
+/**
+ * Bulk action types for memory operations.
+ * These match the BulkAction enum on the backend.
+ */
+export const BULK_ACTIONS = {
+    DELETE: "delete",
+    ARCHIVE: "archive",
+    UNARCHIVE: "unarchive",
+    ADD_TAG: "add_tag",
+    REMOVE_TAG: "remove_tag",
+} as const;
+
+export type BulkAction = typeof BULK_ACTIONS[keyof typeof BULK_ACTIONS];
+
+/** Human-readable bulk action labels */
+export const BULK_ACTION_LABELS: Record<BulkAction, string> = {
+    [BULK_ACTIONS.DELETE]: "Delete",
+    [BULK_ACTIONS.ARCHIVE]: "Archive",
+    [BULK_ACTIONS.UNARCHIVE]: "Unarchive",
+    [BULK_ACTIONS.ADD_TAG]: "Add Tag",
+    [BULK_ACTIONS.REMOVE_TAG]: "Remove Tag",
+} as const;
+
+
+// =============================================================================
+// Date Range Presets (for filtering by time period)
+// =============================================================================
+
+/**
+ * Date range preset values for quick filtering.
+ */
+export const DATE_RANGE_PRESETS = {
+    ALL: "all",
+    TODAY: "today",
+    WEEK: "week",
+    MONTH: "month",
+    CUSTOM: "custom",
+} as const;
+
+export type DateRangePreset = typeof DATE_RANGE_PRESETS[keyof typeof DATE_RANGE_PRESETS];
+
+/** Date range filter options for Select dropdowns */
+export const DATE_RANGE_OPTIONS = [
+    { value: DATE_RANGE_PRESETS.ALL, label: "All Time" },
+    { value: DATE_RANGE_PRESETS.TODAY, label: "Today" },
+    { value: DATE_RANGE_PRESETS.WEEK, label: "This Week" },
+    { value: DATE_RANGE_PRESETS.MONTH, label: "This Month" },
+] as const;
+
+/**
+ * Calculate start date for a given preset.
+ * Returns ISO date string (YYYY-MM-DD) or empty string for "all".
+ */
+export function getDateRangeStart(preset: DateRangePreset): string {
+    const now = new Date();
+    switch (preset) {
+        case DATE_RANGE_PRESETS.TODAY:
+            return now.toISOString().split("T")[0];
+        case DATE_RANGE_PRESETS.WEEK: {
+            const weekAgo = new Date(now);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return weekAgo.toISOString().split("T")[0];
+        }
+        case DATE_RANGE_PRESETS.MONTH: {
+            const monthAgo = new Date(now);
+            monthAgo.setMonth(monthAgo.getMonth() - 1);
+            return monthAgo.toISOString().split("T")[0];
+        }
+        default:
+            return "";
+    }
+}
 
 
 // =============================================================================

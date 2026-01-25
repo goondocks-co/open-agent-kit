@@ -26,6 +26,8 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     DeleteActivityResponse,
     DeleteBatchResponse,
     DeleteSessionResponse,
+    PlanListItem,
+    PlansListResponse,
     PromptBatchItem,
     SessionDetailResponse,
     SessionItem,
@@ -97,6 +99,101 @@ def _prompt_batch_to_item(batch: PromptBatch, activity_count: int = 0) -> Prompt
         ended_at=batch.ended_at,
         activity_count=activity_count,
     )
+
+
+def _extract_plan_title(batch: PromptBatch) -> str:
+    """Extract a title from a plan batch.
+
+    Tries in order:
+    1. First markdown heading (# Title) from plan_content
+    2. Filename from plan_file_path
+    3. Fallback to "Plan #{batch_id}"
+    """
+    import re
+
+    # Try to extract first heading from plan_content
+    if batch.plan_content:
+        # Match first markdown heading (# or ##)
+        heading_match = re.search(r"^#+ +(.+)$", batch.plan_content, re.MULTILINE)
+        if heading_match:
+            return heading_match.group(1).strip()
+
+    # Try filename from plan_file_path
+    if batch.plan_file_path:
+        from pathlib import Path
+
+        filename = Path(batch.plan_file_path).stem
+        # Convert kebab-case or snake_case to title case
+        title = filename.replace("-", " ").replace("_", " ").title()
+        return title
+
+    # Fallback
+    return f"Plan #{batch.id}" if batch.id else "Untitled Plan"
+
+
+def _plan_to_item(batch: PromptBatch) -> PlanListItem:
+    """Convert a plan PromptBatch to PlanListItem."""
+    # Get preview from plan_content (first 200 chars, skip heading)
+    preview = ""
+    if batch.plan_content:
+        import re
+
+        # Remove first heading line and get next 200 chars
+        content = re.sub(r"^#+ +.+\n*", "", batch.plan_content, count=1).strip()
+        preview = content[:200]
+        if len(content) > 200:
+            preview += "..."
+
+    return PlanListItem(
+        id=batch.id if batch.id is not None else 0,
+        title=_extract_plan_title(batch),
+        session_id=batch.session_id,
+        created_at=batch.started_at,
+        file_path=batch.plan_file_path,
+        preview=preview,
+        plan_embedded=batch.plan_embedded,
+    )
+
+
+@router.get("/api/activity/plans", response_model=PlansListResponse)
+async def list_plans(
+    limit: int = Query(
+        default=Pagination.DEFAULT_LIMIT, ge=Pagination.MIN_LIMIT, le=Pagination.SESSIONS_MAX
+    ),
+    offset: int = Query(default=Pagination.DEFAULT_OFFSET, ge=0),
+    session_id: str | None = Query(default=None, description="Filter by session"),
+) -> PlansListResponse:
+    """List plans from prompt_batches (direct SQLite, not ChromaDB).
+
+    Plans are prompt batches with source_type='plan' that contain design documents
+    created during plan mode sessions.
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.debug(f"Listing plans: limit={limit}, offset={offset}, session_id={session_id}")
+
+    try:
+        plans, total = state.activity_store.get_plans(
+            limit=limit,
+            offset=offset,
+            session_id=session_id,
+        )
+
+        items = [_plan_to_item(batch) for batch in plans]
+
+        return PlansListResponse(
+            plans=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to list plans: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/activity/sessions", response_model=SessionListResponse)

@@ -1009,6 +1009,181 @@ class TestActivityStoreRecoveryOperations:
         recovered = activity_store.recover_orphaned_activities()
         assert recovered >= 1
 
+    def test_recover_stale_sessions_deletes_empty_sessions(self, activity_store: ActivityStore):
+        """Test that recover_stale_sessions deletes empty sessions (no prompt batches)."""
+        import time
+
+        # Create an empty session (no prompt batches)
+        activity_store.create_session(
+            session_id="test-session-empty-stale",
+            agent="claude",
+            project_root="/path",
+        )
+
+        # Make it stale by setting created_at_epoch to a long time ago
+        conn = activity_store._get_connection()
+        old_epoch = time.time() - 7200  # 2 hours ago
+        conn.execute(
+            "UPDATE sessions SET created_at_epoch = ? WHERE id = ?",
+            (old_epoch, "test-session-empty-stale"),
+        )
+        conn.commit()
+
+        # Recover with 1 hour timeout
+        recovered_ids, deleted_ids = activity_store.recover_stale_sessions(timeout_seconds=3600)
+
+        # Empty session should be deleted, not recovered
+        assert "test-session-empty-stale" in deleted_ids
+        assert "test-session-empty-stale" not in recovered_ids
+
+        # Session should no longer exist
+        session = activity_store.get_session("test-session-empty-stale")
+        assert session is None
+
+    def test_recover_stale_sessions_marks_nonempty_as_completed(
+        self, activity_store: ActivityStore
+    ):
+        """Test that recover_stale_sessions marks non-empty sessions as completed."""
+        import time
+
+        # Create a session with a prompt batch
+        activity_store.create_session(
+            session_id="test-session-nonempty-stale",
+            agent="claude",
+            project_root="/path",
+        )
+        activity_store.create_prompt_batch(
+            session_id="test-session-nonempty-stale",
+            user_prompt="Test prompt",
+        )
+
+        # Make it stale by setting created_at_epoch to a long time ago
+        conn = activity_store._get_connection()
+        old_epoch = time.time() - 7200  # 2 hours ago
+        conn.execute(
+            "UPDATE sessions SET created_at_epoch = ? WHERE id = ?",
+            (old_epoch, "test-session-nonempty-stale"),
+        )
+        conn.commit()
+
+        # Recover with 1 hour timeout
+        recovered_ids, deleted_ids = activity_store.recover_stale_sessions(timeout_seconds=3600)
+
+        # Non-empty session should be recovered, not deleted
+        assert "test-session-nonempty-stale" in recovered_ids
+        assert "test-session-nonempty-stale" not in deleted_ids
+
+        # Session should be marked as completed
+        session = activity_store.get_session("test-session-nonempty-stale")
+        assert session is not None
+        assert session.status == "completed"
+
+    def test_recover_stale_sessions_returns_empty_for_no_stale(self, activity_store: ActivityStore):
+        """Test that recover_stale_sessions returns empty lists when no stale sessions."""
+        # Create a fresh session (not stale)
+        activity_store.create_session(
+            session_id="test-session-fresh",
+            agent="claude",
+            project_root="/path",
+        )
+
+        # Recover with 1 hour timeout - fresh session should not be affected
+        recovered_ids, deleted_ids = activity_store.recover_stale_sessions(timeout_seconds=3600)
+
+        assert recovered_ids == []
+        assert deleted_ids == []
+
+        # Session should still exist and be active
+        session = activity_store.get_session("test-session-fresh")
+        assert session is not None
+        assert session.status == "active"
+
+    def test_ensure_session_exists_creates_missing_session(self, activity_store: ActivityStore):
+        """Test that _ensure_session_exists creates a session if missing."""
+        # Session doesn't exist
+        session = activity_store.get_session("test-session-missing")
+        assert session is None
+
+        # Ensure session exists
+        created = activity_store._ensure_session_exists(
+            "test-session-missing",
+            "claude",
+        )
+
+        assert created is True
+
+        # Session should now exist
+        session = activity_store.get_session("test-session-missing")
+        assert session is not None
+        assert session.agent == "claude"
+        assert session.status == "active"
+
+    def test_ensure_session_exists_noop_for_existing(self, activity_store: ActivityStore):
+        """Test that _ensure_session_exists is a no-op for existing sessions."""
+        # Create session
+        activity_store.create_session(
+            session_id="test-session-existing",
+            agent="cursor",
+            project_root="/path",
+        )
+
+        # Ensure session exists - should return False (not created)
+        created = activity_store._ensure_session_exists(
+            "test-session-existing",
+            "claude",  # Different agent - should not overwrite
+        )
+
+        assert created is False
+
+        # Session should still have original agent
+        session = activity_store.get_session("test-session-existing")
+        assert session.agent == "cursor"
+
+    def test_create_prompt_batch_recreates_deleted_session(self, activity_store: ActivityStore):
+        """Test that create_prompt_batch recreates a deleted session when agent is provided."""
+        import time
+
+        # Create an empty session
+        activity_store.create_session(
+            session_id="test-session-to-delete",
+            agent="claude",
+            project_root="/path",
+        )
+
+        # Make it stale
+        conn = activity_store._get_connection()
+        old_epoch = time.time() - 7200
+        conn.execute(
+            "UPDATE sessions SET created_at_epoch = ? WHERE id = ?",
+            (old_epoch, "test-session-to-delete"),
+        )
+        conn.commit()
+
+        # Recover - should delete the empty session
+        recovered_ids, deleted_ids = activity_store.recover_stale_sessions(timeout_seconds=3600)
+        assert "test-session-to-delete" in deleted_ids
+
+        # Verify session is deleted
+        session = activity_store.get_session("test-session-to-delete")
+        assert session is None
+
+        # Create a prompt batch for the deleted session with agent parameter
+        batch = activity_store.create_prompt_batch(
+            session_id="test-session-to-delete",
+            user_prompt="New prompt after deletion",
+            agent="claude",  # Enables session recreation
+        )
+
+        # Batch should be created
+        assert batch.id is not None
+        assert batch.session_id == "test-session-to-delete"
+
+        # Session should be recreated
+        session = activity_store.get_session("test-session-to-delete")
+        assert session is not None
+        assert session.agent == "claude"
+        assert session.status == "active"
+
 
 # =============================================================================
 # ActivityProcessor Tests: Session Processing

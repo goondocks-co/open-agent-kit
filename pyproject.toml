@@ -55,6 +55,7 @@ codebase-intelligence = [
     "fastembed>=0.3.0",
     "watchdog>=4.0.0",
     "aiofiles>=23.0.0",
+    "mcp>=1.0.0",
 ]
 
 # Core language parsers (most common - top languages)

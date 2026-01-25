@@ -36,6 +36,8 @@ class MemoryType(str, Enum):
     DISCOVERY = "discovery"
     TRADE_OFF = "trade_off"
     SESSION_SUMMARY = "session_summary"
+    # Special type for indexed plans (from prompt_batches, not memory_observations)
+    PLAN = "plan"
 
 
 class HealthResponse(BaseModel):
@@ -180,6 +182,7 @@ class MemoryListItem(BaseModel):
     context: str | None = None
     tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
+    archived: bool = False
 
 
 class MemoriesListResponse(BaseModel):
@@ -189,6 +192,32 @@ class MemoriesListResponse(BaseModel):
     total: int = 0
     limit: int = 50
     offset: int = 0
+
+
+class BulkAction(str, Enum):
+    """Supported bulk actions for memories."""
+
+    DELETE = "delete"
+    ARCHIVE = "archive"
+    UNARCHIVE = "unarchive"
+    ADD_TAG = "add_tag"
+    REMOVE_TAG = "remove_tag"
+
+
+class BulkMemoriesRequest(BaseModel):
+    """Request to perform bulk operations on memories."""
+
+    memory_ids: list[str] = Field(..., min_length=1, description="List of memory IDs to operate on")
+    action: BulkAction = Field(..., description="Action to perform")
+    tag: str | None = Field(default=None, description="Tag for add_tag/remove_tag actions")
+
+
+class BulkMemoriesResponse(BaseModel):
+    """Response for bulk memory operations."""
+
+    success: bool = True
+    affected_count: int = 0
+    message: str = ""
 
 
 class IndexRequest(BaseModel):
@@ -378,6 +407,27 @@ class PromptBatchListResponse(BaseModel):
     """Response for listing prompt batches."""
 
     prompt_batches: list[PromptBatchItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class PlanListItem(BaseModel):
+    """Plan item for listing (from prompt_batches with source_type='plan')."""
+
+    id: int  # batch_id
+    title: str  # extracted from file path or first heading
+    session_id: str
+    created_at: datetime
+    file_path: str | None = None
+    preview: str  # first 200 chars of plan_content
+    plan_embedded: bool = False  # indexed in ChromaDB?
+
+
+class PlansListResponse(BaseModel):
+    """Response for listing plans."""
+
+    plans: list[PlanListItem] = Field(default_factory=list)
     total: int = 0
     limit: int = 50
     offset: int = 0

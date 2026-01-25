@@ -12,8 +12,12 @@ interface PromptBatchActivitiesProps {
     batchId: string;
 }
 
+interface BatchActivitiesResponse {
+    activities: ActivityItem[];
+}
+
 export function PromptBatchActivities({ batchId }: PromptBatchActivitiesProps) {
-    const { data: response, isLoading, error } = useQuery<any>({
+    const { data: response, isLoading, error } = useQuery<BatchActivitiesResponse>({
         queryKey: ["batch_activities", batchId],
         queryFn: () => fetchJson(`/api/activity/prompt-batches/${batchId}/activities?limit=50`),
     });

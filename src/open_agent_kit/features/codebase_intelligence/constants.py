@@ -32,13 +32,6 @@ VALID_SEARCH_TYPES: Final[tuple[str, ...]] = (
 )
 
 # =============================================================================
-# Vector Store Collections
-# =============================================================================
-
-COLLECTION_CODE: Final[str] = "code"
-COLLECTION_MEMORY: Final[str] = "memory"
-
-# =============================================================================
 # Embedding Providers
 # =============================================================================
 
@@ -85,10 +78,12 @@ DAEMON_STATUS_UNHEALTHY: Final[str] = "unhealthy"
 AGENT_CLAUDE: Final[str] = "claude"
 AGENT_CURSOR: Final[str] = "cursor"
 AGENT_GEMINI: Final[str] = "gemini"
+AGENT_COPILOT: Final[str] = "copilot"
 SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
     AGENT_CLAUDE,
     AGENT_CURSOR,
     AGENT_GEMINI,
+    AGENT_COPILOT,
 )
 
 # =============================================================================
@@ -100,11 +95,17 @@ SETTINGS_FILENAME: Final[str] = "settings.json"
 CURSOR_HOOKS_DIRNAME: Final[str] = "hooks"
 CURSOR_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
 
+# Copilot hooks directory (under .github/)
+COPILOT_HOOKS_DIRNAME: Final[str] = "hooks"
+COPILOT_HOOK_CONFIG_FILENAME: Final[str] = "oak-ci-hooks.json"
+COPILOT_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
+
 # CI data directory structure (relative to .oak/)
 CI_DATA_DIR: Final[str] = "ci"
 CI_CHROMA_DIR: Final[str] = "chroma"
 CI_ACTIVITIES_DB_FILENAME: Final[str] = "activities.db"
 CI_LOG_FILE: Final[str] = "daemon.log"
+CI_HOOKS_LOG_FILE: Final[str] = "hooks.log"
 CI_PID_FILE: Final[str] = "daemon.pid"
 CI_PORT_FILE: Final[str] = "daemon.port"
 
@@ -213,9 +214,12 @@ MAX_OBSERVATION_LENGTH: Final[int] = 50000
 HOOK_EVENT_SESSION_START: Final[str] = "session-start"
 HOOK_EVENT_SESSION_END: Final[str] = "session-end"
 HOOK_EVENT_POST_TOOL_USE: Final[str] = "post-tool-use"
+HOOK_EVENT_POST_TOOL_USE_FAILURE: Final[str] = "post-tool-use-failure"
 HOOK_EVENT_BEFORE_PROMPT: Final[str] = "before-prompt"
 HOOK_EVENT_STOP: Final[str] = "stop"
 HOOK_EVENT_PROMPT_SUBMIT: Final[str] = "prompt-submit"
+HOOK_EVENT_SUBAGENT_START: Final[str] = "subagent-start"
+HOOK_EVENT_SUBAGENT_STOP: Final[str] = "subagent-stop"
 
 # Hook origins for deduplication when multiple configs fire
 HOOK_ORIGIN_CLAUDE_CONFIG: Final[str] = "claude_config"
@@ -233,6 +237,13 @@ HOOK_FIELD_HOOK_ORIGIN: Final[str] = "hook_origin"
 HOOK_FIELD_HOOK_EVENT_NAME: Final[str] = "hook_event_name"
 HOOK_FIELD_GENERATION_ID: Final[str] = "generation_id"
 HOOK_FIELD_TOOL_USE_ID: Final[str] = "tool_use_id"
+HOOK_FIELD_ERROR_MESSAGE: Final[str] = "error_message"
+
+# Subagent hook fields
+HOOK_FIELD_AGENT_ID: Final[str] = "agent_id"
+HOOK_FIELD_AGENT_TYPE: Final[str] = "agent_type"
+HOOK_FIELD_AGENT_TRANSCRIPT_PATH: Final[str] = "agent_transcript_path"
+HOOK_FIELD_STOP_HOOK_ACTIVE: Final[str] = "stop_hook_active"
 
 # Hook deduplication configuration
 HOOK_DEDUP_CACHE_MAX: Final[int] = 500
@@ -325,3 +336,16 @@ INTERNAL_MESSAGE_PREFIXES: Final[tuple[str, ...]] = (
     "<task-notification>",  # Background agent completion messages
     "<system-",  # System reminder/prompt messages
 )
+
+# =============================================================================
+# Context Injection Limits
+# =============================================================================
+# Limits for context injected into AI agent conversations via hooks.
+
+# Code injection limits
+INJECTION_MAX_CODE_CHUNKS: Final[int] = 3
+INJECTION_MAX_LINES_PER_CHUNK: Final[int] = 50
+
+# Memory injection limits
+INJECTION_MAX_MEMORIES: Final[int] = 10
+INJECTION_MAX_SESSION_SUMMARIES: Final[int] = 5

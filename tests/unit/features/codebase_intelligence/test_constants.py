@@ -39,25 +39,6 @@ class TestSearchTypeConstants:
 
 
 # =============================================================================
-# Collection Names Constants
-# =============================================================================
-
-
-class TestCollectionConstants:
-    """Test collection name constants."""
-
-    def test_collection_code_defined(self):
-        """Test that COLLECTION_CODE constant exists."""
-        assert hasattr(constants, "COLLECTION_CODE")
-        assert constants.COLLECTION_CODE == "code"
-
-    def test_collection_memory_defined(self):
-        """Test that COLLECTION_MEMORY constant exists."""
-        assert hasattr(constants, "COLLECTION_MEMORY")
-        assert constants.COLLECTION_MEMORY == "memory"
-
-
-# =============================================================================
 # Embedding Provider Constants
 # =============================================================================
 

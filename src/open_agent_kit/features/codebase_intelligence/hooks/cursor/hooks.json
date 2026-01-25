@@ -31,6 +31,21 @@
       {
         "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh sessionEnd"
       }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh postToolUseFailure"
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh subagentStart"
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh subagentStop"
+      }
     ]
   }
 }

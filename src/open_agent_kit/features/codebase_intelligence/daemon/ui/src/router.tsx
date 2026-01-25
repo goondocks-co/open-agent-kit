@@ -5,6 +5,7 @@ import Logs from "@/pages/Logs";
 import Search from "@/pages/Search";
 import DataExplorer from "@/pages/DataExplorer";
 import SessionList from "@/components/data/SessionList";
+import PlansList from "@/components/data/PlansList";
 import MemoriesList from "@/components/data/MemoriesList";
 import SessionDetail from "@/pages/SessionDetail";
 import Config from "@/pages/Config";
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
                 children: [
                     { index: true, element: <Navigate to="sessions" replace /> },
                     { path: "sessions", element: <SessionList /> },
+                    { path: "plans", element: <PlansList /> },
                     { path: "memories", element: <MemoriesList /> },
                 ]
             },

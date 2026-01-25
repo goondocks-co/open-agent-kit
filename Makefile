@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-dev ui-restart dogfood-reset tool-reinstall
+.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart dogfood-reset
 
 # Default target
 help:
@@ -51,14 +51,12 @@ help:
 	@echo "  UI Development:"
 	@echo "    make ui-build      Build UI static assets"
 	@echo "    make ui-check      Verify UI assets are in sync (for CI)"
+	@echo "    make ui-lint       Run ESLint on UI code"
 	@echo "    make ui-dev        Run UI development server with hot reload"
 	@echo "    make ui-restart    Build UI and restart daemon"
 	@echo ""
 	@echo "  Dogfooding:"
 	@echo "    make dogfood-reset Reset oak environment (reinstall with all features)"
-	@echo ""
-	@echo "  Global Tool:"
-	@echo "    make tool-reinstall  Reinstall global oak CLI with all extras (uses Python 3.13)"
 
 # Setup targets
 venv:
@@ -199,6 +197,9 @@ ui-check:
 		exit 1; \
 	fi
 
+ui-lint:
+	cd src/open_agent_kit/features/codebase_intelligence/daemon/ui && npm run lint
+
 ui-dev:
 	cd src/open_agent_kit/features/codebase_intelligence/daemon/ui && npm run dev
 
@@ -219,11 +220,3 @@ dogfood-reset:
 	@echo ""
 	@echo "Dogfooding environment reset. Run 'make ci-dev' to start daemon with hot reload."
 
-# Global tool installation
-# Use this when you need to update the global `oak` CLI after code changes.
-# This ensures Python 3.13 is used (3.14 lacks wheels for some dependencies).
-tool-reinstall:
-	@echo "Reinstalling global oak CLI tool..."
-	uv tool install . --python 3.13 --with ".[codebase-intelligence]" --with ".[ci-parsers]" --reinstall
-	@echo ""
-	@echo "Global oak CLI reinstalled. Verify with: oak --version"

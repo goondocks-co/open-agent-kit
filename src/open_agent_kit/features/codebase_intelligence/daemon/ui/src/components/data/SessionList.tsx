@@ -9,9 +9,11 @@ import { Terminal, Activity, Calendar, ArrowRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DELETE_CONFIRMATIONS, PAGINATION, DEFAULT_AGENT_NAME, SESSION_TITLE_MAX_LENGTH } from "@/lib/constants";
 
+import type { SessionItem } from "@/hooks/use-activity";
+
 export default function SessionList() {
     const [offset, setOffset] = useState(0);
-    const [allSessions, setAllSessions] = useState<any[]>([]);
+    const [allSessions, setAllSessions] = useState<SessionItem[]>([]);
     const limit = PAGINATION.DEFAULT_LIMIT;
 
     const { data, isLoading, isFetching } = useSessions(limit, offset);

@@ -44,6 +44,26 @@ case "${EVENT}" in
     jq -cn --arg agent "cursor" --arg session_id "${SESSION_ID}" --arg conversation_id "${CONVERSATION_ID}" --arg hook_origin "${HOOK_ORIGIN}" --arg hook_event_name "${EVENT}" --arg generation_id "${GENERATION_ID}" '{agent: $agent, session_id: $session_id, conversation_id: $conversation_id, hook_origin: $hook_origin, hook_event_name: $hook_event_name, generation_id: $generation_id}' | curl -s -X POST "http://localhost:${PORT}/api/oak/ci/session-end" -H "Content-Type: application/json" -d @- >/dev/null || true
     echo "{}"
     ;;
+  postToolUseFailure)
+    TOOL_NAME="$(printf "%s" "${SAFE_INPUT}" | jq -r '.tool_name // "unknown"')"
+    ERROR_MSG="$(printf "%s" "${SAFE_INPUT}" | jq -r '.error.message // .error // ""')"
+    jq -cn --arg agent "cursor" --arg session_id "${SESSION_ID}" --arg conversation_id "${CONVERSATION_ID}" --arg tool_name "${TOOL_NAME}" --arg error_message "${ERROR_MSG}" --arg hook_origin "${HOOK_ORIGIN}" --arg hook_event_name "${EVENT}" --arg tool_use_id "${TOOL_USE_ID}" '{agent: $agent, session_id: $session_id, conversation_id: $conversation_id, tool_name: $tool_name, error_message: $error_message, hook_origin: $hook_origin, hook_event_name: $hook_event_name, tool_use_id: $tool_use_id}' | curl -s -X POST "http://localhost:${PORT}/api/oak/ci/post-tool-use-failure" -H "Content-Type: application/json" -d @- >/dev/null || true
+    echo "{}"
+    ;;
+  subagentStart)
+    AGENT_ID="$(printf "%s" "${SAFE_INPUT}" | jq -r '.agent_id // ""')"
+    AGENT_TYPE="$(printf "%s" "${SAFE_INPUT}" | jq -r '.agent_type // .subagent_type // "unknown"')"
+    jq -cn --arg agent "cursor" --arg session_id "${SESSION_ID}" --arg conversation_id "${CONVERSATION_ID}" --arg agent_id "${AGENT_ID}" --arg agent_type "${AGENT_TYPE}" --arg hook_origin "${HOOK_ORIGIN}" --arg hook_event_name "${EVENT}" '{agent: $agent, session_id: $session_id, conversation_id: $conversation_id, agent_id: $agent_id, agent_type: $agent_type, hook_origin: $hook_origin, hook_event_name: $hook_event_name}' | curl -s -X POST "http://localhost:${PORT}/api/oak/ci/subagent-start" -H "Content-Type: application/json" -d @- >/dev/null || true
+    echo "{}"
+    ;;
+  subagentStop)
+    AGENT_ID="$(printf "%s" "${SAFE_INPUT}" | jq -r '.agent_id // ""')"
+    AGENT_TYPE="$(printf "%s" "${SAFE_INPUT}" | jq -r '.agent_type // .subagent_type // "unknown"')"
+    TRANSCRIPT_PATH="$(printf "%s" "${SAFE_INPUT}" | jq -r '.agent_transcript_path // ""')"
+    STOP_HOOK_ACTIVE="$(printf "%s" "${SAFE_INPUT}" | jq -r '.stop_hook_active // false')"
+    jq -cn --arg agent "cursor" --arg session_id "${SESSION_ID}" --arg conversation_id "${CONVERSATION_ID}" --arg agent_id "${AGENT_ID}" --arg agent_type "${AGENT_TYPE}" --arg agent_transcript_path "${TRANSCRIPT_PATH}" --argjson stop_hook_active "${STOP_HOOK_ACTIVE}" --arg hook_origin "${HOOK_ORIGIN}" --arg hook_event_name "${EVENT}" '{agent: $agent, session_id: $session_id, conversation_id: $conversation_id, agent_id: $agent_id, agent_type: $agent_type, agent_transcript_path: $agent_transcript_path, stop_hook_active: $stop_hook_active, hook_origin: $hook_origin, hook_event_name: $hook_event_name}' | curl -s -X POST "http://localhost:${PORT}/api/oak/ci/subagent-stop" -H "Content-Type: application/json" -d @- >/dev/null || true
+    echo "{}"
+    ;;
   *)
     echo "{}"
     ;;

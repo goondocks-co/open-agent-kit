@@ -1,0 +1,47 @@
+{
+  "$comment": "Codebase Intelligence hooks for GitHub Copilot. {{PORT}} is replaced with the project-specific daemon port. {{PROJECT_ROOT}} is replaced with the project directory. OAK hooks are identified by the /api/oak/ci/ URL pattern. Hook events are logged to .oak/ci/hooks.log for debugging. Copilot hooks are installed to .github/hooks/ per GitHub docs.",
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh sessionStart",
+        "cwd": "{{PROJECT_ROOT}}",
+        "timeoutSec": 30
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh sessionEnd",
+        "cwd": "{{PROJECT_ROOT}}",
+        "timeoutSec": 15
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh userPromptSubmitted",
+        "cwd": "{{PROJECT_ROOT}}",
+        "timeoutSec": 15
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh postToolUse",
+        "cwd": "{{PROJECT_ROOT}}",
+        "timeoutSec": 5
+      }
+    ],
+    "errorOccurred": [
+      {
+        "type": "command",
+        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh errorOccurred",
+        "cwd": "{{PROJECT_ROOT}}",
+        "timeoutSec": 5,
+        "comment": "Maps to post-tool-use-failure endpoint"
+      }
+    ]
+  }
+}

@@ -1,7 +1,8 @@
-version: 0.5.2.dev8+g8d6b5ef40.d20260124
+version: 0.5.2.dev9+gaa8f6093c.d20260124
 agents:
-- claude
 - cursor
+- copilot
+- claude
 agent_capabilities:
   claude:
     has_background_agents: true
@@ -14,6 +15,12 @@ agent_capabilities:
     has_native_web: false
     has_mcp: true
     research_strategy: Deep research via MCP web-search + background agents
+    custom: {}
+  copilot:
+    has_background_agents: true
+    has_native_web: true
+    has_mcp: true
+    research_strategy: Use Copilot's built-in web tools + keyless MCP
     custom: {}
 rfc:
   directory: oak/rfc
@@ -55,9 +62,9 @@ codebase_intelligence:
     max_chunk_chars: 6553
   summarization:
     enabled: true
-    provider: ollama
-    model: gpt-oss:latest
-    base_url: http://localhost:11434
+    provider: lmstudio
+    model: openai/gpt-oss-20b
+    base_url: http://localhost:1234
     api_key: null
     timeout: 180.0
     context_tokens: 131072

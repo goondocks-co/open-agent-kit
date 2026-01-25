@@ -30,6 +30,21 @@
       {
         "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh sessionEnd"
       }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh postToolUseFailure"
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh subagentStart"
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh subagentStop"
+      }
     ]
   }
 }

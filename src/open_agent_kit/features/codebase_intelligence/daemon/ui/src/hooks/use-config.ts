@@ -44,7 +44,24 @@ export async function listSummarizationModels(provider: string, baseUrl: string,
     return fetchJson(`${API_ENDPOINTS.PROVIDERS_SUMMARIZATION_MODELS}?${params.toString()}`);
 }
 
-export async function testEmbeddingConfig(config: any) {
+export interface TestConfigRequest {
+    provider: string;
+    base_url: string;
+    model: string;
+    api_key?: string;
+}
+
+export interface TestConfigResponse {
+    success: boolean;
+    message?: string;
+    error?: string;
+    suggestion?: string;
+    dimensions?: number;
+    context_window?: number;
+    pending_load?: boolean;
+}
+
+export async function testEmbeddingConfig(config: TestConfigRequest): Promise<TestConfigResponse> {
     return fetchJson(API_ENDPOINTS.CONFIG_TEST, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -52,7 +69,7 @@ export async function testEmbeddingConfig(config: any) {
     });
 }
 
-export async function testSummarizationConfig(config: any) {
+export async function testSummarizationConfig(config: TestConfigRequest): Promise<TestConfigResponse> {
     return fetchJson(API_ENDPOINTS.CONFIG_TEST_SUMMARIZATION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,8 +92,18 @@ export function useUpdateConfig() {
     });
 }
 
+export interface ConfigUpdateResponse {
+    message?: string;
+    log_level?: string;
+}
+
+export interface RestartResponse {
+    message?: string;
+    indexing_started?: boolean;
+}
+
 // Toggle debug logging
-export async function toggleDebugLogging(currentLevel: string): Promise<any> {
+export async function toggleDebugLogging(currentLevel: string): Promise<ConfigUpdateResponse> {
     const newLevel = currentLevel === LOG_LEVELS.DEBUG ? LOG_LEVELS.INFO : LOG_LEVELS.DEBUG;
     return fetchJson(API_ENDPOINTS.CONFIG, {
         method: "PUT",
@@ -85,7 +112,7 @@ export async function toggleDebugLogging(currentLevel: string): Promise<any> {
 }
 
 // Restart daemon to apply config changes
-export async function restartDaemon(): Promise<any> {
+export async function restartDaemon(): Promise<RestartResponse> {
     return fetchJson(API_ENDPOINTS.RESTART, {
         method: "POST",
     });
@@ -122,7 +149,12 @@ export function useUpdateExclusions() {
     });
 }
 
-export async function resetExclusions(): Promise<any> {
+export interface ResetExclusionsResponse {
+    message?: string;
+    patterns?: string[];
+}
+
+export async function resetExclusions(): Promise<ResetExclusionsResponse> {
     return fetchJson(API_ENDPOINTS.CONFIG_EXCLUSIONS_RESET, {
         method: "POST",
     });

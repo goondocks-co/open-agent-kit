@@ -10,9 +10,7 @@ Dispatches processing to appropriate handler based on batch source_type:
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from open_agent_kit.features.codebase_intelligence.activity.processor.models import (
     ContextBudget,
@@ -175,10 +173,12 @@ def process_plan_batch(
     vector_store: "VectorStore",
     **kwargs: Any,
 ) -> ProcessingResult:
-    """Process a plan batch - extract the plan file as a decision memory.
+    """Process a plan batch - mark activities as processed.
 
-    Uses PlanDetector to identify plan files from any supported agent.
-    Plans are stored as high-importance decision memories.
+    Plan indexing for semantic search is handled separately by index_pending_plans()
+    in indexing.py, which reads plan_content from prompt_batches and indexes with
+    memory_type='plan'. This handler only marks activities as processed to avoid
+    duplicate memory entries.
 
     Args:
         batch_id: Prompt batch ID.
@@ -186,106 +186,21 @@ def process_plan_batch(
         activities: Activities in this batch.
         start_time: When processing started.
         activity_store: Activity store.
-        vector_store: Vector store.
+        vector_store: Vector store (unused, kept for interface compatibility).
         **kwargs: Additional arguments (ignored).
 
     Returns:
-        ProcessingResult with plan extracted as decision memory.
+        ProcessingResult indicating batch was processed.
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store import (
-        StoredObservation,
-    )
-    from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
-    from open_agent_kit.features.codebase_intelligence.memory.store import (
-        MemoryObservation,
-    )
-
-    # Find Write activities to any agent's plans directory
-    plan_writes = []
+    # Find Write activities to any agent's plans directory (for logging)
+    plan_path = None
     detected_agent = None
     for activity in activities:
         if activity.tool_name == "Write" and activity.file_path:
             detection = detect_plan(activity.file_path)
             if detection.is_plan:
-                plan_writes.append(activity)
+                plan_path = activity.file_path
                 detected_agent = detection.agent_type
-
-    observations_created = 0
-    plan_path = None
-
-    if plan_writes:
-        # Read the plan file content (use most recent write)
-        plan_path = plan_writes[-1].file_path
-        if plan_path and Path(plan_path).exists():
-            try:
-                plan_content = Path(plan_path).read_text()
-
-                # Create a summary for the observation (first 500 chars)
-                plan_summary = plan_content[:500]
-                if len(plan_content) > 500:
-                    plan_summary += "..."
-
-                # Extract plan title from content if available
-                plan_title = Path(plan_path).stem
-                if plan_content.startswith("# "):
-                    first_line = plan_content.split("\n")[0]
-                    plan_title = first_line[2:].strip()
-
-                obs_id = str(uuid4())
-                created_at = datetime.now()
-                tags = [
-                    "auto-extracted",
-                    "plan",
-                    f"agent:{detected_agent or 'unknown'}",
-                    "importance:high",
-                ]
-
-                # Store as a decision memory with high importance
-                stored_obs = StoredObservation(
-                    id=obs_id,
-                    session_id=batch.session_id,
-                    prompt_batch_id=batch_id,
-                    observation=f"Plan: {plan_title}\n\n{plan_summary}",
-                    memory_type=MemoryType.DECISION.value,
-                    context=plan_path,
-                    tags=tags,
-                    importance=8,  # High importance for plans
-                    created_at=created_at,
-                    embedded=False,
-                )
-
-                activity_store.store_observation(stored_obs)
-
-                # Also embed in ChromaDB
-                memory = MemoryObservation(
-                    id=obs_id,
-                    observation=f"Plan: {plan_title}\n\n{plan_summary}",
-                    memory_type=MemoryType.DECISION.value,
-                    context=plan_path,
-                    tags=tags,
-                    created_at=created_at,
-                )
-
-                try:
-                    vector_store.add_memory(memory)
-                    activity_store.mark_observation_embedded(obs_id)
-                except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
-                    logger.warning(f"Failed to embed plan in ChromaDB: {e}")
-
-                observations_created = 1
-
-                logger.info(
-                    "Extracted plan as decision memory",
-                    extra={
-                        "batch_id": batch_id,
-                        "agent_type": detected_agent,
-                        "plan_path": plan_path,
-                        "plan_title": plan_title,
-                    },
-                )
-
-            except (OSError, UnicodeDecodeError) as e:
-                logger.warning(f"Failed to read plan file {plan_path}: {e}")
 
     # Mark activities as processed
     activity_ids = [a.id for a in activities if a.id is not None]
@@ -293,13 +208,14 @@ def process_plan_batch(
         activity_store.mark_activities_processed(activity_ids)
 
     # Mark batch as processed
+    # Note: Plan indexing happens via index_pending_plans() in the background cycle
     activity_store.mark_prompt_batch_processed(batch_id, classification="plan")
 
     duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
     logger.info(
-        f"Processed plan batch {batch_id}: {len(activities)} activities → "
-        f"{observations_created} observations ({duration_ms}ms)",
+        f"Processed plan batch {batch_id}: {len(activities)} activities "
+        f"(plan indexing deferred to background cycle) ({duration_ms}ms)",
         extra={
             "batch_id": batch_id,
             "agent_type": detected_agent,
@@ -310,7 +226,7 @@ def process_plan_batch(
     return ProcessingResult(
         session_id=batch.session_id,
         activities_processed=len(activities),
-        observations_extracted=observations_created,
+        observations_extracted=0,  # Plans indexed separately via index_pending_plans()
         success=True,
         duration_ms=duration_ms,
         classification="plan",

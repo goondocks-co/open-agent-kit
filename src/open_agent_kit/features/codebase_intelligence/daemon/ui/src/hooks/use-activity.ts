@@ -11,7 +11,7 @@ export interface ActivityItem {
     session_id: string;
     prompt_batch_id: string | null;
     tool_name: string;
-    tool_input: any;
+    tool_input: Record<string, unknown> | null;
     tool_output_summary: string | null;
     file_path: string | null;
     success: boolean;
@@ -47,9 +47,16 @@ export interface PromptBatchItem {
     activity_count: number;
 }
 
+export interface SessionStats {
+    total_activities: number;
+    total_prompt_batches: number;
+    tools_used: Record<string, number>;
+    files_touched: string[];
+}
+
 export interface SessionDetailResponse {
     session: SessionItem;
-    stats: any;
+    stats: SessionStats;
     recent_activities: ActivityItem[];
     prompt_batches: PromptBatchItem[];
 }
@@ -84,8 +91,15 @@ export function useSession(sessionId: string | undefined) {
     });
 }
 
+export interface ActivityStats {
+    total_sessions: number;
+    total_activities: number;
+    total_prompt_batches: number;
+    active_sessions: number;
+}
+
 export function useActivityStats() {
-    return useQuery<any>({
+    return useQuery<ActivityStats>({
         queryKey: ["activity_stats"],
         queryFn: () => fetchJson(API_ENDPOINTS.ACTIVITY_STATS),
         refetchInterval: STATS_REFETCH_INTERVAL_MS,

@@ -396,6 +396,7 @@ class DaemonState:
         self,
         full_rebuild: bool = True,
         timeout_seconds: float | None = None,
+        _status_preset: bool = False,
     ) -> "IndexStats | None":
         """Run index build with proper status management.
 
@@ -406,6 +407,9 @@ class DaemonState:
         Args:
             full_rebuild: If True, clear existing index first.
             timeout_seconds: Optional timeout (uses default if None).
+            _status_preset: Internal flag. If True, caller has already set
+                is_indexing=True to eliminate UI timing gaps. Skips the
+                concurrent-build check since we know we set the flag.
 
         Returns:
             IndexStats on success, None on failure.
@@ -419,8 +423,8 @@ class DaemonState:
             logging.getLogger(__name__).error("Cannot run index build: indexer not initialized")
             return None
 
-        # Check if already indexing
-        if self.index_status.is_indexing:
+        # Check if already indexing (skip if caller preset the status)
+        if not _status_preset and self.index_status.is_indexing:
             import logging
 
             logging.getLogger(__name__).warning("Index build already in progress, skipping")
@@ -431,8 +435,9 @@ class DaemonState:
         logger = logging.getLogger(__name__)
 
         try:
-            # Set status to indexing
-            self.index_status.set_indexing()
+            # Set status to indexing (skip if caller already set it)
+            if not _status_preset:
+                self.index_status.set_indexing()
             logger.info(f"Index build started (full_rebuild={full_rebuild})")
 
             # Progress callback updates status

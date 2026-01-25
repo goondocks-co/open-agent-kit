@@ -1,16 +1,15 @@
-"""Retrieval engine implementing progressive disclosure.
-
-The engine uses a 3-layer pattern to manage context efficiently:
-1. INDEX layer: Summaries with IDs (~50-100 tokens/result)
-2. CONTEXT layer: Related chunks for selected items
-3. FETCH layer: Full content for specific IDs
+"""Retrieval engine for semantic search.
 
 This is the central abstraction for all retrieval operations in CI.
 All search functionality (daemon routes, MCP tools, hooks) should use this engine.
+
+Provides:
+- Unified search interface for code and memories
+- Token-aware context assembly
+- Model-agnostic confidence scoring
 """
 
 import logging
-import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -31,10 +30,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,
     DEFAULT_MEMORY_LIST_LIMIT,
     DEFAULT_PREVIEW_LENGTH,
-    DEFAULT_RELATED_CHUNKS_LIMIT,
-    DEFAULT_RELATED_QUERY_LENGTH,
     DEFAULT_SEARCH_LIMIT,
-    DEFAULT_SUMMARY_PREVIEW_LENGTH,
     MEMORY_TYPE_PLAN,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
@@ -127,18 +123,13 @@ class ContextResult:
 
 
 class RetrievalEngine:
-    """Engine for semantic retrieval with progressive disclosure.
+    """Engine for semantic retrieval.
 
     This is the central abstraction for all search/retrieval operations.
     It provides:
     - Unified search interface for code and memories
     - Token-aware context assembly
-    - Progressive disclosure (index → context → full)
-
-    Implements a 3-layer retrieval pattern:
-    - Layer 1 (INDEX): Return summaries to let agent select relevant items
-    - Layer 2 (CONTEXT): Return related items for selected chunks
-    - Layer 3 (FETCH): Return full content for specific IDs
+    - Model-agnostic confidence scoring
     """
 
     def __init__(self, vector_store: VectorStore, config: RetrievalConfig | None = None):
@@ -227,41 +218,6 @@ class RetrievalEngine:
             List of Confidence levels, one per score.
         """
         return [RetrievalEngine.calculate_confidence(scores, i) for i in range(len(scores))]
-
-    @staticmethod
-    def get_confidence_stats(scores: list[float]) -> dict[str, Any]:
-        """Get statistics about confidence distribution for a result set.
-
-        Useful for debugging and UI display.
-
-        Args:
-            scores: List of relevance scores, sorted descending.
-
-        Returns:
-            Dictionary with confidence statistics.
-        """
-        if not scores:
-            return {
-                "count": 0,
-                "high": 0,
-                "medium": 0,
-                "low": 0,
-                "score_range": 0.0,
-                "mean_score": 0.0,
-                "std_score": 0.0,
-            }
-
-        confidences = RetrievalEngine.calculate_confidence_batch(scores)
-
-        return {
-            "count": len(scores),
-            "high": sum(1 for c in confidences if c == Confidence.HIGH),
-            "medium": sum(1 for c in confidences if c == Confidence.MEDIUM),
-            "low": sum(1 for c in confidences if c == Confidence.LOW),
-            "score_range": max(scores) - min(scores),
-            "mean_score": statistics.mean(scores),
-            "std_score": statistics.stdev(scores) if len(scores) > 1 else 0.0,
-        }
 
     @staticmethod
     def filter_by_confidence(
@@ -604,12 +560,28 @@ class RetrievalEngine:
 
         return self.store.add_memory(mem_observation)
 
+    def archive_memory(self, memory_id: str, archived: bool = True) -> bool:
+        """Archive or unarchive a memory.
+
+        Args:
+            memory_id: ID of the memory to archive/unarchive.
+            archived: True to archive, False to unarchive.
+
+        Returns:
+            True if the memory was found and updated.
+        """
+        return self.store.archive_memory(memory_id, archived)
+
     def list_memories(
         self,
         limit: int = DEFAULT_MEMORY_LIST_LIMIT,
         offset: int = 0,
         memory_types: list[str] | None = None,
         exclude_types: list[str] | None = None,
+        tag: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        include_archived: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         """List stored memories with pagination.
 
@@ -620,6 +592,10 @@ class RetrievalEngine:
             offset: Pagination offset.
             memory_types: Filter to specific types.
             exclude_types: Types to exclude.
+            tag: Filter to memories containing this tag.
+            start_date: Filter to memories created on or after this date (ISO format).
+            end_date: Filter to memories created on or before this date (ISO format).
+            include_archived: If True, include archived memories. Default False.
 
         Returns:
             Tuple of (memories list, total count).
@@ -629,205 +605,8 @@ class RetrievalEngine:
             offset=offset,
             memory_types=memory_types,
             exclude_types=exclude_types,
+            tag=tag,
+            start_date=start_date,
+            end_date=end_date,
+            include_archived=include_archived,
         )
-
-    # =========================================================================
-    # Progressive Disclosure Methods (Layer 1-3)
-    # =========================================================================
-
-    def search_index(
-        self,
-        query: str,
-        search_type: str = "all",
-        limit: int | None = None,
-    ) -> dict[str, Any]:
-        """Layer 1: Search and return index-level summaries.
-
-        Returns compact summaries (~50-100 tokens each) that let the
-        agent decide which items are relevant for deeper exploration.
-
-        Args:
-            query: Natural language search query.
-            search_type: 'all', 'code', or 'memory'.
-            limit: Maximum results per category.
-
-        Returns:
-            Dictionary with code and memory results at index level.
-        """
-        limit = limit or self.config.default_limit
-
-        result: dict[str, Any] = {
-            "query": query,
-            "code": [],
-            "memory": [],
-            "total_tokens_available": 0,
-        }
-
-        if search_type in ("all", "code"):
-            code_results = self.store.search_code(
-                query=query,
-                limit=limit,
-            )
-            for r in code_results:
-                result["code"].append(
-                    {
-                        "id": r["id"],
-                        "type": r.get("chunk_type", "unknown"),
-                        "name": r.get("name", ""),
-                        "filepath": r.get("filepath", ""),
-                        "lines": f"{r.get('start_line', 0)}-{r.get('end_line', 0)}",
-                        "tokens": r.get("token_estimate", 0),
-                        "relevance": round(r["relevance"], 2),
-                    }
-                )
-                result["total_tokens_available"] += r.get("token_estimate", 0)
-
-        if search_type in ("all", "memory"):
-            memory_results = self.store.search_memory(
-                query=query,
-                limit=limit,
-            )
-            for r in memory_results:
-                result["memory"].append(
-                    {
-                        "id": r["id"],
-                        "type": r.get("memory_type", "unknown"),
-                        "summary": (
-                            r["observation"][:DEFAULT_SUMMARY_PREVIEW_LENGTH] + "..."
-                            if len(r["observation"]) > DEFAULT_SUMMARY_PREVIEW_LENGTH
-                            else r["observation"]
-                        ),
-                        "tokens": r.get("token_estimate", 0),
-                        "relevance": round(r["relevance"], 2),
-                    }
-                )
-                result["total_tokens_available"] += r.get("token_estimate", 0)
-
-        return result
-
-    def get_chunk_context(self, chunk_ids: list[str]) -> dict[str, Any]:
-        """Layer 2: Get context for selected chunks.
-
-        Returns the selected chunks plus related items that might
-        be helpful for understanding them.
-
-        Args:
-            chunk_ids: List of chunk IDs to get context for.
-
-        Returns:
-            Dictionary with selected chunks and related context.
-        """
-        result: dict[str, Any] = {
-            "chunks": [],
-            "related": [],
-            "total_tokens": 0,
-        }
-
-        # Fetch the requested chunks
-        code_chunks = self.store.get_by_ids(chunk_ids, collection="code")
-        memory_chunks = self.store.get_by_ids(chunk_ids, collection="memory")
-
-        for chunk in code_chunks:
-            preview = chunk.get("content", "")
-            preview_length = self.config.preview_length
-            if len(preview) > preview_length:
-                preview = preview[:preview_length] + "..."
-
-            result["chunks"].append(
-                {
-                    "id": chunk["id"],
-                    "type": "code",
-                    "name": chunk.get("name", ""),
-                    "filepath": chunk.get("filepath", ""),
-                    "preview": preview,
-                    "tokens": len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE,
-                }
-            )
-            result["total_tokens"] += len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE
-
-        for chunk in memory_chunks:
-            result["chunks"].append(
-                {
-                    "id": chunk["id"],
-                    "type": "memory",
-                    "memory_type": chunk.get("memory_type", ""),
-                    "observation": chunk.get("content", ""),
-                    "tokens": len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE,
-                }
-            )
-            result["total_tokens"] += len(chunk.get("content", "")) // CHARS_PER_TOKEN_ESTIMATE
-
-        # Find related chunks by searching with first chunk's content
-        if code_chunks:
-            first_content = code_chunks[0].get("content", "")
-            if first_content:
-                related = self.store.search_code(
-                    query=first_content[:DEFAULT_RELATED_QUERY_LENGTH],
-                    limit=DEFAULT_RELATED_CHUNKS_LIMIT,
-                )
-                for r in related:
-                    if r["id"] not in chunk_ids:
-                        result["related"].append(
-                            {
-                                "id": r["id"],
-                                "type": r.get("chunk_type", ""),
-                                "name": r.get("name", ""),
-                                "filepath": r.get("filepath", ""),
-                                "relevance": round(r["relevance"], 2),
-                            }
-                        )
-
-        return result
-
-    def fetch_full(self, ids: list[str]) -> dict[str, Any]:
-        """Layer 3: Fetch full content for specific IDs.
-
-        Returns complete content for the specified items.
-
-        Args:
-            ids: List of IDs to fetch.
-
-        Returns:
-            Dictionary with full content for each ID.
-        """
-        result: dict[str, Any] = {
-            "items": [],
-            "total_tokens": 0,
-        }
-
-        # Try both collections
-        code_items = self.store.get_by_ids(ids, collection="code")
-        memory_items = self.store.get_by_ids(ids, collection="memory")
-
-        for item in code_items:
-            content = item.get("content", "")
-            result["items"].append(
-                {
-                    "id": item["id"],
-                    "type": "code",
-                    "filepath": item.get("filepath", ""),
-                    "name": item.get("name", ""),
-                    "start_line": item.get("start_line", 0),
-                    "end_line": item.get("end_line", 0),
-                    "language": item.get("language", ""),
-                    "content": content,
-                    "tokens": len(content) // CHARS_PER_TOKEN_ESTIMATE,
-                }
-            )
-            result["total_tokens"] += len(content) // CHARS_PER_TOKEN_ESTIMATE
-
-        for item in memory_items:
-            observation = item.get("content", "")
-            result["items"].append(
-                {
-                    "id": item["id"],
-                    "type": "memory",
-                    "memory_type": item.get("memory_type", ""),
-                    "observation": observation,
-                    "context": item.get("context", ""),
-                    "tokens": len(observation) // CHARS_PER_TOKEN_ESTIMATE,
-                }
-            )
-            result["total_tokens"] += len(observation) // CHARS_PER_TOKEN_ESTIMATE
-
-        return result

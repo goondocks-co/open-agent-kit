@@ -755,8 +755,8 @@ async def _discover_embedding_context(
 
     Tries multiple methods depending on provider:
     - Known model metadata lookup (fastest)
+    - OpenAI-compatible /v1/models endpoint (LM Studio, vLLM, etc.)
     - Ollama: /api/show endpoint (most reliable for unknown models)
-    - LM Studio/OpenAI: API response fields
 
     Args:
         provider: Provider type (ollama, lmstudio, openai).
@@ -775,18 +775,56 @@ async def _discover_embedding_context(
         logger.debug(f"Found known context for {model}: {context}")
         return int(context) if context is not None else None
 
-    # For Ollama, try to get context from /api/show
-    if provider == "ollama":
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        # Try OpenAI-compatible /v1/models endpoint (works for LM Studio, vLLM, etc.)
+        v1_url = url if url.endswith("/v1") else f"{url}/v1"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{v1_url}/models")
+            if response.status_code == 200:
+                data = response.json()
+                models_list = data.get("data", [])
+                for m in models_list:
+                    model_id = m.get("id", "")
+                    # Match by exact ID or by model name being contained in ID
+                    if model_id == model or model in model_id or model_id in model:
+                        ctx = (
+                            m.get("context_window")
+                            or m.get("context_length")
+                            or m.get("max_tokens")
+                        )
+                        if ctx and isinstance(ctx, int):
+                            logger.debug(f"Found context for {model}: {ctx} (from /v1/models)")
+                            return int(ctx)
+        except Exception as e:
+            logger.debug(f"OpenAI /v1/models failed: {e}")
+
+        # Try OpenAI-compatible /v1/models/{model} endpoint
+        try:
+            response = await client.get(f"{v1_url}/models/{model}")
+            if response.status_code == 200:
+                data = response.json()
+                ctx = (
+                    data.get("context_window")
+                    or data.get("context_length")
+                    or data.get("max_tokens")
+                )
+                if ctx and isinstance(ctx, int):
+                    logger.debug(f"Found context for {model}: {ctx} (from /v1/models/{model})")
+                    return int(ctx)
+        except Exception as e:
+            logger.debug(f"OpenAI /v1/models/{model} failed: {e}")
+
+        # For Ollama, try to get context from /api/show
+        if provider == "ollama":
+            try:
                 show_info = await _query_ollama_model_info(client, url, model)
                 if show_info.get("context_window"):
                     logger.debug(
                         f"Found context for {model}: {show_info['context_window']} from /api/show"
                     )
                     return show_info["context_window"]
-        except Exception as e:
-            logger.debug(f"Failed to get context from Ollama /api/show: {e}")
+            except Exception as e:
+                logger.debug(f"Failed to get context from Ollama /api/show: {e}")
 
     # Default fallback - return None to indicate manual entry needed
     logger.debug(f"Could not discover context for {model}")

@@ -94,6 +94,7 @@ export function ContentDialog({
 /**
  * Hook to manage content dialog state.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useContentDialog() {
     const [isOpen, setIsOpen] = React.useState(false);
     const [dialogContent, setDialogContent] = React.useState<{

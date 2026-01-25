@@ -1,0 +1,169 @@
+"""Database schema for activity store.
+
+Contains schema version and SQL for creating the database schema.
+"""
+
+# Schema version for migrations
+# v4: Added source_type to prompt_batches (user, agent_notification, plan, system)
+# v5: Added plan_file_path to prompt_batches (for plan source type)
+# v6: Added plan_content to prompt_batches (store actual plan content in DB)
+# v7: Added plan_embedded to prompt_batches (track ChromaDB indexing status for plans)
+# v8: Added composite indexes for common query patterns (performance optimization)
+# v9: Added title column to sessions (LLM-generated short session title)
+# v10: Added indexes for memory filtering (type, context, created_at) + FTS5 for search
+SCHEMA_VERSION = 10
+
+SCHEMA_SQL = """
+-- Schema version tracking
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY
+);
+
+-- Memory observations table (source of truth for extracted memories)
+-- ChromaDB is just a search index over this data
+CREATE TABLE IF NOT EXISTS memory_observations (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    prompt_batch_id INTEGER,
+    observation TEXT NOT NULL,
+    memory_type TEXT NOT NULL,
+    context TEXT,
+    tags TEXT,  -- Comma-separated tags
+    importance INTEGER DEFAULT 5,
+    file_path TEXT,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    embedded BOOLEAN DEFAULT FALSE,  -- Has this been added to ChromaDB?
+    FOREIGN KEY (session_id) REFERENCES sessions(id),
+    FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
+);
+
+-- Index for finding unembedded observations (for rebuilding ChromaDB)
+CREATE INDEX IF NOT EXISTS idx_memory_observations_embedded ON memory_observations(embedded);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_session ON memory_observations(session_id);
+
+-- Indexes for memory filtering and browsing (v10)
+CREATE INDEX IF NOT EXISTS idx_memory_observations_type ON memory_observations(memory_type);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_context ON memory_observations(context);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_created ON memory_observations(created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_type_created ON memory_observations(memory_type, created_at_epoch DESC);
+
+-- FTS5 virtual table for full-text search on memories (v10)
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    observation,
+    context,
+    content='memory_observations',
+    content_rowid='rowid'
+);
+
+-- Triggers to keep FTS in sync with memory_observations (v10)
+CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memory_observations BEGIN
+    INSERT INTO memories_fts(rowid, observation, context) VALUES (NEW.rowid, NEW.observation, NEW.context);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memory_observations BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, observation, context) VALUES ('delete', OLD.rowid, OLD.observation, OLD.context);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE ON memory_observations BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, observation, context) VALUES ('delete', OLD.rowid, OLD.observation, OLD.context);
+    INSERT INTO memories_fts(rowid, observation, context) VALUES (NEW.rowid, NEW.observation, NEW.context);
+END;
+
+-- Sessions table (Claude Code session - from launch to exit)
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    project_root TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    status TEXT DEFAULT 'active',  -- active, completed, abandoned
+    prompt_count INTEGER DEFAULT 0,
+    tool_count INTEGER DEFAULT 0,
+    processed BOOLEAN DEFAULT FALSE,  -- Has background processor handled this?
+    summary TEXT,  -- LLM-generated session summary
+    title TEXT,  -- LLM-generated short session title (10-20 words)
+    created_at_epoch INTEGER NOT NULL
+);
+
+-- Prompt batches table (activities between user prompts - the unit of processing)
+CREATE TABLE IF NOT EXISTS prompt_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    prompt_number INTEGER NOT NULL,  -- Sequence number within session
+    user_prompt TEXT,  -- Full user prompt (up to 10K chars) for context
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    status TEXT DEFAULT 'active',  -- active, completed
+    activity_count INTEGER DEFAULT 0,
+    processed BOOLEAN DEFAULT FALSE,  -- Has background processor handled this?
+    classification TEXT,  -- LLM classification: exploration, implementation, debugging, refactoring
+    source_type TEXT DEFAULT 'user',  -- user, agent_notification, plan, system
+    plan_file_path TEXT,  -- Path to plan file (for source_type='plan')
+    plan_content TEXT,  -- Full plan content (stored for self-contained CI)
+    plan_embedded INTEGER DEFAULT 0,  -- Has plan been indexed in ChromaDB? (v7)
+    created_at_epoch INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+-- Activities table (raw tool executions)
+CREATE TABLE IF NOT EXISTS activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    prompt_batch_id INTEGER,  -- Links to the prompt batch (for prompt-level processing)
+    tool_name TEXT NOT NULL,
+    tool_input TEXT,  -- JSON of input params (sanitized)
+    tool_output_summary TEXT,  -- Brief summary, not full output
+    file_path TEXT,  -- Primary file affected (if any)
+    files_affected TEXT,  -- JSON array of all files
+    duration_ms INTEGER,
+    success BOOLEAN DEFAULT TRUE,
+    error_message TEXT,
+    timestamp TEXT NOT NULL,
+    timestamp_epoch INTEGER NOT NULL,
+    processed BOOLEAN DEFAULT FALSE,  -- Has this activity been processed?
+    observation_id TEXT,  -- Link to extracted observation (if any)
+    FOREIGN KEY (session_id) REFERENCES sessions(id),
+    FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
+);
+
+-- Indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_activities_session ON activities(session_id);
+CREATE INDEX IF NOT EXISTS idx_activities_prompt_batch ON activities(prompt_batch_id);
+CREATE INDEX IF NOT EXISTS idx_activities_tool ON activities(tool_name);
+CREATE INDEX IF NOT EXISTS idx_activities_processed ON activities(processed);
+CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp_epoch);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_processed ON sessions(processed);
+CREATE INDEX IF NOT EXISTS idx_prompt_batches_session ON prompt_batches(session_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_batches_processed ON prompt_batches(processed);
+
+-- FTS5 virtual table for full-text search across activities
+CREATE VIRTUAL TABLE IF NOT EXISTS activities_fts USING fts5(
+    tool_name,
+    tool_input,
+    tool_output_summary,
+    file_path,
+    error_message,
+    content='activities',
+    content_rowid='id'
+);
+
+-- Triggers to keep FTS in sync
+CREATE TRIGGER IF NOT EXISTS activities_ai AFTER INSERT ON activities BEGIN
+    INSERT INTO activities_fts(rowid, tool_name, tool_input, tool_output_summary, file_path, error_message)
+    VALUES (new.id, new.tool_name, new.tool_input, new.tool_output_summary, new.file_path, new.error_message);
+END;
+
+CREATE TRIGGER IF NOT EXISTS activities_ad AFTER DELETE ON activities BEGIN
+    INSERT INTO activities_fts(activities_fts, rowid, tool_name, tool_input, tool_output_summary, file_path, error_message)
+    VALUES ('delete', old.id, old.tool_name, old.tool_input, old.tool_output_summary, old.file_path, old.error_message);
+END;
+
+CREATE TRIGGER IF NOT EXISTS activities_au AFTER UPDATE ON activities BEGIN
+    INSERT INTO activities_fts(activities_fts, rowid, tool_name, tool_input, tool_output_summary, file_path, error_message)
+    VALUES ('delete', old.id, old.tool_name, old.tool_input, old.tool_output_summary, old.file_path, old.error_message);
+    INSERT INTO activities_fts(rowid, tool_name, tool_input, tool_output_summary, file_path, error_message)
+    VALUES (new.id, new.tool_name, new.tool_input, new.tool_output_summary, new.file_path, new.error_message);
+END;
+"""

@@ -13,20 +13,33 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_DEDUP_HASH_ALGORITHM,
     HOOK_DROP_LOG_TAG,
     HOOK_EVENT_POST_TOOL_USE,
+    HOOK_EVENT_POST_TOOL_USE_FAILURE,
     HOOK_EVENT_PROMPT_SUBMIT,
     HOOK_EVENT_SESSION_END,
     HOOK_EVENT_SESSION_START,
     HOOK_EVENT_STOP,
+    HOOK_EVENT_SUBAGENT_START,
+    HOOK_EVENT_SUBAGENT_STOP,
+    HOOK_FIELD_AGENT_ID,
+    HOOK_FIELD_AGENT_TRANSCRIPT_PATH,
+    HOOK_FIELD_AGENT_TYPE,
     HOOK_FIELD_CONVERSATION_ID,
+    HOOK_FIELD_ERROR_MESSAGE,
     HOOK_FIELD_GENERATION_ID,
     HOOK_FIELD_HOOK_ORIGIN,
     HOOK_FIELD_PROMPT,
     HOOK_FIELD_SESSION_ID,
+    HOOK_FIELD_STOP_HOOK_ACTIVE,
     HOOK_FIELD_TOOL_INPUT,
     HOOK_FIELD_TOOL_NAME,
     HOOK_FIELD_TOOL_OUTPUT_B64,
     HOOK_FIELD_TOOL_USE_ID,
     PROMPT_SOURCE_PLAN,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+    build_rich_search_query,
+    build_session_context,
+    format_code_for_injection,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
@@ -66,142 +79,6 @@ def _hash_value(value: str) -> str:
 def _build_dedupe_key(event_name: str, session_id: str, parts: list[str]) -> str:
     """Build a dedupe key for hook events."""
     return "|".join([event_name, session_id, *parts])
-
-
-def _format_memories_for_injection(memories: list[dict], max_items: int = 10) -> str:
-    """Format memories as a concise string for context injection.
-
-    Args:
-        memories: List of memory dicts with observation, memory_type, context.
-        max_items: Maximum number of items to include.
-
-    Returns:
-        Formatted string for Claude's context.
-    """
-    if not memories:
-        return ""
-
-    emoji_map = {
-        "gotcha": "⚠️",
-        "bug_fix": "🐛",
-        "decision": "📋",
-        "discovery": "💡",
-        "trade_off": "⚖️",
-    }
-
-    lines = ["## Recent Project Memories\n"]
-    for mem in memories[:max_items]:
-        mem_type = mem.get("memory_type", "note")
-        emoji = emoji_map.get(mem_type, "📝")
-        obs = mem.get("observation", "")
-        ctx = mem.get("context", "")
-
-        line = f"- {emoji} **{mem_type}**: {obs}"
-        if ctx:
-            line += f" _(context: {ctx})_"
-        lines.append(line)
-
-    return "\n".join(lines)
-
-
-def _format_session_summaries(summaries: list[dict], max_items: int = 5) -> str:
-    """Format session summaries for context injection.
-
-    Args:
-        summaries: List of session summary memory dicts.
-        max_items: Maximum number of summaries to include.
-
-    Returns:
-        Formatted string with recent session context.
-    """
-    if not summaries:
-        return ""
-
-    lines = ["## Recent Session History\n"]
-    for i, summary in enumerate(summaries[:max_items], 1):
-        obs = summary.get("observation", "")
-        tags = summary.get("tags", [])
-
-        # Extract agent from tags (filter out system tags)
-        system_tags = {"session-summary", "session", "llm-summarized", "auto-extracted"}
-        agent = next((t for t in tags if t not in system_tags), "unknown")
-
-        # Truncate long summaries
-        if len(obs) > 200:
-            obs = obs[:197] + "..."
-
-        lines.append(f"**Session {i}** ({agent}): {obs}\n")
-
-    return "\n".join(lines)
-
-
-def _build_session_context(state: Any, include_memories: bool = True) -> str:
-    """Build context string for session injection.
-
-    Args:
-        state: Daemon state object.
-        include_memories: Whether to include recent memories.
-
-    Returns:
-        Formatted context string for Claude.
-    """
-    parts = []
-
-    # Add CI status summary
-    if state.vector_store:
-        stats = state.vector_store.get_stats()
-        code_chunks = stats.get("code_chunks", 0)
-        memory_count = stats.get("memory_observations", 0)
-
-        if code_chunks > 0 or memory_count > 0:
-            parts.append(
-                f"**Codebase Intelligence Active**: {code_chunks} code chunks indexed, "
-                f"{memory_count} memories stored.\n\n"
-                "**PREFER** `oak ci` over grep/read for code discovery:\n"
-                "- `oak ci search '<query>'` - Semantic search (finds by meaning, not just keywords)\n"
-                "- `oak ci context '<task>'` - Get relevant code + memories before implementing\n"
-                "- `oak ci remember '<observation>' -t <type>` - Store learnings for future sessions"
-            )
-
-        # Include recent session summaries (provides continuity across sessions)
-        if include_memories and state.retrieval_engine:
-            try:
-                session_summaries, _ = state.retrieval_engine.list_memories(
-                    limit=5,
-                    memory_types=["session_summary"],
-                )
-                if session_summaries:
-                    session_text = _format_session_summaries(session_summaries)
-                    if session_text:
-                        parts.append(session_text)
-            except (OSError, ValueError, RuntimeError, AttributeError) as e:
-                logger.debug(f"Failed to fetch session summaries for injection: {e}")
-
-        # Include recent memories (gotchas, decisions, etc.) - excluding session summaries
-        if include_memories and memory_count > 0 and state.retrieval_engine:
-            try:
-                # Search with base threshold, then filter by confidence
-                # For session start, include high and medium confidence (broader context)
-                result = state.retrieval_engine.search(
-                    query="important gotchas decisions bugs",
-                    search_type="memory",
-                    limit=15,  # Fetch more, filter by confidence
-                )
-                # Filter to high and medium confidence, exclude session summaries
-                confident_memories = RetrievalEngine.filter_by_confidence(
-                    result.memory, min_confidence="medium"
-                )
-                recent = [
-                    m for m in confident_memories if m.get("memory_type") != "session_summary"
-                ]
-                if recent:
-                    mem_text = _format_memories_for_injection(recent[:10])  # Cap at 10
-                    if mem_text:
-                        parts.append(mem_text)
-            except (OSError, ValueError, RuntimeError, AttributeError) as e:
-                logger.debug(f"Failed to fetch memories for injection: {e}")
-
-    return "\n\n".join(parts) if parts else ""
 
 
 @router.post(f"{OAK_CI_PREFIX}/session-start")
@@ -294,7 +171,7 @@ async def hook_session_start(request: Request) -> dict:
     inject_full_context = source in ("startup", "clear")
 
     # Build the context string that will be injected into Claude
-    injected = _build_session_context(state, include_memories=inject_full_context)
+    injected = build_session_context(state, include_memories=inject_full_context)
     if injected:
         context["injected_context"] = injected
         logger.debug(f"[INJECT:session-start] Content:\n{injected}")
@@ -439,6 +316,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                 user_prompt=prompt,  # Full prompt, truncated to 10K in store
                 source_type=source_type,
                 plan_content=plan_content,  # Plan content if extracted from prompt
+                agent=agent,  # For session recreation if previously deleted
             )
             prompt_batch_id = batch.id
 
@@ -498,6 +376,33 @@ async def hook_prompt_submit(request: Request) -> dict:
 
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.debug(f"Failed to search memories for prompt: {e}")
+
+    # Search for relevant code based on prompt
+    if state.retrieval_engine:
+        try:
+            code_result = state.retrieval_engine.search(
+                query=prompt,
+                search_type="code",
+                limit=10,
+            )
+            high_confidence_code = RetrievalEngine.filter_by_confidence(
+                code_result.code, min_confidence="high"
+            )
+            if high_confidence_code:
+                code_text = format_code_for_injection(high_confidence_code[:3])
+                if code_text:
+                    if "injected_context" in context:
+                        context["injected_context"] = (
+                            f"{code_text}\n\n{context['injected_context']}"
+                        )
+                    else:
+                        context["injected_context"] = code_text
+                    logger.info(
+                        f"Injecting {min(3, len(high_confidence_code))} code chunks for prompt"
+                    )
+                    logger.debug(f"[INJECT:prompt-submit-code] Content:\n{code_text}")
+        except (OSError, ValueError, RuntimeError, AttributeError) as e:
+            logger.debug(f"Failed to search code for prompt: {e}")
 
     return {"status": "ok", "context": context, "prompt_batch_id": prompt_batch_id}
 
@@ -728,10 +633,24 @@ async def hook_post_tool_use(request: Request) -> dict:
         file_path = tool_input.get("file_path", "")
         if file_path:
             try:
+                # Get user prompt for richer context
+                user_prompt = None
+                if session and session.current_prompt_batch_id and state.activity_store:
+                    batch = state.activity_store.get_prompt_batch(session.current_prompt_batch_id)
+                    if batch:
+                        user_prompt = batch.user_prompt
+
+                # Build rich query (not just file path) for better semantic matching
+                search_query = build_rich_search_query(
+                    file_path=file_path,
+                    tool_output=tool_output if tool_name != "Read" else None,
+                    user_prompt=user_prompt,
+                )
+
                 # Search for memories about this file, filter by confidence
                 # For file operations, include high and medium confidence
                 search_res = state.retrieval_engine.search(
-                    query=f"file:{file_path}",
+                    query=search_query,
                     search_type="memory",
                     limit=8,  # Fetch more, filter by confidence
                 )
@@ -762,21 +681,6 @@ async def hook_post_tool_use(request: Request) -> dict:
 
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
                 logger.debug(f"Failed to search memories for file context: {e}")
-
-    # Inject oak ci reminder when using search tools repeatedly without oak ci
-    if session and tool_name in ("Grep", "Glob"):
-        search_count = session.count_search_tool_uses()
-        # Remind after 3+ search tool uses if oak ci hasn't been used
-        if search_count >= 3 and not session.has_used_oak_ci():
-            oak_ci_hint = (
-                "💡 **TIP**: `oak ci search '<query>'` provides semantic code search "
-                "(finds by meaning, not just keywords). Try it for more relevant results."
-            )
-            if injected_context:
-                injected_context = f"{injected_context}\n\n{oak_ci_hint}"
-            else:
-                injected_context = oak_ci_hint
-            logger.debug(f"Injecting oak ci reminder after {search_count} search tool uses")
 
     result: dict[str, Any] = {
         "status": "ok",
@@ -1085,6 +989,260 @@ async def hook_before_prompt(request: Request) -> dict:
             logger.warning(f"Failed to search for context: {e}")
 
     return {"status": "ok", "context": context}
+
+
+@router.post(f"{OAK_CI_PREFIX}/post-tool-use-failure")
+async def hook_post_tool_use_failure(request: Request) -> dict:
+    """Handle post-tool-use-failure - capture failed tool executions.
+
+    This is called when a tool execution fails. Similar to post-tool-use
+    but always marks success=False and captures error details.
+    """
+    state = get_state()
+
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        logger.debug("Failed to parse JSON body in post-tool-use-failure")
+        body = {}
+
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    tool_name = body.get(HOOK_FIELD_TOOL_NAME, "unknown")
+    error_message = body.get(HOOK_FIELD_ERROR_MESSAGE, "")
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped post-tool-use-failure: missing session_id")
+        return {"status": "ok"}
+
+    # Dedupe by tool_use_id if available
+    if tool_use_id:
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_POST_TOOL_USE_FAILURE,
+            session_id,
+            [tool_use_id],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped post-tool-use-failure session=%s origin=%s token=%s",
+                session_id,
+                hook_origin,
+                tool_use_id,
+            )
+            return {"status": "ok"}
+
+    # Prominent logging for tool failures
+    logger.warning(
+        f"[TOOL-FAILURE] {tool_name} | session={session_id} | error={error_message[:100]}"
+    )
+
+    # Handle tool_input - could be dict (from JSON) or string
+    tool_input = body.get(HOOK_FIELD_TOOL_INPUT, {})
+    if isinstance(tool_input, str):
+        try:
+            tool_input = json.loads(tool_input)
+        except (ValueError, json.JSONDecodeError):
+            tool_input = {"raw": tool_input}
+    elif tool_input is None:
+        tool_input = {}
+
+    # Get or create session
+    agent = body.get("agent", "unknown")
+    session = state.get_session(session_id)
+    if not session:
+        logger.info(f"Auto-creating session {session_id} in post-tool-use-failure")
+        session = state.create_session(session_id, agent)
+
+    # Store activity in SQLite with success=False
+    if state.activity_store and session_id:
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity import Activity
+
+            # Get current prompt batch ID from session
+            prompt_batch_id = None
+            if session:
+                prompt_batch_id = session.current_prompt_batch_id
+
+            activity = Activity(
+                session_id=session_id,
+                prompt_batch_id=prompt_batch_id,
+                tool_name=tool_name,
+                tool_input=tool_input if isinstance(tool_input, dict) else None,
+                tool_output_summary=(
+                    error_message[:500] if error_message else "Tool execution failed"
+                ),
+                file_path=tool_input.get("file_path") if isinstance(tool_input, dict) else None,
+                success=False,
+                error_message=error_message[:500] if error_message else None,
+            )
+            state.activity_store.add_activity_buffered(activity)
+            logger.debug(f"Stored failed activity: {tool_name} (batch={prompt_batch_id})")
+
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to store failed activity: {e}")
+
+    return {"status": "ok", "tool_name": tool_name, "recorded": True}
+
+
+@router.post(f"{OAK_CI_PREFIX}/subagent-start")
+async def hook_subagent_start(request: Request) -> dict:
+    """Handle subagent-start - track when a subagent is spawned.
+
+    This is called when a parent agent spawns a subagent (e.g., Task tool).
+    Tracks agent_id and agent_type for correlation with subagent-stop.
+    """
+    state = get_state()
+
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        logger.debug("Failed to parse JSON body in subagent-start")
+        body = {}
+
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    agent_id = body.get(HOOK_FIELD_AGENT_ID, "")
+    agent_type = body.get(HOOK_FIELD_AGENT_TYPE, "unknown")
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped subagent-start: missing session_id")
+        return {"status": "ok"}
+
+    # Dedupe by agent_id
+    if agent_id:
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_SUBAGENT_START,
+            session_id,
+            [agent_id],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped subagent-start session=%s origin=%s agent_id=%s",
+                session_id,
+                hook_origin,
+                agent_id,
+            )
+            return {"status": "ok"}
+
+    # Prominent logging for subagent lifecycle
+    logger.info(f"[SUBAGENT-START] type={agent_type} | agent_id={agent_id} | session={session_id}")
+
+    # Get or create session
+    agent = body.get("agent", "unknown")
+    session = state.get_session(session_id)
+    if not session:
+        logger.info(f"Auto-creating session {session_id} in subagent-start")
+        session = state.create_session(session_id, agent)
+
+    # Store as activity to track subagent spawn
+    if state.activity_store and session_id:
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity import Activity
+
+            prompt_batch_id = session.current_prompt_batch_id if session else None
+
+            activity = Activity(
+                session_id=session_id,
+                prompt_batch_id=prompt_batch_id,
+                tool_name="SubagentStart",
+                tool_input={"agent_id": agent_id, "agent_type": agent_type},
+                tool_output_summary=f"Started subagent: {agent_type}",
+                success=True,
+            )
+            state.activity_store.add_activity_buffered(activity)
+            logger.debug(f"Stored subagent-start: {agent_type} (batch={prompt_batch_id})")
+
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to store subagent-start: {e}")
+
+    return {"status": "ok", "agent_id": agent_id, "agent_type": agent_type}
+
+
+@router.post(f"{OAK_CI_PREFIX}/subagent-stop")
+async def hook_subagent_stop(request: Request) -> dict:
+    """Handle subagent-stop - track when a subagent completes.
+
+    This is called when a subagent finishes executing. Includes the
+    agent_transcript_path if available for potential future parsing.
+    """
+    state = get_state()
+
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        logger.debug("Failed to parse JSON body in subagent-stop")
+        body = {}
+
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    agent_id = body.get(HOOK_FIELD_AGENT_ID, "")
+    agent_type = body.get(HOOK_FIELD_AGENT_TYPE, "unknown")
+    agent_transcript_path = body.get(HOOK_FIELD_AGENT_TRANSCRIPT_PATH, "")
+    stop_hook_active = body.get(HOOK_FIELD_STOP_HOOK_ACTIVE, False)
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped subagent-stop: missing session_id")
+        return {"status": "ok"}
+
+    # Dedupe by agent_id
+    if agent_id:
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_SUBAGENT_STOP,
+            session_id,
+            [agent_id],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped subagent-stop session=%s origin=%s agent_id=%s",
+                session_id,
+                hook_origin,
+                agent_id,
+            )
+            return {"status": "ok"}
+
+    # Prominent logging for subagent lifecycle
+    logger.info(
+        f"[SUBAGENT-STOP] type={agent_type} | agent_id={agent_id} | "
+        f"transcript={'yes' if agent_transcript_path else 'no'} | session={session_id}"
+    )
+
+    # Get session
+    session = state.get_session(session_id)
+
+    # Store as activity to track subagent completion
+    if state.activity_store and session_id:
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity import Activity
+
+            prompt_batch_id = session.current_prompt_batch_id if session else None
+
+            activity = Activity(
+                session_id=session_id,
+                prompt_batch_id=prompt_batch_id,
+                tool_name="SubagentStop",
+                tool_input={
+                    "agent_id": agent_id,
+                    "agent_type": agent_type,
+                    "has_transcript": bool(agent_transcript_path),
+                    "stop_hook_active": stop_hook_active,
+                },
+                tool_output_summary=f"Completed subagent: {agent_type}",
+                file_path=agent_transcript_path if agent_transcript_path else None,
+                success=True,
+            )
+            state.activity_store.add_activity_buffered(activity)
+            logger.debug(f"Stored subagent-stop: {agent_type} (batch={prompt_batch_id})")
+
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to store subagent-stop: {e}")
+
+    return {
+        "status": "ok",
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "transcript_path": agent_transcript_path,
+    }
 
 
 @router.post(f"{OAK_CI_PREFIX}/{{event}}")

@@ -19,6 +19,7 @@ import {
     type DocType,
     type SearchType,
 } from "@/lib/constants";
+import type { CodeResult, MemoryResult, PlanResult } from "@/hooks/use-search";
 
 export default function Search() {
     const [query, setQuery] = useState("");
@@ -45,7 +46,7 @@ export default function Search() {
                     <AlertCircle className="w-5 h-5" />
                     <div>
                         <p className="font-medium">Search unavailable</p>
-                        <p className="text-sm">{(error as any).message || "Detailed search backend error."} Check your <Link to="/config" className="underline font-semibold">configuration</Link>.</p>
+                        <p className="text-sm">{error instanceof Error ? error.message : "Detailed search backend error."} Check your <Link to="/config" className="underline font-semibold">configuration</Link>.</p>
                     </div>
                 </div>
             </div>
@@ -112,7 +113,7 @@ export default function Search() {
                             <FileText className="w-5 h-5" /> Code Matches ({results.code.length})
                         </h2>
                         <div className="space-y-3">
-                            {results.code.map((match: any, i: number) => (
+                            {results.code.map((match: CodeResult, i: number) => (
                                 <Card key={`code-${i}`} className="overflow-hidden">
                                     <CardHeader className="py-3 bg-muted/30">
                                         <CardTitle className="text-sm font-mono flex items-center gap-2">
@@ -146,7 +147,7 @@ export default function Search() {
                             <Brain className="w-5 h-5" /> Memory Matches ({results.memory.length})
                         </h2>
                         <div className="space-y-3">
-                            {results.memory.map((match: any, i: number) => (
+                            {results.memory.map((match: MemoryResult, i: number) => (
                                 <Card key={`mem-${i}`} className="overflow-hidden">
                                     <CardHeader className="py-3 bg-muted/30">
                                         <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -174,7 +175,7 @@ export default function Search() {
                             <ClipboardList className="w-5 h-5" /> Plan Matches ({results.plans.length})
                         </h2>
                         <div className="space-y-3">
-                            {results.plans.map((match: any, i: number) => (
+                            {results.plans.map((match: PlanResult, i: number) => (
                                 <Card key={`plan-${i}`} className="overflow-hidden">
                                     <CardHeader className="py-3 bg-amber-500/5 border-l-2 border-amber-500">
                                         <CardTitle className="text-sm font-medium flex items-center gap-2">

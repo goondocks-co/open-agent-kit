@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useConfig, useUpdateConfig, useExclusions, useUpdateExclusions, resetExclusions, restartDaemon, listProviderModels, listSummarizationModels, testEmbeddingConfig, testSummarizationConfig } from "@/hooks/use-config";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useConfig, useUpdateConfig, useExclusions, useUpdateExclusions, resetExclusions, restartDaemon, listProviderModels, listSummarizationModels, testEmbeddingConfig, testSummarizationConfig, type RestartResponse } from "@/hooks/use-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { AlertCircle, Save, Loader2, CheckCircle2, Plus, X, RotateCcw, FolderX } from "lucide-react";
@@ -15,6 +15,9 @@ import {
     ModelSelect,
     TestButton,
     ReadyBadge,
+    ContextWindowInput,
+    EMBEDDING_CONTEXT_PRESETS,
+    LLM_CONTEXT_PRESETS,
 } from "@/components/ui/config-components";
 import {
     CONFIG_SECTIONS,
@@ -30,31 +33,101 @@ import {
     toApiNumber,
 } from "@/lib/constants";
 
+// =============================================================================
+// Type Definitions
+// =============================================================================
+
+/** Model option from provider discovery API */
+interface ModelOption {
+    name?: string;
+    id?: string;
+    display_name?: string;
+    dimensions?: number;
+    context_window?: number;
+    provider?: string;
+}
+
+/** Test result from Test & Detect API */
+interface TestResultData {
+    success: boolean;
+    error?: string;
+    message?: string;
+    dimensions?: number;
+    context_window?: number;
+    pending_load?: boolean;
+}
+
+/** Form data structure (UI field names) */
+interface EmbeddingFormData {
+    provider: string;
+    model: string;
+    base_url: string;
+    dimensions: number | string;
+    max_tokens: number | string;  // UI name for context_tokens
+    chunk_size: number | string;  // UI name for max_chunk_chars
+}
+
+interface SummarizationFormData {
+    enabled: boolean;
+    provider: string;
+    model: string;
+    base_url: string;
+    max_tokens: number | string;  // UI name for context_tokens
+}
+
+interface FormData {
+    embedding: EmbeddingFormData;
+    summarization: SummarizationFormData;
+}
+
+/** Validation result structure */
+interface ValidationResult {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+    isEnabled?: boolean;
+}
+
+/** Model discovery response from API */
+interface ModelDiscoveryResponse {
+    success: boolean;
+    models?: ModelOption[];
+    error?: string;
+}
+
+/** Exclusions update response from API */
+interface ExclusionsUpdateResponse {
+    added?: string[];
+    removed?: string[];
+    already_exists?: string[];
+    message?: string;
+}
+
 export default function Config() {
     const { data: config, isLoading } = useConfig();
     const updateConfig = useUpdateConfig();
 
-    const [formData, setFormData] = useState<any>(null);
+    const [formData, setFormData] = useState<FormData | null>(null);
     const [isDirty, setIsDirty] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     // Discovery State
-    const [embeddingModels, setEmbeddingModels] = useState<any[]>([]);
+    const [embeddingModels, setEmbeddingModels] = useState<ModelOption[]>([]);
     const [isDiscoveringEmbedding, setIsDiscoveringEmbedding] = useState(false);
     const [isTestingEmbedding, setIsTestingEmbedding] = useState(false);
-    const [embeddingTestResult, setEmbeddingTestResult] = useState<any>(null);
+    const [embeddingTestResult, setEmbeddingTestResult] = useState<TestResultData | null>(null);
 
-    const [summarizationModels, setSummarizationModels] = useState<any[]>([]);
+    const [summarizationModels, setSummarizationModels] = useState<ModelOption[]>([]);
     const [isDiscoveringSum, setIsDiscoveringSum] = useState(false);
     const [isTestingSum, setIsTestingSum] = useState(false);
-    const [sumTestResult, setSumTestResult] = useState<any>(null);
+    const [sumTestResult, setSumTestResult] = useState<TestResultData | null>(null);
 
     // =============================================================================
-    // Validation Logic for Guided Flow
+    // Validation Logic for Guided Flow (memoized for performance)
     // =============================================================================
 
     // Check if embedding config is valid and complete
-    const getEmbeddingValidation = () => {
+    const embeddingValidation = useMemo((): ValidationResult => {
         const errors: string[] = [];
         const emb = formData?.embedding;
         if (!emb) return { isValid: false, errors: ["Loading..."], warnings: [] };
@@ -63,9 +136,9 @@ export default function Config() {
         if (!emb.provider) errors.push("Select a provider");
         if (!emb.base_url) errors.push("Enter a base URL");
         if (!emb.model) errors.push("Select a model");
-        if (!emb.dimensions) errors.push("Dimensions required (click Test & Detect)");
+        if (!emb.dimensions) errors.push("Dimensions required (click Test & Detect or enter manually)");
         if (!emb.max_tokens) errors.push("Context window required (click Test & Detect or enter manually)");
-        if (!emb.chunk_size) errors.push("Chunk size required");
+        if (!emb.chunk_size) errors.push("Chunk size required (auto-calculated from context window)");
 
         // Validation rules
         const warnings: string[] = [];
@@ -79,16 +152,16 @@ export default function Config() {
             }
         }
 
-        // Test requirement
+        // Test & Detect is recommended but not required if values are manually entered
         if (!embeddingTestResult?.success) {
-            errors.push("Run Test & Detect to verify configuration");
+            warnings.push("Run Test & Detect to verify configuration");
         }
 
         return { isValid: errors.length === 0, errors, warnings };
-    };
+    }, [formData?.embedding, embeddingTestResult?.success]);
 
     // Check if summarization config is valid (only if enabled)
-    const getSummarizationValidation = () => {
+    const summarizationValidation = useMemo((): ValidationResult => {
         const errors: string[] = [];
         const warnings: string[] = [];
         const sum = formData?.summarization;
@@ -105,18 +178,19 @@ export default function Config() {
         if (!sum.model) errors.push("Select a model");
         if (!sum.max_tokens) errors.push("Context window required (click Test & Detect or enter manually)");
 
-        // Test requirement when enabled
+        // Test & Detect is recommended but not required if values are manually entered
         if (!sumTestResult?.success) {
-            errors.push("Run Test & Detect to verify configuration");
+            warnings.push("Run Test & Detect to verify configuration");
         }
 
         return { isValid: errors.length === 0, errors, warnings, isEnabled: true };
-    };
+    }, [formData?.summarization, sumTestResult?.success]);
 
     // Combined validation for save button
-    const embeddingValidation = getEmbeddingValidation();
-    const summarizationValidation = getSummarizationValidation();
-    const canSave = isDirty && embeddingValidation.isValid && summarizationValidation.isValid;
+    const canSave = useMemo(
+        () => isDirty && embeddingValidation.isValid && summarizationValidation.isValid,
+        [isDirty, embeddingValidation.isValid, summarizationValidation.isValid]
+    );
 
     // Track if we've done initial model discovery
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -151,9 +225,10 @@ export default function Config() {
             // Auto-discover embedding models if provider and URL are configured
             if (config.embedding?.provider && config.embedding?.base_url) {
                 listProviderModels(config.embedding.provider, config.embedding.base_url)
-                    .then((res: any) => {
-                        if (res.success && res.models) {
-                            setEmbeddingModels(res.models);
+                    .then((res) => {
+                        const response = res as ModelDiscoveryResponse;
+                        if (response.success && response.models) {
+                            setEmbeddingModels(response.models);
                         }
                     })
                     .catch(() => { /* silently fail - user can manually refresh */ });
@@ -162,9 +237,10 @@ export default function Config() {
             // Auto-discover summarization models if enabled and provider/URL are configured
             if (config.summarization?.enabled && config.summarization?.provider && config.summarization?.base_url) {
                 listSummarizationModels(config.summarization.provider, config.summarization.base_url)
-                    .then((res: any) => {
-                        if (res.success && res.models) {
-                            setSummarizationModels(res.models);
+                    .then((res) => {
+                        const response = res as ModelDiscoveryResponse;
+                        if (response.success && response.models) {
+                            setSummarizationModels(response.models);
                         }
                     })
                     .catch(() => { /* silently fail - user can manually refresh */ });
@@ -172,22 +248,33 @@ export default function Config() {
         }
     }, [config, initialLoadComplete]);
 
-    const handleChange = (section: string, field: string, value: any) => {
+    const handleChange = useCallback((section: string, field: string, value: string | number | boolean) => {
         // Auto-update base URL when provider changes (embedding or summarization)
-        let updates: any = { [field]: value };
-        if (field === 'provider') {
+        const updates: Record<string, string | number | boolean> = { [field]: value };
+        if (field === 'provider' && typeof value === 'string') {
             updates.base_url = getDefaultProviderUrl(value);
             // Clear model when provider changes
             updates.model = '';
         }
 
-        setFormData((prev: any) => ({
-            ...prev,
-            [section]: {
-                ...prev[section],
-                ...updates
+        // Auto-calculate chunk_size when context window (max_tokens) is manually entered for embedding
+        if (section === CONFIG_SECTIONS.EMBEDDING && field === 'max_tokens' && value) {
+            const contextWindow = Number(value);
+            if (!isNaN(contextWindow) && contextWindow > 0) {
+                updates.chunk_size = calculateChunkSize(contextWindow);
             }
-        }));
+        }
+
+        setFormData((prev) => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                [section]: {
+                    ...prev[section as keyof FormData],
+                    ...updates
+                }
+            } as FormData;
+        });
         setIsDirty(true);
         setMessage(null);
         // Clear test results if key fields change
@@ -199,32 +286,34 @@ export default function Config() {
             setSumTestResult(null);
             setSummarizationModels([]);
         }
-    };
+    }, []);
 
     const handleDiscoverEmbedding = async () => {
+        if (!formData) return;
         setIsDiscoveringEmbedding(true);
         setEmbeddingTestResult(null);
         try {
             const res = await listProviderModels(
                 formData.embedding.provider,
                 formData.embedding.base_url
-            ) as any;
-            if (res.success) {
+            ) as { success: boolean; models?: ModelOption[]; error?: string };
+            if (res.success && res.models) {
                 setEmbeddingModels(res.models);
                 if (res.models.length === 0) {
                     setEmbeddingTestResult({ success: false, error: "No models found. Pull a model first." });
                 }
             } else {
-                setEmbeddingTestResult({ success: false, error: res.error });
+                setEmbeddingTestResult({ success: false, error: res.error || 'Discovery failed' });
             }
-        } catch (e: any) {
-            setEmbeddingTestResult({ success: false, error: e.message });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            setEmbeddingTestResult({ success: false, error: message });
         } finally {
             setIsDiscoveringEmbedding(false);
         }
     };
 
-    const handleModelSelect = (modelName: string) => {
+    const handleModelSelect = useCallback((modelName: string) => {
         const model = embeddingModels.find(m => m.name === modelName);
         // Only use values from API if available - don't guess with heuristics
         // User should click Test & Detect to get accurate values
@@ -233,29 +322,33 @@ export default function Config() {
         // Only calculate chunk_size if we have a real context value
         const chunkSize = context ? calculateChunkSize(Number(context)) : "";
 
-        setFormData((prev: any) => ({
-            ...prev,
-            [CONFIG_SECTIONS.EMBEDDING]: {
-                ...prev[CONFIG_SECTIONS.EMBEDDING],
-                model: modelName,
-                dimensions: dimensions,
-                max_tokens: context,
-                chunk_size: chunkSize
-            }
-        }));
+        setFormData((prev) => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                [CONFIG_SECTIONS.EMBEDDING]: {
+                    ...prev.embedding,
+                    model: modelName,
+                    dimensions: dimensions,
+                    max_tokens: context,
+                    chunk_size: chunkSize
+                }
+            };
+        });
         setIsDirty(true);
         // Clear previous test result since model changed
         setEmbeddingTestResult(null);
-    };
+    }, [embeddingModels]);
 
     const handleTestEmbedding = async () => {
+        if (!formData) return;
         setIsTestingEmbedding(true);
         try {
-            const res = await testEmbeddingConfig(formData[CONFIG_SECTIONS.EMBEDDING]) as any;
+            const res = await testEmbeddingConfig(formData.embedding) as TestResultData;
             setEmbeddingTestResult(res);
             if (res.success) {
                 // Only update values that come back from the API
-                const updates: any = {};
+                const updates: Partial<EmbeddingFormData> = {};
                 if (res.dimensions) {
                     updates.dimensions = res.dimensions;
                 }
@@ -266,66 +359,76 @@ export default function Config() {
                 }
 
                 if (Object.keys(updates).length > 0) {
-                    setFormData((prev: any) => ({
-                        ...prev,
-                        [CONFIG_SECTIONS.EMBEDDING]: {
-                            ...prev[CONFIG_SECTIONS.EMBEDDING],
-                            ...updates
-                        }
-                    }));
+                    setFormData((prev) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            [CONFIG_SECTIONS.EMBEDDING]: {
+                                ...prev.embedding,
+                                ...updates
+                            }
+                        };
+                    });
                     setIsDirty(true);
                 }
             }
-        } catch (e: any) {
-            setEmbeddingTestResult({ success: false, error: e.message });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            setEmbeddingTestResult({ success: false, error: message });
         } finally {
             setIsTestingEmbedding(false);
         }
     };
 
     const handleDiscoverSum = async () => {
+        if (!formData) return;
         setIsDiscoveringSum(true);
         setSumTestResult(null);
         try {
             const res = await listSummarizationModels(
                 formData.summarization.provider,
                 formData.summarization.base_url
-            ) as any;
-            if (res.success) {
+            ) as { success: boolean; models?: ModelOption[]; error?: string };
+            if (res.success && res.models) {
                 setSummarizationModels(res.models);
             } else {
-                setSumTestResult({ success: false, error: res.error });
+                setSumTestResult({ success: false, error: res.error || 'Discovery failed' });
             }
-        } catch (e: any) {
-            setSumTestResult({ success: false, error: e.message });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            setSumTestResult({ success: false, error: message });
         } finally {
             setIsDiscoveringSum(false);
         }
     };
 
-    const handleSumModelSelect = (modelName: string) => {
+    const handleSumModelSelect = useCallback((modelName: string) => {
         const model = summarizationModels.find(m => m.id === modelName);
         // Only use context_window from API if available - don't guess with heuristics
         // User should click Test & Detect to get accurate values
         const context = model?.context_window || "";
 
-        setFormData((prev: any) => ({
-            ...prev,
-            [CONFIG_SECTIONS.SUMMARIZATION]: {
-                ...prev[CONFIG_SECTIONS.SUMMARIZATION],
-                model: modelName,
-                max_tokens: context
-            }
-        }));
+        setFormData((prev) => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                [CONFIG_SECTIONS.SUMMARIZATION]: {
+                    ...prev.summarization,
+                    model: modelName,
+                    max_tokens: context
+                }
+            };
+        });
         setIsDirty(true);
         // Clear previous test result since model changed
         setSumTestResult(null);
-    }
+    }, [summarizationModels]);
 
     const handleTestSum = async () => {
+        if (!formData) return;
         setIsTestingSum(true);
         try {
-            const res = await testSummarizationConfig(formData[CONFIG_SECTIONS.SUMMARIZATION]) as any;
+            const res = await testSummarizationConfig(formData.summarization) as TestResultData;
             setSumTestResult(res);
 
             // Only populate context window from API - no heuristics
@@ -339,7 +442,7 @@ export default function Config() {
 
                 // Then check if the discovered model has context_window
                 if (!detectedContext) {
-                    const model = summarizationModels.find(m => m.id === formData[CONFIG_SECTIONS.SUMMARIZATION].model);
+                    const model = summarizationModels.find(m => m.id === formData.summarization.model);
                     if (model?.context_window) {
                         detectedContext = model.context_window;
                     }
@@ -347,32 +450,33 @@ export default function Config() {
 
                 // Only update if we got a real value from API
                 if (detectedContext) {
-                    setFormData((prev: any) => ({
-                        ...prev,
-                        [CONFIG_SECTIONS.SUMMARIZATION]: {
-                            ...prev[CONFIG_SECTIONS.SUMMARIZATION],
-                            max_tokens: detectedContext
-                        }
-                    }));
+                    setFormData((prev) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            [CONFIG_SECTIONS.SUMMARIZATION]: {
+                                ...prev.summarization,
+                                max_tokens: detectedContext
+                            }
+                        };
+                    });
                     setIsDirty(true);
                 }
             }
 
-        } catch (e: any) {
-            setSumTestResult({ success: false, error: e.message });
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            setSumTestResult({ success: false, error: message });
         } finally {
             setIsTestingSum(false);
         }
     };
 
     const handleSave = async () => {
+        if (!formData) return;
         try {
-            const emb = formData[CONFIG_SECTIONS.EMBEDDING];
-            const sum = formData[CONFIG_SECTIONS.SUMMARIZATION];
-
-            // Debug: log what we're about to save
-            console.log("[Config Save] formData.summarization.max_tokens:", sum.max_tokens, typeof sum.max_tokens);
-            console.log("[Config Save] toApiNumber result:", toApiNumber(sum.max_tokens));
+            const emb = formData.embedding;
+            const sum = formData.summarization;
 
             // Transform UI field names back to API field names
             const apiPayload = {
@@ -394,15 +498,14 @@ export default function Config() {
                     context_tokens: toApiNumber(sum.max_tokens),
                 },
             };
-            console.log("[Config Save] Sending apiPayload:", JSON.stringify(apiPayload, null, 2));
-            const result = await updateConfig.mutateAsync(apiPayload) as any;
-            console.log("[Config Save] API response:", JSON.stringify(result, null, 2));
+            const result = await updateConfig.mutateAsync(apiPayload) as { message?: string };
             setMessage({ type: 'success', text: result.message || "Configuration saved." });
             setIsDirty(false);
             setEmbeddingTestResult(null); // Clear transient test states
             setSumTestResult(null);
-        } catch (err: any) {
-            setMessage({ type: 'error', text: err.message || "Failed to save configuration." });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to save configuration.";
+            setMessage({ type: 'error', text: message });
         }
     };
 
@@ -497,7 +600,10 @@ export default function Config() {
                                 <Input
                                     type="number"
                                     value={formData[CONFIG_SECTIONS.EMBEDDING].dimensions || ''}
-                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.EMBEDDING, "dimensions", parseInt(e.target.value))}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleChange(CONFIG_SECTIONS.EMBEDDING, "dimensions", val === '' ? '' : parseInt(val, 10) || '');
+                                    }}
                                     placeholder={DEFAULT_DIMENSIONS_PLACEHOLDER}
                                 />
                             </div>
@@ -506,17 +612,20 @@ export default function Config() {
                                 <Input
                                     type="number"
                                     value={formData[CONFIG_SECTIONS.EMBEDDING].chunk_size || ''}
-                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.EMBEDDING, "chunk_size", parseInt(e.target.value))}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleChange(CONFIG_SECTIONS.EMBEDDING, "chunk_size", val === '' ? '' : parseInt(val, 10) || '');
+                                    }}
                                     placeholder={DEFAULT_CHUNK_SIZE_PLACEHOLDER}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label>Context Window</Label>
-                                <Input
-                                    type="number"
+                                <ContextWindowInput
                                     value={formData[CONFIG_SECTIONS.EMBEDDING].max_tokens || ''}
-                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.EMBEDDING, "max_tokens", parseInt(e.target.value))}
+                                    onChange={(value) => handleChange(CONFIG_SECTIONS.EMBEDDING, "max_tokens", value)}
                                     placeholder={DEFAULT_CONTEXT_WINDOW_PLACEHOLDER}
+                                    presets={EMBEDDING_CONTEXT_PRESETS}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -529,7 +638,7 @@ export default function Config() {
                                 </div>
                             </div>
                             <p className="col-span-2 text-xs text-muted-foreground">
-                                Click Test & Detect to auto-fill dimensions. If context window isn't detected, enter it manually.
+                                Click Test & Detect to auto-fill dimensions. Select a common context window or enter manually.
                             </p>
                             <TestResult result={embeddingTestResult} />
                         </div>
@@ -617,11 +726,11 @@ export default function Config() {
                         <div className="pl-7 grid grid-cols-2 gap-4 bg-muted/30 p-4 rounded-md border border-dashed">
                             <div className="space-y-2">
                                 <Label>Context Window</Label>
-                                <Input
-                                    type="number"
+                                <ContextWindowInput
                                     value={formData[CONFIG_SECTIONS.SUMMARIZATION].max_tokens || ''}
-                                    onChange={(e: any) => handleChange(CONFIG_SECTIONS.SUMMARIZATION, "max_tokens", parseInt(e.target.value))}
+                                    onChange={(value) => handleChange(CONFIG_SECTIONS.SUMMARIZATION, "max_tokens", value)}
                                     placeholder={LARGE_CONTEXT_WINDOW_PLACEHOLDER}
+                                    presets={LLM_CONTEXT_PRESETS}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -634,15 +743,20 @@ export default function Config() {
                                 </div>
                             </div>
                             <p className="col-span-2 text-xs text-muted-foreground">
-                                Click Test & Detect to verify connection. If context window isn't detected, enter it manually.
+                                Click Test & Detect to verify connection. Select a common context window or enter manually.
                             </p>
                             <TestResult result={sumTestResult} />
                         </div>
                     </div>
                 </CardContent>
                 <CardFooter className="bg-muted/30 py-4 flex flex-col gap-3 sticky bottom-0 z-10 border-t">
-                    {/* Validation Status */}
-                    {isDirty && (!embeddingValidation.isValid || !summarizationValidation.isValid) && (
+                    {/* Validation Status - show errors and warnings */}
+                    {isDirty && (
+                        !embeddingValidation.isValid ||
+                        !summarizationValidation.isValid ||
+                        embeddingValidation.warnings.length > 0 ||
+                        summarizationValidation.warnings.length > 0
+                    ) && (
                         <div className="w-full text-sm space-y-1">
                             {embeddingValidation.errors.length > 0 && (
                                 <div className="text-amber-600 flex items-start gap-2">
@@ -650,16 +764,22 @@ export default function Config() {
                                     <span><strong>Embedding:</strong> {embeddingValidation.errors[0]}</span>
                                 </div>
                             )}
-                            {embeddingValidation.warnings.length > 0 && (
+                            {embeddingValidation.warnings.length > 0 && embeddingValidation.isValid && (
                                 <div className="text-yellow-600 flex items-start gap-2">
                                     <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                                    <span>{embeddingValidation.warnings[0]}</span>
+                                    <span><strong>Embedding:</strong> {embeddingValidation.warnings[0]}</span>
                                 </div>
                             )}
                             {summarizationValidation.isEnabled && summarizationValidation.errors.length > 0 && (
                                 <div className="text-amber-600 flex items-start gap-2">
                                     <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                     <span><strong>Summarization:</strong> {summarizationValidation.errors[0]}</span>
+                                </div>
+                            )}
+                            {summarizationValidation.isEnabled && summarizationValidation.warnings.length > 0 && summarizationValidation.isValid && (
+                                <div className="text-yellow-600 flex items-start gap-2">
+                                    <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                    <span><strong>Summarization:</strong> {summarizationValidation.warnings[0]}</span>
                                 </div>
                             )}
                         </div>
@@ -697,13 +817,13 @@ function ExclusionsCard() {
     const applyExclusionChanges = async () => {
         setIsApplying(true);
         try {
-            const result = await restartDaemon() as any;
+            const result: RestartResponse = await restartDaemon();
             // Invalidate status to refresh dashboard stats
             queryClient.invalidateQueries({ queryKey: ["status"] });
             if (result.indexing_started) {
                 setMessage({ type: 'success', text: "Re-indexing with updated exclusions..." });
             }
-        } catch (e: any) {
+        } catch (e) {
             console.error("Failed to apply changes:", e);
         } finally {
             setIsApplying(false);
@@ -713,17 +833,18 @@ function ExclusionsCard() {
     const handleAddPattern = async () => {
         if (!newPattern.trim()) return;
         try {
-            const result = await updateExclusions.mutateAsync({ add: [newPattern.trim()] }) as any;
+            const result = await updateExclusions.mutateAsync({ add: [newPattern.trim()] }) as ExclusionsUpdateResponse;
             setNewPattern("");
-            if (result.added?.length > 0) {
+            if (result.added?.length && result.added.length > 0) {
                 setMessage({ type: 'success', text: `Added: ${result.added.join(", ")}. Applying changes...` });
                 // Trigger restart to apply exclusions and re-index
                 await applyExclusionChanges();
-            } else if (result.already_exists?.length > 0) {
+            } else if (result.already_exists?.length && result.already_exists.length > 0) {
                 setMessage({ type: 'error', text: `Already excluded: ${result.already_exists.join(", ")}` });
             }
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "Unknown error";
+            setMessage({ type: 'error', text: errorMessage });
         }
     };
 
@@ -733,8 +854,9 @@ function ExclusionsCard() {
             setMessage({ type: 'success', text: `Removed: ${pattern}. Applying changes...` });
             // Trigger restart to apply exclusions and re-index
             await applyExclusionChanges();
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "Unknown error";
+            setMessage({ type: 'error', text: errorMessage });
         }
     };
 
@@ -746,8 +868,9 @@ function ExclusionsCard() {
             setMessage({ type: 'success', text: "Reset to defaults. Applying changes..." });
             // Trigger restart to apply exclusions and re-index
             await applyExclusionChanges();
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "Unknown error";
+            setMessage({ type: 'error', text: errorMessage });
         } finally {
             setIsResetting(false);
         }

@@ -20,3 +20,10 @@ export async function fetchJson<T>(endpoint: string, options?: RequestInit): Pro
 
     return response.json();
 }
+
+export async function postJson<T>(endpoint: string, body: unknown): Promise<T> {
+    return fetchJson<T>(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}

@@ -95,6 +95,7 @@ export function ConfirmDialog({
 /**
  * Hook to manage confirm dialog state.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useConfirmDialog() {
     const [isOpen, setIsOpen] = React.useState(false);
     const [itemToDelete, setItemToDelete] = React.useState<string | number | null>(null);

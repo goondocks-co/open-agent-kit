@@ -14,6 +14,9 @@ from typing import Any, cast
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_DATA_DIR,
+    COPILOT_HOOK_CONFIG_FILENAME,
+    COPILOT_HOOK_SCRIPT_NAME,
+    COPILOT_HOOKS_DIRNAME,
     CURSOR_HOOK_SCRIPT_NAME,
     CURSOR_HOOKS_DIRNAME,
 )
@@ -442,6 +445,9 @@ class CodebaseIntelligenceService:
                 elif agent == "gemini":
                     self._update_gemini_hooks()
                     results[agent] = "updated"
+                elif agent == "copilot":
+                    self._update_copilot_hooks()
+                    results[agent] = "updated"
                 else:
                     results[agent] = "skipped"
             except Exception as e:
@@ -472,14 +478,14 @@ class CodebaseIntelligenceService:
         Identifies OAK hooks by patterns in the command:
         - /api/oak/ci/ - current URL pattern for Claude/Gemini (unique to OAK)
         - /api/hook/ - legacy URL pattern (for cleanup during upgrade/removal)
-        - oak-ci-hook.sh - Cursor shell script pattern
+        - oak-ci-hook.sh - Cursor/Copilot shell script pattern
 
         All patterns are checked to ensure proper cleanup when transitioning
         from old to new hook formats or between agent types.
 
         Args:
             hook: Hook configuration dict.
-            agent_type: Type of agent (claude, cursor, gemini) for structure-specific parsing.
+            agent_type: Type of agent (claude, cursor, gemini, copilot) for structure-specific parsing.
 
         Returns:
             True if the hook is managed by OAK.
@@ -488,11 +494,14 @@ class CodebaseIntelligenceService:
         if agent_type == "cursor":
             # Cursor: simple {command: "..."} structure
             command = hook.get("command", "")
+        elif agent_type == "copilot":
+            # Copilot: {bash: "...", powershell: "..."} structure
+            command = hook.get("bash", "") or hook.get("powershell", "")
         else:
             # Claude/Gemini: nested {hooks: [{command: "..."}]} structure
             command = hook.get("hooks", [{}])[0].get("command", "")
 
-        # Check for OAK CI patterns (URL patterns for Claude/Gemini, script pattern for Cursor)
+        # Check for OAK CI patterns (URL patterns for Claude/Gemini, script pattern for Cursor/Copilot)
         oak_patterns = ["/api/oak/ci/", "/api/hook/", "oak-ci-hook.sh"]
         return any(pattern in command for pattern in oak_patterns)
 
@@ -646,6 +655,69 @@ class CodebaseIntelligenceService:
 
         logger.info(f"Updated Gemini hooks at {settings_file}")
 
+    def _update_copilot_hooks(self) -> None:
+        """Update GitHub Copilot hooks with CI hooks.
+
+        Copilot hooks are stored in .github/hooks/ per GitHub docs.
+        Uses script dispatch pattern similar to Cursor.
+        """
+        hooks_dir = self.project_root / ".github" / COPILOT_HOOKS_DIRNAME
+        hooks_file = hooks_dir / COPILOT_HOOK_CONFIG_FILENAME
+        hooks_script_path = hooks_dir / COPILOT_HOOK_SCRIPT_NAME
+
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load existing hooks or create new
+        if hooks_file.exists():
+            with open(hooks_file) as f:
+                hooks = json.load(f)
+        else:
+            hooks = {"version": 1, "hooks": {}}
+
+        # Ensure hooks key exists
+        if "hooks" not in hooks:
+            hooks["hooks"] = {}
+
+        # Load CI hooks from template
+        template = self._load_hook_template("copilot")
+        if not template:
+            logger.error("Failed to load Copilot hooks template")
+            return
+
+        ci_hooks = template.get("hooks", {})
+
+        # Replace CI hooks (remove old OAK hooks, add new ones)
+        # Uses _is_oak_managed_hook for safe identification that preserves other integrations
+        for event, new_hooks in ci_hooks.items():
+            if event not in hooks["hooks"]:
+                hooks["hooks"][event] = []
+
+            # Remove existing OAK-managed hooks for this event
+            hooks["hooks"][event] = [
+                h for h in hooks["hooks"][event] if not self._is_oak_managed_hook(h, "copilot")
+            ]
+
+            # Add new CI hooks
+            hooks["hooks"][event].extend(new_hooks)
+
+        # Install hook script
+        hook_script_template = HOOKS_TEMPLATE_DIR / "copilot" / COPILOT_HOOK_SCRIPT_NAME
+        if not hook_script_template.exists():
+            logger.error(f"Copilot hook script template missing: {hook_script_template}")
+            return
+
+        hooks_script_path.write_text(
+            hook_script_template.read_text()
+            .replace("{{PORT}}", str(self.port))
+            .replace("{{PROJECT_ROOT}}", str(self.project_root))
+        )
+        hooks_script_path.chmod(0o755)
+
+        with open(hooks_file, "w") as f:
+            json.dump(hooks, f, indent=2)
+
+        logger.info(f"Updated Copilot hooks at {hooks_file}")
+
     # --- Hook Removal Methods ---
 
     def _remove_agent_hooks(self, agents: list[str]) -> dict[str, str]:
@@ -670,6 +742,9 @@ class CodebaseIntelligenceService:
                     results[agent] = "removed"
                 elif agent == "gemini":
                     self._remove_gemini_hooks()
+                    results[agent] = "removed"
+                elif agent == "copilot":
+                    self._remove_copilot_hooks()
                     results[agent] = "removed"
                 else:
                     results[agent] = "skipped"
@@ -834,6 +909,56 @@ class CodebaseIntelligenceService:
 
         # Clean up if file is now empty
         self._cleanup_empty_config_file(settings_file, [{}, {"hooks": {}}])
+
+    def _remove_copilot_hooks(self) -> None:
+        """Remove CI hooks from GitHub Copilot."""
+        hooks_dir = self.project_root / ".github" / COPILOT_HOOKS_DIRNAME
+        hooks_file = hooks_dir / COPILOT_HOOK_CONFIG_FILENAME
+        hooks_script_path = hooks_dir / COPILOT_HOOK_SCRIPT_NAME
+
+        if not hooks_file.exists():
+            return
+
+        with open(hooks_file) as f:
+            hooks = json.load(f)
+
+        if "hooks" not in hooks:
+            return
+
+        # Remove OAK-managed hooks from each event
+        # Uses _is_oak_managed_hook for safe identification that preserves other integrations
+        events_to_remove = []
+        for event in list(hooks["hooks"].keys()):
+            # Filter out OAK-managed hooks
+            hooks["hooks"][event] = [
+                h for h in hooks["hooks"][event] if not self._is_oak_managed_hook(h, "copilot")
+            ]
+
+            # Track empty event lists for removal
+            if not hooks["hooks"][event]:
+                events_to_remove.append(event)
+
+        # Remove empty event lists
+        for event in events_to_remove:
+            del hooks["hooks"][event]
+
+        # Remove empty hooks section
+        if not hooks.get("hooks"):
+            hooks.pop("hooks", None)
+
+        with open(hooks_file, "w") as f:
+            json.dump(hooks, f, indent=2)
+
+        # Remove hook script if it exists
+        if hooks_script_path.exists():
+            hooks_script_path.unlink()
+
+        logger.info(f"Removed Copilot hooks from {hooks_file}")
+
+        # Clean up if file is now empty
+        self._cleanup_empty_config_file(
+            hooks_file, [{}, {"hooks": {}}, {"version": 1}, {"version": 1, "hooks": {}}]
+        )
 
     # --- MCP Server Registration Methods ---
 

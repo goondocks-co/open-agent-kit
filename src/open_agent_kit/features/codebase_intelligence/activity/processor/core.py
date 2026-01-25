@@ -654,15 +654,21 @@ class ActivityProcessor:
                 if stuck_count:
                     logger.info(f"Recovered {stuck_count} stuck batches")
 
-                # Recovery: Auto-end sessions inactive too long
-                recovered_session_ids = self.activity_store.recover_stale_sessions(
+                # Recovery: Auto-end or delete sessions inactive too long
+                # Empty sessions are deleted, non-empty sessions are marked completed
+                recovered_ids, deleted_ids = self.activity_store.recover_stale_sessions(
                     timeout_seconds=SESSION_INACTIVE_TIMEOUT_SECONDS
                 )
-                if recovered_session_ids:
-                    logger.info(f"Recovered {len(recovered_session_ids)} stale sessions")
+                if deleted_ids:
+                    logger.info(
+                        f"Deleted {len(deleted_ids)} empty stale sessions: "
+                        f"{[s[:8] for s in deleted_ids]}"
+                    )
+                if recovered_ids:
+                    logger.info(f"Recovered {len(recovered_ids)} stale sessions")
                     # Generate summaries for recovered sessions (eventual consistency)
                     # This handles cases where SessionEnd hook didn't fire
-                    for session_id in recovered_session_ids:
+                    for session_id in recovered_ids:
                         try:
                             summary = self.process_session_summary(session_id)
                             if summary:

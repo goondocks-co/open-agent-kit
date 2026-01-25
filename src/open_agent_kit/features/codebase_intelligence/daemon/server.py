@@ -52,13 +52,18 @@ async def _background_index() -> None:
 
     logger.info("Starting background indexing...")
 
+    # Set indexing status BEFORE running in executor to eliminate race condition
+    # where UI polls between task scheduling and executor start
+    state.index_status.set_indexing()
+
     try:
         # Run unified index build in executor with timeout
+        # Pass _status_preset=True since we already set is_indexing above
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 None,
-                lambda: state.run_index_build(full_rebuild=True),
+                lambda: state.run_index_build(full_rebuild=True, _status_preset=True),
             ),
             timeout=DEFAULT_INDEXING_TIMEOUT_SECONDS,
         )

@@ -2,7 +2,7 @@
 
 Tests cover:
 - Session summary prompt template loading
-- _format_session_summaries helper function
+- format_session_summaries helper function (in injection.py)
 - process_session_summary method in ActivityProcessor
 """
 
@@ -60,21 +60,21 @@ class TestSessionSummaryPromptTemplate:
 
 
 class TestFormatSessionSummaries:
-    """Test the _format_session_summaries helper function."""
+    """Test the format_session_summaries helper function."""
 
     def test_format_empty_summaries(self):
         """Test formatting with empty list returns empty string."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
-        result = _format_session_summaries([])
+        result = format_session_summaries([])
         assert result == ""
 
     def test_format_single_summary(self):
         """Test formatting a single session summary."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
         summaries = [
@@ -84,7 +84,7 @@ class TestFormatSessionSummaries:
             }
         ]
 
-        result = _format_session_summaries(summaries)
+        result = format_session_summaries(summaries)
 
         assert "Recent Session History" in result
         assert "Session 1" in result
@@ -93,8 +93,8 @@ class TestFormatSessionSummaries:
 
     def test_format_multiple_summaries(self):
         """Test formatting multiple session summaries."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
         summaries = [
@@ -108,7 +108,7 @@ class TestFormatSessionSummaries:
             },
         ]
 
-        result = _format_session_summaries(summaries)
+        result = format_session_summaries(summaries)
 
         assert "Session 1" in result
         assert "Session 2" in result
@@ -117,8 +117,8 @@ class TestFormatSessionSummaries:
 
     def test_format_truncates_long_summaries(self):
         """Test that long summaries are truncated."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
         long_text = "A" * 250  # Over 200 char limit
@@ -129,7 +129,7 @@ class TestFormatSessionSummaries:
             }
         ]
 
-        result = _format_session_summaries(summaries)
+        result = format_session_summaries(summaries)
 
         assert "..." in result
         assert len(long_text) > 200  # Original is long
@@ -137,8 +137,8 @@ class TestFormatSessionSummaries:
 
     def test_format_respects_max_items(self):
         """Test that max_items parameter is respected."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
         summaries = [
@@ -146,7 +146,7 @@ class TestFormatSessionSummaries:
             for i in range(10)
         ]
 
-        result = _format_session_summaries(summaries, max_items=3)
+        result = format_session_summaries(summaries, max_items=3)
 
         assert "Session 1" in result
         assert "Session 2" in result
@@ -155,8 +155,8 @@ class TestFormatSessionSummaries:
 
     def test_format_filters_system_tags(self):
         """Test that system tags are filtered when extracting agent name."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
         summaries = [
@@ -166,7 +166,7 @@ class TestFormatSessionSummaries:
             }
         ]
 
-        result = _format_session_summaries(summaries)
+        result = format_session_summaries(summaries)
 
         # Should show gemini, not the system tags
         assert "gemini" in result
@@ -175,8 +175,8 @@ class TestFormatSessionSummaries:
 
     def test_format_handles_missing_tags(self):
         """Test formatting when tags are missing."""
-        from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import (
-            _format_session_summaries,
+        from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+            format_session_summaries,
         )
 
         summaries = [
@@ -186,7 +186,7 @@ class TestFormatSessionSummaries:
             }
         ]
 
-        result = _format_session_summaries(summaries)
+        result = format_session_summaries(summaries)
 
         assert "unknown" in result
         assert "Work without tags" in result

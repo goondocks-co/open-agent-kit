@@ -62,8 +62,6 @@ DEFAULT_EMBEDDING_CONFIG = {
 # These are used when discovery fails and no explicit config is set
 # =============================================================================
 DEFAULT_EMBEDDING_CONTEXT_TOKENS = 8192  # Conservative default for most models
-DEFAULT_EMBEDDING_MAX_CHUNK_CHARS = 3072  # Safe default (~0.75 chars/token * 4096)
-DEFAULT_EMBEDDING_DIMENSIONS = 768  # Common dimension for many embedding models
 
 # Default context tokens for summarization models when not explicitly configured
 # Conservative default that works safely with most local models
@@ -427,9 +425,17 @@ DEFAULT_EXCLUDE_PATTERNS = [
     # OAK-managed agent directories (derived from agent manifests)
     # Includes: commands, skills, settings files for all supported agents
     *_OAK_MANAGED_PATHS,
-    # Dependencies
+    # CI-managed hook configurations (installed by oak ci enable)
+    # These contain generated hook scripts, not user code
+    ".claude/settings.json",
+    ".cursor/hooks.json",
+    ".cursor/hooks",
+    ".cursor/hooks/**",
+    # Dependencies (match at any level for nested node_modules)
     "node_modules",
     "node_modules/**",
+    "**/node_modules",
+    "**/node_modules/**",
     # Python caches
     "__pycache__",
     "__pycache__/**",

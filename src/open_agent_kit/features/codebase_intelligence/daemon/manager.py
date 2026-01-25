@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import IO, Any
 
 from open_agent_kit.config.paths import OAK_DIR
-from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DATA_DIR,
+    CI_LOG_FILE,
+    CI_PID_FILE,
+    CI_PORT_FILE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +33,6 @@ class MissingDependenciesError(RuntimeError):
 DEFAULT_PORT = 37800
 PORT_RANGE_START = 37800
 PORT_RANGE_SIZE = 1000
-PID_FILE = "daemon.pid"
-PORT_FILE = "daemon.port"
-LOG_FILE = "daemon.log"
 LOCK_FILE = "daemon.lock"
 STARTUP_TIMEOUT = 30.0  # Allow time for first-time package initialization
 HEALTH_CHECK_INTERVAL = 1.0
@@ -69,7 +71,7 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
         Port number for this project.
     """
     data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
-    port_file = data_dir / PORT_FILE
+    port_file = data_dir / CI_PORT_FILE
 
     # Check for stored port
     if port_file.exists():
@@ -113,8 +115,8 @@ class DaemonManager:
         self.project_root = project_root
         self.port = port
         self.ci_data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
-        self.pid_file = self.ci_data_dir / PID_FILE
-        self.log_file = self.ci_data_dir / LOG_FILE
+        self.pid_file = self.ci_data_dir / CI_PID_FILE
+        self.log_file = self.ci_data_dir / CI_LOG_FILE
         self.lock_file = self.ci_data_dir / LOCK_FILE
         self.base_url = f"http://localhost:{port}"
         self._lock_handle: IO[Any] | None = None

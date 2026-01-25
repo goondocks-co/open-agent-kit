@@ -40,26 +40,26 @@ export default function DevTools() {
     const rebuildIndexFn = useMutation({
         mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
         onSuccess: () => setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Index rebuild started in background." }),
-        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to start rebuild" })
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to start rebuild" })
     });
 
     const rebuildMemoriesFn = useMutation({
-        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_MEMORIES, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
-        onSuccess: (data: any) => {
+        mutationFn: () => fetchJson<{ message?: string }>(API_ENDPOINTS.DEVTOOLS_REBUILD_MEMORIES, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
+        onSuccess: (data) => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || "Memory re-embedding started." });
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
             queryClient.invalidateQueries({ queryKey: ["status"] });
         },
-        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to rebuild memories" })
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to rebuild memories" })
     });
 
     const triggerProcessingFn = useMutation({
-        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_TRIGGER_PROCESSING, { method: "POST" }),
-        onSuccess: (data: any) => {
+        mutationFn: () => fetchJson<{ processed_batches?: number }>(API_ENDPOINTS.DEVTOOLS_TRIGGER_PROCESSING, { method: "POST" }),
+        onSuccess: (data) => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: `Triggered successfully. Processed ${data.processed_batches} batches.` });
             queryClient.invalidateQueries({ queryKey: ["status"] });
         },
-        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to trigger processing" })
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to trigger processing" })
     });
 
     const resetProcessingFn = useMutation({
@@ -69,7 +69,7 @@ export default function DevTools() {
             queryClient.invalidateQueries({ queryKey: ["status"] });
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
         },
-        onError: (err: any) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to reset processing" })
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to reset processing" })
     });
 
     return (

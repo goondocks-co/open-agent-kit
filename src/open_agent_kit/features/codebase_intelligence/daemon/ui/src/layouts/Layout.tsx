@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { useStatus } from "@/hooks/use-status";
 
-const NavItem = ({ to, icon: Icon, label, active }: { to: string; icon: any; label: string; active: boolean }) => (
+import type { LucideIcon } from "lucide-react";
+
+const NavItem = ({ to, icon: Icon, label, active }: { to: string; icon: LucideIcon; label: string; active: boolean }) => (
     <Link
         to={to}
         className={cn(

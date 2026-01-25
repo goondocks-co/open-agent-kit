@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { FolderGit2, Cpu } from "lucide-react";
+import { FolderGit2, FileText, Cpu } from "lucide-react";
 
 export default function DataExplorer() {
     const location = useLocation();
@@ -8,6 +8,7 @@ export default function DataExplorer() {
 
     const tabs = [
         { id: "sessions", label: "Sessions", path: "/data/sessions", icon: FolderGit2 },
+        { id: "plans", label: "Plans", path: "/data/plans", icon: FileText },
         { id: "memories", label: "Memories", path: "/data/memories", icon: Cpu },
     ];
 
