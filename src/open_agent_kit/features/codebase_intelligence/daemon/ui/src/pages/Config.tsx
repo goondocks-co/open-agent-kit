@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { useConfig, useUpdateConfig, useExclusions, useUpdateExclusions, resetExclusions, restartDaemon, listProviderModels, listSummarizationModels, testEmbeddingConfig, testSummarizationConfig, type RestartResponse } from "@/hooks/use-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { AlertCircle, Save, Loader2, CheckCircle2, Plus, X, RotateCcw, FolderX } from "lucide-react";
+import { AlertCircle, Save, Loader2, CheckCircle2, Plus, X, RotateCcw, FolderX, AlertTriangle, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -194,6 +195,8 @@ export default function Config() {
 
     // Track if we've done initial model discovery
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+    // Track if the initial embedding discovery attempt has completed (to avoid flashing warning)
+    const [embeddingDiscoveryComplete, setEmbeddingDiscoveryComplete] = useState(false);
 
     useEffect(() => {
         // Don't overwrite user's pending changes if they have unsaved edits
@@ -231,7 +234,11 @@ export default function Config() {
                             setEmbeddingModels(response.models);
                         }
                     })
-                    .catch(() => { /* silently fail - user can manually refresh */ });
+                    .catch(() => { /* silently fail - user can manually refresh */ })
+                    .finally(() => setEmbeddingDiscoveryComplete(true));
+            } else {
+                // No provider configured, mark discovery as complete immediately
+                setEmbeddingDiscoveryComplete(true);
             }
 
             // Auto-discover summarization models if enabled and provider/URL are configured
@@ -523,6 +530,29 @@ export default function Config() {
                     {message.type === 'error' && <AlertCircle className="w-4 h-4" />}
                     {message.text}
                 </div>
+            )}
+
+            {/* Setup Guidance Banner - Show only after discovery completes with no models found */}
+            {embeddingDiscoveryComplete && embeddingModels.length === 0 && !embeddingTestResult?.success && (
+                <Card className="border-yellow-500/50 bg-yellow-500/5">
+                    <CardContent className="py-4">
+                        <div className="flex items-start gap-4">
+                            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 space-y-2">
+                                <div className="font-medium text-yellow-500">No embedding models detected</div>
+                                <p className="text-sm text-muted-foreground">
+                                    Codebase Intelligence requires an embedding model to index your code. Set up Ollama or LM Studio to get started.
+                                </p>
+                                <Link to="/help">
+                                    <Button variant="outline" size="sm" className="gap-2 mt-2">
+                                        View Setup Guide
+                                        <ArrowRight className="w-4 h-4" />
+                                    </Button>
+                                </Link>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             )}
 
             {/* Embedding Section */}

@@ -151,10 +151,10 @@ class TestValidationError:
             "Invalid provider",
             field="provider",
             value="invalid",
-            expected="one of: ollama, openai, fastembed",
+            expected="one of: ollama, openai, lmstudio",
         )
-        assert error.expected == "one of: ollama, openai, fastembed"
-        assert error.details["expected"] == "one of: ollama, openai, fastembed"
+        assert error.expected == "one of: ollama, openai, lmstudio"
+        assert error.details["expected"] == "one of: ollama, openai, lmstudio"
 
     def test_is_subclass_of_configuration_error(self):
         """Test that ValidationError is subclass of ConfigurationError."""

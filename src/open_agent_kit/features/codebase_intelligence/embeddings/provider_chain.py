@@ -1,4 +1,4 @@
-"""Embedding provider chain with fallback support."""
+"""Embedding provider chain for embedding operations."""
 
 from __future__ import annotations
 
@@ -9,9 +9,6 @@ from open_agent_kit.features.codebase_intelligence.embeddings.base import (
     EmbeddingError,
     EmbeddingProvider,
     EmbeddingResult,
-)
-from open_agent_kit.features.codebase_intelligence.embeddings.fastembed import (
-    FastEmbedProvider,
 )
 from open_agent_kit.features.codebase_intelligence.embeddings.ollama import (
     OllamaProvider,
@@ -65,22 +62,18 @@ def create_provider_from_config(config: EmbeddingConfig) -> EmbeddingProvider:
             base_url=config.base_url,
             dimensions=config.dimensions,
         )
-    elif provider_type == "fastembed":
-        return FastEmbedProvider(model=config.model)
     else:
         raise ValueError(f"Unknown embedding provider type: {provider_type}")
 
 
 class EmbeddingProviderChain(EmbeddingProvider):
-    """Chain of embedding providers with automatic fallback.
+    """Chain of embedding providers.
 
-    Tries providers in order until one succeeds. By default, uses:
-    1. Ollama (primary) - Local inference with GPU acceleration
-    2. FastEmbed (fallback) - CPU-based inference, no external deps
+    Manages a list of providers and uses the first available one.
+    By default, uses Ollama for local inference with GPU acceleration.
 
-    The chain tries the primary provider first for each request, falling
-    back only when needed. This ensures we use the best available provider
-    for each embedding request.
+    The chain tries each provider in order for each request, ensuring
+    we use the best available provider for each embedding request.
     """
 
     def __init__(
@@ -92,7 +85,7 @@ class EmbeddingProviderChain(EmbeddingProvider):
         """Initialize provider chain.
 
         Args:
-            providers: Custom list of providers. If None, creates default chain.
+            providers: Custom list of providers. If None, creates default with Ollama.
             ollama_model: Ollama model to use if using default chain.
             ollama_url: Ollama base URL if using default chain.
         """
@@ -101,7 +94,6 @@ class EmbeddingProviderChain(EmbeddingProvider):
         else:
             self._providers = [
                 OllamaProvider(model=ollama_model, base_url=ollama_url),
-                FastEmbedProvider(),
             ]
 
         self._active_provider: EmbeddingProvider | None = None
@@ -167,8 +159,8 @@ class EmbeddingProviderChain(EmbeddingProvider):
                 self._tried_providers.add(provider.name)
 
         raise EmbeddingError(
-            "No embedding providers available. Please install Ollama or ensure "
-            "FastEmbed dependencies are installed.",
+            "No embedding providers available. Please ensure Ollama is installed "
+            "and running, or configure an alternative provider (LM Studio, OpenAI).",
             provider="chain",
         )
 
@@ -230,8 +222,8 @@ class EmbeddingProviderChain(EmbeddingProvider):
 
         # All providers failed
         raise EmbeddingError(
-            "All embedding providers failed. Check Ollama installation or "
-            "install a fallback with matching dimensions.",
+            "All embedding providers failed. Check that your configured provider "
+            "(Ollama, LM Studio, or OpenAI) is running and accessible.",
             provider="chain",
             cause=last_error,
         )

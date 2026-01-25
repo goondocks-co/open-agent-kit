@@ -913,6 +913,17 @@ class UpgradeService:
             except (OSError, json.JSONDecodeError) as e:
                 logger.warning(f"Failed to read settings file {settings_file}: {e}")
                 return True
+        elif agent == "copilot":
+            hooks_file = self.project_root / ".github" / "hooks" / "hooks.json"
+            if not hooks_file.exists():
+                return True
+
+            try:
+                with open(hooks_file) as f:
+                    installed_hooks = json.load(f).get("hooks", {})
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Failed to read hooks file {hooks_file}: {e}")
+                return True
         else:
             return False
 
@@ -930,6 +941,8 @@ class UpgradeService:
                     # Get command based on agent structure
                     if agent == "cursor":
                         command = hook.get("command", "")
+                    elif agent == "copilot":
+                        command = hook.get("bash", "")
                     else:
                         command = hook.get("hooks", [{}])[0].get("command", "")
                     if "/api/oak/ci/" in command or "oak-ci-hook.sh" in command:
@@ -952,6 +965,8 @@ class UpgradeService:
                     for hook in installed_hooks[event]:
                         if agent == "cursor":
                             command = hook.get("command", "")
+                        elif agent == "copilot":
+                            command = hook.get("bash", "")
                         else:
                             command = hook.get("hooks", [{}])[0].get("command", "")
                         if "/api/oak/ci/" in command or "oak-ci-hook.sh" in command:

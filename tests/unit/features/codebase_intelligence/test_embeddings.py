@@ -145,18 +145,13 @@ class TestEmbeddingProviderChainInit:
         assert len(chain._providers) == 2
 
     @patch("open_agent_kit.features.codebase_intelligence.embeddings.provider_chain.OllamaProvider")
-    @patch(
-        "open_agent_kit.features.codebase_intelligence.embeddings.provider_chain.FastEmbedProvider"
-    )
-    def test_init_default_creates_ollama_and_fastembed(self, mock_fastembed, mock_ollama):
-        """Test that default init creates Ollama and FastEmbed providers."""
+    def test_init_default_creates_ollama(self, mock_ollama):
+        """Test that default init creates Ollama provider."""
         mock_ollama.return_value = MockProvider("ollama")
-        mock_fastembed.return_value = MockProvider("fastembed")
 
         EmbeddingProviderChain()
 
         mock_ollama.assert_called_once()
-        mock_fastembed.assert_called_once()
 
 
 class TestEmbeddingProviderChainProperties:
@@ -430,19 +425,6 @@ class TestCreateProviderFromConfig:
                 dimensions=1536,
             )
             assert result == mock_instance
-
-    def test_creates_fastembed_provider(self):
-        """Test creating FastEmbed provider from config."""
-        config = MagicMock()
-        config.provider = "fastembed"
-        config.model = "BAAI/bge-small-en-v1.5"
-
-        with patch(
-            "open_agent_kit.features.codebase_intelligence.embeddings.provider_chain.FastEmbedProvider"
-        ) as mock_fastembed:
-            create_provider_from_config(config)
-
-            mock_fastembed.assert_called_once_with(model="BAAI/bge-small-en-v1.5")
 
     def test_raises_for_unknown_provider(self):
         """Test that unknown provider raises ValueError."""

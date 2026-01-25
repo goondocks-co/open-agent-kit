@@ -67,17 +67,17 @@ class TestEmbeddingConfigInit:
     def test_init_with_all_fields(self):
         """Test embedding config initialization with all fields specified."""
         config = EmbeddingConfig(
-            provider="fastembed",
-            model="BAAI/bge-large-en-v1.5",
-            base_url="http://localhost:8000",
+            provider="lmstudio",
+            model="bge-large-en-v1.5",
+            base_url="http://localhost:1234",
             dimensions=1024,
             api_key="secret-key",
             fallback_enabled=False,
             context_tokens=512,
             max_chunk_chars=1000,
         )
-        assert config.provider == "fastembed"
-        assert config.model == "BAAI/bge-large-en-v1.5"
+        assert config.provider == "lmstudio"
+        assert config.model == "bge-large-en-v1.5"
         assert config.dimensions == 1024
         assert config.context_tokens == 512
         assert config.max_chunk_chars == 1000

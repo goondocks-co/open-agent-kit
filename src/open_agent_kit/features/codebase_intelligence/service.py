@@ -14,6 +14,8 @@ from typing import Any, cast
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_DATA_DIR,
+    CLAUDE_HOOK_SCRIPT_NAME,
+    CLAUDE_HOOKS_DIRNAME,
     COPILOT_HOOK_CONFIG_FILENAME,
     COPILOT_HOOK_SCRIPT_NAME,
     COPILOT_HOOKS_DIRNAME,
@@ -509,8 +511,11 @@ class CodebaseIntelligenceService:
         """Update Claude Code settings with CI hooks."""
         settings_dir = self.project_root / ".claude"
         settings_file = settings_dir / "settings.json"
+        hooks_script_dir = settings_dir / CLAUDE_HOOKS_DIRNAME
+        hooks_script_path = hooks_script_dir / CLAUDE_HOOK_SCRIPT_NAME
 
         settings_dir.mkdir(exist_ok=True)
+        hooks_script_dir.mkdir(parents=True, exist_ok=True)
 
         # Load existing settings or create new
         if settings_file.exists():
@@ -544,6 +549,17 @@ class CodebaseIntelligenceService:
 
             # Add new CI hooks
             settings["hooks"][event].extend(new_hooks)
+
+        # Install hook script (reads port from daemon.port at runtime)
+        hook_script_template = HOOKS_TEMPLATE_DIR / "claude" / CLAUDE_HOOK_SCRIPT_NAME
+        if not hook_script_template.exists():
+            logger.error(f"Claude hook script template missing: {hook_script_template}")
+            return
+
+        hooks_script_path.write_text(
+            hook_script_template.read_text().replace("{{PROJECT_ROOT}}", str(self.project_root))
+        )
+        hooks_script_path.chmod(0o755)
 
         with open(settings_file, "w") as f:
             json.dump(settings, f, indent=2)
@@ -784,7 +800,10 @@ class CodebaseIntelligenceService:
 
     def _remove_claude_hooks(self) -> None:
         """Remove CI hooks from Claude Code settings."""
-        settings_file = self.project_root / ".claude" / "settings.json"
+        settings_dir = self.project_root / ".claude"
+        settings_file = settings_dir / "settings.json"
+        hooks_script_dir = settings_dir / CLAUDE_HOOKS_DIRNAME
+        hooks_script_path = hooks_script_dir / CLAUDE_HOOK_SCRIPT_NAME
 
         if not settings_file.exists():
             return
@@ -818,6 +837,16 @@ class CodebaseIntelligenceService:
 
         with open(settings_file, "w") as f:
             json.dump(settings, f, indent=2)
+
+        # Remove hook script if it exists
+        if hooks_script_path.exists():
+            hooks_script_path.unlink()
+            logger.info(f"Removed Claude hook script: {hooks_script_path}")
+
+        # Remove empty hooks directory
+        if hooks_script_dir.exists() and not any(hooks_script_dir.iterdir()):
+            hooks_script_dir.rmdir()
+            logger.info(f"Removed empty hooks directory: {hooks_script_dir}")
 
         logger.info(f"Removed CI hooks from {settings_file}")
 

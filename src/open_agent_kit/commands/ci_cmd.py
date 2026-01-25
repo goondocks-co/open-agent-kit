@@ -632,7 +632,7 @@ def ci_languages() -> None:
 def ci_config(
     show: bool = typer.Option(False, "--show", "-s", help="Show current configuration"),
     provider: str | None = typer.Option(
-        None, "--provider", "-p", help="Embedding provider (ollama, openai, fastembed)"
+        None, "--provider", "-p", help="Embedding provider (ollama, lmstudio, openai)"
     ),
     model: str | None = typer.Option(None, "--model", "-m", help="Embedding model name"),
     base_url: str | None = typer.Option(None, "--base-url", "-u", help="API base URL"),

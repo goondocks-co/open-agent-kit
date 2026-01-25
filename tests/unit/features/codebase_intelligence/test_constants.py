@@ -56,10 +56,10 @@ class TestEmbeddingProviderConstants:
         assert hasattr(constants, "PROVIDER_OPENAI")
         assert constants.PROVIDER_OPENAI == "openai"
 
-    def test_provider_fastembed_defined(self):
-        """Test that PROVIDER_FASTEMBED constant exists."""
-        assert hasattr(constants, "PROVIDER_FASTEMBED")
-        assert constants.PROVIDER_FASTEMBED == "fastembed"
+    def test_provider_lmstudio_defined(self):
+        """Test that PROVIDER_LMSTUDIO constant exists."""
+        assert hasattr(constants, "PROVIDER_LMSTUDIO")
+        assert constants.PROVIDER_LMSTUDIO == "lmstudio"
 
     def test_valid_providers_tuple(self):
         """Test that VALID_PROVIDERS contains all providers."""
@@ -67,7 +67,7 @@ class TestEmbeddingProviderConstants:
         assert isinstance(constants.VALID_PROVIDERS, tuple)
         assert constants.PROVIDER_OLLAMA in constants.VALID_PROVIDERS
         assert constants.PROVIDER_OPENAI in constants.VALID_PROVIDERS
-        assert constants.PROVIDER_FASTEMBED in constants.VALID_PROVIDERS
+        assert constants.PROVIDER_LMSTUDIO in constants.VALID_PROVIDERS
 
     def test_default_provider_defined(self):
         """Test that DEFAULT_PROVIDER is defined and valid."""

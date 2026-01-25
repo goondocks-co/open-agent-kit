@@ -68,12 +68,15 @@ class FeatureService:
         return self._template_service
 
     def _is_uv_tool_install(self) -> bool:
-        """Check if OAK is running from a uv tool installation."""
-        import sys
+        """Check if OAK is running from a uv tool installation.
 
-        # uv tool installs run from paths like:
-        # /Users/<user>/.local/share/uv/tools/open-agent-kit/...
-        return ".local/share/uv/tools/" in sys.executable
+        Works on both POSIX and Windows systems:
+        - POSIX: ~/.local/share/uv/tools/
+        - Windows: %LOCALAPPDATA%\\uv\\tools\\
+        """
+        from open_agent_kit.utils.platform import is_uv_tool_install
+
+        return is_uv_tool_install()
 
     def _get_install_source(self) -> str | None:
         """Get the install source if OAK was installed from a non-PyPI source.

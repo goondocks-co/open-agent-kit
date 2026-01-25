@@ -1,13 +1,14 @@
 #!/bin/bash
 # Codebase Intelligence hooks for GitHub Copilot
 # Installed by: oak ci enable
-# Template placeholders replaced: {{PORT}}, {{PROJECT_ROOT}}
+# Template placeholder replaced: {{PROJECT_ROOT}}
 
 EVENT="${1:-unknown}"
 INPUT="$(cat || true)"
 
-PORT="{{PORT}}"
 PROJECT_ROOT="{{PROJECT_ROOT}}"
+# Read port from file at runtime (allows port changes without hook reinstall)
+PORT="$(cat "${PROJECT_ROOT}/.oak/ci/daemon.port" 2>/dev/null || echo "37800")"
 HOOK_LOG="${PROJECT_ROOT}/.oak/ci/hooks.log"
 
 SAFE_INPUT="$(printf "%s" "${INPUT}" | jq -c . 2>/dev/null || echo "{}")"

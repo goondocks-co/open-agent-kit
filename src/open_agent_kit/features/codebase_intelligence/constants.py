@@ -38,12 +38,10 @@ VALID_SEARCH_TYPES: Final[tuple[str, ...]] = (
 PROVIDER_OLLAMA: Final[str] = "ollama"
 PROVIDER_OPENAI: Final[str] = "openai"
 PROVIDER_LMSTUDIO: Final[str] = "lmstudio"
-PROVIDER_FASTEMBED: Final[str] = "fastembed"
 VALID_PROVIDERS: Final[tuple[str, ...]] = (
     PROVIDER_OLLAMA,
     PROVIDER_OPENAI,
     PROVIDER_LMSTUDIO,
-    PROVIDER_FASTEMBED,
 )
 
 # Default embedding configuration
@@ -92,6 +90,11 @@ SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
 
 HOOK_FILENAME: Final[str] = "hooks.json"
 SETTINGS_FILENAME: Final[str] = "settings.json"
+
+# Claude hooks directory (under .claude/)
+CLAUDE_HOOKS_DIRNAME: Final[str] = "hooks"
+CLAUDE_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
+
 CURSOR_HOOKS_DIRNAME: Final[str] = "hooks"
 CURSOR_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
 

@@ -45,7 +45,7 @@ _PACKAGE_ROOT = Path(__file__).parent.parent.parent
 _AGENTS_DIR = _PACKAGE_ROOT / "agents"
 
 # Type alias for valid providers
-ProviderType = Literal["ollama", "openai", "fastembed"]
+ProviderType = Literal["ollama", "openai", "lmstudio"]
 
 # Default embedding configuration
 # Model must be selected by user from discovered models

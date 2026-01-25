@@ -15,7 +15,7 @@
         "type": "command",
         "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh sessionEnd",
         "cwd": "{{PROJECT_ROOT}}",
-        "timeoutSec": 15
+        "timeoutSec": 30
       }
     ],
     "userPromptSubmitted": [
@@ -23,7 +23,7 @@
         "type": "command",
         "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh userPromptSubmitted",
         "cwd": "{{PROJECT_ROOT}}",
-        "timeoutSec": 15
+        "timeoutSec": 30
       }
     ],
     "postToolUse": [
@@ -31,7 +31,7 @@
         "type": "command",
         "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh postToolUse",
         "cwd": "{{PROJECT_ROOT}}",
-        "timeoutSec": 5
+        "timeoutSec": 30
       }
     ],
     "errorOccurred": [
@@ -39,7 +39,7 @@
         "type": "command",
         "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh errorOccurred",
         "cwd": "{{PROJECT_ROOT}}",
-        "timeoutSec": 5,
+        "timeoutSec": 30,
         "comment": "Maps to post-tool-use-failure endpoint"
       }
     ]

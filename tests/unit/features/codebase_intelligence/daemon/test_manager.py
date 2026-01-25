@@ -591,16 +591,20 @@ class TestDaemonManagerStart:
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
     )
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.find_available_port")
     def test_start_raises_when_port_in_use(
-        self, mock_port_in_use, mock_is_running, mock_check_deps, tmp_path: Path
+        self, mock_find_port, mock_port_in_use, mock_is_running, mock_check_deps, tmp_path: Path
     ):
-        """Test that start raises RuntimeError when port is in use by another process."""
+        """Test that start raises RuntimeError when no available ports found."""
         mock_check_deps.return_value = []  # No missing deps
         manager = DaemonManager(tmp_path)
         mock_is_running.return_value = False
+        # Port is in use
         mock_port_in_use.return_value = True
+        # No available ports found after retry
+        mock_find_port.return_value = None
 
-        with pytest.raises(RuntimeError, match="already in use"):
+        with pytest.raises(RuntimeError, match="no available ports found"):
             manager.start()
 
     @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
@@ -679,56 +683,59 @@ class TestDaemonManagerStop:
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
     )
-    @patch("os.kill")
-    def test_stop_sends_sigterm(self, mock_kill, mock_is_running, mock_read_pid, tmp_path: Path):
-        """Test that stop sends SIGTERM to daemon process."""
-        import signal
-
-        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
-        mock_read_pid.return_value = 12345
-        # First check returns True, then after SIGTERM returns False
-        mock_is_running.side_effect = [True, False]
-
-        result = manager.stop()
-
-        assert result is True
-        mock_kill.assert_called_once_with(12345, signal.SIGTERM)
-
-    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
-    @patch(
-        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
-    )
-    @patch("os.kill")
-    def test_stop_force_kills_if_sigterm_fails(
-        self, mock_kill, mock_is_running, mock_read_pid, tmp_path: Path
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    def test_stop_sends_sigterm(
+        self, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
     ):
-        """Test that stop force kills if SIGTERM doesn't work."""
-        import signal
-
+        """Test that stop sends graceful termination signal to daemon process."""
         manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
         mock_read_pid.return_value = 12345
-        # Always return True (process won't die from SIGTERM)
-        mock_is_running.return_value = True
+        # First check returns True, then after terminate returns False
+        mock_is_running.side_effect = [True, False]
+        mock_terminate.return_value = True
 
         result = manager.stop()
 
         assert result is True
-        # Should have called with SIGTERM first, then SIGKILL
-        assert mock_kill.call_count == 2
-        mock_kill.assert_any_call(12345, signal.SIGTERM)
-        mock_kill.assert_any_call(12345, signal.SIGKILL)
+        mock_terminate.assert_called_once_with(12345, graceful=True)
 
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
     )
-    @patch("os.kill")
-    def test_stop_handles_os_error(self, mock_kill, mock_is_running, mock_read_pid, tmp_path: Path):
-        """Test that stop handles OSError gracefully."""
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    def test_stop_force_kills_if_sigterm_fails(
+        self, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
+    ):
+        """Test that stop force kills if graceful termination doesn't work."""
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        mock_read_pid.return_value = 12345
+        # Always return True (process won't die from graceful termination)
+        mock_is_running.return_value = True
+        mock_terminate.return_value = True
+
+        result = manager.stop()
+
+        assert result is True
+        # Should have called with graceful=True first, then graceful=False
+        assert mock_terminate.call_count == 2
+        mock_terminate.assert_any_call(12345, graceful=True)
+        mock_terminate.assert_any_call(12345, graceful=False)
+
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
+    )
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    def test_stop_handles_os_error(
+        self, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
+    ):
+        """Test that stop handles termination failure gracefully."""
         manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
         mock_read_pid.return_value = 12345
         mock_is_running.return_value = True
-        mock_kill.side_effect = OSError("Permission denied")
+        # terminate_process returns False on failure (instead of raising)
+        mock_terminate.return_value = False
 
         result = manager.stop()
 

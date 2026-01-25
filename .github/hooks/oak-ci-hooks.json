@@ -14,7 +14,7 @@
         "type": "command",
         "bash": "/Users/chris/Repos/open-agent-kit/.github/hooks/oak-ci-hook.sh sessionEnd",
         "cwd": "/Users/chris/Repos/open-agent-kit",
-        "timeoutSec": 15
+        "timeoutSec": 30
       }
     ],
     "userPromptSubmitted": [
@@ -22,7 +22,7 @@
         "type": "command",
         "bash": "/Users/chris/Repos/open-agent-kit/.github/hooks/oak-ci-hook.sh userPromptSubmitted",
         "cwd": "/Users/chris/Repos/open-agent-kit",
-        "timeoutSec": 15
+        "timeoutSec": 30
       }
     ],
     "postToolUse": [
@@ -30,7 +30,7 @@
         "type": "command",
         "bash": "/Users/chris/Repos/open-agent-kit/.github/hooks/oak-ci-hook.sh postToolUse",
         "cwd": "/Users/chris/Repos/open-agent-kit",
-        "timeoutSec": 5
+        "timeoutSec": 30
       }
     ],
     "errorOccurred": [
@@ -38,7 +38,7 @@
         "type": "command",
         "bash": "/Users/chris/Repos/open-agent-kit/.github/hooks/oak-ci-hook.sh errorOccurred",
         "cwd": "/Users/chris/Repos/open-agent-kit",
-        "timeoutSec": 5,
+        "timeoutSec": 30,
         "comment": "Maps to post-tool-use-failure endpoint"
       }
     ]

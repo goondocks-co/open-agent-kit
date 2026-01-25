@@ -77,9 +77,10 @@ MCP_TOOLS = [
     {
         "name": "oak_search",
         "description": (
-            "Search the codebase and project memories using semantic similarity. "
-            "Use this to find relevant code implementations, past decisions, gotchas, "
-            "and learnings. Returns ranked results with relevance scores."
+            "Search the codebase, project memories, and past implementation plans using "
+            "semantic similarity. Use this to find relevant code implementations, past "
+            "decisions, gotchas, learnings, and plans. Returns ranked results with "
+            "relevance scores. Use search_type='plans' to find past implementation plans."
         ),
         "inputSchema": {
             "type": "object",

@@ -63,6 +63,19 @@ from open_agent_kit.utils.interactive import (
     select,
     select_with_search,
 )
+from open_agent_kit.utils.platform import (
+    IS_POSIX,
+    IS_WINDOWS,
+    acquire_file_lock,
+    find_pid_by_port,
+    force_terminate_process,
+    get_process_detach_kwargs,
+    get_uv_tools_path_pattern,
+    is_process_running,
+    is_uv_tool_install,
+    release_file_lock,
+    terminate_process,
+)
 from open_agent_kit.utils.step_tracker import (
     ProgressTracker,
     SimpleProgress,
@@ -171,6 +184,18 @@ __all__ = [
     "get_package_version",
     # Template utilities
     "has_jinja2_syntax",
+    # Platform utilities
+    "IS_WINDOWS",
+    "IS_POSIX",
+    "acquire_file_lock",
+    "release_file_lock",
+    "get_process_detach_kwargs",
+    "is_process_running",
+    "terminate_process",
+    "force_terminate_process",
+    "find_pid_by_port",
+    "get_uv_tools_path_pattern",
+    "is_uv_tool_install",
     # Environment utilities
     "update_env_file",
     "ensure_gitignore_has_env",

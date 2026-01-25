@@ -66,8 +66,11 @@ def call_llm(
             "max_tokens": max_output_tokens,
         }
 
-        # Request JSON format for extraction prompts (Ollama/OpenAI compatible)
-        if is_extraction:
+        # Request JSON format for extraction prompts (OpenAI compatible)
+        # Some providers don't support this, so we'll retry without it if needed
+        use_json_format = is_extraction
+
+        if use_json_format:
             request_body["response_format"] = {"type": "json_object"}
 
         # Use warmup-aware post method to handle model loading timeouts
@@ -77,6 +80,17 @@ def call_llm(
         )
         response = summarizer.post_chat_completion(request_body)
         logger.debug(f"[LLM] Response status: {response.status_code}")
+
+        # If response_format is not supported, retry without it
+        if response.status_code == 400 and use_json_format:
+            error_text = response.text.lower()
+            if "response_format" in error_text or "json_object" in error_text:
+                logger.debug(
+                    "[LLM] Provider doesn't support json_object format, retrying without it"
+                )
+                del request_body["response_format"]
+                response = summarizer.post_chat_completion(request_body)
+                logger.debug(f"[LLM] Retry response status: {response.status_code}")
 
         if response.status_code != 200:
             logger.warning(f"[LLM] API error: {response.status_code} - {response.text[:500]}")

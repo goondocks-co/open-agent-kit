@@ -1,10 +1,8 @@
 """Daemon lifecycle management."""
 
-import fcntl
 import hashlib
 import logging
 import os
-import signal
 import socket
 import subprocess
 import sys
@@ -18,6 +16,16 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_LOG_FILE,
     CI_PID_FILE,
     CI_PORT_FILE,
+)
+from open_agent_kit.utils.platform import (
+    acquire_file_lock,
+    find_pid_by_port,
+    get_process_detach_kwargs,
+    release_file_lock,
+    terminate_process,
+)
+from open_agent_kit.utils.platform import (
+    is_process_running as platform_is_process_running,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +46,46 @@ STARTUP_TIMEOUT = 30.0  # Allow time for first-time package initialization
 HEALTH_CHECK_INTERVAL = 1.0
 MAX_LOCK_RETRIES = 5
 LOCK_RETRY_DELAY = 0.1  # Start with 100ms, will exponentially backoff
+
+# Port conflict resolution
+MAX_PORT_RETRIES = 10  # Try up to 10 sequential ports if original is taken
+
+
+def _is_port_available(port: int) -> bool:
+    """Check if a port is available for binding.
+
+    Args:
+        port: Port number to check.
+
+    Returns:
+        True if the port is available, False if in use.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) != 0
+
+
+def find_available_port(start_port: int, max_retries: int = MAX_PORT_RETRIES) -> int | None:
+    """Find an available port starting from start_port.
+
+    Tries sequential ports starting from start_port up to max_retries.
+    Respects the port range bounds.
+
+    Args:
+        start_port: Port to start searching from.
+        max_retries: Maximum number of ports to try.
+
+    Returns:
+        An available port number, or None if no port found within range.
+    """
+    for offset in range(max_retries):
+        candidate = start_port + offset
+        if candidate >= PORT_RANGE_START + PORT_RANGE_SIZE:
+            logger.warning(f"Port search exceeded range at {candidate}")
+            break
+        if _is_port_available(candidate):
+            return candidate
+        logger.debug(f"Port {candidate} is in use, trying next")
+    return None
 
 
 def derive_port_from_path(project_root: Path) -> int:
@@ -139,6 +187,16 @@ class DaemonManager:
         self._ensure_data_dir()
         self.pid_file.write_text(str(pid))
 
+    def _write_port(self, port: int) -> None:
+        """Write port to file.
+
+        This is called when the daemon port changes due to conflict resolution,
+        ensuring hooks can read the correct port at runtime.
+        """
+        self._ensure_data_dir()
+        port_file = self.ci_data_dir / CI_PORT_FILE
+        port_file.write_text(str(port))
+
     def _remove_pid(self) -> None:
         """Remove PID file."""
         if self.pid_file.exists():
@@ -149,6 +207,7 @@ class DaemonManager:
 
         Uses exponential backoff for retry logic. This ensures atomic
         test-and-set semantics: only one process can proceed past the lock.
+        Works on both POSIX and Windows systems.
 
         Returns:
             True if lock acquired successfully.
@@ -159,16 +218,15 @@ class DaemonManager:
         self._ensure_data_dir()
 
         # Create lock file if it doesn't exist
-        lock_file_handle = open(self.lock_file, "a")
+        lock_file_handle = open(self.lock_file, "a+")
         retry_delay = LOCK_RETRY_DELAY
 
         for attempt in range(MAX_LOCK_RETRIES):
-            try:
-                fcntl.flock(lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if acquire_file_lock(lock_file_handle, blocking=False):
                 self._lock_handle = lock_file_handle
                 logger.debug(f"Acquired startup lock on attempt {attempt + 1}")
                 return True
-            except OSError as e:
+            else:
                 if attempt < MAX_LOCK_RETRIES - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
@@ -176,7 +234,7 @@ class DaemonManager:
                     lock_file_handle.close()
                     raise RuntimeError(
                         f"Failed to acquire startup lock after {MAX_LOCK_RETRIES} attempts"
-                    ) from e
+                    )
 
         lock_file_handle.close()
         return False
@@ -185,10 +243,11 @@ class DaemonManager:
         """Release the startup lock.
 
         Should only be called after daemon process is started or on failure.
+        Works on both POSIX and Windows systems.
         """
         if self._lock_handle is not None:
             try:
-                fcntl.flock(self._lock_handle, fcntl.LOCK_UN)
+                release_file_lock(self._lock_handle)
                 self._lock_handle.close()
                 self._lock_handle = None
                 logger.debug("Released startup lock")
@@ -197,12 +256,11 @@ class DaemonManager:
                 self._lock_handle = None
 
     def _is_process_running(self, pid: int) -> bool:
-        """Check if a process with the given PID is running."""
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            return False
+        """Check if a process with the given PID is running.
+
+        Works on both POSIX and Windows systems.
+        """
+        return platform_is_process_running(pid)
 
     def _is_port_in_use(self) -> bool:
         """Check if the daemon port is in use."""
@@ -318,7 +376,18 @@ class DaemonManager:
 
             # Check if port is already in use by something else
             if self._is_port_in_use():
-                raise RuntimeError(f"Port {self.port} is already in use by another process")
+                logger.info(f"Port {self.port} is in use, searching for available port...")
+                new_port = find_available_port(self.port + 1)
+                if new_port is None:
+                    raise RuntimeError(
+                        f"Port {self.port} is in use and no available ports found "
+                        f"in range {self.port + 1}-{PORT_RANGE_START + PORT_RANGE_SIZE - 1}"
+                    )
+                logger.info(f"Found available port: {new_port}")
+                self.port = new_port
+                self.base_url = f"http://localhost:{self.port}"
+                # Update port file so hooks use the correct port
+                self._write_port(self.port)
 
             self._ensure_data_dir()
 
@@ -343,7 +412,7 @@ class DaemonManager:
             env = os.environ.copy()
             env["OAK_CI_PROJECT_ROOT"] = str(self.project_root)
 
-            # Start the process
+            # Start the process (platform-aware detachment)
             with open(self.log_file, "a") as log:
                 process = subprocess.Popen(
                     cmd,
@@ -351,7 +420,7 @@ class DaemonManager:
                     stderr=subprocess.STDOUT,
                     env=env,
                     cwd=str(self.project_root),
-                    start_new_session=True,  # Detach from parent
+                    **get_process_detach_kwargs(),  # Platform-aware detachment
                 )
 
             self._write_pid(process.pid)
@@ -425,24 +494,24 @@ class DaemonManager:
             self._cleanup_files()
             return True
 
-        # Try graceful shutdown first
-        try:
-            os.kill(pid, signal.SIGTERM)
-            logger.info(f"Sent SIGTERM to daemon PID {pid}")
-
-            # Wait for process to exit
-            for _ in range(10):
-                if not self._is_process_running(pid):
-                    break
-                time.sleep(0.5)
-            else:
-                # Force kill if still running
-                os.kill(pid, signal.SIGKILL)
-                logger.warning(f"Force killed daemon PID {pid}")
-
-        except OSError as e:
-            logger.error(f"Failed to stop daemon: {e}")
+        # Try graceful shutdown first (platform-aware)
+        if not terminate_process(pid, graceful=True):
+            logger.error(f"Failed to send termination signal to daemon PID {pid}")
             return False
+
+        logger.info(f"Sent termination signal to daemon PID {pid}")
+
+        # Wait for process to exit
+        for _ in range(10):
+            if not self._is_process_running(pid):
+                break
+            time.sleep(0.5)
+        else:
+            # Force kill if still running
+            if not terminate_process(pid, graceful=False):
+                logger.error(f"Failed to force kill daemon PID {pid}")
+                return False
+            logger.warning(f"Force killed daemon PID {pid}")
 
         self._cleanup_files()
         logger.info("Daemon stopped")
@@ -451,28 +520,17 @@ class DaemonManager:
     def _find_pid_by_port(self) -> int | None:
         """Find daemon PID by checking what's listening on our port.
 
-        Uses lsof to find the process listening on the daemon's port.
+        Uses platform-specific tools (lsof on POSIX, netstat on Windows)
+        to find the process listening on the daemon's port.
         This is project-specific since each project gets a unique port.
 
         Returns:
             PID of the process on the port, or None if not found.
         """
-        try:
-            # Use lsof to find process on port
-            result = subprocess.run(
-                ["lsof", "-ti", f":{self.port}"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return int(result.stdout.strip().split()[0])
+        pid = find_pid_by_port(self.port)
+        if pid is None:
             logger.debug(f"No process found on port {self.port}")
-        except FileNotFoundError:
-            logger.warning("lsof not found - cannot find daemon by port")
-        except (ValueError, OSError) as e:
-            logger.debug(f"Failed to find daemon by port: {e}")
-        return None
+        return pid
 
     def _find_ci_daemon_pid(self) -> int | None:
         """Find any running CI daemon process globally.

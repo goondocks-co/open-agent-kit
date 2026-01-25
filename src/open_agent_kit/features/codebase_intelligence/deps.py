@@ -16,7 +16,11 @@ import subprocess
 import sys
 from typing import Final
 
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 logger = logging.getLogger(__name__)
+console = Console()
 
 # Map of import names to package names for pip install
 # Format: {import_name: pip_package_name}
@@ -25,7 +29,6 @@ CI_REQUIRED_PACKAGES: Final[dict[str, str]] = {
     "fastapi": "fastapi>=0.109.0",
     "chromadb": "chromadb>=0.5.0",
     "tree_sitter": "tree-sitter>=0.23.0",
-    "fastembed": "fastembed>=0.3.0",
     "watchdog": "watchdog>=4.0.0",
     "aiofiles": "aiofiles>=23.0.0",
 }
@@ -68,20 +71,30 @@ def get_packages_to_install() -> list[str]:
     return packages
 
 
-def install_ci_dependencies(quiet: bool = False) -> bool:
+def install_ci_dependencies(quiet: bool = False, show_packages: bool = True) -> bool:
     """Install CI dependencies into the current Python environment.
 
     Directly installs individual packages using uv pip, which works for all
     installation methods (PyPI, git URL, local editable).
 
     Args:
-        quiet: Suppress installation output.
+        quiet: Suppress installation output (no progress spinner or package list).
+        show_packages: Show which packages will be installed before starting.
 
     Returns:
         True if installation succeeded, False otherwise.
     """
     packages = get_packages_to_install()
     logger.info(f"Installing {len(packages)} CI packages...")
+
+    # Show packages being installed (unless quiet)
+    if show_packages and not quiet:
+        console.print(f"  Installing {len(packages)} CI packages...", style="dim")
+        # Highlight large packages
+        large_packages = ["chromadb"]
+        for pkg in large_packages:
+            if any(pkg in p for p in packages):
+                console.print(f"    • {pkg} (large package, may take a moment)", style="yellow")
 
     # Build the install command - use uv directly with --python to target
     # the current interpreter's environment
@@ -98,23 +111,77 @@ def install_ci_dependencies(quiet: bool = False) -> bool:
         cmd.append("--quiet")
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=quiet,
-            text=True,
-            check=False,
-        )
+        # Run with progress spinner for user feedback
+        if not quiet:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+                console=console,
+            ) as progress:
+                progress.add_task("Installing dependencies...", total=None)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+        else:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
 
         if result.returncode == 0:
             logger.info("CI dependencies installed successfully")
             return True
         else:
-            logger.error(f"uv pip install failed: {result.stderr if quiet else 'see output above'}")
+            _surface_installation_error(result.stderr, result.stdout, quiet)
             return False
 
     except FileNotFoundError:
         logger.error("uv command not found - ensure uv is installed and in PATH")
+        if not quiet:
+            console.print("  [red]Error:[/red] uv command not found", style="red")
+            console.print("    Install uv: https://docs.astral.sh/uv/", style="dim")
         return False
+
+
+def _surface_installation_error(stderr: str, stdout: str, quiet: bool) -> None:
+    """Surface installation errors in a user-friendly way.
+
+    Args:
+        stderr: Standard error output from the installation command.
+        stdout: Standard output from the installation command.
+        quiet: If True, only log the error without console output.
+    """
+    logger.error(f"uv pip install failed: {stderr or stdout}")
+
+    if quiet:
+        return
+
+    console.print("  [red]Installation encountered issues:[/red]")
+
+    # Show last 10 error lines
+    error_output = stderr or stdout
+    error_lines = [
+        line for line in error_output.split("\n") if line.strip() and "error" in line.lower()
+    ]
+    if error_lines:
+        for line in error_lines[-10:]:
+            console.print(f"    {line}", style="red dim")
+    else:
+        # Show last few lines if no explicit errors found
+        all_lines = [line for line in error_output.split("\n") if line.strip()]
+        for line in all_lines[-5:]:
+            console.print(f"    {line}", style="dim")
+
+    # Suggest manual installation
+    console.print("")
+    console.print("  Try manual installation:", style="yellow")
+    console.print("    uv pip install chromadb tree-sitter ...", style="dim")
 
 
 def ensure_ci_dependencies(auto_install: bool = True) -> bool:

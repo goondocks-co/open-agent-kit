@@ -1,13 +1,14 @@
 #!/bin/bash
 # Codebase Intelligence hooks for GitHub Copilot
 # Installed by: oak ci enable
-# Template placeholders replaced: 38283, /Users/chris/Repos/open-agent-kit
+# Template placeholder replaced: /Users/chris/Repos/open-agent-kit
 
 EVENT="${1:-unknown}"
 INPUT="$(cat || true)"
 
-PORT="38283"
 PROJECT_ROOT="/Users/chris/Repos/open-agent-kit"
+# Read port from file at runtime (allows port changes without hook reinstall)
+PORT="$(cat "${PROJECT_ROOT}/.oak/ci/daemon.port" 2>/dev/null || echo "37800")"
 HOOK_LOG="${PROJECT_ROOT}/.oak/ci/hooks.log"
 
 SAFE_INPUT="$(printf "%s" "${INPUT}" | jq -c . 2>/dev/null || echo "{}")"
