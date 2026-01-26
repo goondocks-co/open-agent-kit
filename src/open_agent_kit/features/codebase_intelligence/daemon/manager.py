@@ -413,10 +413,14 @@ class DaemonManager:
             env["OAK_CI_PROJECT_ROOT"] = str(self.project_root)
 
             # Start the process (platform-aware detachment)
-            with open(self.log_file, "a") as log:
+            # Redirect stdout/stderr to null device instead of log file.
+            # All logging is now handled by RotatingFileHandler in server.py,
+            # which also captures uvicorn errors through the uvicorn.error logger.
+            null_device = "NUL" if os.name == "nt" else "/dev/null"
+            with open(null_device, "w") as null_out:
                 process = subprocess.Popen(
                     cmd,
-                    stdout=log,
+                    stdout=null_out,
                     stderr=subprocess.STDOUT,
                     env=env,
                     cwd=str(self.project_root),

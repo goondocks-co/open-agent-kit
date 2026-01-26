@@ -20,6 +20,9 @@ import yaml
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_BASE_URL,
+    DEFAULT_LOG_BACKUP_COUNT,
+    DEFAULT_LOG_MAX_SIZE_MB,
+    DEFAULT_LOG_ROTATION_ENABLED,
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
     DEFAULT_SUMMARIZATION_BASE_URL,
@@ -28,6 +31,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_SUMMARIZATION_TIMEOUT,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
+    MAX_LOG_BACKUP_COUNT,
+    MAX_LOG_MAX_SIZE_MB,
+    MIN_LOG_MAX_SIZE_MB,
     VALID_LOG_LEVELS,
     VALID_PROVIDERS,
     VALID_SUMMARIZATION_PROVIDERS,
@@ -491,6 +497,95 @@ DEFAULT_EXCLUDE_PATTERNS = [
 
 
 @dataclass
+class LogRotationConfig:
+    """Configuration for log file rotation.
+
+    Prevents unbounded growth of daemon.log by rotating files when they
+    exceed the configured size limit.
+
+    Attributes:
+        enabled: Whether to enable log rotation.
+        max_size_mb: Maximum log file size in megabytes before rotation.
+        backup_count: Number of backup files to keep (e.g., daemon.log.1, .2, .3).
+    """
+
+    enabled: bool = DEFAULT_LOG_ROTATION_ENABLED
+    max_size_mb: int = DEFAULT_LOG_MAX_SIZE_MB
+    backup_count: int = DEFAULT_LOG_BACKUP_COUNT
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate configuration values.
+
+        Raises:
+            ValidationError: If any configuration value is invalid.
+        """
+        if self.max_size_mb < MIN_LOG_MAX_SIZE_MB:
+            raise ValidationError(
+                f"max_size_mb must be at least {MIN_LOG_MAX_SIZE_MB}",
+                field="max_size_mb",
+                value=self.max_size_mb,
+                expected=f">= {MIN_LOG_MAX_SIZE_MB}",
+            )
+        if self.max_size_mb > MAX_LOG_MAX_SIZE_MB:
+            raise ValidationError(
+                f"max_size_mb must be at most {MAX_LOG_MAX_SIZE_MB}",
+                field="max_size_mb",
+                value=self.max_size_mb,
+                expected=f"<= {MAX_LOG_MAX_SIZE_MB}",
+            )
+        if self.backup_count < 0:
+            raise ValidationError(
+                "backup_count cannot be negative",
+                field="backup_count",
+                value=self.backup_count,
+                expected=">= 0",
+            )
+        if self.backup_count > MAX_LOG_BACKUP_COUNT:
+            raise ValidationError(
+                f"backup_count must be at most {MAX_LOG_BACKUP_COUNT}",
+                field="backup_count",
+                value=self.backup_count,
+                expected=f"<= {MAX_LOG_BACKUP_COUNT}",
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LogRotationConfig":
+        """Create config from dictionary.
+
+        Args:
+            data: Configuration dictionary.
+
+        Returns:
+            LogRotationConfig instance.
+        """
+        return cls(
+            enabled=data.get("enabled", DEFAULT_LOG_ROTATION_ENABLED),
+            max_size_mb=data.get("max_size_mb", DEFAULT_LOG_MAX_SIZE_MB),
+            backup_count=data.get("backup_count", DEFAULT_LOG_BACKUP_COUNT),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "enabled": self.enabled,
+            "max_size_mb": self.max_size_mb,
+            "backup_count": self.backup_count,
+        }
+
+    def get_max_bytes(self) -> int:
+        """Get maximum log file size in bytes.
+
+        Returns:
+            Maximum size in bytes (max_size_mb * 1024 * 1024).
+        """
+        return self.max_size_mb * 1024 * 1024
+
+
+@dataclass
 class CIConfig:
     """Codebase Intelligence configuration.
 
@@ -501,6 +596,7 @@ class CIConfig:
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
+        log_rotation: Log file rotation configuration.
     """
 
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
@@ -509,6 +605,7 @@ class CIConfig:
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
     log_level: str = LOG_LEVEL_INFO
+    log_rotation: LogRotationConfig = field(default_factory=LogRotationConfig)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -544,6 +641,7 @@ class CIConfig:
         """
         embedding_data = data.get("embedding", {})
         summarization_data = data.get("summarization", {})
+        log_rotation_data = data.get("log_rotation", {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
             summarization=SummarizationConfig.from_dict(summarization_data),
@@ -551,6 +649,7 @@ class CIConfig:
             watch_files=data.get("watch_files", True),
             exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
             log_level=data.get("log_level", LOG_LEVEL_INFO),
+            log_rotation=LogRotationConfig.from_dict(log_rotation_data),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -562,6 +661,7 @@ class CIConfig:
             "watch_files": self.watch_files,
             "exclude_patterns": self.exclude_patterns,
             "log_level": self.log_level,
+            "log_rotation": self.log_rotation.to_dict(),
         }
 
     def get_combined_exclude_patterns(self) -> list[str]:
@@ -680,9 +780,28 @@ def save_ci_config(project_root: Path, config: CIConfig) -> None:
     # Update codebase_intelligence section
     existing_config["codebase_intelligence"] = config.to_dict()
 
+    # Custom representer to keep short lists inline (matches models/config.py)
+    # This preserves formatting like: agents: [cursor, copilot, claude]
+    class InlineListDumper(yaml.SafeDumper):
+        pass
+
+    def represent_list(dumper: yaml.SafeDumper, data: list[Any]) -> yaml.nodes.Node:
+        # Keep short lists (≤3 items) inline, longer ones multi-line
+        if len(data) <= 3:
+            return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
+        return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=False)
+
+    InlineListDumper.add_representer(list, represent_list)
+
     # Write back
     config_file.parent.mkdir(parents=True, exist_ok=True)
     with open(config_file, "w", encoding="utf-8") as f:
-        yaml.dump(existing_config, f, default_flow_style=False, sort_keys=False)
+        yaml.dump(
+            existing_config,
+            f,
+            Dumper=InlineListDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
 
     logger.info(f"Saved CI config to {config_file}")

@@ -209,6 +209,20 @@ VALID_LOG_LEVELS: Final[tuple[str, ...]] = (
 )
 
 # =============================================================================
+# Log Rotation
+# =============================================================================
+
+# Default log rotation settings
+DEFAULT_LOG_ROTATION_ENABLED: Final[bool] = True
+DEFAULT_LOG_MAX_SIZE_MB: Final[int] = 10
+DEFAULT_LOG_BACKUP_COUNT: Final[int] = 3
+
+# Log rotation limits for validation
+MIN_LOG_MAX_SIZE_MB: Final[int] = 1
+MAX_LOG_MAX_SIZE_MB: Final[int] = 100
+MAX_LOG_BACKUP_COUNT: Final[int] = 10
+
+# =============================================================================
 # Input Validation
 # =============================================================================
 

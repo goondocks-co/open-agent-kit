@@ -27,6 +27,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.config import LogRotationConfig
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
 
 logger = logging.getLogger(__name__)
@@ -206,13 +207,22 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
         logger.warning(f"Error during ChromaDB sync check: {e}")
 
 
-def _configure_logging(log_level: str, log_file: Path | None = None) -> None:
+def _configure_logging(
+    log_level: str,
+    log_file: Path | None = None,
+    log_rotation: "LogRotationConfig | None" = None,
+) -> None:
     """Configure logging for the daemon.
 
     Args:
         log_level: Log level (DEBUG, INFO, WARNING, ERROR).
         log_file: Optional log file path.
+        log_rotation: Optional log rotation configuration.
     """
+    from logging.handlers import RotatingFileHandler
+
+    from open_agent_kit.features.codebase_intelligence.config import LogRotationConfig
+
     level = getattr(logging, log_level.upper(), logging.INFO)
 
     # Configure the CI logger (our application logger)
@@ -250,12 +260,36 @@ def _configure_logging(log_level: str, log_file: Path | None = None) -> None:
 
     # Add file handler if log file specified (daemon mode)
     # When file logging is enabled, skip stream handler to avoid duplicates
-    # (stdout is redirected to the log file by the daemon manager)
+    # (stdout is redirected to /dev/null by the daemon manager)
     if log_file:
         try:
-            file_handler = logging.FileHandler(log_file, mode="a")
+            rotation = log_rotation or LogRotationConfig()
+
+            # Declare with base Handler type to satisfy mypy for both branches
+            file_handler: logging.Handler
+            if rotation.enabled:
+                # Use RotatingFileHandler to prevent unbounded log growth
+                file_handler = RotatingFileHandler(
+                    log_file,
+                    mode="a",
+                    maxBytes=rotation.get_max_bytes(),
+                    backupCount=rotation.backup_count,
+                    encoding="utf-8",
+                )
+            else:
+                # Rotation disabled - use standard FileHandler
+                file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+
             file_handler.setFormatter(formatter)
             ci_logger.addHandler(file_handler)
+
+            # IMPORTANT: Add our handler to uvicorn's error logger
+            # This captures uvicorn tracebacks through rotation instead of raw stderr
+            # Since subprocess stdout/stderr now goes to /dev/null, this ensures
+            # uvicorn errors are still captured in the rotated log file
+            uvicorn_error_logger = logging.getLogger("uvicorn.error")
+            uvicorn_error_logger.addHandler(file_handler)
+
         except OSError as e:
             ci_logger.warning(f"Could not set up file logging to {log_file}: {e}")
     else:
@@ -288,7 +322,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Configure logging based on config and environment
     effective_log_level = ci_config.get_effective_log_level()
     log_file = project_root / OAK_DIR / CI_DATA_DIR / CI_LOG_FILE
-    _configure_logging(effective_log_level, log_file=log_file)
+    _configure_logging(
+        effective_log_level,
+        log_file=log_file,
+        log_rotation=ci_config.log_rotation,
+    )
     state.log_level = effective_log_level
 
     logger.info(f"Codebase Intelligence daemon starting up (log_level={effective_log_level})")

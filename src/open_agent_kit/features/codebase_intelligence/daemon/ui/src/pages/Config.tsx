@@ -29,6 +29,9 @@ import {
     DEFAULT_CHUNK_SIZE_PLACEHOLDER,
     DEFAULT_DIMENSIONS_PLACEHOLDER,
     LARGE_CONTEXT_WINDOW_PLACEHOLDER,
+    LOG_ROTATION_DEFAULTS,
+    LOG_ROTATION_LIMITS,
+    calculateMaxLogDiskUsage,
     getDefaultProviderUrl,
     calculateChunkSize,
     toApiNumber,
@@ -76,9 +79,16 @@ interface SummarizationFormData {
     max_tokens: number | string;  // UI name for context_tokens
 }
 
+interface LogRotationFormData {
+    enabled: boolean;
+    max_size_mb: number;
+    backup_count: number;
+}
+
 interface FormData {
     embedding: EmbeddingFormData;
     summarization: SummarizationFormData;
+    log_rotation: LogRotationFormData;
 }
 
 /** Validation result structure */
@@ -214,6 +224,13 @@ export default function Config() {
 
             // Summarization mapping - always initialize
             mappedData.summarization.max_tokens = config.summarization.context_tokens ?? "";
+
+            // Log rotation mapping - use defaults if not present
+            mappedData.log_rotation = config.log_rotation ?? {
+                enabled: LOG_ROTATION_DEFAULTS.ENABLED,
+                max_size_mb: LOG_ROTATION_DEFAULTS.MAX_SIZE_MB,
+                backup_count: LOG_ROTATION_DEFAULTS.BACKUP_COUNT,
+            };
 
             console.log("[Config Load] Mapped to summarization.max_tokens:", mappedData.summarization.max_tokens);
             setFormData(mappedData);
@@ -484,6 +501,7 @@ export default function Config() {
         try {
             const emb = formData.embedding;
             const sum = formData.summarization;
+            const rot = formData.log_rotation;
 
             // Transform UI field names back to API field names
             const apiPayload = {
@@ -503,6 +521,11 @@ export default function Config() {
                     base_url: sum.base_url,
                     // UI uses max_tokens, API expects context_tokens
                     context_tokens: toApiNumber(sum.max_tokens),
+                },
+                log_rotation: {
+                    enabled: rot.enabled,
+                    max_size_mb: rot.max_size_mb,
+                    backup_count: rot.backup_count,
                 },
             };
             const result = await updateConfig.mutateAsync(apiPayload) as { message?: string };
@@ -820,6 +843,115 @@ export default function Config() {
                             <Save className="mr-2 h-4 w-4" /> Save Configuration
                         </Button>
                     </div>
+                </CardFooter>
+            </Card>
+
+            {/* Logging Section */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Logging</CardTitle>
+                    <CardDescription>Configure log file rotation to prevent unbounded disk usage.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            id="log_rotation_enabled"
+                            checked={formData.log_rotation?.enabled ?? true}
+                            onChange={(e) => {
+                                setFormData((prev) => {
+                                    if (!prev) return prev;
+                                    return {
+                                        ...prev,
+                                        log_rotation: {
+                                            ...prev.log_rotation,
+                                            enabled: e.target.checked,
+                                        },
+                                    };
+                                });
+                                setIsDirty(true);
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <Label htmlFor="log_rotation_enabled">Enable log rotation</Label>
+                    </div>
+
+                    <div className={cn("grid grid-cols-2 gap-4", !formData.log_rotation?.enabled && "opacity-50 pointer-events-none")}>
+                        <div className="space-y-2">
+                            <Label>Max File Size (MB)</Label>
+                            <Input
+                                type="number"
+                                min={LOG_ROTATION_LIMITS.MIN_SIZE_MB}
+                                max={LOG_ROTATION_LIMITS.MAX_SIZE_MB}
+                                value={formData.log_rotation?.max_size_mb ?? LOG_ROTATION_DEFAULTS.MAX_SIZE_MB}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10) || LOG_ROTATION_DEFAULTS.MAX_SIZE_MB;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            log_rotation: {
+                                                ...prev.log_rotation,
+                                                max_size_mb: Math.min(Math.max(value, LOG_ROTATION_LIMITS.MIN_SIZE_MB), LOG_ROTATION_LIMITS.MAX_SIZE_MB),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Rotate when file exceeds this size ({LOG_ROTATION_LIMITS.MIN_SIZE_MB}-{LOG_ROTATION_LIMITS.MAX_SIZE_MB} MB)
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Backup Count</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                max={LOG_ROTATION_LIMITS.MAX_BACKUP_COUNT}
+                                value={formData.log_rotation?.backup_count ?? LOG_ROTATION_DEFAULTS.BACKUP_COUNT}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10) || 0;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            log_rotation: {
+                                                ...prev.log_rotation,
+                                                backup_count: Math.min(Math.max(value, 0), LOG_ROTATION_LIMITS.MAX_BACKUP_COUNT),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Keep up to {LOG_ROTATION_LIMITS.MAX_BACKUP_COUNT} backup files (daemon.log.1, .2, etc.)
+                            </p>
+                        </div>
+                    </div>
+
+                    {formData.log_rotation?.enabled && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+                            <AlertCircle className="h-4 w-4" />
+                            <span>
+                                Max disk usage: {calculateMaxLogDiskUsage(
+                                    formData.log_rotation?.max_size_mb ?? LOG_ROTATION_DEFAULTS.MAX_SIZE_MB,
+                                    formData.log_rotation?.backup_count ?? LOG_ROTATION_DEFAULTS.BACKUP_COUNT
+                                )} MB
+                                ({formData.log_rotation?.max_size_mb ?? LOG_ROTATION_DEFAULTS.MAX_SIZE_MB} MB × {1 + (formData.log_rotation?.backup_count ?? LOG_ROTATION_DEFAULTS.BACKUP_COUNT)} files)
+                            </span>
+                        </div>
+                    )}
+                </CardContent>
+                <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                        Requires daemon restart to take effect.
+                    </p>
+                    <Button onClick={handleSave} disabled={!isDirty || updateConfig.isPending} size="sm">
+                        {updateConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
                 </CardFooter>
             </Card>
 

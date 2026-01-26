@@ -363,6 +363,36 @@ export type LogLevel = typeof LOG_LEVELS[keyof typeof LOG_LEVELS];
 
 
 // =============================================================================
+// Log Rotation Configuration
+// =============================================================================
+
+/** Default log rotation settings (must match Python constants) */
+export const LOG_ROTATION_DEFAULTS = {
+    ENABLED: true,
+    MAX_SIZE_MB: 10,
+    BACKUP_COUNT: 3,
+} as const;
+
+/** Log rotation validation limits (must match Python constants) */
+export const LOG_ROTATION_LIMITS = {
+    MIN_SIZE_MB: 1,
+    MAX_SIZE_MB: 100,
+    MAX_BACKUP_COUNT: 10,
+} as const;
+
+/**
+ * Calculate total maximum disk usage for log files.
+ * @param maxSizeMb Maximum size of each log file in MB
+ * @param backupCount Number of backup files to keep
+ * @returns Total max disk usage in MB (current + backups)
+ */
+export function calculateMaxLogDiskUsage(maxSizeMb: number, backupCount: number): number {
+    // Total = current file + backup files
+    return maxSizeMb * (1 + backupCount);
+}
+
+
+// =============================================================================
 // Log Files
 // =============================================================================
 

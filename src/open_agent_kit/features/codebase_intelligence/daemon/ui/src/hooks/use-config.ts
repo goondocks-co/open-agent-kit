@@ -5,6 +5,12 @@ import {
     LOG_LEVELS,
 } from "@/lib/constants";
 
+export interface LogRotationConfig {
+    enabled: boolean;
+    max_size_mb: number;
+    backup_count: number;
+}
+
 export interface Config {
     embedding: {
         provider: string;
@@ -21,6 +27,7 @@ export interface Config {
         base_url: string;
         context_tokens: number | null;
     };
+    log_rotation: LogRotationConfig;
     log_level: string;
 }
 

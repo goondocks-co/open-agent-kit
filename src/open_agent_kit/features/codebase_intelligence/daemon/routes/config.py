@@ -368,6 +368,11 @@ async def get_config() -> dict:
             "timeout": config.summarization.timeout,
             "context_tokens": config.summarization.context_tokens,
         },
+        "log_rotation": {
+            "enabled": config.log_rotation.enabled,
+            "max_size_mb": config.log_rotation.max_size_mb,
+            "backup_count": config.log_rotation.backup_count,
+        },
         "index_on_startup": config.index_on_startup,
         "watch_files": config.watch_files,
         "log_level": config.log_level,
@@ -459,6 +464,20 @@ async def update_config(request: Request) -> dict:
             config.log_level = new_level
             log_level_changed = True
 
+    # Handle log_rotation updates (requires restart)
+    log_rotation_changed = False
+    if "log_rotation" in data and isinstance(data["log_rotation"], dict):
+        rot = data["log_rotation"]
+        if "enabled" in rot and rot["enabled"] != config.log_rotation.enabled:
+            config.log_rotation.enabled = rot["enabled"]
+            log_rotation_changed = True
+        if "max_size_mb" in rot and rot["max_size_mb"] != config.log_rotation.max_size_mb:
+            config.log_rotation.max_size_mb = rot["max_size_mb"]
+            log_rotation_changed = True
+        if "backup_count" in rot and rot["backup_count"] != config.log_rotation.backup_count:
+            config.log_rotation.backup_count = rot["backup_count"]
+            log_rotation_changed = True
+
     save_ci_config(state.project_root, config)
     logger.info(
         f"Config saved. summarization.context_tokens = {config.summarization.context_tokens}"
@@ -484,10 +503,16 @@ async def update_config(request: Request) -> dict:
                 "base_url": config.summarization.base_url,
                 "context_tokens": config.summarization.context_tokens,
             },
+            "log_rotation": {
+                "enabled": config.log_rotation.enabled,
+                "max_size_mb": config.log_rotation.max_size_mb,
+                "backup_count": config.log_rotation.backup_count,
+            },
             "log_level": config.log_level,
             "embedding_changed": embedding_changed,
             "summarization_changed": summarization_changed,
             "log_level_changed": log_level_changed,
+            "log_rotation_changed": log_rotation_changed,
             "auto_applied": True,
             "indexing_started": restart_result.get("indexing_started", False),
             "message": restart_result.get("message", "Configuration saved and applied."),
@@ -496,8 +521,13 @@ async def update_config(request: Request) -> dict:
     message = "Configuration saved."
     if summarization_changed:
         message += " Summarization changes take effect immediately."
-    elif log_level_changed:
-        message = f"Log level changed to {config.log_level}. Restart daemon to apply."
+    elif log_level_changed or log_rotation_changed:
+        changes = []
+        if log_level_changed:
+            changes.append(f"log level to {config.log_level}")
+        if log_rotation_changed:
+            changes.append("log rotation settings")
+        message = f"Changed {', '.join(changes)}. Restart daemon to apply."
 
     return {
         "status": "updated",
@@ -514,10 +544,16 @@ async def update_config(request: Request) -> dict:
             "base_url": config.summarization.base_url,
             "context_tokens": config.summarization.context_tokens,
         },
+        "log_rotation": {
+            "enabled": config.log_rotation.enabled,
+            "max_size_mb": config.log_rotation.max_size_mb,
+            "backup_count": config.log_rotation.backup_count,
+        },
         "log_level": config.log_level,
         "embedding_changed": embedding_changed,
         "summarization_changed": summarization_changed,
         "log_level_changed": log_level_changed,
+        "log_rotation_changed": log_rotation_changed,
         "auto_applied": False,
         "message": message,
     }
