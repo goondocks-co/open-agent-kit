@@ -3,12 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, HardDrive, Download, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, HardDrive, Download, Upload, Users } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { API_ENDPOINTS, MEMORY_SYNC_STATUS, MESSAGE_TYPES } from "@/lib/constants";
-import { useBackupStatus, useCreateBackup, useRestoreBackup } from "@/hooks/use-backup";
+import { useBackupStatus, useCreateBackup, useRestoreBackup, useRestoreAllBackups, type RestoreResponse } from "@/hooks/use-backup";
 
 /** Refetch interval for memory stats (5 seconds) */
 const MEMORY_STATS_REFETCH_INTERVAL_MS = 5000;
@@ -24,6 +24,7 @@ export default function DevTools() {
     const queryClient = useQueryClient();
     const [message, setMessage] = useState<{ type: typeof MESSAGE_TYPES.SUCCESS | typeof MESSAGE_TYPES.ERROR, text: string } | null>(null);
     const [includeActivities, setIncludeActivities] = useState(false);
+    const [restoreResult, setRestoreResult] = useState<RestoreResponse | null>(null);
 
     // Fetch memory stats
     const { data: memoryStats } = useQuery<MemoryStats>({
@@ -36,6 +37,7 @@ export default function DevTools() {
     const { data: backupStatus, refetch: refetchBackupStatus } = useBackupStatus();
     const createBackupFn = useCreateBackup();
     const restoreBackupFn = useRestoreBackup();
+    const restoreAllBackupsFn = useRestoreAllBackups();
 
     const rebuildIndexFn = useMutation({
         mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
@@ -210,17 +212,21 @@ export default function DevTools() {
                         Database Backup
                     </CardTitle>
                     <CardDescription>
-                        Export and restore session history, prompts, and memories. Backups are preserved when the feature is removed.
+                        Export and restore session history across team members.
+                        {backupStatus?.machine_id && (
+                            <span className="ml-1">Machine: <code className="bg-muted px-1 rounded">{backupStatus.machine_id}</code></span>
+                        )}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {/* Current machine's backup status */}
                     {backupStatus && (
                         <div className="text-sm text-muted-foreground">
                             {backupStatus.backup_exists ? (
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-2">
                                         <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                        <span>Backup exists</span>
+                                        <span>Your backup exists</span>
                                     </div>
                                     <div className="text-xs pl-6">
                                         {backupStatus.backup_size_bytes && (
@@ -234,9 +240,35 @@ export default function DevTools() {
                             ) : (
                                 <div className="flex items-center gap-2">
                                     <AlertCircle className="h-4 w-4 text-yellow-500" />
-                                    <span>No backup file found</span>
+                                    <span>No backup file found for this machine</span>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* List all team backups */}
+                    {backupStatus?.all_backups && backupStatus.all_backups.length > 0 && (
+                        <div className="space-y-2">
+                            <h4 className="text-sm font-medium flex items-center gap-2">
+                                <Users className="h-4 w-4" />
+                                Team Backups ({backupStatus.all_backups.length})
+                            </h4>
+                            <div className="border rounded-md divide-y">
+                                {backupStatus.all_backups.map((backup) => (
+                                    <div key={backup.filename} className="px-3 py-2 text-sm flex justify-between items-center">
+                                        <div>
+                                            <span className="font-mono text-xs">{backup.machine_id}</span>
+                                            {backup.machine_id === backupStatus.machine_id && (
+                                                <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {(backup.size_bytes / 1024).toFixed(1)} KB
+                                            <span className="ml-2">{new Date(backup.last_modified).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -251,10 +283,11 @@ export default function DevTools() {
                         </Label>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Button
                             variant="secondary"
                             onClick={() => {
+                                setRestoreResult(null);
                                 createBackupFn.mutate(
                                     { include_activities: includeActivities },
                                     {
@@ -277,11 +310,13 @@ export default function DevTools() {
                         <Button
                             variant="outline"
                             onClick={() => {
+                                setRestoreResult(null);
                                 restoreBackupFn.mutate(
                                     {},
                                     {
                                         onSuccess: (data) => {
                                             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+                                            setRestoreResult(data);
                                         },
                                         onError: (err) => {
                                             setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message });
@@ -292,12 +327,74 @@ export default function DevTools() {
                             disabled={restoreBackupFn.isPending || !backupStatus?.backup_exists}
                         >
                             <Upload className="h-4 w-4 mr-2" />
-                            {restoreBackupFn.isPending ? "Restoring..." : "Restore from Backup"}
+                            {restoreBackupFn.isPending ? "Restoring..." : "Restore Mine"}
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setRestoreResult(null);
+                                restoreAllBackupsFn.mutate(
+                                    {},
+                                    {
+                                        onSuccess: (data) => {
+                                            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+                                            // Create a combined result from all files
+                                            const combined: RestoreResponse = {
+                                                status: data.status,
+                                                message: data.message,
+                                                sessions_imported: Object.values(data.per_file).reduce((sum, r) => sum + r.sessions_imported, 0),
+                                                sessions_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.sessions_skipped, 0),
+                                                batches_imported: Object.values(data.per_file).reduce((sum, r) => sum + r.batches_imported, 0),
+                                                batches_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.batches_skipped, 0),
+                                                observations_imported: Object.values(data.per_file).reduce((sum, r) => sum + r.observations_imported, 0),
+                                                observations_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.observations_skipped, 0),
+                                                activities_imported: Object.values(data.per_file).reduce((sum, r) => sum + r.activities_imported, 0),
+                                                activities_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.activities_skipped, 0),
+                                                errors: data.total_errors,
+                                            };
+                                            setRestoreResult(combined);
+                                        },
+                                        onError: (err) => {
+                                            setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message });
+                                        },
+                                    }
+                                );
+                            }}
+                            disabled={restoreAllBackupsFn.isPending || !backupStatus?.all_backups?.length}
+                        >
+                            <Users className="h-4 w-4 mr-2" />
+                            {restoreAllBackupsFn.isPending ? "Restoring..." : "Restore All Team Backups"}
                         </Button>
                     </div>
 
+                    {/* Restore statistics */}
+                    {restoreResult && (
+                        <Alert className="border-green-500 text-green-600 bg-green-50">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <AlertTitle>Restore Complete</AlertTitle>
+                            <AlertDescription>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-xs">
+                                    <div>Memories imported: {restoreResult.observations_imported}</div>
+                                    <div>Memories skipped: {restoreResult.observations_skipped}</div>
+                                    <div>Sessions imported: {restoreResult.sessions_imported}</div>
+                                    <div>Sessions skipped: {restoreResult.sessions_skipped}</div>
+                                    <div>Batches imported: {restoreResult.batches_imported}</div>
+                                    <div>Batches skipped: {restoreResult.batches_skipped}</div>
+                                    {(restoreResult.activities_imported > 0 || restoreResult.activities_skipped > 0) && (
+                                        <>
+                                            <div>Activities imported: {restoreResult.activities_imported}</div>
+                                            <div>Activities skipped: {restoreResult.activities_skipped}</div>
+                                        </>
+                                    )}
+                                </div>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                     <p className="text-xs text-muted-foreground">
-                        Backups are saved to <code className="bg-muted px-1 rounded">oak/data/ci_history.sql</code> and can be committed to git.
+                        Backups are saved to <code className="bg-muted px-1 rounded">oak/data/ci_history_{'<machine>'}.sql</code> and can be committed to git.
+                        After restoring, click "Re-embed Memories to ChromaDB" above.
                     </p>
                 </CardContent>
             </Card>

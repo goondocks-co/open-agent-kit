@@ -18,11 +18,14 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     ActivityStore,
     StoredObservation,
 )
+from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    get_backup_filename,
+)
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_DATA_DIR,
     CI_HISTORY_BACKUP_DIR,
-    CI_HISTORY_BACKUP_FILE,
+    CI_HISTORY_BACKUP_FILE_PREFIX,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
@@ -114,7 +117,9 @@ class TestBackupStatus:
         assert response.status_code == 200
         data = response.json()
         assert data["backup_exists"] is False
-        assert "ci_history.sql" in data["backup_path"]
+        assert CI_HISTORY_BACKUP_FILE_PREFIX in data["backup_path"]
+        assert "machine_id" in data
+        assert "all_backups" in data
 
     def test_backup_status_backup_exists(self, client, temp_project: Path):
         """Test status when backup file exists."""
@@ -122,8 +127,9 @@ class TestBackupStatus:
         state.project_root = temp_project
         state.activity_store = MagicMock()
 
-        # Create a backup file
-        backup_path = temp_project / CI_HISTORY_BACKUP_DIR / CI_HISTORY_BACKUP_FILE
+        # Create a backup file with machine-specific filename
+        backup_filename = get_backup_filename()
+        backup_path = temp_project / CI_HISTORY_BACKUP_DIR / backup_filename
         backup_path.write_text("-- Test backup\nINSERT INTO sessions VALUES (1);")
 
         response = client.get("/api/backup/status")
@@ -133,6 +139,8 @@ class TestBackupStatus:
         assert data["backup_exists"] is True
         assert data["backup_size_bytes"] > 0
         assert data["last_modified"] is not None
+        assert "machine_id" in data
+        assert len(data["all_backups"]) >= 1
 
     def test_backup_status_project_not_initialized(self, client):
         """Test status when project root is not set."""
@@ -163,11 +171,13 @@ class TestBackupCreate:
         data = response.json()
         assert data["status"] == "completed"
         assert data["record_count"] >= 2  # session + observation
-        assert "ci_history.sql" in data["backup_path"]
+        assert CI_HISTORY_BACKUP_FILE_PREFIX in data["backup_path"]
+        assert "machine_id" in data
 
         # Verify file was created
         state = get_state()
-        backup_path = state.project_root / "oak" / "data" / "ci_history.sql"
+        backup_filename = get_backup_filename()
+        backup_path = state.project_root / "oak" / "data" / backup_filename
         assert backup_path.exists()
 
     def test_create_backup_with_activities(self, client, setup_state_with_activity_store):
@@ -197,7 +207,8 @@ class TestBackupCreate:
         assert data["status"] == "completed"
 
         # Verify activities are in the backup
-        backup_path = state.project_root / "oak" / "data" / "ci_history.sql"
+        backup_filename = get_backup_filename()
+        backup_path = state.project_root / "oak" / "data" / backup_filename
         content = backup_path.read_text()
         assert "INSERT INTO activities" in content
 
@@ -251,7 +262,12 @@ class TestBackupRestore:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "completed"
-        assert "ChromaDB will rebuild" in data["message"]
+        # New response format includes deduplication stats
+        assert "Restored" in data["message"] or "skipped" in data["message"]
+        assert "sessions_imported" in data
+        assert "sessions_skipped" in data
+        assert "observations_imported" in data
+        assert "observations_skipped" in data
 
     def test_restore_backup_file_not_found(self, client, setup_state_with_activity_store):
         """Test restore when backup file doesn't exist."""

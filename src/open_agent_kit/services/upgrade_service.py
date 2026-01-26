@@ -914,7 +914,8 @@ class UpgradeService:
                 logger.warning(f"Failed to read settings file {settings_file}: {e}")
                 return True
         elif agent == "copilot":
-            hooks_file = self.project_root / ".github" / "hooks" / "hooks.json"
+            # Copilot hooks are stored in oak-ci-hooks.json (not hooks.json)
+            hooks_file = self.project_root / ".github" / "hooks" / "oak-ci-hooks.json"
             if not hooks_file.exists():
                 return True
 

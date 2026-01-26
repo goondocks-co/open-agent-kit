@@ -31,6 +31,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v8_to_v9(conn)
     if from_version < 10:
         migrate_v9_to_v10(conn)
+    if from_version < 11:
+        migrate_v10_to_v11(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -411,3 +413,107 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
         # May fail if FTS already populated - that's OK
         logger.debug(f"FTS population note (may already be populated): {e}")
         logger.info("Migration v9->v10 complete: added indexes + FTS5")
+
+
+def migrate_v10_to_v11(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v10 to v11: Add content_hash for multi-machine deduplication.
+
+    Adds content_hash column to prompt_batches, memory_observations, and activities
+    tables. These hashes enable cross-machine deduplication when merging backups
+    from multiple developers.
+
+    Hash computation:
+    - prompt_batches: hash(session_id + prompt_number)
+    - memory_observations: hash(observation + memory_type + context)
+    - activities: hash(session_id + timestamp_epoch + tool_name)
+    """
+    import hashlib
+
+    logger.info("Migrating activity store schema v10 -> v11: Adding content_hash columns")
+
+    def compute_hash(*parts: str | int | None) -> str:
+        """Compute stable hash from parts."""
+        content = "|".join(str(p) if p is not None else "" for p in parts)
+        return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+    # Check which columns need to be added
+    tables_to_migrate = []
+
+    for table in ["prompt_batches", "memory_observations", "activities"]:
+        cursor = conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
+        columns = {row[1] for row in cursor.fetchall()}
+        if "content_hash" not in columns:
+            tables_to_migrate.append(table)
+
+    if not tables_to_migrate:
+        logger.info("content_hash columns already exist, skipping column creation")
+    else:
+        # Add content_hash columns
+        for table in tables_to_migrate:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN content_hash TEXT")  # noqa: S608
+                logger.debug(f"Added content_hash column to {table}")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Could not add content_hash to {table}: {e}")
+
+    # Backfill prompt_batches hashes
+    cursor = conn.execute(
+        "SELECT id, session_id, prompt_number FROM prompt_batches WHERE content_hash IS NULL"
+    )
+    batch_count = 0
+    for row in cursor.fetchall():
+        batch_id, session_id, prompt_number = row
+        hash_val = compute_hash(session_id, prompt_number)
+        conn.execute(
+            "UPDATE prompt_batches SET content_hash = ? WHERE id = ?",
+            (hash_val, batch_id),
+        )
+        batch_count += 1
+
+    # Backfill memory_observations hashes
+    cursor = conn.execute(
+        "SELECT id, observation, memory_type, context FROM memory_observations "
+        "WHERE content_hash IS NULL"
+    )
+    obs_count = 0
+    for row in cursor.fetchall():
+        obs_id, observation, memory_type, context = row
+        hash_val = compute_hash(observation, memory_type, context)
+        conn.execute(
+            "UPDATE memory_observations SET content_hash = ? WHERE id = ?",
+            (hash_val, obs_id),
+        )
+        obs_count += 1
+
+    # Backfill activities hashes
+    cursor = conn.execute(
+        "SELECT id, session_id, timestamp_epoch, tool_name FROM activities "
+        "WHERE content_hash IS NULL"
+    )
+    activity_count = 0
+    for row in cursor.fetchall():
+        activity_id, session_id, timestamp_epoch, tool_name = row
+        hash_val = compute_hash(session_id, timestamp_epoch, tool_name)
+        conn.execute(
+            "UPDATE activities SET content_hash = ? WHERE id = ?",
+            (hash_val, activity_id),
+        )
+        activity_count += 1
+
+    # Create indexes for hash lookups (idempotent)
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_prompt_batches_hash ON prompt_batches(content_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_hash ON memory_observations(content_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_activities_hash ON activities(content_hash)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning: {e}")
+
+    logger.info(
+        f"Migration v10->v11 complete: backfilled {batch_count} batch hashes, "
+        f"{obs_count} observation hashes, {activity_count} activity hashes"
+    )

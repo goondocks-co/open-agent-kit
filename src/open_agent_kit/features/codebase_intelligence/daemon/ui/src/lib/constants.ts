@@ -227,6 +227,7 @@ export const API_ENDPOINTS = {
     BACKUP_STATUS: "/api/backup/status",
     BACKUP_CREATE: "/api/backup/create",
     BACKUP_RESTORE: "/api/backup/restore",
+    BACKUP_RESTORE_ALL: "/api/backup/restore-all",
 } as const;
 
 /** Build session detail endpoint */

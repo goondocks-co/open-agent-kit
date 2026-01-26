@@ -11,7 +11,8 @@ Contains schema version and SQL for creating the database schema.
 # v8: Added composite indexes for common query patterns (performance optimization)
 # v9: Added title column to sessions (LLM-generated short session title)
 # v10: Added indexes for memory filtering (type, context, created_at) + FTS5 for search
-SCHEMA_VERSION = 10
+# v11: Added content_hash columns for multi-machine backup deduplication
+SCHEMA_VERSION = 11
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL,
     embedded BOOLEAN DEFAULT FALSE,  -- Has this been added to ChromaDB?
+    content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -41,6 +43,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
 -- Index for finding unembedded observations (for rebuilding ChromaDB)
 CREATE INDEX IF NOT EXISTS idx_memory_observations_embedded ON memory_observations(embedded);
 CREATE INDEX IF NOT EXISTS idx_memory_observations_session ON memory_observations(session_id);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_hash ON memory_observations(content_hash);
 
 -- Indexes for memory filtering and browsing (v10)
 CREATE INDEX IF NOT EXISTS idx_memory_observations_type ON memory_observations(memory_type);
@@ -103,6 +106,7 @@ CREATE TABLE IF NOT EXISTS prompt_batches (
     plan_content TEXT,  -- Full plan content (stored for self-contained CI)
     plan_embedded INTEGER DEFAULT 0,  -- Has plan been indexed in ChromaDB? (v7)
     created_at_epoch INTEGER NOT NULL,
+    content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 
@@ -123,6 +127,7 @@ CREATE TABLE IF NOT EXISTS activities (
     timestamp_epoch INTEGER NOT NULL,
     processed BOOLEAN DEFAULT FALSE,  -- Has this activity been processed?
     observation_id TEXT,  -- Link to extracted observation (if any)
+    content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -137,6 +142,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_processed ON sessions(processed);
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_session ON prompt_batches(session_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_processed ON prompt_batches(processed);
+CREATE INDEX IF NOT EXISTS idx_prompt_batches_hash ON prompt_batches(content_hash);
+CREATE INDEX IF NOT EXISTS idx_activities_hash ON activities(content_hash);
 
 -- FTS5 virtual table for full-text search across activities
 CREATE VIRTUAL TABLE IF NOT EXISTS activities_fts USING fts5(

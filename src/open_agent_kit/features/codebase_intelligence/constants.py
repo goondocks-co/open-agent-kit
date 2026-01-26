@@ -185,7 +185,13 @@ SESSION_INACTIVE_TIMEOUT_SECONDS: Final[int] = 3600
 
 # Backup file location (in preserved oak/ directory, committed to git)
 CI_HISTORY_BACKUP_DIR: Final[str] = "oak/data"
-CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"
+CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"  # Legacy single-file backup
+
+# Multi-machine backup file pattern
+# Format: ci_history_{hostname}_{username}.sql
+CI_HISTORY_BACKUP_FILE_PATTERN: Final[str] = "ci_history_*.sql"
+CI_HISTORY_BACKUP_FILE_PREFIX: Final[str] = "ci_history_"
+CI_HISTORY_BACKUP_FILE_SUFFIX: Final[str] = ".sql"
 
 # =============================================================================
 # Logging

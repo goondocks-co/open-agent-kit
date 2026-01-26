@@ -450,6 +450,97 @@ class ActivityStore:
         """Import data from SQL backup into existing database."""
         return backup.import_from_sql(self, backup_path)
 
+    def import_from_sql_with_dedup(
+        self, backup_path: Path, dry_run: bool = False
+    ) -> backup.ImportResult:
+        """Import data from SQL backup with deduplication."""
+        return backup.import_from_sql_with_dedup(self, backup_path, dry_run)
+
+    def restore_all_backups(
+        self, backup_dir: Path, dry_run: bool = False
+    ) -> dict[str, backup.ImportResult]:
+        """Restore from all backup files in directory."""
+        return backup.restore_all_backups(self, backup_dir, dry_run)
+
+    # ==========================================================================
+    # Hash retrieval for deduplication
+    # ==========================================================================
+
+    def get_all_session_ids(self) -> set[str]:
+        """Get all session IDs for dedup checking during import."""
+        conn = self._get_connection()
+        cursor = conn.execute("SELECT id FROM sessions")
+        return {row[0] for row in cursor.fetchall()}
+
+    def get_all_prompt_batch_hashes(self) -> set[str]:
+        """Get all prompt_batch content_hash values for dedup checking.
+
+        Falls back to computing hashes if content_hash column is empty.
+        """
+        conn = self._get_connection()
+
+        # First try to get existing hashes
+        cursor = conn.execute(
+            "SELECT content_hash FROM prompt_batches WHERE content_hash IS NOT NULL"
+        )
+        hashes = {row[0] for row in cursor.fetchall()}
+
+        # For records without hashes, compute them
+        cursor = conn.execute(
+            "SELECT session_id, prompt_number FROM prompt_batches WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            computed_hash = backup.compute_prompt_batch_hash(str(row[0]), int(row[1]))
+            hashes.add(computed_hash)
+
+        return hashes
+
+    def get_all_observation_hashes(self) -> set[str]:
+        """Get all memory_observation content_hash values for dedup checking.
+
+        Falls back to computing hashes if content_hash column is empty.
+        """
+        conn = self._get_connection()
+
+        # First try to get existing hashes
+        cursor = conn.execute(
+            "SELECT content_hash FROM memory_observations WHERE content_hash IS NOT NULL"
+        )
+        hashes = {row[0] for row in cursor.fetchall()}
+
+        # For records without hashes, compute them
+        cursor = conn.execute(
+            "SELECT observation, memory_type, context FROM memory_observations "
+            "WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            computed_hash = backup.compute_observation_hash(str(row[0]), str(row[1]), row[2])
+            hashes.add(computed_hash)
+
+        return hashes
+
+    def get_all_activity_hashes(self) -> set[str]:
+        """Get all activity content_hash values for dedup checking.
+
+        Falls back to computing hashes if content_hash column is empty.
+        """
+        conn = self._get_connection()
+
+        # First try to get existing hashes
+        cursor = conn.execute("SELECT content_hash FROM activities WHERE content_hash IS NOT NULL")
+        hashes = {row[0] for row in cursor.fetchall()}
+
+        # For records without hashes, compute them
+        cursor = conn.execute(
+            "SELECT session_id, timestamp_epoch, tool_name FROM activities "
+            "WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            computed_hash = backup.compute_activity_hash(str(row[0]), int(row[1]), str(row[2]))
+            hashes.add(computed_hash)
+
+        return hashes
+
     # ==========================================================================
     # Delete operations - delegate to delete module
     # ==========================================================================
