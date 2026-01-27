@@ -153,6 +153,8 @@ class SessionInfo:
     files_created: set[str] = field(default_factory=set)
     files_read: set[str] = field(default_factory=set)
     commands_run: list[str] = field(default_factory=list)
+    memory_injection_batch_id: int | None = None
+    memory_injection_files: set[str] = field(default_factory=set)
 
     def record_tool_call(self) -> None:
         """Record a tool call in this session."""
@@ -201,6 +203,18 @@ class SessionInfo:
         )
         if len(self.tool_executions) > 50:
             self.tool_executions = self.tool_executions[-50:]
+
+    def should_inject_file_memory(self, prompt_batch_id: int | None, file_path: str) -> bool:
+        """Check if file memory should be injected for current prompt batch."""
+        if prompt_batch_id != self.memory_injection_batch_id:
+            self.memory_injection_batch_id = prompt_batch_id
+            self.memory_injection_files = set()
+
+        if file_path in self.memory_injection_files:
+            return False
+
+        self.memory_injection_files.add(file_path)
+        return True
 
     def add_observation(self, observation_id: str) -> None:
         """Add an observation ID to this session.

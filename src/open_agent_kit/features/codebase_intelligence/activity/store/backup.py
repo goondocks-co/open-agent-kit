@@ -201,6 +201,15 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
     Each record includes a content_hash for cross-machine deduplication,
     allowing multiple developers' backups to be merged without duplicates.
 
+    Origin Tracking: Only exports records that originated on this machine
+    (source_machine_id matches current machine). This prevents backup file
+    bloat when team members import each other's backups - each developer's
+    backup only contains their own original work, not imported data.
+
+    FK Integrity: Only exports records with valid foreign key references.
+    Orphaned records (e.g., prompt_batches referencing deleted sessions)
+    are skipped to ensure the backup can be cleanly restored.
+
     Args:
         store: The ActivityStore instance.
         output_path: Path to write SQL dump file.
@@ -217,11 +226,44 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
 
     conn = store._get_connection()
     total_count = 0
+    skipped_orphans = 0
+    skipped_foreign = 0
 
     # Tables to export (order matters for foreign keys)
     tables = ["sessions", "prompt_batches", "memory_observations"]
     if include_activities:
         tables.append("activities")
+
+    # Build set of valid session IDs for FK validation
+    # Only include sessions that originated on this machine (will be exported)
+    valid_session_ids = {
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM sessions WHERE source_machine_id = ?",
+            (machine_id,),
+        ).fetchall()
+    }
+
+    # Build set of valid prompt_batch IDs for FK validation
+    # Only include batches that originated on this machine (will be exported)
+    valid_batch_ids = {
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM prompt_batches WHERE source_machine_id = ?",
+            (machine_id,),
+        ).fetchall()
+    }
+
+    # Count records from other machines (imported data that won't be re-exported)
+    for table in tables:
+        cursor = conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE source_machine_id != ?",  # noqa: S608
+            (machine_id,),
+        )
+        count = cursor.fetchone()[0]
+        if count > 0:
+            skipped_foreign += count
+            logger.debug(f"Excluding {count} {table} records imported from other machines")
 
     # Generate INSERT statements
     lines: list[str] = []
@@ -232,15 +274,48 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
     lines.append("")
 
     for table in tables:
-        cursor = conn.execute(f"SELECT * FROM {table}")  # noqa: S608 - trusted table names
+        # Only export records that originated on this machine (origin tracking)
+        # This prevents backup file bloat when importing from other team members
+        cursor = conn.execute(
+            f"SELECT * FROM {table} WHERE source_machine_id = ?",  # noqa: S608
+            (machine_id,),
+        )
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
 
         if rows:
-            lines.append(f"-- {table} ({len(rows)} records)")
+            table_exported = 0
+            table_skipped = 0
+            table_lines: list[str] = []
+
             for row in rows:
-                # Build row dict for hash computation
+                # Build row dict for hash computation and FK validation
                 row_dict = dict(zip(columns, row, strict=False))
+
+                # FK validation - skip orphaned records
+                if table == "prompt_batches":
+                    session_id = row_dict.get("session_id")
+                    if session_id and session_id not in valid_session_ids:
+                        table_skipped += 1
+                        continue
+                elif table == "memory_observations":
+                    session_id = row_dict.get("session_id")
+                    batch_id = row_dict.get("prompt_batch_id")
+                    if session_id and session_id not in valid_session_ids:
+                        table_skipped += 1
+                        continue
+                    if batch_id is not None and batch_id not in valid_batch_ids:
+                        table_skipped += 1
+                        continue
+                elif table == "activities":
+                    session_id = row_dict.get("session_id")
+                    batch_id = row_dict.get("prompt_batch_id")
+                    if session_id and session_id not in valid_session_ids:
+                        table_skipped += 1
+                        continue
+                    if batch_id is not None and batch_id not in valid_batch_ids:
+                        table_skipped += 1
+                        continue
 
                 # Compute content hash if not already present
                 content_hash = row_dict.get("content_hash")
@@ -266,10 +341,22 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
 
                 cols_str = ", ".join(columns)
                 vals_str = ", ".join(values)
-                lines.append(f"INSERT INTO {table} ({cols_str}) VALUES ({vals_str});")
+                table_lines.append(f"INSERT INTO {table} ({cols_str}) VALUES ({vals_str});")
+                table_exported += 1
 
-            total_count += len(rows)
-            lines.append("")
+            # Write table header and records
+            if table_exported > 0:
+                lines.append(f"-- {table} ({table_exported} records)")
+                lines.extend(table_lines)
+                lines.append("")
+
+            total_count += table_exported
+            skipped_orphans += table_skipped
+
+            if table_skipped > 0:
+                logger.warning(
+                    f"Skipped {table_skipped} orphaned {table} records with invalid FK references"
+                )
 
         logger.debug(f"Exported {len(rows)} records from {table}")
 
@@ -277,7 +364,20 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
-    logger.info(f"Export complete: {total_count} records to {output_path}")
+    # Log completion with details about skipped records
+    skip_details = []
+    if skipped_orphans > 0:
+        skip_details.append(f"{skipped_orphans} orphaned")
+    if skipped_foreign > 0:
+        skip_details.append(f"{skipped_foreign} from other machines")
+
+    if skip_details:
+        logger.info(
+            f"Export complete: {total_count} records to {output_path} "
+            f"(skipped: {', '.join(skip_details)})"
+        )
+    else:
+        logger.info(f"Export complete: {total_count} records to {output_path}")
     return total_count
 
 
@@ -362,6 +462,10 @@ def import_from_sql_with_dedup(
     - Observations: deduplicated by content_hash (observation + type + context)
     - Activities: deduplicated by content_hash (session_id + timestamp + tool_name)
 
+    Foreign key handling:
+    - prompt_batches: id column removed (auto-generated by SQLite)
+    - activities: id column removed, prompt_batch_id remapped to new IDs
+
     Args:
         store: The ActivityStore instance.
         backup_path: Path to SQL backup file.
@@ -404,7 +508,7 @@ def import_from_sql_with_dedup(
         f"{len(existing_activity_hashes)} activities"
     )
 
-    # Parse INSERT statements
+    # Parse INSERT statements - use proper SQL statement extraction for multi-line values
     statements_by_table: dict[str, list[tuple[str, dict]]] = {
         "sessions": [],
         "prompt_batches": [],
@@ -412,13 +516,13 @@ def import_from_sql_with_dedup(
         "activities": [],
     }
 
-    for line in lines:
-        stripped = line.strip()
-        if not stripped.startswith("INSERT INTO"):
-            continue
+    # Extract complete SQL statements (handles multi-line INSERT with newlines in values)
+    sql_statements = _extract_sql_statements(content)
+    logger.debug(f"Extracted {len(sql_statements)} SQL statements from backup")
 
-        # Extract table name and parse values
-        table_match = re.match(r"INSERT INTO (\w+)", stripped)
+    for stmt in sql_statements:
+        # Extract table name
+        table_match = re.match(r"INSERT INTO (\w+)", stmt)
         if not table_match:
             continue
         table = table_match.group(1)
@@ -427,19 +531,72 @@ def import_from_sql_with_dedup(
             continue
 
         # Parse column names and values
-        parsed = _parse_insert_statement(stripped)
+        parsed = _parse_insert_statement(stmt)
         if parsed:
-            statements_by_table[table].append((stripped, parsed))
+            statements_by_table[table].append((stmt, parsed))
 
     # Process each table in order (sessions first due to foreign keys)
     conn = store._get_connection()
 
+    # Get valid columns for each table (for schema compatibility filtering)
+    table_columns: dict[str, set[str]] = {}
+    for table in statements_by_table:
+        table_columns[table] = _get_table_columns(conn, table)
+    logger.debug(f"Schema columns loaded for tables: {list(table_columns.keys())}")
+
+    # Track old prompt_batch_id -> (session_id, prompt_number) from backup file
+    # This is needed to remap activities' prompt_batch_id foreign keys
+    old_batch_id_to_key: dict[int, tuple[str, int]] = {}
+    for _stmt, row_dict in statements_by_table["prompt_batches"]:
+        old_id = row_dict.get("id")
+        session_id = row_dict.get("session_id")
+        prompt_number = row_dict.get("prompt_number")
+        if old_id is not None and session_id and prompt_number is not None:
+            old_batch_id_to_key[int(old_id)] = (str(session_id), int(prompt_number))
+
+    logger.debug(f"Tracked {len(old_batch_id_to_key)} old prompt_batch_id -> key mappings")
+
+    # Initialize the batch ID mapping (built after prompt_batches import)
+    old_to_new_batch_id: dict[int, int] = {}
+
+    # Track imported session IDs for parent validation
+    imported_session_ids: set[str] = set()
+
+    # Track columns removed during filtering (for summary logging)
+    all_removed_columns: dict[str, set[str]] = {t: set() for t in statements_by_table}
+
     for table in ["sessions", "prompt_batches", "memory_observations", "activities"]:
+        # After importing sessions, validate parent_session_id references
+        if table == "prompt_batches" and not dry_run and imported_session_ids:
+            _validate_parent_session_ids(conn, imported_session_ids)
+
+        # After importing prompt_batches, build the ID mapping and remap self-references
+        if table == "memory_observations" and not dry_run:
+            # Build mapping from (session_id, prompt_number) -> new_prompt_batch_id
+            new_key_to_batch_id = _build_prompt_batch_id_map(conn)
+            # Combine: old_batch_id -> key -> new_batch_id
+            for old_id, key in old_batch_id_to_key.items():
+                if key in new_key_to_batch_id:
+                    old_to_new_batch_id[old_id] = new_key_to_batch_id[key]
+            logger.debug(
+                f"Built prompt_batch_id remap: {len(old_to_new_batch_id)} mappings "
+                f"(from {len(old_batch_id_to_key)} old IDs)"
+            )
+
+            # Remap source_plan_batch_id self-references in prompt_batches
+            _remap_source_plan_batch_id(conn, old_to_new_batch_id)
+
         for stmt, row_dict in statements_by_table[table]:
             try:
+                # Filter columns for schema compatibility (handles newer backups)
+                filtered_stmt, filtered_row_dict, removed_cols = _filter_columns_for_schema(
+                    stmt, row_dict, table_columns[table]
+                )
+                all_removed_columns[table].update(removed_cols)
+
                 should_skip, reason = _should_skip_record(
                     table,
-                    row_dict,
+                    filtered_row_dict,
                     existing_session_ids,
                     existing_batch_hashes,
                     existing_obs_hashes,
@@ -453,13 +610,26 @@ def import_from_sql_with_dedup(
 
                 if not dry_run:
                     # Modify statement for proper import
-                    modified_stmt = _prepare_statement_for_import(stmt, table)
+                    modified_stmt = _prepare_statement_for_import(filtered_stmt, table)
+
+                    # For memory_observations and activities, remap prompt_batch_id to new ID
+                    if table in ("memory_observations", "activities"):
+                        modified_stmt = _remap_prompt_batch_id(
+                            modified_stmt, filtered_row_dict, old_to_new_batch_id
+                        )
+
                     conn.execute(modified_stmt)
+
+                    # Track imported session IDs for parent validation
+                    if table == "sessions":
+                        session_id = filtered_row_dict.get("id")
+                        if session_id:
+                            imported_session_ids.add(str(session_id))
 
                     # Update existing sets to avoid duplicates within same import
                     _update_existing_sets(
                         table,
-                        row_dict,
+                        filtered_row_dict,
                         existing_session_ids,
                         existing_batch_hashes,
                         existing_obs_hashes,
@@ -472,16 +642,88 @@ def import_from_sql_with_dedup(
                 result.errors += 1
                 error_msg = f"Error importing {table} record: {e}"
                 result.error_messages.append(error_msg)
-                logger.debug(error_msg)
+                logger.warning(error_msg)
 
     if not dry_run:
         conn.commit()
+
+    # Log summary of filtered columns (schema compatibility)
+    for table, removed in all_removed_columns.items():
+        if removed:
+            logger.info(
+                f"Schema compatibility: filtered {len(removed)} unknown columns "
+                f"from {table}: {sorted(removed)}"
+            )
 
     logger.info(
         f"Import complete: {result.total_imported} imported, "
         f"{result.total_skipped} skipped (duplicates), {result.errors} errors"
     )
     return result
+
+
+def _extract_sql_statements(content: str) -> list[str]:
+    """Extract complete SQL INSERT statements from backup content.
+
+    Handles multi-line statements where values contain newlines.
+    A statement ends with ');' not inside a quoted string.
+
+    Args:
+        content: Full backup file content.
+
+    Returns:
+        List of complete INSERT statements.
+    """
+    statements = []
+    current_stmt = ""
+    in_string = False
+    in_comment = False
+    i = 0
+
+    while i < len(content):
+        char = content[i]
+
+        # Handle SQL comments (-- to end of line)
+        if not in_string and not in_comment and char == "-":
+            if i + 1 < len(content) and content[i + 1] == "-":
+                in_comment = True
+                i += 2
+                continue
+
+        # End of comment at newline
+        if in_comment:
+            if char == "\n":
+                in_comment = False
+            i += 1
+            continue
+
+        # Skip whitespace/newlines when not in a statement
+        if not current_stmt and char in " \t\n\r":
+            i += 1
+            continue
+
+        current_stmt += char
+
+        if char == "'" and not in_string:
+            in_string = True
+        elif char == "'" and in_string:
+            # Check for escaped quote ''
+            if i + 1 < len(content) and content[i + 1] == "'":
+                # Escaped quote - add it and skip next char
+                current_stmt += content[i + 1]
+                i += 1
+            else:
+                in_string = False
+        elif char == ";" and not in_string:
+            # Statement complete
+            stmt = current_stmt.strip()
+            if stmt.startswith("INSERT INTO"):
+                statements.append(stmt)
+            current_stmt = ""
+
+        i += 1
+
+    return statements
 
 
 def _parse_insert_statement(stmt: str) -> dict | None:
@@ -684,7 +926,12 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
     """Modify INSERT statement for proper import.
 
     For memory_observations, marks embedded=0 to trigger ChromaDB rebuild.
-    For prompt_batches, marks plan_embedded=0 for re-indexing.
+    For prompt_batches, marks plan_embedded=0 for re-indexing and removes id column.
+    For activities, removes id column to avoid PRIMARY KEY conflicts.
+
+    The id column is removed for prompt_batches and activities because these use
+    auto-increment INTEGER PRIMARY KEY, which would conflict when importing from
+    different machines that have overlapping id sequences.
 
     Args:
         stmt: Original INSERT statement.
@@ -696,8 +943,126 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
     if table == "memory_observations":
         return _replace_column_value(stmt, "embedded", "0")
     elif table == "prompt_batches":
-        return _replace_column_value(stmt, "plan_embedded", "0")
+        # Remove id column to let SQLite auto-generate, and mark unembedded
+        stmt = _remove_column_from_insert(stmt, "id")
+        stmt = _replace_column_value(stmt, "plan_embedded", "0")
+        return stmt
+    elif table == "activities":
+        # Remove id column to let SQLite auto-generate
+        return _remove_column_from_insert(stmt, "id")
     return stmt
+
+
+def _build_prompt_batch_id_map(conn: sqlite3.Connection) -> dict[tuple[str, int], int]:
+    """Build mapping from (session_id, prompt_number) to prompt_batch id.
+
+    Used to remap activities' prompt_batch_id foreign keys after importing
+    prompt_batches with auto-generated IDs.
+
+    Args:
+        conn: SQLite connection.
+
+    Returns:
+        Dictionary mapping (session_id, prompt_number) tuples to prompt_batch id.
+    """
+    cursor = conn.execute("SELECT id, session_id, prompt_number FROM prompt_batches")
+    return {(row[1], row[2]): row[0] for row in cursor.fetchall()}
+
+
+def _remap_prompt_batch_id(
+    stmt: str,
+    row_dict: dict,
+    old_to_new_batch_id: dict[int, int],
+) -> str:
+    """Remap prompt_batch_id to the correct new ID.
+
+    After prompt_batches are imported with auto-generated IDs, activities
+    and memory_observations still reference the OLD prompt_batch_id from
+    the source machine. This function looks up the correct new ID using
+    the pre-computed mapping.
+
+    Args:
+        stmt: The INSERT statement for the record.
+        row_dict: Parsed row data from the record.
+        old_to_new_batch_id: Mapping from old prompt_batch_id to new id.
+
+    Returns:
+        Modified statement with corrected prompt_batch_id, or original if lookup fails.
+    """
+    old_batch_id = row_dict.get("prompt_batch_id")
+    if old_batch_id is None:
+        return stmt
+
+    old_batch_id_int = int(old_batch_id)
+    new_batch_id = old_to_new_batch_id.get(old_batch_id_int)
+
+    if new_batch_id is None:
+        logger.warning(
+            f"No mapping found for old prompt_batch_id {old_batch_id}, "
+            f"activity may reference wrong batch"
+        )
+        return stmt
+
+    logger.debug(f"Remapped activity prompt_batch_id: {old_batch_id} -> {new_batch_id}")
+    return _replace_column_value(stmt, "prompt_batch_id", str(new_batch_id))
+
+
+def _remove_column_from_insert(stmt: str, column_name: str) -> str:
+    """Remove a column and its value from an INSERT statement.
+
+    Used to strip auto-increment id columns so SQLite generates new IDs,
+    avoiding PRIMARY KEY conflicts when importing from different machines.
+
+    Args:
+        stmt: INSERT INTO table (cols) VALUES (vals); statement.
+        column_name: Name of the column to remove.
+
+    Returns:
+        Modified statement without the column.
+    """
+    # Parse column list
+    cols_match = re.search(r"\(([^)]+)\)\s*VALUES\s*\(", stmt, re.IGNORECASE)
+    if not cols_match:
+        return stmt
+
+    cols_str = cols_match.group(1)
+    columns = [c.strip() for c in cols_str.split(",")]
+
+    # Find target column index
+    try:
+        col_idx = columns.index(column_name)
+    except ValueError:
+        return stmt  # Column not in statement
+
+    # Find VALUES section
+    values_start = stmt.upper().find("VALUES")
+    if values_start == -1:
+        return stmt
+
+    # Find the opening paren after VALUES
+    paren_start = stmt.find("(", values_start)
+    if paren_start == -1:
+        return stmt
+
+    # Parse values as raw SQL strings (handling quoted strings with commas)
+    values_section = stmt[paren_start + 1 :]
+    values = _parse_sql_values_as_strings(values_section.rstrip(");"))
+
+    if col_idx >= len(values):
+        return stmt
+
+    # Remove the column and value
+    new_columns = columns[:col_idx] + columns[col_idx + 1 :]
+    new_values = values[:col_idx] + values[col_idx + 1 :]
+
+    # Get table name
+    table_match = re.match(r"INSERT INTO (\w+)", stmt)
+    if not table_match:
+        return stmt
+    table_name = table_match.group(1)
+
+    # Rebuild the statement
+    return f"INSERT INTO {table_name} ({', '.join(new_columns)}) VALUES ({', '.join(new_values)});"
 
 
 def _replace_column_value(stmt: str, column_name: str, new_value: str) -> str:
@@ -822,6 +1187,192 @@ def _increment_skipped(result: ImportResult, table: str) -> None:
         result.observations_skipped += 1
     elif table == "activities":
         result.activities_skipped += 1
+
+
+# =============================================================================
+# Schema-Aware Import Functions (for forward/backward compatibility)
+# =============================================================================
+
+
+def _get_table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Get column names for a table from the current schema.
+
+    Args:
+        conn: SQLite connection.
+        table: Table name.
+
+    Returns:
+        Set of column names in the table.
+    """
+    cursor = conn.execute(f"PRAGMA table_info({table})")  # noqa: S608 - trusted table name
+    return {row[1] for row in cursor.fetchall()}
+
+
+def _filter_columns_for_schema(
+    stmt: str,
+    row_dict: dict,
+    valid_columns: set[str],
+) -> tuple[str, dict, list[str]]:
+    """Filter INSERT statement to only include columns in current schema.
+
+    This enables importing backups from newer schema versions by stripping
+    columns that don't exist in the current schema.
+
+    Args:
+        stmt: Original INSERT statement.
+        row_dict: Parsed row data.
+        valid_columns: Set of valid column names from current schema.
+
+    Returns:
+        Tuple of (filtered_stmt, filtered_row_dict, removed_columns).
+    """
+    # Parse the statement to get columns and values
+    cols_match = re.search(r"INSERT INTO (\w+) \(([^)]+)\) VALUES \(", stmt, re.IGNORECASE)
+    if not cols_match:
+        return stmt, row_dict, []
+
+    table_name = cols_match.group(1)
+    cols_str = cols_match.group(2)
+    columns = [c.strip() for c in cols_str.split(",")]
+
+    # Find columns to remove
+    removed_columns = [c for c in columns if c not in valid_columns]
+    if not removed_columns:
+        return stmt, row_dict, []
+
+    # Parse values
+    values_start = stmt.upper().find("VALUES")
+    paren_start = stmt.find("(", values_start)
+    values_section = stmt[paren_start + 1 :].rstrip(");")
+    values = _parse_sql_values_as_strings(values_section)
+
+    if len(values) != len(columns):
+        logger.warning(f"Column/value count mismatch, skipping column filter for {table_name}")
+        return stmt, row_dict, []
+
+    # Build filtered columns and values
+    filtered_columns = []
+    filtered_values = []
+    filtered_row_dict = {}
+
+    for col, val in zip(columns, values, strict=False):
+        if col in valid_columns:
+            filtered_columns.append(col)
+            filtered_values.append(val)
+            if col in row_dict:
+                filtered_row_dict[col] = row_dict[col]
+
+    # Rebuild statement
+    filtered_stmt = (
+        f"INSERT INTO {table_name} ({', '.join(filtered_columns)}) "
+        f"VALUES ({', '.join(filtered_values)});"
+    )
+
+    logger.debug(
+        f"Filtered {len(removed_columns)} unknown columns from {table_name}: {removed_columns}"
+    )
+    return filtered_stmt, filtered_row_dict, removed_columns
+
+
+def _remap_source_plan_batch_id(
+    conn: sqlite3.Connection,
+    old_to_new_batch_id: dict[int, int],
+) -> int:
+    """Remap source_plan_batch_id FKs in prompt_batches after import.
+
+    Since prompt_batches.id is auto-generated during import, any
+    source_plan_batch_id values reference old IDs that no longer exist.
+    This function updates them to point to the correct new IDs.
+
+    Args:
+        conn: SQLite connection.
+        old_to_new_batch_id: Mapping from old prompt_batch_id to new id.
+
+    Returns:
+        Number of records updated.
+    """
+    if not old_to_new_batch_id:
+        return 0
+
+    # Find all prompt_batches with source_plan_batch_id set
+    cursor = conn.execute(
+        "SELECT id, source_plan_batch_id FROM prompt_batches WHERE source_plan_batch_id IS NOT NULL"
+    )
+    rows = cursor.fetchall()
+
+    updated = 0
+    for batch_id, old_source_id in rows:
+        new_source_id = old_to_new_batch_id.get(old_source_id)
+        if new_source_id is not None and new_source_id != old_source_id:
+            conn.execute(
+                "UPDATE prompt_batches SET source_plan_batch_id = ? WHERE id = ?",
+                (new_source_id, batch_id),
+            )
+            updated += 1
+            logger.debug(
+                f"Remapped prompt_batch {batch_id} source_plan_batch_id: "
+                f"{old_source_id} -> {new_source_id}"
+            )
+        elif new_source_id is None and old_source_id not in old_to_new_batch_id:
+            # Old source batch wasn't imported - set to NULL to avoid FK violation
+            conn.execute(
+                "UPDATE prompt_batches SET source_plan_batch_id = NULL WHERE id = ?",
+                (batch_id,),
+            )
+            logger.warning(
+                f"prompt_batch {batch_id} references unknown source_plan_batch_id "
+                f"{old_source_id}, setting to NULL"
+            )
+            updated += 1
+
+    if updated > 0:
+        logger.info(f"Remapped {updated} source_plan_batch_id references")
+    return updated
+
+
+def _validate_parent_session_ids(
+    conn: sqlite3.Connection,
+    imported_session_ids: set[str],
+) -> int:
+    """Validate parent_session_id references after session import.
+
+    Sets parent_session_id to NULL for sessions that reference
+    parent sessions not included in the import or existing data.
+
+    Args:
+        conn: SQLite connection.
+        imported_session_ids: Set of session IDs that were imported.
+
+    Returns:
+        Number of orphaned references fixed.
+    """
+    # Get all existing session IDs (includes both imported and pre-existing)
+    cursor = conn.execute("SELECT id FROM sessions")
+    all_session_ids = {row[0] for row in cursor.fetchall()}
+
+    # Find sessions with orphaned parent references
+    cursor = conn.execute(
+        "SELECT id, parent_session_id FROM sessions WHERE parent_session_id IS NOT NULL"
+    )
+    rows = cursor.fetchall()
+
+    fixed = 0
+    for session_id, parent_id in rows:
+        if parent_id not in all_session_ids:
+            conn.execute(
+                "UPDATE sessions SET parent_session_id = NULL, parent_session_reason = NULL "
+                "WHERE id = ?",
+                (session_id,),
+            )
+            logger.warning(
+                f"Session {session_id} references non-existent parent {parent_id}, "
+                f"unlinking (parent may not have been included in backup)"
+            )
+            fixed += 1
+
+    if fixed > 0:
+        logger.info(f"Fixed {fixed} orphaned parent_session_id references")
+    return fixed
 
 
 def restore_all_backups(

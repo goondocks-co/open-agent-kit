@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
-import { API_ENDPOINTS } from "@/lib/constants";
+import { API_ENDPOINTS, DEFAULT_PLAN_SORT } from "@/lib/constants";
+import type { PlanSortOption } from "@/lib/constants";
 
 export interface PlanListItem {
     id: number;
@@ -23,17 +24,19 @@ export interface UsePlansOptions {
     limit?: number;
     offset?: number;
     sessionId?: string;
+    sort?: PlanSortOption;
 }
 
 export function usePlans(options: UsePlansOptions = {}) {
-    const { limit = 20, offset = 0, sessionId } = options;
+    const { limit = 20, offset = 0, sessionId, sort = DEFAULT_PLAN_SORT } = options;
 
     return useQuery<PlansListResponse>({
-        queryKey: ["plans", limit, offset, sessionId],
+        queryKey: ["plans", limit, offset, sessionId, sort],
         queryFn: () => {
             const params = new URLSearchParams({
                 limit: String(limit),
                 offset: String(offset),
+                sort,
             });
             if (sessionId) {
                 params.set("session_id", sessionId);

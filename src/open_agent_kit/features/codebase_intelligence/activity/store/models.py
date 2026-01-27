@@ -28,6 +28,7 @@ class Activity:
     timestamp: datetime = field(default_factory=datetime.now)
     processed: bool = False
     observation_id: str | None = None
+    source_machine_id: str | None = None  # Machine that originated this record (v13)
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
@@ -48,6 +49,7 @@ class Activity:
             "timestamp_epoch": int(self.timestamp.timestamp()),
             "processed": self.processed,
             "observation_id": self.observation_id,
+            "source_machine_id": self.source_machine_id,
         }
 
     @classmethod
@@ -68,6 +70,9 @@ class Activity:
             timestamp=datetime.fromisoformat(row["timestamp"]),
             processed=bool(row["processed"]),
             observation_id=row["observation_id"],
+            source_machine_id=(
+                row["source_machine_id"] if "source_machine_id" in row.keys() else None
+            ),
         )
 
 
@@ -82,6 +87,7 @@ class PromptBatch:
     - agent_notification: Background agent completions (preserve but skip memory extraction)
     - plan: Plan mode activities (extract plan as decision memory)
     - system: System messages (skip memory extraction)
+    - derived_plan: Plan synthesized from TaskCreate activities
     """
 
     id: int | None = None
@@ -94,10 +100,12 @@ class PromptBatch:
     activity_count: int = 0
     processed: bool = False
     classification: str | None = None  # exploration, implementation, debugging, refactoring
-    source_type: str = "user"  # user, agent_notification, plan, system
+    source_type: str = "user"  # user, agent_notification, plan, system, derived_plan
     plan_file_path: str | None = None  # Path to plan file (for source_type='plan')
     plan_content: str | None = None  # Full plan content (stored for self-contained CI)
     plan_embedded: bool = False  # Has plan been indexed in ChromaDB?
+    source_plan_batch_id: int | None = None  # Link to plan batch being implemented (v12)
+    source_machine_id: str | None = None  # Machine that originated this record (v13)
 
     # Maximum prompt length to store (10K chars should capture most prompts)
     MAX_PROMPT_LENGTH = 10000
@@ -122,17 +130,20 @@ class PromptBatch:
                 self.plan_content[: self.MAX_PLAN_CONTENT_LENGTH] if self.plan_content else None
             ),
             "created_at_epoch": int(self.started_at.timestamp()),
+            "source_plan_batch_id": self.source_plan_batch_id,
+            "source_machine_id": self.source_machine_id,
         }
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "PromptBatch":
         """Create from database row."""
         # Handle migration: older rows may not have source_type, plan_file_path, plan_content,
-        # or plan_embedded
+        # plan_embedded, or source_plan_batch_id
         source_type = "user"
         plan_file_path = None
         plan_content = None
         plan_embedded = False
+        source_plan_batch_id = None
         try:
             source_type = row["source_type"] or "user"
         except (KeyError, IndexError):
@@ -147,6 +158,16 @@ class PromptBatch:
             pass
         try:
             plan_embedded = bool(row["plan_embedded"])
+        except (KeyError, IndexError):
+            pass
+        try:
+            source_plan_batch_id = row["source_plan_batch_id"]
+        except (KeyError, IndexError):
+            pass
+
+        source_machine_id = None
+        try:
+            source_machine_id = row["source_machine_id"]
         except (KeyError, IndexError):
             pass
 
@@ -165,6 +186,8 @@ class PromptBatch:
             plan_file_path=plan_file_path,
             plan_content=plan_content,
             plan_embedded=plan_embedded,
+            source_plan_batch_id=source_plan_batch_id,
+            source_machine_id=source_machine_id,
         )
 
 
@@ -183,6 +206,9 @@ class Session:
     processed: bool = False
     summary: str | None = None
     title: str | None = None
+    parent_session_id: str | None = None  # Session this was derived from (v12)
+    parent_session_reason: str | None = None  # Why linked: 'clear', 'compact', 'inferred' (v12)
+    source_machine_id: str | None = None  # Machine that originated this record (v13)
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
@@ -199,13 +225,22 @@ class Session:
             "summary": self.summary,
             "title": self.title,
             "created_at_epoch": int(self.started_at.timestamp()),
+            "parent_session_id": self.parent_session_id,
+            "parent_session_reason": self.parent_session_reason,
+            "source_machine_id": self.source_machine_id,
         }
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Session":
         """Create from database row."""
-        # Handle title column which may not exist in older databases
-        title = row["title"] if "title" in row.keys() else None
+        # Handle columns which may not exist in older databases
+        row_keys = row.keys()
+        title = row["title"] if "title" in row_keys else None
+        parent_session_id = row["parent_session_id"] if "parent_session_id" in row_keys else None
+        parent_session_reason = (
+            row["parent_session_reason"] if "parent_session_reason" in row_keys else None
+        )
+        source_machine_id = row["source_machine_id"] if "source_machine_id" in row_keys else None
         return cls(
             id=row["id"],
             agent=row["agent"],
@@ -218,6 +253,9 @@ class Session:
             processed=bool(row["processed"]),
             summary=row["summary"],
             title=title,
+            parent_session_id=parent_session_id,
+            parent_session_reason=parent_session_reason,
+            source_machine_id=source_machine_id,
         )
 
 
@@ -240,6 +278,7 @@ class StoredObservation:
     file_path: str | None = None
     created_at: datetime = field(default_factory=datetime.now)
     embedded: bool = False  # Has this been added to ChromaDB?
+    source_machine_id: str | None = None  # Machine that originated this record (v13)
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
@@ -256,6 +295,7 @@ class StoredObservation:
             "created_at": self.created_at.isoformat(),
             "created_at_epoch": int(self.created_at.timestamp()),
             "embedded": self.embedded,
+            "source_machine_id": self.source_machine_id,
         }
 
     @classmethod
@@ -274,4 +314,7 @@ class StoredObservation:
             file_path=row["file_path"],
             created_at=datetime.fromisoformat(row["created_at"]),
             embedded=bool(row["embedded"]),
+            source_machine_id=(
+                row["source_machine_id"] if "source_machine_id" in row.keys() else None
+            ),
         )

@@ -332,6 +332,41 @@ def count_memories(store: VectorStore) -> int:
     return store._memory_collection.count() if store._memory_collection else 0
 
 
+def clear_memory_collection(store: VectorStore) -> int:
+    """Clear only memory collection, preserving code index.
+
+    Use this before rebuilding memory index from SQLite to ensure
+    no orphaned entries remain in ChromaDB after deletions in SQLite.
+
+    Args:
+        store: The VectorStore instance.
+
+    Returns:
+        Number of items that were cleared.
+    """
+    store._ensure_initialized()
+
+    # Get count before clearing
+    count = store._memory_collection.count() if store._memory_collection else 0
+
+    # Delete and recreate only the memory collection
+    store._client.delete_collection(MEMORY_COLLECTION)
+
+    hnsw_config = {
+        "hnsw:space": "cosine",
+        "hnsw:construction_ef": 200,
+        "hnsw:M": 16,
+    }
+
+    store._memory_collection = store._client.create_collection(
+        name=MEMORY_COLLECTION,
+        metadata=hnsw_config,
+    )
+
+    logger.info(f"Cleared memory collection ({count} items, code index preserved)")
+    return count
+
+
 def clear_code_index(store: VectorStore) -> None:
     """Clear only the code index, preserving memories.
 

@@ -383,6 +383,10 @@ class SessionItem(BaseModel):
     first_prompt_preview: str | None = None
     prompt_batch_count: int = 0
     activity_count: int = 0
+    # Session linking fields
+    parent_session_id: str | None = None
+    parent_session_reason: str | None = None
+    child_session_count: int = 0
 
 
 class ActivityListResponse(BaseModel):
@@ -488,3 +492,72 @@ class DeleteMemoryResponse(DeleteResponse):
     """Response for memory deletion."""
 
     pass
+
+
+# ============================================================================
+# Session Linking Models
+# ============================================================================
+
+
+class SessionLineageItem(BaseModel):
+    """Session in a lineage chain."""
+
+    id: str
+    title: str | None = None
+    first_prompt_preview: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str = "active"
+    parent_session_reason: str | None = None
+    prompt_batch_count: int = 0
+
+
+class SessionLineageResponse(BaseModel):
+    """Response for session lineage query."""
+
+    session_id: str
+    ancestors: list[SessionLineageItem] = Field(default_factory=list)
+    children: list[SessionLineageItem] = Field(default_factory=list)
+
+
+class LinkSessionRequest(BaseModel):
+    """Request to link a session to a parent."""
+
+    parent_session_id: str = Field(..., min_length=1, description="Parent session ID to link to")
+    reason: str = Field(
+        default="manual",
+        description="Link reason: 'clear', 'compact', 'inferred', 'manual'",
+    )
+
+
+class LinkSessionResponse(BaseModel):
+    """Response after linking a session."""
+
+    success: bool = True
+    session_id: str
+    parent_session_id: str
+    reason: str
+    message: str = ""
+
+
+class UnlinkSessionResponse(BaseModel):
+    """Response after unlinking a session from its parent."""
+
+    success: bool = True
+    session_id: str
+    previous_parent_id: str | None = None
+    message: str = ""
+
+
+# ============================================================================
+# Summary Regeneration Models
+# ============================================================================
+
+
+class RegenerateSummaryResponse(BaseModel):
+    """Response after regenerating a session summary."""
+
+    success: bool = True
+    session_id: str
+    summary: str | None = None
+    message: str = ""

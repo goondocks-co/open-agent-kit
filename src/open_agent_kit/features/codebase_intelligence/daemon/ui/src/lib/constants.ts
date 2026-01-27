@@ -222,6 +222,7 @@ export const API_ENDPOINTS = {
     DEVTOOLS_REBUILD_MEMORIES: "/api/devtools/rebuild-memories",
     DEVTOOLS_TRIGGER_PROCESSING: "/api/devtools/trigger-processing",
     DEVTOOLS_RESET_PROCESSING: "/api/devtools/reset-processing",
+    DEVTOOLS_REGENERATE_SUMMARIES: "/api/devtools/regenerate-summaries",
 
     // Backup endpoints
     BACKUP_STATUS: "/api/backup/status",
@@ -280,6 +281,21 @@ export function getPromoteBatchEndpoint(batchId: number): string {
     return `/api/activity/prompt-batches/${batchId}/promote`;
 }
 
+/** Build session lineage endpoint */
+export function getSessionLineageEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/lineage`;
+}
+
+/** Build link session endpoint */
+export function getLinkSessionEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/link`;
+}
+
+/** Build regenerate summary endpoint */
+export function getRegenerateSummaryEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/regenerate-summary`;
+}
+
 
 // =============================================================================
 // Server Configuration
@@ -323,6 +339,38 @@ export const SESSION_STATUS_LABELS = {
     [SESSION_STATUS.ACTIVE]: "active",
     [SESSION_STATUS.COMPLETED]: "done",
 } as const;
+
+/** Session link reason values */
+export const SESSION_LINK_REASONS = {
+    CLEAR: "clear",
+    COMPACT: "compact",
+    INFERRED: "inferred",
+    MANUAL: "manual",
+} as const;
+
+export type SessionLinkReason = typeof SESSION_LINK_REASONS[keyof typeof SESSION_LINK_REASONS];
+
+/** Human-readable session link reason labels */
+export const SESSION_LINK_REASON_LABELS: Record<SessionLinkReason, string> = {
+    [SESSION_LINK_REASONS.CLEAR]: "Continued after clear",
+    [SESSION_LINK_REASONS.COMPACT]: "Compacted from",
+    [SESSION_LINK_REASONS.INFERRED]: "Automatically linked",
+    [SESSION_LINK_REASONS.MANUAL]: "Manually linked",
+} as const;
+
+/** CSS classes for session link reason badges */
+export const SESSION_LINK_REASON_BADGE_CLASSES: Record<SessionLinkReason, string> = {
+    [SESSION_LINK_REASONS.CLEAR]: "bg-blue-500/10 text-blue-600",
+    [SESSION_LINK_REASONS.COMPACT]: "bg-purple-500/10 text-purple-600",
+    [SESSION_LINK_REASONS.INFERRED]: "bg-gray-500/10 text-gray-600",
+    [SESSION_LINK_REASONS.MANUAL]: "bg-green-500/10 text-green-600",
+} as const;
+
+/** Session link reason options for Select dropdowns */
+export const SESSION_LINK_REASON_OPTIONS = [
+    { value: SESSION_LINK_REASONS.MANUAL, label: "Manual link" },
+    { value: SESSION_LINK_REASONS.INFERRED, label: "Inferred relationship" },
+] as const;
 
 /** Daemon system status values */
 export const DAEMON_STATUS = {
@@ -421,6 +469,63 @@ export const DEFAULT_LOG_FILE = LOG_FILES.DAEMON;
 
 
 // =============================================================================
+// Log Tag Filtering
+// =============================================================================
+
+/** Log tags for filtering log content */
+export const LOG_TAGS = {
+    // Hook lifecycle
+    SESSION_START: "[SESSION-START]",
+    SESSION_END: "[SESSION-END]",
+    PROMPT_SUBMIT: "[PROMPT-SUBMIT]",
+    TOOL_USE: "[TOOL-USE]",
+    SUBAGENT_START: "[SUBAGENT-START]",
+    SUBAGENT_STOP: "[SUBAGENT-STOP]",
+    // Search & injection (debug mode)
+    SEARCH_MEMORY: "[SEARCH:memory",
+    SEARCH_CODE: "[SEARCH:code",
+    SEARCH_FILE: "[SEARCH:file-context",
+    FILTER: "[FILTER]",
+    INJECT: "[INJECT:",
+} as const;
+
+export type LogTagType = typeof LOG_TAGS[keyof typeof LOG_TAGS];
+
+/** Tag categories for UI grouping */
+export const LOG_TAG_CATEGORIES = {
+    lifecycle: {
+        label: "Lifecycle",
+        tags: [LOG_TAGS.SESSION_START, LOG_TAGS.SESSION_END, LOG_TAGS.PROMPT_SUBMIT] as LogTagType[],
+    },
+    tools: {
+        label: "Tools",
+        tags: [LOG_TAGS.TOOL_USE, LOG_TAGS.SUBAGENT_START, LOG_TAGS.SUBAGENT_STOP] as LogTagType[],
+    },
+    search: {
+        label: "Search (Debug)",
+        tags: [LOG_TAGS.SEARCH_MEMORY, LOG_TAGS.SEARCH_CODE, LOG_TAGS.SEARCH_FILE, LOG_TAGS.FILTER] as LogTagType[],
+    },
+} as const;
+
+export type LogTagCategory = keyof typeof LOG_TAG_CATEGORIES;
+
+/** Tag display names (short labels for chips) */
+export const LOG_TAG_DISPLAY_NAMES: Record<LogTagType, string> = {
+    [LOG_TAGS.SESSION_START]: "Session Start",
+    [LOG_TAGS.SESSION_END]: "Session End",
+    [LOG_TAGS.PROMPT_SUBMIT]: "Prompt",
+    [LOG_TAGS.TOOL_USE]: "Tool Use",
+    [LOG_TAGS.SUBAGENT_START]: "Agent Start",
+    [LOG_TAGS.SUBAGENT_STOP]: "Agent Stop",
+    [LOG_TAGS.SEARCH_MEMORY]: "Search Memory",
+    [LOG_TAGS.SEARCH_CODE]: "Search Code",
+    [LOG_TAGS.SEARCH_FILE]: "Search File",
+    [LOG_TAGS.FILTER]: "Filter",
+    [LOG_TAGS.INJECT]: "Inject",
+} as const;
+
+
+// =============================================================================
 // Pagination Defaults
 // =============================================================================
 
@@ -433,6 +538,74 @@ export const PAGINATION = {
     MAX_LIMIT_LARGE: 200,
     DASHBOARD_SESSION_LIMIT: 5,
 } as const;
+
+
+// =============================================================================
+// Session Sort Options
+// =============================================================================
+
+/**
+ * Sort options for session listings.
+ * - last_activity: Sessions with most recent activity first (default)
+ * - created: Sessions by creation time (newest first)
+ * - status: Active sessions first, then by creation time
+ */
+export const SESSION_SORT_OPTIONS = {
+    LAST_ACTIVITY: "last_activity",
+    CREATED: "created",
+    STATUS: "status",
+} as const;
+
+export type SessionSortOption = typeof SESSION_SORT_OPTIONS[keyof typeof SESSION_SORT_OPTIONS];
+
+/** Human-readable session sort labels */
+export const SESSION_SORT_LABELS: Record<SessionSortOption, string> = {
+    [SESSION_SORT_OPTIONS.LAST_ACTIVITY]: "Last Activity",
+    [SESSION_SORT_OPTIONS.CREATED]: "Created",
+    [SESSION_SORT_OPTIONS.STATUS]: "Status",
+} as const;
+
+/** Session sort options for Select dropdowns */
+export const SESSION_SORT_DROPDOWN_OPTIONS = [
+    { value: SESSION_SORT_OPTIONS.LAST_ACTIVITY, label: SESSION_SORT_LABELS.last_activity },
+    { value: SESSION_SORT_OPTIONS.CREATED, label: SESSION_SORT_LABELS.created },
+    { value: SESSION_SORT_OPTIONS.STATUS, label: SESSION_SORT_LABELS.status },
+] as const;
+
+/** Default session sort option */
+export const DEFAULT_SESSION_SORT = SESSION_SORT_OPTIONS.LAST_ACTIVITY;
+
+
+// =============================================================================
+// Plan Sort Options
+// =============================================================================
+
+/**
+ * Sort options for plan listings.
+ * - created: Plans by creation time (newest first, default)
+ * - created_asc: Plans by creation time (oldest first)
+ */
+export const PLAN_SORT_OPTIONS = {
+    CREATED: "created",
+    CREATED_ASC: "created_asc",
+} as const;
+
+export type PlanSortOption = typeof PLAN_SORT_OPTIONS[keyof typeof PLAN_SORT_OPTIONS];
+
+/** Human-readable plan sort labels */
+export const PLAN_SORT_LABELS: Record<PlanSortOption, string> = {
+    [PLAN_SORT_OPTIONS.CREATED]: "Newest First",
+    [PLAN_SORT_OPTIONS.CREATED_ASC]: "Oldest First",
+} as const;
+
+/** Plan sort options for Select dropdowns */
+export const PLAN_SORT_DROPDOWN_OPTIONS = [
+    { value: PLAN_SORT_OPTIONS.CREATED, label: PLAN_SORT_LABELS.created },
+    { value: PLAN_SORT_OPTIONS.CREATED_ASC, label: PLAN_SORT_LABELS.created_asc },
+] as const;
+
+/** Default plan sort option */
+export const DEFAULT_PLAN_SORT = PLAN_SORT_OPTIONS.CREATED;
 
 
 // =============================================================================

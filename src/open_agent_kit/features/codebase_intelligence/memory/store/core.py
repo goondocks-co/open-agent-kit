@@ -357,6 +357,10 @@ class VectorStore:
         """Clear only the code index, preserving memories."""
         management.clear_code_index(self)
 
+    def clear_memory_collection(self) -> int:
+        """Clear only memory collection, preserving code index."""
+        return management.clear_memory_collection(self)
+
     def clear_all(self) -> None:
         """Clear all data from both collections."""
         management.clear_all(self)

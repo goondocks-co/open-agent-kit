@@ -12,7 +12,9 @@ Contains schema version and SQL for creating the database schema.
 # v9: Added title column to sessions (LLM-generated short session title)
 # v10: Added indexes for memory filtering (type, context, created_at) + FTS5 for search
 # v11: Added content_hash columns for multi-machine backup deduplication
-SCHEMA_VERSION = 11
+# v12: Added parent_session_id/reason for session linking, source_plan_batch_id for plan tracking
+# v13: Added source_machine_id for origin tracking (enables efficient team backups)
+SCHEMA_VERSION = 13
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -36,6 +38,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     created_at_epoch INTEGER NOT NULL,
     embedded BOOLEAN DEFAULT FALSE,  -- Has this been added to ChromaDB?
     content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
+    source_machine_id TEXT,  -- Machine that originated this record (v13)
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -86,7 +89,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     processed BOOLEAN DEFAULT FALSE,  -- Has background processor handled this?
     summary TEXT,  -- LLM-generated session summary
     title TEXT,  -- LLM-generated short session title (10-20 words)
-    created_at_epoch INTEGER NOT NULL
+    created_at_epoch INTEGER NOT NULL,
+    parent_session_id TEXT,  -- Session this was derived from (v12)
+    parent_session_reason TEXT,  -- Why linked: 'clear', 'compact', 'inferred' (v12)
+    source_machine_id TEXT  -- Machine that originated this record (v13)
 );
 
 -- Prompt batches table (activities between user prompts - the unit of processing)
@@ -101,13 +107,16 @@ CREATE TABLE IF NOT EXISTS prompt_batches (
     activity_count INTEGER DEFAULT 0,
     processed BOOLEAN DEFAULT FALSE,  -- Has background processor handled this?
     classification TEXT,  -- LLM classification: exploration, implementation, debugging, refactoring
-    source_type TEXT DEFAULT 'user',  -- user, agent_notification, plan, system
+    source_type TEXT DEFAULT 'user',  -- user, agent_notification, plan, system, derived_plan
     plan_file_path TEXT,  -- Path to plan file (for source_type='plan')
     plan_content TEXT,  -- Full plan content (stored for self-contained CI)
     plan_embedded INTEGER DEFAULT 0,  -- Has plan been indexed in ChromaDB? (v7)
     created_at_epoch INTEGER NOT NULL,
     content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
-    FOREIGN KEY (session_id) REFERENCES sessions(id)
+    source_plan_batch_id INTEGER,  -- Link to plan batch being implemented (v12)
+    source_machine_id TEXT,  -- Machine that originated this record (v13)
+    FOREIGN KEY (session_id) REFERENCES sessions(id),
+    FOREIGN KEY (source_plan_batch_id) REFERENCES prompt_batches(id)
 );
 
 -- Activities table (raw tool executions)
@@ -128,6 +137,7 @@ CREATE TABLE IF NOT EXISTS activities (
     processed BOOLEAN DEFAULT FALSE,  -- Has this activity been processed?
     observation_id TEXT,  -- Link to extracted observation (if any)
     content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
+    source_machine_id TEXT,  -- Machine that originated this record (v13)
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -144,6 +154,12 @@ CREATE INDEX IF NOT EXISTS idx_prompt_batches_session ON prompt_batches(session_
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_processed ON prompt_batches(processed);
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_hash ON prompt_batches(content_hash);
 CREATE INDEX IF NOT EXISTS idx_activities_hash ON activities(content_hash);
+
+-- Indexes for source_machine_id filtering (v13 - origin tracking for efficient backups)
+CREATE INDEX IF NOT EXISTS idx_sessions_source_machine ON sessions(source_machine_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_batches_source_machine ON prompt_batches(source_machine_id);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_source_machine ON memory_observations(source_machine_id);
+CREATE INDEX IF NOT EXISTS idx_activities_source_machine ON activities(source_machine_id);
 
 -- FTS5 virtual table for full-text search across activities
 CREATE VIRTUAL TABLE IF NOT EXISTS activities_fts USING fts5(

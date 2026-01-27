@@ -195,6 +195,23 @@ If an anchor does not fit the work, stop and ask—do not invent new patterns.
 - `src/open_agent_kit/features/codebase_intelligence/hooks/cursor/hooks.json`
 - `src/open_agent_kit/features/codebase_intelligence/hooks/gemini/hooks.json`
 
+### CI Data and Logs (Quick Reference)
+
+Codebase Intelligence manages two databases and stores logs locally. Use these paths for debugging, data inspection, and backup operations:
+
+| Resource | Path | Purpose |
+|----------|------|---------|
+| **SQLite Database** | `.oak/ci/activities.db` | Source of truth for all captured activity data (sessions, prompts, file events) |
+| **ChromaDB** | `.oak/ci/chroma/` | Vector search database for semantic code search and memory retrieval |
+| **Daemon Log** | `.oak/ci/daemon.log` | All CI daemon logs (startup, errors, indexing, API requests) |
+| **User Backups** | `oak/data/` | SQL export files generated from the SQLite database (committed to git) |
+
+**Notes:**
+
+- The SQLite database (`.oak/ci/activities.db`) is the authoritative source; ChromaDB is derived/rebuilt from it.
+- User backup files in `oak/data/` are intended for version control and data portability.
+- The `.oak/ci/` directory is gitignored (user-local state per §1.3).
+
 ### Quality gates + docs
 
 - `Makefile` (must pass: `make check`)

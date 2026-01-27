@@ -13,9 +13,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    DEFAULT_PREVIEW_LENGTH,
+    DEFAULT_RELATED_QUERY_LENGTH,
     INJECTION_MAX_CODE_CHUNKS,
     INJECTION_MAX_MEMORIES,
     INJECTION_MAX_SESSION_SUMMARIES,
+    MEMORY_EMBED_LABEL_CONTEXT,
+    MEMORY_EMBED_LABEL_FILE,
+    MEMORY_EMBED_LABEL_SEPARATOR,
+    MEMORY_EMBED_LABEL_TEMPLATE,
+    MEMORY_EMBED_LINE_SEPARATOR,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
     LANG_MAP,
@@ -114,7 +121,11 @@ class TestFormatSessionSummaries:
             }
         ]
         result = format_session_summaries(summaries)
-        assert "## Recent Session History" in result
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            INJECTION_SESSION_SUMMARIES_TITLE,
+        )
+
+        assert INJECTION_SESSION_SUMMARIES_TITLE in result
         assert "Session 1" in result
         assert "Implemented user authentication" in result
         assert "claude" in result
@@ -265,12 +276,26 @@ class TestBuildRichSearchQuery:
     def test_file_path_only(self):
         """File path alone produces valid query."""
         result = build_rich_search_query("src/utils.py")
-        assert result == "src/utils.py"
+        expected = MEMORY_EMBED_LINE_SEPARATOR.join(
+            [
+                MEMORY_EMBED_LABEL_TEMPLATE.format(
+                    label=MEMORY_EMBED_LABEL_FILE,
+                    separator=MEMORY_EMBED_LABEL_SEPARATOR,
+                    value="utils.py",
+                ),
+                MEMORY_EMBED_LABEL_TEMPLATE.format(
+                    label=MEMORY_EMBED_LABEL_CONTEXT,
+                    separator=MEMORY_EMBED_LABEL_SEPARATOR,
+                    value="src/utils.py",
+                ),
+            ]
+        )
+        assert result == expected
 
     def test_includes_tool_output_excerpt(self):
         """Tool output is included in query when not noise."""
         result = build_rich_search_query(
-            file_path="src/api.py",
+            normalized_path="src/api.py",
             tool_output="Modified authentication logic",
         )
         assert "src/api.py" in result
@@ -287,16 +312,30 @@ class TestBuildRichSearchQuery:
         ]
         for noise in noise_outputs:
             result = build_rich_search_query(
-                file_path="test.py",
+                normalized_path="test.py",
                 tool_output=noise,
             )
             # Only file path should be present, not the noise
-            assert result.strip() == "test.py", f"Noise not filtered: {noise}"
+            expected = MEMORY_EMBED_LINE_SEPARATOR.join(
+                [
+                    MEMORY_EMBED_LABEL_TEMPLATE.format(
+                        label=MEMORY_EMBED_LABEL_FILE,
+                        separator=MEMORY_EMBED_LABEL_SEPARATOR,
+                        value="test.py",
+                    ),
+                    MEMORY_EMBED_LABEL_TEMPLATE.format(
+                        label=MEMORY_EMBED_LABEL_CONTEXT,
+                        separator=MEMORY_EMBED_LABEL_SEPARATOR,
+                        value="test.py",
+                    ),
+                ]
+            )
+            assert result.strip() == expected, f"Noise not filtered: {noise}"
 
     def test_includes_user_prompt_excerpt(self):
         """User prompt is included in query."""
         result = build_rich_search_query(
-            file_path="src/db.py",
+            normalized_path="src/db.py",
             user_prompt="Fix the database connection pooling issue",
         )
         assert "src/db.py" in result
@@ -304,29 +343,29 @@ class TestBuildRichSearchQuery:
 
     def test_truncates_long_excerpts(self):
         """Long excerpts are truncated."""
-        long_output = "A" * 500
-        long_prompt = "B" * 700
+        long_output = "A" * (DEFAULT_PREVIEW_LENGTH * 2)
+        long_prompt = "B" * (DEFAULT_RELATED_QUERY_LENGTH + DEFAULT_PREVIEW_LENGTH)
 
         result = build_rich_search_query(
-            file_path="test.py",
+            normalized_path="test.py",
             tool_output=long_output,
             user_prompt=long_prompt,
         )
 
-        # Tool output truncated to 200, prompt to 500
-        assert "A" * 200 in result
-        assert "A" * 201 not in result
-        assert "B" * 500 in result
-        assert "B" * 501 not in result
+        # Tool output truncated to DEFAULT_PREVIEW_LENGTH, prompt to DEFAULT_RELATED_QUERY_LENGTH
+        assert "A" * DEFAULT_PREVIEW_LENGTH in result
+        assert "A" * (DEFAULT_PREVIEW_LENGTH + 1) not in result
+        assert "B" * DEFAULT_RELATED_QUERY_LENGTH in result
+        assert "B" * (DEFAULT_RELATED_QUERY_LENGTH + 1) not in result
 
     def test_combines_all_parts(self):
         """All parts are combined into single query."""
         result = build_rich_search_query(
-            file_path="src/handler.py",
+            normalized_path="src/handler.py",
             tool_output="Updated error handling",
             user_prompt="Add retry logic",
         )
-        parts = result.split()
+        parts = result.split(MEMORY_EMBED_LINE_SEPARATOR)
         assert len(parts) >= 3  # At least file + 2 excerpts
 
 
@@ -360,16 +399,15 @@ class TestBuildSessionContext:
         assert "100 code chunks indexed" in result
         assert "50 memories stored" in result
 
-    def test_no_cli_reminders(self, mock_state):
-        """Does NOT include CLI command reminders."""
+    def test_includes_mcp_tool_reminder(self, mock_state):
+        """Includes MCP tool reminder for session start."""
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            INJECTION_SESSION_START_REMINDER_BLOCK,
+        )
+
         result = build_session_context(mock_state)
 
-        # These CLI reminders should NOT be present
-        assert "PREFER" not in result
-        assert "oak ci" not in result.lower()
-        assert "oak ci search" not in result
-        assert "oak ci context" not in result
-        assert "oak ci remember" not in result
+        assert INJECTION_SESSION_START_REMINDER_BLOCK in result
 
     def test_includes_session_summaries_when_requested(self, mock_state):
         """Includes session summaries when include_memories=True."""
@@ -383,7 +421,11 @@ class TestBuildSessionContext:
             1,
         )
         result = build_session_context(mock_state, include_memories=True)
-        assert "Recent Session History" in result or "Session 1" in result
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            INJECTION_SESSION_SUMMARIES_TITLE,
+        )
+
+        assert INJECTION_SESSION_SUMMARIES_TITLE in result or "Session 1" in result
 
     def test_skips_memories_when_not_requested(self, mock_state):
         """Skips memories when include_memories=False."""

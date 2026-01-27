@@ -9,6 +9,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import StoredObservation
+from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -28,16 +29,25 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
     Returns:
         The observation ID.
     """
+    # Set source_machine_id if not already set (imported observations preserve original)
+    if observation.source_machine_id is None:
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_machine_identifier,
+        )
+
+        observation.source_machine_id = get_machine_identifier()
+
     with store._transaction() as conn:
         row = observation.to_row()
         conn.execute(
             """
             INSERT OR REPLACE INTO memory_observations
             (id, session_id, prompt_batch_id, observation, memory_type,
-             context, tags, importance, file_path, created_at, created_at_epoch, embedded)
+             context, tags, importance, file_path, created_at, created_at_epoch, embedded,
+             source_machine_id)
             VALUES (:id, :session_id, :prompt_batch_id, :observation, :memory_type,
                     :context, :tags, :importance, :file_path, :created_at,
-                    :created_at_epoch, :embedded)
+                    :created_at_epoch, :embedded, :source_machine_id)
             """,
             row,
         )
@@ -209,5 +219,47 @@ def count_unembedded_observations(store: ActivityStore) -> int:
     """
     conn = store._get_connection()
     cursor = conn.execute("SELECT COUNT(*) FROM memory_observations WHERE embedded = FALSE")
+    result = cursor.fetchone()
+    return int(result[0]) if result else 0
+
+
+def list_session_summaries(store: ActivityStore, limit: int = 10) -> list[StoredObservation]:
+    """List recent session_summary observations from SQLite.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum number of session summaries to return.
+
+    Returns:
+        List of StoredObservation entries, most recent first.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM memory_observations
+        WHERE memory_type = ?
+        ORDER BY created_at_epoch DESC
+        LIMIT ?
+        """,
+        (MemoryType.SESSION_SUMMARY.value, limit),
+    )
+    return [StoredObservation.from_row(row) for row in cursor.fetchall()]
+
+
+def count_observations_by_type(store: ActivityStore, memory_type: str) -> int:
+    """Count observations by memory_type in SQLite.
+
+    Args:
+        store: The ActivityStore instance.
+        memory_type: Memory type value to count.
+
+    Returns:
+        Count of observations matching the type.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM memory_observations WHERE memory_type = ?",
+        (memory_type,),
+    )
     result = cursor.fetchone()
     return int(result[0]) if result else 0

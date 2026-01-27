@@ -26,12 +26,18 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     DeleteActivityResponse,
     DeleteBatchResponse,
     DeleteSessionResponse,
+    LinkSessionRequest,
+    LinkSessionResponse,
     PlanListItem,
     PlansListResponse,
     PromptBatchItem,
+    RegenerateSummaryResponse,
     SessionDetailResponse,
     SessionItem,
+    SessionLineageItem,
+    SessionLineageResponse,
     SessionListResponse,
+    UnlinkSessionResponse,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
@@ -67,8 +73,20 @@ def _session_to_item(
     session: Session,
     stats: dict | None = None,
     first_prompt_preview: str | None = None,
+    child_session_count: int = 0,
+    summary_text: str | None = None,
 ) -> SessionItem:
-    """Convert Session dataclass to SessionItem Pydantic model."""
+    """Convert Session dataclass to SessionItem Pydantic model.
+
+    Args:
+        session: Session dataclass from the store.
+        stats: Session statistics dict.
+        first_prompt_preview: Preview of the first prompt.
+        child_session_count: Number of child sessions.
+        summary_text: Optional summary text from observations (overrides session.summary).
+    """
+    # Use summary_text from observations if provided, otherwise fall back to session.summary
+    summary = summary_text if summary_text is not None else session.summary
     return SessionItem(
         id=session.id,
         agent=session.agent,
@@ -76,11 +94,32 @@ def _session_to_item(
         started_at=session.started_at,
         ended_at=session.ended_at,
         status=session.status,
-        summary=session.summary,
+        summary=summary,
         title=session.title,
         first_prompt_preview=first_prompt_preview,
         prompt_batch_count=stats.get("prompt_batch_count", 0) if stats else 0,
         activity_count=stats.get("activity_count", 0) if stats else 0,
+        parent_session_id=session.parent_session_id,
+        parent_session_reason=session.parent_session_reason,
+        child_session_count=child_session_count,
+    )
+
+
+def _session_to_lineage_item(
+    session: Session,
+    first_prompt_preview: str | None = None,
+    prompt_batch_count: int = 0,
+) -> SessionLineageItem:
+    """Convert Session dataclass to SessionLineageItem for lineage display."""
+    return SessionLineageItem(
+        id=session.id,
+        title=session.title,
+        first_prompt_preview=first_prompt_preview,
+        started_at=session.started_at,
+        ended_at=session.ended_at,
+        status=session.status,
+        parent_session_reason=session.parent_session_reason,
+        prompt_batch_count=prompt_batch_count,
     )
 
 
@@ -162,6 +201,10 @@ async def list_plans(
     ),
     offset: int = Query(default=Pagination.DEFAULT_OFFSET, ge=0),
     session_id: str | None = Query(default=None, description="Filter by session"),
+    sort: str = Query(
+        default="created",
+        description="Sort order: created (newest first, default) or created_asc (oldest first)",
+    ),
 ) -> PlansListResponse:
     """List plans from prompt_batches (direct SQLite, not ChromaDB).
 
@@ -173,13 +216,16 @@ async def list_plans(
     if not state.activity_store:
         raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
-    logger.debug(f"Listing plans: limit={limit}, offset={offset}, session_id={session_id}")
+    logger.debug(
+        f"Listing plans: limit={limit}, offset={offset}, session_id={session_id}, sort={sort}"
+    )
 
     try:
         plans, total = state.activity_store.get_plans(
             limit=limit,
             offset=offset,
             session_id=session_id,
+            sort=sort,
         )
 
         items = [_plan_to_item(batch) for batch in plans]
@@ -203,22 +249,26 @@ async def list_sessions(
     ),
     offset: int = Query(default=Pagination.DEFAULT_OFFSET, ge=0),
     status: str | None = Query(default=None, description="Filter by status (active, completed)"),
+    sort: str = Query(
+        default="last_activity",
+        description="Sort order: last_activity (default), created, or status",
+    ),
 ) -> SessionListResponse:
     """List recent sessions with optional status filter.
 
-    Returns sessions ordered by start time (most recent first).
+    Returns sessions ordered by the specified sort order (default: last_activity).
     """
     state = get_state()
 
     if not state.activity_store:
         raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
 
-    logger.debug(f"Listing sessions: limit={limit}, offset={offset}, status={status}")
+    logger.debug(f"Listing sessions: limit={limit}, offset={offset}, status={status}, sort={sort}")
 
     try:
         # Get sessions from activity store with SQL-level pagination and status filter
         sessions = state.activity_store.get_recent_sessions(
-            limit=limit, offset=offset, status=status
+            limit=limit, offset=offset, status=status, sort=sort
         )
 
         # Get stats in bulk (1 query instead of N queries) - eliminates N+1 pattern
@@ -259,6 +309,10 @@ async def list_sessions(
 @router.get("/api/activity/sessions/{session_id}", response_model=SessionDetailResponse)
 async def get_session(session_id: str) -> SessionDetailResponse:
     """Get detailed session information including stats and recent activities."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        get_child_session_count,
+    )
+
     state = get_state()
 
     if not state.activity_store:
@@ -274,6 +328,13 @@ async def get_session(session_id: str) -> SessionDetailResponse:
 
         # Get stats
         stats = state.activity_store.get_session_stats(session_id)
+
+        # Get child session count for lineage info
+        child_count = get_child_session_count(state.activity_store, session_id)
+
+        # Get session summary from observations (source of truth)
+        summary_obs = state.activity_store.get_latest_session_summary(session_id)
+        summary_text = summary_obs.observation if summary_obs else None
 
         # Get recent activities
         activities = state.activity_store.get_session_activities(
@@ -295,7 +356,7 @@ async def get_session(session_id: str) -> SessionDetailResponse:
         first_prompt = first_prompts_map.get(session_id)
 
         return SessionDetailResponse(
-            session=_session_to_item(session, stats, first_prompt),
+            session=_session_to_item(session, stats, first_prompt, child_count, summary_text),
             stats=stats,
             recent_activities=activity_items,
             prompt_batches=batch_items,
@@ -825,4 +886,292 @@ async def delete_activity(activity_id: int) -> DeleteActivityResponse:
         raise
     except (OSError, ValueError, RuntimeError, AttributeError) as e:
         logger.error(f"Failed to delete activity: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# =============================================================================
+# Session Linking Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/api/activity/sessions/{session_id}/lineage",
+    response_model=SessionLineageResponse,
+)
+async def get_session_lineage(session_id: str) -> SessionLineageResponse:
+    """Get the lineage (ancestors and children) of a session.
+
+    Returns the ancestry chain (parent, grandparent, etc.) and direct children
+    of the specified session. Useful for understanding session relationships
+    created through clear/compact cycles or manual linking.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        get_child_sessions,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        get_session_lineage as store_get_lineage,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.debug(f"Getting lineage for session: {session_id}")
+
+    try:
+        # Get the session first to verify it exists
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        # Get ancestors (returns [self, parent, grandparent, ...])
+        lineage = store_get_lineage(state.activity_store, session_id)
+
+        # Get children
+        children = get_child_sessions(state.activity_store, session_id)
+
+        # Get first prompts for all sessions in lineage and children
+        all_session_ids = [s.id for s in lineage] + [c.id for c in children]
+        first_prompts_map = state.activity_store.get_bulk_first_prompts(all_session_ids)
+        stats_map = state.activity_store.get_bulk_session_stats(all_session_ids)
+
+        # Convert ancestors (skip self - first item)
+        ancestor_items = []
+        for ancestor in lineage[1:]:  # Skip self
+            ancestor_items.append(
+                _session_to_lineage_item(
+                    ancestor,
+                    first_prompt_preview=first_prompts_map.get(ancestor.id),
+                    prompt_batch_count=stats_map.get(ancestor.id, {}).get("prompt_batch_count", 0),
+                )
+            )
+
+        # Convert children
+        child_items = [
+            _session_to_lineage_item(
+                child,
+                first_prompt_preview=first_prompts_map.get(child.id),
+                prompt_batch_count=stats_map.get(child.id, {}).get("prompt_batch_count", 0),
+            )
+            for child in children
+        ]
+
+        return SessionLineageResponse(
+            session_id=session_id,
+            ancestors=ancestor_items,
+            children=child_items,
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to get session lineage: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post(
+    "/api/activity/sessions/{session_id}/link",
+    response_model=LinkSessionResponse,
+)
+async def link_session(session_id: str, request: LinkSessionRequest) -> LinkSessionResponse:
+    """Link a session to a parent session.
+
+    Creates a parent-child relationship between sessions. This is useful for
+    manually connecting related sessions that weren't automatically linked
+    during clear/compact operations.
+
+    Validates that:
+    - Both sessions exist
+    - The link would not create a cycle
+    - The session doesn't already have this parent
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        update_session_parent,
+        would_create_cycle,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Linking session {session_id} to parent {request.parent_session_id}")
+
+    try:
+        # Verify child session exists
+        child_session = state.activity_store.get_session(session_id)
+        if not child_session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        # Verify parent session exists
+        parent_session = state.activity_store.get_session(request.parent_session_id)
+        if not parent_session:
+            raise HTTPException(status_code=404, detail="Parent session not found")
+
+        # Check if already linked to this parent
+        if child_session.parent_session_id == request.parent_session_id:
+            return LinkSessionResponse(
+                success=True,
+                session_id=session_id,
+                parent_session_id=request.parent_session_id,
+                reason=request.reason,
+                message="Session already linked to this parent",
+            )
+
+        # Check for cycles
+        if would_create_cycle(state.activity_store, session_id, request.parent_session_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot link: would create a cycle in the session lineage",
+            )
+
+        # Create the link
+        update_session_parent(
+            state.activity_store,
+            session_id,
+            request.parent_session_id,
+            request.reason,
+        )
+
+        return LinkSessionResponse(
+            success=True,
+            session_id=session_id,
+            parent_session_id=request.parent_session_id,
+            reason=request.reason,
+            message="Session linked to parent successfully",
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to link session: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.delete(
+    "/api/activity/sessions/{session_id}/link",
+    response_model=UnlinkSessionResponse,
+)
+async def unlink_session(session_id: str) -> UnlinkSessionResponse:
+    """Remove the parent link from a session.
+
+    Clears the parent_session_id and parent_session_reason fields,
+    making this session a root session in its lineage.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        clear_session_parent,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Unlinking session {session_id} from parent")
+
+    try:
+        # Verify session exists
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        # Check if already unlinked
+        if not session.parent_session_id:
+            return UnlinkSessionResponse(
+                success=True,
+                session_id=session_id,
+                previous_parent_id=None,
+                message="Session has no parent link to remove",
+            )
+
+        # Clear the link
+        previous_parent = clear_session_parent(state.activity_store, session_id)
+
+        return UnlinkSessionResponse(
+            success=True,
+            session_id=session_id,
+            previous_parent_id=previous_parent,
+            message="Session unlinked from parent successfully",
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to unlink session: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# =============================================================================
+# Summary Regeneration Endpoint
+# =============================================================================
+
+
+@router.post(
+    "/api/activity/sessions/{session_id}/regenerate-summary",
+    response_model=RegenerateSummaryResponse,
+)
+async def regenerate_session_summary(session_id: str) -> RegenerateSummaryResponse:
+    """Regenerate the summary for a specific session.
+
+    Triggers LLM-based summary generation for the session. The session must:
+    - Exist
+    - Have at least some activity (tool calls)
+
+    Note: This will overwrite any existing summary for the session.
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    if not state.activity_processor:
+        raise HTTPException(
+            status_code=503,
+            detail="Activity processor not initialized - LLM summarization unavailable",
+        )
+
+    logger.info(f"Regenerating summary for session: {session_id}")
+
+    try:
+        # Verify session exists
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        # Get session stats to check if it has enough data
+        stats = state.activity_store.get_session_stats(session_id)
+        activity_count = stats.get("activity_count", 0)
+
+        if activity_count < 3:
+            return RegenerateSummaryResponse(
+                success=False,
+                session_id=session_id,
+                summary=None,
+                message=f"Insufficient data: session has only {activity_count} activities (minimum 3 required)",
+            )
+
+        # Generate the summary
+        summary = state.activity_processor.process_session_summary(session_id)
+
+        if summary:
+            logger.info(f"Regenerated summary for session {session_id[:8]}")
+            return RegenerateSummaryResponse(
+                success=True,
+                session_id=session_id,
+                summary=summary,
+                message="Summary regenerated successfully",
+            )
+        else:
+            return RegenerateSummaryResponse(
+                success=False,
+                session_id=session_id,
+                summary=None,
+                message="Failed to generate summary - check logs for details",
+            )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to regenerate session summary: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

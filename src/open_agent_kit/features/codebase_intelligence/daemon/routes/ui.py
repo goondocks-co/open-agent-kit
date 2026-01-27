@@ -43,6 +43,7 @@ async def favicon() -> FileResponse:
 @router.get("/config", response_class=HTMLResponse)
 @router.get("/data", response_class=HTMLResponse)
 @router.get("/devtools", response_class=HTMLResponse)
+@router.get("/team", response_class=HTMLResponse)
 # Catch-all for data sub-routes (e.g., /data/sessions/123)
 @router.get("/data/{rest:path}", response_class=HTMLResponse)
 async def dashboard(rest: str | None = None) -> HTMLResponse:

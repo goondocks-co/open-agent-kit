@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
+from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -19,7 +20,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def create_session(store: ActivityStore, session_id: str, agent: str, project_root: str) -> Session:
+def create_session(
+    store: ActivityStore,
+    session_id: str,
+    agent: str,
+    project_root: str,
+    parent_session_id: str | None = None,
+    parent_session_reason: str | None = None,
+) -> Session:
     """Create a new session record.
 
     Args:
@@ -27,15 +35,25 @@ def create_session(store: ActivityStore, session_id: str, agent: str, project_ro
         session_id: Unique session identifier.
         agent: Agent name (claude, cursor, etc.).
         project_root: Project root directory.
+        parent_session_id: Optional parent session ID (for session linking).
+        parent_session_reason: Why linked: 'clear', 'compact', 'inferred'.
 
     Returns:
         Created Session object.
     """
+    # Import here to avoid circular imports
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
+
     session = Session(
         id=session_id,
         agent=agent,
         project_root=project_root,
         started_at=datetime.now(),
+        parent_session_id=parent_session_id,
+        parent_session_reason=parent_session_reason,
+        source_machine_id=get_machine_identifier(),
     )
 
     with store._transaction() as conn:
@@ -43,14 +61,22 @@ def create_session(store: ActivityStore, session_id: str, agent: str, project_ro
         conn.execute(
             """
             INSERT INTO sessions (id, agent, project_root, started_at, status,
-                                  prompt_count, tool_count, processed, summary, created_at_epoch)
+                                  prompt_count, tool_count, processed, summary, created_at_epoch,
+                                  parent_session_id, parent_session_reason, source_machine_id)
             VALUES (:id, :agent, :project_root, :started_at, :status,
-                    :prompt_count, :tool_count, :processed, :summary, :created_at_epoch)
+                    :prompt_count, :tool_count, :processed, :summary, :created_at_epoch,
+                    :parent_session_id, :parent_session_reason, :source_machine_id)
             """,
             row,
         )
 
-    logger.debug(f"Created session {session_id} for agent {agent}")
+    if parent_session_id:
+        logger.debug(
+            f"Created session {session_id} for agent {agent} "
+            f"(parent={parent_session_id[:8]}..., reason={parent_session_reason})"
+        )
+    else:
+        logger.debug(f"Created session {session_id} for agent {agent}")
     return session
 
 
@@ -150,6 +176,22 @@ def update_session_title(store: ActivityStore, session_id: str, title: str) -> N
             (title, session_id),
         )
     logger.debug(f"Updated session {session_id} title: {title[:50]}...")
+
+
+def update_session_summary(store: ActivityStore, session_id: str, summary: str) -> None:
+    """Update the session summary.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to update.
+        summary: LLM-generated session summary.
+    """
+    with store._transaction() as conn:
+        conn.execute(
+            "UPDATE sessions SET summary = ? WHERE id = ?",
+            (summary, session_id),
+        )
+    logger.debug(f"Updated session {session_id} summary: {summary[:50]}...")
 
 
 def reactivate_session_if_needed(store: ActivityStore, session_id: str) -> bool:
@@ -259,6 +301,7 @@ def get_recent_sessions(
     limit: int = 10,
     offset: int = 0,
     status: str | None = None,
+    sort: str = "last_activity",
 ) -> list[Session]:
     """Get recent sessions with pagination support.
 
@@ -267,22 +310,42 @@ def get_recent_sessions(
         limit: Maximum sessions to return.
         offset: Number of sessions to skip (for pagination).
         status: Optional status filter (e.g., 'active', 'completed').
+        sort: Sort order - 'last_activity' (default), 'created', or 'status'.
 
     Returns:
         List of recent Session objects.
     """
     conn = store._get_connection()
-
-    query = "SELECT * FROM sessions"
     params: list[Any] = []
 
-    if status:
-        query += " WHERE status = ?"
-        params.append(status)
+    if sort == "last_activity":
+        # Sort by most recent activity, falling back to session start time
+        # This ensures resumed sessions appear at the top
+        query = """
+            SELECT s.*, COALESCE(MAX(a.timestamp_epoch), s.created_at_epoch) as sort_key
+            FROM sessions s
+            LEFT JOIN activities a ON s.id = a.session_id
+        """
+        if status:
+            query += " WHERE s.status = ?"
+            params.append(status)
+        query += " GROUP BY s.id ORDER BY sort_key DESC LIMIT ? OFFSET ?"
+    elif sort == "status":
+        # Active sessions first, then by creation time
+        query = "SELECT * FROM sessions"
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at_epoch DESC LIMIT ? OFFSET ?"
+    else:
+        # Default: sort by created_at_epoch (session start time)
+        query = "SELECT * FROM sessions"
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
 
-    query += " ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-
     cursor = conn.execute(query, params)
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -317,6 +380,33 @@ def get_sessions_needing_titles(store: ActivityStore, limit: int = 10) -> list[S
         LIMIT ?
         """,
         (five_minutes_ago, limit),
+    )
+    return [Session.from_row(row) for row in cursor.fetchall()]
+
+
+def get_sessions_missing_summaries(store: ActivityStore, limit: int = 10) -> list[Session]:
+    """Get completed sessions missing a session_summary memory.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum sessions to return.
+
+    Returns:
+        List of Session objects missing summaries.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT s.* FROM sessions s
+        WHERE s.status = 'completed'
+        AND NOT EXISTS (
+            SELECT 1 FROM memory_observations m
+            WHERE m.session_id = s.id AND m.memory_type = ?
+        )
+        ORDER BY s.created_at_epoch DESC
+        LIMIT ?
+        """,
+        (MemoryType.SESSION_SUMMARY.value, limit),
     )
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -406,3 +496,280 @@ def recover_stale_sessions(
         )
 
     return recovered_ids, deleted_ids
+
+
+def find_just_ended_session(
+    store: ActivityStore,
+    agent: str,
+    project_root: str,
+    exclude_session_id: str,
+    new_session_started_at: datetime,
+    max_gap_seconds: int = 5,
+) -> str | None:
+    """Find a session that just ended, suitable for parent linking.
+
+    Used when source="clear" to link the new session to the planning session
+    that just ended. Looks for ENDED sessions only to avoid false positives
+    from concurrent active sessions.
+
+    The 5-second default is based on data analysis showing:
+    - Most transitions: 0.04-0.12 seconds
+    - Slowest observed: ~8 seconds
+    - No transitions in 10s-5min range
+
+    Args:
+        store: The ActivityStore instance.
+        agent: Agent name to match.
+        project_root: Project root to match.
+        exclude_session_id: Session ID to exclude (the new session).
+        new_session_started_at: When the new session started.
+        max_gap_seconds: Maximum gap between end and start (default 5s).
+
+    Returns:
+        Parent session ID if found, None otherwise.
+    """
+    conn = store._get_connection()
+
+    # Find the most recent session that:
+    # - Is NOT the excluded session
+    # - Has the same agent and project_root
+    # - Has ended_at set (is completed)
+    # - Started before the new session
+    #
+    # We then check if it ended within the gap window of the new session starting.
+    cursor = conn.execute(
+        """
+        SELECT id, ended_at
+        FROM sessions
+        WHERE id != ?
+          AND agent = ?
+          AND project_root = ?
+          AND ended_at IS NOT NULL
+          AND status = 'completed'
+        ORDER BY created_at_epoch DESC
+        LIMIT 1
+        """,
+        (exclude_session_id, agent, project_root),
+    )
+    candidate = cursor.fetchone()
+
+    if not candidate:
+        return None
+
+    parent_id: str = candidate[0]
+    ended_at_str: str | None = candidate[1]
+    if not ended_at_str:
+        return None
+
+    try:
+        ended_at = datetime.fromisoformat(ended_at_str)
+        gap_seconds = (new_session_started_at - ended_at).total_seconds()
+
+        # Only link if the gap is within threshold and positive (ended before started)
+        if 0 <= gap_seconds <= max_gap_seconds:
+            logger.debug(
+                f"Found just-ended session {parent_id[:8]}... "
+                f"(gap={gap_seconds:.2f}s, max={max_gap_seconds}s)"
+            )
+            return parent_id
+        else:
+            logger.debug(
+                f"Candidate session {parent_id[:8]}... gap={gap_seconds:.2f}s "
+                f"exceeds max={max_gap_seconds}s, not linking"
+            )
+            return None
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Could not parse ended_at for session linking: {e}")
+        return None
+
+
+def get_session_lineage(
+    store: ActivityStore,
+    session_id: str,
+    max_depth: int = 10,
+) -> list[Session]:
+    """Get session lineage (ancestry chain) from newest to oldest.
+
+    Traces parent_session_id links to build a chain of related sessions.
+    Useful for understanding how a session evolved through clear/compact cycles.
+
+    Includes cycle prevention: stops if a session is seen twice.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Starting session ID.
+        max_depth: Maximum ancestry depth to traverse (default 10).
+
+    Returns:
+        List of Session objects, starting with the given session,
+        then its parent, grandparent, etc.
+    """
+    lineage: list[Session] = []
+    seen_ids: set[str] = set()
+    current_id: str | None = session_id
+
+    while current_id and len(lineage) < max_depth:
+        # Cycle prevention
+        if current_id in seen_ids:
+            logger.warning(f"Cycle detected in session lineage at {current_id[:8]}...")
+            break
+        seen_ids.add(current_id)
+
+        session = get_session(store, current_id)
+        if not session:
+            break
+
+        lineage.append(session)
+        current_id = session.parent_session_id
+
+    return lineage
+
+
+def update_session_parent(
+    store: ActivityStore,
+    session_id: str,
+    parent_session_id: str,
+    reason: str,
+) -> None:
+    """Update the parent session link for a session.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to update.
+        parent_session_id: Parent session ID.
+        reason: Why linked: 'clear', 'compact', 'inferred', 'manual'.
+    """
+    with store._transaction() as conn:
+        conn.execute(
+            """
+            UPDATE sessions
+            SET parent_session_id = ?, parent_session_reason = ?
+            WHERE id = ?
+            """,
+            (parent_session_id, reason, session_id),
+        )
+    logger.debug(
+        f"Updated session {session_id[:8]}... parent to {parent_session_id[:8]}... "
+        f"(reason={reason})"
+    )
+
+
+def clear_session_parent(store: ActivityStore, session_id: str) -> str | None:
+    """Remove the parent link from a session.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to unlink.
+
+    Returns:
+        The previous parent session ID if there was one, None otherwise.
+    """
+    # Get current parent before clearing
+    conn = store._get_connection()
+    cursor = conn.execute("SELECT parent_session_id FROM sessions WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+    previous_parent = row[0] if row else None
+
+    with store._transaction() as conn:
+        conn.execute(
+            """
+            UPDATE sessions
+            SET parent_session_id = NULL, parent_session_reason = NULL
+            WHERE id = ?
+            """,
+            (session_id,),
+        )
+
+    if previous_parent:
+        logger.debug(f"Cleared parent link from session {session_id[:8]}...")
+    return previous_parent
+
+
+def get_child_sessions(store: ActivityStore, session_id: str) -> list[Session]:
+    """Get sessions that have this session as their parent.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Parent session ID.
+
+    Returns:
+        List of child Session objects, ordered by start time (newest first).
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM sessions
+        WHERE parent_session_id = ?
+        ORDER BY created_at_epoch DESC
+        """,
+        (session_id,),
+    )
+    return [Session.from_row(row) for row in cursor.fetchall()]
+
+
+def get_child_session_count(store: ActivityStore, session_id: str) -> int:
+    """Count sessions that have this session as their parent.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Parent session ID.
+
+    Returns:
+        Number of child sessions.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sessions WHERE parent_session_id = ?",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+
+def would_create_cycle(
+    store: ActivityStore,
+    session_id: str,
+    proposed_parent_id: str,
+    max_depth: int = 100,
+) -> bool:
+    """Check if linking session_id to proposed_parent_id would create a cycle.
+
+    A cycle would occur if proposed_parent_id is in the ancestry chain of session_id,
+    or if session_id is in the ancestry chain of proposed_parent_id.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session that would become the child.
+        proposed_parent_id: Session that would become the parent.
+        max_depth: Maximum ancestry depth to check (cycle prevention).
+
+    Returns:
+        True if the link would create a cycle, False if safe.
+    """
+    # Self-link is a cycle
+    if session_id == proposed_parent_id:
+        return True
+
+    # Check if session_id is an ancestor of proposed_parent_id
+    # (i.e., proposed_parent_id is in the descendant chain of session_id)
+    # If so, linking would create: session_id -> proposed_parent_id -> ... -> session_id
+    current_id: str | None = proposed_parent_id
+    seen: set[str] = set()
+    depth = 0
+
+    while current_id and depth < max_depth:
+        if current_id in seen:
+            # Already a cycle in the data
+            return True
+        if current_id == session_id:
+            # session_id is an ancestor of proposed_parent_id
+            return True
+        seen.add(current_id)
+
+        session = get_session(store, current_id)
+        if not session:
+            break
+        current_id = session.parent_session_id
+        depth += 1
+
+    return False

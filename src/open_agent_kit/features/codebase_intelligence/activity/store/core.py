@@ -194,6 +194,10 @@ class ActivityStore:
         """Update the session title."""
         sessions.update_session_title(self, session_id, title)
 
+    def update_session_summary(self, session_id: str, summary: str) -> None:
+        """Update the session summary."""
+        sessions.update_session_summary(self, session_id, summary)
+
     def reactivate_session_if_needed(self, session_id: str) -> bool:
         """Reactivate a session if it's currently completed."""
         return sessions.reactivate_session_if_needed(self, session_id)
@@ -215,14 +219,22 @@ class ActivityStore:
         sessions.mark_session_processed(self, session_id)
 
     def get_recent_sessions(
-        self, limit: int = 10, offset: int = 0, status: str | None = None
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        status: str | None = None,
+        sort: str = "last_activity",
     ) -> list[Session]:
         """Get recent sessions with pagination support."""
-        return sessions.get_recent_sessions(self, limit, offset, status)
+        return sessions.get_recent_sessions(self, limit, offset, status, sort)
 
     def get_sessions_needing_titles(self, limit: int = 10) -> list[Session]:
         """Get sessions that need titles generated."""
         return sessions.get_sessions_needing_titles(self, limit)
+
+    def get_sessions_missing_summaries(self, limit: int = 10) -> list[Session]:
+        """Get completed sessions missing session summaries."""
+        return sessions.get_sessions_missing_summaries(self, limit)
 
     def recover_stale_sessions(self, timeout_seconds: int = 3600) -> tuple[list[str], list[str]]:
         """Auto-end or delete sessions that have been inactive for too long."""
@@ -290,9 +302,10 @@ class ActivityStore:
         offset: int = 0,
         session_id: str | None = None,
         deduplicate: bool = True,
+        sort: str = "created",
     ) -> tuple[list[PromptBatch], int]:
         """Get plan batches from prompt_batches table."""
-        return batches.get_plans(self, limit, offset, session_id, deduplicate)
+        return batches.get_plans(self, limit, offset, session_id, deduplicate, sort)
 
     def recover_stuck_batches(self, timeout_seconds: int = 1800) -> int:
         """Auto-end batches stuck in 'active' status for too long."""
@@ -327,6 +340,10 @@ class ActivityStore:
     def count_unembedded_plans(self) -> int:
         """Count plan batches not yet in ChromaDB."""
         return batches.count_unembedded_plans(self)
+
+    def count_embedded_plans(self) -> int:
+        """Count plan batches that are in ChromaDB."""
+        return batches.count_embedded_plans(self)
 
     def mark_all_plans_unembedded(self) -> int:
         """Mark all plans as not embedded."""
@@ -419,6 +436,14 @@ class ActivityStore:
     def count_unembedded_observations(self) -> int:
         """Count observations not yet in ChromaDB."""
         return observations.count_unembedded_observations(self)
+
+    def list_session_summaries(self, limit: int = 10) -> list[StoredObservation]:
+        """List recent session_summary observations."""
+        return observations.list_session_summaries(self, limit)
+
+    def count_observations_by_type(self, memory_type: str) -> int:
+        """Count observations by memory_type."""
+        return observations.count_observations_by_type(self, memory_type)
 
     # ==========================================================================
     # Statistics operations - delegate to stats module

@@ -61,3 +61,11 @@ These are the first places to look. The full Anchor Index is in `oak/constitutio
 - `Makefile` (must pass: `make check`)
 - `pyproject.toml`
 - `oak/constitution.md` (DoD + canonical Anchor Index)
+
+### Codebase Intelligence Data (Quick Reference)
+| Resource | Path |
+|----------|------|
+| SQLite (source of truth) | `.oak/ci/activities.db` |
+| ChromaDB (vector search) | `.oak/ci/chroma/` |
+| Daemon logs | `.oak/ci/daemon.log` |
+| User backups (git-tracked) | `oak/data/` |

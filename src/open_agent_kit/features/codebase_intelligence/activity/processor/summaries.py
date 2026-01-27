@@ -7,7 +7,10 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
+
+from open_agent_kit.features.codebase_intelligence.constants import (
+    SESSION_SUMMARY_OBS_ID_PREFIX,
+)
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.prompts import (
@@ -67,10 +70,9 @@ def process_session_summary(
         return None
 
     # Check for existing session summary (handles resumed sessions)
-    # Only summarize batches created after the last summary
+    # Only re-summarize if there are new batches since last summary
     existing_summary = activity_store.get_latest_session_summary(session_id)
     if existing_summary:
-        # Filter to only include batches newer than the existing summary
         summary_time = existing_summary.created_at
         new_batches = [b for b in batches if b.started_at and b.started_at > summary_time]
         if not new_batches:
@@ -79,17 +81,18 @@ def process_session_summary(
                 "no new batches since then"
             )
             return None
+        # Note: We summarize ALL batches (not just new ones) so the replacement
+        # summary has full session context. The deterministic ID ensures upsert.
         logger.info(
-            f"Session {session_id} resumed: summarizing {len(new_batches)} new batches "
-            f"(of {len(batches)} total) since last summary"
+            f"Session {session_id} resumed: re-summarizing all {len(batches)} batches "
+            f"({len(new_batches)} new since last summary)"
         )
-        batches = new_batches
 
     # Get session stats
     stats = activity_store.get_session_stats(session_id)
 
     # Check if session has enough substance to summarize
-    tool_calls = stats.get("total_activities", 0)
+    tool_calls = stats.get("activity_count", 0)
     if tool_calls < 3:
         logger.debug(f"Session {session_id} too short ({tool_calls} tools), skipping summary")
         return None
@@ -146,7 +149,8 @@ def process_session_summary(
         summary = summary[1:-1]
 
     # Store as session_summary memory using dual-write: SQLite + ChromaDB
-    obs_id = str(uuid4())
+    # Use deterministic ID so session reopens replace existing summary (upsert)
+    obs_id = f"{SESSION_SUMMARY_OBS_ID_PREFIX}{session_id}"
     created_at = datetime.now()
     tags = ["session-summary", session.agent or "unknown"]
 

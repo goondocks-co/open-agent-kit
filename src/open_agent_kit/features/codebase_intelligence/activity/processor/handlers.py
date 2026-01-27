@@ -21,6 +21,7 @@ from open_agent_kit.features.codebase_intelligence.activity.prompts import (
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
     PROMPT_SOURCE_AGENT,
+    PROMPT_SOURCE_DERIVED_PLAN,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_SYSTEM,
     PROMPT_SOURCE_USER,
@@ -50,7 +51,7 @@ def get_batch_handler(
     just need a new handler method.
 
     Args:
-        source_type: The batch's source type (user, agent_notification, plan, system).
+        source_type: The batch's source type (user, agent_notification, plan, system, derived_plan).
 
     Returns:
         Handler function for the source type.
@@ -60,6 +61,7 @@ def get_batch_handler(
         PROMPT_SOURCE_AGENT: process_agent_batch,
         PROMPT_SOURCE_PLAN: process_plan_batch,
         PROMPT_SOURCE_SYSTEM: process_system_batch,
+        PROMPT_SOURCE_DERIVED_PLAN: process_derived_plan_batch,
     }
     return handlers.get(source_type, process_user_batch)
 
@@ -164,6 +166,58 @@ def process_system_batch(
     )
 
 
+def process_derived_plan_batch(
+    batch_id: int,
+    batch: "PromptBatch",
+    activities: list["Activity"],
+    start_time: datetime,
+    activity_store: "ActivityStore",
+    **kwargs: Any,
+) -> ProcessingResult:
+    """Process a derived plan batch - already has synthesized plan content.
+
+    Derived plans are created when a batch has TaskCreate activities but
+    no explicit plan file. The plan content is already synthesized and stored
+    by the plan_synthesis module.
+
+    Args:
+        batch_id: Prompt batch ID.
+        batch: The prompt batch object.
+        activities: Activities in this batch.
+        start_time: When processing started.
+        activity_store: Activity store.
+        **kwargs: Additional arguments (ignored).
+
+    Returns:
+        ProcessingResult indicating batch was processed.
+    """
+    # Mark activities as processed
+    activity_ids = [a.id for a in activities if a.id is not None]
+    if activity_ids:
+        activity_store.mark_activities_processed(activity_ids)
+
+    # Mark batch as processed
+    activity_store.mark_prompt_batch_processed(batch_id, classification="derived_plan")
+
+    duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+
+    logger.info(
+        f"Processed derived plan batch {batch_id}: {len(activities)} activities "
+        f"(plan content already stored) ({duration_ms}ms)",
+        extra={"batch_id": batch_id, "source_type": PROMPT_SOURCE_DERIVED_PLAN},
+    )
+
+    return ProcessingResult(
+        session_id=batch.session_id,
+        activities_processed=len(activities),
+        observations_extracted=0,
+        success=True,
+        duration_ms=duration_ms,
+        classification="derived_plan",
+        prompt_batch_id=batch_id,
+    )
+
+
 def process_plan_batch(
     batch_id: int,
     batch: "PromptBatch",
@@ -255,6 +309,9 @@ def process_user_batch(
     This is the standard processing path for user prompts - classifies
     the batch type and extracts observations using the appropriate template.
 
+    Also checks for TaskCreate activities and synthesizes a derived plan
+    if the batch has significant task planning but no explicit plan file.
+
     Args:
         batch_id: Prompt batch ID.
         batch: The prompt batch object.
@@ -274,6 +331,28 @@ def process_user_batch(
     Returns:
         ProcessingResult with extracted observations.
     """
+    # Check if we should synthesize a derived plan from TaskCreate activities
+    # This captures implementation intent when no explicit plan file was written
+    try:
+        from open_agent_kit.features.codebase_intelligence.activity.processor.plan_synthesis import (
+            should_synthesize_plan,
+            store_derived_plan,
+            synthesize_derived_plan,
+        )
+
+        if should_synthesize_plan(batch, activities):
+            derived_plan = synthesize_derived_plan(batch.session_id, activities)
+            if derived_plan and derived_plan.tasks:
+                store_derived_plan(activity_store, batch_id, derived_plan)
+                logger.info(
+                    f"Synthesized derived plan for batch {batch_id}: "
+                    f"{len(derived_plan.tasks)} tasks"
+                )
+                # Continue processing as normal - the derived plan is stored
+                # but we still extract observations from the activities
+    except (ImportError, RuntimeError, ValueError) as e:
+        logger.debug(f"Plan synthesis check failed (non-fatal): {e}")
+
     # Extract batch statistics
     tool_names = [a.tool_name for a in activities]
     files_read = list({a.file_path for a in activities if a.tool_name == "Read" and a.file_path})
@@ -387,6 +466,7 @@ def process_user_batch(
                 vector_store=vector_store,
                 classification=classification,
                 prompt_batch_id=batch_id,
+                project_root=project_root,
             )
             if obs_id:
                 stored_count += 1

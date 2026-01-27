@@ -10,6 +10,7 @@ import MemoriesList from "@/components/data/MemoriesList";
 import SessionDetail from "@/pages/SessionDetail";
 import Config from "@/pages/Config";
 import DevTools from "@/pages/DevTools";
+import Team from "@/pages/Team";
 import Help from "@/pages/Help";
 
 export const router = createBrowserRouter([
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
             },
             { path: "data/sessions/:id", element: <SessionDetail /> },
             { path: "logs", element: <Logs /> },
+            { path: "team", element: <Team /> },
             { path: "config", element: <Config /> },
             { path: "help", element: <Help /> },
             { path: "devtools", element: <DevTools /> },

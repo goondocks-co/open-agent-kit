@@ -5,20 +5,36 @@ import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDate } from "@/lib/utils";
-import { Terminal, Activity, Calendar, ArrowRight, Trash2 } from "lucide-react";
+import { Terminal, Activity, Calendar, ArrowRight, Trash2, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DELETE_CONFIRMATIONS, PAGINATION, DEFAULT_AGENT_NAME, SESSION_TITLE_MAX_LENGTH } from "@/lib/constants";
+import {
+    DELETE_CONFIRMATIONS,
+    PAGINATION,
+    DEFAULT_AGENT_NAME,
+    SESSION_TITLE_MAX_LENGTH,
+    SESSION_SORT_DROPDOWN_OPTIONS,
+    DEFAULT_SESSION_SORT,
+} from "@/lib/constants";
+import type { SessionSortOption } from "@/lib/constants";
 
 import type { SessionItem } from "@/hooks/use-activity";
 
 export default function SessionList() {
     const [offset, setOffset] = useState(0);
     const [allSessions, setAllSessions] = useState<SessionItem[]>([]);
+    const [sortBy, setSortBy] = useState<SessionSortOption>(DEFAULT_SESSION_SORT);
     const limit = PAGINATION.DEFAULT_LIMIT;
 
-    const { data, isLoading, isFetching } = useSessions(limit, offset);
+    const { data, isLoading, isFetching } = useSessions(limit, offset, sortBy);
     const deleteSession = useDeleteSession();
     const { isOpen, setIsOpen, itemToDelete, openDialog, closeDialog } = useConfirmDialog();
+
+    const handleSortChange = (newSort: SessionSortOption) => {
+        setSortBy(newSort);
+        // Reset pagination when sort changes
+        setOffset(0);
+        setAllSessions([]);
+    };
 
     // Merge new sessions with existing ones when offset changes
     const sessions = offset === 0 ? (data?.sessions || []) : allSessions;
@@ -57,6 +73,28 @@ export default function SessionList() {
 
     return (
         <div className="space-y-4">
+            {/* Sort controls */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Terminal className="w-4 h-4" />
+                    <span>Sessions from Claude Code</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                    <select
+                        value={sortBy}
+                        onChange={(e) => handleSortChange(e.target.value as SessionSortOption)}
+                        className="text-sm bg-background border border-input rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                        {SESSION_SORT_DROPDOWN_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
             {displaySessions.map((session) => {
                 // Generate a session title: prefer title (LLM-generated), then first_prompt_preview, fallback to truncated ID
                 const sessionTitle = session.title

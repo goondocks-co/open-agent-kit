@@ -175,6 +175,7 @@ def rebuild_chromadb_from_sqlite(
     vector_store: "VectorStore",
     batch_size: int = 50,
     reset_embedded_flags: bool = True,
+    clear_chromadb_first: bool = False,
 ) -> dict[str, int]:
     """Rebuild ChromaDB memory index from SQLite source of truth.
 
@@ -188,6 +189,10 @@ def rebuild_chromadb_from_sqlite(
         reset_embedded_flags: If True, marks ALL observations as unembedded
             first (for full rebuild). If False, only processes observations
             already marked as unembedded.
+        clear_chromadb_first: If True, clears the ChromaDB memory collection
+            before rebuilding. Use this after restore operations to remove
+            orphaned entries that were deleted from SQLite but still exist
+            in ChromaDB.
 
     Returns:
         Dictionary with rebuild statistics:
@@ -195,12 +200,13 @@ def rebuild_chromadb_from_sqlite(
         - embedded: Successfully embedded count
         - failed: Failed embedding count
         - skipped: Already embedded (if reset_embedded_flags=False)
+        - cleared: Items cleared from ChromaDB (if clear_chromadb_first=True)
     """
     from open_agent_kit.features.codebase_intelligence.memory.store import (
         MemoryObservation,
     )
 
-    stats = {"total": 0, "embedded": 0, "failed": 0, "skipped": 0}
+    stats = {"total": 0, "embedded": 0, "failed": 0, "skipped": 0, "cleared": 0}
 
     # Get total count
     stats["total"] = activity_store.count_observations()
@@ -208,6 +214,12 @@ def rebuild_chromadb_from_sqlite(
     if stats["total"] == 0:
         logger.info("No observations in SQLite to rebuild")
         return stats
+
+    # Step 0: Clear ChromaDB memory collection if requested (removes orphans)
+    if clear_chromadb_first:
+        cleared_count = vector_store.clear_memory_collection()
+        stats["cleared"] = cleared_count
+        logger.info(f"Cleared {cleared_count} items from ChromaDB memory collection")
 
     # Step 1: Reset embedded flags if doing full rebuild
     if reset_embedded_flags:
@@ -256,6 +268,18 @@ def rebuild_chromadb_from_sqlite(
         f"ChromaDB rebuild complete: {stats['embedded']} embedded, "
         f"{stats['failed']} failed, {stats['total']} total"
     )
+
+    # Step 3: Also rebuild plans if we cleared ChromaDB (plans were wiped too)
+    if clear_chromadb_first:
+        logger.info("Rebuilding plan index (cleared with ChromaDB)")
+        plan_stats = rebuild_plan_index(activity_store, vector_store, batch_size)
+        stats["plans_indexed"] = plan_stats.get("indexed", 0)
+        stats["plans_failed"] = plan_stats.get("failed", 0)
+        logger.info(
+            f"Plan rebuild complete: {stats['plans_indexed']} indexed, "
+            f"{stats['plans_failed']} failed"
+        )
+
     return stats
 
 

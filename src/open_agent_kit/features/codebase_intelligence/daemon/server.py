@@ -20,6 +20,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
     CI_DATA_DIR,
+    CI_HOOKS_LOG_FILE,
     CI_LOG_FILE,
     DEFAULT_INDEXING_TIMEOUT_SECONDS,
 )
@@ -27,6 +28,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.activity.processor.core import (
+        ActivityProcessor,
+    )
     from open_agent_kit.features.codebase_intelligence.config import LogRotationConfig
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
 
@@ -132,12 +136,47 @@ async def _start_file_watcher() -> None:
         logger.warning(f"Failed to start file watcher: {e}")
 
 
+def _run_chromadb_rebuild_sync(
+    activity_processor: "ActivityProcessor",
+    rebuild_type: str,
+    count: int,
+) -> None:
+    """Run ChromaDB rebuild synchronously (for use in background thread).
+
+    Args:
+        activity_processor: The activity processor instance.
+        rebuild_type: Either "full" or "pending" to indicate rebuild type.
+        count: Number of observations to process (for logging).
+    """
+    try:
+        if rebuild_type == "full":
+            logger.info(f"Background ChromaDB rebuild started ({count} observations)...")
+            stats = activity_processor.rebuild_chromadb_from_sqlite()
+            logger.info(
+                f"Background ChromaDB rebuild complete: {stats['embedded']} embedded, "
+                f"{stats['failed']} failed"
+            )
+        else:
+            logger.info(f"Background embedding started ({count} observations)...")
+            stats = activity_processor.embed_pending_observations()
+            logger.info(
+                f"Background embedding complete: {stats['embedded']} embedded, "
+                f"{stats['failed']} failed"
+            )
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(f"Background ChromaDB operation failed: {e}")
+
+
 async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
-    """Check for SQLite/ChromaDB mismatch and rebuild if needed.
+    """Check for SQLite/ChromaDB mismatch and schedule rebuild if needed.
 
     SQLite is the source of truth for memory observations. If ChromaDB
-    is empty or was wiped but SQLite has observations, this triggers
-    a rebuild to restore the search index.
+    is empty or was wiped but SQLite has observations, this schedules
+    a background rebuild to restore the search index.
+
+    IMPORTANT: This function does NOT block startup. Rebuilds run in
+    a background thread so the daemon can start accepting requests
+    immediately. The health endpoint reports rebuild status.
 
     This handles the case where:
     - ChromaDB was deleted/corrupted
@@ -172,35 +211,35 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
             f"unembedded={unembedded_count}"
         )
 
-        # If ChromaDB is empty but SQLite has data, rebuild
+        # If ChromaDB is empty but SQLite has data, schedule background rebuild
         if chromadb_count == 0 and sqlite_count > 0:
             logger.warning(
                 f"ChromaDB is empty but SQLite has {sqlite_count} observations. "
-                "Triggering rebuild from SQLite (source of truth)..."
+                "Scheduling background rebuild (startup will continue)..."
             )
-            # Run rebuild in thread pool to not block startup
+            # Run rebuild in background thread - don't await, let startup continue
             loop = asyncio.get_event_loop()
-            stats = await loop.run_in_executor(
+            loop.run_in_executor(
                 None,
-                state.activity_processor.rebuild_chromadb_from_sqlite,
+                _run_chromadb_rebuild_sync,
+                state.activity_processor,
+                "full",
+                sqlite_count,
             )
-            logger.info(
-                f"ChromaDB rebuild complete: {stats['embedded']} embedded, {stats['failed']} failed"
-            )
-        # If there are unembedded observations, process them
+        # If there are unembedded observations, schedule background embedding
         elif unembedded_count > 0:
             logger.info(
                 f"Found {unembedded_count} unembedded observations. "
-                "Scheduling embedding in background..."
+                "Scheduling background embedding (startup will continue)..."
             )
+            # Run embedding in background thread - don't await, let startup continue
             loop = asyncio.get_event_loop()
-            stats = await loop.run_in_executor(
+            loop.run_in_executor(
                 None,
-                state.activity_processor.embed_pending_observations,
-            )
-            logger.info(
-                f"Pending observations embedded: {stats['embedded']} embedded, "
-                f"{stats['failed']} failed"
+                _run_chromadb_rebuild_sync,
+                state.activity_processor,
+                "pending",
+                unembedded_count,
             )
 
     except (OSError, ValueError, RuntimeError) as e:
@@ -246,6 +285,13 @@ def _configure_logging(
     if level == logging.DEBUG:
         logging.getLogger("uvicorn.error").setLevel(logging.INFO)
 
+    # Configure the dedicated hooks logger (separate file for hook lifecycle events)
+    # This logger is always INFO level for complete hook visibility
+    hooks_logger = logging.getLogger("oak.ci.hooks")
+    hooks_logger.setLevel(logging.INFO)  # Always INFO for hooks.log
+    hooks_logger.propagate = False  # Don't duplicate to daemon.log
+    hooks_logger.handlers.clear()  # Clear existing handlers on restart
+
     # Create formatter
     if level == logging.DEBUG:
         formatter = logging.Formatter(
@@ -289,6 +335,22 @@ def _configure_logging(
             # uvicorn errors are still captured in the rotated log file
             uvicorn_error_logger = logging.getLogger("uvicorn.error")
             uvicorn_error_logger.addHandler(file_handler)
+
+            # Set up hooks logger file handler (separate file for hook lifecycle events)
+            hooks_log_file = log_file.parent / CI_HOOKS_LOG_FILE
+            hooks_handler: logging.Handler
+            if rotation.enabled:
+                hooks_handler = RotatingFileHandler(
+                    hooks_log_file,
+                    mode="a",
+                    maxBytes=rotation.get_max_bytes(),
+                    backupCount=rotation.backup_count,
+                    encoding="utf-8",
+                )
+            else:
+                hooks_handler = logging.FileHandler(hooks_log_file, mode="a", encoding="utf-8")
+            hooks_handler.setFormatter(formatter)
+            hooks_logger.addHandler(hooks_handler)
 
         except OSError as e:
             ci_logger.warning(f"Could not set up file logging to {log_file}: {e}")

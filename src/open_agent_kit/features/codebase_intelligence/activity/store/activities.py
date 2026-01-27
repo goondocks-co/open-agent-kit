@@ -26,16 +26,26 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
     Returns:
         ID of inserted activity.
     """
+    # Set source_machine_id if not already set
+    if activity.source_machine_id is None:
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_machine_identifier,
+        )
+
+        activity.source_machine_id = get_machine_identifier()
+
     with store._transaction() as conn:
         row = activity.to_row()
         cursor = conn.execute(
             """
             INSERT INTO activities (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
                                    file_path, files_affected, duration_ms, success,
-                                   error_message, timestamp, timestamp_epoch, processed, observation_id)
+                                   error_message, timestamp, timestamp_epoch, processed, observation_id,
+                                   source_machine_id)
             VALUES (:session_id, :prompt_batch_id, :tool_name, :tool_input, :tool_output_summary,
                     :file_path, :files_affected, :duration_ms, :success,
-                    :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id)
+                    :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id,
+                    :source_machine_id)
             """,
             row,
         )
@@ -130,6 +140,16 @@ def add_activities(store: ActivityStore, activities: list[Activity]) -> list[int
     if not activities:
         return []
 
+    # Set source_machine_id for all activities that don't have it
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
+
+    machine_id = get_machine_identifier()
+    for activity in activities:
+        if activity.source_machine_id is None:
+            activity.source_machine_id = machine_id
+
     count = len(activities)
     ids: list[int] = []
     session_updates: dict[str, int] = {}  # session_id -> count delta
@@ -145,10 +165,12 @@ def add_activities(store: ActivityStore, activities: list[Activity]) -> list[int
                 """
                 INSERT INTO activities (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
                                        file_path, files_affected, duration_ms, success,
-                                       error_message, timestamp, timestamp_epoch, processed, observation_id)
+                                       error_message, timestamp, timestamp_epoch, processed, observation_id,
+                                       source_machine_id)
                 VALUES (:session_id, :prompt_batch_id, :tool_name, :tool_input, :tool_output_summary,
                         :file_path, :files_affected, :duration_ms, :success,
-                        :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id)
+                        :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id,
+                        :source_machine_id)
                 """,
                 row,
             )

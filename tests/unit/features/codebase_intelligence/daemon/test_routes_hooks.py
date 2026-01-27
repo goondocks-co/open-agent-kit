@@ -42,10 +42,11 @@ def client():
 def mock_activity_store():
     """Mock activity store."""
     mock = MagicMock()
-    mock_session = MagicMock(id="session-123")
+    mock_session = MagicMock(id="session-123", title=None)  # title=None for new sessions
     mock.create_session.return_value = mock_session
     # get_or_create_session returns (session, created) tuple
     mock.get_or_create_session.return_value = (mock_session, True)
+    mock.get_session.return_value = mock_session  # Return session for get_session calls
     mock.create_prompt_batch.return_value = MagicMock(id=1)
     mock.end_prompt_batch.return_value = None
     mock.end_session.return_value = None

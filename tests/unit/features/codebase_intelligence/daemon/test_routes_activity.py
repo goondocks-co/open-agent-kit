@@ -53,6 +53,8 @@ def mock_activity_store():
     session1.status = "completed"
     session1.summary = "Implemented new feature"
     session1.title = "Add user authentication feature"
+    session1.parent_session_id = None
+    session1.parent_session_reason = None
 
     session2 = MagicMock()
     session2.id = "session-002"
@@ -63,9 +65,13 @@ def mock_activity_store():
     session2.status = "active"
     session2.summary = None
     session2.title = None
+    session2.parent_session_id = None
+    session2.parent_session_reason = None
 
     mock.get_recent_sessions.return_value = [session1, session2]
     mock.get_session.return_value = session1
+    mock.get_child_session_count.return_value = 0
+    mock.get_latest_session_summary.return_value = None  # No summary observation by default
 
     # Session stats (for individual queries)
     mock.get_session_stats.return_value = {
@@ -342,6 +348,8 @@ class TestGetSessionDetail:
         active_session.status = "active"
         active_session.summary = None
         active_session.title = None
+        active_session.parent_session_id = None
+        active_session.parent_session_reason = None
         setup_state_with_activity_store.activity_store.get_session.return_value = active_session
 
         response = client.get("/api/activity/sessions/active-session")

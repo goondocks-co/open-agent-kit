@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from open_agent_kit.config.paths import OAK_DIR
@@ -45,12 +45,14 @@ class RestoreRequest(BaseModel):
 
     input_path: str | None = None  # None = use machine-specific default
     dry_run: bool = False
+    auto_rebuild_chromadb: bool = True  # Rebuild ChromaDB after restore
 
 
 class RestoreAllRequest(BaseModel):
     """Request to restore from all backup files."""
 
     dry_run: bool = False
+    auto_rebuild_chromadb: bool = True  # Rebuild ChromaDB after restore
 
 
 class BackupFileInfo(BaseModel):
@@ -88,16 +90,24 @@ class RestoreResponse(BaseModel):
     activities_imported: int = 0
     activities_skipped: int = 0
     errors: int = 0
+    chromadb_rebuild_started: bool = False
 
     @classmethod
     def from_import_result(
-        cls, result: ImportResult, backup_path: str | None = None
+        cls,
+        result: ImportResult,
+        backup_path: str | None = None,
+        chromadb_rebuild_started: bool = False,
     ) -> "RestoreResponse":
         """Create response from ImportResult."""
+        message = (
+            f"Restored {result.total_imported} records, skipped {result.total_skipped} duplicates"
+        )
+        if chromadb_rebuild_started:
+            message += ". ChromaDB rebuild started in background."
         return cls(
             status="completed",
-            message=f"Restored {result.total_imported} records, "
-            f"skipped {result.total_skipped} duplicates",
+            message=message,
             backup_path=backup_path,
             sessions_imported=result.sessions_imported,
             sessions_skipped=result.sessions_skipped,
@@ -108,6 +118,7 @@ class RestoreResponse(BaseModel):
             activities_imported=result.activities_imported,
             activities_skipped=result.activities_skipped,
             errors=result.errors,
+            chromadb_rebuild_started=chromadb_rebuild_started,
         )
 
 
@@ -225,8 +236,14 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
 
 
 @router.post("/api/backup/restore")
-async def restore_backup(request: RestoreRequest) -> RestoreResponse:
-    """Restore CI database from backup with deduplication."""
+async def restore_backup(
+    request: RestoreRequest, background_tasks: BackgroundTasks
+) -> RestoreResponse:
+    """Restore CI database from backup with deduplication.
+
+    After restore, automatically triggers a ChromaDB rebuild to sync
+    the search index with the restored SQLite data.
+    """
     state = get_state()
 
     if not state.project_root:
@@ -271,15 +288,39 @@ async def restore_backup(request: RestoreRequest) -> RestoreResponse:
         f"{result.total_skipped} skipped from {backup_path}"
     )
 
-    return RestoreResponse.from_import_result(result, str(backup_path))
+    # Trigger ChromaDB rebuild if not dry run and requested
+    chromadb_rebuild_started = False
+    if (
+        not request.dry_run
+        and request.auto_rebuild_chromadb
+        and result.total_imported > 0
+        and state.activity_processor
+    ):
+        logger.info("Starting post-restore ChromaDB rebuild in background")
+        background_tasks.add_task(
+            state.activity_processor.rebuild_chromadb_from_sqlite,
+            batch_size=50,
+            reset_embedded_flags=True,
+            clear_chromadb_first=True,  # Remove orphans before rebuilding
+        )
+        chromadb_rebuild_started = True
+
+    return RestoreResponse.from_import_result(
+        result, str(backup_path), chromadb_rebuild_started=chromadb_rebuild_started
+    )
 
 
 @router.post("/api/backup/restore-all")
-async def restore_all_backups_endpoint(request: RestoreAllRequest) -> RestoreAllResponse:
+async def restore_all_backups_endpoint(
+    request: RestoreAllRequest, background_tasks: BackgroundTasks
+) -> RestoreAllResponse:
     """Restore from all backup files in oak/data/ with deduplication.
 
     Merges all team members' backups into the current database.
     Each record is only imported once based on its content hash.
+
+    After restore, automatically triggers a ChromaDB rebuild to sync
+    the search index with the restored SQLite data.
     """
     state = get_state()
 
@@ -317,15 +358,38 @@ async def restore_all_backups_endpoint(request: RestoreAllRequest) -> RestoreAll
     total_skipped = sum(r.total_skipped for r in results.values())
     total_errors = sum(r.errors for r in results.values())
 
+    # Trigger ChromaDB rebuild if not dry run and requested
+    chromadb_rebuild_started = False
+    if (
+        not request.dry_run
+        and request.auto_rebuild_chromadb
+        and total_imported > 0
+        and state.activity_processor
+    ):
+        logger.info("Starting post-restore ChromaDB rebuild in background")
+        background_tasks.add_task(
+            state.activity_processor.rebuild_chromadb_from_sqlite,
+            batch_size=50,
+            reset_embedded_flags=True,
+            clear_chromadb_first=True,  # Remove orphans before rebuilding
+        )
+        chromadb_rebuild_started = True
+
     logger.info(
         f"Restore all complete: {total_imported} imported, "
         f"{total_skipped} skipped, {total_errors} errors"
     )
 
+    message = (
+        f"Restored {total_imported} records from {len(backup_files)} files, "
+        f"skipped {total_skipped} duplicates"
+    )
+    if chromadb_rebuild_started:
+        message += ". ChromaDB rebuild started in background."
+
     return RestoreAllResponse(
         status="completed",
-        message=f"Restored {total_imported} records from {len(backup_files)} files, "
-        f"skipped {total_skipped} duplicates",
+        message=message,
         files_processed=len(backup_files),
         total_imported=total_imported,
         total_skipped=total_skipped,

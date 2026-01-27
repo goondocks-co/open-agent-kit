@@ -33,6 +33,10 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v9_to_v10(conn)
     if from_version < 11:
         migrate_v10_to_v11(conn)
+    if from_version < 12:
+        migrate_v11_to_v12(conn)
+    if from_version < 13:
+        migrate_v12_to_v13(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -516,4 +520,212 @@ def migrate_v10_to_v11(conn: sqlite3.Connection) -> None:
     logger.info(
         f"Migration v10->v11 complete: backfilled {batch_count} batch hashes, "
         f"{obs_count} observation hashes, {activity_count} activity hashes"
+    )
+
+
+def migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v11 to v12: Add session linking and plan source tracking.
+
+    Adds:
+    - parent_session_id, parent_session_reason to sessions table
+    - source_plan_batch_id to prompt_batches table
+
+    Also backfills parent_session_id by finding sessions where one ended within
+    5 seconds of another starting (same agent, same project). This links
+    sessions created via "clear context and proceed" to their planning sessions.
+
+    The 5-second threshold is based on data analysis showing:
+    - Most transitions: 0.04-0.12 seconds
+    - Slowest observed: ~8 seconds
+    - No transitions in 10s-5min range
+    We use a conservative 5 seconds to avoid false matches while catching most
+    legitimate transitions. Looking at ENDED sessions only avoids false positives
+    from concurrent active sessions.
+    """
+    logger.info("Migrating activity store schema v11 -> v12: Adding session linking columns")
+
+    # Check which columns need to be added to sessions
+    cursor = conn.execute("PRAGMA table_info(sessions)")
+    session_columns = {row[1] for row in cursor.fetchall()}
+
+    if "parent_session_id" not in session_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT")
+        logger.debug("Added parent_session_id column to sessions")
+
+    if "parent_session_reason" not in session_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN parent_session_reason TEXT")
+        logger.debug("Added parent_session_reason column to sessions")
+
+    # Check if source_plan_batch_id needs to be added to prompt_batches
+    cursor = conn.execute("PRAGMA table_info(prompt_batches)")
+    batch_columns = {row[1] for row in cursor.fetchall()}
+
+    if "source_plan_batch_id" not in batch_columns:
+        conn.execute("ALTER TABLE prompt_batches ADD COLUMN source_plan_batch_id INTEGER")
+        logger.debug("Added source_plan_batch_id column to prompt_batches")
+
+    # Create indexes for efficient queries
+    indexes = [
+        # For finding parent sessions
+        "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)",
+        # For finding sessions by end time (for linking)
+        "CREATE INDEX IF NOT EXISTS idx_sessions_ended_at ON sessions(ended_at)",
+        # For finding plan implementations
+        "CREATE INDEX IF NOT EXISTS idx_prompt_batches_source_plan ON prompt_batches(source_plan_batch_id)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning: {e}")
+
+    # Backfill: Link sessions where one ended within 5 seconds of another starting
+    # This captures the "clear context and proceed" pattern where the planning
+    # session ends and implementation session starts almost immediately.
+    #
+    # Algorithm:
+    # 1. For each session without a parent
+    # 2. Find sessions (same agent, same project) that ended within 5 seconds
+    #    BEFORE this session started
+    # 3. Link to the most recently ended session (closest in time)
+    max_gap_seconds = 5
+
+    # Get all sessions without parent_session_id, ordered by start time
+    cursor = conn.execute(
+        """
+        SELECT id, agent, project_root, started_at, created_at_epoch
+        FROM sessions
+        WHERE parent_session_id IS NULL
+        ORDER BY created_at_epoch ASC
+        """
+    )
+    sessions_to_link = cursor.fetchall()
+
+    linked_count = 0
+    for session_id, agent, project_root, started_at, started_epoch in sessions_to_link:
+        # Find the most recent session that:
+        # - Is NOT this session
+        # - Has the same agent and project_root
+        # - Has ended_at set (is completed)
+        # - Ended within max_gap_seconds BEFORE this session started
+        #
+        # We look for sessions that ended BEFORE this one started, and within
+        # the gap window. This ensures we're linking to the session that just
+        # completed, not concurrent sessions.
+        cursor = conn.execute(
+            """
+            SELECT id, ended_at
+            FROM sessions
+            WHERE id != ?
+              AND agent = ?
+              AND project_root = ?
+              AND ended_at IS NOT NULL
+              AND created_at_epoch < ?
+            ORDER BY created_at_epoch DESC
+            LIMIT 1
+            """,
+            (session_id, agent, project_root, started_epoch),
+        )
+        candidate = cursor.fetchone()
+
+        if candidate:
+            parent_id, ended_at_str = candidate
+            if ended_at_str:
+                try:
+                    from datetime import datetime
+
+                    ended_at = datetime.fromisoformat(ended_at_str)
+                    started_at_dt = datetime.fromisoformat(started_at)
+                    gap_seconds = (started_at_dt - ended_at).total_seconds()
+
+                    # Only link if the gap is within threshold and positive
+                    # (ended before started)
+                    if 0 <= gap_seconds <= max_gap_seconds:
+                        conn.execute(
+                            """
+                            UPDATE sessions
+                            SET parent_session_id = ?, parent_session_reason = 'inferred'
+                            WHERE id = ?
+                            """,
+                            (parent_id, session_id),
+                        )
+                        linked_count += 1
+                        logger.debug(
+                            f"Linked session {session_id[:8]}... -> {parent_id[:8]}... "
+                            f"(gap={gap_seconds:.2f}s)"
+                        )
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Could not parse dates for session linking: {e}")
+
+    logger.info(
+        f"Migration v11->v12 complete: added session linking columns, "
+        f"backfilled {linked_count} parent session links"
+    )
+
+
+def migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v12 to v13: Add source_machine_id for origin tracking.
+
+    Adds source_machine_id column to sessions, prompt_batches, memory_observations,
+    and activities tables. This enables efficient team backups by tracking which
+    machine originally created each record.
+
+    On export, only records with source_machine_id matching the current machine
+    are included, preventing backup file bloat from re-exporting imported records.
+
+    Backfills existing records with the current machine identifier.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
+
+    logger.info("Migrating activity store schema v12 -> v13: Adding source_machine_id columns")
+
+    machine_id = get_machine_identifier()
+    tables = ["sessions", "prompt_batches", "memory_observations", "activities"]
+    columns_added = 0
+
+    for table in tables:
+        # Check if column already exists (idempotent migration)
+        cursor = conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
+        columns = {row[1] for row in cursor.fetchall()}
+
+        if "source_machine_id" not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN source_machine_id TEXT")  # noqa: S608
+            columns_added += 1
+            logger.debug(f"Added source_machine_id column to {table}")
+
+    # Backfill existing records with current machine ID
+    # These records were created on this machine, so they should be tagged as such
+    backfill_counts = {}
+    for table in tables:
+        cursor = conn.execute(
+            f"UPDATE {table} SET source_machine_id = ? WHERE source_machine_id IS NULL",  # noqa: S608
+            (machine_id,),
+        )
+        backfill_counts[table] = cursor.rowcount
+
+    # Create indexes for efficient filtering during export
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_sessions_source_machine ON sessions(source_machine_id)",
+        "CREATE INDEX IF NOT EXISTS idx_prompt_batches_source_machine ON prompt_batches(source_machine_id)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_source_machine ON memory_observations(source_machine_id)",
+        "CREATE INDEX IF NOT EXISTS idx_activities_source_machine ON activities(source_machine_id)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    total_backfilled = sum(backfill_counts.values())
+    logger.info(
+        f"Migration v12->v13 complete: added {columns_added} columns, "
+        f"backfilled {total_backfilled} records with machine_id={machine_id} "
+        f"(sessions={backfill_counts.get('sessions', 0)}, "
+        f"batches={backfill_counts.get('prompt_batches', 0)}, "
+        f"observations={backfill_counts.get('memory_observations', 0)}, "
+        f"activities={backfill_counts.get('activities', 0)})"
     )

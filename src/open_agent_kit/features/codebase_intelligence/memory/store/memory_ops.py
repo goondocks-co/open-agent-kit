@@ -33,7 +33,8 @@ def add_memory(store: VectorStore, observation: MemoryObservation) -> str:
     store._ensure_initialized()
 
     # Generate embedding
-    result = store.embedding_provider.embed([observation.observation])
+    embedding_text = observation.get_embedding_text()
+    result = store.embedding_provider.embed([embedding_text])
 
     # Get actual dimensions
     actual_dims = result.dimensions

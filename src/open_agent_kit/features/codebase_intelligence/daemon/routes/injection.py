@@ -9,12 +9,21 @@ import logging
 from typing import TYPE_CHECKING
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    DEFAULT_PREVIEW_LENGTH,
+    DEFAULT_RELATED_QUERY_LENGTH,
     INJECTION_MAX_CODE_CHUNKS,
     INJECTION_MAX_LINES_PER_CHUNK,
     INJECTION_MAX_MEMORIES,
     INJECTION_MAX_SESSION_SUMMARIES,
+    INJECTION_SESSION_START_REMINDER_BLOCK,
+    INJECTION_SESSION_SUMMARIES_TITLE,
+    MEMORY_EMBED_LABEL_CONTEXT,
+    MEMORY_EMBED_LABEL_FILE,
+    MEMORY_EMBED_LABEL_SEPARATOR,
+    MEMORY_EMBED_LABEL_TEMPLATE,
+    MEMORY_EMBED_LINE_SEPARATOR,
 )
-from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
+from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
@@ -106,7 +115,7 @@ def format_session_summaries(
     if not summaries:
         return ""
 
-    lines = ["## Recent Session History\n"]
+    lines = [INJECTION_SESSION_SUMMARIES_TITLE]
     for i, summary in enumerate(summaries[:max_items], 1):
         obs = summary.get("observation", "")
         tags = summary.get("tags", [])
@@ -119,9 +128,9 @@ def format_session_summaries(
         if len(obs) > 200:
             obs = obs[:197] + "..."
 
-        lines.append(f"**Session {i}** ({agent}): {obs}\n")
+        lines.append(f"**Session {i}** ({agent}): {obs}")
 
-    return "\n".join(lines)
+    return MEMORY_EMBED_LINE_SEPARATOR.join(lines)
 
 
 # =============================================================================
@@ -181,7 +190,7 @@ def format_code_for_injection(
 
 
 def build_rich_search_query(
-    file_path: str,
+    normalized_path: str,
     tool_output: str | None = None,
     user_prompt: str | None = None,
 ) -> str:
@@ -191,30 +200,42 @@ def build_rich_search_query(
     to create a more semantically meaningful search query than file path alone.
 
     Args:
-        file_path: The file path being operated on.
+        normalized_path: The project-relative path being operated on.
         tool_output: Optional tool output (will filter noise patterns).
         user_prompt: Optional user prompt excerpt.
 
     Returns:
         Combined search query string.
     """
-    parts = [file_path]
+    file_name = normalized_path.rsplit("/", 1)[-1]
+    parts = [
+        MEMORY_EMBED_LABEL_TEMPLATE.format(
+            label=MEMORY_EMBED_LABEL_FILE,
+            separator=MEMORY_EMBED_LABEL_SEPARATOR,
+            value=file_name,
+        ),
+        MEMORY_EMBED_LABEL_TEMPLATE.format(
+            label=MEMORY_EMBED_LABEL_CONTEXT,
+            separator=MEMORY_EMBED_LABEL_SEPARATOR,
+            value=normalized_path,
+        ),
+    ]
 
     # Add tool output excerpt (skip noise patterns like file content dumps)
     # Ensure tool_output is actually a string before processing
     if tool_output and isinstance(tool_output, str):
         noise_prefixes = ("Read ", "1\u2192", "{", "[", "     1\u2192")
         if not any(tool_output.strip().startswith(p) for p in noise_prefixes):
-            excerpt = tool_output[:200].strip()
+            excerpt = tool_output[:DEFAULT_PREVIEW_LENGTH].strip()
             if excerpt:
                 parts.append(excerpt)
 
     # Add user prompt excerpt (ensure it's a string, not a mock or other type)
-    # Use 500 chars (~125 tokens) for meaningful semantic matching
+    # Use DEFAULT_RELATED_QUERY_LENGTH for meaningful semantic matching
     if user_prompt and isinstance(user_prompt, str):
-        parts.append(user_prompt[:500].strip())
+        parts.append(user_prompt[:DEFAULT_RELATED_QUERY_LENGTH].strip())
 
-    return " ".join(parts)
+    return MEMORY_EMBED_LINE_SEPARATOR.join(parts)
 
 
 # =============================================================================
@@ -225,8 +246,8 @@ def build_rich_search_query(
 def build_session_context(state: "DaemonState", include_memories: bool = True) -> str:
     """Build context string for session injection.
 
-    Provides status information and relevant memories for session start.
-    Does NOT include CLI command reminders (agents rarely use them).
+    Provides status information, MCP tool reminders, and relevant memories
+    for session start.
 
     Args:
         state: Daemon state object.
@@ -249,42 +270,36 @@ def build_session_context(state: "DaemonState", include_memories: bool = True) -
                 f"{memory_count} memories stored."
             )
 
-        # Include recent session summaries (provides continuity across sessions)
-        if include_memories and state.retrieval_engine:
-            try:
-                session_summaries, _ = state.retrieval_engine.list_memories(
-                    limit=INJECTION_MAX_SESSION_SUMMARIES,
-                    memory_types=["session_summary"],
-                )
-                if session_summaries:
-                    session_text = format_session_summaries(session_summaries)
-                    if session_text:
-                        parts.append(session_text)
-            except (OSError, ValueError, RuntimeError, AttributeError) as e:
-                logger.debug(f"Failed to fetch session summaries for injection: {e}")
+            parts.append(INJECTION_SESSION_START_REMINDER_BLOCK)
 
-        # Include recent memories (gotchas, decisions, etc.) - excluding session summaries
-        if include_memories and memory_count > 0 and state.retrieval_engine:
-            try:
-                # Search with base threshold, then filter by confidence
-                # For session start, include high and medium confidence (broader context)
-                result = state.retrieval_engine.search(
-                    query="important gotchas decisions bugs",
-                    search_type="memory",
-                    limit=15,  # Fetch more, filter by confidence
-                )
-                # Filter to high and medium confidence, exclude session summaries
-                confident_memories = RetrievalEngine.filter_by_confidence(
-                    result.memory, min_confidence="medium"
-                )
-                recent = [
-                    m for m in confident_memories if m.get("memory_type") != "session_summary"
-                ]
-                if recent:
-                    mem_text = format_memories_for_injection(recent[:INJECTION_MAX_MEMORIES])
-                    if mem_text:
-                        parts.append(mem_text)
-            except (OSError, ValueError, RuntimeError, AttributeError) as e:
-                logger.debug(f"Failed to fetch memories for injection: {e}")
+            # Include recent session summaries (provides continuity across sessions)
+            if include_memories and state.retrieval_engine:
+                try:
+                    session_summaries, _ = state.retrieval_engine.list_memories(
+                        limit=INJECTION_MAX_SESSION_SUMMARIES,
+                        memory_types=[MemoryType.SESSION_SUMMARY.value],
+                    )
+                    if not session_summaries and state.activity_store:
+                        sqlite_summaries = state.activity_store.list_session_summaries(
+                            limit=INJECTION_MAX_SESSION_SUMMARIES
+                        )
+                        session_summaries = [
+                            {
+                                "observation": summary.observation,
+                                "tags": summary.tags or [],
+                                "memory_type": MemoryType.SESSION_SUMMARY.value,
+                            }
+                            for summary in sqlite_summaries
+                        ]
+                    if session_summaries:
+                        session_text = format_session_summaries(session_summaries)
+                        if session_text:
+                            parts.append(session_text)
+                except (OSError, ValueError, RuntimeError, AttributeError) as e:
+                    logger.debug(f"Failed to fetch session summaries for injection: {e}")
+
+            # Note: Random gotchas/decisions are NOT injected at session start because
+            # there's no user prompt to filter relevance. Session summaries provide
+            # sufficient context. Use oak_context tool for task-specific memories.
 
     return "\n\n".join(parts) if parts else ""

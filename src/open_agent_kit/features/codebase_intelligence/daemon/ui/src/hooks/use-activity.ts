@@ -4,7 +4,9 @@ import {
     API_ENDPOINTS,
     getSessionDetailEndpoint,
     PAGINATION,
+    DEFAULT_SESSION_SORT,
 } from "@/lib/constants";
+import type { SessionSortOption } from "@/lib/constants";
 
 export interface ActivityItem {
     id: string;
@@ -31,6 +33,10 @@ export interface SessionItem {
     first_prompt_preview: string | null;
     prompt_batch_count: number;
     activity_count: number;
+    // Session linking fields
+    parent_session_id: string | null;
+    parent_session_reason: string | null;
+    child_session_count: number;
 }
 
 export interface PromptBatchItem {
@@ -74,10 +80,14 @@ const SESSION_REFETCH_INTERVAL_MS = 5000;
 /** Refetch interval for activity stats (10 seconds) */
 const STATS_REFETCH_INTERVAL_MS = 10000;
 
-export function useSessions(limit: number = PAGINATION.DEFAULT_LIMIT, offset: number = PAGINATION.DEFAULT_OFFSET) {
+export function useSessions(
+    limit: number = PAGINATION.DEFAULT_LIMIT,
+    offset: number = PAGINATION.DEFAULT_OFFSET,
+    sort: SessionSortOption = DEFAULT_SESSION_SORT
+) {
     return useQuery<SessionListResponse>({
-        queryKey: ["sessions", limit, offset],
-        queryFn: () => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?limit=${limit}&offset=${offset}`),
+        queryKey: ["sessions", limit, offset, sort],
+        queryFn: () => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?limit=${limit}&offset=${offset}&sort=${sort}`),
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
     });
 }

@@ -157,6 +157,19 @@ CHUNK_TYPE_UNKNOWN: Final[str] = "unknown"
 # Special memory type for plans (indexed from prompt_batches, not memory_observations)
 MEMORY_TYPE_PLAN: Final[str] = "plan"
 
+# Deterministic ID prefix for session summaries (enables upsert on session reopen)
+SESSION_SUMMARY_OBS_ID_PREFIX: Final[str] = "session_summary:"
+
+# =============================================================================
+# Memory Embedding Format
+# =============================================================================
+
+MEMORY_EMBED_LABEL_FILE: Final[str] = "file"
+MEMORY_EMBED_LABEL_CONTEXT: Final[str] = "context"
+MEMORY_EMBED_LABEL_SEPARATOR: Final[str] = ": "
+MEMORY_EMBED_LABEL_TEMPLATE: Final[str] = "{label}{separator}{value}"
+MEMORY_EMBED_LINE_SEPARATOR: Final[str] = "\n"
+
 # =============================================================================
 # Batching and Performance
 # =============================================================================
@@ -278,6 +291,19 @@ TAG_AUTO_CAPTURED: Final[str] = "auto-captured"
 TAG_SESSION_SUMMARY: Final[str] = "session-summary"
 
 # =============================================================================
+# Session Linking
+# =============================================================================
+
+# Parent session reasons (why a session is linked to another)
+SESSION_LINK_REASON_CLEAR: Final[str] = "clear"  # "Clear context and proceed"
+SESSION_LINK_REASON_COMPACT: Final[str] = "compact"  # Auto-compact
+SESSION_LINK_REASON_INFERRED: Final[str] = "inferred"  # Backfilled by migration
+
+# Maximum gap (in seconds) between session end and start for linking
+# Data analysis shows most transitions are < 1 second; 5 seconds provides margin
+SESSION_LINK_MAX_GAP_SECONDS: Final[int] = 5
+
+# =============================================================================
 # Confidence Levels (model-agnostic)
 # =============================================================================
 
@@ -341,12 +367,15 @@ PROMPT_SOURCE_USER: Final[str] = "user"
 PROMPT_SOURCE_AGENT: Final[str] = "agent_notification"
 PROMPT_SOURCE_SYSTEM: Final[str] = "system"
 PROMPT_SOURCE_PLAN: Final[str] = "plan"
+# Plan synthesized from TaskCreate activities
+PROMPT_SOURCE_DERIVED_PLAN: Final[str] = "derived_plan"
 
 VALID_PROMPT_SOURCES: Final[tuple[str, ...]] = (
     PROMPT_SOURCE_USER,
     PROMPT_SOURCE_AGENT,
     PROMPT_SOURCE_SYSTEM,
     PROMPT_SOURCE_PLAN,
+    PROMPT_SOURCE_DERIVED_PLAN,
 )
 
 # =============================================================================
@@ -371,4 +400,15 @@ INJECTION_MAX_LINES_PER_CHUNK: Final[int] = 50
 
 # Memory injection limits
 INJECTION_MAX_MEMORIES: Final[int] = 10
-INJECTION_MAX_SESSION_SUMMARIES: Final[int] = 5
+INJECTION_MAX_SESSION_SUMMARIES: Final[int] = 3
+
+# Session start injection text
+INJECTION_SESSION_SUMMARIES_TITLE: Final[str] = "## Recent Session Summaries (most recent first)"
+INJECTION_SESSION_START_REMINDER_TITLE: Final[str] = "## OAK CI Tools"
+INJECTION_SESSION_START_REMINDER_LINES: Final[tuple[str, ...]] = (
+    "- MCP tools: `oak_search` (code/memories), `oak_context` (task context), "
+    "`oak_remember` (store learnings).",
+)
+INJECTION_SESSION_START_REMINDER_BLOCK: Final[str] = MEMORY_EMBED_LINE_SEPARATOR.join(
+    (INJECTION_SESSION_START_REMINDER_TITLE, *INJECTION_SESSION_START_REMINDER_LINES)
+)

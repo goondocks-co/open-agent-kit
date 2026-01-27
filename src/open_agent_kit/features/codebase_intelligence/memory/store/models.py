@@ -9,6 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    MEMORY_EMBED_LABEL_CONTEXT,
+    MEMORY_EMBED_LABEL_FILE,
+    MEMORY_EMBED_LABEL_SEPARATOR,
+    MEMORY_EMBED_LABEL_TEMPLATE,
+    MEMORY_EMBED_LINE_SEPARATOR,
+)
 from open_agent_kit.features.codebase_intelligence.memory.store.classification import (
     classify_doc_type,
     get_short_path,
@@ -129,6 +136,32 @@ class MemoryObservation:
     def token_estimate(self) -> int:
         """Estimate tokens."""
         return len(self.observation) // 4
+
+    def get_embedding_text(self) -> str:
+        """Generate embedding text enriched with context."""
+        parts = [self.observation]
+
+        if self.context:
+            context_value = self.context.strip()
+            if context_value:
+                file_name = Path(context_value).name
+                if file_name:
+                    parts.append(
+                        MEMORY_EMBED_LABEL_TEMPLATE.format(
+                            label=MEMORY_EMBED_LABEL_FILE,
+                            separator=MEMORY_EMBED_LABEL_SEPARATOR,
+                            value=file_name,
+                        )
+                    )
+                parts.append(
+                    MEMORY_EMBED_LABEL_TEMPLATE.format(
+                        label=MEMORY_EMBED_LABEL_CONTEXT,
+                        separator=MEMORY_EMBED_LABEL_SEPARATOR,
+                        value=context_value,
+                    )
+                )
+
+        return MEMORY_EMBED_LINE_SEPARATOR.join(parts)
 
     def to_metadata(self) -> dict[str, Any]:
         """Convert to ChromaDB metadata format."""

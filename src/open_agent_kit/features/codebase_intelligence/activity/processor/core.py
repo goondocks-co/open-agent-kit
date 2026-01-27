@@ -49,6 +49,7 @@ from open_agent_kit.features.codebase_intelligence.activity.prompts import (
     render_prompt,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
+    INJECTION_MAX_SESSION_SUMMARIES,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
 )
@@ -184,6 +185,7 @@ class ActivityProcessor:
             vector_store=self.vector_store,
             classification=classification,
             prompt_batch_id=prompt_batch_id,
+            project_root=self.project_root,
         )
 
     def process_session(self, session_id: str) -> ProcessingResult:
@@ -579,7 +581,7 @@ class ActivityProcessor:
     def process_session_summary(self, session_id: str) -> str | None:
         """Generate and store a session summary and title."""
         if not self.summarizer:
-            logger.debug("No summarizer configured, skipping session summary")
+            logger.info("Session summary skipped: summarizer not configured")
             return None
         return process_session_summary(
             session_id=session_id,
@@ -681,6 +683,22 @@ class ActivityProcessor:
                                 f"Failed to summarize recovered session {session_id[:8]}: {e}"
                             )
 
+                # Generate summaries for completed sessions missing summaries
+                if self.summarizer:
+                    missing = self.activity_store.get_sessions_missing_summaries(
+                        limit=INJECTION_MAX_SESSION_SUMMARIES
+                    )
+                    for session in missing:
+                        try:
+                            summary = self.process_session_summary(session.id)
+                            if summary:
+                                logger.info(
+                                    f"Generated summary for session {session.id[:8]}: "
+                                    f"{summary[:50]}..."
+                                )
+                        except (OSError, ValueError, TypeError, RuntimeError) as e:
+                            logger.warning(f"Failed to summarize session {session.id[:8]}: {e}")
+
                 # Recovery: Associate orphaned activities with batches
                 orphan_count = self.activity_store.recover_orphaned_activities()
                 if orphan_count:
@@ -730,13 +748,22 @@ class ActivityProcessor:
         self,
         batch_size: int = 50,
         reset_embedded_flags: bool = True,
+        clear_chromadb_first: bool = False,
     ) -> dict[str, int]:
-        """Rebuild ChromaDB memory index from SQLite source of truth."""
+        """Rebuild ChromaDB memory index from SQLite source of truth.
+
+        Args:
+            batch_size: Number of observations to process per batch.
+            reset_embedded_flags: If True, marks ALL observations as unembedded first.
+            clear_chromadb_first: If True, clears ChromaDB memory collection first
+                to remove orphaned entries before rebuilding.
+        """
         return rebuild_chromadb_from_sqlite(
             activity_store=self.activity_store,
             vector_store=self.vector_store,
             batch_size=batch_size,
             reset_embedded_flags=reset_embedded_flags,
+            clear_chromadb_first=clear_chromadb_first,
         )
 
     def embed_pending_observations(self, batch_size: int = 50) -> dict[str, int]:

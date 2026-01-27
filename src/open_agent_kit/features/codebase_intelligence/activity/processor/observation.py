@@ -5,8 +5,11 @@ Dual-write pattern: SQLite (source of truth) + ChromaDB (search index).
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+from open_agent_kit.utils.file_utils import get_relative_path
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import (
@@ -17,6 +20,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _normalize_context_path(
+    context: str | None,
+    project_root: str | None,
+) -> str | None:
+    """Normalize context paths to project-relative when possible."""
+    if not context:
+        return context
+    if not project_root:
+        return context
+
+    root_path = Path(project_root)
+    context_path = Path(context)
+
+    try:
+        if not context_path.is_absolute():
+            context_path = root_path / context_path
+        context_path = context_path.resolve()
+        root_path = root_path.resolve()
+        if context_path == root_path or root_path in context_path.parents:
+            return get_relative_path(context_path, root_path).as_posix()
+    except (OSError, RuntimeError, ValueError):
+        return context
+
+    return context
+
+
 def store_observation(
     session_id: str,
     observation: dict[str, Any],
@@ -24,6 +53,7 @@ def store_observation(
     vector_store: "VectorStore",
     classification: str | None = None,
     prompt_batch_id: int | None = None,
+    project_root: str | None = None,
 ) -> str | None:
     """Store an observation using dual-write: SQLite (source of truth) + ChromaDB (search index).
 
@@ -72,6 +102,7 @@ def store_observation(
     if classification:
         tags.append(f"session:{classification}")
 
+    context = _normalize_context_path(observation.get("context"), project_root)
     obs_id = str(uuid4())
     created_at = datetime.now()
 
@@ -82,7 +113,7 @@ def store_observation(
         prompt_batch_id=prompt_batch_id,
         observation=obs_text,
         memory_type=memory_type.value,
-        context=observation.get("context"),
+        context=context,
         tags=tags,
         importance=importance_int,
         created_at=created_at,
@@ -101,7 +132,7 @@ def store_observation(
         id=obs_id,
         observation=obs_text,
         memory_type=memory_type.value,
-        context=observation.get("context"),
+        context=context,
         tags=tags,
         created_at=created_at,
     )

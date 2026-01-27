@@ -909,6 +909,41 @@ class TestFilterByConfidence:
         assert len(filtered) == 2
         assert all(r["confidence"] == "high" for r in filtered)
 
+    def test_filter_logs_dropped_count(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that filtering logs the number of dropped results."""
+        import logging
+
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2", "confidence": "medium"},
+            {"id": "3", "confidence": "low"},
+            {"id": "4", "confidence": "low"},
+        ]
+
+        with caplog.at_level(logging.DEBUG):
+            filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="high")
+
+        # Should have dropped 3 results (2 low + 1 medium)
+        assert len(filtered) == 1
+        assert any("[FILTER]" in record.message for record in caplog.records)
+        assert any("Dropped 3/4" in record.message for record in caplog.records)
+
+    def test_filter_no_log_when_nothing_dropped(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that no log is emitted when nothing is dropped."""
+        import logging
+
+        results = [
+            {"id": "1", "confidence": "high"},
+            {"id": "2", "confidence": "high"},
+        ]
+
+        with caplog.at_level(logging.DEBUG):
+            filtered = RetrievalEngine.filter_by_confidence(results, min_confidence="high")
+
+        assert len(filtered) == 2
+        # No [FILTER] log should be emitted
+        assert not any("[FILTER]" in record.message for record in caplog.records)
+
     def test_filter_medium_includes_high(self) -> None:
         """Test filtering for medium includes high and medium."""
         results = [

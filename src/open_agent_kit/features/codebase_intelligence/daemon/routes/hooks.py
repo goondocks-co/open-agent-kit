@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -34,6 +35,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_FIELD_TOOL_NAME,
     HOOK_FIELD_TOOL_OUTPUT_B64,
     HOOK_FIELD_TOOL_USE_ID,
+    MEMORY_EMBED_LINE_SEPARATOR,
     PROMPT_SOURCE_PLAN,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
@@ -45,8 +47,13 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
 from open_agent_kit.features.codebase_intelligence.prompt_classifier import classify_prompt
 from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
+from open_agent_kit.utils.file_utils import get_relative_path
 
 logger = logging.getLogger(__name__)
+
+# Dedicated hooks logger for lifecycle events (writes to hooks.log)
+# This provides a clean, focused view of hook activity separate from daemon.log
+hooks_logger = logging.getLogger("oak.ci.hooks")
 
 router = APIRouter(tags=["hooks"])
 
@@ -79,6 +86,28 @@ def _hash_value(value: str) -> str:
 def _build_dedupe_key(event_name: str, session_id: str, parts: list[str]) -> str:
     """Build a dedupe key for hook events."""
     return "|".join([event_name, session_id, *parts])
+
+
+def _normalize_file_path(file_path: str, project_root: Path | None) -> str:
+    """Normalize file path to project-relative when possible."""
+    if not file_path:
+        return file_path
+    if not project_root:
+        return file_path
+
+    path_value = Path(file_path)
+
+    try:
+        if not path_value.is_absolute():
+            path_value = project_root / path_value
+        path_value = path_value.resolve()
+        root_path = project_root.resolve()
+        if path_value == root_path or root_path in path_value.parents:
+            return get_relative_path(path_value, root_path).as_posix()
+    except (OSError, RuntimeError, ValueError):
+        return file_path
+
+    return file_path
 
 
 @router.post(f"{OAK_CI_PREFIX}/session-start")
@@ -118,9 +147,9 @@ async def hook_session_start(request: Request) -> dict:
         )
         return {"status": "ok", "session_id": session_id, "context": {}}
 
-    # Prominent logging for session-start lifecycle tracking
-    logger.info("[SESSION-START] ========== Session starting ==========")
-    logger.info(f"[SESSION-START] session_id={session_id}, agent={agent}, source={source}")
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(f"[SESSION-START] session={session_id} agent={agent} source={source}")
+    # Detailed logging to daemon.log (debug mode only)
     logger.debug(f"[SESSION-START] Raw request body: {body}")
 
     # Check if session already exists (idempotency check for duplicate hooks)
@@ -147,7 +176,36 @@ async def hook_session_start(request: Request) -> dict:
         logger.debug(f"Updated existing in-memory session: {session_id}")
 
     # Create or resume session in activity store (persistent SQLite) - idempotent
+    # For source="clear", find the session that just ended and link as parent
+    parent_session_id = None
+    parent_session_reason = None
+
     if state.activity_store and state.project_root:
+        # When source="clear", look for a session that just ended (within 5 seconds)
+        # This links implementation sessions to their planning sessions
+        if source == "clear":
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+                    find_just_ended_session,
+                )
+
+                parent_session_id = find_just_ended_session(
+                    store=state.activity_store,
+                    agent=agent,
+                    project_root=str(state.project_root),
+                    exclude_session_id=session_id,
+                    new_session_started_at=datetime.now(),
+                    max_gap_seconds=5,
+                )
+                if parent_session_id:
+                    parent_session_reason = "clear"
+                    hooks_logger.info(
+                        f"[SESSION-LINK] session={session_id} parent={parent_session_id[:8]}... "
+                        f"reason={parent_session_reason}"
+                    )
+            except (OSError, ValueError, RuntimeError) as e:
+                logger.debug(f"Failed to find parent session for linking: {e}")
+
         try:
             _, created = state.activity_store.get_or_create_session(
                 session_id=session_id,
@@ -156,6 +214,22 @@ async def hook_session_start(request: Request) -> dict:
             )
             if created:
                 logger.debug(f"Created activity session: {session_id}")
+                # If we found a parent session and the session was just created,
+                # update the parent link
+                if parent_session_id:
+                    try:
+                        from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+                            update_session_parent,
+                        )
+
+                        update_session_parent(
+                            store=state.activity_store,
+                            session_id=session_id,
+                            parent_session_id=parent_session_id,
+                            reason=parent_session_reason or "clear",
+                        )
+                    except (OSError, ValueError, RuntimeError) as e:
+                        logger.debug(f"Failed to update session parent: {e}")
             else:
                 logger.debug(f"Resumed activity session: {session_id}")
         except (OSError, ValueError, RuntimeError) as e:
@@ -320,14 +394,20 @@ async def hook_prompt_submit(request: Request) -> dict:
             )
             prompt_batch_id = batch.id
 
-            # Log with additional context for plan execution detection
+            # Lifecycle logging to dedicated hooks.log
+            hooks_logger.info(
+                f"[PROMPT-SUBMIT] session={session_id} batch={prompt_batch_id} "
+                f"source={source_type}"
+            )
+
+            # Detailed logging to daemon.log
             if classification.agent_type:
-                logger.info(
+                logger.debug(
                     f"Created prompt batch {prompt_batch_id} (source={source_type}, "
                     f"agent={classification.agent_type}) for session {session_id}"
                 )
             else:
-                logger.info(
+                logger.debug(
                     f"Created prompt batch {prompt_batch_id} (source={source_type}) "
                     f"for session {session_id}"
                 )
@@ -340,14 +420,22 @@ async def hook_prompt_submit(request: Request) -> dict:
             logger.warning(f"Failed to create prompt batch: {e}")
 
     context: dict[str, Any] = {}
+    search_query = prompt
+    if state.activity_store:
+        session_record = state.activity_store.get_session(session_id)
+        if session_record and session_record.title:
+            search_query = MEMORY_EMBED_LINE_SEPARATOR.join([session_record.title, prompt])
 
     # Search for relevant memories based on prompt
     if state.retrieval_engine:
         try:
+            # Debug logging for search queries (trace mode)
+            logger.debug(f"[SEARCH:memory] query={search_query[:200]}")
+
             # Search with base threshold, then filter by confidence
             # For prompt injection, only include HIGH confidence (precision over recall)
             result = state.retrieval_engine.search(
-                query=prompt,
+                query=search_query,
                 search_type="memory",
                 limit=10,  # Fetch more, filter by confidence
             )
@@ -356,6 +444,18 @@ async def hook_prompt_submit(request: Request) -> dict:
             high_confidence_memories = RetrievalEngine.filter_by_confidence(
                 result.memory, min_confidence="high"
             )
+
+            # Debug logging for search results (trace mode)
+            logger.debug(
+                f"[SEARCH:memory:results] found={len(result.memory)} "
+                f"high_conf={len(high_confidence_memories)}"
+            )
+            if result.memory:
+                scores_preview = [
+                    (round(m.get("relevance", 0), 3), m.get("confidence"))
+                    for m in result.memory[:5]
+                ]
+                logger.debug(f"[SEARCH:memory:scores] {scores_preview}")
 
             if high_confidence_memories:
                 # Format as injection context
@@ -380,14 +480,24 @@ async def hook_prompt_submit(request: Request) -> dict:
     # Search for relevant code based on prompt
     if state.retrieval_engine:
         try:
+            # Debug logging for search queries (trace mode)
+            logger.debug(f"[SEARCH:code] query={search_query[:200]}")
+
             code_result = state.retrieval_engine.search(
-                query=prompt,
+                query=search_query,
                 search_type="code",
                 limit=10,
             )
             high_confidence_code = RetrievalEngine.filter_by_confidence(
                 code_result.code, min_confidence="high"
             )
+
+            # Debug logging for search results (trace mode)
+            logger.debug(
+                f"[SEARCH:code:results] found={len(code_result.code)} "
+                f"high_conf={len(high_confidence_code)}"
+            )
+
             if high_confidence_code:
                 code_text = format_code_for_injection(high_confidence_code[:3])
                 if code_text:
@@ -449,11 +559,11 @@ async def hook_post_tool_use(request: Request) -> dict:
     else:
         tool_output = body.get("tool_output", body.get("output", ""))
 
-    # Log detailed info about what was received
+    # Log detailed info about what was received (daemon.log debug only)
     has_input = bool(tool_input and tool_input != {})
     has_output = bool(tool_output)
     output_len = len(tool_output) if tool_output else 0
-    logger.info(
+    logger.debug(
         f"Post-tool-use: {tool_name} | "
         f"input={has_input} | output={has_output} ({output_len} chars) | "
         f"session={session_id or 'none'}"
@@ -595,6 +705,9 @@ async def hook_post_tool_use(request: Request) -> dict:
             state.activity_store.add_activity_buffered(activity)
             logger.debug(f"Stored activity: {tool_name} (batch={prompt_batch_id})")
 
+            # Lifecycle logging to dedicated hooks.log
+            hooks_logger.info(f"[TOOL-USE] {tool_name} session={session_id} success={not is_error}")
+
             # Detect plan mode: if Write to a plan directory, mark batch as plan
             # and capture plan content for self-contained CI storage
             if tool_name == "Write" and prompt_batch_id:
@@ -633,51 +746,74 @@ async def hook_post_tool_use(request: Request) -> dict:
         file_path = tool_input.get("file_path", "")
         if file_path:
             try:
-                # Get user prompt for richer context
-                user_prompt = None
-                if session and session.current_prompt_batch_id and state.activity_store:
-                    batch = state.activity_store.get_prompt_batch(session.current_prompt_batch_id)
-                    if batch:
-                        user_prompt = batch.user_prompt
+                normalized_path = _normalize_file_path(file_path, state.project_root)
+                prompt_batch_id = session.current_prompt_batch_id if session else None
+                should_inject = True
+                if session and not session.should_inject_file_memory(
+                    prompt_batch_id,
+                    normalized_path,
+                ):
+                    should_inject = False
 
-                # Build rich query (not just file path) for better semantic matching
-                search_query = build_rich_search_query(
-                    file_path=file_path,
-                    tool_output=tool_output if tool_name != "Read" else None,
-                    user_prompt=user_prompt,
-                )
-
-                # Search for memories about this file, filter by confidence
-                # For file operations, include high and medium confidence
-                search_res = state.retrieval_engine.search(
-                    query=search_query,
-                    search_type="memory",
-                    limit=8,  # Fetch more, filter by confidence
-                )
-                # Filter to high and medium confidence
-                confident_memories = RetrievalEngine.filter_by_confidence(
-                    search_res.memory, min_confidence="medium"
-                )
-
-                if confident_memories:
-                    mem_lines = []
-                    for mem in confident_memories[:3]:  # Cap at 3
-                        mem_type = mem.get("memory_type", "note")
-                        obs = mem.get("observation", "")
-                        if mem_type == "gotcha":
-                            mem_lines.append(f"⚠️ GOTCHA: {obs}")
-                        else:
-                            mem_lines.append(f"[{mem_type}] {obs}")
-
-                    if mem_lines:
-                        injected_context = f"**Memories about {file_path}:**\n" + "\n".join(
-                            mem_lines
+                if should_inject:
+                    # Get user prompt for richer context
+                    user_prompt = None
+                    if session and session.current_prompt_batch_id and state.activity_store:
+                        batch = state.activity_store.get_prompt_batch(
+                            session.current_prompt_batch_id
                         )
-                        logger.debug(
-                            f"Injecting {len(confident_memories[:3])} confident memories "
-                            f"for {file_path}"
-                        )
-                        logger.debug(f"[INJECT:post-tool-use] Content:\n{injected_context}")
+                        if batch:
+                            user_prompt = batch.user_prompt
+
+                    # Build rich query (not just file path) for better semantic matching
+                    search_query = build_rich_search_query(
+                        normalized_path=normalized_path,
+                        tool_output=tool_output if tool_name != "Read" else None,
+                        user_prompt=user_prompt,
+                    )
+
+                    # Debug logging for file context search (trace mode)
+                    logger.debug(
+                        f"[SEARCH:file-context] query={search_query[:150]} file={normalized_path}"
+                    )
+
+                    # Search for memories about this file, filter by confidence
+                    # For file operations, include high and medium confidence
+                    search_res = state.retrieval_engine.search(
+                        query=search_query,
+                        search_type="memory",
+                        limit=8,  # Fetch more, filter by confidence
+                    )
+                    # Filter to high and medium confidence
+                    confident_memories = RetrievalEngine.filter_by_confidence(
+                        search_res.memory, min_confidence="medium"
+                    )
+
+                    # Debug logging for file context results (trace mode)
+                    logger.debug(
+                        f"[SEARCH:file-context:results] found={len(search_res.memory)} "
+                        f"kept={len(confident_memories)}"
+                    )
+
+                    if confident_memories:
+                        mem_lines = []
+                        for mem in confident_memories[:3]:  # Cap at 3
+                            mem_type = mem.get("memory_type", "note")
+                            obs = mem.get("observation", "")
+                            if mem_type == "gotcha":
+                                mem_lines.append(f"⚠️ GOTCHA: {obs}")
+                            else:
+                                mem_lines.append(f"[{mem_type}] {obs}")
+
+                        if mem_lines:
+                            injected_context = (
+                                f"**Memories about {normalized_path}:**\n" + "\n".join(mem_lines)
+                            )
+                            logger.debug(
+                                f"Injecting {len(confident_memories[:3])} confident memories "
+                                f"for {normalized_path}"
+                            )
+                            logger.debug(f"[INJECT:post-tool-use] Content:\n{injected_context}")
 
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
                 logger.debug(f"Failed to search memories for file context: {e}")
@@ -822,9 +958,9 @@ async def hook_session_end(request: Request) -> dict:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped session-end: missing session_id")
         return {"status": "ok"}
 
-    # Prominent logging for session-end to debug if Claude Code is calling this hook
-    logger.info("[SESSION-END] ========== Session ending ==========")
-    logger.info(f"[SESSION-END] session_id={session_id}, agent={agent}")
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(f"[SESSION-END] session={session_id} agent={agent}")
+    # Detailed logging to daemon.log (debug mode only)
     logger.debug(f"[SESSION-END] Raw request body: {body}")
 
     # Flush any buffered activities before ending the session
@@ -954,14 +1090,23 @@ async def hook_before_prompt(request: Request) -> dict:
     prompt_preview = body.get("prompt", "")[:500]  # First 500 chars of prompt
 
     context: dict[str, Any] = {}
+    search_query = prompt_preview
+    if state.activity_store:
+        session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+        if session_id:
+            session_record = state.activity_store.get_session(session_id)
+            if session_record and session_record.title:
+                search_query = MEMORY_EMBED_LINE_SEPARATOR.join(
+                    [session_record.title, prompt_preview]
+                )
 
     # Search for relevant context based on prompt
-    if prompt_preview and state.retrieval_engine:
+    if search_query and state.retrieval_engine:
         try:
             # Search for both code and memories, filter by confidence
             # For notify context, only include HIGH confidence (precision over recall)
             result = state.retrieval_engine.search(
-                query=prompt_preview,
+                query=search_query,
                 search_type="all",
                 limit=10,  # Fetch more, filter by confidence
             )
@@ -1125,8 +1270,8 @@ async def hook_subagent_start(request: Request) -> dict:
             )
             return {"status": "ok"}
 
-    # Prominent logging for subagent lifecycle
-    logger.info(f"[SUBAGENT-START] type={agent_type} | agent_id={agent_id} | session={session_id}")
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(f"[SUBAGENT-START] type={agent_type} id={agent_id} session={session_id}")
 
     # Get or create session
     agent = body.get("agent", "unknown")
@@ -1201,11 +1346,8 @@ async def hook_subagent_stop(request: Request) -> dict:
             )
             return {"status": "ok"}
 
-    # Prominent logging for subagent lifecycle
-    logger.info(
-        f"[SUBAGENT-STOP] type={agent_type} | agent_id={agent_id} | "
-        f"transcript={'yes' if agent_transcript_path else 'no'} | session={session_id}"
-    )
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(f"[SUBAGENT-STOP] type={agent_type} id={agent_id} session={session_id}")
 
     # Get session
     session = state.get_session(session_id)

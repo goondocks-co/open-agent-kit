@@ -5,8 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RefreshCw, Pause, Play, Bug, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { LOG_LEVELS, LOG_FILE_OPTIONS } from "@/lib/constants";
-import type { LogFileType } from "@/lib/constants";
+import {
+    LOG_LEVELS,
+    LOG_FILE_OPTIONS,
+    LOG_TAG_CATEGORIES,
+    LOG_TAG_DISPLAY_NAMES,
+} from "@/lib/constants";
+import type { LogFileType, LogTagType, LogTagCategory } from "@/lib/constants";
 
 /** Delay before refetching logs after restart (ms) */
 const RESTART_REFETCH_DELAY_MS = 1000;
@@ -19,6 +24,7 @@ export default function Logs() {
     const [logFile, setLogFile] = useState<LogFileType>(DEFAULT_LOG_FILE);
     const [autoScroll, setAutoScroll] = useState(true);
     const [isTogglingDebug, setIsTogglingDebug] = useState(false);
+    const [selectedTags, setSelectedTags] = useState<Set<LogTagType>>(new Set());
     const logsEndRef = useRef<HTMLDivElement>(null);
     const queryClient = useQueryClient();
 
@@ -26,6 +32,30 @@ export default function Logs() {
     const { data: config } = useConfig();
 
     const isDebugEnabled = config?.log_level === LOG_LEVELS.DEBUG;
+
+    /** Filter log content by selected tags (OR logic - matches any selected tag) */
+    const filterLogsByTags = (content: string): string => {
+        if (selectedTags.size === 0) return content;
+
+        return content
+            .split("\n")
+            .filter((line) => {
+                // Keep lines that match any selected tag
+                return Array.from(selectedTags).some((tag) => line.includes(tag));
+            })
+            .join("\n");
+    };
+
+    /** Toggle a tag in the selection */
+    const handleTagToggle = (tag: LogTagType) => {
+        const newTags = new Set(selectedTags);
+        if (newTags.has(tag)) {
+            newTags.delete(tag);
+        } else {
+            newTags.add(tag);
+        }
+        setSelectedTags(newTags);
+    };
 
     const handleToggleDebug = async () => {
         if (!config) return;
@@ -111,6 +141,42 @@ export default function Logs() {
                 </div>
             </div>
 
+            {/* Tag Filter Chips */}
+            <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs text-muted-foreground mr-1">Filter:</span>
+                {(Object.entries(LOG_TAG_CATEGORIES) as [LogTagCategory, typeof LOG_TAG_CATEGORIES[LogTagCategory]][]).map(
+                    ([category, { tags }], categoryIndex) => (
+                        <div key={category} className="flex items-center gap-1">
+                            {tags.map((tag) => (
+                                <button
+                                    key={tag}
+                                    onClick={() => handleTagToggle(tag)}
+                                    className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                                        selectedTags.has(tag)
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-background border-input hover:bg-accent"
+                                    }`}
+                                    title={`Filter to show only ${LOG_TAG_DISPLAY_NAMES[tag]} entries`}
+                                >
+                                    {LOG_TAG_DISPLAY_NAMES[tag]}
+                                </button>
+                            ))}
+                            {categoryIndex < Object.keys(LOG_TAG_CATEGORIES).length - 1 && (
+                                <div className="w-px h-4 bg-border mx-1" />
+                            )}
+                        </div>
+                    )
+                )}
+                {selectedTags.size > 0 && (
+                    <button
+                        onClick={() => setSelectedTags(new Set())}
+                        className="px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground ml-2"
+                    >
+                        Clear
+                    </button>
+                )}
+            </div>
+
             <Card className="flex-1 overflow-hidden flex flex-col">
                 <CardContent className="flex-1 p-0 overflow-hidden bg-black text-green-400 font-mono text-xs rounded-b-lg">
                     {isLoading ? (
@@ -119,7 +185,7 @@ export default function Logs() {
                         <div className="p-4 text-red-400">Failed to load logs.</div>
                     ) : (
                         <div className="overflow-auto h-full p-4 whitespace-pre-wrap">
-                            {data?.content || "No logs available."}
+                            {filterLogsByTags(data?.content || "") || "No matching logs."}
                             <div ref={logsEndRef} />
                         </div>
                     )}

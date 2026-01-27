@@ -2,15 +2,18 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useSession } from "@/hooks/use-activity";
 import { useDeleteSession, useDeletePromptBatch, usePromoteBatch } from "@/hooks/use-delete";
+import { useLinkSession, useUnlinkSession, useRegenerateSummary } from "@/hooks/use-session-link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PromptBatchActivities } from "@/components/data/PromptBatchActivities";
+import { SessionLineage, SessionLineageBadge } from "@/components/data/SessionLineage";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
+import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
 import { formatDate } from "@/lib/utils";
-import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2 } from "lucide-react";
+import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { DELETE_CONFIRMATIONS } from "@/lib/constants";
+import { DELETE_CONFIRMATIONS, type SessionLinkReason } from "@/lib/constants";
 
 // Source type configuration for badges and icons
 const SOURCE_TYPE_CONFIG: Record<string, { badge: string; label: string; icon: React.ElementType; muted?: boolean }> = {
@@ -42,9 +45,16 @@ export default function SessionDetail() {
     const deleteSession = useDeleteSession();
     const deletePromptBatch = useDeletePromptBatch();
     const promoteBatch = usePromoteBatch();
+    const linkSession = useLinkSession();
+    const unlinkSession = useUnlinkSession();
+    const regenerateSummary = useRegenerateSummary();
 
     // Track which batch is being promoted (for loading state)
     const [promotingBatchId, setPromotingBatchId] = useState<string | null>(null);
+    // Track summary regeneration message
+    const [summaryMessage, setSummaryMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    // Track if lineage card is expanded (collapsed by default when no links)
+    const [lineageExpanded, setLineageExpanded] = useState(false);
 
     // Session delete dialog
     const sessionDialog = useConfirmDialog();
@@ -52,6 +62,10 @@ export default function SessionDetail() {
     const batchDialog = useConfirmDialog();
     // Content viewer dialog (for plans and full prompts)
     const contentDialog = useContentDialog();
+    // Session picker dialog for linking
+    const sessionPickerDialog = useSessionPickerDialog();
+    // Unlink confirmation dialog
+    const unlinkDialog = useConfirmDialog();
 
     const toggleBatch = (batchId: string) => {
         setExpandedBatches(prev => ({ ...prev, [batchId]: !prev[batchId] }));
@@ -109,6 +123,51 @@ export default function SessionDetail() {
             batch.user_prompt || "No prompt text provided",
             `${config.label} prompt`
         );
+    };
+
+    const handleLinkSession = async (parentSessionId: string, reason: SessionLinkReason) => {
+        if (!id) return;
+        try {
+            await linkSession.mutateAsync({
+                sessionId: id,
+                parentSessionId,
+                reason,
+            });
+            sessionPickerDialog.closeDialog();
+        } catch (error) {
+            console.error("Failed to link session:", error);
+        }
+    };
+
+    const handleUnlinkSession = async () => {
+        if (!id) return;
+        try {
+            await unlinkSession.mutateAsync(id);
+            unlinkDialog.closeDialog();
+        } catch (error) {
+            console.error("Failed to unlink session:", error);
+        }
+    };
+
+    const handleRegenerateSummary = async () => {
+        if (!id) return;
+        setSummaryMessage(null);
+        try {
+            const result = await regenerateSummary.mutateAsync(id);
+            if (result.success) {
+                setSummaryMessage({ type: "success", text: result.message });
+            } else {
+                setSummaryMessage({ type: "error", text: result.message });
+            }
+            // Clear message after 5 seconds
+            setTimeout(() => setSummaryMessage(null), 5000);
+        } catch (error) {
+            setSummaryMessage({
+                type: "error",
+                text: error instanceof Error ? error.message : "Failed to regenerate summary",
+            });
+            setTimeout(() => setSummaryMessage(null), 5000);
+        }
     };
 
     if (isLoading) return <div>Loading session details...</div>;
@@ -180,6 +239,127 @@ export default function SessionDetail() {
                     <CardContent className="text-2xl font-bold">{session.activity_count}</CardContent>
                 </Card>
             </div>
+
+            {/* Session Lineage Card - collapsible when no linked sessions */}
+            {(() => {
+                const hasLineage = !!(session.parent_session_id || session.child_session_count > 0);
+                const isExpanded = hasLineage || lineageExpanded;
+
+                return (
+                    <Card>
+                        <CardHeader className={cn("pb-3", !isExpanded && "pb-3")}>
+                            <div className="flex items-center justify-between">
+                                <button
+                                    className="flex items-center gap-2 text-lg font-semibold hover:text-foreground/80 transition-colors"
+                                    onClick={() => !hasLineage && setLineageExpanded(!lineageExpanded)}
+                                    disabled={hasLineage}
+                                >
+                                    <GitBranch className="w-5 h-5 text-blue-500" />
+                                    Session Lineage
+                                    {!hasLineage && (
+                                        isExpanded
+                                            ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                            : <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                    )}
+                                    {!hasLineage && !isExpanded && (
+                                        <span className="text-xs font-normal text-muted-foreground ml-2">No linked sessions</span>
+                                    )}
+                                </button>
+                                <div className="flex items-center gap-2">
+                                    {session.parent_session_id ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 text-xs"
+                                            onClick={() => unlinkDialog.openDialog(session.id)}
+                                        >
+                                            <Unlink className="w-3 h-3 mr-1" />
+                                            Unlink
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 text-xs"
+                                            onClick={() => sessionPickerDialog.openDialog()}
+                                        >
+                                            <Link2 className="w-3 h-3 mr-1" />
+                                            Link to Parent
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                            {/* Show current lineage badge inline */}
+                            {hasLineage && (
+                                <div className="mt-2">
+                                    <SessionLineageBadge
+                                        parentSessionId={session.parent_session_id}
+                                        parentSessionReason={session.parent_session_reason}
+                                        childCount={session.child_session_count}
+                                    />
+                                </div>
+                            )}
+                        </CardHeader>
+                        {isExpanded && (
+                            <CardContent>
+                                <SessionLineage sessionId={session.id} />
+                            </CardContent>
+                        )}
+                    </Card>
+                );
+            })()}
+
+            {/* Session Summary Card */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                            <FileDigit className="w-5 h-5 text-green-500" />
+                            Session Summary
+                        </CardTitle>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={handleRegenerateSummary}
+                            disabled={regenerateSummary.isPending}
+                        >
+                            {regenerateSummary.isPending ? (
+                                <>
+                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCw className="w-3 h-3 mr-1" />
+                                    Regenerate Summary
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {summaryMessage && (
+                        <div className={cn(
+                            "mb-3 p-3 rounded-md text-sm",
+                            summaryMessage.type === "success"
+                                ? "bg-green-500/10 text-green-600"
+                                : "bg-red-500/10 text-red-600"
+                        )}>
+                            {summaryMessage.text}
+                        </div>
+                    )}
+                    {session.summary ? (
+                        <div className="p-4 rounded-lg bg-muted/30 text-sm whitespace-pre-wrap">
+                            {session.summary}
+                        </div>
+                    ) : (
+                        <div className="text-sm text-muted-foreground text-center py-4">
+                            No summary generated yet. Click "Regenerate Summary" to create one.
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Plans Section */}
             {planBatches.length > 0 && (
@@ -372,6 +552,29 @@ export default function SessionDetail() {
                 title={contentDialog.dialogContent?.title || ""}
                 subtitle={contentDialog.dialogContent?.subtitle}
                 content={contentDialog.dialogContent?.content || ""}
+            />
+
+            {/* Unlink Confirmation Dialog */}
+            <ConfirmDialog
+                open={unlinkDialog.isOpen}
+                onOpenChange={unlinkDialog.setIsOpen}
+                title="Unlink Session"
+                description="This will remove the link to the parent session. The sessions will no longer be connected in the lineage. This action can be reversed by re-linking."
+                confirmLabel="Unlink"
+                onConfirm={handleUnlinkSession}
+                isLoading={unlinkSession.isPending}
+                variant="default"
+            />
+
+            {/* Session Picker Dialog for linking */}
+            <SessionPickerDialog
+                open={sessionPickerDialog.isOpen}
+                onOpenChange={sessionPickerDialog.setIsOpen}
+                title="Link to Parent Session"
+                description="Select a session to link as the parent of this session"
+                excludeSessionId={session.id}
+                onSelect={handleLinkSession}
+                isLoading={linkSession.isPending}
             />
         </div>
     )

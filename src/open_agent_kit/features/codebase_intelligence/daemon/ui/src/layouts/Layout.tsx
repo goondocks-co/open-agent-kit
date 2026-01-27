@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Database, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle } from "lucide-react";
+import { LayoutDashboard, Search, Database, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { useStatus } from "@/hooks/use-status";
@@ -35,6 +35,7 @@ export function Layout() {
         { to: "/search", icon: Search, label: "Search" },
         { to: "/data", icon: Database, label: "Data Explorer" },
         { to: "/logs", icon: FileTerminal, label: "Logs" },
+        { to: "/team", icon: Users, label: "Team" },
         { to: "/config", icon: Settings, label: "Configuration" },
         { to: "/help", icon: HelpCircle, label: "Setup Guide" },
         { to: "/devtools", icon: Wrench, label: "DevTools" },

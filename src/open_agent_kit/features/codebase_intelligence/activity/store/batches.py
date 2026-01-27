@@ -45,6 +45,9 @@ def create_prompt_batch(
         Created PromptBatch with assigned ID.
     """
     # Import here to avoid circular imports
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
         ensure_session_exists,
         reactivate_session_if_needed,
@@ -78,6 +81,7 @@ def create_prompt_batch(
         source_type=source_type,
         plan_file_path=plan_file_path,
         plan_content=plan_content,
+        source_machine_id=get_machine_identifier(),
     )
 
     with store._transaction() as conn:
@@ -87,11 +91,11 @@ def create_prompt_batch(
             INSERT INTO prompt_batches (session_id, prompt_number, user_prompt,
                                        started_at, status, activity_count, processed,
                                        classification, source_type, plan_file_path,
-                                       plan_content, created_at_epoch)
+                                       plan_content, created_at_epoch, source_machine_id)
             VALUES (:session_id, :prompt_number, :user_prompt,
                     :started_at, :status, :activity_count, :processed,
                     :classification, :source_type, :plan_file_path,
-                    :plan_content, :created_at_epoch)
+                    :plan_content, :created_at_epoch, :source_machine_id)
             """,
             row_data,
         )
@@ -289,6 +293,7 @@ def get_plans(
     offset: int = 0,
     session_id: str | None = None,
     deduplicate: bool = True,
+    sort: str = "created",
 ) -> tuple[list[PromptBatch], int]:
     """Get plan batches from prompt_batches table.
 
@@ -302,6 +307,7 @@ def get_plans(
         deduplicate: If True, deduplicate plans by content (keeps earliest).
             The same plan content may appear in multiple sessions when a plan
             is created in one session and later implemented in another.
+        sort: Sort order - 'created' (newest first, default) or 'created_asc' (oldest first).
 
     Returns:
         Tuple of (list of PromptBatch objects, total count).
@@ -322,6 +328,9 @@ def get_plans(
     # This handles cases where the same plan has minor variations
     # (e.g., slightly different whitespace, updated sections at the end).
     content_fingerprint = "SUBSTR(plan_content, 1, 500)"
+
+    # Determine sort direction
+    sort_order = "ASC" if sort == "created_asc" else "DESC"
 
     if deduplicate:
         # Use window function to deduplicate by content fingerprint.
@@ -351,7 +360,7 @@ def get_plans(
                    plan_file_path, plan_content, created_at_epoch, plan_embedded
             FROM unique_plans
             WHERE rn = 1
-            ORDER BY created_at_epoch DESC
+            ORDER BY created_at_epoch {sort_order}
             LIMIT ? OFFSET ?
         """
         params = base_params + [limit, offset]
@@ -364,7 +373,7 @@ def get_plans(
         query = f"""
             SELECT * FROM prompt_batches
             WHERE {where_clause}
-            ORDER BY created_at_epoch DESC
+            ORDER BY created_at_epoch {sort_order}
             LIMIT ? OFFSET ?
         """
         params = base_params + [limit, offset]
@@ -473,6 +482,17 @@ def recover_orphaned_activities(store: ActivityStore) -> int:
                 batch_id = cursor.fetchone()[0]
                 logger.info(f"Created recovery batch {batch_id} for session {session_id}")
 
+        # Get orphaned activities before updating (for plan detection)
+        cursor = conn.execute(
+            """
+            SELECT tool_name, tool_input
+            FROM activities
+            WHERE session_id = ? AND prompt_batch_id IS NULL
+            """,
+            (session_id,),
+        )
+        orphaned_activities = cursor.fetchall()
+
         # Associate orphaned activities with the batch
         with store._transaction() as tx_conn:
             tx_conn.execute(
@@ -484,6 +504,10 @@ def recover_orphaned_activities(store: ActivityStore) -> int:
                 (batch_id, session_id),
             )
 
+        # Detect plans in recovered activities (fixes plan mode detection gap)
+        # Plan detection was skipped at hook time because batch_id was None
+        _detect_plans_in_recovered_activities(store, batch_id, orphaned_activities)
+
         logger.info(
             f"Recovered {orphan_count} orphaned activities for session "
             f"{session_id[:8]}... -> batch {batch_id}"
@@ -491,6 +515,64 @@ def recover_orphaned_activities(store: ActivityStore) -> int:
         total_recovered += orphan_count
 
     return total_recovered
+
+
+def _detect_plans_in_recovered_activities(
+    store: ActivityStore,
+    batch_id: int,
+    activities: list[tuple[str, str | None]],
+) -> None:
+    """Detect and capture plan files from recovered orphaned activities.
+
+    This fixes a gap where plan detection is skipped during plan mode because
+    activities are stored with prompt_batch_id=None. When orphaned activities
+    are later associated with a batch, we need to check for plan files.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_id: Batch the activities were associated with.
+        activities: List of (tool_name, tool_input) tuples.
+    """
+    import json
+
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        PROMPT_SOURCE_PLAN,
+    )
+    from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
+
+    for tool_name, tool_input_str in activities:
+        if tool_name != "Write":
+            continue
+
+        # Parse tool_input JSON
+        tool_input: dict[str, Any] = {}
+        if tool_input_str:
+            try:
+                tool_input = json.loads(tool_input_str)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        file_path = tool_input.get("file_path", "")
+        if not file_path:
+            continue
+
+        detection = detect_plan(file_path)
+        if detection.is_plan:
+            # Get plan content from tool_input
+            plan_content = tool_input.get("content", "")
+
+            # Update batch with plan source type
+            update_prompt_batch_source_type(
+                store,
+                batch_id,
+                PROMPT_SOURCE_PLAN,
+                plan_file_path=file_path,
+                plan_content=plan_content,
+            )
+
+            logger.info(f"Detected plan in recovered activity: {file_path} -> batch {batch_id}")
+            # Only capture first plan per batch
+            break
 
 
 def get_prompt_batch_activities(
@@ -663,6 +745,29 @@ def count_unembedded_plans(store: ActivityStore) -> int:
     return int(result[0]) if result else 0
 
 
+def count_embedded_plans(store: ActivityStore) -> int:
+    """Count plan batches that are embedded in ChromaDB.
+
+    Args:
+        store: The ActivityStore instance.
+
+    Returns:
+        Embedded plan count.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT COUNT(*) FROM prompt_batches
+        WHERE source_type = 'plan'
+          AND plan_content IS NOT NULL
+          AND plan_content != ''
+          AND plan_embedded = 1
+        """
+    )
+    result = cursor.fetchone()
+    return int(result[0]) if result else 0
+
+
 def mark_all_plans_unembedded(store: ActivityStore) -> int:
     """Mark all plans as not embedded (for full ChromaDB rebuild).
 
@@ -678,3 +783,139 @@ def mark_all_plans_unembedded(store: ActivityStore) -> int:
 
     logger.info(f"Marked {count} plans as unembedded for rebuild")
     return count
+
+
+# ==========================================================================
+# Plan Source Linking Operations (for cross-session plan tracking)
+# ==========================================================================
+
+
+def find_source_plan_batch(
+    store: ActivityStore,
+    session_id: str,
+) -> PromptBatch | None:
+    """Find the source plan batch for a session.
+
+    Looks through the session's parent chain to find the most recent
+    plan batch. This links implementation sessions back to their
+    planning sessions.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to find plan for.
+
+    Returns:
+        Plan PromptBatch if found, None otherwise.
+    """
+    # Import here to avoid circular imports
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        get_session_lineage,
+    )
+
+    # Get session lineage (includes current session)
+    lineage = get_session_lineage(store, session_id, max_depth=5)
+
+    for session in lineage:
+        # Look for plan batches in this session
+        conn = store._get_connection()
+        cursor = conn.execute(
+            """
+            SELECT * FROM prompt_batches
+            WHERE session_id = ?
+              AND source_type = 'plan'
+              AND plan_content IS NOT NULL
+            ORDER BY created_at_epoch DESC
+            LIMIT 1
+            """,
+            (session.id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            plan_batch = PromptBatch.from_row(row)
+            logger.debug(
+                f"Found source plan batch {plan_batch.id} in session {session.id[:8]}... "
+                f"for target session {session_id[:8]}..."
+            )
+            return plan_batch
+
+    return None
+
+
+def get_plan_implementations(
+    store: ActivityStore,
+    plan_batch_id: int,
+    limit: int = 50,
+) -> list[PromptBatch]:
+    """Get all prompt batches that implement a given plan.
+
+    Finds batches that have source_plan_batch_id pointing to this plan,
+    allowing you to see all implementation activities derived from a plan.
+
+    Args:
+        store: The ActivityStore instance.
+        plan_batch_id: The plan batch to find implementations for.
+        limit: Maximum batches to return.
+
+    Returns:
+        List of PromptBatch objects implementing this plan.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM prompt_batches
+        WHERE source_plan_batch_id = ?
+        ORDER BY created_at_epoch ASC
+        LIMIT ?
+        """,
+        (plan_batch_id, limit),
+    )
+    return [PromptBatch.from_row(row) for row in cursor.fetchall()]
+
+
+def link_batch_to_source_plan(
+    store: ActivityStore,
+    batch_id: int,
+    source_plan_batch_id: int,
+) -> None:
+    """Link a prompt batch to its source plan.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_id: Batch to link.
+        source_plan_batch_id: Plan batch being implemented.
+    """
+    with store._transaction() as conn:
+        conn.execute(
+            """
+            UPDATE prompt_batches
+            SET source_plan_batch_id = ?
+            WHERE id = ?
+            """,
+            (source_plan_batch_id, batch_id),
+        )
+    logger.debug(f"Linked batch {batch_id} to source plan {source_plan_batch_id}")
+
+
+def auto_link_batch_to_plan(
+    store: ActivityStore,
+    batch_id: int,
+    session_id: str,
+) -> int | None:
+    """Automatically link a batch to its source plan if found.
+
+    Searches the session's parent chain for a plan batch and links
+    if found. Call this when creating implementation batches.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_id: Batch to potentially link.
+        session_id: Session the batch belongs to.
+
+    Returns:
+        Source plan batch ID if linked, None otherwise.
+    """
+    source_plan = find_source_plan_batch(store, session_id)
+    if source_plan and source_plan.id:
+        link_batch_to_source_plan(store, batch_id, source_plan.id)
+        return source_plan.id
+    return None

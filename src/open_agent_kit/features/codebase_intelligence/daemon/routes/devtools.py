@@ -5,6 +5,10 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    DEFAULT_SUMMARIZATION_MODEL,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 router = APIRouter(tags=["devtools"])
@@ -110,6 +114,7 @@ async def trigger_processing() -> dict[str, Any]:
 
 class RebuildMemoriesRequest(BaseModel):
     full_rebuild: bool = True
+    clear_chromadb_first: bool = False
 
 
 @router.post("/api/devtools/rebuild-memories")
@@ -121,6 +126,10 @@ async def rebuild_memories(
     Use this when ChromaDB has been cleared (e.g., embedding model change) but
     SQLite still has the memory observations. This will re-embed all memories
     without re-running the LLM extraction.
+
+    Set clear_chromadb_first=True to remove orphaned entries from ChromaDB before
+    rebuilding. Use this after restore operations where memories may have been
+    deleted from SQLite but still exist in ChromaDB.
     """
     state = get_state()
     if not state.activity_processor:
@@ -147,6 +156,7 @@ async def rebuild_memories(
             state.activity_processor.rebuild_chromadb_from_sqlite,
             batch_size=50,
             reset_embedded_flags=request.full_rebuild,
+            clear_chromadb_first=request.clear_chromadb_first,
         )
         return {
             "status": "started",
@@ -158,6 +168,7 @@ async def rebuild_memories(
     stats = state.activity_processor.rebuild_chromadb_from_sqlite(
         batch_size=50,
         reset_embedded_flags=request.full_rebuild,
+        clear_chromadb_first=request.clear_chromadb_first,
     )
 
     return {
@@ -177,17 +188,28 @@ async def get_memory_stats() -> dict[str, Any]:
     sqlite_total = state.activity_store.count_observations()
     sqlite_embedded = state.activity_store.count_embedded_observations()
     sqlite_unembedded = state.activity_store.count_unembedded_observations()
+    sqlite_session_summaries = state.activity_store.count_observations_by_type(
+        MemoryType.SESSION_SUMMARY.value
+    )
+
+    # Plans are also stored in ChromaDB memory collection (with memory_type='plan')
+    # but tracked in prompt_batches table, not memory_observations
+    sqlite_plans_embedded = state.activity_store.count_embedded_plans()
+    sqlite_plans_unembedded = state.activity_store.count_unembedded_plans()
 
     chromadb_count = 0
     if state.vector_store:
         stats = state.vector_store.get_stats()
         chromadb_count = stats.get("memory_observations", 0)
 
+    # Total expected in ChromaDB = embedded memories + embedded plans
+    total_expected_in_chromadb = sqlite_embedded + sqlite_plans_embedded
+
     # Check for sync issues
     sync_status = "synced"
-    if sqlite_embedded != chromadb_count:
+    if total_expected_in_chromadb != chromadb_count:
         sync_status = "out_of_sync"
-    elif sqlite_unembedded > 0:
+    elif sqlite_unembedded > 0 or sqlite_plans_unembedded > 0:
         sync_status = "pending_embed"
 
     return {
@@ -195,10 +217,69 @@ async def get_memory_stats() -> dict[str, Any]:
             "total": sqlite_total,
             "embedded": sqlite_embedded,
             "unembedded": sqlite_unembedded,
+            "plans_embedded": sqlite_plans_embedded,
+            "plans_unembedded": sqlite_plans_unembedded,
+            "session_summaries": sqlite_session_summaries,
         },
         "chromadb": {
             "count": chromadb_count,
         },
+        "summarization": {
+            "enabled": bool(state.ci_config and state.ci_config.summarization.enabled),
+            "model": (
+                state.ci_config.summarization.model
+                if state.ci_config
+                else DEFAULT_SUMMARIZATION_MODEL
+            ),
+        },
         "sync_status": sync_status,
-        "needs_rebuild": sqlite_unembedded > 0 or sqlite_embedded != chromadb_count,
+        "needs_rebuild": (
+            sqlite_unembedded > 0
+            or sqlite_plans_unembedded > 0
+            or total_expected_in_chromadb != chromadb_count
+        ),
     }
+
+
+@router.post("/api/devtools/regenerate-summaries")
+async def regenerate_summaries(background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Regenerate missing session summaries for completed sessions.
+
+    Finds sessions that are completed but don't have summaries and
+    triggers summary generation for each. Runs in background to avoid timeout.
+    """
+    state = get_state()
+    if not state.activity_processor:
+        raise HTTPException(
+            status_code=503, detail="Activity processor not initialized (check config)"
+        )
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+
+    # Capture processor reference for closure (mypy type narrowing)
+    processor = state.activity_processor
+
+    # Get sessions missing summaries (higher limit for backfill)
+    missing = state.activity_store.get_sessions_missing_summaries(limit=100)
+
+    if not missing:
+        return {
+            "status": "skipped",
+            "message": "No sessions missing summaries",
+            "sessions_queued": 0,
+        }
+
+    def _regenerate() -> None:
+        count = 0
+        for session in missing:
+            try:
+                summary = processor.process_session_summary(session.id)
+                if summary:
+                    count += 1
+                    logger.info(f"Regenerated summary for session {session.id[:8]}")
+            except (OSError, ValueError, RuntimeError, AttributeError) as e:
+                logger.warning(f"Failed to regenerate summary for {session.id[:8]}: {e}")
+        logger.info(f"Regenerated {count} session summaries out of {len(missing)} queued")
+
+    background_tasks.add_task(_regenerate)
+    return {"status": "started", "sessions_queued": len(missing)}

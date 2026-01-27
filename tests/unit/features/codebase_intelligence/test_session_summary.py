@@ -86,7 +86,11 @@ class TestFormatSessionSummaries:
 
         result = format_session_summaries(summaries)
 
-        assert "Recent Session History" in result
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            INJECTION_SESSION_SUMMARIES_TITLE,
+        )
+
+        assert INJECTION_SESSION_SUMMARIES_TITLE in result
         assert "Session 1" in result
         assert "claude" in result
         assert "Implemented user authentication with JWT" in result
@@ -312,7 +316,7 @@ class TestProcessSessionSummary:
             )
         ]
         mock_activity_store.get_session_stats.return_value = {
-            "total_activities": 2,  # Less than 3
+            "activity_count": 2,  # Less than 3
             "files_read": [],
             "files_modified": [],
             "files_created": [],
@@ -368,7 +372,7 @@ class TestProcessSessionSummary:
             ),
         ]
         mock_activity_store.get_session_stats.return_value = {
-            "total_activities": 50,
+            "activity_count": 50,
             "files_read": ["auth.py", "config.py"],
             "files_modified": ["auth.py"],
             "files_created": [],
@@ -432,7 +436,7 @@ class TestProcessSessionSummary:
             )
         ]
         mock_activity_store.get_session_stats.return_value = {
-            "total_activities": 10,
+            "activity_count": 10,
             "files_read": [],
             "files_modified": [],
             "files_created": [],
@@ -485,7 +489,7 @@ class TestProcessSessionSummary:
             )
         ]
         mock_activity_store.get_session_stats.return_value = {
-            "total_activities": 10,
+            "activity_count": 10,
             "files_read": [],
             "files_modified": [],
             "files_created": [],
@@ -570,10 +574,15 @@ class TestProcessSessionSummary:
         assert result is None
         mock_summarizer.summarize.assert_not_called()
 
-    def test_process_session_summary_only_summarizes_new_batches_on_resume(
+    def test_process_session_summary_includes_all_batches_on_resume(
         self, mock_activity_store, mock_vector_store, mock_summarizer
     ):
-        """Test that resumed sessions only summarize batches created after last summary."""
+        """Test that resumed sessions re-summarize ALL batches for full context.
+
+        When a session is resumed and completed again, the new summary should
+        include all batches (not just new ones) so that the replacement summary
+        has full session context. The deterministic ID ensures upsert behavior.
+        """
         from unittest.mock import patch
 
         from open_agent_kit.features.codebase_intelligence.activity.processor import (
@@ -605,7 +614,7 @@ class TestProcessSessionSummary:
             created_at=summary_time,
         )
 
-        # Old batch (before summary - already covered)
+        # Old batch (before summary - from first session leg)
         old_batch = PromptBatch(
             id=1,
             session_id="session-123",
@@ -629,20 +638,22 @@ class TestProcessSessionSummary:
         mock_activity_store.get_session_prompt_batches.return_value = [old_batch, new_batch]
         mock_activity_store.get_latest_session_summary.return_value = existing_summary
         mock_activity_store.get_session_stats.return_value = {
-            "total_activities": 10,
+            "activity_count": 10,
             "files_read": ["test.py"],
             "files_modified": ["test.py"],
             "files_created": [],
         }
 
-        with patch.object(
-            ActivityProcessor,
-            "_call_llm",
-            return_value={
+        llm_calls = []
+
+        def capture_llm_call(prompt):
+            llm_calls.append(prompt)
+            return {
                 "success": True,
-                "raw_response": "Resumed session: debugged test.py issues",
-            },
-        ):
+                "raw_response": "Full session: implemented feature and fixed bugs",
+            }
+
+        with patch.object(ActivityProcessor, "_call_llm", side_effect=capture_llm_call):
             processor = ActivityProcessor(
                 activity_store=mock_activity_store,
                 vector_store=mock_vector_store,
@@ -651,7 +662,14 @@ class TestProcessSessionSummary:
 
             result = processor.process_session_summary("session-123")
 
-        # Should generate summary for new work
-        assert result == "Resumed session: debugged test.py issues"
+        # Should generate summary
+        assert result == "Full session: implemented feature and fixed bugs"
         # Verify it was stored
         mock_activity_store.store_observation.assert_called_once()
+
+        # Verify LLM received ALL batches in the SUMMARY call (first call)
+        # Note: There may be 2 calls total (summary + title generation)
+        assert len(llm_calls) >= 1
+        summary_prompt = llm_calls[0]  # First call is for summary
+        assert "Old work from first leg" in summary_prompt  # Old batch included
+        assert "New work after resume" in summary_prompt  # New batch included

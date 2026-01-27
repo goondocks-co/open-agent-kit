@@ -2086,3 +2086,450 @@ class TestActivityStoreBackup:
         assert session.status == "completed"
 
         target_store.close()
+
+    def test_import_handles_unknown_columns_from_newer_schema(self, temp_db: Path):
+        """Test that import strips columns that don't exist in current schema.
+
+        This enables importing backups from newer schema versions.
+        """
+        # Create a backup file with an extra column that doesn't exist
+        backup_content = """-- OAK Codebase Intelligence History Backup
+-- Exported: 2025-01-01T00:00:00
+-- Machine: test_machine
+-- Schema version: 99
+
+-- sessions (1 records)
+INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count, tool_count, processed, created_at_epoch, future_column_v99) VALUES ('future-test-1', 'claude', '/test/project', '2025-01-01T00:00:00', 'completed', 0, 0, 0, 1704067200, 'future_value');
+"""
+        backup_path = temp_db.parent / "future_backup.sql"
+        backup_path.write_text(backup_content)
+
+        # Import to a fresh database - should NOT fail due to unknown column
+        target_store = ActivityStore(temp_db)
+        count = target_store.import_from_sql(backup_path)
+
+        # Session should be imported (unknown column stripped)
+        assert count >= 1
+        session = target_store.get_session("future-test-1")
+        assert session is not None
+        assert session.agent == "claude"
+        target_store.close()
+
+    def test_import_preserves_parent_session_links(self, temp_db: Path):
+        """Test that parent_session_id links are preserved during import."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+            update_session_parent,
+        )
+
+        # Create source with parent-child session relationship
+        source_store = ActivityStore(temp_db)
+
+        # Create parent session
+        source_store.create_session(
+            session_id="parent-session",
+            agent="claude",
+            project_root="/test/project",
+        )
+
+        # Create child session linked to parent
+        source_store.create_session(
+            session_id="child-session",
+            agent="claude",
+            project_root="/test/project",
+        )
+        update_session_parent(
+            source_store,
+            session_id="child-session",
+            parent_session_id="parent-session",
+            reason="continuation",
+        )
+
+        # Export
+        backup_path = temp_db.parent / "parent_child_backup.sql"
+        source_store.export_to_sql(backup_path)
+        source_store.close()
+
+        # Import to fresh database
+        target_db = temp_db.parent / "target_parent_child.db"
+        target_store = ActivityStore(target_db)
+        target_store.import_from_sql(backup_path)
+
+        # Verify parent-child link preserved
+        child = target_store.get_session("child-session")
+        assert child is not None
+        assert child.parent_session_id == "parent-session"
+        assert child.parent_session_reason == "continuation"
+
+        target_store.close()
+
+    def test_import_handles_orphaned_parent_reference(self, temp_db: Path):
+        """Test that orphaned parent_session_id references are handled gracefully.
+
+        When a child session references a parent that wasn't included in the backup,
+        the link should be set to NULL with a warning.
+        """
+        # Create a backup with a child session referencing non-existent parent
+        backup_content = """-- OAK Codebase Intelligence History Backup
+-- Exported: 2025-01-01T00:00:00
+-- Machine: test_machine
+-- Schema version: 12
+
+-- sessions (1 records)
+INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count, tool_count, processed, created_at_epoch, parent_session_id, parent_session_reason) VALUES ('orphan-child', 'claude', '/test/project', '2025-01-01T00:00:00', 'completed', 0, 0, 0, 1704067200, 'non-existent-parent', 'continuation');
+"""
+        backup_path = temp_db.parent / "orphan_parent_backup.sql"
+        backup_path.write_text(backup_content)
+
+        # Import to a fresh database
+        target_store = ActivityStore(temp_db)
+        target_store.import_from_sql(backup_path)
+
+        # Session should be imported with parent_session_id set to NULL
+        session = target_store.get_session("orphan-child")
+        assert session is not None
+        # The orphan parent reference should have been cleaned up
+        assert session.parent_session_id is None
+        target_store.close()
+
+    def test_import_remaps_source_plan_batch_id(self, temp_db: Path):
+        """Test that source_plan_batch_id self-references are remapped correctly.
+
+        When importing prompt_batches, the auto-generated IDs differ from the backup.
+        source_plan_batch_id references must be remapped to the new IDs.
+        """
+        # Create source store with plan -> implementation batch relationship
+        source_store = ActivityStore(temp_db)
+        source_store.create_session(
+            session_id="plan-session",
+            agent="claude",
+            project_root="/test/project",
+        )
+
+        # Create plan batch
+        plan_batch = source_store.create_prompt_batch(
+            session_id="plan-session",
+            user_prompt="Create a plan",
+            source_type="plan",
+        )
+        source_store.end_prompt_batch(plan_batch.id)
+
+        # Create implementation batch that references the plan
+        impl_batch = source_store.create_prompt_batch(
+            session_id="plan-session",
+            user_prompt="Implement the plan",
+            source_type="derived_plan",
+        )
+        # Link implementation to plan
+        conn = source_store._get_connection()
+        conn.execute(
+            "UPDATE prompt_batches SET source_plan_batch_id = ? WHERE id = ?",
+            (plan_batch.id, impl_batch.id),
+        )
+        conn.commit()
+        source_store.end_prompt_batch(impl_batch.id)
+
+        # Verify source relationship
+        cursor = conn.execute(
+            "SELECT source_plan_batch_id FROM prompt_batches WHERE id = ?",
+            (impl_batch.id,),
+        )
+        assert cursor.fetchone()[0] == plan_batch.id
+
+        # Export
+        backup_path = temp_db.parent / "plan_link_backup.sql"
+        source_store.export_to_sql(backup_path)
+        source_store.close()
+
+        # Import to fresh database
+        target_db = temp_db.parent / "target_plan_link.db"
+        target_store = ActivityStore(target_db)
+        target_store.import_from_sql(backup_path)
+
+        # Verify the relationship is preserved (IDs may differ but link exists)
+        target_conn = target_store._get_connection()
+        cursor = target_conn.execute(
+            """
+            SELECT pb1.prompt_number, pb2.prompt_number
+            FROM prompt_batches pb1
+            JOIN prompt_batches pb2 ON pb1.source_plan_batch_id = pb2.id
+            WHERE pb1.session_id = 'plan-session'
+            """
+        )
+        result = cursor.fetchone()
+        # Implementation batch (prompt_number=2) should link to plan batch (prompt_number=1)
+        assert result is not None
+        assert result[0] == 2  # impl batch prompt_number
+        assert result[1] == 1  # plan batch prompt_number
+
+        target_store.close()
+
+    def test_export_only_includes_records_from_current_machine(self, temp_db: Path):
+        """Test that export only includes records that originated on this machine.
+
+        Origin tracking prevents backup file bloat when team members import
+        each other's backups - each backup only contains original work, not
+        imported data from other machines.
+        """
+        import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_machine_identifier,
+        )
+
+        # Create a store and add local data
+        store = ActivityStore(temp_db)
+        current_machine = get_machine_identifier()
+
+        # Create a local session (will have current machine's source_machine_id)
+        store.create_session(
+            session_id="local-session",
+            agent="claude",
+            project_root="/test/project",
+        )
+        local_batch = store.create_prompt_batch(
+            session_id="local-session",
+            user_prompt="Local work",
+        )
+        local_obs = StoredObservation(
+            id=str(uuid.uuid4()),
+            session_id="local-session",
+            observation="Local observation",
+            memory_type="gotcha",
+        )
+        store.store_observation(local_obs)
+        store.end_prompt_batch(local_batch.id)
+
+        # Simulate imported data from another machine by inserting with different source_machine_id
+        conn = store._get_connection()
+        foreign_machine = "other_machine_alice"
+
+        # Insert a foreign session
+        conn.execute(
+            """
+            INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
+                                 tool_count, processed, created_at_epoch, source_machine_id)
+            VALUES ('foreign-session', 'claude', '/other/project', '2025-01-01T00:00:00',
+                    'completed', 1, 0, 0, 1704067200, ?)
+            """,
+            (foreign_machine,),
+        )
+
+        # Insert a foreign prompt batch
+        conn.execute(
+            """
+            INSERT INTO prompt_batches (session_id, prompt_number, user_prompt, started_at,
+                                        status, activity_count, processed, created_at_epoch,
+                                        source_machine_id)
+            VALUES ('foreign-session', 1, 'Foreign work', '2025-01-01T00:00:00',
+                    'completed', 0, 0, 1704067200, ?)
+            """,
+            (foreign_machine,),
+        )
+
+        # Insert a foreign observation
+        conn.execute(
+            """
+            INSERT INTO memory_observations (id, session_id, observation, memory_type,
+                                            created_at, created_at_epoch, embedded,
+                                            source_machine_id)
+            VALUES (?, 'foreign-session', 'Foreign observation', 'gotcha',
+                    '2025-01-01T00:00:00', 1704067200, 0, ?)
+            """,
+            (str(uuid.uuid4()), foreign_machine),
+        )
+        conn.commit()
+
+        # Verify we have both local and foreign data
+        all_sessions = store.get_recent_sessions(limit=100)
+        assert len(all_sessions) == 2
+
+        # Export - should only include local data
+        backup_path = temp_db.parent / "origin_tracking_backup.sql"
+        store.export_to_sql(backup_path)
+
+        # Read and verify backup content
+        backup_content = backup_path.read_text()
+
+        # Local session should be in backup
+        assert "local-session" in backup_content
+        assert "Local observation" in backup_content
+
+        # Foreign session should NOT be in backup
+        assert "foreign-session" not in backup_content
+        assert "Foreign observation" not in backup_content
+
+        # The backup should contain the machine identifier
+        assert f"-- Machine: {current_machine}" in backup_content
+
+        store.close()
+
+    def test_imported_records_preserve_original_source_machine_id(self, temp_db: Path):
+        """Test that imported records keep their original source_machine_id.
+
+        When importing from another machine, the source_machine_id should be
+        preserved so that future exports from this machine won't re-export
+        the imported data.
+        """
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_machine_identifier,
+        )
+
+        # Create a backup file that looks like it came from another machine
+        foreign_machine = "other_machine_bob"
+        backup_content = f"""-- OAK Codebase Intelligence History Backup
+-- Exported: 2025-01-01T00:00:00
+-- Machine: {foreign_machine}
+-- Schema version: 13
+
+-- sessions (1 records)
+INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count, tool_count, processed, created_at_epoch, source_machine_id) VALUES ('imported-session', 'claude', '/bobs/project', '2025-01-01T00:00:00', 'completed', 1, 0, 0, 1704067200, '{foreign_machine}');
+
+-- prompt_batches (1 records)
+INSERT INTO prompt_batches (id, session_id, prompt_number, user_prompt, started_at, status, activity_count, processed, created_at_epoch, source_machine_id) VALUES (1, 'imported-session', 1, 'Bobs work', '2025-01-01T00:00:00', 'completed', 0, 0, 1704067200, '{foreign_machine}');
+
+-- memory_observations (1 records)
+INSERT INTO memory_observations (id, session_id, observation, memory_type, created_at, created_at_epoch, embedded, source_machine_id) VALUES ('obs-123', 'imported-session', 'Bobs observation', 'gotcha', '2025-01-01T00:00:00', 1704067200, 0, '{foreign_machine}');
+"""
+        backup_path = temp_db.parent / "foreign_backup.sql"
+        backup_path.write_text(backup_content)
+
+        # Import the backup
+        store = ActivityStore(temp_db)
+        store.import_from_sql(backup_path)
+
+        # Verify the data was imported
+        session = store.get_session("imported-session")
+        assert session is not None
+        assert session.source_machine_id == foreign_machine
+
+        # Now export from this machine
+        current_machine = get_machine_identifier()
+        assert current_machine != foreign_machine, "Test requires different machine IDs"
+
+        export_path = temp_db.parent / "re_export.sql"
+        store.export_to_sql(export_path)
+
+        # The exported backup should NOT contain the imported data
+        export_content = export_path.read_text()
+        assert "imported-session" not in export_content
+        assert "Bobs observation" not in export_content
+
+        # Verify it says it's from the current machine
+        assert f"-- Machine: {current_machine}" in export_content
+
+        store.close()
+
+
+class TestPlanDetectionDuringOrphanRecovery:
+    """Test plan detection in orphan recovery (fixes plan mode detection gap)."""
+
+    def test_orphaned_plan_write_detected_at_recovery(self, activity_store):
+        """Plan Write activities with NULL batch should be detected during recovery.
+
+        This tests the fix for the bug where plan detection was skipped during
+        plan mode because activities were stored with prompt_batch_id=None.
+        """
+        import json
+
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            PROMPT_SOURCE_PLAN,
+        )
+
+        # Create a session
+        activity_store.create_session(
+            "plan-mode-session", agent="claude", project_root="/test/project"
+        )
+
+        # Simulate plan mode: activity stored with NULL batch_id
+        # (This happens when agent enters plan mode before any user prompt)
+        plan_content = "# My Test Plan\n\nThis is the plan content."
+        tool_input = json.dumps(
+            {
+                "file_path": ".claude/plans/test-plan.md",
+                "content": plan_content,
+            }
+        )
+
+        conn = activity_store._get_connection()
+        conn.execute(
+            """
+            INSERT INTO activities
+            (session_id, tool_name, tool_input, timestamp, timestamp_epoch, prompt_batch_id)
+            VALUES (?, ?, ?, datetime('now'), strftime('%s', 'now'), NULL)
+            """,
+            ("plan-mode-session", "Write", tool_input),
+        )
+        conn.commit()
+
+        # Verify activity has NULL batch_id
+        cursor = conn.execute(
+            "SELECT prompt_batch_id FROM activities WHERE session_id = ?",
+            ("plan-mode-session",),
+        )
+        assert cursor.fetchone()[0] is None
+
+        # Run orphan recovery - this should detect the plan
+        recovered = activity_store.recover_orphaned_activities()
+        assert recovered == 1
+
+        # Verify a batch was created and marked as plan
+        cursor = conn.execute(
+            """
+            SELECT source_type, plan_content, plan_file_path
+            FROM prompt_batches
+            WHERE session_id = ?
+            """,
+            ("plan-mode-session",),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == PROMPT_SOURCE_PLAN
+        assert row[1] == plan_content
+        assert row[2] == ".claude/plans/test-plan.md"
+
+    def test_orphaned_non_plan_write_not_marked_as_plan(self, activity_store):
+        """Non-plan Write activities should not be marked as plan during recovery."""
+        import json
+
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            PROMPT_SOURCE_PLAN,
+        )
+
+        # Create a session
+        activity_store.create_session(
+            "regular-session", agent="claude", project_root="/test/project"
+        )
+
+        # Simulate regular file write with NULL batch_id
+        tool_input = json.dumps(
+            {
+                "file_path": "src/app.py",
+                "content": "print('hello')",
+            }
+        )
+
+        conn = activity_store._get_connection()
+        conn.execute(
+            """
+            INSERT INTO activities
+            (session_id, tool_name, tool_input, timestamp, timestamp_epoch, prompt_batch_id)
+            VALUES (?, ?, ?, datetime('now'), strftime('%s', 'now'), NULL)
+            """,
+            ("regular-session", "Write", tool_input),
+        )
+        conn.commit()
+
+        # Run orphan recovery
+        recovered = activity_store.recover_orphaned_activities()
+        assert recovered == 1
+
+        # Verify batch was NOT marked as plan (should be recovery batch)
+        cursor = conn.execute(
+            """
+            SELECT source_type FROM prompt_batches WHERE session_id = ?
+            """,
+            ("regular-session",),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] != PROMPT_SOURCE_PLAN  # Should not be a plan

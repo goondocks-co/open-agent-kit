@@ -9,6 +9,10 @@ The core power of Codebase Intelligence is its ability to learn and remember. Th
 3.  **Storage**: The observation is stored in the Activity Log (SQLite) and embedded into the Vector Store.
 4.  **Recall**: When a future task matches the semantic context of the memory, it is proactively retrieved and injected into the agent's prompt.
 
+## Rebuilding Memory Embeddings
+
+If the memory embedding format changes (for example, adding path or tag labels), you must rebuild the memory index so existing observations are re-embedded. Use the DevTools endpoint `POST /api/devtools/rebuild-memories` (see `docs/codebase-intelligence/devtools.md`).
+
 ## Memory Types
 
 | Type | Description | Example |

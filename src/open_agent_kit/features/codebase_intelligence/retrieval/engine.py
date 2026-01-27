@@ -245,7 +245,17 @@ class RetrievalEngine:
         if min_confidence == "medium":
             allowed.add(Confidence.MEDIUM.value)
 
-        return [r for r in results if r.get("confidence", "low") in allowed]
+        kept = [r for r in results if r.get("confidence", "low") in allowed]
+
+        # Debug logging for filtering decisions (trace mode)
+        dropped = len(results) - len(kept)
+        if dropped > 0:
+            logger.debug(
+                f"[FILTER] Dropped {dropped}/{len(results)} results below "
+                f"{min_confidence} confidence"
+            )
+
+        return kept
 
     # =========================================================================
     # Primary Search Methods (used by daemon routes)

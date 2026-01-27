@@ -6,8 +6,10 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { formatDate } from "@/lib/utils";
-import { FileText, Trash2, Maximize2, CheckCircle2, Circle, FolderGit2 } from "lucide-react";
+import { FileText, Trash2, Maximize2, CheckCircle2, Circle, FolderGit2, ArrowUpDown } from "lucide-react";
 import { fetchJson } from "@/lib/api";
+import { PLAN_SORT_DROPDOWN_OPTIONS, DEFAULT_PLAN_SORT } from "@/lib/constants";
+import type { PlanSortOption } from "@/lib/constants";
 
 import type { PlanListItem } from "@/hooks/use-plans";
 
@@ -22,11 +24,20 @@ const DELETE_PLAN_CONFIRMATION = {
 export default function PlansList() {
     const [loadedPlans, setLoadedPlans] = useState<PlanListItem[]>([]);
     const [offset, setOffset] = useState(0);
+    const [sortBy, setSortBy] = useState<PlanSortOption>(DEFAULT_PLAN_SORT);
 
     const { data, isLoading, isFetching, refetch } = usePlans({
         limit: PLANS_PAGE_SIZE,
         offset,
+        sort: sortBy,
     });
+
+    const handleSortChange = (newSort: PlanSortOption) => {
+        setSortBy(newSort);
+        // Reset pagination when sort changes
+        setOffset(0);
+        setLoadedPlans([]);
+    };
     const deleteMemory = useDeleteMemory();
     const { isOpen, setIsOpen, itemToDelete, openDialog, closeDialog } = useConfirmDialog();
     const { isOpen: isContentOpen, setIsOpen: setContentOpen, dialogContent, openDialog: openContentDialog } = useContentDialog();
@@ -104,15 +115,27 @@ export default function PlansList() {
 
     return (
         <div className="space-y-4">
-            {/* Header with count */}
+            {/* Header with sort controls */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <FileText className="w-4 h-4" />
                     <span>Design documents from plan mode sessions</span>
+                    <span className="text-xs">({data?.total || allPlans.length} plans)</span>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                    {data?.total || allPlans.length} plans
-                </span>
+                <div className="flex items-center gap-2">
+                    <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                    <select
+                        value={sortBy}
+                        onChange={(e) => handleSortChange(e.target.value as PlanSortOption)}
+                        className="text-sm bg-background border border-input rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                        {PLAN_SORT_DROPDOWN_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
