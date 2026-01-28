@@ -163,6 +163,17 @@ export default function DevTools() {
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to run maintenance" })
     });
 
+    const backfillHashesFn = useMutation({
+        mutationFn: () => fetchJson<{ message: string; batches: number; observations: number; activities: number }>(
+            API_ENDPOINTS.DEVTOOLS_BACKFILL_HASHES,
+            { method: "POST" }
+        ),
+        onSuccess: (data) => {
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to backfill hashes" })
+    });
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto p-4">
             <div className="flex flex-col gap-2">
@@ -392,6 +403,21 @@ export default function DevTools() {
                         </Button>
                         <p className="text-xs text-muted-foreground">
                             Run periodically (weekly/monthly) or after heavy delete/rebuild operations to maintain performance.
+                        </p>
+
+                        <div className="h-px bg-border my-4" />
+
+                        <Button
+                            variant="secondary"
+                            onClick={() => backfillHashesFn.mutate()}
+                            disabled={backfillHashesFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <Database className={`mr-2 h-4 w-4 ${backfillHashesFn.isPending ? "animate-pulse" : ""}`} />
+                            {backfillHashesFn.isPending ? "Computing..." : "Backfill Content Hashes"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Compute content_hash for records missing them. Run after reprocessing to ensure deduplication works during backup/restore.
                         </p>
                     </CardContent>
                 </Card>

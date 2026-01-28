@@ -30,6 +30,16 @@ class Activity:
     observation_id: str | None = None
     source_machine_id: str | None = None  # Machine that originated this record (v13)
 
+    def _compute_content_hash(self) -> str:
+        """Compute content hash for deduplication."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            compute_activity_hash,
+        )
+
+        return compute_activity_hash(
+            self.session_id, int(self.timestamp.timestamp()), self.tool_name
+        )
+
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
         return {
@@ -50,6 +60,7 @@ class Activity:
             "processed": self.processed,
             "observation_id": self.observation_id,
             "source_machine_id": self.source_machine_id,
+            "content_hash": self._compute_content_hash(),
         }
 
     @classmethod
@@ -112,6 +123,14 @@ class PromptBatch:
     # Maximum plan content length (100K chars for large plans)
     MAX_PLAN_CONTENT_LENGTH = 100000
 
+    def _compute_content_hash(self) -> str:
+        """Compute content hash for deduplication."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            compute_prompt_batch_hash,
+        )
+
+        return compute_prompt_batch_hash(self.session_id, self.prompt_number)
+
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
         return {
@@ -132,6 +151,7 @@ class PromptBatch:
             "created_at_epoch": int(self.started_at.timestamp()),
             "source_plan_batch_id": self.source_plan_batch_id,
             "source_machine_id": self.source_machine_id,
+            "content_hash": self._compute_content_hash(),
         }
 
     @classmethod
@@ -280,6 +300,14 @@ class StoredObservation:
     embedded: bool = False  # Has this been added to ChromaDB?
     source_machine_id: str | None = None  # Machine that originated this record (v13)
 
+    def _compute_content_hash(self) -> str:
+        """Compute content hash for deduplication."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            compute_observation_hash,
+        )
+
+        return compute_observation_hash(self.observation, self.memory_type, self.context)
+
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
         return {
@@ -296,6 +324,7 @@ class StoredObservation:
             "created_at_epoch": int(self.created_at.timestamp()),
             "embedded": self.embedded,
             "source_machine_id": self.source_machine_id,
+            "content_hash": self._compute_content_hash(),
         }
 
     @classmethod

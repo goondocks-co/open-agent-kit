@@ -44,10 +44,10 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
             INSERT OR REPLACE INTO memory_observations
             (id, session_id, prompt_batch_id, observation, memory_type,
              context, tags, importance, file_path, created_at, created_at_epoch, embedded,
-             source_machine_id)
+             source_machine_id, content_hash)
             VALUES (:id, :session_id, :prompt_batch_id, :observation, :memory_type,
                     :context, :tags, :importance, :file_path, :created_at,
-                    :created_at_epoch, :embedded, :source_machine_id)
+                    :created_at_epoch, :embedded, :source_machine_id, :content_hash)
             """,
             row,
         )

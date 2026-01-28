@@ -36,6 +36,95 @@ class DatabaseMaintenanceRequest(BaseModel):
     integrity_check: bool = False  # Run integrity check (slower)
 
 
+@router.post("/api/devtools/backfill-hashes")
+async def backfill_content_hashes() -> dict[str, Any]:
+    """Backfill content_hash for records missing them.
+
+    New records created after the v11 migration don't get content_hash
+    populated at insert time. This endpoint computes and stores hashes
+    for all records that are missing them.
+
+    Run this after reprocessing observations or periodically to ensure
+    all records have hashes for deduplication during backup/restore.
+    """
+    state = get_state()
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        compute_activity_hash,
+        compute_observation_hash,
+        compute_prompt_batch_hash,
+    )
+
+    store = state.activity_store
+    conn = store._get_connection()
+
+    batch_count = 0
+    obs_count = 0
+    activity_count = 0
+
+    try:
+        # Backfill prompt_batches
+        cursor = conn.execute(
+            "SELECT id, session_id, prompt_number FROM prompt_batches WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            batch_id, session_id, prompt_number = row
+            hash_val = compute_prompt_batch_hash(str(session_id), int(prompt_number))
+            conn.execute(
+                "UPDATE prompt_batches SET content_hash = ? WHERE id = ?",
+                (hash_val, batch_id),
+            )
+            batch_count += 1
+
+        # Backfill memory_observations
+        cursor = conn.execute(
+            "SELECT id, observation, memory_type, context FROM memory_observations "
+            "WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            obs_id, observation, memory_type, context = row
+            hash_val = compute_observation_hash(str(observation), str(memory_type), context)
+            conn.execute(
+                "UPDATE memory_observations SET content_hash = ? WHERE id = ?",
+                (hash_val, obs_id),
+            )
+            obs_count += 1
+
+        # Backfill activities
+        cursor = conn.execute(
+            "SELECT id, session_id, timestamp_epoch, tool_name FROM activities "
+            "WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            activity_id, session_id, timestamp_epoch, tool_name = row
+            hash_val = compute_activity_hash(str(session_id), int(timestamp_epoch), str(tool_name))
+            conn.execute(
+                "UPDATE activities SET content_hash = ? WHERE id = ?",
+                (hash_val, activity_id),
+            )
+            activity_count += 1
+
+        conn.commit()
+
+        logger.info(
+            f"Backfilled content hashes: {batch_count} batches, "
+            f"{obs_count} observations, {activity_count} activities"
+        )
+
+        return {
+            "status": "success",
+            "message": f"Backfilled {batch_count + obs_count + activity_count} hashes",
+            "batches": batch_count,
+            "observations": obs_count,
+            "activities": activity_count,
+        }
+
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}") from e
+
+
 @router.post("/api/devtools/rebuild-index")
 async def rebuild_index(
     request: RebuildIndexRequest, background_tasks: BackgroundTasks

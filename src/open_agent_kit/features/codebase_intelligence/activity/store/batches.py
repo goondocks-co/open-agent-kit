@@ -92,11 +92,13 @@ def create_prompt_batch(
             INSERT INTO prompt_batches (session_id, prompt_number, user_prompt,
                                        started_at, status, activity_count, processed,
                                        classification, source_type, plan_file_path,
-                                       plan_content, created_at_epoch, source_machine_id)
+                                       plan_content, created_at_epoch, source_machine_id,
+                                       content_hash)
             VALUES (:session_id, :prompt_number, :user_prompt,
                     :started_at, :status, :activity_count, :processed,
                     :classification, :source_type, :plan_file_path,
-                    :plan_content, :created_at_epoch, :source_machine_id)
+                    :plan_content, :created_at_epoch, :source_machine_id,
+                    :content_hash)
             """,
             row_data,
         )

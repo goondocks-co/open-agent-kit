@@ -229,6 +229,7 @@ export const API_ENDPOINTS = {
     DEVTOOLS_REGENERATE_SUMMARIES: "/api/devtools/regenerate-summaries",
     DEVTOOLS_REPROCESS_OBSERVATIONS: "/api/devtools/reprocess-observations",
     DEVTOOLS_DATABASE_MAINTENANCE: "/api/devtools/database-maintenance",
+    DEVTOOLS_BACKFILL_HASHES: "/api/devtools/backfill-hashes",
 
     // Backup endpoints
     BACKUP_STATUS: "/api/backup/status",

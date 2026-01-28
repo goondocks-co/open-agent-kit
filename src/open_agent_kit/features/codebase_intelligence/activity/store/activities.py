@@ -41,11 +41,11 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
             INSERT INTO activities (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
                                    file_path, files_affected, duration_ms, success,
                                    error_message, timestamp, timestamp_epoch, processed, observation_id,
-                                   source_machine_id)
+                                   source_machine_id, content_hash)
             VALUES (:session_id, :prompt_batch_id, :tool_name, :tool_input, :tool_output_summary,
                     :file_path, :files_affected, :duration_ms, :success,
                     :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id,
-                    :source_machine_id)
+                    :source_machine_id, :content_hash)
             """,
             row,
         )
@@ -166,11 +166,11 @@ def add_activities(store: ActivityStore, activities: list[Activity]) -> list[int
                 INSERT INTO activities (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
                                        file_path, files_affected, duration_ms, success,
                                        error_message, timestamp, timestamp_epoch, processed, observation_id,
-                                       source_machine_id)
+                                       source_machine_id, content_hash)
                 VALUES (:session_id, :prompt_batch_id, :tool_name, :tool_input, :tool_output_summary,
                         :file_path, :files_affected, :duration_ms, :success,
                         :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id,
-                        :source_machine_id)
+                        :source_machine_id, :content_hash)
                 """,
                 row,
             )
