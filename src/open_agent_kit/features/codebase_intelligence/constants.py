@@ -184,6 +184,11 @@ DEFAULT_INDEXING_TIMEOUT_SECONDS: Final[float] = 3600.0
 # Resiliency and Recovery
 # =============================================================================
 
+# Continuation prompt placeholder (used when session continues from another)
+# This is used when activities are created without a prompt batch (e.g., during
+# session transitions after "clear context and proceed")
+RECOVERY_BATCH_PROMPT: Final[str] = "[Continued from previous session]"
+
 # Auto-end batches stuck in 'active' status longer than this (5 minutes)
 # This is a safety net - batches should normally be closed by Stop hook or
 # the next UserPromptSubmit. A shorter timeout ensures eventual consistency.
@@ -329,6 +334,30 @@ CONFIDENCE_GAP_BOOST_THRESHOLD: Final[float] = 0.15
 # Minimum score range to use range-based calculation (below this, use fallback)
 CONFIDENCE_MIN_MEANINGFUL_RANGE: Final[float] = 0.001
 
+# =============================================================================
+# Importance Levels (for memory observations)
+# =============================================================================
+# Importance is stored on a 1-10 scale in SQLite/ChromaDB.
+# These thresholds map the scale to high/medium/low categories.
+
+IMPORTANCE_HIGH_THRESHOLD: Final[int] = 7  # >= 7 is high importance
+IMPORTANCE_MEDIUM_THRESHOLD: Final[int] = 4  # >= 4 is medium importance
+# Below 4 is low importance
+
+# =============================================================================
+# Combined Retrieval Scoring
+# =============================================================================
+# Weights for combining semantic confidence with importance in retrieval.
+# combined_score = (confidence_weight * confidence) + (importance_weight * importance_normalized)
+
+RETRIEVAL_CONFIDENCE_WEIGHT: Final[float] = 0.7
+RETRIEVAL_IMPORTANCE_WEIGHT: Final[float] = 0.3
+
+# Confidence score mapping for combined scoring (confidence level -> numeric score)
+CONFIDENCE_SCORE_HIGH: Final[float] = 1.0
+CONFIDENCE_SCORE_MEDIUM: Final[float] = 0.6
+CONFIDENCE_SCORE_LOW: Final[float] = 0.3
+
 
 # =============================================================================
 # Summarization Providers
@@ -402,6 +431,9 @@ INJECTION_MAX_LINES_PER_CHUNK: Final[int] = 50
 INJECTION_MAX_MEMORIES: Final[int] = 10
 INJECTION_MAX_SESSION_SUMMARIES: Final[int] = 3
 
+# Summary generation limits
+SUMMARY_MAX_PLAN_CONTEXT_LENGTH: Final[int] = 1500
+
 # Session start injection text
 INJECTION_SESSION_SUMMARIES_TITLE: Final[str] = "## Recent Session Summaries (most recent first)"
 INJECTION_SESSION_START_REMINDER_TITLE: Final[str] = "## OAK CI Tools"
@@ -412,3 +444,68 @@ INJECTION_SESSION_START_REMINDER_LINES: Final[tuple[str, ...]] = (
 INJECTION_SESSION_START_REMINDER_BLOCK: Final[str] = MEMORY_EMBED_LINE_SEPARATOR.join(
     (INJECTION_SESSION_START_REMINDER_TITLE, *INJECTION_SESSION_START_REMINDER_LINES)
 )
+
+
+# =============================================================================
+# Agent Subsystem Constants
+# =============================================================================
+
+# Agent definition directories
+AGENTS_DIR: Final[str] = "agents"
+AGENTS_DEFINITIONS_DIR: Final[str] = "definitions"
+AGENT_DEFINITION_FILENAME: Final[str] = "agent.yaml"
+AGENT_PROMPTS_DIR: Final[str] = "prompts"
+AGENT_SYSTEM_PROMPT_FILENAME: Final[str] = "system.md"
+
+# Agent execution defaults
+DEFAULT_AGENT_MAX_TURNS: Final[int] = 50
+DEFAULT_AGENT_TIMEOUT_SECONDS: Final[int] = 600
+MAX_AGENT_MAX_TURNS: Final[int] = 500
+MAX_AGENT_TIMEOUT_SECONDS: Final[int] = 3600
+MIN_AGENT_TIMEOUT_SECONDS: Final[int] = 60
+
+# Agent run status values (match AgentRunStatus enum)
+AGENT_STATUS_PENDING: Final[str] = "pending"
+AGENT_STATUS_RUNNING: Final[str] = "running"
+AGENT_STATUS_COMPLETED: Final[str] = "completed"
+AGENT_STATUS_FAILED: Final[str] = "failed"
+AGENT_STATUS_CANCELLED: Final[str] = "cancelled"
+AGENT_STATUS_TIMEOUT: Final[str] = "timeout"
+
+# Agent run tracking
+AGENT_RUNS_MAX_HISTORY: Final[int] = 100
+AGENT_RUNS_CLEANUP_THRESHOLD: Final[int] = 150
+
+# Default tools allowed for agents
+AGENT_DEFAULT_ALLOWED_TOOLS: Final[tuple[str, ...]] = (
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+)
+
+# Tools that are never allowed for agents (security)
+AGENT_FORBIDDEN_TOOLS: Final[tuple[str, ...]] = (
+    "Bash",  # Shell commands - too dangerous
+    "Task",  # Sub-agents - avoid recursion
+)
+
+# Default paths that agents cannot access (security)
+AGENT_DEFAULT_DISALLOWED_PATHS: Final[tuple[str, ...]] = (
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.crt",
+    "**/credentials*",
+    "**/secrets*",
+)
+
+# CI MCP tool names (exposed to agents)
+CI_TOOL_SEARCH: Final[str] = "ci_search"
+CI_TOOL_MEMORIES: Final[str] = "ci_memories"
+CI_TOOL_SESSIONS: Final[str] = "ci_sessions"
+CI_TOOL_PROJECT_STATS: Final[str] = "ci_project_stats"
+CI_MCP_SERVER_NAME: Final[str] = "oak-ci"
+CI_MCP_SERVER_VERSION: Final[str] = "1.0.0"

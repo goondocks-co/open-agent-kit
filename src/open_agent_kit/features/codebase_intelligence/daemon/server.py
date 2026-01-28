@@ -556,6 +556,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 state.activity_store = None
                 state.activity_processor = None
 
+            # Initialize agent subsystem if enabled
+            try:
+                if ci_config.agents.enabled:
+                    from open_agent_kit.features.codebase_intelligence.agents import (
+                        AgentExecutor,
+                        AgentRegistry,
+                    )
+
+                    state.agent_registry = AgentRegistry()
+                    agent_count = state.agent_registry.load_all()
+                    logger.info(f"Agent registry loaded {agent_count} agents")
+
+                    state.agent_executor = AgentExecutor(
+                        project_root=project_root,
+                        retrieval_engine=state.retrieval_engine,
+                        activity_store=state.activity_store,
+                        vector_store=state.vector_store,
+                    )
+                    logger.info("Agent executor initialized")
+                else:
+                    logger.info("Agent subsystem disabled in config")
+            except ImportError as e:
+                logger.warning(f"Agent subsystem unavailable (SDK not installed): {e}")
+            except (OSError, ValueError, RuntimeError) as e:
+                logger.warning(f"Failed to initialize agent subsystem: {e}")
+                state.agent_registry = None
+                state.agent_executor = None
+
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to initialize: {e}")
             state.vector_store = None
@@ -649,6 +677,7 @@ def create_app(
     # Include routers
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
         activity,
+        agents,
         backup,
         devtools,
         health,
@@ -671,6 +700,7 @@ def create_app(
     app.include_router(activity.router)
     app.include_router(hooks.router)
     app.include_router(mcp.router)
+    app.include_router(agents.router)
     app.include_router(devtools.router)
     app.include_router(backup.router)
 

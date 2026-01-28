@@ -1036,3 +1036,204 @@ class TestSearchWithConfidence:
         assert result.code[0]["confidence"] == "high"
         # Last result should be low confidence
         assert result.code[2]["confidence"] == "low"
+
+
+# =============================================================================
+# Combined Score Tests (Confidence + Importance)
+# =============================================================================
+
+
+class TestCalculateCombinedScore:
+    """Tests for the calculate_combined_score static method."""
+
+    def test_high_confidence_high_importance(self) -> None:
+        """Test combined score for high confidence and high importance."""
+        score = RetrievalEngine.calculate_combined_score("high", 10)
+        # (0.7 * 1.0) + (0.3 * 1.0) = 1.0
+        assert score == 1.0
+
+    def test_high_confidence_low_importance(self) -> None:
+        """Test combined score for high confidence and low importance."""
+        score = RetrievalEngine.calculate_combined_score("high", 1)
+        # (0.7 * 1.0) + (0.3 * 0.1) = 0.73
+        assert abs(score - 0.73) < 0.01
+
+    def test_low_confidence_high_importance(self) -> None:
+        """Test combined score for low confidence and high importance."""
+        score = RetrievalEngine.calculate_combined_score("low", 10)
+        # (0.7 * 0.3) + (0.3 * 1.0) = 0.51
+        assert abs(score - 0.51) < 0.01
+
+    def test_medium_confidence_medium_importance(self) -> None:
+        """Test combined score for medium confidence and medium importance."""
+        score = RetrievalEngine.calculate_combined_score("medium", 5)
+        # (0.7 * 0.6) + (0.3 * 0.5) = 0.57
+        assert abs(score - 0.57) < 0.01
+
+    def test_unknown_confidence_defaults_to_medium(self) -> None:
+        """Test that unknown confidence defaults to medium score."""
+        score = RetrievalEngine.calculate_combined_score("unknown", 5)
+        expected = RetrievalEngine.calculate_combined_score("medium", 5)
+        assert score == expected
+
+    def test_importance_clamped_to_valid_range(self) -> None:
+        """Test that importance is clamped to 1-10 range."""
+        # Test below minimum (should use 1)
+        score_below = RetrievalEngine.calculate_combined_score("high", 0)
+        score_at_min = RetrievalEngine.calculate_combined_score("high", 1)
+        assert score_below == score_at_min
+
+        # Test above maximum (should use 10)
+        score_above = RetrievalEngine.calculate_combined_score("high", 15)
+        score_at_max = RetrievalEngine.calculate_combined_score("high", 10)
+        assert score_above == score_at_max
+
+
+class TestGetImportanceLevel:
+    """Tests for the get_importance_level static method."""
+
+    def test_high_importance(self) -> None:
+        """Test that importance >= 7 returns 'high'."""
+        assert RetrievalEngine.get_importance_level(7) == "high"
+        assert RetrievalEngine.get_importance_level(8) == "high"
+        assert RetrievalEngine.get_importance_level(10) == "high"
+
+    def test_medium_importance(self) -> None:
+        """Test that importance >= 4 and < 7 returns 'medium'."""
+        assert RetrievalEngine.get_importance_level(4) == "medium"
+        assert RetrievalEngine.get_importance_level(5) == "medium"
+        assert RetrievalEngine.get_importance_level(6) == "medium"
+
+    def test_low_importance(self) -> None:
+        """Test that importance < 4 returns 'low'."""
+        assert RetrievalEngine.get_importance_level(1) == "low"
+        assert RetrievalEngine.get_importance_level(2) == "low"
+        assert RetrievalEngine.get_importance_level(3) == "low"
+
+
+class TestFilterByCombinedScore:
+    """Tests for the filter_by_combined_score static method."""
+
+    def test_filter_high_combined_score(self) -> None:
+        """Test filtering for high combined score."""
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},  # Combined: ~0.94
+            {"id": "2", "confidence": "high", "importance": 2},  # Combined: ~0.76
+            {"id": "3", "confidence": "low", "importance": 9},  # Combined: ~0.48
+            {"id": "4", "confidence": "medium", "importance": 5},  # Combined: ~0.57
+        ]
+
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="high")
+
+        # Threshold is 0.7, so results 1 and 2 should pass
+        assert len(filtered) == 2
+        assert {"1", "2"} == {r["id"] for r in filtered}
+
+    def test_filter_medium_combined_score(self) -> None:
+        """Test filtering for medium combined score."""
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},  # Combined: ~0.94
+            {"id": "2", "confidence": "medium", "importance": 5},  # Combined: ~0.57
+            {"id": "3", "confidence": "low", "importance": 3},  # Combined: ~0.30
+        ]
+
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="medium")
+
+        # Threshold is 0.5, so results 1 and 2 should pass
+        assert len(filtered) == 2
+        assert {"1", "2"} == {r["id"] for r in filtered}
+
+    def test_filter_low_returns_all(self) -> None:
+        """Test that 'low' threshold returns all results."""
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},
+            {"id": "2", "confidence": "low", "importance": 1},
+        ]
+
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="low")
+
+        assert len(filtered) == 2
+
+    def test_filter_all_returns_all(self) -> None:
+        """Test that 'all' threshold returns all results."""
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},
+            {"id": "2", "confidence": "low", "importance": 1},
+        ]
+
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="all")
+
+        assert len(filtered) == 2
+
+    def test_adds_combined_score_to_results(self) -> None:
+        """Test that combined_score is added to kept results when filtering."""
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},  # Passes high threshold
+        ]
+
+        # Use a threshold that actually filters (not 'low' or 'all' which return early)
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="high")
+
+        assert "combined_score" in filtered[0]
+        assert isinstance(filtered[0]["combined_score"], float)
+
+    def test_handles_missing_importance(self) -> None:
+        """Test that missing importance defaults to 5."""
+        results = [
+            {"id": "1", "confidence": "high"},  # No importance, defaults to 5
+        ]
+
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="high")
+
+        # high confidence (1.0) + default importance (5 -> 0.5)
+        # (0.7 * 1.0) + (0.3 * 0.5) = 0.85 -> passes high threshold (0.7)
+        assert len(filtered) == 1
+
+    def test_handles_string_importance(self) -> None:
+        """Test that string importance values are converted."""
+        results = [
+            {"id": "1", "confidence": "medium", "importance": "high"},  # Should map to 8
+            {"id": "2", "confidence": "medium", "importance": "low"},  # Should map to 3
+        ]
+
+        filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="medium")
+
+        # Result 1: (0.7 * 0.6) + (0.3 * 0.8) = 0.66 -> passes medium (0.5)
+        # Result 2: (0.7 * 0.6) + (0.3 * 0.3) = 0.51 -> passes medium (0.5)
+        assert len(filtered) == 2
+
+    def test_filter_logs_dropped_count(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that filtering logs the number of dropped results."""
+        import logging
+
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},  # Passes
+            {"id": "2", "confidence": "low", "importance": 2},  # Fails
+            {"id": "3", "confidence": "low", "importance": 1},  # Fails
+        ]
+
+        with caplog.at_level(logging.DEBUG):
+            filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="high")
+
+        assert len(filtered) == 1
+        assert any("[FILTER:combined]" in record.message for record in caplog.records)
+        assert any("Dropped 2/3" in record.message for record in caplog.records)
+
+    def test_no_log_when_nothing_dropped(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that no log is emitted when nothing is dropped."""
+        import logging
+
+        results = [
+            {"id": "1", "confidence": "high", "importance": 8},
+        ]
+
+        with caplog.at_level(logging.DEBUG):
+            filtered = RetrievalEngine.filter_by_combined_score(results, min_combined="low")
+
+        assert len(filtered) == 1
+        assert not any("[FILTER:combined]" in record.message for record in caplog.records)
+
+    def test_empty_list(self) -> None:
+        """Test filtering empty list."""
+        filtered = RetrievalEngine.filter_by_combined_score([], min_combined="high")
+        assert filtered == []

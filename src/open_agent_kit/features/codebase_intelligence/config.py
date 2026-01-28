@@ -19,6 +19,8 @@ import yaml
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    DEFAULT_AGENT_MAX_TURNS,
+    DEFAULT_AGENT_TIMEOUT_SECONDS,
     DEFAULT_BASE_URL,
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_SIZE_MB,
@@ -31,8 +33,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_SUMMARIZATION_TIMEOUT,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
+    MAX_AGENT_MAX_TURNS,
+    MAX_AGENT_TIMEOUT_SECONDS,
     MAX_LOG_BACKUP_COUNT,
     MAX_LOG_MAX_SIZE_MB,
+    MIN_AGENT_TIMEOUT_SECONDS,
     MIN_LOG_MAX_SIZE_MB,
     VALID_LOG_LEVELS,
     VALID_PROVIDERS,
@@ -497,6 +502,84 @@ DEFAULT_EXCLUDE_PATTERNS = [
 
 
 @dataclass
+class AgentConfig:
+    """Configuration for the CI Agent subsystem.
+
+    Attributes:
+        enabled: Whether to enable the agent subsystem.
+        max_turns: Default maximum turns for agent execution.
+        timeout_seconds: Default timeout for agent execution.
+    """
+
+    enabled: bool = True
+    max_turns: int = DEFAULT_AGENT_MAX_TURNS
+    timeout_seconds: int = DEFAULT_AGENT_TIMEOUT_SECONDS
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate configuration values.
+
+        Raises:
+            ValidationError: If any configuration value is invalid.
+        """
+        if self.max_turns < 1:
+            raise ValidationError(
+                "max_turns must be at least 1",
+                field="max_turns",
+                value=self.max_turns,
+                expected=">= 1",
+            )
+        if self.max_turns > MAX_AGENT_MAX_TURNS:
+            raise ValidationError(
+                f"max_turns must be at most {MAX_AGENT_MAX_TURNS}",
+                field="max_turns",
+                value=self.max_turns,
+                expected=f"<= {MAX_AGENT_MAX_TURNS}",
+            )
+        if self.timeout_seconds < MIN_AGENT_TIMEOUT_SECONDS:
+            raise ValidationError(
+                f"timeout_seconds must be at least {MIN_AGENT_TIMEOUT_SECONDS}",
+                field="timeout_seconds",
+                value=self.timeout_seconds,
+                expected=f">= {MIN_AGENT_TIMEOUT_SECONDS}",
+            )
+        if self.timeout_seconds > MAX_AGENT_TIMEOUT_SECONDS:
+            raise ValidationError(
+                f"timeout_seconds must be at most {MAX_AGENT_TIMEOUT_SECONDS}",
+                field="timeout_seconds",
+                value=self.timeout_seconds,
+                expected=f"<= {MAX_AGENT_TIMEOUT_SECONDS}",
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentConfig":
+        """Create config from dictionary.
+
+        Args:
+            data: Configuration dictionary.
+
+        Returns:
+            AgentConfig instance.
+        """
+        return cls(
+            enabled=data.get("enabled", True),
+            max_turns=data.get("max_turns", DEFAULT_AGENT_MAX_TURNS),
+            timeout_seconds=data.get("timeout_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "enabled": self.enabled,
+            "max_turns": self.max_turns,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+
+@dataclass
 class LogRotationConfig:
     """Configuration for log file rotation.
 
@@ -592,6 +675,7 @@ class CIConfig:
     Attributes:
         embedding: Embedding provider configuration.
         summarization: LLM summarization configuration.
+        agents: Agent subsystem configuration.
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
@@ -601,6 +685,7 @@ class CIConfig:
 
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
+    agents: AgentConfig = field(default_factory=AgentConfig)
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
@@ -641,10 +726,12 @@ class CIConfig:
         """
         embedding_data = data.get("embedding", {})
         summarization_data = data.get("summarization", {})
+        agents_data = data.get("agents", {})
         log_rotation_data = data.get("log_rotation", {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
             summarization=SummarizationConfig.from_dict(summarization_data),
+            agents=AgentConfig.from_dict(agents_data),
             index_on_startup=data.get("index_on_startup", True),
             watch_files=data.get("watch_files", True),
             exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
@@ -657,6 +744,7 @@ class CIConfig:
         return {
             "embedding": self.embedding.to_dict(),
             "summarization": self.summarization.to_dict(),
+            "agents": self.agents.to_dict(),
             "index_on_startup": self.index_on_startup,
             "watch_files": self.watch_files,
             "exclude_patterns": self.exclude_patterns,

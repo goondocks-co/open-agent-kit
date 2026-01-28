@@ -43,6 +43,7 @@ from open_agent_kit.features.codebase_intelligence.activity.processor.summaries 
 from open_agent_kit.features.codebase_intelligence.activity.processor.titles import (
     generate_pending_titles,
     generate_session_title,
+    generate_title_from_summary,
 )
 from open_agent_kit.features.codebase_intelligence.activity.prompts import (
     PromptTemplateConfig,
@@ -578,11 +579,73 @@ class ActivityProcessor:
             limit=limit,
         )
 
-    def process_session_summary(self, session_id: str) -> str | None:
-        """Generate and store a session summary and title."""
+    def process_session_summary(
+        self, session_id: str, regenerate_title: bool = False
+    ) -> str | None:
+        """Generate and store a session summary and optionally regenerate title.
+
+        Args:
+            session_id: Session to summarize.
+            regenerate_title: If True, force regenerate title even if one exists.
+
+        Returns:
+            Summary text if generated, None otherwise.
+        """
         if not self.summarizer:
             logger.info("Session summary skipped: summarizer not configured")
             return None
+
+        # Create a wrapper for generate_title_from_summary that binds store and config
+        def _generate_title_from_summary(sid: str, summary: str) -> str | None:
+            return generate_title_from_summary(
+                session_id=sid,
+                summary=summary,
+                activity_store=self.activity_store,
+                prompt_config=self.prompt_config,
+                call_llm=self._call_llm,
+            )
+
+        summary, title = process_session_summary(
+            session_id=session_id,
+            activity_store=self.activity_store,
+            vector_store=self.vector_store,
+            prompt_config=self.prompt_config,
+            call_llm=self._call_llm,
+            generate_title=self.generate_session_title,
+            regenerate_title=regenerate_title,
+            generate_title_from_summary=_generate_title_from_summary,
+        )
+
+        # Return just the summary for backward compatibility
+        # The title is stored directly in the session by the functions
+        return summary
+
+    def process_session_summary_with_title(
+        self, session_id: str, regenerate_title: bool = False
+    ) -> tuple[str | None, str | None]:
+        """Generate and store a session summary and title.
+
+        Args:
+            session_id: Session to summarize.
+            regenerate_title: If True, force regenerate title even if one exists.
+
+        Returns:
+            Tuple of (summary text, title text) if generated, (None, None) otherwise.
+        """
+        if not self.summarizer:
+            logger.info("Session summary skipped: summarizer not configured")
+            return None, None
+
+        # Create a wrapper for generate_title_from_summary that binds store and config
+        def _generate_title_from_summary(sid: str, summary: str) -> str | None:
+            return generate_title_from_summary(
+                session_id=sid,
+                summary=summary,
+                activity_store=self.activity_store,
+                prompt_config=self.prompt_config,
+                call_llm=self._call_llm,
+            )
+
         return process_session_summary(
             session_id=session_id,
             activity_store=self.activity_store,
@@ -590,6 +653,8 @@ class ActivityProcessor:
             prompt_config=self.prompt_config,
             call_llm=self._call_llm,
             generate_title=self.generate_session_title,
+            regenerate_title=regenerate_title,
+            generate_title_from_summary=_generate_title_from_summary,
         )
 
     def process_pending(self, max_sessions: int = 5) -> list[ProcessingResult]:

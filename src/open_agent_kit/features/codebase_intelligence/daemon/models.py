@@ -555,9 +555,10 @@ class UnlinkSessionResponse(BaseModel):
 
 
 class RegenerateSummaryResponse(BaseModel):
-    """Response after regenerating a session summary."""
+    """Response after regenerating a session summary and title."""
 
     success: bool = True
     session_id: str
     summary: str | None = None
+    title: str | None = None
     message: str = ""

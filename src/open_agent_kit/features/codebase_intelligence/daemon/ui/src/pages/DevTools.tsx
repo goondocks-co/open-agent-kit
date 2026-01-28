@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, FileText } from "lucide-react";
+import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench } from "lucide-react";
 // Note: Backup functionality moved to Team page
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,10 +20,45 @@ interface MemoryStats {
     needs_rebuild: boolean;
 }
 
+interface ReprocessDryRunResult {
+    status: string;
+    message: string;
+    batches_found: number;
+    batch_ids?: number[];
+    machine_id: string;
+}
+
+interface ReprocessResult {
+    status: string;
+    message: string;
+    batches_queued?: number;
+    observations_deleted?: number;
+    previous_observations?: number;
+    machine_id?: string;
+    mode?: string;
+}
+
+interface MaintenanceResult {
+    status: string;
+    message: string;
+    operations?: string[];
+    integrity_check?: string | null;
+    size_before_mb?: number;
+    size_mb?: number;
+}
+
 export default function DevTools() {
     const queryClient = useQueryClient();
     const [message, setMessage] = useState<{ type: typeof MESSAGE_TYPES.SUCCESS | typeof MESSAGE_TYPES.ERROR, text: string } | null>(null);
     const [clearChromaFirst, setClearChromaFirst] = useState(false);
+    const [dryRunResult, setDryRunResult] = useState<ReprocessDryRunResult | null>(null);
+    const [showDryRunDialog, setShowDryRunDialog] = useState(false);
+    const [maintenanceOpts, setMaintenanceOpts] = useState({
+        vacuum: true,
+        analyze: true,
+        fts_optimize: true,
+        integrity_check: false,
+    });
 
     // Fetch memory stats
     const { data: memoryStats } = useQuery<MemoryStats>({
@@ -78,6 +113,54 @@ export default function DevTools() {
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
         },
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to reset processing" })
+    });
+
+    const reprocessDryRunFn = useMutation({
+        mutationFn: () => fetchJson<ReprocessDryRunResult>(API_ENDPOINTS.DEVTOOLS_REPROCESS_OBSERVATIONS, {
+            method: "POST",
+            body: JSON.stringify({ mode: "all", dry_run: true })
+        }),
+        onSuccess: (data) => {
+            setDryRunResult(data);
+            setShowDryRunDialog(true);
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to preview reprocessing" })
+    });
+
+    const reprocessObservationsFn = useMutation({
+        mutationFn: () => fetchJson<ReprocessResult>(API_ENDPOINTS.DEVTOOLS_REPROCESS_OBSERVATIONS, {
+            method: "POST",
+            body: JSON.stringify({ mode: "all", delete_existing: true, dry_run: false })
+        }),
+        onSuccess: (data) => {
+            setShowDryRunDialog(false);
+            setDryRunResult(null);
+            const msg = data.status === "skipped"
+                ? data.message
+                : `Reprocessing ${data.batches_queued} batches. Deleted ${data.observations_deleted} old observations.`;
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: msg });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
+            queryClient.invalidateQueries({ queryKey: ["status"] });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to reprocess observations" })
+    });
+
+    const maintenanceFn = useMutation({
+        mutationFn: () => fetchJson<MaintenanceResult>(API_ENDPOINTS.DEVTOOLS_DATABASE_MAINTENANCE, {
+            method: "POST",
+            body: JSON.stringify(maintenanceOpts)
+        }),
+        onSuccess: (data) => {
+            let msg = data.message;
+            if (data.integrity_check) {
+                msg += ` Integrity: ${data.integrity_check}`;
+            }
+            if (data.size_before_mb) {
+                msg += ` (DB size: ${data.size_before_mb}MB)`;
+            }
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: msg });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to run maintenance" })
     });
 
     return (
@@ -189,6 +272,21 @@ export default function DevTools() {
 
                         <div className="h-px bg-border my-4" />
 
+                        <Button
+                            variant="secondary"
+                            onClick={() => reprocessDryRunFn.mutate()}
+                            disabled={reprocessDryRunFn.isPending || reprocessObservationsFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <Eye className={`mr-2 h-4 w-4 ${reprocessDryRunFn.isPending ? "animate-pulse" : ""}`} />
+                            {reprocessDryRunFn.isPending ? "Checking..." : "Preview Reprocess Observations"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Re-extract observations using updated prompts (with new importance criteria). Preview first to see what will change.
+                        </p>
+
+                        <div className="h-px bg-border my-4" />
+
                         <div className="flex items-center gap-2 mb-2">
                             <Checkbox
                                 id="clear-chroma-first"
@@ -232,7 +330,173 @@ export default function DevTools() {
                         </p>
                     </CardContent>
                 </Card>
+
+                {/* Database Maintenance */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Wrench className="h-5 w-5" /> Database Maintenance</CardTitle>
+                        <CardDescription>Optimize SQLite after heavy operations.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="maint-vacuum"
+                                    checked={maintenanceOpts.vacuum}
+                                    onCheckedChange={(checked) => setMaintenanceOpts(o => ({ ...o, vacuum: checked === true }))}
+                                />
+                                <Label htmlFor="maint-vacuum" className="text-sm">
+                                    VACUUM <span className="text-muted-foreground">(reclaim space)</span>
+                                </Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="maint-analyze"
+                                    checked={maintenanceOpts.analyze}
+                                    onCheckedChange={(checked) => setMaintenanceOpts(o => ({ ...o, analyze: checked === true }))}
+                                />
+                                <Label htmlFor="maint-analyze" className="text-sm">
+                                    ANALYZE <span className="text-muted-foreground">(update stats)</span>
+                                </Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="maint-fts"
+                                    checked={maintenanceOpts.fts_optimize}
+                                    onCheckedChange={(checked) => setMaintenanceOpts(o => ({ ...o, fts_optimize: checked === true }))}
+                                />
+                                <Label htmlFor="maint-fts" className="text-sm">
+                                    FTS optimize <span className="text-muted-foreground">(search index)</span>
+                                </Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="maint-integrity"
+                                    checked={maintenanceOpts.integrity_check}
+                                    onCheckedChange={(checked) => setMaintenanceOpts(o => ({ ...o, integrity_check: checked === true }))}
+                                />
+                                <Label htmlFor="maint-integrity" className="text-sm">
+                                    Integrity check <span className="text-muted-foreground">(slower)</span>
+                                </Label>
+                            </div>
+                        </div>
+
+                        <Button
+                            variant="secondary"
+                            onClick={() => maintenanceFn.mutate()}
+                            disabled={maintenanceFn.isPending || (!maintenanceOpts.vacuum && !maintenanceOpts.analyze && !maintenanceOpts.fts_optimize && !maintenanceOpts.integrity_check)}
+                            className="w-full justify-start"
+                        >
+                            <Wrench className={`mr-2 h-4 w-4 ${maintenanceFn.isPending ? "animate-spin" : ""}`} />
+                            {maintenanceFn.isPending ? "Running..." : "Run Maintenance"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Run periodically (weekly/monthly) or after heavy delete/rebuild operations to maintain performance.
+                        </p>
+                    </CardContent>
+                </Card>
             </div>
+
+            {/* Dry Run Preview Dialog */}
+            {showDryRunDialog && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    {/* Backdrop */}
+                    <div
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+                        onClick={() => !reprocessObservationsFn.isPending && setShowDryRunDialog(false)}
+                    />
+
+                    {/* Dialog */}
+                    <div className="relative z-50 w-full max-w-lg rounded-lg border bg-background shadow-lg animate-in fade-in-0 zoom-in-95 mx-4">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b">
+                            <div className="flex items-center gap-3">
+                                <div className="rounded-full p-2 bg-blue-500/10">
+                                    <RotateCcw className="h-5 w-5 text-blue-500" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold">Reprocess Observations Preview</h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        Re-extract with updated prompts
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowDryRunDialog(false)}
+                                disabled={reprocessObservationsFn.isPending}
+                                className="h-8 w-8 p-0"
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 space-y-4">
+                            {dryRunResult && (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div className="bg-muted p-3 rounded-md">
+                                            <div className="text-2xl font-bold">{dryRunResult.batches_found}</div>
+                                            <div className="text-muted-foreground">Batches to reprocess</div>
+                                        </div>
+                                        <div className="bg-muted p-3 rounded-md">
+                                            <div className="text-xs font-mono truncate">{dryRunResult.machine_id}</div>
+                                            <div className="text-muted-foreground text-xs mt-1">Machine ID (only your data)</div>
+                                        </div>
+                                    </div>
+
+                                    {dryRunResult.batch_ids && dryRunResult.batch_ids.length > 0 && (
+                                        <div className="text-xs text-muted-foreground">
+                                            <span className="font-medium">Sample batch IDs:</span>{" "}
+                                            {dryRunResult.batch_ids.slice(0, 10).join(", ")}
+                                            {dryRunResult.batch_ids.length > 10 && ` ... and ${dryRunResult.batch_ids.length - 10} more`}
+                                        </div>
+                                    )}
+
+                                    {dryRunResult.batches_found === 0 && (
+                                        <Alert>
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertDescription>
+                                                No batches found to reprocess. This may mean all your data is already processed.
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+
+                                    {dryRunResult.batches_found > 0 && (
+                                        <Alert variant="default" className="border-yellow-500/50 bg-yellow-50">
+                                            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                            <AlertDescription className="text-yellow-800">
+                                                After reprocessing, run <strong>Re-embed Memories to ChromaDB</strong> to sync the search index.
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex justify-end gap-3 p-4 border-t">
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowDryRunDialog(false)}
+                                disabled={reprocessObservationsFn.isPending}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="default"
+                                onClick={() => reprocessObservationsFn.mutate()}
+                                disabled={reprocessObservationsFn.isPending || !dryRunResult || dryRunResult.batches_found === 0}
+                            >
+                                <RotateCcw className={`mr-2 h-4 w-4 ${reprocessObservationsFn.isPending ? "animate-spin" : ""}`} />
+                                {reprocessObservationsFn.isPending ? "Reprocessing..." : `Reprocess ${dryRunResult?.batches_found || 0} Batches`}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

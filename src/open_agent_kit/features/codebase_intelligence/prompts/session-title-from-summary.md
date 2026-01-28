@@ -1,0 +1,47 @@
+---
+name: session-title-from-summary
+description: Generate a short title from a session summary
+---
+
+Generate a short, descriptive title (5-10 words) for this coding session based on its summary.
+
+## Session Summary
+
+{{session_summary}}
+
+## Task
+
+Create a brief title that captures the main accomplishment or focus of this session. The title should:
+- Be 5-10 words maximum
+- Start with an action verb when appropriate (Add, Fix, Implement, Refactor, Debug, Update, Configure, etc.)
+- Capture the primary task or feature worked on
+- Be specific enough to distinguish from other sessions
+
+## Output Format
+
+Respond with ONLY the title text as plain text.
+- No JSON
+- No quotes
+- No markdown
+- No punctuation at the end
+- No explanation or preamble
+
+Just the title itself, nothing else.
+
+## Examples
+
+Good titles:
+- Add dark mode theme support
+- Fix authentication token refresh bug
+- Implement user profile settings page
+- Refactor payment processing service
+- Debug CI pipeline test failures
+- Update database migration scripts
+- Configure log rotation for daemon
+
+Bad titles (too vague):
+- Working on code
+- Bug fix
+- Feature implementation
+- Updates
+- Session work

@@ -440,15 +440,16 @@ async def hook_prompt_submit(request: Request) -> dict:
                 limit=10,  # Fetch more, filter by confidence
             )
 
-            # Filter to high confidence only for prompt injection (avoid noise)
-            high_confidence_memories = RetrievalEngine.filter_by_confidence(
-                result.memory, min_confidence="high"
+            # Filter by combined score (confidence + importance) for prompt injection
+            # High threshold ensures only highly relevant AND important memories are injected
+            high_confidence_memories = RetrievalEngine.filter_by_combined_score(
+                result.memory, min_combined="high"
             )
 
             # Debug logging for search results (trace mode)
             logger.debug(
                 f"[SEARCH:memory:results] found={len(result.memory)} "
-                f"high_conf={len(high_confidence_memories)}"
+                f"high_combined={len(high_confidence_memories)}"
             )
             if result.memory:
                 scores_preview = [
@@ -488,6 +489,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                 search_type="code",
                 limit=10,
             )
+            # For code, stick with confidence-only filtering (no importance metadata)
             high_confidence_code = RetrievalEngine.filter_by_confidence(
                 code_result.code, min_confidence="high"
             )
@@ -495,7 +497,7 @@ async def hook_prompt_submit(request: Request) -> dict:
             # Debug logging for search results (trace mode)
             logger.debug(
                 f"[SEARCH:code:results] found={len(code_result.code)} "
-                f"high_conf={len(high_confidence_code)}"
+                f"high_confidence={len(high_confidence_code)}"
             )
 
             if high_confidence_code:
@@ -777,22 +779,22 @@ async def hook_post_tool_use(request: Request) -> dict:
                         f"[SEARCH:file-context] query={search_query[:150]} file={normalized_path}"
                     )
 
-                    # Search for memories about this file, filter by confidence
-                    # For file operations, include high and medium confidence
+                    # Search for memories about this file, filter by combined score
+                    # For file operations, include medium+ combined score
                     search_res = state.retrieval_engine.search(
                         query=search_query,
                         search_type="memory",
-                        limit=8,  # Fetch more, filter by confidence
+                        limit=8,  # Fetch more, filter by combined score
                     )
-                    # Filter to high and medium confidence
-                    confident_memories = RetrievalEngine.filter_by_confidence(
-                        search_res.memory, min_confidence="medium"
+                    # Filter by combined score (confidence + importance)
+                    confident_memories = RetrievalEngine.filter_by_combined_score(
+                        search_res.memory, min_combined="medium"
                     )
 
                     # Debug logging for file context results (trace mode)
                     logger.debug(
                         f"[SEARCH:file-context:results] found={len(search_res.memory)} "
-                        f"kept={len(confident_memories)}"
+                        f"kept_combined={len(confident_memories)}"
                     )
 
                     if confident_memories:
@@ -1112,11 +1114,13 @@ async def hook_before_prompt(request: Request) -> dict:
             )
 
             # Filter to high confidence for notify context
+            # Code uses confidence-only (no importance metadata)
             high_confidence_code = RetrievalEngine.filter_by_confidence(
                 result.code, min_confidence="high"
             )
-            high_confidence_memories = RetrievalEngine.filter_by_confidence(
-                result.memory, min_confidence="high"
+            # Memories use combined score (confidence + importance)
+            high_confidence_memories = RetrievalEngine.filter_by_combined_score(
+                result.memory, min_combined="high"
             )
 
             if high_confidence_code:

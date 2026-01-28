@@ -25,13 +25,20 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CONFIDENCE_MEDIUM,
     CONFIDENCE_MEDIUM_THRESHOLD,
     CONFIDENCE_MIN_MEANINGFUL_RANGE,
+    CONFIDENCE_SCORE_HIGH,
+    CONFIDENCE_SCORE_LOW,
+    CONFIDENCE_SCORE_MEDIUM,
     DEFAULT_CONTEXT_LIMIT,
     DEFAULT_CONTEXT_MEMORY_LIMIT,
     DEFAULT_MAX_CONTEXT_TOKENS,
     DEFAULT_MEMORY_LIST_LIMIT,
     DEFAULT_PREVIEW_LENGTH,
     DEFAULT_SEARCH_LIMIT,
+    IMPORTANCE_HIGH_THRESHOLD,
+    IMPORTANCE_MEDIUM_THRESHOLD,
     MEMORY_TYPE_PLAN,
+    RETRIEVAL_CONFIDENCE_WEIGHT,
+    RETRIEVAL_IMPORTANCE_WEIGHT,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
@@ -253,6 +260,120 @@ class RetrievalEngine:
             logger.debug(
                 f"[FILTER] Dropped {dropped}/{len(results)} results below "
                 f"{min_confidence} confidence"
+            )
+
+        return kept
+
+    @staticmethod
+    def calculate_combined_score(
+        confidence: str,
+        importance: int,
+    ) -> float:
+        """Calculate combined score from confidence level and importance.
+
+        Uses a weighted combination of semantic relevance (confidence) and
+        inherent value (importance) to produce a single score for ranking.
+
+        Formula: (0.7 * confidence_score) + (0.3 * importance_normalized)
+
+        Args:
+            confidence: Confidence level string ("high", "medium", or "low").
+            importance: Importance value on 1-10 scale.
+
+        Returns:
+            Combined score between 0.0 and 1.0.
+        """
+        # Map confidence level to numeric score
+        confidence_scores = {
+            CONFIDENCE_HIGH: CONFIDENCE_SCORE_HIGH,
+            CONFIDENCE_MEDIUM: CONFIDENCE_SCORE_MEDIUM,
+            CONFIDENCE_LOW: CONFIDENCE_SCORE_LOW,
+        }
+        confidence_score = confidence_scores.get(confidence, CONFIDENCE_SCORE_MEDIUM)
+
+        # Normalize importance to 0-1 range (1-10 scale -> 0.1-1.0)
+        importance_normalized = max(1, min(10, importance)) / 10.0
+
+        # Weighted combination
+        combined = (
+            RETRIEVAL_CONFIDENCE_WEIGHT * confidence_score
+            + RETRIEVAL_IMPORTANCE_WEIGHT * importance_normalized
+        )
+
+        return combined
+
+    @staticmethod
+    def get_importance_level(importance: int) -> str:
+        """Get importance level string from numeric value.
+
+        Args:
+            importance: Importance value on 1-10 scale.
+
+        Returns:
+            Importance level string ("high", "medium", or "low").
+        """
+        if importance >= IMPORTANCE_HIGH_THRESHOLD:
+            return "high"
+        elif importance >= IMPORTANCE_MEDIUM_THRESHOLD:
+            return "medium"
+        return "low"
+
+    @staticmethod
+    def filter_by_combined_score(
+        results: list[dict[str, Any]],
+        min_combined: str = "high",
+    ) -> list[dict[str, Any]]:
+        """Filter results by minimum combined score threshold.
+
+        Combines semantic relevance (confidence) with inherent value (importance)
+        to determine which results to include. This method is preferred over
+        filter_by_confidence when importance metadata is available.
+
+        Args:
+            results: List of result dicts with 'confidence' and optionally 'importance' keys.
+            min_combined: Minimum threshold level:
+                - 'high': Only results with combined score >= 0.7
+                - 'medium': Results with combined score >= 0.5
+                - 'low' or 'all': All results (no filtering)
+
+        Returns:
+            Filtered list of results meeting the combined score threshold.
+        """
+        if min_combined == "low" or min_combined == "all":
+            return results
+
+        # Define thresholds for combined score (based on weighted formula)
+        # high: requires either high confidence OR high importance + medium confidence
+        # medium: allows medium confidence + medium importance
+        thresholds = {
+            "high": 0.7,  # ~high confidence alone, or medium conf + high importance
+            "medium": 0.5,  # ~medium confidence alone
+        }
+        threshold = thresholds.get(min_combined, 0.5)
+
+        kept = []
+        for r in results:
+            confidence = r.get("confidence", "medium")
+            # Get importance from result, default to 5 (medium) if not present
+            importance = r.get("importance", 5)
+            if isinstance(importance, str):
+                # Handle string importance values from older data
+                importance_map = {"low": 3, "medium": 5, "high": 8}
+                importance = importance_map.get(importance, 5)
+
+            combined_score = RetrievalEngine.calculate_combined_score(confidence, importance)
+
+            if combined_score >= threshold:
+                # Add combined_score to result for debugging/transparency
+                r["combined_score"] = round(combined_score, 3)
+                kept.append(r)
+
+        # Debug logging for filtering decisions
+        dropped = len(results) - len(kept)
+        if dropped > 0:
+            logger.debug(
+                f"[FILTER:combined] Dropped {dropped}/{len(results)} results below "
+                f"{min_combined} threshold ({threshold})"
             )
 
         return kept

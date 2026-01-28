@@ -14,6 +14,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store.models import 
     Activity,
     PromptBatch,
 )
+from open_agent_kit.features.codebase_intelligence.constants import RECOVERY_BATCH_PROMPT
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -467,20 +468,20 @@ def recover_orphaned_activities(store: ActivityStore) -> int:
         if batch_row:
             batch_id = batch_row[0]
         else:
-            # Create a recovery batch for this session
+            # Create a continuation batch for this session (prompt_number=1 for consistency)
             now = time.time()
             with store._transaction() as tx_conn:
                 tx_conn.execute(
                     """
                     INSERT INTO prompt_batches
                     (session_id, prompt_number, user_prompt, started_at, created_at_epoch, status)
-                    VALUES (?, 0, '[Recovery batch for orphaned activities]', datetime(?, 'unixepoch'), ?, 'completed')
+                    VALUES (?, 1, ?, datetime(?, 'unixepoch'), ?, 'completed')
                     """,
-                    (session_id, now, now),
+                    (session_id, RECOVERY_BATCH_PROMPT, now, now),
                 )
                 cursor = tx_conn.execute("SELECT last_insert_rowid()")
                 batch_id = cursor.fetchone()[0]
-                logger.info(f"Created recovery batch {batch_id} for session {session_id}")
+                logger.info(f"Created continuation batch {batch_id} for session {session_id}")
 
         # Get orphaned activities before updating (for plan detection)
         cursor = conn.execute(

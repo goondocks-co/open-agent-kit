@@ -131,6 +131,7 @@ class MemoryObservation:
     context: str | None = None
     tags: list[str] | None = None
     created_at: datetime | None = None
+    importance: int = 5  # 1-10 scale, default medium
 
     @property
     def token_estimate(self) -> int:
@@ -171,6 +172,7 @@ class MemoryObservation:
             "tags": ",".join(self.tags) if self.tags else "",
             "created_at": self.created_at.isoformat() if self.created_at else "",
             "token_estimate": self.token_estimate,
+            "importance": self.importance,
         }
 
 

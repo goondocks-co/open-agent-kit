@@ -27,6 +27,8 @@ if TYPE_CHECKING:
         ActivityProcessor,
     )
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+    from open_agent_kit.features.codebase_intelligence.agents.executor import AgentExecutor
+    from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
     from open_agent_kit.features.codebase_intelligence.config import CIConfig
     from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
     from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
@@ -322,6 +324,9 @@ class DaemonState:
     # Hook deduplication cache (key -> None, insertion ordered)
     hook_event_cache: "OrderedDict[str, None]" = field(default_factory=OrderedDict)
     _hook_event_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    # Agent subsystem
+    agent_registry: "AgentRegistry | None" = None
+    agent_executor: "AgentExecutor | None" = None
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -549,6 +554,8 @@ class DaemonState:
         self.index_lock = None
         self._retrieval_engine = None
         self.hook_event_cache = OrderedDict()
+        self.agent_registry = None
+        self.agent_executor = None
 
 
 # Global daemon state instance

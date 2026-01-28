@@ -135,6 +135,7 @@ def store_observation(
         context=context,
         tags=tags,
         created_at=created_at,
+        importance=importance_int,
     )
 
     try:

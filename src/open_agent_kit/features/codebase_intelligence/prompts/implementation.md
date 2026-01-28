@@ -23,6 +23,16 @@ Files modified: {{files_modified}}
 
 {{observation_types}}
 
+## Importance Levels
+
+Rate each observation's importance based on its value for future sessions:
+
+- **high**: Non-obvious insight that would cause bugs, confusion, or wasted time if forgotten. Cannot be easily rediscovered from code alone. Examples: hidden gotchas, security considerations, subtle dependencies, counterintuitive behavior.
+- **medium**: Useful context that saves time but could be rediscovered with investigation. Examples: design patterns, conventions, integration points, configuration quirks.
+- **low**: Nice-to-know information that is easily found from code or already documented elsewhere. Skip if already captured in project rules/docs.
+
+Prefer fewer high-quality observations over many low-importance ones.
+
 ## Task
 
 Extract design decisions, architectural choices, and implementation gotchas.

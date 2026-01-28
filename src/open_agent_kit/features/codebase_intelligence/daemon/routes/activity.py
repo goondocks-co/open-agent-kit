@@ -1112,13 +1112,14 @@ async def unlink_session(session_id: str) -> UnlinkSessionResponse:
     response_model=RegenerateSummaryResponse,
 )
 async def regenerate_session_summary(session_id: str) -> RegenerateSummaryResponse:
-    """Regenerate the summary for a specific session.
+    """Regenerate the summary and title for a specific session.
 
     Triggers LLM-based summary generation for the session. The session must:
     - Exist
     - Have at least some activity (tool calls)
 
-    Note: This will overwrite any existing summary for the session.
+    Note: This will overwrite any existing summary and title for the session.
+    The title is regenerated from the summary for better accuracy.
     """
     state = get_state()
 
@@ -1131,7 +1132,7 @@ async def regenerate_session_summary(session_id: str) -> RegenerateSummaryRespon
             detail="Activity processor not initialized - LLM summarization unavailable",
         )
 
-    logger.info(f"Regenerating summary for session: {session_id}")
+    logger.info(f"Regenerating summary and title for session: {session_id}")
 
     try:
         # Verify session exists
@@ -1148,25 +1149,30 @@ async def regenerate_session_summary(session_id: str) -> RegenerateSummaryRespon
                 success=False,
                 session_id=session_id,
                 summary=None,
+                title=None,
                 message=f"Insufficient data: session has only {activity_count} activities (minimum 3 required)",
             )
 
-        # Generate the summary
-        summary = state.activity_processor.process_session_summary(session_id)
+        # Generate the summary and title (force regenerate both)
+        summary, title = state.activity_processor.process_session_summary_with_title(
+            session_id, regenerate_title=True
+        )
 
         if summary:
-            logger.info(f"Regenerated summary for session {session_id[:8]}")
+            logger.info(f"Regenerated summary and title for session {session_id[:8]}")
             return RegenerateSummaryResponse(
                 success=True,
                 session_id=session_id,
                 summary=summary,
-                message="Summary regenerated successfully",
+                title=title,
+                message="Summary and title regenerated successfully",
             )
         else:
             return RegenerateSummaryResponse(
                 success=False,
                 session_id=session_id,
                 summary=None,
+                title=None,
                 message="Failed to generate summary - check logs for details",
             )
 

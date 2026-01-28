@@ -17,7 +17,7 @@ You are summarizing a coding session to help future sessions understand what was
 ## Prompt Batches
 
 {{prompt_batches}}
-
+{{plan_context}}
 ## Task
 
 Write a concise summary of this session. You have access to both the user's prompts and the agent's actions, so capture the full picture:

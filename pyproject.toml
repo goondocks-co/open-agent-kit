@@ -55,6 +55,8 @@ codebase-intelligence = [
     "watchdog>=4.0.0",
     "aiofiles>=23.0.0",
     "mcp>=1.0.0",
+    # Agent subsystem - uses Claude Code CLI via SDK
+    "claude-code-sdk>=0.0.19",
 ]
 
 # Core language parsers (most common - top languages)
@@ -173,6 +175,8 @@ module = [
     "aiofiles.*",
     "uvicorn",
     "uvicorn.*",
+    "claude_agent_sdk",
+    "claude_agent_sdk.*",
 ]
 ignore_missing_imports = true
 

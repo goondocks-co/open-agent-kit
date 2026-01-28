@@ -12,6 +12,7 @@ import Config from "@/pages/Config";
 import DevTools from "@/pages/DevTools";
 import Team from "@/pages/Team";
 import Help from "@/pages/Help";
+import Agents from "@/pages/Agents";
 
 export const router = createBrowserRouter([
     {
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
             },
             { path: "data/sessions/:id", element: <SessionDetail /> },
             { path: "logs", element: <Logs /> },
+            { path: "agents", element: <Agents /> },
             { path: "team", element: <Team /> },
             { path: "config", element: <Config /> },
             { path: "help", element: <Help /> },
