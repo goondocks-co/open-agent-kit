@@ -90,6 +90,7 @@ class RestoreResponse(BaseModel):
     activities_imported: int = 0
     activities_skipped: int = 0
     errors: int = 0
+    error_messages: list[str] = []  # Detailed error messages for debugging
     chromadb_rebuild_started: bool = False
 
     @classmethod
@@ -103,6 +104,8 @@ class RestoreResponse(BaseModel):
         message = (
             f"Restored {result.total_imported} records, skipped {result.total_skipped} duplicates"
         )
+        if result.errors > 0:
+            message += f" ({result.errors} errors)"
         if chromadb_rebuild_started:
             message += ". ChromaDB rebuild started in background."
         return cls(
@@ -118,6 +121,7 @@ class RestoreResponse(BaseModel):
             activities_imported=result.activities_imported,
             activities_skipped=result.activities_skipped,
             errors=result.errors,
+            error_messages=result.error_messages,
             chromadb_rebuild_started=chromadb_rebuild_started,
         )
 

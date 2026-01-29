@@ -608,6 +608,7 @@ def import_from_sql_with_dedup(
                     logger.debug(f"Skipping {table} record: {reason}")
                     continue
 
+                rows_affected = 1  # Default for dry_run
                 if not dry_run:
                     # Modify statement for proper import
                     modified_stmt = _prepare_statement_for_import(filtered_stmt, table)
@@ -618,7 +619,8 @@ def import_from_sql_with_dedup(
                             modified_stmt, filtered_row_dict, old_to_new_batch_id
                         )
 
-                    conn.execute(modified_stmt)
+                    cursor = conn.execute(modified_stmt)
+                    rows_affected = cursor.rowcount
 
                     # Track imported session IDs for parent validation
                     if table == "sessions":
@@ -636,7 +638,13 @@ def import_from_sql_with_dedup(
                         existing_activity_hashes,
                     )
 
-                _increment_imported(result, table)
+                # Only count as imported if a row was actually inserted
+                # (INSERT OR IGNORE returns rowcount=0 when ignored due to ID collision)
+                if rows_affected > 0:
+                    _increment_imported(result, table)
+                else:
+                    _increment_skipped(result, table)
+                    logger.debug(f"Skipped {table} record due to ID collision")
 
             except sqlite3.Error as e:
                 result.errors += 1
@@ -941,6 +949,9 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
         Modified statement ready for execution.
     """
     if table == "memory_observations":
+        # Use INSERT OR IGNORE to handle rare UUID collisions gracefully
+        # (if ID exists but content_hash is different, skip the import)
+        stmt = stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
         return _replace_column_value(stmt, "embedded", "0")
     elif table == "prompt_batches":
         # Remove id column to let SQLite auto-generate, and mark unembedded
@@ -950,6 +961,9 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
     elif table == "activities":
         # Remove id column to let SQLite auto-generate
         return _remove_column_from_insert(stmt, "id")
+    elif table == "sessions":
+        # Use INSERT OR IGNORE to handle potential session ID collisions
+        return stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
     return stmt
 
 

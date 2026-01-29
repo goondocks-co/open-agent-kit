@@ -63,6 +63,8 @@ export default function Team() {
                 onSuccess: (data) => {
                     setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
                     // Create a combined result from all files
+                    const allErrorMessages = Object.values(data.per_file)
+                        .flatMap(r => r.error_messages || []);
                     const combined: RestoreResponse = {
                         status: data.status,
                         message: data.message,
@@ -75,6 +77,7 @@ export default function Team() {
                         activities_imported: Object.values(data.per_file).reduce((sum, r) => sum + r.activities_imported, 0),
                         activities_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.activities_skipped, 0),
                         errors: data.total_errors,
+                        error_messages: allErrorMessages,
                     };
                     setRestoreResult(combined);
                     queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
@@ -112,7 +115,7 @@ export default function Team() {
                         Team Backups
                     </CardTitle>
                     <CardDescription>
-                        Each team member creates their own backup file. Restore merges all team knowledge using content-based deduplication.
+                        Each team member creates their own backup file. Restoring imports all team knowledge using content-based deduplication.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -242,7 +245,7 @@ export default function Team() {
                             disabled={restoreAllBackupsFn.isPending || !backupStatus?.all_backups?.length}
                         >
                             <Users className="h-4 w-4 mr-2" />
-                            {restoreAllBackupsFn.isPending ? "Merging..." : "Merge All Team Backups"}
+                            {restoreAllBackupsFn.isPending ? "Restoring..." : "Restore All Team Backups"}
                         </Button>
                     </div>
 
@@ -267,7 +270,17 @@ export default function Team() {
                                     )}
                                     {restoreResult.errors > 0 && (
                                         <div className="col-span-2 text-yellow-600 dark:text-yellow-400">
-                                            Errors: {restoreResult.errors}
+                                            <div>Errors: {restoreResult.errors}</div>
+                                            {restoreResult.error_messages && restoreResult.error_messages.length > 0 && (
+                                                <details className="mt-1">
+                                                    <summary className="cursor-pointer text-xs">Show details</summary>
+                                                    <ul className="mt-1 text-xs list-disc list-inside max-h-24 overflow-y-auto">
+                                                        {restoreResult.error_messages.map((msg, i) => (
+                                                            <li key={i} className="truncate" title={msg}>{msg}</li>
+                                                        ))}
+                                                    </ul>
+                                                </details>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -280,7 +293,7 @@ export default function Team() {
 
                     <p className="text-xs text-muted-foreground">
                         Duplicates are automatically skipped using content-based hashing.
-                        Team members can safely merge their backups without creating duplicate records.
+                        Team members can safely restore their backups without creating duplicate records.
                     </p>
                 </CardContent>
             </Card>

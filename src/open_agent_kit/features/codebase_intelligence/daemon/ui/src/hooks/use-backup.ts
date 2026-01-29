@@ -66,6 +66,7 @@ interface RestoreResponse {
     activities_imported: number;
     activities_skipped: number;
     errors: number;
+    error_messages?: string[];  // Detailed error messages for debugging
 }
 
 /** Response from restore-all operations */
