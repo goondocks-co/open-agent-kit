@@ -1,5 +1,5 @@
 {
-  "$comment": "Codebase Intelligence hooks for Gemini CLI. {{PORT}} is replaced with the project-specific daemon port. OAK hooks are identified by the /api/oak/ci/ URL pattern.",
+  "$comment": "Codebase Intelligence hooks for Gemini CLI. Uses `oak ci hook` command for cross-platform compatibility. OAK hooks are identified by the oak ci hook command pattern.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,7 @@
           {
             "name": "oak-ci-context",
             "type": "command",
-            "command": "(curl -sf http://localhost:{{PORT}}/api/health >/dev/null 2>&1 || oak ci start --quiet >/dev/null 2>&1 || true) && cat | jq -c '{agent: \"gemini\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-start -H 'Content-Type: application/json' -d @-",
+            "command": "oak ci hook SessionStart --agent gemini",
             "timeout": 60000
           }
         ]
@@ -21,7 +21,7 @@
           {
             "name": "oak-ci-observe",
             "type": "command",
-            "command": "cat | jq -c '{agent: \"gemini\", session_id: .session_id, tool_name: .tool_name, tool_input: .tool_input, tool_output_b64: ((.tool_response // {}) | tostring | @base64)}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/post-tool-use -H 'Content-Type: application/json' -d @-",
+            "command": "oak ci hook PostToolUse --agent gemini",
             "timeout": 15000
           }
         ]
@@ -34,7 +34,7 @@
           {
             "name": "oak-ci-stop",
             "type": "command",
-            "command": "cat | jq -c '{agent: \"gemini\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/stop -H 'Content-Type: application/json' -d @-",
+            "command": "oak ci hook Stop --agent gemini",
             "timeout": 15000
           }
         ]
@@ -47,7 +47,7 @@
           {
             "name": "oak-ci-session-end",
             "type": "command",
-            "command": "cat | jq -c '{agent: \"gemini\", session_id: .session_id}' | curl -s -X POST http://localhost:{{PORT}}/api/oak/ci/session-end -H 'Content-Type: application/json' -d @-",
+            "command": "oak ci hook SessionEnd --agent gemini",
             "timeout": 15000
           }
         ]

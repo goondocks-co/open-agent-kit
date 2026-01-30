@@ -38,10 +38,14 @@ capabilities:
 
 # Codebase Intelligence configuration
 ci:
+  # Plan storage - Claude Code stores plans in .claude/plans/ (project) or ~/.claude/plans/ (global)
+  plans_subfolder: "plans"
+
   # Plan execution detection - when user approves a plan and selects
   # "clear context and implement", Claude Code injects a new prompt
   # starting with this prefix
   plan_execution_prefix: "Implement the following plan:"
+
   # Tool that signals plan mode exit - when detected, CI re-reads
   # the plan file to capture final content
   exit_plan_tool: "ExitPlanMode"

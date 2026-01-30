@@ -86,9 +86,17 @@ class AgentCIConfig(BaseModel):
     """Codebase Intelligence configuration for an agent.
 
     These settings control how CI detects and processes agent-specific
-    events like plan mode execution and exit.
+    events like plan mode execution and exit. All plan-related settings
+    are centralized here for declarative configuration.
     """
 
+    # Plan storage configuration
+    plans_subfolder: str | None = Field(
+        default="plans",
+        description="Subfolder for plan files within agent folder (e.g., 'plans' -> .claude/plans/). Set to null if agent doesn't support disk-based plans.",
+    )
+
+    # Plan detection configuration
     plan_execution_prefix: str | None = Field(
         default=None,
         description="Prefix that identifies auto-injected plan execution prompts (e.g., 'Implement the following plan:')",
@@ -112,10 +120,6 @@ class AgentInstallation(BaseModel):
     commands_subfolder: str = Field(
         default="commands",
         description="Subfolder for commands within agent folder",
-    )
-    plans_subfolder: str = Field(
-        default="plans",
-        description="Subfolder for plan files within agent folder (e.g., 'plans' -> .claude/plans/)",
     )
     file_extension: str = Field(
         default=".md",
@@ -288,7 +292,7 @@ class AgentManifest(BaseModel):
         subfolder = self.installation.commands_subfolder
         return f"{folder}/{subfolder}"
 
-    def get_plans_dir(self) -> str:
+    def get_plans_dir(self) -> str | None:
         """Get the full plans directory path.
 
         Plans are where agents store implementation plans during plan mode.
@@ -296,10 +300,13 @@ class AgentManifest(BaseModel):
         (e.g., storing plans as decision memories rather than extracting arbitrary memories).
 
         Returns:
-            Relative path to plans directory (e.g., '.claude/plans')
+            Relative path to plans directory (e.g., '.claude/plans'), or None if
+            agent doesn't support disk-based plans.
         """
+        subfolder = self.ci.plans_subfolder
+        if not subfolder:
+            return None
         folder = self.installation.folder.rstrip("/")
-        subfolder = self.installation.plans_subfolder
         return f"{folder}/{subfolder}"
 
     def get_command_filename(self, command_name: str) -> str:

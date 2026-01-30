@@ -5,14 +5,14 @@ The backup system enables teams to preserve and share Codebase Intelligence hist
 ## Quick Start
 
 ```bash
-# Create backup (saved to oak/data/ci_history_{machine}.sql)
+# Create backup (saved to oak/ci/history/{machine}.sql)
 oak ci backup
 
 # Restore from backup
 oak ci restore
 
 # Restore from a specific file
-oak ci restore --file oak/data/ci_history_teammate.sql
+oak ci restore --file oak/ci/history/teammate_a7b3c2.sql
 ```
 
 ## Architecture
@@ -23,7 +23,7 @@ oak ci restore --file oak/data/ci_history_teammate.sql
 |-------|---------|----------|
 | SQLite (source of truth) | Sessions, prompts, observations, activities | `.oak/ci/activities.db` |
 | ChromaDB (search index) | Vector embeddings for semantic search | `.oak/ci/chroma/` |
-| Backup files (git-tracked) | Portable SQL dumps for sharing | `oak/data/ci_history_*.sql` |
+| Backup files (git-tracked) | Portable SQL dumps for sharing | `oak/ci/history/*.sql` |
 
 ### What Gets Backed Up
 
@@ -172,7 +172,7 @@ oak ci backup --list                  # List available backups
 
 ## Best Practices
 
-1. **Commit backups to git**: The `oak/data/` directory is designed for git tracking
+1. **Commit backups to git**: The `oak/ci/history/` directory is designed for git tracking
 2. **Regular backups**: Run `oak ci backup` before major changes
 3. **Team sharing**: Each developer's backup has a unique machine ID suffix
 4. **Merge on restore**: Multiple backups can be restored; duplicates are skipped

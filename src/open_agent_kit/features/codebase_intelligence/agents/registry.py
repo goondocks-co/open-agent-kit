@@ -196,7 +196,11 @@ class AgentRegistry:
             AgentInstance if successful, None otherwise.
         """
         with open(yaml_file, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            try:
+                data = yaml.safe_load(f)
+            except yaml.YAMLError as e:
+                logger.warning(f"Failed to parse instance YAML from {yaml_file}: {e}")
+                return None
 
         if not data:
             logger.warning(f"Empty instance file: {yaml_file}")

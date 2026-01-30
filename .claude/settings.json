@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SessionStart",
+            "command": "oak ci hook SessionStart --agent claude",
             "timeout": 60
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh UserPromptSubmit",
+            "command": "oak ci hook UserPromptSubmit --agent claude",
             "timeout": 60
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh PostToolUse",
+            "command": "oak ci hook PostToolUse --agent claude",
             "timeout": 60
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh Stop",
+            "command": "oak ci hook Stop --agent claude",
             "timeout": 60
           }
         ]
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SessionEnd",
+            "command": "oak ci hook SessionEnd --agent claude",
             "timeout": 60
           }
         ]
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh PostToolUseFailure",
+            "command": "oak ci hook PostToolUseFailure --agent claude",
             "timeout": 60
           }
         ]
@@ -78,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SubagentStart",
+            "command": "oak ci hook SubagentStart --agent claude",
             "timeout": 60
           }
         ]
@@ -90,7 +90,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SubagentStop",
+            "command": "oak ci hook SubagentStop --agent claude",
             "timeout": 60
           }
         ]

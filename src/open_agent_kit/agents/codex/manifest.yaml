@@ -33,6 +33,16 @@ capabilities:
   has_skills: true
   skills_directory: "skills"    # .codex/skills/
 
+# Codebase Intelligence configuration
+ci:
+  # Plan storage - Codex may store plans in .codex/plans/ (TBD - needs verification)
+  # Set to null until plan storage location is confirmed
+  plans_subfolder: null
+
+  # Plan execution/exit detection TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
 settings:
   # Auto-approval settings for oak commands
   # Codex uses global TOML config (~/.codex/config.toml) that affects ALL projects

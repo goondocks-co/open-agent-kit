@@ -115,6 +115,34 @@ class TestOakManagedHookDetection:
         hook = {}
         assert ci_service._is_oak_managed_hook(hook, "cursor") is False
 
+    def test_detects_oak_ci_hook_command_claude(self, ci_service: CodebaseIntelligenceService):
+        """Test detection of oak ci hook command for Claude."""
+        hook = {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]}
+        assert ci_service._is_oak_managed_hook(hook, "claude") is True
+
+    def test_detects_oak_ci_hook_command_cursor(self, ci_service: CodebaseIntelligenceService):
+        """Test detection of oak ci hook command for Cursor."""
+        hook = {"command": "oak ci hook sessionStart --agent cursor"}
+        assert ci_service._is_oak_managed_hook(hook, "cursor") is True
+
+    def test_detects_oak_ci_hook_command_copilot(self, ci_service: CodebaseIntelligenceService):
+        """Test detection of oak ci hook command for Copilot."""
+        hook = {
+            "bash": "oak ci hook sessionStart --agent copilot",
+            "powershell": "oak ci hook sessionStart --agent copilot",
+        }
+        assert ci_service._is_oak_managed_hook(hook, "copilot") is True
+
+    def test_detects_legacy_shell_script_cursor(self, ci_service: CodebaseIntelligenceService):
+        """Test detection of legacy oak-ci-hook.sh pattern for Cursor."""
+        hook = {"command": ".cursor/hooks/oak-ci-hook.sh sessionStart"}
+        assert ci_service._is_oak_managed_hook(hook, "cursor") is True
+
+    def test_detects_legacy_shell_script_copilot(self, ci_service: CodebaseIntelligenceService):
+        """Test detection of legacy oak-ci-hook.sh pattern for Copilot."""
+        hook = {"bash": ".github/hooks/oak-ci-hook.sh sessionStart"}
+        assert ci_service._is_oak_managed_hook(hook, "copilot") is True
+
 
 # =============================================================================
 # Config File Cleanup Tests
@@ -216,15 +244,26 @@ class TestHookUpdates:
 
         assert (tmp_path / ".cursor" / "hooks.json").exists()
 
-    def test_update_cursor_hooks_installs_hook_script(self, tmp_path: Path):
-        """Test that Cursor hook update installs the hook script."""
+    def test_update_cursor_hooks_uses_oak_ci_hook_command(self, tmp_path: Path):
+        """Test that Cursor hook update uses oak ci hook command (no shell scripts)."""
         service = CodebaseIntelligenceService(tmp_path)
 
-        with patch.object(service, "_load_hook_template", return_value={"hooks": {}}):
+        # Mock template with oak ci hook command
+        mock_hooks = {
+            "hooks": {"sessionStart": [{"command": "oak ci hook sessionStart --agent cursor"}]}
+        }
+        with patch.object(service, "_load_hook_template", return_value=mock_hooks):
             service._update_cursor_hooks()
 
+        # Verify hooks.json contains the command
+        hooks_file = tmp_path / ".cursor" / "hooks.json"
+        assert hooks_file.exists()
+        hooks_content = json.loads(hooks_file.read_text())
+        assert "oak ci hook" in hooks_content["hooks"]["sessionStart"][0]["command"]
+
+        # Verify no shell script was installed (we use oak CLI now)
         script_path = tmp_path / ".cursor" / CURSOR_HOOKS_DIRNAME / CURSOR_HOOK_SCRIPT_NAME
-        assert script_path.exists()
+        assert not script_path.exists()
 
     def test_update_gemini_hooks_creates_settings_file(self, tmp_path: Path):
         """Test that Gemini hook update creates settings.json."""

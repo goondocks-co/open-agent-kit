@@ -4,6 +4,8 @@ import {
     getSessionLineageEndpoint,
     getLinkSessionEndpoint,
     getRegenerateSummaryEndpoint,
+    getSuggestedParentEndpoint,
+    getDismissSuggestionEndpoint,
 } from "@/lib/constants";
 
 // =============================================================================
@@ -171,6 +173,96 @@ export function useRegenerateSummary() {
             queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
             // Invalidate memories (summary creates a memory)
             queryClient.invalidateQueries({ queryKey: ["memories"] });
+        },
+    });
+}
+
+// =============================================================================
+// Session Suggestion Types
+// =============================================================================
+
+export interface SuggestedParentResponse {
+    session_id: string;
+    has_suggestion: boolean;
+    suggested_parent: SessionLineageItem | null;
+    confidence: "high" | "medium" | "low" | null;
+    confidence_score: number | null;
+    reason: string | null;
+    dismissed: boolean;
+}
+
+export interface DismissSuggestionResponse {
+    success: boolean;
+    session_id: string;
+    message: string;
+}
+
+// =============================================================================
+// Session Suggestion Hooks
+// =============================================================================
+
+/**
+ * Hook to fetch the suggested parent for an unlinked session.
+ * Uses vector similarity search to find the most likely parent.
+ */
+export function useSuggestedParent(sessionId: string | undefined) {
+    return useQuery<SuggestedParentResponse>({
+        queryKey: ["suggested_parent", sessionId],
+        queryFn: () => fetchJson(getSuggestedParentEndpoint(sessionId!)),
+        enabled: !!sessionId,
+        // Don't refetch too aggressively as this involves vector search
+        staleTime: 30000, // 30 seconds
+        refetchOnWindowFocus: false,
+    });
+}
+
+/**
+ * Hook to dismiss a suggestion for a session.
+ * After dismissing, the suggestion won't be shown again until the user
+ * manually links or the dismissal is reset.
+ */
+export function useDismissSuggestion() {
+    const queryClient = useQueryClient();
+
+    return useMutation<DismissSuggestionResponse, Error, string>({
+        mutationFn: (sessionId: string) =>
+            postJson<object, DismissSuggestionResponse>(
+                getDismissSuggestionEndpoint(sessionId),
+                {}
+            ),
+        onSuccess: (_data, sessionId) => {
+            // Invalidate the suggested parent query
+            queryClient.invalidateQueries({ queryKey: ["suggested_parent", sessionId] });
+        },
+    });
+}
+
+/**
+ * Hook to link a session to a suggested parent.
+ * Uses "suggestion" as the link reason for analytics tracking.
+ */
+export function useAcceptSuggestion() {
+    const queryClient = useQueryClient();
+
+    return useMutation<
+        LinkSessionResponse,
+        Error,
+        { sessionId: string; parentSessionId: string; confidenceScore?: number }
+    >({
+        mutationFn: ({ sessionId, parentSessionId }) =>
+            postJson<LinkSessionRequest, LinkSessionResponse>(
+                getLinkSessionEndpoint(sessionId),
+                { parent_session_id: parentSessionId, reason: "suggestion" }
+            ),
+        onSuccess: (_data, { sessionId }) => {
+            // Invalidate session detail
+            queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+            // Invalidate lineage
+            queryClient.invalidateQueries({ queryKey: ["session_lineage", sessionId] });
+            // Invalidate suggested parent (no longer needed)
+            queryClient.invalidateQueries({ queryKey: ["suggested_parent", sessionId] });
+            // Invalidate sessions list
+            queryClient.invalidateQueries({ queryKey: ["sessions"] });
         },
     });
 }

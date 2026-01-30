@@ -43,6 +43,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
+    SEARCH_TYPE_SESSIONS,
 )
 from open_agent_kit.features.codebase_intelligence.memory.store import (
     DOC_TYPE_CODE,
@@ -107,6 +108,7 @@ class SearchResult:
     code: list[dict[str, Any]] = field(default_factory=list)
     memory: list[dict[str, Any]] = field(default_factory=list)
     plans: list[dict[str, Any]] = field(default_factory=list)
+    sessions: list[dict[str, Any]] = field(default_factory=list)
     total_tokens_available: int = 0
 
 
@@ -515,6 +517,39 @@ class RetrievalEngine:
                     }
                 )
                 result.total_tokens_available += r.get("token_estimate", 0)
+
+        # Sessions search (uses session_summaries collection in ChromaDB)
+        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_SESSIONS):
+            session_results = self.store.search_session_summaries(
+                query=query,
+                limit=limit,
+            )
+
+            # Calculate confidence for session results
+            session_scores = [r["relevance"] for r in session_results]
+            session_confidences = self.calculate_confidence_batch(session_scores)
+
+            for i, r in enumerate(session_results):
+                # Get preview from document (the embedded title + summary text)
+                document = r.get("document", "")
+                preview = (
+                    document[:DEFAULT_PREVIEW_LENGTH] + "..."
+                    if len(document) > DEFAULT_PREVIEW_LENGTH
+                    else document
+                )
+
+                result.sessions.append(
+                    {
+                        "id": r["id"],
+                        "relevance": r["relevance"],
+                        "confidence": (
+                            session_confidences[i].value if session_confidences else "medium"
+                        ),
+                        "title": r.get("title") or None,
+                        "preview": preview,
+                        "created_at_epoch": r.get("created_at_epoch", 0),
+                    }
+                )
 
         return result
 

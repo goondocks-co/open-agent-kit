@@ -18,10 +18,12 @@ from open_agent_kit.features.codebase_intelligence.memory.store import (
     management,
     memory_ops,
     search,
+    session_ops,
 )
 from open_agent_kit.features.codebase_intelligence.memory.store.constants import (
     CODE_COLLECTION,
     MEMORY_COLLECTION,
+    SESSION_SUMMARIES_COLLECTION,
 )
 from open_agent_kit.features.codebase_intelligence.memory.store.models import (
     CodeChunk,
@@ -57,6 +59,7 @@ class VectorStore:
         self._client: Any = None
         self._code_collection: Any = None
         self._memory_collection: Any = None
+        self._session_summaries_collection: Any = None
 
     def _ensure_initialized(self) -> None:
         """Ensure ChromaDB is initialized."""
@@ -93,6 +96,9 @@ class VectorStore:
             )
             self._memory_collection = self._get_or_recreate_collection(
                 MEMORY_COLLECTION, hnsw_config, embedding_dims
+            )
+            self._session_summaries_collection = self._get_or_recreate_collection(
+                SESSION_SUMMARIES_COLLECTION, hnsw_config, embedding_dims
             )
 
             logger.info(
@@ -168,9 +174,12 @@ class VectorStore:
             collection_name: Name of the collection to check.
             actual_dims: Actual dimensions of the embeddings being added.
         """
-        collection = (
-            self._code_collection if collection_name == CODE_COLLECTION else self._memory_collection
-        )
+        if collection_name == CODE_COLLECTION:
+            collection = self._code_collection
+        elif collection_name == SESSION_SUMMARIES_COLLECTION:
+            collection = self._session_summaries_collection
+        else:
+            collection = self._memory_collection
 
         # Try to detect current collection dimensions
         try:
@@ -209,6 +218,8 @@ class VectorStore:
 
         if collection_name == CODE_COLLECTION:
             self._code_collection = new_collection
+        elif collection_name == SESSION_SUMMARIES_COLLECTION:
+            self._session_summaries_collection = new_collection
         else:
             self._memory_collection = new_collection
 
@@ -238,6 +249,7 @@ class VectorStore:
             self._client = None
             self._code_collection = None
             self._memory_collection = None
+            self._session_summaries_collection = None
             # Reinitialize with new dimensions
             self._ensure_initialized()
             logger.info(f"ChromaDB reinitialized with {new_dims} dimensions")
@@ -364,3 +376,50 @@ class VectorStore:
     def clear_all(self) -> None:
         """Clear all data from both collections."""
         management.clear_all(self)
+
+    # ==========================================================================
+    # Session summary operations - for similarity-based session linking
+    # ==========================================================================
+
+    def add_session_summary(
+        self,
+        session_id: str,
+        title: str,
+        summary: str,
+        agent: str,
+        project_root: str,
+        created_at_epoch: int,
+    ) -> None:
+        """Add a session summary embedding for similarity search."""
+        session_ops.add_session_summary(
+            self, session_id, title, summary, agent, project_root, created_at_epoch
+        )
+
+    def find_similar_sessions(
+        self,
+        query_text: str,
+        project_root: str,
+        exclude_session_id: str | None = None,
+        limit: int = 5,
+        max_age_days: int = 7,
+    ) -> list[tuple[str, float]]:
+        """Find sessions with similar summaries using vector search."""
+        return session_ops.find_similar_sessions(
+            self, query_text, project_root, exclude_session_id, limit, max_age_days
+        )
+
+    def search_session_summaries(self, query: str, limit: int = 10) -> list[dict]:
+        """Search session summaries using vector similarity."""
+        return session_ops.search_session_summaries(self, query, limit)
+
+    def delete_session_summary(self, session_id: str) -> bool:
+        """Delete a session summary from the vector store."""
+        return session_ops.delete_session_summary(self, session_id)
+
+    def clear_session_summaries(self) -> int:
+        """Clear all session summaries from the vector store."""
+        return session_ops.clear_session_summaries(self)
+
+    def count_session_summaries(self) -> int:
+        """Count session summaries in the vector store."""
+        return session_ops.count_session_summaries(self)

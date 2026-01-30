@@ -1,5 +1,10 @@
-version: 0.5.2.dev18+g4dcd69b42.d20260129
-agents: [cursor, copilot, claude]
+version: 0.5.2.dev20+g241246783.d20260130
+agents:
+- cursor
+- copilot
+- gemini
+- codex
+- claude
 agent_capabilities:
   claude:
     has_background_agents: true
@@ -18,6 +23,18 @@ agent_capabilities:
     has_native_web: true
     has_mcp: true
     research_strategy: Use Copilot's built-in web tools + keyless MCP
+    custom: {}
+  gemini:
+    has_background_agents: false
+    has_native_web: true
+    has_mcp: true
+    research_strategy: Use built-in search + fetch as primary; MCP for extras
+    custom: {}
+  codex:
+    has_background_agents: false
+    has_native_web: false
+    has_mcp: false
+    research_strategy: Offline/spec-only; degrade gracefully to general knowledge
     custom: {}
 rfc:
   directory: oak/rfc

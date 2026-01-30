@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/config-components";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search as SearchIcon, FileText, Loader2, AlertCircle, Brain, ClipboardList } from "lucide-react";
+import { Search as SearchIcon, FileText, Loader2, AlertCircle, Brain, ClipboardList, MessageSquare } from "lucide-react";
 import {
     FALLBACK_MESSAGES,
     SCORE_DISPLAY_PRECISION,
@@ -19,7 +19,7 @@ import {
     type DocType,
     type SearchType,
 } from "@/lib/constants";
-import type { CodeResult, MemoryResult, PlanResult } from "@/hooks/use-search";
+import type { CodeResult, MemoryResult, PlanResult, SessionResult } from "@/hooks/use-search";
 
 export default function Search() {
     const [query, setQuery] = useState("");
@@ -53,7 +53,7 @@ export default function Search() {
         )
     }
 
-    const hasResults = results?.code?.length || results?.memory?.length || results?.plans?.length;
+    const hasResults = results?.code?.length || results?.memory?.length || results?.plans?.length || results?.sessions?.length;
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
@@ -198,6 +198,40 @@ export default function Search() {
                                                 View Session →
                                             </Link>
                                         )}
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {results?.sessions && results.sessions.length > 0 && (
+                    <div className="mt-8">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <MessageSquare className="w-5 h-5" /> Session Matches ({results.sessions.length})
+                        </h2>
+                        <div className="space-y-3">
+                            {results.sessions.map((match: SessionResult, i: number) => (
+                                <Card key={`session-${i}`} className="overflow-hidden">
+                                    <CardHeader className="py-3 bg-blue-500/5 border-l-2 border-blue-500">
+                                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                            <span className="text-blue-600">{match.title || "Untitled Session"}</span>
+                                            <span className="ml-auto flex items-center gap-2">
+                                                <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || ""}`}>
+                                                    {match.confidence}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">Score: {match.relevance?.toFixed(SCORE_DISPLAY_PRECISION)}</span>
+                                            </span>
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-4 text-sm">
+                                        <p className="text-muted-foreground">{match.preview}</p>
+                                        <Link
+                                            to={`/activity/sessions/${match.id}`}
+                                            className="text-xs text-primary hover:underline mt-2 inline-block"
+                                        >
+                                            View Session →
+                                        </Link>
                                     </CardContent>
                                 </Card>
                             ))}

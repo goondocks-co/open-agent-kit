@@ -131,12 +131,15 @@ class AgentService:
         Returns:
             Dictionary mapping agent_type to plans directory path.
             Example: {'claude': '.claude/plans', 'cursor': '.cursor/plans'}
+            Only includes agents that have plans_subfolder configured.
         """
         result = {}
         for agent_type in self.list_available_agents():
             try:
                 manifest = self.get_agent_manifest(agent_type)
-                result[agent_type] = manifest.get_plans_dir()
+                plans_dir = manifest.get_plans_dir()
+                if plans_dir:
+                    result[agent_type] = plans_dir
             except ValueError:
                 # Skip agents with invalid manifests
                 continue

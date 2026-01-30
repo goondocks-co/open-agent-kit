@@ -24,11 +24,13 @@ SEARCH_TYPE_ALL: Final[str] = "all"
 SEARCH_TYPE_CODE: Final[str] = "code"
 SEARCH_TYPE_MEMORY: Final[str] = "memory"
 SEARCH_TYPE_PLANS: Final[str] = "plans"
+SEARCH_TYPE_SESSIONS: Final[str] = "sessions"
 VALID_SEARCH_TYPES: Final[tuple[str, ...]] = (
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
+    SEARCH_TYPE_SESSIONS,
 )
 
 # =============================================================================
@@ -211,9 +213,9 @@ CI_HISTORY_BACKUP_DIR: Final[str] = "oak/ci/history"
 CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"  # Legacy single-file backup
 
 # Multi-machine backup file pattern
-# Format: ci_history_{github_username}_{machine_hash}.sql
-CI_HISTORY_BACKUP_FILE_PATTERN: Final[str] = "ci_history_*.sql"
-CI_HISTORY_BACKUP_FILE_PREFIX: Final[str] = "ci_history_"
+# Format: {github_username}_{machine_hash}.sql (in oak/ci/history/)
+CI_HISTORY_BACKUP_FILE_PATTERN: Final[str] = "*.sql"
+CI_HISTORY_BACKUP_FILE_PREFIX: Final[str] = ""  # No prefix - directory provides context
 CI_HISTORY_BACKUP_FILE_SUFFIX: Final[str] = ".sql"
 
 # =============================================================================
@@ -280,6 +282,8 @@ HOOK_EVENT_STOP: Final[str] = "stop"
 HOOK_EVENT_PROMPT_SUBMIT: Final[str] = "prompt-submit"
 HOOK_EVENT_SUBAGENT_START: Final[str] = "subagent-start"
 HOOK_EVENT_SUBAGENT_STOP: Final[str] = "subagent-stop"
+HOOK_EVENT_AGENT_THOUGHT: Final[str] = "agent-thought"
+HOOK_EVENT_PRE_COMPACT: Final[str] = "pre-compact"
 
 # Hook origins for deduplication when multiple configs fire
 HOOK_ORIGIN_CLAUDE_CONFIG: Final[str] = "claude_config"
@@ -317,15 +321,74 @@ TAG_SESSION_SUMMARY: Final[str] = "session-summary"
 # =============================================================================
 # Session Linking
 # =============================================================================
+# When a session starts with source="clear", we try to link it to the previous
+# session using a tiered approach:
+# 1. Tier 1 (immediate): Session ended within SESSION_LINK_IMMEDIATE_GAP_SECONDS
+# 2. Tier 2 (race fix): Active session (SessionEnd not yet processed)
+# 3. Tier 3 (stale): Completed session within SESSION_LINK_FALLBACK_MAX_HOURS
 
 # Parent session reasons (why a session is linked to another)
-SESSION_LINK_REASON_CLEAR: Final[str] = "clear"  # "Clear context and proceed"
+SESSION_LINK_REASON_CLEAR: Final[str] = "clear"  # Immediate transition (< 5s)
+SESSION_LINK_REASON_CLEAR_ACTIVE: Final[str] = "clear_active"  # Race condition fix
 SESSION_LINK_REASON_COMPACT: Final[str] = "compact"  # Auto-compact
-SESSION_LINK_REASON_INFERRED: Final[str] = "inferred"  # Backfilled by migration
+SESSION_LINK_REASON_INFERRED: Final[str] = "inferred"  # Stale/next-day fallback
+SESSION_LINK_REASON_MANUAL: Final[str] = "manual"  # User manually linked
 
-# Maximum gap (in seconds) between session end and start for linking
-# Data analysis shows most transitions are < 1 second; 5 seconds provides margin
-SESSION_LINK_MAX_GAP_SECONDS: Final[int] = 5
+# Timing windows for session linking
+SESSION_LINK_IMMEDIATE_GAP_SECONDS: Final[int] = 5  # Tier 1: just-ended sessions
+SESSION_LINK_FALLBACK_MAX_HOURS: Final[int] = 24  # Tier 3: stale session fallback
+
+# Legacy alias (deprecated, use SESSION_LINK_IMMEDIATE_GAP_SECONDS)
+SESSION_LINK_MAX_GAP_SECONDS: Final[int] = SESSION_LINK_IMMEDIATE_GAP_SECONDS
+
+# User-accepted suggestion (distinct from auto-linked)
+SESSION_LINK_REASON_SUGGESTION: Final[str] = "suggestion"
+
+# =============================================================================
+# Session Link Event Types (for analytics tracking)
+# =============================================================================
+# Event types logged to session_link_events table for understanding user behavior
+
+LINK_EVENT_AUTO_LINKED: Final[str] = "auto_linked"
+LINK_EVENT_SUGGESTION_ACCEPTED: Final[str] = "suggestion_accepted"
+LINK_EVENT_SUGGESTION_REJECTED: Final[str] = "suggestion_rejected"
+LINK_EVENT_MANUAL_LINKED: Final[str] = "manual_linked"
+LINK_EVENT_UNLINKED: Final[str] = "unlinked"
+
+# =============================================================================
+# Suggestion Confidence
+# =============================================================================
+# Confidence levels for parent session suggestions based on vector + LLM scoring
+
+SUGGESTION_CONFIDENCE_HIGH: Final[str] = "high"
+SUGGESTION_CONFIDENCE_MEDIUM: Final[str] = "medium"
+SUGGESTION_CONFIDENCE_LOW: Final[str] = "low"
+VALID_SUGGESTION_CONFIDENCE_LEVELS: Final[tuple[str, ...]] = (
+    SUGGESTION_CONFIDENCE_HIGH,
+    SUGGESTION_CONFIDENCE_MEDIUM,
+    SUGGESTION_CONFIDENCE_LOW,
+)
+
+# Confidence thresholds for categorizing suggestions
+SUGGESTION_HIGH_THRESHOLD: Final[float] = 0.8
+SUGGESTION_MEDIUM_THRESHOLD: Final[float] = 0.5
+SUGGESTION_LOW_THRESHOLD: Final[float] = 0.3
+
+# Time bonus thresholds for suggestion scoring
+SUGGESTION_TIME_BONUS_1H_SECONDS: Final[int] = 3600  # < 1 hour: +0.1 bonus
+SUGGESTION_TIME_BONUS_6H_SECONDS: Final[int] = 21600  # < 6 hours: +0.05 bonus
+SUGGESTION_TIME_BONUS_1H_VALUE: Final[float] = 0.1
+SUGGESTION_TIME_BONUS_6H_VALUE: Final[float] = 0.05
+
+# Weights for combining vector similarity and LLM score
+SUGGESTION_VECTOR_WEIGHT: Final[float] = 0.4
+SUGGESTION_LLM_WEIGHT: Final[float] = 0.6
+
+# Max candidate sessions to consider for LLM refinement
+SUGGESTION_MAX_CANDIDATES: Final[int] = 5
+
+# Max age in days for suggestion candidates
+SUGGESTION_MAX_AGE_DAYS: Final[int] = 7
 
 # =============================================================================
 # Confidence Levels (model-agnostic)

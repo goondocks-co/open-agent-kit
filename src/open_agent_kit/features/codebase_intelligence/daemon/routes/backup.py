@@ -309,6 +309,20 @@ async def restore_backup(
         )
         chromadb_rebuild_started = True
 
+        # Also re-embed session summaries for the suggestion system
+        if state.vector_store:
+            from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+                reembed_session_summaries,
+            )
+
+            background_tasks.add_task(
+                reembed_session_summaries,
+                activity_store=state.activity_store,
+                vector_store=state.vector_store,
+                clear_first=True,
+            )
+            logger.info("Starting post-restore session summary re-embedding in background")
+
     return RestoreResponse.from_import_result(
         result, str(backup_path), chromadb_rebuild_started=chromadb_rebuild_started
     )
@@ -378,6 +392,20 @@ async def restore_all_backups_endpoint(
             clear_chromadb_first=True,  # Remove orphans before rebuilding
         )
         chromadb_rebuild_started = True
+
+        # Also re-embed session summaries for the suggestion system
+        if state.vector_store:
+            from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+                reembed_session_summaries,
+            )
+
+            background_tasks.add_task(
+                reembed_session_summaries,
+                activity_store=state.activity_store,
+                vector_store=state.vector_store,
+                clear_first=True,
+            )
+            logger.info("Starting post-restore session summary re-embedding in background")
 
     logger.info(
         f"Restore all complete: {total_imported} imported, "

@@ -722,31 +722,42 @@ class UpgradeService:
         Compares the entire skill directory, not just SKILL.md, to detect changes
         in subdirectories like references/, scripts/, etc.
 
+        Also returns True if the skill is marked as installed but doesn't exist
+        at the expected location for ANY skills-capable agent (e.g., after agent
+        manifest changes like Gemini moving from .agent/skills/ to .gemini/skills/).
+
         Args:
             skill_service: SkillService instance
             skill_name: Name of the skill
 
         Returns:
-            True if skill content differs from package version
+            True if skill content differs from package version or skill is missing
+            for any skills-capable agent
         """
         # Get package skill directory
         package_skill_dir = skill_service._find_skill_dir_in_features(skill_name)
         if not package_skill_dir:
             return False
 
-        # Get installed skill directory from first agent with skills support
+        # Check ALL agents with skills support, not just the first one
         agents_with_skills = skill_service._get_agents_with_skills_support()
         if not agents_with_skills:
             return False
 
-        _, skills_dir, _ = agents_with_skills[0]
-        installed_skill_dir = skills_dir / skill_name
+        for _, skills_dir, _ in agents_with_skills:
+            installed_skill_dir = skills_dir / skill_name
 
-        if not installed_skill_dir.exists():
-            return False
+            if not installed_skill_dir.exists():
+                # Skill is marked as installed in config but doesn't exist for this agent
+                # This can happen when agent manifest changes skill locations (e.g., Gemini
+                # moving from .agent/skills/ to .gemini/skills/). Needs reinstall.
+                return True
 
-        # Compare directory contents
-        return self._skill_dirs_differ(package_skill_dir, installed_skill_dir)
+            # Compare directory contents - if any agent has outdated content, needs upgrade
+            if self._skill_dirs_differ(package_skill_dir, installed_skill_dir):
+                return True
+
+        return False
 
     def _skill_dirs_differ(self, package_dir: Path, installed_dir: Path) -> bool:
         """Check if two skill directories have different content.
@@ -870,8 +881,8 @@ class UpgradeService:
         try:
             source_content = source_template.read_text()
             # Substitute placeholders with actual values (same as update does)
+            # Note: {{PROJECT_ROOT}} is no longer used - hooks now use `oak ci hook` command
             processed = re.sub(r"\{\{PORT\}\}", str(port), source_content)
-            processed = re.sub(r"\{\{PROJECT_ROOT\}\}", str(self.project_root), processed)
             source_hooks = json.loads(processed).get("hooks", {})
         except (OSError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to load source template {source_template}: {e}")
@@ -936,17 +947,22 @@ class UpgradeService:
             for event, source_event_hooks in source_hooks.items():
                 installed_event_hooks = installed_hooks.get(event, [])
 
-                # Extract OAK-managed hooks from installed (those with /api/oak/ci/ pattern)
+                # Extract OAK-managed hooks from installed
+                # Patterns: oak ci hook (current), /api/oak/ci/ (legacy inline), oak-ci-hook.sh (legacy script)
                 oak_installed = []
                 for hook in installed_event_hooks:
                     # Get command based on agent structure
                     if agent == "cursor":
                         command = hook.get("command", "")
                     elif agent == "copilot":
-                        command = hook.get("bash", "")
+                        command = hook.get("bash", "") or hook.get("powershell", "")
                     else:
                         command = hook.get("hooks", [{}])[0].get("command", "")
-                    if "/api/oak/ci/" in command or "oak-ci-hook.sh" in command:
+                    if (
+                        "oak ci hook" in command
+                        or "/api/oak/ci/" in command
+                        or "oak-ci-hook.sh" in command
+                    ):
                         oak_installed.append(hook)
 
                 # Compare counts - if different number of OAK hooks, needs upgrade
@@ -967,10 +983,14 @@ class UpgradeService:
                         if agent == "cursor":
                             command = hook.get("command", "")
                         elif agent == "copilot":
-                            command = hook.get("bash", "")
+                            command = hook.get("bash", "") or hook.get("powershell", "")
                         else:
                             command = hook.get("hooks", [{}])[0].get("command", "")
-                        if "/api/oak/ci/" in command or "oak-ci-hook.sh" in command:
+                        if (
+                            "oak ci hook" in command
+                            or "/api/oak/ci/" in command
+                            or "oak-ci-hook.sh" in command
+                        ):
                             return True  # Orphaned OAK hook found
 
             return False

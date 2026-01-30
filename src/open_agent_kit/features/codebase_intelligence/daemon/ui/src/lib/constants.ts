@@ -231,6 +231,7 @@ export const API_ENDPOINTS = {
     DEVTOOLS_REPROCESS_OBSERVATIONS: "/api/devtools/reprocess-observations",
     DEVTOOLS_DATABASE_MAINTENANCE: "/api/devtools/database-maintenance",
     DEVTOOLS_BACKFILL_HASHES: "/api/devtools/backfill-hashes",
+    DEVTOOLS_REEMBED_SESSIONS: "/api/activity/reembed-sessions",
 
     // Backup endpoints
     BACKUP_STATUS: "/api/backup/status",
@@ -725,16 +726,18 @@ export const FALLBACK_MESSAGES = {
 
 /**
  * Search type options for filtering by category.
- * - all: Search code, memories, and plans
+ * - all: Search code, memories, plans, and sessions
  * - code: Code chunks only
  * - memory: Memory observations only
  * - plans: Plans only (intention/design documents)
+ * - sessions: Sessions only (via embedded summaries)
  */
 export const SEARCH_TYPES = {
     ALL: "all",
     CODE: "code",
     MEMORY: "memory",
     PLANS: "plans",
+    SESSIONS: "sessions",
 } as const;
 
 export type SearchType = typeof SEARCH_TYPES[keyof typeof SEARCH_TYPES];
@@ -745,6 +748,7 @@ export const SEARCH_TYPE_OPTIONS = [
     { value: SEARCH_TYPES.CODE, label: "Code Only" },
     { value: SEARCH_TYPES.MEMORY, label: "Memories Only" },
     { value: SEARCH_TYPES.PLANS, label: "Plans Only" },
+    { value: SEARCH_TYPES.SESSIONS, label: "Sessions Only" },
 ] as const;
 
 
@@ -1041,3 +1045,50 @@ export const STATUS_COLORS = {
         badge: "bg-yellow-500/10 text-yellow-600",
     },
 } as const;
+
+
+// =============================================================================
+// Session Suggestion Constants
+// =============================================================================
+
+/**
+ * Suggestion confidence levels for parent session suggestions.
+ * Used by the user-driven session linking system.
+ */
+export const SUGGESTION_CONFIDENCE = {
+    HIGH: "high",
+    MEDIUM: "medium",
+    LOW: "low",
+} as const;
+
+export type SuggestionConfidence = typeof SUGGESTION_CONFIDENCE[keyof typeof SUGGESTION_CONFIDENCE];
+
+/** Human-readable suggestion confidence labels */
+export const SUGGESTION_CONFIDENCE_LABELS: Record<SuggestionConfidence, string> = {
+    [SUGGESTION_CONFIDENCE.HIGH]: "High Confidence",
+    [SUGGESTION_CONFIDENCE.MEDIUM]: "Medium Confidence",
+    [SUGGESTION_CONFIDENCE.LOW]: "Low Confidence",
+} as const;
+
+/** CSS classes for suggestion confidence badges */
+export const SUGGESTION_CONFIDENCE_BADGE_CLASSES: Record<SuggestionConfidence, string> = {
+    [SUGGESTION_CONFIDENCE.HIGH]: "bg-green-500/10 text-green-600",
+    [SUGGESTION_CONFIDENCE.MEDIUM]: "bg-yellow-500/10 text-yellow-600",
+    [SUGGESTION_CONFIDENCE.LOW]: "bg-gray-500/10 text-gray-500",
+} as const;
+
+/** Session link reason for suggestions (distinct from auto-link reasons) */
+export const SESSION_LINK_REASON_SUGGESTION = "suggestion" as const;
+
+/** Build suggested parent endpoint */
+export function getSuggestedParentEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/suggested-parent`;
+}
+
+/** Build dismiss suggestion endpoint */
+export function getDismissSuggestionEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/dismiss-suggestion`;
+}
+
+/** Re-embed sessions endpoint */
+export const REEMBED_SESSIONS_ENDPOINT = "/api/activity/reembed-sessions";

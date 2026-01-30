@@ -3,47 +3,62 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh sessionStart"
+        "command": "oak ci hook sessionStart --agent cursor"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh beforeSubmitPrompt"
+        "command": "oak ci hook beforeSubmitPrompt --agent cursor"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh afterFileEdit"
+        "command": "oak ci hook afterFileEdit --agent cursor"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh afterAgentResponse"
+        "command": "oak ci hook afterAgentResponse --agent cursor"
+      }
+    ],
+    "afterAgentThought": [
+      {
+        "command": "oak ci hook afterAgentThought --agent cursor"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "oak ci hook postToolUse --agent cursor"
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "oak ci hook preCompact --agent cursor"
       }
     ],
     "stop": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh stop"
+        "command": "oak ci hook stop --agent cursor"
       }
     ],
     "sessionEnd": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh sessionEnd"
+        "command": "oak ci hook sessionEnd --agent cursor"
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh postToolUseFailure"
+        "command": "oak ci hook postToolUseFailure --agent cursor"
       }
     ],
     "subagentStart": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh subagentStart"
+        "command": "oak ci hook subagentStart --agent cursor"
       }
     ],
     "subagentStop": [
       {
-        "command": "/Users/chris/Repos/open-agent-kit/.cursor/hooks/oak-ci-hook.sh subagentStop"
+        "command": "oak ci hook subagentStop --agent cursor"
       }
     ]
   }

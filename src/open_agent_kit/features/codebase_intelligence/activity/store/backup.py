@@ -221,10 +221,10 @@ def get_backup_filename() -> str:
     """Get backup filename for this machine.
 
     Returns:
-        Backup filename with machine identifier (e.g., "ci_history_macbook_chris.sql").
+        Backup filename with machine identifier (e.g., "octocat_a7b3c2.sql").
     """
     machine_id = get_machine_identifier()
-    return f"ci_history_{machine_id}.sql"
+    return f"{machine_id}.sql"
 
 
 # =============================================================================
@@ -233,7 +233,7 @@ def get_backup_filename() -> str:
 
 
 def discover_backup_files(backup_dir: Path) -> list[Path]:
-    """Find all ci_history_*.sql files, sorted by modified time.
+    """Find all *.sql backup files, sorted by modified time.
 
     Args:
         backup_dir: Directory to search for backup files.
@@ -243,7 +243,7 @@ def discover_backup_files(backup_dir: Path) -> list[Path]:
     """
     if not backup_dir.exists():
         return []
-    files = list(backup_dir.glob("ci_history_*.sql"))
+    files = list(backup_dir.glob("*.sql"))
     return sorted(files, key=lambda p: p.stat().st_mtime)
 
 
@@ -251,18 +251,22 @@ def extract_machine_id_from_filename(filename: str) -> str:
     """Extract machine identifier from backup filename.
 
     Args:
-        filename: Backup filename (e.g., "ci_history_macbook_chris.sql").
+        filename: Backup filename (e.g., "octocat_a7b3c2.sql").
 
     Returns:
         Machine identifier or "unknown" if not parseable.
     """
-    # Pattern: ci_history_{machine_id}.sql
-    match = re.match(r"ci_history_(.+)\.sql$", filename)
-    if match:
-        return match.group(1)
-    # Legacy format without machine ID
-    if filename == "ci_history.sql":
-        return "legacy"
+    # Current format: {machine_id}.sql
+    if filename.endswith(".sql"):
+        machine_id = filename[:-4]  # Remove .sql suffix
+        if machine_id:
+            # Handle legacy ci_history_ prefix (for backwards compatibility)
+            if machine_id.startswith("ci_history_"):
+                return machine_id[11:]  # Remove "ci_history_" prefix
+            # Handle legacy single-file format
+            if machine_id == "ci_history":
+                return "legacy"
+            return machine_id
     return "unknown"
 
 
@@ -1512,7 +1516,7 @@ def restore_all_backups(
 ) -> dict[str, ImportResult]:
     """Restore from all backup files in directory.
 
-    Discovers all ci_history_*.sql files and imports them with deduplication.
+    Discovers all *.sql files and imports them with deduplication.
     Files are processed in order of modification time (oldest first).
 
     Args:

@@ -1,44 +1,44 @@
 {
-  "$comment": "Codebase Intelligence hooks for GitHub Copilot. {{PORT}} is replaced with the project-specific daemon port. {{PROJECT_ROOT}} is replaced with the project directory. OAK hooks are identified by the /api/oak/ci/ URL pattern. Hook events are logged to .oak/ci/hooks.log for debugging. Copilot hooks are installed to .github/hooks/ per GitHub docs.",
+  "$comment": "Codebase Intelligence hooks for GitHub Copilot. Uses `oak ci hook` command for cross-platform compatibility. OAK hooks are identified by the oak ci hook command pattern. Copilot hooks are installed to .github/hooks/ per GitHub docs.",
   "version": 1,
   "hooks": {
     "sessionStart": [
       {
         "type": "command",
-        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh sessionStart",
-        "cwd": "{{PROJECT_ROOT}}",
+        "bash": "oak ci hook sessionStart --agent copilot",
+        "powershell": "oak ci hook sessionStart --agent copilot",
         "timeoutSec": 60
       }
     ],
     "sessionEnd": [
       {
         "type": "command",
-        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh sessionEnd",
-        "cwd": "{{PROJECT_ROOT}}",
+        "bash": "oak ci hook sessionEnd --agent copilot",
+        "powershell": "oak ci hook sessionEnd --agent copilot",
         "timeoutSec": 60
       }
     ],
     "userPromptSubmitted": [
       {
         "type": "command",
-        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh userPromptSubmitted",
-        "cwd": "{{PROJECT_ROOT}}",
+        "bash": "oak ci hook userPromptSubmitted --agent copilot",
+        "powershell": "oak ci hook userPromptSubmitted --agent copilot",
         "timeoutSec": 60
       }
     ],
     "postToolUse": [
       {
         "type": "command",
-        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh postToolUse",
-        "cwd": "{{PROJECT_ROOT}}",
+        "bash": "oak ci hook postToolUse --agent copilot",
+        "powershell": "oak ci hook postToolUse --agent copilot",
         "timeoutSec": 60
       }
     ],
     "errorOccurred": [
       {
         "type": "command",
-        "bash": "{{PROJECT_ROOT}}/.github/hooks/oak-ci-hook.sh errorOccurred",
-        "cwd": "{{PROJECT_ROOT}}",
+        "bash": "oak ci hook errorOccurred --agent copilot",
+        "powershell": "oak ci hook errorOccurred --agent copilot",
         "timeoutSec": 60,
         "comment": "Maps to post-tool-use-failure endpoint"
       }

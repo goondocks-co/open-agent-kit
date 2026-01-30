@@ -43,6 +43,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v14_to_v15(conn)
     if from_version < 16:
         migrate_v15_to_v16(conn)
+    if from_version < 17:
+        migrate_v16_to_v17(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -918,3 +920,65 @@ def migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
         f"activities={update_counts.get('activities', 0)}, "
         f"agent_runs={update_counts.get('agent_runs', 0)})"
     )
+
+
+def migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v16 to v17: Add suggestion tracking for user-driven linking.
+
+    Adds:
+    - suggested_parent_dismissed column to sessions table
+    - session_link_events table for analytics
+
+    This enables the user-driven session linking system where:
+    - Users see suggested parent sessions when auto-linking doesn't happen
+    - Users can accept, dismiss, or pick different parents
+    - Link corrections are tracked for improving heuristics
+    """
+    logger.info("Migrating activity store schema v16 -> v17: Adding suggestion tracking")
+
+    # Check if suggested_parent_dismissed column needs to be added to sessions
+    cursor = conn.execute("PRAGMA table_info(sessions)")
+    session_columns = {row[1] for row in cursor.fetchall()}
+
+    if "suggested_parent_dismissed" not in session_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN suggested_parent_dismissed INTEGER DEFAULT 0")
+        logger.debug("Added suggested_parent_dismissed column to sessions")
+
+    # Check if session_link_events table exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='session_link_events'"
+    )
+    if not cursor.fetchone():
+        # Create the session_link_events table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_link_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                old_parent_id TEXT,
+                new_parent_id TEXT,
+                suggested_parent_id TEXT,
+                suggestion_confidence REAL,
+                link_reason TEXT,
+                created_at TEXT NOT NULL,
+                created_at_epoch INTEGER NOT NULL
+            )
+            """
+        )
+        logger.debug("Created session_link_events table")
+
+    # Create indexes for efficient queries (idempotent)
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_session_link_events_session ON session_link_events(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_session_link_events_type ON session_link_events(event_type)",
+        "CREATE INDEX IF NOT EXISTS idx_session_link_events_created ON session_link_events(created_at_epoch DESC)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v16->v17 complete: added suggestion tracking")

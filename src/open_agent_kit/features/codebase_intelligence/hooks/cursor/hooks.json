@@ -1,50 +1,65 @@
 {
-  "$comment": "Codebase Intelligence hooks for Cursor. {{PORT}} is replaced with the project-specific daemon port. {{PROJECT_ROOT}} is replaced with the project directory. OAK hooks are identified by the /api/oak/ci/ URL pattern. Hook events are logged to .oak/ci/hooks.log for debugging.",
+  "$comment": "Codebase Intelligence hooks for Cursor. Uses `oak ci hook` command for cross-platform compatibility. OAK hooks are identified by the oak ci hook command pattern.",
   "version": 1,
   "hooks": {
     "sessionStart": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh sessionStart"
+        "command": "oak ci hook sessionStart --agent cursor"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh beforeSubmitPrompt"
+        "command": "oak ci hook beforeSubmitPrompt --agent cursor"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh afterFileEdit"
+        "command": "oak ci hook afterFileEdit --agent cursor"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh afterAgentResponse"
+        "command": "oak ci hook afterAgentResponse --agent cursor"
+      }
+    ],
+    "afterAgentThought": [
+      {
+        "command": "oak ci hook afterAgentThought --agent cursor"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "oak ci hook postToolUse --agent cursor"
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "oak ci hook preCompact --agent cursor"
       }
     ],
     "stop": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh stop"
+        "command": "oak ci hook stop --agent cursor"
       }
     ],
     "sessionEnd": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh sessionEnd"
+        "command": "oak ci hook sessionEnd --agent cursor"
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh postToolUseFailure"
+        "command": "oak ci hook postToolUseFailure --agent cursor"
       }
     ],
     "subagentStart": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh subagentStart"
+        "command": "oak ci hook subagentStart --agent cursor"
       }
     ],
     "subagentStop": [
       {
-        "command": "{{PROJECT_ROOT}}/.cursor/hooks/oak-ci-hook.sh subagentStop"
+        "command": "oak ci hook subagentStop --agent cursor"
       }
     ]
   }

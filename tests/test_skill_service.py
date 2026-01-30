@@ -539,85 +539,90 @@ class TestGetSkillService:
 
 
 class TestSkillsFolderOverride:
-    """Tests for skills_folder override functionality (e.g., Gemini/Antigravity)."""
+    """Tests for skills_folder override functionality.
+
+    The skills_folder capability allows an agent to store skills in a different
+    base folder than its main installation folder. This is useful when an agent
+    has a non-standard skills location.
+    """
 
     @pytest.fixture
-    def mock_gemini_manifest(self):
-        """Create a mock Gemini agent manifest with skills_folder override."""
+    def mock_custom_agent_manifest(self):
+        """Create a mock agent manifest with skills_folder override."""
         return AgentManifest(
-            name="gemini",
-            display_name="Gemini CLI",
-            description="Google Gemini CLI agent",
+            name="custom-agent",
+            display_name="Custom Agent",
+            description="Hypothetical agent with custom skills location",
             version="1.0.0",
             capabilities=AgentCapabilities(
                 has_skills=True,
-                skills_folder=".agent",  # Antigravity uses .agent/skills/
+                skills_folder=".custom-skills",  # Override: skills go to different folder
                 skills_directory="skills",
             ),
-            installation=AgentInstallation(folder=".gemini/"),
+            installation=AgentInstallation(folder=".custom-agent/"),
         )
 
-    def test_skills_folder_override_path(self, temp_project, mock_gemini_manifest):
+    def test_skills_folder_override_path(self, temp_project, mock_custom_agent_manifest):
         """Test that skills_folder override is used for skill installation path."""
         from open_agent_kit.services.agent_service import AgentService
 
         service = SkillService(temp_project)
 
-        # Update config to use gemini agent
+        # Update config to use custom agent
         config = service.config_service.load_config()
-        config.agents = ["gemini"]
+        config.agents = ["custom-agent"]
         service.config_service.save_config(config)
 
-        # Mock agent service to return gemini manifest
+        # Mock agent service to return custom agent manifest
         with patch.object(AgentService, "get_agent_manifest") as mock_get_manifest:
-            mock_get_manifest.return_value = mock_gemini_manifest
+            mock_get_manifest.return_value = mock_custom_agent_manifest
 
             agents_with_skills = service._get_agents_with_skills_support()
 
         assert len(agents_with_skills) == 1
         agent_name, skills_path, skills_subdir = agents_with_skills[0]
-        assert agent_name == "gemini"
-        # Skills should go to .agent/skills/ not .gemini/skills/
-        assert skills_path == temp_project / ".agent" / "skills"
+        assert agent_name == "custom-agent"
+        # Skills should go to .custom-skills/skills/ not .custom-agent/skills/
+        assert skills_path == temp_project / ".custom-skills" / "skills"
         assert skills_subdir == "skills"
 
     def test_install_skill_with_skills_folder_override(
-        self, temp_project, package_skills_dir, mock_gemini_manifest
+        self, temp_project, package_skills_dir, mock_custom_agent_manifest
     ):
         """Test that skills are installed to the overridden skills folder."""
         service = SkillService(temp_project)
         service.package_features_dir = package_skills_dir
 
-        # Skills should go to .agent/skills/ for Gemini
-        skills_dir = temp_project / ".agent" / "skills"
+        # Skills should go to .custom-skills/skills/ due to override
+        skills_dir = temp_project / ".custom-skills" / "skills"
 
         with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
-            mock_agents.return_value = [("gemini", skills_dir, "skills")]
+            mock_agents.return_value = [("custom-agent", skills_dir, "skills")]
 
             result = service.install_skill("test-skill")
 
         assert result["skill_name"] == "test-skill"
         assert not result["skipped"]
-        assert "gemini" in result["agents"]
+        assert "custom-agent" in result["agents"]
 
-        # Verify skill was written to .agent/skills/ not .gemini/skills/
+        # Verify skill was written to .custom-skills/skills/
         installed_skill = skills_dir / "test-skill" / "SKILL.md"
         assert installed_skill.exists()
 
-        # Verify .gemini/skills/ was NOT created
-        gemini_skills = temp_project / ".gemini" / "skills" / "test-skill"
-        assert not gemini_skills.exists()
+        # Verify .custom-agent/skills/ was NOT created (override takes precedence)
+        agent_skills = temp_project / ".custom-agent" / "skills" / "test-skill"
+        assert not agent_skills.exists()
 
-    def test_oak_managed_paths_with_skills_folder_override(self, mock_gemini_manifest):
+    def test_oak_managed_paths_with_skills_folder_override(self, mock_custom_agent_manifest):
         """Test that get_oak_managed_paths returns correct path with skills_folder override."""
-        paths = mock_gemini_manifest.get_oak_managed_paths()
+        paths = mock_custom_agent_manifest.get_oak_managed_paths()
 
-        # Should include .agent/skills (not .gemini/skills)
-        assert ".agent/skills" in paths
-        assert ".gemini/skills" not in paths
+        # Should include .custom-skills/skills (not .custom-agent/skills)
+        assert ".custom-skills/skills" in paths
+        assert ".custom-agent/skills" not in paths
 
-        # Should still include .gemini/commands for commands
-        assert ".gemini/commands" in paths
+        # Should still include .custom-agent/commands for commands
+        assert ".custom-agent/commands" in paths
 
 
 class TestManifestSkillsConsistency:

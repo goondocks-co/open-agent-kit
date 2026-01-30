@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import (
         ActivityStore,
     )
+    from open_agent_kit.features.codebase_intelligence.activity.store.models import (
+        Session,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +28,29 @@ def _is_recovery_prompt(prompt: str | None) -> bool:
     if not prompt:
         return False
     return prompt.startswith("[Recovery batch") or prompt == RECOVERY_BATCH_PROMPT
+
+
+def _get_parent_session_title(
+    session: "Session",
+    activity_store: "ActivityStore",
+) -> str | None:
+    """Get title from parent session if linked.
+
+    Args:
+        session: Current session.
+        activity_store: Activity store for fetching parent.
+
+    Returns:
+        Parent session title if available, None otherwise.
+    """
+    if not session.parent_session_id:
+        return None
+
+    parent = activity_store.get_session(session.parent_session_id)
+    if parent and parent.title:
+        return parent.title
+
+    return None
 
 
 def generate_session_title(
@@ -37,6 +63,7 @@ def generate_session_title(
 
     Handles special cases:
     - Filters out continuation placeholders from prompts (from session transitions)
+    - For linked sessions with only placeholders, derives title from parent session
 
     Args:
         session_id: Session ID to generate title for.
@@ -47,6 +74,12 @@ def generate_session_title(
     Returns:
         Title text if generated, None otherwise.
     """
+    # Get session info for parent linking check
+    session = activity_store.get_session(session_id)
+    if not session:
+        logger.debug(f"Session {session_id} not found, skipping title")
+        return None
+
     # Get prompt batches for this session
     batches = activity_store.get_session_prompt_batches(session_id, limit=10)
     if not batches:
@@ -73,7 +106,32 @@ def generate_session_title(
             user_prompt = user_prompt[:197] + "..."
         batch_lines.append(f"{i}. {user_prompt}")
 
-    prompt_batches_text = "\n".join(batch_lines) if batch_lines else "(no user prompts captured)"
+    # If all prompts were placeholders, try to use parent session context
+    if not batch_lines:
+        parent_title = _get_parent_session_title(session, activity_store)
+        if parent_title:
+            # Generate a continuation title from parent
+            continuation_title = f"Continue: {parent_title}"
+            if len(continuation_title) > 80:
+                continuation_title = continuation_title[:77] + "..."
+            try:
+                activity_store.update_session_title(session_id, continuation_title)
+                logger.info(
+                    f"Generated continuation title for session {session_id}: {continuation_title}"
+                )
+                return continuation_title
+            except (OSError, ValueError, TypeError) as e:
+                logger.error(f"Failed to store continuation title: {e}", exc_info=True)
+                return None
+        else:
+            # No parent or parent has no title - skip for now, will retry later
+            logger.debug(
+                f"Session {session_id} has only placeholder prompts and no parent "
+                "title available, skipping title generation"
+            )
+            return None
+
+    prompt_batches_text = "\n".join(batch_lines)
 
     # Build prompt
     prompt = title_template.prompt

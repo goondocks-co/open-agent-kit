@@ -1,0 +1,70 @@
+{
+  "coreTools": [
+    "ShellTool(oak *)"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-context",
+            "type": "command",
+            "command": "oak ci hook SessionStart --agent gemini",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-observe",
+            "type": "command",
+            "command": "oak ci hook PostToolUse --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-stop",
+            "type": "command",
+            "command": "oak ci hook Stop --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "oak-ci-session-end",
+            "type": "command",
+            "command": "oak ci hook SessionEnd --agent gemini",
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "oak-ci": {
+      "command": "oak",
+      "args": [
+        "ci",
+        "mcp",
+        "--project",
+        "/Users/chris/Repos/open-agent-kit"
+      ]
+    }
+  }
+}

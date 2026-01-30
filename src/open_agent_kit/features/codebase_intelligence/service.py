@@ -19,8 +19,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     COPILOT_HOOK_CONFIG_FILENAME,
     COPILOT_HOOK_SCRIPT_NAME,
     COPILOT_HOOKS_DIRNAME,
-    CURSOR_HOOK_SCRIPT_NAME,
-    CURSOR_HOOKS_DIRNAME,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
 
@@ -89,14 +87,18 @@ class CodebaseIntelligenceService:
         """Load hook template for an agent and substitute placeholders.
 
         Args:
-            agent: Agent name (claude, cursor, gemini).
+            agent: Agent name (claude, cursor, gemini, copilot).
 
         Returns:
             Hook configuration with placeholders replaced, or None if not found.
 
         Placeholders:
             {{PORT}} - Replaced with the daemon port number.
-            {{PROJECT_ROOT}} - Replaced with the project root directory path.
+
+        Note:
+            Hook commands use relative paths (e.g., ".claude/hooks/oak-ci-hook.sh")
+            since hooks run from the project root. Shell scripts self-resolve
+            PROJECT_ROOT using dirname at runtime for portability across machines.
         """
         template_file = HOOKS_TEMPLATE_DIR / agent / "hooks.json"
         if not template_file.exists():
@@ -105,9 +107,8 @@ class CodebaseIntelligenceService:
 
         try:
             template_content = template_file.read_text()
-            # Replace placeholders with actual values
+            # Replace port placeholder (PROJECT_ROOT no longer used - relative paths instead)
             processed = re.sub(r"\{\{PORT\}\}", str(self.port), template_content)
-            processed = re.sub(r"\{\{PROJECT_ROOT\}\}", str(self.project_root), processed)
             return cast(dict[str, Any], json.loads(processed))
         except Exception as e:
             logger.error(f"Failed to load hook template for {agent}: {e}")
@@ -478,9 +479,10 @@ class CodebaseIntelligenceService:
         """Check if a hook is managed by OAK.
 
         Identifies OAK hooks by patterns in the command:
-        - /api/oak/ci/ - current URL pattern for Claude/Gemini (unique to OAK)
+        - oak ci hook - current cross-platform CLI command
+        - /api/oak/ci/ - legacy URL pattern for inline curl calls
         - /api/hook/ - legacy URL pattern (for cleanup during upgrade/removal)
-        - oak-ci-hook.sh - Cursor/Copilot shell script pattern
+        - oak-ci-hook.sh - legacy shell script pattern
 
         All patterns are checked to ensure proper cleanup when transitioning
         from old to new hook formats or between agent types.
@@ -503,19 +505,20 @@ class CodebaseIntelligenceService:
             # Claude/Gemini: nested {hooks: [{command: "..."}]} structure
             command = hook.get("hooks", [{}])[0].get("command", "")
 
-        # Check for OAK CI patterns (URL patterns for Claude/Gemini, script pattern for Cursor/Copilot)
-        oak_patterns = ["/api/oak/ci/", "/api/hook/", "oak-ci-hook.sh"]
+        # Check for OAK CI patterns (current CLI command + legacy patterns for migration)
+        oak_patterns = ["oak ci hook", "/api/oak/ci/", "/api/hook/", "oak-ci-hook.sh"]
         return any(pattern in command for pattern in oak_patterns)
 
     def _update_claude_hooks(self) -> None:
-        """Update Claude Code settings with CI hooks."""
+        """Update Claude Code settings with CI hooks.
+
+        Hooks use `oak ci hook` command for cross-platform compatibility.
+        No shell scripts are installed - the oak CLI handles everything.
+        """
         settings_dir = self.project_root / ".claude"
         settings_file = settings_dir / "settings.json"
-        hooks_script_dir = settings_dir / CLAUDE_HOOKS_DIRNAME
-        hooks_script_path = hooks_script_dir / CLAUDE_HOOK_SCRIPT_NAME
 
         settings_dir.mkdir(exist_ok=True)
-        hooks_script_dir.mkdir(parents=True, exist_ok=True)
 
         # Load existing settings or create new
         if settings_file.exists():
@@ -550,31 +553,21 @@ class CodebaseIntelligenceService:
             # Add new CI hooks
             settings["hooks"][event].extend(new_hooks)
 
-        # Install hook script (reads port from daemon.port at runtime)
-        hook_script_template = HOOKS_TEMPLATE_DIR / "claude" / CLAUDE_HOOK_SCRIPT_NAME
-        if not hook_script_template.exists():
-            logger.error(f"Claude hook script template missing: {hook_script_template}")
-            return
-
-        hooks_script_path.write_text(
-            hook_script_template.read_text().replace("{{PROJECT_ROOT}}", str(self.project_root))
-        )
-        hooks_script_path.chmod(0o755)
-
         with open(settings_file, "w") as f:
             json.dump(settings, f, indent=2)
 
         logger.info(f"Updated Claude hooks at {settings_file}")
 
     def _update_cursor_hooks(self) -> None:
-        """Update Cursor settings with CI hooks."""
+        """Update Cursor settings with CI hooks.
+
+        Hooks use `oak ci hook` command for cross-platform compatibility.
+        No shell scripts are installed - the oak CLI handles everything.
+        """
         settings_dir = self.project_root / ".cursor"
         hooks_file = settings_dir / "hooks.json"
-        hooks_script_dir = settings_dir / CURSOR_HOOKS_DIRNAME
-        hooks_script_path = hooks_script_dir / CURSOR_HOOK_SCRIPT_NAME
 
         settings_dir.mkdir(exist_ok=True)
-        hooks_script_dir.mkdir(parents=True, exist_ok=True)
 
         # Load existing hooks or create new
         if hooks_file.exists():
@@ -608,18 +601,6 @@ class CodebaseIntelligenceService:
 
             # Add new CI hooks
             hooks["hooks"][event].extend(new_hooks)
-
-        hook_script_template = HOOKS_TEMPLATE_DIR / "cursor" / CURSOR_HOOK_SCRIPT_NAME
-        if not hook_script_template.exists():
-            logger.error(f"Cursor hook script template missing: {hook_script_template}")
-            return
-
-        hooks_script_path.write_text(
-            hook_script_template.read_text()
-            .replace("{{PORT}}", str(self.port))
-            .replace("{{PROJECT_ROOT}}", str(self.project_root))
-        )
-        hooks_script_path.chmod(0o755)
 
         with open(hooks_file, "w") as f:
             json.dump(hooks, f, indent=2)
@@ -675,11 +656,11 @@ class CodebaseIntelligenceService:
         """Update GitHub Copilot hooks with CI hooks.
 
         Copilot hooks are stored in .github/hooks/ per GitHub docs.
-        Uses script dispatch pattern similar to Cursor.
+        Hooks use `oak ci hook` command for cross-platform compatibility.
+        No shell scripts are installed - the oak CLI handles everything.
         """
         hooks_dir = self.project_root / ".github" / COPILOT_HOOKS_DIRNAME
         hooks_file = hooks_dir / COPILOT_HOOK_CONFIG_FILENAME
-        hooks_script_path = hooks_dir / COPILOT_HOOK_SCRIPT_NAME
 
         hooks_dir.mkdir(parents=True, exist_ok=True)
 
@@ -715,19 +696,6 @@ class CodebaseIntelligenceService:
 
             # Add new CI hooks
             hooks["hooks"][event].extend(new_hooks)
-
-        # Install hook script
-        hook_script_template = HOOKS_TEMPLATE_DIR / "copilot" / COPILOT_HOOK_SCRIPT_NAME
-        if not hook_script_template.exists():
-            logger.error(f"Copilot hook script template missing: {hook_script_template}")
-            return
-
-        hooks_script_path.write_text(
-            hook_script_template.read_text()
-            .replace("{{PORT}}", str(self.port))
-            .replace("{{PROJECT_ROOT}}", str(self.project_root))
-        )
-        hooks_script_path.chmod(0o755)
 
         with open(hooks_file, "w") as f:
             json.dump(hooks, f, indent=2)

@@ -41,6 +41,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     RememberResponse,
     SearchRequest,
     SearchResponse,
+    SessionResult,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.retrieval.engine import Confidence
@@ -74,7 +75,7 @@ def _get_retrieval_engine() -> tuple["RetrievalEngine", "DaemonState"]:
 async def search_get(
     query: str = Query(..., min_length=1),
     limit: int = Query(default=20, ge=1, le=100),
-    search_type: str = Query(default="all", pattern="^(all|code|memory|plans)$"),
+    search_type: str = Query(default="all", pattern="^(all|code|memory|plans|sessions)$"),
     apply_doc_type_weights: bool = Query(
         default=True, description="Apply doc_type weighting. Disable for translation searches."
     ),
@@ -148,11 +149,23 @@ async def search_post(request: SearchRequest) -> SearchResponse:
         for r in result.plans
     ]
 
+    session_results = [
+        SessionResult(
+            id=r["id"],
+            relevance=r["relevance"],
+            confidence=Confidence(r.get("confidence", "medium")),
+            title=r.get("title"),
+            preview=r.get("preview", ""),
+        )
+        for r in result.sessions
+    ]
+
     return SearchResponse(
         query=result.query,
         code=code_results,
         memory=memory_results,
         plans=plan_results,
+        sessions=session_results,
         total_tokens_available=result.total_tokens_available,
     )
 

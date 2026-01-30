@@ -26,11 +26,13 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     DeleteActivityResponse,
     DeleteBatchResponse,
     DeleteSessionResponse,
+    DismissSuggestionResponse,
     LinkSessionRequest,
     LinkSessionResponse,
     PlanListItem,
     PlansListResponse,
     PromptBatchItem,
+    ReembedSessionsResponse,
     RefreshPlanResponse,
     RegenerateSummaryResponse,
     SessionDetailResponse,
@@ -38,6 +40,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     SessionLineageItem,
     SessionLineageResponse,
     SessionListResponse,
+    SuggestedParentResponse,
     UnlinkSessionResponse,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
@@ -1194,6 +1197,208 @@ async def unlink_session(session_id: str) -> UnlinkSessionResponse:
         raise
     except (OSError, ValueError, RuntimeError, AttributeError) as e:
         logger.error(f"Failed to unlink session: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get(
+    "/api/activity/sessions/{session_id}/suggested-parent",
+    response_model=SuggestedParentResponse,
+)
+async def get_suggested_parent(session_id: str) -> SuggestedParentResponse:
+    """Get the suggested parent session for an unlinked session.
+
+    Uses vector similarity search and optional LLM refinement to find
+    the most likely parent session for manual linking.
+
+    Returns suggestion info if found, or has_suggestion=False if:
+    - Session already has a parent
+    - Session has no summary for similarity search
+    - No suitable candidate sessions found
+    - Suggestion was previously dismissed
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.processor.suggestions import (
+        compute_suggested_parent,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    if not state.vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+
+    logger.debug(f"Getting suggested parent for session: {session_id}")
+
+    try:
+        # Verify session exists
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        # Check if suggestion was dismissed
+        conn = state.activity_store._get_connection()
+        cursor = conn.execute(
+            "SELECT suggested_parent_dismissed FROM sessions WHERE id = ?",
+            (session_id,),
+        )
+        row = cursor.fetchone()
+        dismissed = bool(row and row[0]) if row else False
+
+        if dismissed:
+            return SuggestedParentResponse(
+                session_id=session_id,
+                has_suggestion=False,
+                dismissed=True,
+            )
+
+        # Compute suggestion (without LLM for now - just vector similarity)
+        # LLM refinement can be added later when call_llm is available
+        suggestion = compute_suggested_parent(
+            activity_store=state.activity_store,
+            vector_store=state.vector_store,
+            session_id=session_id,
+            call_llm=None,  # Vector-only for now
+        )
+
+        if not suggestion:
+            return SuggestedParentResponse(
+                session_id=session_id,
+                has_suggestion=False,
+                dismissed=False,
+            )
+
+        # Get suggested parent session details
+        suggested_session = state.activity_store.get_session(suggestion.session_id)
+        if not suggested_session:
+            return SuggestedParentResponse(
+                session_id=session_id,
+                has_suggestion=False,
+                dismissed=False,
+            )
+
+        # Get first prompt preview for the suggested session
+        first_prompts_map = state.activity_store.get_bulk_first_prompts([suggestion.session_id])
+        stats_map = state.activity_store.get_bulk_session_stats([suggestion.session_id])
+
+        suggested_item = _session_to_lineage_item(
+            suggested_session,
+            first_prompt_preview=first_prompts_map.get(suggestion.session_id),
+            prompt_batch_count=stats_map.get(suggestion.session_id, {}).get(
+                "prompt_batch_count", 0
+            ),
+        )
+
+        return SuggestedParentResponse(
+            session_id=session_id,
+            has_suggestion=True,
+            suggested_parent=suggested_item,
+            confidence=suggestion.confidence,
+            confidence_score=suggestion.confidence_score,
+            reason=suggestion.reason,
+            dismissed=False,
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to get suggested parent: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post(
+    "/api/activity/sessions/{session_id}/dismiss-suggestion",
+    response_model=DismissSuggestionResponse,
+)
+async def dismiss_suggestion(session_id: str) -> DismissSuggestionResponse:
+    """Dismiss the suggestion for a session.
+
+    Marks the session so that no suggestion will be shown until the user
+    manually links or the dismissal is reset.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.processor.suggestions import (
+        dismiss_suggestion as store_dismiss_suggestion,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Dismissing suggestion for session: {session_id}")
+
+    try:
+        # Verify session exists
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        success = store_dismiss_suggestion(state.activity_store, session_id)
+
+        if success:
+            return DismissSuggestionResponse(
+                success=True,
+                session_id=session_id,
+                message="Suggestion dismissed successfully",
+            )
+        else:
+            return DismissSuggestionResponse(
+                success=False,
+                session_id=session_id,
+                message="Failed to dismiss suggestion",
+            )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to dismiss suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post(
+    "/api/activity/reembed-sessions",
+    response_model=ReembedSessionsResponse,
+)
+async def reembed_sessions() -> ReembedSessionsResponse:
+    """Re-embed all session summaries to ChromaDB.
+
+    Useful after:
+    - Backup restore (sessions exist in SQLite but not in ChromaDB)
+    - Embedding model changes
+    - Index corruption
+
+    Clears existing session summary embeddings and re-embeds from SQLite.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+        reembed_session_summaries,
+    )
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    if not state.vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+
+    logger.info("Re-embedding all session summaries")
+
+    try:
+        sessions_processed, sessions_embedded = reembed_session_summaries(
+            activity_store=state.activity_store,
+            vector_store=state.vector_store,
+            clear_first=True,
+        )
+
+        return ReembedSessionsResponse(
+            success=True,
+            sessions_processed=sessions_processed,
+            sessions_embedded=sessions_embedded,
+            message=f"Re-embedded {sessions_embedded}/{sessions_processed} session summaries",
+        )
+
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to re-embed sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

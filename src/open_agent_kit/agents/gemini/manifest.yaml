@@ -30,11 +30,22 @@ capabilities:
   context_handling: large       # large | medium | small - excellent context window (1M+)
   model_consistency: high       # high | medium | variable - first-party models are consistent
 
-  # Skills support (Google Antigravity - Agent Skills standard)
+  # Skills support (Agent Skills standard)
   # Compatible with Claude Code SKILL.md format
-  has_skills: true              # Gemini/Antigravity supports SKILL.md files
-  skills_folder: ".agent"       # Antigravity uses .agent/ for workspace skills
-  skills_directory: "skills"    # .agent/skills/
+  # Gemini CLI uses .gemini/skills/ for workspace skills
+  # See: https://geminicli.com/docs/cli/skills/
+  has_skills: true
+  skills_directory: "skills"    # .gemini/skills/
+
+# Codebase Intelligence configuration
+ci:
+  # Plan storage - Gemini CLI may store plans in .gemini/plans/ (TBD - needs verification)
+  # Set to null until plan storage location is confirmed
+  plans_subfolder: null
+
+  # Plan execution/exit detection TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
 
 settings:
   # Auto-approval settings for oak commands

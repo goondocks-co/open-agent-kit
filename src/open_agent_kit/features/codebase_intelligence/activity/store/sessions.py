@@ -12,6 +12,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
+from open_agent_kit.features.codebase_intelligence.constants import (
+    LINK_EVENT_AUTO_LINKED,
+    LINK_EVENT_MANUAL_LINKED,
+    LINK_EVENT_SUGGESTION_ACCEPTED,
+    LINK_EVENT_UNLINKED,
+    SESSION_LINK_REASON_MANUAL,
+    SESSION_LINK_REASON_SUGGESTION,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
@@ -508,14 +516,9 @@ def find_just_ended_session(
 ) -> str | None:
     """Find a session that just ended, suitable for parent linking.
 
-    Used when source="clear" to link the new session to the planning session
-    that just ended. Looks for ENDED sessions only to avoid false positives
-    from concurrent active sessions.
-
-    The 5-second default is based on data analysis showing:
-    - Most transitions: 0.04-0.12 seconds
-    - Slowest observed: ~8 seconds
-    - No transitions in 10s-5min range
+    Wrapper for find_linkable_parent_session that returns only the session ID
+    for backward compatibility. Use find_linkable_parent_session directly
+    if you need the linking reason.
 
     Args:
         store: The ActivityStore instance.
@@ -528,15 +531,75 @@ def find_just_ended_session(
     Returns:
         Parent session ID if found, None otherwise.
     """
+    result = find_linkable_parent_session(
+        store=store,
+        agent=agent,
+        project_root=project_root,
+        exclude_session_id=exclude_session_id,
+        new_session_started_at=new_session_started_at,
+        max_gap_seconds=max_gap_seconds,
+    )
+    return result[0] if result else None
+
+
+def find_linkable_parent_session(
+    store: ActivityStore,
+    agent: str,
+    project_root: str,
+    exclude_session_id: str,
+    new_session_started_at: datetime,
+    max_gap_seconds: int | None = None,
+    fallback_max_hours: int | None = None,
+) -> tuple[str, str] | None:
+    """Find a session suitable for parent linking with multi-tier fallback.
+
+    Used when source="clear" to link the new session to the previous session.
+    Uses a tiered approach to handle different scenarios:
+
+    1. **Tier 1 (immediate)**: Session ended within max_gap_seconds
+       - Handles normal "clear context and proceed" flow
+       - Most transitions: 0.04-0.12 seconds
+
+    2. **Tier 2 (race condition)**: Most recent ACTIVE session for same agent/project
+       - Handles race condition where SessionEnd hasn't been processed yet
+       - Only matches if session has prompt activity (not empty)
+
+    3. **Tier 3 (stale/next-day)**: Most recent COMPLETED session within fallback window
+       - Handles case where planning session went stale and user returns later
+       - Uses created_at_epoch ordering (not ended_at which reflects recovery time)
+
+    Args:
+        store: The ActivityStore instance.
+        agent: Agent name to match.
+        project_root: Project root to match.
+        exclude_session_id: Session ID to exclude (the new session).
+        new_session_started_at: When the new session started.
+        max_gap_seconds: Maximum gap for tier 1 (default from constants).
+        fallback_max_hours: Maximum hours for tier 3 fallback (default from constants).
+
+    Returns:
+        Tuple of (parent_session_id, reason) if found, None otherwise.
+        Reason is one of the SESSION_LINK_REASON_* constants.
+    """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        SESSION_LINK_FALLBACK_MAX_HOURS,
+        SESSION_LINK_IMMEDIATE_GAP_SECONDS,
+        SESSION_LINK_REASON_CLEAR,
+        SESSION_LINK_REASON_CLEAR_ACTIVE,
+        SESSION_LINK_REASON_INFERRED,
+    )
+
+    # Apply defaults from constants
+    if max_gap_seconds is None:
+        max_gap_seconds = SESSION_LINK_IMMEDIATE_GAP_SECONDS
+    if fallback_max_hours is None:
+        fallback_max_hours = SESSION_LINK_FALLBACK_MAX_HOURS
+
     conn = store._get_connection()
 
-    # Find the most recent session that:
-    # - Is NOT the excluded session
-    # - Has the same agent and project_root
-    # - Has ended_at set (is completed)
-    # - Started before the new session
-    #
-    # We then check if it ended within the gap window of the new session starting.
+    # =========================================================================
+    # Tier 1: Look for session that JUST ended (within max_gap_seconds)
+    # =========================================================================
     cursor = conn.execute(
         """
         SELECT id, ended_at
@@ -553,34 +616,88 @@ def find_just_ended_session(
     )
     candidate = cursor.fetchone()
 
-    if not candidate:
-        return None
+    if candidate:
+        parent_id: str = candidate[0]
+        ended_at_str: str | None = candidate[1]
+        if ended_at_str:
+            try:
+                ended_at = datetime.fromisoformat(ended_at_str)
+                gap_seconds = (new_session_started_at - ended_at).total_seconds()
 
-    parent_id: str = candidate[0]
-    ended_at_str: str | None = candidate[1]
-    if not ended_at_str:
-        return None
+                if 0 <= gap_seconds <= max_gap_seconds:
+                    logger.debug(
+                        f"[Tier 1] Found just-ended session {parent_id[:8]}... "
+                        f"(gap={gap_seconds:.2f}s)"
+                    )
+                    return (parent_id, SESSION_LINK_REASON_CLEAR)
+                else:
+                    logger.debug(
+                        f"[Tier 1] Candidate {parent_id[:8]}... gap={gap_seconds:.2f}s "
+                        f"exceeds {max_gap_seconds}s, trying fallbacks"
+                    )
+            except (ValueError, TypeError) as e:
+                logger.debug(f"[Tier 1] Could not parse ended_at: {e}")
 
-    try:
-        ended_at = datetime.fromisoformat(ended_at_str)
-        gap_seconds = (new_session_started_at - ended_at).total_seconds()
+    # =========================================================================
+    # Tier 2: Look for ACTIVE session (race condition - SessionEnd not processed yet)
+    # Only match if session has prompt activity (not an empty concurrent session)
+    # =========================================================================
+    cursor = conn.execute(
+        """
+        SELECT id, created_at_epoch
+        FROM sessions
+        WHERE id != ?
+          AND agent = ?
+          AND project_root = ?
+          AND status = 'active'
+          AND prompt_count > 0
+        ORDER BY created_at_epoch DESC
+        LIMIT 1
+        """,
+        (exclude_session_id, agent, project_root),
+    )
+    active_candidate = cursor.fetchone()
 
-        # Only link if the gap is within threshold and positive (ended before started)
-        if 0 <= gap_seconds <= max_gap_seconds:
-            logger.debug(
-                f"Found just-ended session {parent_id[:8]}... "
-                f"(gap={gap_seconds:.2f}s, max={max_gap_seconds}s)"
-            )
-            return parent_id
-        else:
-            logger.debug(
-                f"Candidate session {parent_id[:8]}... gap={gap_seconds:.2f}s "
-                f"exceeds max={max_gap_seconds}s, not linking"
-            )
-            return None
-    except (ValueError, TypeError) as e:
-        logger.debug(f"Could not parse ended_at for session linking: {e}")
-        return None
+    if active_candidate:
+        active_parent_id: str = active_candidate[0]
+        logger.info(
+            f"[Tier 2] Found active session {active_parent_id[:8]}... "
+            "(SessionEnd may not have been processed yet)"
+        )
+        return (active_parent_id, SESSION_LINK_REASON_CLEAR_ACTIVE)
+
+    # =========================================================================
+    # Tier 3: Fallback to most recent completed session within fallback window
+    # This handles the "next day resume" scenario where planning session went stale
+    # =========================================================================
+    if candidate:
+        # We already have the most recent completed session from tier 1
+        parent_id = candidate[0]
+        created_at_cursor = conn.execute(
+            "SELECT created_at_epoch FROM sessions WHERE id = ?",
+            (parent_id,),
+        )
+        created_row = created_at_cursor.fetchone()
+        if created_row:
+            created_at_epoch = created_row[0]
+            now_epoch = new_session_started_at.timestamp()
+            hours_since_created = (now_epoch - created_at_epoch) / 3600
+
+            if hours_since_created <= fallback_max_hours:
+                logger.info(
+                    f"[Tier 3] Linking to recent session {parent_id[:8]}... "
+                    f"(created {hours_since_created:.1f}h ago, "
+                    f"reason={SESSION_LINK_REASON_INFERRED})"
+                )
+                return (parent_id, SESSION_LINK_REASON_INFERRED)
+            else:
+                logger.debug(
+                    f"[Tier 3] Session {parent_id[:8]}... too old "
+                    f"({hours_since_created:.1f}h > {fallback_max_hours}h)"
+                )
+
+    logger.debug("No suitable parent session found for linking")
+    return None
 
 
 def get_session_lineage(
@@ -625,11 +742,64 @@ def get_session_lineage(
     return lineage
 
 
+def log_link_event(
+    store: ActivityStore,
+    session_id: str,
+    event_type: str,
+    old_parent_id: str | None = None,
+    new_parent_id: str | None = None,
+    suggested_parent_id: str | None = None,
+    suggestion_confidence: float | None = None,
+    link_reason: str | None = None,
+) -> None:
+    """Log a session link event for analytics.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session that was linked/unlinked.
+        event_type: One of LINK_EVENT_* constants.
+        old_parent_id: Previous parent (for unlink/change events).
+        new_parent_id: New parent (for link events).
+        suggested_parent_id: What was suggested (if applicable).
+        suggestion_confidence: Confidence score of suggestion.
+        link_reason: Why linked (one of SESSION_LINK_REASON_* constants).
+    """
+    now = datetime.now()
+    with store._transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO session_link_events (
+                session_id, event_type, old_parent_id, new_parent_id,
+                suggested_parent_id, suggestion_confidence, link_reason,
+                created_at, created_at_epoch
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                event_type,
+                old_parent_id,
+                new_parent_id,
+                suggested_parent_id,
+                suggestion_confidence,
+                link_reason,
+                now.isoformat(),
+                int(now.timestamp()),
+            ),
+        )
+    logger.debug(
+        f"Logged link event: {event_type} for session {session_id[:8]}... "
+        f"(old={old_parent_id[:8] if old_parent_id else None}... "
+        f"new={new_parent_id[:8] if new_parent_id else None}...)"
+    )
+
+
 def update_session_parent(
     store: ActivityStore,
     session_id: str,
     parent_session_id: str,
     reason: str,
+    suggested_parent_id: str | None = None,
+    suggestion_confidence: float | None = None,
 ) -> None:
     """Update the parent session link for a session.
 
@@ -637,8 +807,16 @@ def update_session_parent(
         store: The ActivityStore instance.
         session_id: Session to update.
         parent_session_id: Parent session ID.
-        reason: Why linked: 'clear', 'compact', 'inferred', 'manual'.
+        reason: Why linked: 'clear', 'compact', 'inferred', 'manual', 'suggestion'.
+        suggested_parent_id: For analytics - what was the suggestion if any.
+        suggestion_confidence: Confidence score of the suggestion.
     """
+    # Get current parent for event logging
+    conn = store._get_connection()
+    cursor = conn.execute("SELECT parent_session_id FROM sessions WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+    old_parent_id = row[0] if row else None
+
     with store._transaction() as conn:
         conn.execute(
             """
@@ -648,6 +826,28 @@ def update_session_parent(
             """,
             (parent_session_id, reason, session_id),
         )
+
+    # Determine event type based on reason
+    if reason == SESSION_LINK_REASON_SUGGESTION:
+        event_type = LINK_EVENT_SUGGESTION_ACCEPTED
+    elif reason == SESSION_LINK_REASON_MANUAL:
+        event_type = LINK_EVENT_MANUAL_LINKED
+    else:
+        # Auto-linking (clear, clear_active, inferred, compact)
+        event_type = LINK_EVENT_AUTO_LINKED
+
+    # Log the link event
+    log_link_event(
+        store=store,
+        session_id=session_id,
+        event_type=event_type,
+        old_parent_id=old_parent_id,
+        new_parent_id=parent_session_id,
+        suggested_parent_id=suggested_parent_id,
+        suggestion_confidence=suggestion_confidence,
+        link_reason=reason,
+    )
+
     logger.debug(
         f"Updated session {session_id[:8]}... parent to {parent_session_id[:8]}... "
         f"(reason={reason})"
@@ -681,7 +881,15 @@ def clear_session_parent(store: ActivityStore, session_id: str) -> str | None:
         )
 
     if previous_parent:
+        # Log the unlink event
+        log_link_event(
+            store=store,
+            session_id=session_id,
+            event_type=LINK_EVENT_UNLINKED,
+            old_parent_id=previous_parent,
+        )
         logger.debug(f"Cleared parent link from session {session_id[:8]}...")
+
     return previous_parent
 
 

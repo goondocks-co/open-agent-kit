@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/hooks.json",
-  "$comment": "Codebase Intelligence hooks for Claude Code. {{PROJECT_ROOT}} is replaced with the project directory. Port is read from .oak/ci/daemon.port at runtime, allowing port changes without hook reinstall. OAK hooks are identified by the /api/oak/ci/ URL pattern. Hook events are logged to .oak/ci/hooks.log for debugging.",
+  "$comment": "Codebase Intelligence hooks for Claude Code. Uses `oak ci hook` command for cross-platform compatibility. OAK hooks are identified by the oak ci hook command pattern.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh SessionStart",
+            "command": "oak ci hook SessionStart --agent claude",
             "timeout": 60
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh UserPromptSubmit",
+            "command": "oak ci hook UserPromptSubmit --agent claude",
             "timeout": 60
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh PostToolUse",
+            "command": "oak ci hook PostToolUse --agent claude",
             "timeout": 60
           }
         ]
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh Stop",
+            "command": "oak ci hook Stop --agent claude",
             "timeout": 60
           }
         ]
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh SessionEnd",
+            "command": "oak ci hook SessionEnd --agent claude",
             "timeout": 60
           }
         ]
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh PostToolUseFailure",
+            "command": "oak ci hook PostToolUseFailure --agent claude",
             "timeout": 60
           }
         ]
@@ -80,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh SubagentStart",
+            "command": "oak ci hook SubagentStart --agent claude",
             "timeout": 60
           }
         ]
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PROJECT_ROOT}}/.claude/hooks/oak-ci-hook.sh SubagentStop",
+            "command": "oak ci hook SubagentStop --agent claude",
             "timeout": 60
           }
         ]

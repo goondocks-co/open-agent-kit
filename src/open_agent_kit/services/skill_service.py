@@ -6,7 +6,7 @@ defined in their manifest. Currently supported agents include:
 - Claude Code (.claude/skills/)
 - Codex CLI (.codex/skills/)
 - GitHub Copilot (.github/skills/)
-- Gemini CLI (.agent/skills/)
+- Gemini CLI (.gemini/skills/)
 
 Directory structure:
 - Package skills: {package_root}/features/{feature}/skills/{skill_name}/SKILL.md

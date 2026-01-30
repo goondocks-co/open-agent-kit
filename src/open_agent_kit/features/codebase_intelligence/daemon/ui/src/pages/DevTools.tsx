@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench } from "lucide-react";
+import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench, MessageSquare } from "lucide-react";
 // Note: Backup functionality moved to Team page
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -174,6 +174,17 @@ export default function DevTools() {
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to backfill hashes" })
     });
 
+    const reembedSessionsFn = useMutation({
+        mutationFn: () => fetchJson<{ success: boolean; sessions_processed: number; sessions_embedded: number; message: string }>(
+            API_ENDPOINTS.DEVTOOLS_REEMBED_SESSIONS,
+            { method: "POST" }
+        ),
+        onSuccess: (data) => {
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || `Re-embedded ${data.sessions_embedded} session summaries` });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to re-embed session summaries" })
+    });
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto p-4">
             <div className="flex flex-col gap-2">
@@ -226,11 +237,11 @@ export default function DevTools() {
             )}
 
             <div className="grid gap-6 md:grid-cols-2">
-                {/* Indexing Tools */}
+                {/* Indexing & Embedding Tools (ChromaDB-focused) */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5" /> Indexing</CardTitle>
-                        <CardDescription>Manage the codebase vector index.</CardDescription>
+                        <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5" /> Indexing & Embedding</CardTitle>
+                        <CardDescription>Manage ChromaDB vector indexes.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <Button
@@ -245,14 +256,54 @@ export default function DevTools() {
                         <p className="text-xs text-muted-foreground">
                             Forces a complete re-scan of the codebase and updates the vector store. Useful if the index is out of sync with files.
                         </p>
+
+                        <div className="h-px bg-border my-4" />
+
+                        <Button
+                            variant="secondary"
+                            onClick={() => reembedSessionsFn.mutate()}
+                            disabled={reembedSessionsFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <MessageSquare className={`mr-2 h-4 w-4 ${reembedSessionsFn.isPending ? "animate-pulse" : ""}`} />
+                            {reembedSessionsFn.isPending ? "Re-embedding..." : "Re-embed Session Summaries"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Re-embeds all session summaries from SQLite to ChromaDB. Use after backup restore or to enable session search.
+                        </p>
+
+                        <div className="h-px bg-border my-4" />
+
+                        <div className="flex items-center gap-2 mb-2">
+                            <Checkbox
+                                id="clear-chroma-first"
+                                checked={clearChromaFirst}
+                                onCheckedChange={(checked) => setClearChromaFirst(checked === true)}
+                            />
+                            <Label htmlFor="clear-chroma-first" className="text-sm">
+                                Clear orphaned entries first
+                            </Label>
+                        </div>
+                        <Button
+                            variant="secondary"
+                            onClick={() => rebuildMemoriesFn.mutate(clearChromaFirst)}
+                            disabled={rebuildMemoriesFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <Brain className={`mr-2 h-4 w-4 ${rebuildMemoriesFn.isPending ? "animate-pulse" : ""}`} />
+                            {rebuildMemoriesFn.isPending ? "Re-embedding..." : "Re-embed Memories"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Re-embeds all memories from SQLite to ChromaDB. Check "Clear orphaned entries" to remove stale data after restores or deletions.
+                        </p>
                     </CardContent>
                 </Card>
 
-                {/* Processing Tools */}
+                {/* Processing Tools (LLM/reprocessing-focused) */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" /> Processing</CardTitle>
-                        <CardDescription>Manage LLM background processing logic.</CardDescription>
+                        <CardDescription>Manage LLM background processing.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <Button
@@ -294,31 +345,6 @@ export default function DevTools() {
                         </Button>
                         <p className="text-xs text-muted-foreground">
                             Re-extract observations using updated prompts (with new importance criteria). Preview first to see what will change.
-                        </p>
-
-                        <div className="h-px bg-border my-4" />
-
-                        <div className="flex items-center gap-2 mb-2">
-                            <Checkbox
-                                id="clear-chroma-first"
-                                checked={clearChromaFirst}
-                                onCheckedChange={(checked) => setClearChromaFirst(checked === true)}
-                            />
-                            <Label htmlFor="clear-chroma-first" className="text-sm">
-                                Clear orphaned entries first
-                            </Label>
-                        </div>
-                        <Button
-                            variant="secondary"
-                            onClick={() => rebuildMemoriesFn.mutate(clearChromaFirst)}
-                            disabled={rebuildMemoriesFn.isPending}
-                            className="w-full justify-start"
-                        >
-                            <Brain className={`mr-2 h-4 w-4 ${rebuildMemoriesFn.isPending ? "animate-pulse" : ""}`} />
-                            {rebuildMemoriesFn.isPending ? "Re-embedding..." : "Re-embed Memories to ChromaDB"}
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                            Re-embeds all memories from SQLite to ChromaDB. Check "Clear orphaned entries" to remove stale ChromaDB data after restores or deletions.
                         </p>
 
                         <div className="h-px bg-border my-4" />

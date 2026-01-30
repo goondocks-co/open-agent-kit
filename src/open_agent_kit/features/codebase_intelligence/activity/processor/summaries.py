@@ -291,6 +291,22 @@ def process_session_summary(
         # ChromaDB failed but SQLite has the data - can retry later
         logger.warning(f"Failed to embed session summary in ChromaDB: {e}")
 
+    # Step 3: Embed to session summaries collection for similarity search
+    # This enables the user-driven session linking suggestion system
+    from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+        embed_session_summary,
+    )
+
+    embed_session_summary(
+        vector_store=vector_store,
+        session_id=session_id,
+        title=session.title,
+        summary=summary,
+        agent=session.agent or "unknown",
+        project_root=session.project_root or "",
+        created_at_epoch=int(created_at.timestamp()),
+    )
+
     # Generate or regenerate title from the summary (more accurate than prompt-based)
     # Since we just generated a summary, we have good context to create a descriptive title
     title: str | None = None

@@ -13,8 +13,10 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_DEDUP_CACHE_MAX,
     HOOK_DEDUP_HASH_ALGORITHM,
     HOOK_DROP_LOG_TAG,
+    HOOK_EVENT_AGENT_THOUGHT,
     HOOK_EVENT_POST_TOOL_USE,
     HOOK_EVENT_POST_TOOL_USE_FAILURE,
+    HOOK_EVENT_PRE_COMPACT,
     HOOK_EVENT_PROMPT_SUBMIT,
     HOOK_EVENT_SESSION_END,
     HOOK_EVENT_SESSION_START,
@@ -221,24 +223,27 @@ async def hook_session_start(request: Request) -> dict:
     parent_session_reason = None
 
     if state.activity_store and state.project_root:
-        # When source="clear", look for a session that just ended (within 5 seconds)
-        # This links implementation sessions to their planning sessions
+        # When source="clear", find a session to link as parent using tiered approach:
+        # 1. Session that just ended (within SESSION_LINK_IMMEDIATE_GAP_SECONDS) - normal flow
+        # 2. Active session (race condition - SessionEnd not processed yet)
+        # 3. Most recent completed session within SESSION_LINK_FALLBACK_MAX_HOURS (stale/next-day)
         if source == "clear":
             try:
                 from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
-                    find_just_ended_session,
+                    find_linkable_parent_session,
                 )
 
-                parent_session_id = find_just_ended_session(
+                link_result = find_linkable_parent_session(
                     store=state.activity_store,
                     agent=agent,
                     project_root=str(state.project_root),
                     exclude_session_id=session_id,
                     new_session_started_at=datetime.now(),
-                    max_gap_seconds=5,
+                    # Use defaults from constants (SESSION_LINK_IMMEDIATE_GAP_SECONDS,
+                    # SESSION_LINK_FALLBACK_MAX_HOURS)
                 )
-                if parent_session_id:
-                    parent_session_reason = "clear"
+                if link_result:
+                    parent_session_id, parent_session_reason = link_result
                     hooks_logger.info(
                         f"[SESSION-LINK] session={session_id} parent={parent_session_id[:8]}... "
                         f"reason={parent_session_reason}"
@@ -816,6 +821,23 @@ async def hook_post_tool_use(request: Request) -> dict:
                         )
                 except Exception as e:
                     logger.warning(f"[EXIT-PLAN-MODE] Failed to update plan content: {e}")
+
+            # Detect plan file reads - may signal plan execution is starting
+            # This helps discover patterns for agents without known plan execution prefixes
+            if tool_name == "Read" and prompt_batch_id:
+                file_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
+                if file_path:
+                    detection = detect_plan(file_path)
+                    if detection.is_plan:
+                        location = "global" if detection.is_global else "project"
+                        hooks_logger.info(
+                            f"[PLAN-READ] {detection.agent_type} plan read: {file_path} "
+                            f"location={location} session={session_id}"
+                        )
+                        logger.info(
+                            f"Detected {location} plan file read for {detection.agent_type}: "
+                            f"{file_path} (may signal plan execution)"
+                        )
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.debug(f"Failed to store activity: {e}")
@@ -1470,6 +1492,184 @@ async def hook_subagent_stop(request: Request) -> dict:
         "agent_id": agent_id,
         "agent_type": agent_type,
         "transcript_path": agent_transcript_path,
+    }
+
+
+@router.post(f"{OAK_CI_PREFIX}/agent-thought")
+async def hook_agent_thought(request: Request) -> dict:
+    """Handle agent-thought - capture agent reasoning/thinking blocks.
+
+    This is called when the agent completes a thinking block. Stores the
+    thinking text as an activity for potential analysis of agent reasoning.
+    """
+    state = get_state()
+
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        logger.debug("Failed to parse JSON body in agent-thought")
+        body = {}
+
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    thought_text = body.get("text", "")
+    duration_ms = body.get("duration_ms", 0)
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    generation_id = body.get(HOOK_FIELD_GENERATION_ID, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped agent-thought: missing session_id")
+        return {"status": "ok"}
+
+    # Skip empty thinking blocks
+    if not thought_text or len(thought_text) < 10:
+        return {"status": "ok"}
+
+    # Create dedupe key based on thought content hash
+    thought_hash = _hash_value(thought_text[:500])  # Hash first 500 chars
+    dedupe_parts = [generation_id, thought_hash] if generation_id else [thought_hash]
+    dedupe_key = _build_dedupe_key(HOOK_EVENT_AGENT_THOUGHT, session_id, dedupe_parts)
+    if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+        logger.debug(
+            "Deduped agent-thought session=%s origin=%s",
+            session_id,
+            hook_origin,
+        )
+        return {"status": "ok"}
+
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(
+        f"[AGENT-THOUGHT] session={session_id} duration_ms={duration_ms} "
+        f"length={len(thought_text)}"
+    )
+
+    # Get or create session
+    agent = body.get("agent", "unknown")
+    session = state.get_session(session_id)
+    if not session:
+        logger.info(f"Auto-creating session {session_id} in agent-thought")
+        session = state.create_session(session_id, agent)
+
+    # Store as activity for analysis
+    if state.activity_store and session_id:
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity import Activity
+
+            prompt_batch_id = session.current_prompt_batch_id if session else None
+
+            # Truncate thought text if too long (keep first 2000 chars for summary)
+            summary = thought_text[:2000] if len(thought_text) > 2000 else thought_text
+
+            activity = Activity(
+                session_id=session_id,
+                prompt_batch_id=prompt_batch_id,
+                tool_name="AgentThought",
+                tool_input={"duration_ms": duration_ms},
+                tool_output_summary=summary,
+                success=True,
+            )
+            state.activity_store.add_activity_buffered(activity)
+            logger.debug(
+                f"Stored agent-thought: {len(thought_text)} chars (batch={prompt_batch_id})"
+            )
+
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to store agent-thought: {e}")
+
+    return {"status": "ok", "thought_length": len(thought_text), "duration_ms": duration_ms}
+
+
+@router.post(f"{OAK_CI_PREFIX}/pre-compact")
+async def hook_pre_compact(request: Request) -> dict:
+    """Handle pre-compact - track context window compaction events.
+
+    This is called before context window compaction/summarization occurs.
+    Useful for understanding context pressure and debugging memory issues.
+    """
+    state = get_state()
+
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        logger.debug("Failed to parse JSON body in pre-compact")
+        body = {}
+
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    trigger = body.get("trigger", "auto")
+    context_usage_percent = body.get("context_usage_percent", 0)
+    context_tokens = body.get("context_tokens", 0)
+    context_window_size = body.get("context_window_size", 0)
+    message_count = body.get("message_count", 0)
+    messages_to_compact = body.get("messages_to_compact", 0)
+    is_first_compaction = body.get("is_first_compaction", False)
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    generation_id = body.get(HOOK_FIELD_GENERATION_ID, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped pre-compact: missing session_id")
+        return {"status": "ok"}
+
+    # Dedupe by generation_id if available, else by context_tokens
+    dedupe_parts = [generation_id] if generation_id else [str(context_tokens)]
+    dedupe_key = _build_dedupe_key(HOOK_EVENT_PRE_COMPACT, session_id, dedupe_parts)
+    if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+        logger.debug(
+            "Deduped pre-compact session=%s origin=%s",
+            session_id,
+            hook_origin,
+        )
+        return {"status": "ok"}
+
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(
+        f"[PRE-COMPACT] session={session_id} trigger={trigger} "
+        f"usage={context_usage_percent}% tokens={context_tokens} messages={message_count}"
+    )
+
+    # Get or create session
+    agent = body.get("agent", "unknown")
+    session = state.get_session(session_id)
+    if not session:
+        logger.info(f"Auto-creating session {session_id} in pre-compact")
+        session = state.create_session(session_id, agent)
+
+    # Store as activity for debugging context pressure
+    if state.activity_store and session_id:
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity import Activity
+
+            prompt_batch_id = session.current_prompt_batch_id if session else None
+
+            activity = Activity(
+                session_id=session_id,
+                prompt_batch_id=prompt_batch_id,
+                tool_name="ContextCompact",
+                tool_input={
+                    "trigger": trigger,
+                    "context_usage_percent": context_usage_percent,
+                    "context_tokens": context_tokens,
+                    "context_window_size": context_window_size,
+                    "message_count": message_count,
+                    "messages_to_compact": messages_to_compact,
+                    "is_first_compaction": is_first_compaction,
+                },
+                tool_output_summary=(
+                    f"Context compaction ({trigger}): {context_usage_percent}% used, "
+                    f"{messages_to_compact}/{message_count} messages"
+                ),
+                success=True,
+            )
+            state.activity_store.add_activity_buffered(activity)
+            logger.debug(
+                f"Stored pre-compact: {context_usage_percent}% usage (batch={prompt_batch_id})"
+            )
+
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to store pre-compact: {e}")
+
+    return {
+        "status": "ok",
+        "trigger": trigger,
+        "context_usage_percent": context_usage_percent,
     }
 
 

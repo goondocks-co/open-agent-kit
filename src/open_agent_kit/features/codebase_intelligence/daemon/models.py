@@ -63,7 +63,7 @@ class SearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, description="Search query")
     limit: int = Field(default=20, ge=1, le=100)
-    search_type: str = Field(default="all", pattern="^(all|code|memory|plans)$")
+    search_type: str = Field(default="all", pattern="^(all|code|memory|plans|sessions)$")
     apply_doc_type_weights: bool = Field(
         default=True,
         description="Apply doc_type weighting to deprioritize i18n/config files. Disable for translation searches.",
@@ -125,6 +125,23 @@ class PlanResult(BaseModel):
     tokens: int = 0
 
 
+class SessionResult(BaseModel):
+    """Session search result.
+
+    Sessions are searched via their embedded summaries in ChromaDB.
+    """
+
+    id: str
+    relevance: float
+    confidence: Confidence = Confidence.MEDIUM
+    title: str | None = None
+    preview: str
+    status: str = "completed"
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    prompt_batch_count: int = 0
+
+
 class SearchResponse(BaseModel):
     """Search results."""
 
@@ -132,6 +149,7 @@ class SearchResponse(BaseModel):
     code: list[CodeResult] = Field(default_factory=list)
     memory: list[MemoryResult] = Field(default_factory=list)
     plans: list[PlanResult] = Field(default_factory=list)
+    sessions: list[SessionResult] = Field(default_factory=list)
     total_tokens_available: int = 0
 
 
@@ -576,4 +594,38 @@ class RefreshPlanResponse(BaseModel):
     batch_id: int
     plan_file_path: str | None = None
     content_length: int = 0
+    message: str = ""
+
+
+# ============================================================================
+# Session Suggestion Models
+# ============================================================================
+
+
+class SuggestedParentResponse(BaseModel):
+    """Response for session suggested parent query."""
+
+    session_id: str
+    has_suggestion: bool = False
+    suggested_parent: SessionLineageItem | None = None
+    confidence: str | None = None  # high, medium, low
+    confidence_score: float | None = None
+    reason: str | None = None
+    dismissed: bool = False
+
+
+class DismissSuggestionResponse(BaseModel):
+    """Response after dismissing a suggestion."""
+
+    success: bool = True
+    session_id: str
+    message: str = ""
+
+
+class ReembedSessionsResponse(BaseModel):
+    """Response after re-embedding session summaries."""
+
+    success: bool = True
+    sessions_processed: int = 0
+    sessions_embedded: int = 0
     message: str = ""

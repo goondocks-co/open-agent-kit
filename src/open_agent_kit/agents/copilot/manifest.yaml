@@ -35,7 +35,11 @@ capabilities:
 
 # Codebase Intelligence configuration
 ci:
-  # Copilot's plan mode signals TBD - add when discovered
+  # Plan storage - Copilot may store plans in .github/plans/ (TBD - needs verification)
+  # Set to null until plan storage location is confirmed
+  plans_subfolder: null
+
+  # Plan execution/exit detection TBD - add when discovered
   plan_execution_prefix: null
   exit_plan_tool: null
 

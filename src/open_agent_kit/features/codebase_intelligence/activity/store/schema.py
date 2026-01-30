@@ -17,7 +17,8 @@ Contains schema version and SQL for creating the database schema.
 # v14: Added agent_runs table for CI agent execution tracking
 # v15: Added saved_tasks table for reusable task templates
 # v16: Updated source_machine_id to privacy-preserving format (github_username_hash)
-SCHEMA_VERSION = 16
+# v17: Added suggested_parent_dismissed to sessions, session_link_events table for analytics
+SCHEMA_VERSION = 17
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -232,4 +233,23 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_name);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_created ON agent_runs(created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_created ON agent_runs(agent_name, created_at_epoch DESC);
+
+-- Session link events table (v17 - analytics for user-driven linking)
+CREATE TABLE IF NOT EXISTS session_link_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,  -- auto_linked, suggestion_accepted, suggestion_rejected, manual_linked, unlinked
+    old_parent_id TEXT,
+    new_parent_id TEXT,
+    suggested_parent_id TEXT,
+    suggestion_confidence REAL,
+    link_reason TEXT,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL
+);
+
+-- Indexes for session_link_events
+CREATE INDEX IF NOT EXISTS idx_session_link_events_session ON session_link_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_link_events_type ON session_link_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_session_link_events_created ON session_link_events(created_at_epoch DESC);
 """

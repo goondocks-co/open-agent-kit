@@ -25,7 +25,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_DATA_DIR,
     CI_HISTORY_BACKUP_DIR,
-    CI_HISTORY_BACKUP_FILE_PREFIX,
+    CI_HISTORY_BACKUP_FILE_SUFFIX,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
@@ -117,7 +117,7 @@ class TestBackupStatus:
         assert response.status_code == 200
         data = response.json()
         assert data["backup_exists"] is False
-        assert CI_HISTORY_BACKUP_FILE_PREFIX in data["backup_path"]
+        assert data["backup_path"].endswith(CI_HISTORY_BACKUP_FILE_SUFFIX)
         assert "machine_id" in data
         assert "all_backups" in data
 
@@ -171,7 +171,7 @@ class TestBackupCreate:
         data = response.json()
         assert data["status"] == "completed"
         assert data["record_count"] >= 2  # session + observation
-        assert CI_HISTORY_BACKUP_FILE_PREFIX in data["backup_path"]
+        assert data["backup_path"].endswith(CI_HISTORY_BACKUP_FILE_SUFFIX)
         assert "machine_id" in data
 
         # Verify file was created

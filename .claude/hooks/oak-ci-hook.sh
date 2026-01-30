@@ -1,7 +1,6 @@
 #!/bin/bash
 # Codebase Intelligence hooks for Claude Code
 # Installed by: oak ci enable
-# Template placeholder replaced: /Users/chris/Repos/open-agent-kit
 #
 # This script handles all Claude hook events, reading the daemon port from
 # the daemon.port file at runtime. This allows the port to change due to
@@ -10,9 +9,14 @@
 EVENT="${1:-unknown}"
 INPUT="$(cat || true)"
 
-PROJECT_ROOT="/Users/chris/Repos/open-agent-kit"
+# Self-resolve project root from script location (.claude/hooks/ -> project root)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # Read port from file at runtime (allows port changes without hook reinstall)
-PORT="$(cat "${PROJECT_ROOT}/.oak/ci/daemon.port" 2>/dev/null || echo "37800")"
+# Priority: 1) local override, 2) team-shared, 3) default
+PORT="$(cat "${PROJECT_ROOT}/.oak/ci/daemon.port" 2>/dev/null || \
+        cat "${PROJECT_ROOT}/oak/ci/daemon.port" 2>/dev/null || \
+        echo "37800")"
 HOOK_LOG="${PROJECT_ROOT}/.oak/ci/hooks.log"
 
 SAFE_INPUT="$(printf "%s" "${INPUT}" | jq -c . 2>/dev/null || echo "{}")"

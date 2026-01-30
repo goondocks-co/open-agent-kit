@@ -41,11 +41,24 @@ export interface PlanResult {
     created_at: string | null;
 }
 
+export interface SessionResult {
+    id: string;
+    title: string | null;
+    preview: string;
+    relevance: number;
+    confidence: ConfidenceLevel;
+    status?: string;
+    started_at?: string | null;
+    ended_at?: string | null;
+    prompt_batch_count?: number;
+}
+
 export interface SearchResponse {
     query: string;
     code: CodeResult[];
     memory: MemoryResult[];
     plans: PlanResult[];
+    sessions: SessionResult[];
     total_tokens_available: number;
 }
 
@@ -101,6 +114,7 @@ export function useSearch(
               code: filterByConfidence(queryResult.data.code || [], confidenceFilter),
               memory: filterByConfidence(queryResult.data.memory || [], confidenceFilter),
               plans: filterByConfidence(queryResult.data.plans || [], confidenceFilter),
+              sessions: filterByConfidence(queryResult.data.sessions || [], confidenceFilter),
           }
         : undefined;
 
