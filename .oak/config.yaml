@@ -2,8 +2,8 @@ version: 0.5.2.dev20+g241246783.d20260130
 agents:
 - cursor
 - copilot
-- gemini
 - codex
+- gemini
 - claude
 agent_capabilities:
   claude:

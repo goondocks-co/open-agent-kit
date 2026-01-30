@@ -47,6 +47,13 @@ class TestGetAgentInstructionFile:
         path = service.get_agent_instruction_file("windsurf")
         assert path == initialized_project / ".windsurf" / "rules" / "rules.md"
 
+    def test_returns_correct_path_for_opencode(self, initialized_project: Path) -> None:
+        """Test get_agent_instruction_file returns correct path for OpenCode."""
+        service = AgentService(initialized_project)
+        path = service.get_agent_instruction_file("opencode")
+        # OpenCode uses AGENTS.md (shared with Cursor/Codex)
+        assert path == initialized_project / "AGENTS.md"
+
     def test_handles_unknown_agent_type(self, initialized_project: Path) -> None:
         """Test that unknown agent type raises ValueError."""
         service = AgentService(initialized_project)

@@ -105,6 +105,11 @@ COPILOT_HOOKS_DIRNAME: Final[str] = "hooks"
 COPILOT_HOOK_CONFIG_FILENAME: Final[str] = "oak-ci-hooks.json"
 COPILOT_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
 
+# OpenCode plugin configuration (under .opencode/)
+# OpenCode uses TypeScript/JavaScript plugins instead of JSON hooks
+OPENCODE_PLUGIN_DIRNAME: Final[str] = "plugins"
+OPENCODE_PLUGIN_FILENAME: Final[str] = "oak-ci.ts"
+
 # CI data directory structure (relative to .oak/)
 CI_DATA_DIR: Final[str] = "ci"
 CI_CHROMA_DIR: Final[str] = "chroma"

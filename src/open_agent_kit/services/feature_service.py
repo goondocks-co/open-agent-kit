@@ -1113,9 +1113,17 @@ class FeatureService:
         # Map kwargs to expected format for certain hooks
         if action == "update_agent_hooks":
             # on_agents_changed passes agents_added and agents_removed
-            # but update_agent_hooks expects a flat list of all current agents
+            # We need to:
+            # 1. Update hooks for current agents
+            # 2. Remove hooks for removed agents
             config = self.config_service.load_config()
             kwargs["agents"] = config.agents
+
+            # First, remove hooks for removed agents
+            agents_removed = kwargs.get("agents_removed", [])
+            if agents_removed:
+                execute_hook("remove_agent_hooks", self.project_root, agents_removed=agents_removed)
+                execute_hook("remove_mcp_servers", self.project_root, agents_removed=agents_removed)
 
         return execute_hook(action, self.project_root, **kwargs)
 

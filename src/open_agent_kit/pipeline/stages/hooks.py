@@ -40,10 +40,25 @@ class ReconcileFeatureHooksStage(BaseStage):
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Reconcile feature hooks for all configured agents."""
         # Use the codebase-intelligence hook update mechanism
-        # This ensures hook configs exist for all agents
+        # This ensures hook configs exist for all agents and removed agents are cleaned up
         try:
             from open_agent_kit.features.codebase_intelligence.service import execute_hook
 
+            # First, remove hooks for agents that were removed
+            agents_removed = list(context.selections.agents_removed)
+            if agents_removed:
+                execute_hook(
+                    "remove_agent_hooks",
+                    context.project_root,
+                    agents_removed=agents_removed,
+                )
+                execute_hook(
+                    "remove_mcp_servers",
+                    context.project_root,
+                    agents_removed=agents_removed,
+                )
+
+            # Then update hooks for current agents
             result = execute_hook(
                 "update_agent_hooks",
                 context.project_root,
@@ -53,10 +68,17 @@ class ReconcileFeatureHooksStage(BaseStage):
             if result.get("status") == "success":
                 updated = result.get("updated", [])
                 created = result.get("created", [])
-                if updated or created:
+                if updated or created or agents_removed:
+                    msg_parts = []
+                    if created:
+                        msg_parts.append(f"{len(created)} created")
+                    if updated:
+                        msg_parts.append(f"{len(updated)} updated")
+                    if agents_removed:
+                        msg_parts.append(f"{len(agents_removed)} removed")
                     return StageOutcome.success(
-                        f"Reconciled hooks ({len(created)} created, {len(updated)} updated)",
-                        data={"created": created, "updated": updated},
+                        f"Reconciled hooks ({', '.join(msg_parts)})",
+                        data={"created": created, "updated": updated, "removed": agents_removed},
                     )
                 else:
                     return StageOutcome.success("Feature hooks up to date")

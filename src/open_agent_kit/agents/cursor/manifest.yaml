@@ -43,9 +43,9 @@ ci:
   # Detected via postToolUse hook when Write occurs to .cursor/plans/ path
   plans_subfolder: "plans"
 
-  # Plan execution detection: TBD - monitor beforeSubmitPrompt for patterns
-  # When user clicks "Build" in plan mode, Cursor may inject a prompt prefix
-  plan_execution_prefix: null
+  # Plan execution detection - when user clicks "Build" in plan mode,
+  # Cursor injects a prompt starting with this prefix
+  plan_execution_prefix: "Implement the plan as specified"
 
   # Exit plan mode detection: TBD - monitor postToolUse for plan-related tools
   # Cursor may use a specific tool to signal plan mode completion

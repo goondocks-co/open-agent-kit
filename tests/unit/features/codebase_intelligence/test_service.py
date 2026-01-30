@@ -16,6 +16,8 @@ import pytest
 from open_agent_kit.features.codebase_intelligence.constants import (
     CURSOR_HOOK_SCRIPT_NAME,
     CURSOR_HOOKS_DIRNAME,
+    OPENCODE_PLUGIN_DIRNAME,
+    OPENCODE_PLUGIN_FILENAME,
 )
 from open_agent_kit.features.codebase_intelligence.service import (
     CodebaseIntelligenceService,
@@ -274,6 +276,54 @@ class TestHookUpdates:
 
         assert (tmp_path / ".gemini" / "settings.json").exists()
 
+    def test_update_opencode_hooks_creates_plugin_dir(self, tmp_path: Path):
+        """Test that OpenCode hook update creates .opencode/plugins directory."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        # Create the template file that the update method expects
+        from open_agent_kit.features.codebase_intelligence.service import HOOKS_TEMPLATE_DIR
+
+        template_dir = HOOKS_TEMPLATE_DIR / "opencode"
+        if not template_dir.exists():
+            pytest.skip("OpenCode hook template not found")
+
+        service._update_opencode_hooks()
+
+        assert (tmp_path / ".opencode" / OPENCODE_PLUGIN_DIRNAME).exists()
+
+    def test_update_opencode_hooks_installs_plugin_file(self, tmp_path: Path):
+        """Test that OpenCode hook update installs the TypeScript plugin."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        from open_agent_kit.features.codebase_intelligence.service import HOOKS_TEMPLATE_DIR
+
+        template_file = HOOKS_TEMPLATE_DIR / "opencode" / OPENCODE_PLUGIN_FILENAME
+        if not template_file.exists():
+            pytest.skip("OpenCode plugin template not found")
+
+        service._update_opencode_hooks()
+
+        plugin_file = tmp_path / ".opencode" / OPENCODE_PLUGIN_DIRNAME / OPENCODE_PLUGIN_FILENAME
+        assert plugin_file.exists()
+        # Verify it's a TypeScript file with expected content
+        content = plugin_file.read_text()
+        assert "OAK" in content or "oak" in content
+
+    def test_update_agent_hooks_includes_opencode(self, tmp_path: Path):
+        """Test that update_agent_hooks handles opencode agent."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        from open_agent_kit.features.codebase_intelligence.service import HOOKS_TEMPLATE_DIR
+
+        template_file = HOOKS_TEMPLATE_DIR / "opencode" / OPENCODE_PLUGIN_FILENAME
+        if not template_file.exists():
+            pytest.skip("OpenCode plugin template not found")
+
+        result = service.update_agent_hooks(["opencode"])
+
+        assert result["status"] == "success"
+        assert result["agents"]["opencode"] == "updated"
+
 
 # =============================================================================
 # Hook Removal Tests
@@ -355,6 +405,91 @@ class TestHookRemoval:
         assert result["cursor"] == "removed"
         assert result["gemini"] == "removed"
         assert result["unknown"] == "skipped"
+
+    def test_remove_opencode_hooks_removes_plugin_file(self, tmp_path: Path):
+        """Test that OpenCode hook removal removes the plugin file and directories."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        # Create plugin file
+        agent_dir = tmp_path / ".opencode"
+        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
+        plugins_dir.mkdir(parents=True)
+        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
+        plugin_file.write_text("// OAK CI plugin")
+
+        service._remove_opencode_hooks()
+
+        assert not plugin_file.exists()
+        # Empty plugins directory should be removed
+        assert not plugins_dir.exists()
+        # Empty agent directory should also be removed
+        assert not agent_dir.exists()
+
+    def test_remove_opencode_hooks_nonexistent_file(self, tmp_path: Path):
+        """Test that OpenCode hook removal handles missing file gracefully."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        # Should not raise
+        service._remove_opencode_hooks()
+
+    def test_remove_opencode_hooks_preserves_other_plugins(self, tmp_path: Path):
+        """Test that OpenCode hook removal preserves other plugin files."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        # Create plugin directory with multiple files
+        agent_dir = tmp_path / ".opencode"
+        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
+        plugins_dir.mkdir(parents=True)
+        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
+        plugin_file.write_text("// OAK CI plugin")
+        other_plugin = plugins_dir / "other-plugin.ts"
+        other_plugin.write_text("// Other plugin")
+
+        service._remove_opencode_hooks()
+
+        assert not plugin_file.exists()
+        # Other plugin, plugins dir, and agent dir should be preserved
+        assert other_plugin.exists()
+        assert plugins_dir.exists()
+        assert agent_dir.exists()
+
+    def test_remove_opencode_hooks_preserves_agent_dir_with_other_content(self, tmp_path: Path):
+        """Test that OpenCode hook removal preserves agent dir with other content."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        # Create agent directory with plugins and other content
+        agent_dir = tmp_path / ".opencode"
+        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
+        plugins_dir.mkdir(parents=True)
+        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
+        plugin_file.write_text("// OAK CI plugin")
+        # Add other content to agent directory
+        other_file = agent_dir / "config.json"
+        other_file.write_text("{}")
+
+        service._remove_opencode_hooks()
+
+        assert not plugin_file.exists()
+        # Empty plugins directory should be removed
+        assert not plugins_dir.exists()
+        # Agent directory with other content should be preserved
+        assert other_file.exists()
+        assert agent_dir.exists()
+
+    def test_remove_agent_hooks_includes_opencode(self, tmp_path: Path):
+        """Test that _remove_agent_hooks handles opencode agent."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        # Create plugin file
+        plugins_dir = tmp_path / ".opencode" / OPENCODE_PLUGIN_DIRNAME
+        plugins_dir.mkdir(parents=True)
+        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
+        plugin_file.write_text("// OAK CI plugin")
+
+        result = service._remove_agent_hooks(["opencode"])
+
+        assert result["opencode"] == "removed"
+        assert not plugin_file.exists()
 
 
 # =============================================================================

@@ -19,6 +19,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     COPILOT_HOOK_CONFIG_FILENAME,
     COPILOT_HOOK_SCRIPT_NAME,
     COPILOT_HOOKS_DIRNAME,
+    OPENCODE_PLUGIN_DIRNAME,
+    OPENCODE_PLUGIN_FILENAME,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
 
@@ -451,6 +453,9 @@ class CodebaseIntelligenceService:
                 elif agent == "copilot":
                     self._update_copilot_hooks()
                     results[agent] = "updated"
+                elif agent == "opencode":
+                    self._update_opencode_hooks()
+                    results[agent] = "updated"
                 else:
                     results[agent] = "skipped"
             except Exception as e:
@@ -515,7 +520,8 @@ class CodebaseIntelligenceService:
         Hooks use `oak ci hook` command for cross-platform compatibility.
         No shell scripts are installed - the oak CLI handles everything.
         """
-        settings_dir = self.project_root / ".claude"
+        agent_folder = self._get_agent_folder("claude")
+        settings_dir = self.project_root / agent_folder
         settings_file = settings_dir / "settings.json"
 
         settings_dir.mkdir(exist_ok=True)
@@ -564,7 +570,8 @@ class CodebaseIntelligenceService:
         Hooks use `oak ci hook` command for cross-platform compatibility.
         No shell scripts are installed - the oak CLI handles everything.
         """
-        settings_dir = self.project_root / ".cursor"
+        agent_folder = self._get_agent_folder("cursor")
+        settings_dir = self.project_root / agent_folder
         hooks_file = settings_dir / "hooks.json"
 
         settings_dir.mkdir(exist_ok=True)
@@ -609,7 +616,8 @@ class CodebaseIntelligenceService:
 
     def _update_gemini_hooks(self) -> None:
         """Update Gemini CLI settings with CI hooks."""
-        settings_dir = self.project_root / ".gemini"
+        agent_folder = self._get_agent_folder("gemini")
+        settings_dir = self.project_root / agent_folder
         settings_file = settings_dir / "settings.json"
 
         settings_dir.mkdir(exist_ok=True)
@@ -659,7 +667,8 @@ class CodebaseIntelligenceService:
         Hooks use `oak ci hook` command for cross-platform compatibility.
         No shell scripts are installed - the oak CLI handles everything.
         """
-        hooks_dir = self.project_root / ".github" / COPILOT_HOOKS_DIRNAME
+        agent_folder = self._get_agent_folder("copilot")
+        hooks_dir = self.project_root / agent_folder / COPILOT_HOOKS_DIRNAME
         hooks_file = hooks_dir / COPILOT_HOOK_CONFIG_FILENAME
 
         hooks_dir.mkdir(parents=True, exist_ok=True)
@@ -702,6 +711,49 @@ class CodebaseIntelligenceService:
 
         logger.info(f"Updated Copilot hooks at {hooks_file}")
 
+    def _get_agent_folder(self, agent: str) -> str:
+        """Get the installation folder for an agent from its manifest.
+
+        Reads the installation.folder from the agent's manifest.yaml, providing
+        a single source of truth for agent directory paths.
+
+        Args:
+            agent: Agent name (e.g., "opencode", "claude")
+
+        Returns:
+            Installation folder path (e.g., ".opencode", ".claude")
+        """
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService(self.project_root)
+        manifest = agent_service.get_agent_manifest(agent)
+        return manifest.installation.folder.rstrip("/")
+
+    def _update_opencode_hooks(self) -> None:
+        """Update OpenCode with CI plugin.
+
+        OpenCode uses TypeScript/JavaScript plugins instead of JSON hooks.
+        The plugin file is copied to the agent's plugins directory.
+        """
+        import shutil
+
+        agent_folder = self._get_agent_folder("opencode")
+        plugins_dir = self.project_root / agent_folder / OPENCODE_PLUGIN_DIRNAME
+        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
+
+        # Create plugins directory
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy plugin from template
+        template_file = HOOKS_TEMPLATE_DIR / "opencode" / OPENCODE_PLUGIN_FILENAME
+        if not template_file.exists():
+            logger.error(f"OpenCode plugin template not found: {template_file}")
+            return
+
+        # Copy plugin file (overwrite if exists)
+        shutil.copy2(template_file, plugin_file)
+        logger.info(f"Installed OpenCode CI plugin at {plugin_file}")
+
     # --- Hook Removal Methods ---
 
     def _remove_agent_hooks(self, agents: list[str]) -> dict[str, str]:
@@ -729,6 +781,9 @@ class CodebaseIntelligenceService:
                     results[agent] = "removed"
                 elif agent == "copilot":
                     self._remove_copilot_hooks()
+                    results[agent] = "removed"
+                elif agent == "opencode":
+                    self._remove_opencode_hooks()
                     results[agent] = "removed"
                 else:
                     results[agent] = "skipped"
@@ -768,7 +823,8 @@ class CodebaseIntelligenceService:
 
     def _remove_claude_hooks(self) -> None:
         """Remove CI hooks from Claude Code settings."""
-        settings_dir = self.project_root / ".claude"
+        agent_folder = self._get_agent_folder("claude")
+        settings_dir = self.project_root / agent_folder
         settings_file = settings_dir / "settings.json"
         hooks_script_dir = settings_dir / CLAUDE_HOOKS_DIRNAME
         hooks_script_path = hooks_script_dir / CLAUDE_HOOK_SCRIPT_NAME
@@ -823,7 +879,8 @@ class CodebaseIntelligenceService:
 
     def _remove_cursor_hooks(self) -> None:
         """Remove CI hooks from Cursor settings."""
-        hooks_file = self.project_root / ".cursor" / "hooks.json"
+        agent_folder = self._get_agent_folder("cursor")
+        hooks_file = self.project_root / agent_folder / "hooks.json"
 
         if not hooks_file.exists():
             return
@@ -867,7 +924,8 @@ class CodebaseIntelligenceService:
 
     def _remove_gemini_hooks(self) -> None:
         """Remove CI hooks from Gemini CLI settings."""
-        settings_file = self.project_root / ".gemini" / "settings.json"
+        agent_folder = self._get_agent_folder("gemini")
+        settings_file = self.project_root / agent_folder / "settings.json"
 
         if not settings_file.exists():
             return
@@ -909,7 +967,8 @@ class CodebaseIntelligenceService:
 
     def _remove_copilot_hooks(self) -> None:
         """Remove CI hooks from GitHub Copilot."""
-        hooks_dir = self.project_root / ".github" / COPILOT_HOOKS_DIRNAME
+        agent_folder = self._get_agent_folder("copilot")
+        hooks_dir = self.project_root / agent_folder / COPILOT_HOOKS_DIRNAME
         hooks_file = hooks_dir / COPILOT_HOOK_CONFIG_FILENAME
         hooks_script_path = hooks_dir / COPILOT_HOOK_SCRIPT_NAME
 
@@ -956,6 +1015,27 @@ class CodebaseIntelligenceService:
         self._cleanup_empty_config_file(
             hooks_file, [{}, {"hooks": {}}, {"version": 1}, {"version": 1, "hooks": {}}]
         )
+
+    def _remove_opencode_hooks(self) -> None:
+        """Remove CI plugin from OpenCode."""
+        agent_folder = self._get_agent_folder("opencode")
+        agent_dir = self.project_root / agent_folder
+        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
+        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
+
+        if plugin_file.exists():
+            plugin_file.unlink()
+            logger.info(f"Removed OpenCode CI plugin: {plugin_file}")
+
+        # Remove plugins directory if empty
+        if plugins_dir.exists() and not any(plugins_dir.iterdir()):
+            plugins_dir.rmdir()
+            logger.info(f"Removed empty plugins directory: {plugins_dir}")
+
+        # Remove agent directory if empty
+        if agent_dir.exists() and not any(agent_dir.iterdir()):
+            agent_dir.rmdir()
+            logger.info(f"Removed empty agent directory: {agent_dir}")
 
     # --- MCP Server Registration Methods ---
 
@@ -1148,6 +1228,11 @@ def execute_hook(hook_action: str, project_root: Path, **kwargs: Any) -> dict[st
             agents = config.agents
         return agents
 
+    def _get_removed_agents() -> list[str]:
+        """Get removed agents from kwargs."""
+        removed: list[str] = kwargs.get("agents_removed", [])
+        return removed
+
     handlers = {
         "initialize": service.initialize,
         "cleanup": lambda: service.cleanup(agents=_get_agents()),
@@ -1155,11 +1240,15 @@ def execute_hook(hook_action: str, project_root: Path, **kwargs: Any) -> dict[st
         "ensure_daemon": lambda: service.ensure_daemon(agents=_get_agents()),
         # Hooks management
         "update_agent_hooks": lambda: service.update_agent_hooks(_get_agents()),
+        "remove_agent_hooks": lambda: {
+            "status": "success",
+            "agents": service._remove_agent_hooks(_get_removed_agents()),
+        },
         # MCP server management (separate from hooks)
         "update_mcp_servers": lambda: service.update_mcp_servers(_get_agents()),
         "remove_mcp_servers": lambda: {
             "status": "success",
-            "agents": service.remove_mcp_server(_get_agents()),
+            "agents": service.remove_mcp_server(_get_removed_agents()),
         },
     }
 
