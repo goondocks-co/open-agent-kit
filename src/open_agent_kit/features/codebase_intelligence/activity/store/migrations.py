@@ -41,6 +41,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v13_to_v14(conn)
     if from_version < 15:
         migrate_v14_to_v15(conn)
+    if from_version < 16:
+        migrate_v15_to_v16(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -869,3 +871,50 @@ def migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
             logger.warning(f"Index creation warning (may already exist): {e}")
 
     logger.info("Migration v14->v15 complete: added saved_tasks table")
+
+
+def migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v15 to v16: Update source_machine_id to privacy-preserving format.
+
+    Replaces old PII-exposing machine identifiers (hostname_username) with the new
+    privacy-preserving format (github_username_hash).
+
+    Only updates records that match the CURRENT machine's old identifier,
+    so each machine updates its own records when the migration runs.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        _compute_legacy_machine_identifier,
+        get_machine_identifier,
+    )
+
+    logger.info("Migrating activity store schema v15 -> v16: Updating source_machine_id format")
+
+    # Get old and new identifiers for THIS machine
+    old_machine_id = _compute_legacy_machine_identifier()
+    new_machine_id = get_machine_identifier()
+
+    if old_machine_id == new_machine_id:
+        logger.info("Machine identifier unchanged, skipping migration")
+        return
+
+    logger.info(f"Updating source_machine_id: {old_machine_id} -> {new_machine_id}")
+
+    tables = ["sessions", "prompt_batches", "memory_observations", "activities", "agent_runs"]
+    update_counts: dict[str, int] = {}
+
+    for table in tables:
+        cursor = conn.execute(
+            f"UPDATE {table} SET source_machine_id = ? WHERE source_machine_id = ?",  # noqa: S608
+            (new_machine_id, old_machine_id),
+        )
+        update_counts[table] = cursor.rowcount
+
+    total_updated = sum(update_counts.values())
+    logger.info(
+        f"Migration v15->v16 complete: updated {total_updated} records "
+        f"(sessions={update_counts.get('sessions', 0)}, "
+        f"batches={update_counts.get('prompt_batches', 0)}, "
+        f"observations={update_counts.get('memory_observations', 0)}, "
+        f"activities={update_counts.get('activities', 0)}, "
+        f"agent_runs={update_counts.get('agent_runs', 0)})"
+    )

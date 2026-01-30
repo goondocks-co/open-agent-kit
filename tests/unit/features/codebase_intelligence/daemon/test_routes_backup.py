@@ -177,7 +177,7 @@ class TestBackupCreate:
         # Verify file was created
         state = get_state()
         backup_filename = get_backup_filename()
-        backup_path = state.project_root / "oak" / "data" / backup_filename
+        backup_path = state.project_root / CI_HISTORY_BACKUP_DIR / backup_filename
         assert backup_path.exists()
 
     def test_create_backup_with_activities(self, client, setup_state_with_activity_store):
@@ -208,7 +208,7 @@ class TestBackupCreate:
 
         # Verify activities are in the backup
         backup_filename = get_backup_filename()
-        backup_path = state.project_root / "oak" / "data" / backup_filename
+        backup_path = state.project_root / CI_HISTORY_BACKUP_DIR / backup_filename
         content = backup_path.read_text()
         assert "INSERT INTO activities" in content
 
@@ -285,7 +285,10 @@ class TestBackupRestore:
         state.activity_store = MagicMock()
 
         # Create backup file but no database
-        backup_path = temp_project / "oak" / "data" / "ci_history.sql"
+        backup_dir = temp_project / CI_HISTORY_BACKUP_DIR
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_filename = get_backup_filename()
+        backup_path = backup_dir / backup_filename
         backup_path.write_text("-- Test backup")
 
         response = client.post("/api/backup/restore", json={})

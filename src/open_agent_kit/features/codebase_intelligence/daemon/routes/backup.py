@@ -318,7 +318,7 @@ async def restore_backup(
 async def restore_all_backups_endpoint(
     request: RestoreAllRequest, background_tasks: BackgroundTasks
 ) -> RestoreAllResponse:
-    """Restore from all backup files in oak/data/ with deduplication.
+    """Restore from all backup files in the history directory with deduplication.
 
     Merges all team members' backups into the current database.
     Each record is only imported once based on its content hash.

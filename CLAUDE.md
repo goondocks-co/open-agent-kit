@@ -68,4 +68,6 @@ These are the first places to look. The full Anchor Index is in `oak/constitutio
 | SQLite (source of truth) | `.oak/ci/activities.db` |
 | ChromaDB (vector search) | `.oak/ci/chroma/` |
 | Daemon logs | `.oak/ci/daemon.log` |
-| User backups (git-tracked) | `oak/data/` |
+| User backups (git-tracked) | `oak/ci/history/` |
+| Agent configs (git-tracked) | `oak/ci/agents/` |
+| Shared port (git-tracked) | `oak/ci/daemon.port` |

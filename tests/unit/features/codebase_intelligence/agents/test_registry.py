@@ -11,6 +11,7 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentPermissionMode,
 )
 from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
+from open_agent_kit.features.codebase_intelligence.constants import AGENT_PROJECT_CONFIG_DIR
 
 
 class TestAgentRegistry:
@@ -145,7 +146,7 @@ class TestProjectConfig:
     def test_registry_loads_project_config_when_project_root_set(self, tmp_path: Path) -> None:
         """Registry should load project config from oak/agents/{name}.yaml."""
         # Create a mock project structure with config
-        config_dir = tmp_path / "oak" / "agents"
+        config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
         config_content = """
@@ -187,7 +188,7 @@ style:
 
     def test_registry_handles_malformed_project_config(self, tmp_path: Path) -> None:
         """Registry should handle malformed project config gracefully."""
-        config_dir = tmp_path / "oak" / "agents"
+        config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
         # Write invalid YAML
@@ -202,7 +203,7 @@ style:
 
     def test_load_project_config_method_directly(self, tmp_path: Path) -> None:
         """load_project_config should work as a standalone method."""
-        config_dir = tmp_path / "oak" / "agents"
+        config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
         config_content = """
@@ -273,7 +274,7 @@ class TestAgentInstances:
         assert "Update the README" in instance.default_task
 
         # File should exist
-        yaml_path = tmp_path / "oak" / "agents" / "test-docs.yaml"
+        yaml_path = tmp_path / AGENT_PROJECT_CONFIG_DIR / "test-docs.yaml"
         assert yaml_path.exists()
 
         # Instance should be registered
@@ -310,7 +311,7 @@ class TestAgentInstances:
     def test_load_instances_from_project(self, tmp_path: "Path") -> None:
         """Registry should load instances from oak/agents/*.yaml."""
         # Create instance YAML
-        config_dir = tmp_path / "oak" / "agents"
+        config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
         instance_yaml = """
@@ -339,7 +340,7 @@ maintained_files:
 
     def test_load_instances_skips_invalid_template_reference(self, tmp_path: "Path") -> None:
         """Registry should skip instances with unknown agent_type."""
-        config_dir = tmp_path / "oak" / "agents"
+        config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
         instance_yaml = """

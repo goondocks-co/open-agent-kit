@@ -48,10 +48,12 @@ function InstanceCard({
     instance,
     onRun,
     isRunning,
+    instancesDir,
 }: {
     instance: AgentInstance;
     onRun: (instanceName: string) => void;
     isRunning: boolean;
+    instancesDir: string;
 }) {
     const [expanded, setExpanded] = useState(false);
 
@@ -112,7 +114,7 @@ function InstanceCard({
 
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <FileCode className="w-3 h-3" />
-                        Edit: <code className="bg-muted px-1.5 py-0.5 rounded">oak/agents/{instance.name}.yaml</code>
+                        Edit: <code className="bg-muted px-1.5 py-0.5 rounded">{instancesDir}/{instance.name}.yaml</code>
                     </p>
                 </CardContent>
             )}
@@ -216,12 +218,14 @@ function CreateInstanceModal({
     templateName,
     onSubmit,
     isPending,
+    instancesDir,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     templateName: string;
     onSubmit: (data: { name: string; display_name: string; description: string; default_task: string }) => void;
     isPending: boolean;
+    instancesDir: string;
 }) {
     const [name, setName] = useState("");
     const [displayName, setDisplayName] = useState("");
@@ -267,7 +271,7 @@ function CreateInstanceModal({
                     <h2 className="text-lg font-semibold">Create Instance from "{templateName}"</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
                         Create a new agent instance with a specific task. The instance will be saved
-                        to <code className="bg-muted px-1 rounded">oak/agents/</code> and can be customized later.
+                        to <code className="bg-muted px-1 rounded">{instancesDir}/</code> and can be customized later.
                     </p>
                 </div>
 
@@ -365,6 +369,7 @@ export default function AgentsList() {
 
     const templates = agentsData?.templates || [];
     const instances = agentsData?.instances || [];
+    const instancesDir = agentsData?.instances_dir || "oak/ci/agents";
 
     const handleRunInstance = async (instanceName: string) => {
         setMessage(null);
@@ -460,7 +465,7 @@ export default function AgentsList() {
                             <Bot className="w-5 h-5 text-green-600" />
                             <h2 className="text-lg font-semibold">Agent Instances</h2>
                             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                                oak/agents/
+                                {instancesDir}/
                             </span>
                         </div>
 
@@ -482,6 +487,7 @@ export default function AgentsList() {
                                         instance={instance}
                                         onRun={handleRunInstance}
                                         isRunning={runInstance.isPending}
+                                        instancesDir={instancesDir}
                                     />
                                 ))}
                             </div>
@@ -530,6 +536,7 @@ export default function AgentsList() {
                 templateName={selectedTemplate}
                 onSubmit={handleCreateInstanceSubmit}
                 isPending={createInstance.isPending}
+                instancesDir={instancesDir}
             />
         </div>
     );

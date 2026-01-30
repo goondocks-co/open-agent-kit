@@ -15,7 +15,9 @@ Contains schema version and SQL for creating the database schema.
 # v12: Added parent_session_id/reason for session linking, source_plan_batch_id for plan tracking
 # v13: Added source_machine_id for origin tracking (enables efficient team backups)
 # v14: Added agent_runs table for CI agent execution tracking
-SCHEMA_VERSION = 14
+# v15: Added saved_tasks table for reusable task templates
+# v16: Updated source_machine_id to privacy-preserving format (github_username_hash)
+SCHEMA_VERSION = 16
 
 SCHEMA_SQL = """
 -- Schema version tracking

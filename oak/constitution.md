@@ -204,13 +204,16 @@ Codebase Intelligence manages two databases and stores logs locally. Use these p
 | **SQLite Database** | `.oak/ci/activities.db` | Source of truth for all captured activity data (sessions, prompts, file events) |
 | **ChromaDB** | `.oak/ci/chroma/` | Vector search database for semantic code search and memory retrieval |
 | **Daemon Log** | `.oak/ci/daemon.log` | All CI daemon logs (startup, errors, indexing, API requests) |
-| **User Backups** | `oak/data/` | SQL export files generated from the SQLite database (committed to git) |
+| **User Backups** | `oak/ci/history/` | SQL export files generated from the SQLite database (committed to git) |
+| **Agent Configs** | `oak/ci/agents/` | Agent instance configuration files (committed to git) |
+| **Shared Port** | `oak/ci/daemon.port` | Team-shared daemon port derived from git remote (committed to git) |
 
 **Notes:**
 
 - The SQLite database (`.oak/ci/activities.db`) is the authoritative source; ChromaDB is derived/rebuilt from it.
-- User backup files in `oak/data/` are intended for version control and data portability.
+- Files in `oak/ci/` (history, agents, daemon.port) are intended for version control and team consistency.
 - The `.oak/ci/` directory is gitignored (user-local state per §1.3).
+- Port resolution priority: `.oak/ci/daemon.port` (local override) > `oak/ci/daemon.port` (team-shared) > auto-derive from git remote.
 
 ### Quality gates + docs
 

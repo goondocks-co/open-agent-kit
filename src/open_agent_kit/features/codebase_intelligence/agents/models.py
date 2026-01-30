@@ -58,7 +58,7 @@ class CIQueryTemplate(BaseModel):
 class AgentInstance(BaseModel):
     """User-configured agent instance.
 
-    Instances are stored in oak/agents/*.yaml and define:
+    Instances are stored in the project's agent config directory and define:
     - Which template to use (agent_type)
     - What task to perform (default_task - REQUIRED)
     - What files to maintain
@@ -199,10 +199,10 @@ class AgentDefinition(BaseModel):
         default=None, description="Path to agent.yaml (set by registry)"
     )
 
-    # Project-specific configuration (loaded from oak/agents/{name}.yaml)
+    # Project-specific configuration (loaded from agent config directory)
     project_config: dict[str, Any] | None = Field(
         default=None,
-        description="Project-specific config from oak/agents/{name}.yaml",
+        description="Project-specific config from agent config directory",
     )
 
     def get_effective_tools(self) -> list[str]:
@@ -281,7 +281,7 @@ class AgentListItem(BaseModel):
     timeout_seconds: int
     project_config: dict[str, Any] | None = Field(
         default=None,
-        description="Project-specific config from oak/agents/{name}.yaml",
+        description="Project-specific config from agent config directory",
     )
 
 
@@ -323,6 +323,12 @@ class AgentListResponse(BaseModel):
     # New structured response
     templates: list[AgentTemplateListItem] = Field(default_factory=list)
     instances: list[AgentInstanceListItem] = Field(default_factory=list)
+
+    # Path information for UI display
+    instances_dir: str = Field(
+        default="",
+        description="Directory where instance YAML files are stored (e.g., 'oak/ci/agents')",
+    )
 
     # Legacy fields for backwards compatibility
     agents: list[AgentListItem] = Field(default_factory=list)

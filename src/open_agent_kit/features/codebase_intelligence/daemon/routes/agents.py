@@ -31,6 +31,7 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentTemplateListItem,
     CreateInstanceRequest,
 )
+from open_agent_kit.features.codebase_intelligence.constants import AGENT_PROJECT_CONFIG_DIR
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 if TYPE_CHECKING:
@@ -124,6 +125,7 @@ async def list_agents() -> AgentListResponse:
     return AgentListResponse(
         templates=template_items,
         instances=instance_items,
+        instances_dir=AGENT_PROJECT_CONFIG_DIR,
         agents=legacy_items,
         total=len(templates),
     )
@@ -329,8 +331,8 @@ async def create_instance(
 ) -> dict:
     """Create a new instance from a template.
 
-    Generates an instance YAML file in oak/agents/{name}.yaml with
-    scaffolding for common configuration options.
+    Generates an instance YAML file in the project's agent instances directory
+    with scaffolding for common configuration options.
 
     Args:
         template_name: Name of the template to use.

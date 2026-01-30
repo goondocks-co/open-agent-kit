@@ -2,7 +2,7 @@
 
 The registry loads:
 - Agent templates (definitions) from agents/definitions/{name}/agent.yaml
-- Agent instances from oak/agents/*.yaml in the project root
+- Agent instances from the project's agent config directory (AGENT_PROJECT_CONFIG_DIR)
 
 Templates define capabilities (tools, permissions, system prompt).
 Instances define tasks (default_task, maintained_files, ci_queries).
@@ -50,7 +50,7 @@ class AgentRegistry:
 
     The registry discovers:
     - Agent templates (definitions) from the built-in definitions directory
-    - Agent instances from oak/agents/*.yaml in the project root
+    - Agent instances from the project's agent config directory
 
     Templates define capabilities; instances define tasks.
     Only instances can be executed.
@@ -71,7 +71,7 @@ class AgentRegistry:
         Args:
             definitions_dir: Optional custom directory for agent definitions.
                            Defaults to the built-in definitions directory.
-            project_root: Project root for loading instances from oak/agents/*.yaml.
+            project_root: Project root for loading instances from agent config directory.
                          If None, instances are not loaded.
         """
         self._definitions_dir = definitions_dir or _AGENTS_DIR
@@ -99,7 +99,7 @@ class AgentRegistry:
         """Load all agent templates and instances.
 
         Templates are loaded from agents/definitions/{name}/agent.yaml.
-        Instances are loaded from oak/agents/*.yaml in the project root.
+        Instances are loaded from the project's agent config directory.
 
         Returns:
             Number of templates successfully loaded.
@@ -151,7 +151,7 @@ class AgentRegistry:
         return count
 
     def _load_instances(self) -> int:
-        """Load all agent instances from oak/agents/*.yaml.
+        """Load all agent instances from the project's agent config directory.
 
         Returns:
             Number of instances successfully loaded.
@@ -248,7 +248,7 @@ class AgentRegistry:
     def load_project_config(self, agent_name: str) -> dict[str, Any] | None:
         """Load project-specific config for an agent.
 
-        Project configs are stored in oak/agents/{agent_name}.yaml within the
+        Project configs are stored in the agent config directory within the
         project root. These are optional, git-tracked configurations that
         customize agent behavior for a specific project.
 

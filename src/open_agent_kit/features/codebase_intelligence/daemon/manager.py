@@ -16,6 +16,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_LOG_FILE,
     CI_PID_FILE,
     CI_PORT_FILE,
+    CI_SHARED_PORT_DIR,
+    CI_SHARED_PORT_FILE,
 )
 from open_agent_kit.utils.platform import (
     acquire_file_lock,
@@ -105,11 +107,57 @@ def derive_port_from_path(project_root: Path) -> int:
     return PORT_RANGE_START + (hash_value % PORT_RANGE_SIZE)
 
 
+# Timeout for git remote command (seconds)
+GIT_REMOTE_TIMEOUT = 5
+
+
+def derive_port_from_git_remote(project_root: Path) -> int | None:
+    """Derive a deterministic port from git remote URL.
+
+    Uses the git remote origin URL to derive a consistent port across
+    all team members' machines. The URL is normalized (stripped of .git
+    suffix and trailing slashes) before hashing.
+
+    Args:
+        project_root: Project root directory.
+
+    Returns:
+        Port number in the valid range, or None if not a git repo or no remote.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=GIT_REMOTE_TIMEOUT,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+
+        # Normalize URL: strip .git suffix and trailing slashes
+        remote_url = result.stdout.strip()
+        remote_url = remote_url.rstrip("/")
+        if remote_url.endswith(".git"):
+            remote_url = remote_url[:-4]
+
+        # Hash and map to port range
+        hash_value = int(hashlib.md5(remote_url.encode()).hexdigest()[:8], 16)
+        return PORT_RANGE_START + (hash_value % PORT_RANGE_SIZE)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.debug(f"Failed to get git remote: {e}")
+        return None
+
+
 def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int:
     """Get the port for a project, creating one if needed.
 
-    First checks for a stored port in .oak/ci/daemon.port.
-    If not found, derives a port from the project path and stores it.
+    Port resolution priority:
+    1. .oak/ci/daemon.port (local override for conflicts, not git-tracked)
+    2. oak/ci/daemon.port (team-shared, git-tracked)
+    3. Auto-derive from git remote URL -> write to oak/ci/daemon.port
+    4. Fall back to path-based derivation (non-git projects)
 
     Args:
         project_root: Project root directory.
@@ -119,23 +167,41 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
         Port number for this project.
     """
     data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
-    port_file = data_dir / CI_PORT_FILE
+    local_port_file = data_dir / CI_PORT_FILE
+    shared_port_dir = project_root / CI_SHARED_PORT_DIR
+    shared_port_file = shared_port_dir / CI_SHARED_PORT_FILE
 
-    # Check for stored port
-    if port_file.exists():
+    # Priority 1: Local override (.oak/ci/daemon.port)
+    if local_port_file.exists():
         try:
-            stored_port = int(port_file.read_text().strip())
+            stored_port = int(local_port_file.read_text().strip())
             if PORT_RANGE_START <= stored_port < PORT_RANGE_START + PORT_RANGE_SIZE:
                 return stored_port
         except (ValueError, OSError):
             pass
 
-    # Derive port from project path
-    port = derive_port_from_path(project_root)
+    # Priority 2: Team-shared port (oak/ci/daemon.port)
+    if shared_port_file.exists():
+        try:
+            stored_port = int(shared_port_file.read_text().strip())
+            if PORT_RANGE_START <= stored_port < PORT_RANGE_START + PORT_RANGE_SIZE:
+                return stored_port
+        except (ValueError, OSError):
+            pass
 
-    # Store for consistency
+    # Priority 3: Derive from git remote and write to team-shared file
+    port = derive_port_from_git_remote(project_root)
+    if port is not None:
+        # Store in team-shared location for consistency across machines
+        shared_port_dir.mkdir(parents=True, exist_ok=True)
+        shared_port_file.write_text(str(port))
+        return port
+
+    # Priority 4: Fall back to path-based derivation (non-git projects)
+    port = derive_port_from_path(project_root)
+    # For non-git projects, store in local directory
     data_dir.mkdir(parents=True, exist_ok=True)
-    port_file.write_text(str(port))
+    local_port_file.write_text(str(port))
 
     return port
 
@@ -188,10 +254,12 @@ class DaemonManager:
         self.pid_file.write_text(str(pid))
 
     def _write_port(self, port: int) -> None:
-        """Write port to file.
+        """Write port to local file for conflict resolution.
 
-        This is called when the daemon port changes due to conflict resolution,
-        ensuring hooks can read the correct port at runtime.
+        This is called when the daemon port changes due to conflict resolution.
+        Writes to .oak/ci/daemon.port (local override) rather than the team-shared
+        oak/ci/daemon.port, so conflict resolution is machine-specific and doesn't
+        affect other team members.
         """
         self._ensure_data_dir()
         port_file = self.ci_data_dir / CI_PORT_FILE
