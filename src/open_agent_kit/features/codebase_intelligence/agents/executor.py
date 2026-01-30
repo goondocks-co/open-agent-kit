@@ -14,11 +14,14 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
+
+import yaml
 
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
+    AgentInstance,
     AgentPermissionMode,
     AgentRun,
     AgentRunStatus,
@@ -26,13 +29,12 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
 from open_agent_kit.features.codebase_intelligence.agents.tools import create_ci_mcp_server
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_FORBIDDEN_TOOLS,
-    AGENT_RUNS_CLEANUP_THRESHOLD,
-    AGENT_RUNS_MAX_HISTORY,
     CI_MCP_SERVER_NAME,
 )
 
 if TYPE_CHECKING:
-    from claude_agent_sdk import ClaudeSDKClient, SDKMCPServer
+    from claude_code_sdk import ClaudeSDKClient
+    from claude_code_sdk.types import McpSdkServerConfig
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
@@ -84,7 +86,7 @@ class AgentExecutor:
         self._clients_lock = RLock()
 
         # MCP server for CI tools (lazy initialization)
-        self._ci_mcp_server: SDKMCPServer | None = None
+        self._ci_mcp_server: McpSdkServerConfig | None = None
 
     @property
     def project_root(self) -> Path:
@@ -97,7 +99,7 @@ class AgentExecutor:
         with self._runs_lock:
             return dict(self._runs)
 
-    def _get_ci_mcp_server(self) -> "SDKMCPServer | None":
+    def _get_ci_mcp_server(self) -> "McpSdkServerConfig | None":
         """Get or create the CI MCP server.
 
         Returns:
@@ -118,19 +120,24 @@ class AgentExecutor:
         return self._ci_mcp_server
 
     def _cleanup_old_runs(self) -> None:
-        """Remove old runs when history exceeds threshold."""
+        """Remove old runs from in-memory cache when it exceeds threshold.
+
+        Note: SQLite storage is not cleaned up here - that should be done
+        separately via maintenance jobs if needed.
+        """
+        max_cache_size = 100
         with self._runs_lock:
-            if len(self._runs) <= AGENT_RUNS_CLEANUP_THRESHOLD:
+            if len(self._runs) <= max_cache_size:
                 return
 
-            # Keep only the most recent runs
+            # Keep only the most recent runs in memory
             items = list(self._runs.items())
-            to_remove = len(items) - AGENT_RUNS_MAX_HISTORY
+            to_remove = len(items) - max_cache_size
 
             for i in range(to_remove):
                 run_id = items[i][0]
                 del self._runs[run_id]
-                logger.debug(f"Cleaned up old run: {run_id}")
+                logger.debug(f"Cleaned up old run from cache: {run_id}")
 
     def _build_options(
         self,
@@ -145,7 +152,7 @@ class AgentExecutor:
             ClaudeAgentOptions instance.
         """
         try:
-            from claude_agent_sdk import ClaudeAgentOptions
+            from claude_code_sdk import ClaudeCodeOptions
         except ImportError as e:
             raise RuntimeError("claude-code-sdk not installed") from e
 
@@ -169,13 +176,13 @@ class AgentExecutor:
                     allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_project_stats")
 
         # Map permission mode
-        permission_mode = "default"
+        permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions"] = "default"
         if agent.execution.permission_mode == AgentPermissionMode.ACCEPT_EDITS:
             permission_mode = "acceptEdits"
         elif agent.execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS:
             permission_mode = "bypassPermissions"
 
-        options = ClaudeAgentOptions(
+        options = ClaudeCodeOptions(
             system_prompt=agent.system_prompt,
             allowed_tools=allowed_tools,
             disallowed_tools=list(AGENT_FORBIDDEN_TOOLS),
@@ -190,24 +197,141 @@ class AgentExecutor:
 
         return options
 
-    def create_run(self, agent: AgentDefinition, task: str) -> AgentRun:
-        """Create a new run record.
+    def _build_task_prompt(
+        self,
+        agent: AgentDefinition,
+        task: str,
+        instance: AgentInstance | None = None,
+    ) -> str:
+        """Build the task prompt, optionally injecting instance configuration.
+
+        If an instance is provided, its configuration (maintained_files, ci_queries,
+        output_requirements, style) is appended to the task as YAML.
+
+        Also injects runtime context like daemon_url for linking to sessions.
 
         Args:
-            agent: Agent definition.
+            agent: Agent definition (template).
+            task: Task description (usually instance.default_task).
+            instance: Optional instance with configuration.
+
+        Returns:
+            Task prompt with config injected if available.
+        """
+        # Get daemon port for this project
+        from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+            get_project_port,
+        )
+
+        daemon_port = get_project_port(self._project_root)
+        daemon_url = f"http://localhost:{daemon_port}"
+
+        if instance:
+            # Build instance configuration block
+            config: dict[str, Any] = {}
+
+            # Always inject daemon URL for session/memory links
+            config["daemon_url"] = daemon_url
+
+            if instance.maintained_files:
+                config["maintained_files"] = [
+                    mf.model_dump(exclude_none=True) for mf in instance.maintained_files
+                ]
+
+            if instance.ci_queries:
+                config["ci_queries"] = {
+                    phase: [q.model_dump(exclude_none=True) for q in queries]
+                    for phase, queries in instance.ci_queries.items()
+                }
+
+            if instance.output_requirements:
+                config["output_requirements"] = instance.output_requirements
+
+            if instance.style:
+                config["style"] = instance.style
+
+            if instance.extra:
+                config["extra"] = instance.extra
+
+            config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
+            return f"{task}\n\n## Instance Configuration\n```yaml\n{config_yaml}```"
+
+        # No instance - still inject daemon URL as runtime context
+        runtime_context = f"daemon_url: {daemon_url}"
+        return f"{task}\n\n## Runtime Context\n```yaml\n{runtime_context}\n```"
+
+        # Legacy: use project_config if no instance
+        if agent.project_config:
+            config_yaml = yaml.dump(agent.project_config, default_flow_style=False, sort_keys=False)
+            return f"{task}\n\n## Project Configuration\n```yaml\n{config_yaml}```"
+
+        return task
+
+    def create_run(
+        self,
+        agent: AgentDefinition,
+        task: str,
+        instance: AgentInstance | None = None,
+    ) -> AgentRun:
+        """Create a new run record.
+
+        Persists to SQLite if ActivityStore is available, and caches in memory.
+
+        Args:
+            agent: Agent definition (template).
             task: Task description.
+            instance: Optional instance being run.
 
         Returns:
             New AgentRun instance.
         """
+        import hashlib
+
+        # Use instance name if running an instance, otherwise template name
+        agent_name = instance.name if instance else agent.name
+
         run = AgentRun(
             id=str(uuid4()),
-            agent_name=agent.name,
+            agent_name=agent_name,
             task=task,
             status=AgentRunStatus.PENDING,
             created_at=datetime.now(),
         )
 
+        # Persist to SQLite if available
+        if self._activity_store:
+            # Compute system prompt hash for reproducibility tracking
+            system_prompt_hash = None
+            if agent.system_prompt:
+                system_prompt_hash = hashlib.sha256(agent.system_prompt.encode()).hexdigest()[:16]
+
+            # Build config from instance or legacy project_config
+            project_config = None
+            if instance:
+                project_config = {
+                    "instance_name": instance.name,
+                    "agent_type": instance.agent_type,
+                    "maintained_files": [
+                        mf.model_dump(exclude_none=True) for mf in instance.maintained_files
+                    ],
+                    "ci_queries": {
+                        phase: [q.model_dump(exclude_none=True) for q in queries]
+                        for phase, queries in instance.ci_queries.items()
+                    },
+                }
+            elif agent.project_config:
+                project_config = agent.project_config
+
+            self._activity_store.create_agent_run(
+                run_id=run.id,
+                agent_name=run.agent_name,
+                task=run.task,
+                status=run.status.value,
+                project_config=project_config,
+                system_prompt_hash=system_prompt_hash,
+            )
+
+        # Cache in memory
         with self._runs_lock:
             self._runs[run.id] = run
             self._cleanup_old_runs()
@@ -217,14 +341,56 @@ class AgentExecutor:
     def get_run(self, run_id: str) -> AgentRun | None:
         """Get a run by ID.
 
+        Checks in-memory cache first, then falls back to SQLite.
+
         Args:
             run_id: Run identifier.
 
         Returns:
             AgentRun if found, None otherwise.
         """
+        # Check in-memory cache first
         with self._runs_lock:
-            return self._runs.get(run_id)
+            if run_id in self._runs:
+                return self._runs[run_id]
+
+        # Fall back to SQLite
+        if self._activity_store:
+            data = self._activity_store.get_agent_run(run_id)
+            if data:
+                return self._dict_to_run(data)
+
+        return None
+
+    def _dict_to_run(self, data: dict[str, Any]) -> AgentRun:
+        """Convert a database row dict to AgentRun model.
+
+        Args:
+            data: Dictionary from SQLite.
+
+        Returns:
+            AgentRun instance.
+        """
+        return AgentRun(
+            id=data["id"],
+            agent_name=data["agent_name"],
+            task=data["task"],
+            status=AgentRunStatus(data["status"]),
+            created_at=datetime.fromisoformat(data["created_at"]),
+            started_at=(
+                datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None
+            ),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None
+            ),
+            result=data.get("result"),
+            error=data.get("error"),
+            turns_used=data.get("turns_used", 0),
+            cost_usd=data.get("cost_usd"),
+            files_created=data.get("files_created") or [],
+            files_modified=data.get("files_modified") or [],
+            files_deleted=data.get("files_deleted") or [],
+        )
 
     def list_runs(
         self,
@@ -235,6 +401,8 @@ class AgentExecutor:
     ) -> tuple[list[AgentRun], int]:
         """List runs with optional filtering.
 
+        Uses SQLite if available (for durability), falls back to in-memory.
+
         Args:
             limit: Maximum runs to return.
             offset: Pagination offset.
@@ -244,17 +412,27 @@ class AgentExecutor:
         Returns:
             Tuple of (runs list, total count).
         """
+        # Use SQLite if available
+        if self._activity_store:
+            status_str = status.value if status else None
+            data_list, total = self._activity_store.list_agent_runs(
+                limit=limit,
+                offset=offset,
+                agent_name=agent_name,
+                status=status_str,
+            )
+            runs = [self._dict_to_run(d) for d in data_list]
+            return runs, total
+
+        # Fall back to in-memory
         with self._runs_lock:
-            # Filter
             runs = list(self._runs.values())
             if agent_name:
                 runs = [r for r in runs if r.agent_name == agent_name]
             if status:
                 runs = [r for r in runs if r.status == status]
 
-            # Sort by created_at descending (most recent first)
             runs.sort(key=lambda r: r.created_at, reverse=True)
-
             total = len(runs)
             runs = runs[offset : offset + limit]
 
@@ -265,6 +443,7 @@ class AgentExecutor:
         agent: AgentDefinition,
         task: str,
         run: AgentRun | None = None,
+        instance: AgentInstance | None = None,
     ) -> AgentRun:
         """Execute an agent with the given task.
 
@@ -275,15 +454,16 @@ class AgentExecutor:
         4. Tracks results and handles errors
 
         Args:
-            agent: Agent definition.
+            agent: Agent definition (template).
             task: Task description for the agent.
             run: Optional existing run record.
+            instance: Optional instance being executed.
 
         Returns:
             Updated AgentRun with results.
         """
         try:
-            from claude_agent_sdk import (
+            from claude_code_sdk import (
                 AssistantMessage,
                 ClaudeSDKClient,
                 ResultMessage,
@@ -299,11 +479,19 @@ class AgentExecutor:
 
         # Create run record if not provided
         if run is None:
-            run = self.create_run(agent, task)
+            run = self.create_run(agent, task, instance)
 
         # Mark as running
         run.status = AgentRunStatus.RUNNING
         run.started_at = datetime.now()
+
+        # Persist status change to SQLite
+        if self._activity_store:
+            self._activity_store.update_agent_run(
+                run_id=run.id,
+                status=run.status.value,
+                started_at=run.started_at,
+            )
 
         try:
             # Build options
@@ -319,8 +507,11 @@ class AgentExecutor:
 
             try:
                 async with client:
+                    # Build task prompt with config injection
+                    task_prompt = self._build_task_prompt(agent, task, instance)
+
                     # Send the task prompt
-                    await client.query(task)
+                    await client.query(task_prompt)
 
                     # Process responses with timeout
                     try:
@@ -391,7 +582,32 @@ class AgentExecutor:
             run.completed_at = datetime.now()
             logger.error(f"Agent run {run.id} failed: {e}")
 
+        # Persist final state to SQLite
+        self._persist_run_completion(run)
+
         return run
+
+    def _persist_run_completion(self, run: AgentRun) -> None:
+        """Persist run completion state to SQLite.
+
+        Args:
+            run: Completed run record.
+        """
+        if not self._activity_store:
+            return
+
+        self._activity_store.update_agent_run(
+            run_id=run.id,
+            status=run.status.value,
+            completed_at=run.completed_at,
+            result=run.result,
+            error=run.error,
+            turns_used=run.turns_used,
+            cost_usd=run.cost_usd,
+            files_created=run.files_created if run.files_created else None,
+            files_modified=run.files_modified if run.files_modified else None,
+            files_deleted=run.files_deleted if run.files_deleted else None,
+        )
 
     async def cancel(self, run_id: str) -> bool:
         """Cancel a running agent.
@@ -413,6 +629,9 @@ class AgentExecutor:
         run.status = AgentRunStatus.CANCELLED
         run.error = "Cancelled by user"
         run.completed_at = datetime.now()
+
+        # Persist to SQLite
+        self._persist_run_completion(run)
 
         # Close the client if active
         with self._clients_lock:

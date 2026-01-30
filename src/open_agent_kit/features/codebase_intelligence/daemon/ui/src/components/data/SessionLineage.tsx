@@ -130,7 +130,7 @@ function LineageItem({ session, direction, depth = 0 }: LineageItemProps) {
 
     return (
         <Link
-            to={`/data/sessions/${session.id}`}
+            to={`/activity/sessions/${session.id}`}
             className={cn(
                 "block p-3 rounded-md border bg-card hover:bg-accent/5 transition-colors group",
                 direction === "ancestor" && depth > 0 && "ml-4 border-l-2 border-l-blue-500/30"
@@ -195,7 +195,7 @@ export function SessionLineageBadge({
         <div className="flex items-center gap-2 text-xs">
             {parentSessionId && (
                 <Link
-                    to={`/data/sessions/${parentSessionId}`}
+                    to={`/activity/sessions/${parentSessionId}`}
                     className="flex items-center gap-1 px-2 py-1 rounded bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors"
                     title={`Parent: ${parentSessionId}`}
                 >

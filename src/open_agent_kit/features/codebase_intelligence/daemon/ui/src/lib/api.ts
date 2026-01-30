@@ -27,3 +27,16 @@ export async function postJson<T>(endpoint: string, body: unknown): Promise<T> {
         body: JSON.stringify(body),
     });
 }
+
+export async function patchJson<T>(endpoint: string, body: unknown): Promise<T> {
+    return fetchJson<T>(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function deleteJson<T>(endpoint: string): Promise<T> {
+    return fetchJson<T>(endpoint, {
+        method: 'DELETE',
+    });
+}

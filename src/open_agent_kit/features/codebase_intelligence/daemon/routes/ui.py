@@ -41,11 +41,15 @@ async def favicon() -> FileResponse:
 @router.get("/search", response_class=HTMLResponse)
 @router.get("/logs", response_class=HTMLResponse)
 @router.get("/config", response_class=HTMLResponse)
-@router.get("/data", response_class=HTMLResponse)
+@router.get("/help", response_class=HTMLResponse)
+@router.get("/activity", response_class=HTMLResponse)
 @router.get("/devtools", response_class=HTMLResponse)
 @router.get("/team", response_class=HTMLResponse)
-# Catch-all for data sub-routes (e.g., /data/sessions/123)
-@router.get("/data/{rest:path}", response_class=HTMLResponse)
+@router.get("/agents", response_class=HTMLResponse)
+# Catch-all for activity sub-routes (e.g., /activity/sessions/123)
+@router.get("/activity/{rest:path}", response_class=HTMLResponse)
+# Catch-all for agents sub-routes (e.g., /agents/runs)
+@router.get("/agents/{rest:path}", response_class=HTMLResponse)
 async def dashboard(rest: str | None = None) -> HTMLResponse:
     """Serve the web dashboard with cache-busted assets."""
     # static/index.html is sibling to routes/ directory's parent (daemon/)

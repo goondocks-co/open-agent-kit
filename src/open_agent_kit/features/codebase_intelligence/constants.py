@@ -509,3 +509,48 @@ CI_TOOL_SESSIONS: Final[str] = "ci_sessions"
 CI_TOOL_PROJECT_STATS: Final[str] = "ci_project_stats"
 CI_MCP_SERVER_NAME: Final[str] = "oak-ci"
 CI_MCP_SERVER_VERSION: Final[str] = "1.0.0"
+
+# Project-level agent configuration
+# Config files are stored in oak/agents/{agent_name}.yaml (git-tracked, project-specific)
+AGENT_PROJECT_CONFIG_DIR: Final[str] = "oak/agents"
+AGENT_PROJECT_CONFIG_EXTENSION: Final[str] = ".yaml"
+
+# =============================================================================
+# Agent Instance Constants
+# =============================================================================
+
+# Instance schema version (for future migrations)
+AGENT_INSTANCE_SCHEMA_VERSION: Final[int] = 1
+
+# Instance name validation
+AGENT_INSTANCE_NAME_MIN_LENGTH: Final[int] = 1
+AGENT_INSTANCE_NAME_MAX_LENGTH: Final[int] = 50
+AGENT_INSTANCE_NAME_PATTERN: Final[str] = r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$"
+
+# CI query confidence levels for instance config
+CI_QUERY_CONFIDENCE_HIGH: Final[str] = "high"
+CI_QUERY_CONFIDENCE_MEDIUM: Final[str] = "medium"
+CI_QUERY_CONFIDENCE_LOW: Final[str] = "low"
+CI_QUERY_CONFIDENCE_ALL: Final[str] = "all"
+VALID_CI_QUERY_CONFIDENCE_LEVELS: Final[tuple[str, ...]] = (
+    CI_QUERY_CONFIDENCE_HIGH,
+    CI_QUERY_CONFIDENCE_MEDIUM,
+    CI_QUERY_CONFIDENCE_LOW,
+    CI_QUERY_CONFIDENCE_ALL,
+)
+
+# CI tools available for instance queries
+CI_QUERY_TOOL_SEARCH: Final[str] = "ci_search"
+CI_QUERY_TOOL_MEMORIES: Final[str] = "ci_memories"
+CI_QUERY_TOOL_SESSIONS: Final[str] = "ci_sessions"
+CI_QUERY_TOOL_PROJECT_STATS: Final[str] = "ci_project_stats"
+VALID_CI_QUERY_TOOLS: Final[tuple[str, ...]] = (
+    CI_QUERY_TOOL_SEARCH,
+    CI_QUERY_TOOL_MEMORIES,
+    CI_QUERY_TOOL_SESSIONS,
+    CI_QUERY_TOOL_PROJECT_STATS,
+)
+
+# Default CI query limits
+DEFAULT_CI_QUERY_LIMIT: Final[int] = 10
+MAX_CI_QUERY_LIMIT: Final[int] = 100

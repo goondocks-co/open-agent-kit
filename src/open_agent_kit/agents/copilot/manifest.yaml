@@ -33,6 +33,12 @@ capabilities:
   has_skills: true
   skills_directory: "skills"    # .github/skills/
 
+# Codebase Intelligence configuration
+ci:
+  # Copilot's plan mode signals TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
 settings:
   # Auto-approval settings for oak commands
   # GitHub Copilot uses chat.tools.terminal.autoApprove in VSCode settings (1.99+)

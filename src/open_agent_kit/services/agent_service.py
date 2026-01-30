@@ -159,9 +159,32 @@ class AgentService:
         for agent_type in self.list_available_agents():
             try:
                 manifest = self.get_agent_manifest(agent_type)
-                prefix = manifest.capabilities.plan_execution_prefix
+                prefix = manifest.ci.plan_execution_prefix
                 if prefix:
                     result[agent_type] = prefix
+            except ValueError:
+                # Skip agents with invalid manifests
+                continue
+        return result
+
+    def get_all_exit_plan_tools(self) -> dict[str, str]:
+        """Get exit plan tool names for all agents with CI config.
+
+        Exit plan tools signal when plan mode ends (e.g., Claude Code's "ExitPlanMode").
+        When detected, CI re-reads the plan file to capture the final approved content.
+
+        Returns:
+            Dictionary mapping agent_type to exit_plan_tool name.
+            Example: {'claude': 'ExitPlanMode'}
+            Only includes agents that have exit_plan_tool defined.
+        """
+        result = {}
+        for agent_type in self.list_available_agents():
+            try:
+                manifest = self.get_agent_manifest(agent_type)
+                exit_tool = manifest.ci.exit_plan_tool
+                if exit_tool:
+                    result[agent_type] = exit_tool
             except ValueError:
                 # Skip agents with invalid manifests
                 continue

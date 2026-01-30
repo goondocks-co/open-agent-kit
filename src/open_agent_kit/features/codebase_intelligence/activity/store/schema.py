@@ -14,7 +14,8 @@ Contains schema version and SQL for creating the database schema.
 # v11: Added content_hash columns for multi-machine backup deduplication
 # v12: Added parent_session_id/reason for session linking, source_plan_batch_id for plan tracking
 # v13: Added source_machine_id for origin tracking (enables efficient team backups)
-SCHEMA_VERSION = 13
+# v14: Added agent_runs table for CI agent execution tracking
+SCHEMA_VERSION = 14
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -189,4 +190,44 @@ CREATE TRIGGER IF NOT EXISTS activities_au AFTER UPDATE ON activities BEGIN
     INSERT INTO activities_fts(rowid, tool_name, tool_input, tool_output_summary, file_path, error_message)
     VALUES (new.id, new.tool_name, new.tool_input, new.tool_output_summary, new.file_path, new.error_message);
 END;
+
+-- Agent runs table (CI agent executions via claude-code-sdk) (v14)
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    agent_name TEXT NOT NULL,
+    task TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, cancelled, timeout
+
+    -- Timing
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    started_at TEXT,
+    started_at_epoch INTEGER,
+    completed_at TEXT,
+    completed_at_epoch INTEGER,
+
+    -- Results
+    result TEXT,  -- Final output/summary from the agent
+    error TEXT,  -- Error message if failed
+    turns_used INTEGER DEFAULT 0,
+    cost_usd REAL,
+
+    -- Files modified (JSON arrays)
+    files_created TEXT,  -- JSON array of file paths
+    files_modified TEXT,  -- JSON array of file paths
+    files_deleted TEXT,  -- JSON array of file paths
+
+    -- Configuration snapshot (for reproducibility)
+    project_config TEXT,  -- JSON of project config at run time
+    system_prompt_hash TEXT,  -- Hash of system prompt used
+
+    -- Machine tracking
+    source_machine_id TEXT
+);
+
+-- Indexes for agent_runs
+CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_name);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_created ON agent_runs(created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_created ON agent_runs(agent_name, created_at_epoch DESC);
 """

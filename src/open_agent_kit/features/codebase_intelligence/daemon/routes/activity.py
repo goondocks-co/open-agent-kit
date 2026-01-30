@@ -31,6 +31,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     PlanListItem,
     PlansListResponse,
     PromptBatchItem,
+    RefreshPlanResponse,
     RegenerateSummaryResponse,
     SessionDetailResponse,
     SessionItem,
@@ -239,6 +240,100 @@ async def list_plans(
 
     except (OSError, ValueError, RuntimeError, AttributeError) as e:
         logger.error(f"Failed to list plans: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/api/activity/plans/{batch_id}/refresh", response_model=RefreshPlanResponse)
+async def refresh_plan_from_source(batch_id: int) -> RefreshPlanResponse:
+    """Re-read plan content from source file on disk.
+
+    This is useful when a plan file has been edited outside of the normal
+    plan mode workflow (e.g., manual edits) and you want to update the
+    stored content in the CI database.
+
+    Also marks the plan as unembedded so it will be re-indexed.
+
+    Args:
+        batch_id: The prompt batch ID containing the plan.
+
+    Returns:
+        RefreshPlanResponse with updated content length.
+
+    Raises:
+        HTTPException: If batch not found, has no plan file, or file not found.
+    """
+    from pathlib import Path
+
+    from open_agent_kit.features.codebase_intelligence.constants import PROMPT_SOURCE_PLAN
+
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    logger.info(f"Refreshing plan from disk: batch_id={batch_id}")
+
+    try:
+        # Get the batch
+        batch = state.activity_store.get_prompt_batch(batch_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Plan batch not found")
+
+        # Verify it's a plan with a file path
+        if batch.source_type != "plan":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Batch {batch_id} is not a plan (source_type={batch.source_type})",
+            )
+
+        if not batch.plan_file_path:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Plan batch {batch_id} has no file path - content may be embedded in prompt",
+            )
+
+        # Resolve the file path
+        plan_path = Path(batch.plan_file_path)
+        if not plan_path.is_absolute() and state.project_root:
+            plan_path = state.project_root / plan_path
+
+        if not plan_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Plan file not found: {batch.plan_file_path}",
+            )
+
+        # Read fresh content from disk
+        final_content = plan_path.read_text(encoding="utf-8")
+
+        # Update the batch with fresh content
+        state.activity_store.update_prompt_batch_source_type(
+            batch_id,
+            PROMPT_SOURCE_PLAN,
+            plan_file_path=batch.plan_file_path,
+            plan_content=final_content,
+        )
+
+        # Mark as unembedded for re-indexing
+        state.activity_store.mark_plan_unembedded(batch_id)
+
+        logger.info(
+            f"Refreshed plan batch {batch_id} from {batch.plan_file_path} "
+            f"({len(final_content)} chars)"
+        )
+
+        return RefreshPlanResponse(
+            success=True,
+            batch_id=batch_id,
+            plan_file_path=batch.plan_file_path,
+            content_length=len(final_content),
+            message=f"Plan refreshed from disk ({len(final_content)} chars)",
+        )
+
+    except HTTPException:
+        raise
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to refresh plan: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

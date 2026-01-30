@@ -23,7 +23,7 @@ function SessionRow({ session }: { session: SessionItem }) {
 
     return (
         <Link
-            to={`/data/sessions/${session.id}`}
+            to={`/activity/sessions/${session.id}`}
             className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0 hover:bg-accent/5 rounded-md px-2 -mx-2 transition-colors group"
         >
             <StatusDot status={statusType} />

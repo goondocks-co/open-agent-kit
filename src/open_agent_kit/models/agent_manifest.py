@@ -81,10 +81,21 @@ class AgentCapabilities(BaseModel):
         description="Subdirectory within skills folder for skills (e.g., 'skills' -> .claude/skills/)",
     )
 
-    # Plan execution detection
+
+class AgentCIConfig(BaseModel):
+    """Codebase Intelligence configuration for an agent.
+
+    These settings control how CI detects and processes agent-specific
+    events like plan mode execution and exit.
+    """
+
     plan_execution_prefix: str | None = Field(
         default=None,
         description="Prefix that identifies auto-injected plan execution prompts (e.g., 'Implement the following plan:')",
+    )
+    exit_plan_tool: str | None = Field(
+        default=None,
+        description="Tool name that signals plan mode exit (e.g., 'ExitPlanMode'). When detected, re-reads plan file to capture final content.",
     )
 
 
@@ -234,6 +245,12 @@ class AgentManifest(BaseModel):
     mcp: AgentMcpConfig | None = Field(
         default=None,
         description="MCP server registration configuration",
+    )
+
+    # Codebase Intelligence configuration
+    ci: AgentCIConfig = Field(
+        default_factory=AgentCIConfig,
+        description="Codebase Intelligence configuration for plan mode detection",
     )
 
     @classmethod
@@ -393,7 +410,8 @@ class AgentManifest(BaseModel):
             YAML representation of the manifest
         """
         data = self.model_dump(exclude_none=True, exclude_defaults=False)
-        return yaml.dump(data, default_flow_style=False, sort_keys=False)
+        result: str = yaml.dump(data, default_flow_style=False, sort_keys=False)
+        return result
 
     def get_oak_managed_paths(self) -> list[str]:
         """Get paths managed by OAK that should be excluded from code indexing.

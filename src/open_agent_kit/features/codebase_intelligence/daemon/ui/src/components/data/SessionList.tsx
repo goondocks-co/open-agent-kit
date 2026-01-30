@@ -105,7 +105,7 @@ export default function SessionList() {
                         : `Session ${session.id.slice(0, 8)}...`);
 
                 return (
-                    <Link key={session.id} to={`/data/sessions/${session.id}`}>
+                    <Link key={session.id} to={`/activity/sessions/${session.id}`}>
                         <Card className="hover:bg-accent/5 transition-colors cursor-pointer group">
                             <CardHeader className="py-4">
                                 <div className="flex items-center justify-between">

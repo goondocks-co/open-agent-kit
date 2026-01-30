@@ -175,8 +175,8 @@ module = [
     "aiofiles.*",
     "uvicorn",
     "uvicorn.*",
-    "claude_agent_sdk",
-    "claude_agent_sdk.*",
+    "claude_code_sdk",
+    "claude_code_sdk.*",
 ]
 ignore_missing_imports = true
 

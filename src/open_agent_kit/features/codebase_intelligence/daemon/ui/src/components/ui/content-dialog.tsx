@@ -1,6 +1,7 @@
 import * as React from "react";
 import { X, Copy, Check, FileText } from "lucide-react";
 import { Button } from "./button";
+import { Markdown } from "./markdown";
 
 interface ContentDialogProps {
     open: boolean;
@@ -9,6 +10,8 @@ interface ContentDialogProps {
     subtitle?: string;
     content: string;
     icon?: React.ReactNode;
+    /** When true, renders content as markdown. Default: false (plain text) */
+    renderMarkdown?: boolean;
 }
 
 export function ContentDialog({
@@ -18,6 +21,7 @@ export function ContentDialog({
     subtitle,
     content,
     icon,
+    renderMarkdown = false,
 }: ContentDialogProps) {
     const [copied, setCopied] = React.useState(false);
 
@@ -82,9 +86,15 @@ export function ContentDialog({
 
                 {/* Content */}
                 <div className="flex-1 overflow-auto p-4">
-                    <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/30 p-4 rounded-lg">
-                        {content || "No content available"}
-                    </pre>
+                    {renderMarkdown ? (
+                        <div className="bg-muted/30 p-4 rounded-lg">
+                            <Markdown content={content || "No content available"} />
+                        </div>
+                    ) : (
+                        <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/30 p-4 rounded-lg">
+                            {content || "No content available"}
+                        </pre>
+                    )}
                 </div>
             </div>
         </div>
@@ -101,10 +111,11 @@ export function useContentDialog() {
         title: string;
         subtitle?: string;
         content: string;
+        renderMarkdown?: boolean;
     } | null>(null);
 
-    const openDialog = (title: string, content: string, subtitle?: string) => {
-        setDialogContent({ title, content, subtitle });
+    const openDialog = (title: string, content: string, subtitle?: string, renderMarkdown?: boolean) => {
+        setDialogContent({ title, content, subtitle, renderMarkdown });
         setIsOpen(true);
     };
 

@@ -6,8 +6,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { formatDate } from "@/lib/utils";
-import { FileText, Trash2, Maximize2, CheckCircle2, Circle, FolderGit2, ArrowUpDown } from "lucide-react";
+import { FileText, Trash2, Maximize2, CheckCircle2, Circle, FolderGit2, ArrowUpDown, RefreshCw } from "lucide-react";
 import { fetchJson } from "@/lib/api";
+import { Markdown } from "@/components/ui/markdown";
 import { PLAN_SORT_DROPDOWN_OPTIONS, DEFAULT_PLAN_SORT } from "@/lib/constants";
 import type { PlanSortOption } from "@/lib/constants";
 
@@ -80,15 +81,46 @@ export default function PlansList() {
             openContentDialog(
                 plan.title,
                 fullContent,
-                plan.file_path || undefined
+                plan.file_path || undefined,
+                true // render as markdown
             );
         } catch {
             // Fallback to preview if full content fetch fails
             openContentDialog(
                 plan.title,
                 plan.preview,
-                plan.file_path || undefined
+                plan.file_path || undefined,
+                true // render as markdown
             );
+        }
+    };
+
+    const [refreshingPlanId, setRefreshingPlanId] = useState<number | null>(null);
+
+    const handleRefreshPlan = async (e: React.MouseEvent, plan: PlanListItem) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Only allow refresh if plan has a file path
+        if (!plan.file_path) {
+            console.warn("Cannot refresh plan without file path");
+            return;
+        }
+
+        setRefreshingPlanId(plan.id);
+        try {
+            await fetchJson<{ success: boolean; message: string }>(
+                `/api/activity/plans/${plan.id}/refresh`,
+                { method: "POST" }
+            );
+            // Refresh the list to show updated content
+            setOffset(0);
+            setLoadedPlans([]);
+            refetch();
+        } catch (error) {
+            console.error("Failed to refresh plan:", error);
+        } finally {
+            setRefreshingPlanId(null);
         }
     };
 
@@ -106,7 +138,7 @@ export default function PlansList() {
                 <p className="text-sm text-muted-foreground max-w-sm mt-2 mb-4">
                     Plans are created when using plan mode in Claude Code. They capture the design and implementation approach before coding begins.
                 </p>
-                <Link to="/data/sessions" className="text-sm font-medium text-primary hover:underline underline-offset-4">
+                <Link to="/activity/sessions" className="text-sm font-medium text-primary hover:underline underline-offset-4">
                     View Sessions &rarr;
                 </Link>
             </div>
@@ -172,15 +204,15 @@ export default function PlansList() {
                         </CardHeader>
                         <CardContent className="p-4 text-sm space-y-3">
                             {plan.preview && (
-                                <div className="whitespace-pre-wrap text-muted-foreground">
-                                    {plan.preview}
+                                <div className="text-muted-foreground line-clamp-6 overflow-hidden">
+                                    <Markdown content={plan.preview} className="prose-headings:text-sm prose-headings:mt-0 prose-p:my-1 prose-ul:my-1 prose-li:my-0" />
                                 </div>
                             )}
 
                             <div className="flex items-center justify-between pt-2 border-t border-border/50">
                                 <div className="flex items-center gap-3">
                                     <Link
-                                        to={`/data/sessions/${plan.session_id}`}
+                                        to={`/activity/sessions/${plan.session_id}`}
                                         className="flex items-center gap-1 text-xs text-primary hover:underline"
                                     >
                                         <FolderGit2 className="w-3 h-3" />
@@ -192,13 +224,26 @@ export default function PlansList() {
                                         </span>
                                     )}
                                 </div>
-                                <button
-                                    onClick={() => handleViewFullPlan(plan)}
-                                    className="flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                    <Maximize2 className="w-3 h-3" />
-                                    View Full Plan
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {plan.file_path && (
+                                        <button
+                                            onClick={(e) => handleRefreshPlan(e, plan)}
+                                            disabled={refreshingPlanId === plan.id}
+                                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50"
+                                            title="Re-read plan content from disk"
+                                        >
+                                            <RefreshCw className={`w-3 h-3 ${refreshingPlanId === plan.id ? 'animate-spin' : ''}`} />
+                                            Refresh
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => handleViewFullPlan(plan)}
+                                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                    >
+                                        <Maximize2 className="w-3 h-3" />
+                                        View Full Plan
+                                    </button>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
@@ -232,6 +277,7 @@ export default function PlansList() {
                     subtitle={dialogContent.subtitle}
                     content={dialogContent.content}
                     icon={<FileText className="h-5 w-5 text-amber-500" />}
+                    renderMarkdown={dialogContent.renderMarkdown}
                 />
             )}
         </div>

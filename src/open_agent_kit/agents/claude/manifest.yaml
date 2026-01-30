@@ -36,10 +36,15 @@ capabilities:
   has_skills: true              # Claude Code supports SKILL.md files
   skills_directory: "skills"    # .claude/skills/
 
-  # Plan execution detection
-  # When user approves a plan and selects "clear context and implement",
-  # Claude Code injects a new prompt starting with this prefix
+# Codebase Intelligence configuration
+ci:
+  # Plan execution detection - when user approves a plan and selects
+  # "clear context and implement", Claude Code injects a new prompt
+  # starting with this prefix
   plan_execution_prefix: "Implement the following plan:"
+  # Tool that signals plan mode exit - when detected, CI re-reads
+  # the plan file to capture final content
+  exit_plan_tool: "ExitPlanMode"
 
 settings:
   # Auto-approval settings for oak commands

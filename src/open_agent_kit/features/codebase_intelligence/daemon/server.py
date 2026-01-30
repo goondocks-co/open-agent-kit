@@ -564,7 +564,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         AgentRegistry,
                     )
 
-                    state.agent_registry = AgentRegistry()
+                    state.agent_registry = AgentRegistry(project_root=project_root)
                     agent_count = state.agent_registry.load_all()
                     logger.info(f"Agent registry loaded {agent_count} agents")
 
@@ -684,6 +684,7 @@ def create_app(
         hooks,
         index,
         mcp,
+        saved_tasks,
         search,
         ui,
     )
@@ -701,6 +702,7 @@ def create_app(
     app.include_router(hooks.router)
     app.include_router(mcp.router)
     app.include_router(agents.router)
+    app.include_router(saved_tasks.router)
     app.include_router(devtools.router)
     app.include_router(backup.router)
 

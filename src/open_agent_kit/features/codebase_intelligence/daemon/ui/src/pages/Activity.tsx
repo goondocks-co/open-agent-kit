@@ -2,21 +2,21 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { FolderGit2, FileText, Cpu } from "lucide-react";
 
-export default function DataExplorer() {
+export default function Activity() {
     const location = useLocation();
     const currentPath = location.pathname;
 
     const tabs = [
-        { id: "sessions", label: "Sessions", path: "/data/sessions", icon: FolderGit2 },
-        { id: "plans", label: "Plans", path: "/data/plans", icon: FileText },
-        { id: "memories", label: "Memories", path: "/data/memories", icon: Cpu },
+        { id: "sessions", label: "Sessions", path: "/activity/sessions", icon: FolderGit2 },
+        { id: "plans", label: "Plans", path: "/activity/plans", icon: FileText },
+        { id: "memories", label: "Memories", path: "/activity/memories", icon: Cpu },
     ];
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold tracking-tight">Data Explorer</h1>
-                <p className="text-muted-foreground">Inspect raw data stored in SQLite.</p>
+                <h1 className="text-3xl font-bold tracking-tight">Activity</h1>
+                <p className="text-muted-foreground">Browse sessions, plans, and memories.</p>
             </div>
 
             <div className="flex items-center border-b">

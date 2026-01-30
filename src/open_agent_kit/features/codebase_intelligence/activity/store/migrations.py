@@ -37,6 +37,10 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v11_to_v12(conn)
     if from_version < 13:
         migrate_v12_to_v13(conn)
+    if from_version < 14:
+        migrate_v13_to_v14(conn)
+    if from_version < 15:
+        migrate_v14_to_v15(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -729,3 +733,139 @@ def migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
         f"observations={backfill_counts.get('memory_observations', 0)}, "
         f"activities={backfill_counts.get('activities', 0)})"
     )
+
+
+def migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v13 to v14: Add agent_runs table.
+
+    Creates the agent_runs table for tracking CI agent executions via
+    claude-code-sdk. This enables:
+    - Persistent run history (survives daemon restarts)
+    - Run analysis for evaluating agent effectiveness
+    - Cross-machine run history via source_machine_id
+    """
+    logger.info("Migrating activity store schema v13 -> v14: Adding agent_runs table")
+
+    # Check if table already exists (idempotent migration)
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_runs'")
+    if cursor.fetchone():
+        logger.info("agent_runs table already exists, skipping table creation")
+    else:
+        # Create the agent_runs table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                id TEXT PRIMARY KEY,
+                agent_name TEXT NOT NULL,
+                task TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+
+                -- Timing
+                created_at TEXT NOT NULL,
+                created_at_epoch INTEGER NOT NULL,
+                started_at TEXT,
+                started_at_epoch INTEGER,
+                completed_at TEXT,
+                completed_at_epoch INTEGER,
+
+                -- Results
+                result TEXT,
+                error TEXT,
+                turns_used INTEGER DEFAULT 0,
+                cost_usd REAL,
+
+                -- Files modified (JSON arrays)
+                files_created TEXT,
+                files_modified TEXT,
+                files_deleted TEXT,
+
+                -- Configuration snapshot (for reproducibility)
+                project_config TEXT,
+                system_prompt_hash TEXT,
+
+                -- Machine tracking
+                source_machine_id TEXT
+            )
+            """
+        )
+        logger.debug("Created agent_runs table")
+
+    # Create indexes for efficient queries (idempotent)
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_name)",
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status)",
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_created ON agent_runs(created_at_epoch DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_created ON agent_runs(agent_name, created_at_epoch DESC)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v13->v14 complete: added agent_runs table with indexes")
+
+
+def migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v14 to v15: Add saved_tasks table.
+
+    Creates the saved_tasks table for reusable task templates. These can be:
+    - Run on-demand from the UI
+    - Scheduled via cron expressions (future feature)
+    - Used as quick-start templates for common tasks
+
+    This lays groundwork for the cron scheduler feature.
+    """
+    logger.info("Migrating activity store schema v14 -> v15: Adding saved_tasks table")
+
+    # Check if table already exists (idempotent migration)
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='saved_tasks'"
+    )
+    if cursor.fetchone():
+        logger.info("saved_tasks table already exists, skipping table creation")
+    else:
+        # Create the saved_tasks table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS saved_tasks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                agent_name TEXT NOT NULL,
+                task TEXT NOT NULL,
+
+                -- Scheduling (for future cron feature)
+                schedule_cron TEXT,
+                schedule_enabled INTEGER DEFAULT 0,
+                last_run_at TEXT,
+                last_run_id TEXT,
+                next_run_at TEXT,
+
+                -- Metadata
+                created_at TEXT NOT NULL,
+                created_at_epoch INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_at_epoch INTEGER NOT NULL,
+
+                -- Track runs triggered by this template
+                total_runs INTEGER DEFAULT 0
+            )
+            """
+        )
+        logger.debug("Created saved_tasks table")
+
+    # Create indexes for efficient queries (idempotent)
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_saved_tasks_agent ON saved_tasks(agent_name)",
+        "CREATE INDEX IF NOT EXISTS idx_saved_tasks_schedule ON saved_tasks(schedule_enabled, next_run_at)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v14->v15 complete: added saved_tasks table")

@@ -192,7 +192,7 @@ export default function Search() {
                                         <p className="text-muted-foreground">{match.preview}</p>
                                         {match.session_id && (
                                             <Link
-                                                to={`/data/sessions/${match.session_id}`}
+                                                to={`/activity/sessions/${match.session_id}`}
                                                 className="text-xs text-primary hover:underline mt-2 inline-block"
                                             >
                                                 View Session →

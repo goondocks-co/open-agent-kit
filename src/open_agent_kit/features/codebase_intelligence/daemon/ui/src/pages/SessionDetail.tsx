@@ -9,6 +9,7 @@ import { SessionLineage, SessionLineageBadge } from "@/components/data/SessionLi
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
+import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
 import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,7 @@ export default function SessionDetail() {
         try {
             await deleteSession.mutateAsync(id);
             sessionDialog.closeDialog();
-            navigate("/data/sessions");
+            navigate("/activity/sessions");
         } catch (error) {
             console.error("Failed to delete session:", error);
         }
@@ -113,7 +114,7 @@ export default function SessionDetail() {
     const handleViewPlan = (batch: { plan_content: string | null; plan_file_path: string | null; prompt_number: number }) => {
         const fileName = batch.plan_file_path?.split('/').pop() || `Plan #${batch.prompt_number}`;
         const content = batch.plan_content || "Plan content not available. The plan may have been created before content storage was enabled.";
-        contentDialog.openDialog(fileName, content, batch.plan_file_path || undefined);
+        contentDialog.openDialog(fileName, content, batch.plan_file_path || undefined, true);
     };
 
     const handleViewFullPrompt = (batch: { user_prompt: string | null; prompt_number: number; source_type: string }) => {
@@ -200,7 +201,7 @@ export default function SessionDetail() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Link to="/data/sessions" className="p-2 hover:bg-accent rounded-full">
+                    <Link to="/activity/sessions" className="p-2 hover:bg-accent rounded-full">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <h1 className="text-2xl font-bold tracking-tight">{sessionTitle}</h1>
@@ -350,8 +351,8 @@ export default function SessionDetail() {
                         </div>
                     )}
                     {session.summary ? (
-                        <div className="p-4 rounded-lg bg-muted/30 text-sm whitespace-pre-wrap">
-                            {session.summary}
+                        <div className="p-4 rounded-lg bg-muted/30 text-sm">
+                            <Markdown content={session.summary} />
                         </div>
                     ) : (
                         <div className="text-sm text-muted-foreground text-center py-4">
@@ -552,6 +553,7 @@ export default function SessionDetail() {
                 title={contentDialog.dialogContent?.title || ""}
                 subtitle={contentDialog.dialogContent?.subtitle}
                 content={contentDialog.dialogContent?.content || ""}
+                renderMarkdown={contentDialog.dialogContent?.renderMarkdown}
             />
 
             {/* Unlink Confirmation Dialog */}

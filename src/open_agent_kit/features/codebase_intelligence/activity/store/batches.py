@@ -125,6 +125,35 @@ def get_prompt_batch(store: ActivityStore, batch_id: int) -> PromptBatch | None:
     return PromptBatch.from_row(row) if row else None
 
 
+def get_session_plan_batch(store: ActivityStore, session_id: str) -> PromptBatch | None:
+    """Get the most recent plan batch in the CURRENT session (not parents).
+
+    Used when ExitPlanMode is detected to find the plan batch to update
+    with the final approved content from disk.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to query (current session only, not parent chain).
+
+    Returns:
+        Most recent plan PromptBatch if one exists, None otherwise.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM prompt_batches
+        WHERE session_id = ?
+          AND source_type = 'plan'
+          AND plan_file_path IS NOT NULL
+        ORDER BY created_at_epoch DESC
+        LIMIT 1
+        """,
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    return PromptBatch.from_row(row) if row else None
+
+
 def get_active_prompt_batch(store: ActivityStore, session_id: str) -> PromptBatch | None:
     """Get the current active prompt batch for a session.
 

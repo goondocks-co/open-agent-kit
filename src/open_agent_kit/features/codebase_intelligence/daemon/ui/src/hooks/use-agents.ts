@@ -1,5 +1,10 @@
 /**
  * React hooks for agent data fetching and mutations.
+ *
+ * Agent Architecture:
+ * - Templates: Define capabilities (tools, permissions, system prompt)
+ * - Instances: Define tasks (default_task, maintained_files, ci_queries)
+ * - Only instances can be run directly - templates create instances
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,8 +15,8 @@ import { API_ENDPOINTS } from "@/lib/constants";
 // Types
 // =============================================================================
 
-/** Agent list item from the API */
-export interface AgentItem {
+/** Agent template - defines capabilities, cannot be run directly */
+export interface AgentTemplate {
     name: string;
     display_name: string;
     description: string;
@@ -19,10 +24,43 @@ export interface AgentItem {
     timeout_seconds: number;
 }
 
+/** Agent instance - runnable with pre-configured task */
+export interface AgentInstance {
+    name: string;
+    display_name: string;
+    agent_type: string;  // Template reference
+    description: string;
+    default_task: string;
+    max_turns: number;
+    timeout_seconds: number;
+}
+
+/** Agent list item from the API (legacy) */
+export interface AgentItem {
+    name: string;
+    display_name: string;
+    description: string;
+    max_turns: number;
+    timeout_seconds: number;
+    /** Project-specific config from oak/agents/{name}.yaml */
+    project_config?: Record<string, unknown>;
+}
+
 /** Agent list response */
 export interface AgentListResponse {
+    templates: AgentTemplate[];
+    instances: AgentInstance[];
+    // Legacy fields
     agents: AgentItem[];
     total: number;
+}
+
+/** Request to create a new instance */
+export interface CreateInstanceRequest {
+    name: string;
+    display_name: string;
+    description: string;
+    default_task: string;
 }
 
 /** Agent detail with full definition */
@@ -47,6 +85,8 @@ export interface AgentDetail {
             session_history: boolean;
             project_stats: boolean;
         };
+        /** Project-specific config from oak/agents/{name}.yaml */
+        project_config?: Record<string, unknown>;
     };
     recent_runs: AgentRun[];
 }
@@ -103,7 +143,8 @@ export function useAgents() {
     return useQuery({
         queryKey: ["agents"],
         queryFn: () => fetchJson<AgentListResponse>(API_ENDPOINTS.AGENTS),
-        refetchInterval: 10000, // Refresh every 10 seconds
+        staleTime: 60000, // Consider data fresh for 60 seconds (agents rarely change)
+        gcTime: 300000, // Keep in cache for 5 minutes
     });
 }
 
@@ -113,11 +154,11 @@ export function useAgentDetail(agentName: string | null) {
         queryKey: ["agents", agentName],
         queryFn: () => fetchJson<AgentDetail>(`${API_ENDPOINTS.AGENTS}/${agentName}`),
         enabled: !!agentName,
-        refetchInterval: 5000, // Refresh every 5 seconds to get run updates
+        staleTime: 10000, // Consider data fresh for 10 seconds
     });
 }
 
-/** Fetch list of agent runs */
+/** Fetch list of agent runs with smart polling */
 export function useAgentRuns(limit = 20, offset = 0, agentName?: string, status?: AgentRunStatus) {
     const params = new URLSearchParams();
     params.set("limit", String(limit));
@@ -125,24 +166,43 @@ export function useAgentRuns(limit = 20, offset = 0, agentName?: string, status?
     if (agentName) params.set("agent_name", agentName);
     if (status) params.set("status", status);
 
-    return useQuery({
+    const query = useQuery({
         queryKey: ["agent-runs", limit, offset, agentName, status],
         queryFn: () => fetchJson<AgentRunListResponse>(`${API_ENDPOINTS.AGENT_RUNS}?${params}`),
-        refetchInterval: 3000, // Refresh every 3 seconds for active monitoring
+        staleTime: 5000, // Consider data fresh for 5 seconds
+        placeholderData: (previousData) => previousData, // Keep showing previous data while loading
+        // Smart polling: only poll when there are active runs
+        refetchInterval: (query) => {
+            const data = query.state.data;
+            if (!data) return false;
+            const hasActiveRuns = data.runs.some(
+                (run) => run.status === "pending" || run.status === "running"
+            );
+            return hasActiveRuns ? 3000 : false; // Poll only when active runs exist
+        },
     });
+
+    return query;
 }
 
-/** Fetch single agent run by ID */
+/** Fetch single agent run by ID with smart polling */
 export function useAgentRun(runId: string | null) {
     return useQuery({
         queryKey: ["agent-runs", runId],
         queryFn: () => fetchJson<{ run: AgentRun }>(`${API_ENDPOINTS.AGENT_RUNS}/${runId}`),
         enabled: !!runId,
-        refetchInterval: 2000, // Faster refresh for active run monitoring
+        staleTime: 2000,
+        // Smart polling: only poll when run is active
+        refetchInterval: (query) => {
+            const run = query.state.data?.run;
+            if (!run) return false;
+            const isActive = run.status === "pending" || run.status === "running";
+            return isActive ? 2000 : false;
+        },
     });
 }
 
-/** Trigger an agent run */
+/** Trigger an agent run (legacy - prefer useRunInstance) */
 export function useRunAgent() {
     const queryClient = useQueryClient();
 
@@ -152,6 +212,36 @@ export function useRunAgent() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
             queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+        },
+    });
+}
+
+/** Run an instance (no task input - uses configured default_task) */
+export function useRunInstance() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (instanceName: string) =>
+            postJson<AgentRunResponse>(`${API_ENDPOINTS.AGENTS}/instances/${instanceName}/run`, {}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents"] });
+            queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+        },
+    });
+}
+
+/** Create a new instance from a template */
+export function useCreateInstance() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ templateName, ...data }: CreateInstanceRequest & { templateName: string }) =>
+            postJson<{ success: boolean; message: string; instance: { name: string; display_name: string; agent_type: string; instance_path: string } }>(
+                `${API_ENDPOINTS.AGENTS}/templates/${templateName}/create-instance`,
+                data
+            ),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents"] });
         },
     });
 }

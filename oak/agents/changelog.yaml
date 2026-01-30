@@ -1,0 +1,111 @@
+# =============================================================================
+# Changelog Agent
+# =============================================================================
+#
+# Specialized agent for generating changelogs from CI session history.
+# Uses session summaries and bug_fix memories to create accurate release notes.
+#
+# =============================================================================
+
+name: changelog
+display_name: "Changelog Generator"
+agent_type: documentation
+description: |
+  Generates changelogs by analyzing CI session history and memories.
+  Creates accurate release notes from what actually happened, not guesses.
+
+default_task: |
+  Update CHANGELOG.md with NEW changes only (incremental update).
+
+  **Step 1: Read existing CHANGELOG.md**
+  Read the current CHANGELOG.md and extract all session IDs and memory IDs
+  already documented. Look for markdown links like `[session](...)` or inline
+  references. Store these IDs as "already_documented" to avoid duplicates.
+
+  **Step 2: Gather recent activity**
+  Run these CI queries:
+  1. ci_sessions limit=30 include_summary=true → Get recent session summaries
+  2. ci_memories filter=bug_fix limit=20 → Find recent bug fixes
+  3. ci_memories filter=discovery limit=15 → Find improvements and learnings
+
+  **Step 3: Filter to NEW items only**
+  From the query results, EXCLUDE any sessions or memories whose IDs are in
+  "already_documented". Only process items that are NOT yet in the changelog.
+
+  If no new items exist, report "No new changes to document" and stop.
+
+  **Step 4: Categorize NEW changes**
+  Group the NEW findings into:
+  - **Added**: New features (from session summaries mentioning "add", "implement")
+  - **Changed**: Modifications (from session summaries mentioning "update", "refactor")
+  - **Fixed**: Bug fixes (from bug_fix memories)
+  - **Improved**: Optimizations (from discovery memories about performance/quality)
+
+  **Step 5: Update CHANGELOG.md**
+  Add new entries to the existing [Unreleased] section. Do NOT replace existing
+  entries - only append new ones.
+
+  **Step 6: Verify accuracy**
+  For each NEW entry, ensure it references the source (session or memory ID).
+  Don't include speculative changes - only what CI data confirms.
+
+maintained_files:
+  - path: "CHANGELOG.md"
+    purpose: "Project changelog with release notes"
+
+ci_queries:
+  sessions:
+    - tool: ci_sessions
+      limit: 30
+      include_summary: true
+      purpose: "Get recent session summaries to understand what changed"
+      required: true
+
+  memories:
+    - tool: ci_memories
+      filter: bug_fix
+      limit: 20
+      purpose: "Find recent bug fixes to document"
+      required: true
+
+    - tool: ci_memories
+      filter: discovery
+      limit: 15
+      purpose: "Find improvements to highlight"
+
+    - tool: ci_memories
+      filter: decision
+      limit: 10
+      purpose: "Find decisions that affect changelog entries"
+
+output_requirements:
+  required_sections:
+    - name: "Added"
+      source: "sessions"
+      description: "New features from session summaries"
+    - name: "Fixed"
+      source: "memories:bug_fix"
+      description: "Bug fixes from bug_fix memories"
+
+  format: "keepachangelog"
+  link_sources: true
+
+style:
+  tone: "concise"
+  include_examples: false
+  link_sessions: true
+  link_code_files: true
+  conventions:
+    - "Follow Keep a Changelog format"
+    - "Use past tense (Added, Fixed, Changed)"
+    - "Group related changes together"
+    - "Most important changes first within each section"
+    - "Use the daemon_url from Instance Configuration for all session/memory links"
+    - "Link sessions at END of line using em-dash: — [Session Title]({daemon_url}/activity/sessions/{session_id})"
+    - "Link code files as markdown: [`filename.py`](src/path/to/filename.py)"
+    - "For line references use: [`filename.py:42`](src/path/to/filename.py)"
+    - "Memory references use em-dash too: — [memory description]({daemon_url}/search?q=...)"
+    - "Never use raw UUIDs in link text - always use human-readable titles/descriptions"
+    - "NEVER wrap links in parentheses - (from [title](url)) breaks markdown rendering"
+
+schema_version: 1

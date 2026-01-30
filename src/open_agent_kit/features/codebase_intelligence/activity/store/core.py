@@ -14,10 +14,12 @@ from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store import (
     activities,
+    agent_runs,
     backup,
     batches,
     delete,
     observations,
+    saved_tasks,
     sessions,
     stats,
 )
@@ -265,6 +267,10 @@ class ActivityStore:
     def get_active_prompt_batch(self, session_id: str) -> PromptBatch | None:
         """Get the current active prompt batch for a session."""
         return batches.get_active_prompt_batch(self, session_id)
+
+    def get_session_plan_batch(self, session_id: str) -> PromptBatch | None:
+        """Get the most recent plan batch in the current session."""
+        return batches.get_session_plan_batch(self, session_id)
 
     def end_prompt_batch(self, batch_id: int) -> None:
         """Mark a prompt batch as completed."""
@@ -593,3 +599,132 @@ class ActivityStore:
     def delete_session(self, session_id: str) -> dict[str, int]:
         """Delete a session and all related data."""
         return delete.delete_session(self, session_id)
+
+    # ==========================================================================
+    # Agent run operations - delegate to agent_runs module
+    # ==========================================================================
+
+    def create_agent_run(
+        self,
+        run_id: str,
+        agent_name: str,
+        task: str,
+        status: str = "pending",
+        project_config: dict[str, Any] | None = None,
+        system_prompt_hash: str | None = None,
+    ) -> None:
+        """Create a new agent run record."""
+        agent_runs.create_run(
+            self, run_id, agent_name, task, status, project_config, system_prompt_hash
+        )
+
+    def get_agent_run(self, run_id: str) -> dict[str, Any] | None:
+        """Get an agent run by ID."""
+        return agent_runs.get_run(self, run_id)
+
+    def update_agent_run(
+        self,
+        run_id: str,
+        status: str | None = None,
+        started_at: Any | None = None,
+        completed_at: Any | None = None,
+        result: str | None = None,
+        error: str | None = None,
+        turns_used: int | None = None,
+        cost_usd: float | None = None,
+        files_created: list[str] | None = None,
+        files_modified: list[str] | None = None,
+        files_deleted: list[str] | None = None,
+    ) -> None:
+        """Update an agent run record."""
+        agent_runs.update_run(
+            self,
+            run_id,
+            status,
+            started_at,
+            completed_at,
+            result,
+            error,
+            turns_used,
+            cost_usd,
+            files_created,
+            files_modified,
+            files_deleted,
+        )
+
+    def list_agent_runs(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        agent_name: str | None = None,
+        status: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List agent runs with optional filtering."""
+        return agent_runs.list_runs(self, limit, offset, agent_name, status)
+
+    def delete_agent_run(self, run_id: str) -> bool:
+        """Delete an agent run."""
+        return agent_runs.delete_run(self, run_id)
+
+    # ==========================================================================
+    # Saved Tasks (Delegates to saved_tasks module)
+    # ==========================================================================
+
+    def create_saved_task(
+        self,
+        name: str,
+        agent_name: str,
+        task: str,
+        description: str | None = None,
+        schedule_cron: str | None = None,
+    ) -> str:
+        """Create a new saved task template."""
+        return saved_tasks.create_task(self, name, agent_name, task, description, schedule_cron)
+
+    def get_saved_task(self, task_id: str) -> dict[str, Any] | None:
+        """Get a saved task by ID."""
+        return saved_tasks.get_task(self, task_id)
+
+    def update_saved_task(
+        self,
+        task_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        task: str | None = None,
+        schedule_cron: str | None = None,
+        schedule_enabled: bool | None = None,
+        last_run_at: Any | None = None,
+        last_run_id: str | None = None,
+        increment_runs: bool = False,
+    ) -> None:
+        """Update a saved task."""
+        saved_tasks.update_task(
+            self,
+            task_id,
+            name,
+            description,
+            task,
+            schedule_cron,
+            schedule_enabled,
+            last_run_at,
+            last_run_id,
+            increment_runs,
+        )
+
+    def list_saved_tasks(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        agent_name: str | None = None,
+        scheduled_only: bool = False,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List saved tasks with optional filtering."""
+        return saved_tasks.list_tasks(self, limit, offset, agent_name, scheduled_only)
+
+    def delete_saved_task(self, task_id: str) -> bool:
+        """Delete a saved task."""
+        return saved_tasks.delete_task(self, task_id)
+
+    def get_due_tasks(self) -> list[dict[str, Any]]:
+        """Get tasks that are due to run based on their schedule."""
+        return saved_tasks.get_due_tasks(self)

@@ -60,6 +60,46 @@ router = APIRouter(tags=["hooks"])
 # Route prefix - uses /api/oak/ci/ to avoid conflicts with other integrations
 OAK_CI_PREFIX = "/api/oak/ci"
 
+# ==========================================================================
+# Exit Plan Tool Detection (for final plan capture)
+# ==========================================================================
+
+# Cached mapping of exit plan tool names from agent manifests
+_exit_plan_tools: dict[str, str] | None = None
+
+
+def _get_exit_plan_tools() -> dict[str, str]:
+    """Get exit plan tool names from agent manifests (cached).
+
+    Returns:
+        Dict mapping agent_type to exit_plan_tool name.
+        Example: {'claude': 'ExitPlanMode'}
+    """
+    global _exit_plan_tools
+    if _exit_plan_tools is None:
+        try:
+            from open_agent_kit.services.agent_service import AgentService
+
+            agent_service = AgentService()
+            _exit_plan_tools = agent_service.get_all_exit_plan_tools()
+            logger.debug(f"Loaded exit_plan_tools: {_exit_plan_tools}")
+        except Exception as e:
+            logger.warning(f"Failed to load exit_plan_tools: {e}")
+            _exit_plan_tools = {}
+    return _exit_plan_tools
+
+
+def _is_exit_plan_tool(tool_name: str) -> bool:
+    """Check if a tool name is an exit plan tool for any agent.
+
+    Args:
+        tool_name: The tool name to check (e.g., 'ExitPlanMode').
+
+    Returns:
+        True if this tool signals plan mode exit for any agent.
+    """
+    return tool_name in _get_exit_plan_tools().values()
+
 
 def _parse_tool_output(tool_output: str) -> dict[str, Any] | None:
     """Parse JSON tool output, return None if not valid JSON."""
@@ -734,6 +774,48 @@ async def hook_post_tool_use(request: Request) -> dict:
                             f"batch {prompt_batch_id} marked as plan with file {file_path} "
                             f"({content_len} chars stored)"
                         )
+
+            # Detect ExitPlanMode: re-read plan file and update stored content
+            # Plans iterate during development - the final approved version (when user
+            # exits plan mode) may differ from the initial write. Re-reading ensures
+            # we capture the final content.
+            if _is_exit_plan_tool(tool_name) and session_id:
+                try:
+                    plan_batch = state.activity_store.get_session_plan_batch(session_id)
+
+                    if plan_batch and plan_batch.plan_file_path and plan_batch.id:
+                        plan_path = Path(plan_batch.plan_file_path)
+                        if not plan_path.is_absolute() and state.project_root:
+                            plan_path = state.project_root / plan_path
+
+                        if plan_path.exists():
+                            final_content = plan_path.read_text(encoding="utf-8")
+                            state.activity_store.update_prompt_batch_source_type(
+                                plan_batch.id,
+                                PROMPT_SOURCE_PLAN,
+                                plan_file_path=plan_batch.plan_file_path,
+                                plan_content=final_content,
+                            )
+                            state.activity_store.mark_plan_unembedded(plan_batch.id)
+                            hooks_logger.info(
+                                f"[EXIT-PLAN-MODE] Updated plan {plan_batch.id} "
+                                f"({len(final_content)} chars)"
+                            )
+                            logger.info(
+                                f"ExitPlanMode detected: re-read plan {plan_batch.plan_file_path} "
+                                f"and updated batch {plan_batch.id} ({len(final_content)} chars)"
+                            )
+                        else:
+                            logger.warning(
+                                f"[EXIT-PLAN-MODE] Plan file not found: {plan_batch.plan_file_path}"
+                            )
+                    else:
+                        logger.debug(
+                            "[EXIT-PLAN-MODE] No plan batch in session "
+                            "(plan may have been cancelled or not created)"
+                        )
+                except Exception as e:
+                    logger.warning(f"[EXIT-PLAN-MODE] Failed to update plan content: {e}")
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.debug(f"Failed to store activity: {e}")

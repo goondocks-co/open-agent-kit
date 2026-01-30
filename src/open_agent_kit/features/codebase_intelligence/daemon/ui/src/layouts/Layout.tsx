@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Database, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot } from "lucide-react";
+import { LayoutDashboard, Search, Activity, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { useStatus } from "@/hooks/use-status";
@@ -33,7 +33,7 @@ export function Layout() {
     const navItems = [
         { to: "/", icon: LayoutDashboard, label: "Dashboard" },
         { to: "/search", icon: Search, label: "Search" },
-        { to: "/data", icon: Database, label: "Data Explorer" },
+        { to: "/activity", icon: Activity, label: "Activity" },
         { to: "/agents", icon: Bot, label: "Agents" },
         { to: "/logs", icon: FileTerminal, label: "Logs" },
         { to: "/team", icon: Users, label: "Team" },

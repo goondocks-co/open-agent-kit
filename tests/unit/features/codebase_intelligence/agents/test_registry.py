@@ -59,10 +59,11 @@ class TestAgentRegistry:
         result = registry.to_dict()
 
         assert "count" in result
-        assert "agents" in result
+        assert "templates" in result
+        assert "instances" in result
         assert "definitions_dir" in result
         assert result["count"] >= 1
-        assert "documentation" in result["agents"]
+        assert "documentation" in result["templates"]
 
     def test_registry_handles_missing_directory(self, tmp_path: Path) -> None:
         """Registry should handle missing definitions directory."""
@@ -136,6 +137,224 @@ class TestAgentDefinition:
         assert agent.system_prompt is not None
         assert len(agent.system_prompt) > 100
         assert "Documentation Agent" in agent.system_prompt
+
+
+class TestProjectConfig:
+    """Tests for project-level agent configuration."""
+
+    def test_registry_loads_project_config_when_project_root_set(self, tmp_path: Path) -> None:
+        """Registry should load project config from oak/agents/{name}.yaml."""
+        # Create a mock project structure with config
+        config_dir = tmp_path / "oak" / "agents"
+        config_dir.mkdir(parents=True)
+
+        config_content = """
+maintained_files:
+  - path: "README.md"
+    purpose: "Project overview"
+style:
+  tone: "formal"
+"""
+        (config_dir / "documentation.yaml").write_text(config_content)
+
+        # Load registry with project_root
+        registry = AgentRegistry(project_root=tmp_path)
+        agent = registry.get("documentation")
+
+        assert agent is not None
+        assert agent.project_config is not None
+        assert "maintained_files" in agent.project_config
+        assert agent.project_config["style"]["tone"] == "formal"
+
+    def test_registry_no_project_config_without_project_root(self) -> None:
+        """Registry should not load project config when project_root is None."""
+        registry = AgentRegistry()
+        agent = registry.get("documentation")
+
+        assert agent is not None
+        assert agent.project_config is None
+
+    def test_registry_handles_missing_project_config(self, tmp_path: Path) -> None:
+        """Registry should handle missing project config gracefully."""
+        # Create project root without any agent configs
+        (tmp_path / "oak").mkdir()
+
+        registry = AgentRegistry(project_root=tmp_path)
+        agent = registry.get("documentation")
+
+        assert agent is not None
+        assert agent.project_config is None
+
+    def test_registry_handles_malformed_project_config(self, tmp_path: Path) -> None:
+        """Registry should handle malformed project config gracefully."""
+        config_dir = tmp_path / "oak" / "agents"
+        config_dir.mkdir(parents=True)
+
+        # Write invalid YAML
+        (config_dir / "documentation.yaml").write_text("{ invalid yaml: [")
+
+        registry = AgentRegistry(project_root=tmp_path)
+        agent = registry.get("documentation")
+
+        # Should still load agent, just without config
+        assert agent is not None
+        assert agent.project_config is None
+
+    def test_load_project_config_method_directly(self, tmp_path: Path) -> None:
+        """load_project_config should work as a standalone method."""
+        config_dir = tmp_path / "oak" / "agents"
+        config_dir.mkdir(parents=True)
+
+        config_content = """
+features:
+  patterns:
+    - "src/**"
+"""
+        (config_dir / "test_agent.yaml").write_text(config_content)
+
+        registry = AgentRegistry(project_root=tmp_path)
+        config = registry.load_project_config("test_agent")
+
+        assert config is not None
+        assert "features" in config
+        assert config["features"]["patterns"] == ["src/**"]
+
+
+class TestAgentInstances:
+    """Tests for agent instance functionality."""
+
+    def test_list_instances_empty_without_project_root(self) -> None:
+        """list_instances should return empty list without project_root."""
+        registry = AgentRegistry()
+        instances = registry.list_instances()
+        assert instances == []
+
+    def test_list_templates(self) -> None:
+        """list_templates should return all templates."""
+        registry = AgentRegistry()
+        templates = registry.list_templates()
+
+        assert len(templates) >= 1
+        names = [t.name for t in templates]
+        assert "documentation" in names
+
+    def test_get_template(self) -> None:
+        """get_template should return template by name."""
+        registry = AgentRegistry()
+
+        template = registry.get_template("documentation")
+        assert template is not None
+        assert template.name == "documentation"
+
+    def test_get_instance_returns_none_without_instances(self) -> None:
+        """get_instance should return None when no instances exist."""
+        registry = AgentRegistry()
+
+        instance = registry.get_instance("nonexistent")
+        assert instance is None
+
+    def test_create_instance(self, tmp_path: "Path") -> None:
+        """create_instance should create instance YAML file."""
+        registry = AgentRegistry(project_root=tmp_path)
+        registry.load_all()
+
+        instance = registry.create_instance(
+            name="test-docs",
+            template_name="documentation",
+            display_name="Test Documentation",
+            description="Test instance",
+            default_task="Update the README",
+        )
+
+        assert instance.name == "test-docs"
+        assert instance.display_name == "Test Documentation"
+        assert instance.agent_type == "documentation"
+        # default_task may have extra whitespace due to YAML literal block
+        assert "Update the README" in instance.default_task
+
+        # File should exist
+        yaml_path = tmp_path / "oak" / "agents" / "test-docs.yaml"
+        assert yaml_path.exists()
+
+        # Instance should be registered
+        assert registry.get_instance("test-docs") is not None
+
+    def test_create_instance_invalid_name(self, tmp_path: "Path") -> None:
+        """create_instance should reject invalid names."""
+        registry = AgentRegistry(project_root=tmp_path)
+        registry.load_all()
+
+        with pytest.raises(ValueError, match="Invalid instance name"):
+            registry.create_instance(
+                name="Invalid Name!",
+                template_name="documentation",
+                display_name="Test",
+                description="",
+                default_task="Do something",
+            )
+
+    def test_create_instance_unknown_template(self, tmp_path: "Path") -> None:
+        """create_instance should reject unknown templates."""
+        registry = AgentRegistry(project_root=tmp_path)
+        registry.load_all()
+
+        with pytest.raises(ValueError, match="not found"):
+            registry.create_instance(
+                name="test",
+                template_name="nonexistent_template",
+                display_name="Test",
+                description="",
+                default_task="Do something",
+            )
+
+    def test_load_instances_from_project(self, tmp_path: "Path") -> None:
+        """Registry should load instances from oak/agents/*.yaml."""
+        # Create instance YAML
+        config_dir = tmp_path / "oak" / "agents"
+        config_dir.mkdir(parents=True)
+
+        instance_yaml = """
+name: my-docs
+display_name: "My Documentation"
+agent_type: documentation
+description: "Custom docs instance"
+default_task: |
+  Update all markdown files in docs/
+
+maintained_files:
+  - path: "docs/*.md"
+    purpose: "Project documentation"
+"""
+        (config_dir / "my-docs.yaml").write_text(instance_yaml)
+
+        # Load registry
+        registry = AgentRegistry(project_root=tmp_path)
+        instances = registry.list_instances()
+
+        assert len(instances) == 1
+        assert instances[0].name == "my-docs"
+        assert instances[0].display_name == "My Documentation"
+        assert instances[0].agent_type == "documentation"
+        assert "Update all markdown" in instances[0].default_task
+
+    def test_load_instances_skips_invalid_template_reference(self, tmp_path: "Path") -> None:
+        """Registry should skip instances with unknown agent_type."""
+        config_dir = tmp_path / "oak" / "agents"
+        config_dir.mkdir(parents=True)
+
+        instance_yaml = """
+name: bad-instance
+display_name: "Bad Instance"
+agent_type: nonexistent_template
+default_task: Do something
+"""
+        (config_dir / "bad-instance.yaml").write_text(instance_yaml)
+
+        registry = AgentRegistry(project_root=tmp_path)
+        instances = registry.list_instances()
+
+        # Should skip the bad instance
+        assert len(instances) == 0
 
 
 class TestAgentModels:

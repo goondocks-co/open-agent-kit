@@ -30,6 +30,12 @@ capabilities:
   context_handling: large       # large | medium | small - Cursor optimizes context well
   model_consistency: variable   # high | medium | variable - user can switch models
 
+# Codebase Intelligence configuration
+ci:
+  # Cursor's plan mode signals TBD - add when discovered
+  plan_execution_prefix: null
+  exit_plan_tool: null
+
 settings:
   # Auto-approval settings for oak commands
   # Note: Cursor's agent settings use the same file as IDE settings

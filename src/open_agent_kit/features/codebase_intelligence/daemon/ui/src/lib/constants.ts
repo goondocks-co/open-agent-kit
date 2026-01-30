@@ -183,6 +183,7 @@ export const API_ENDPOINTS = {
     // Agent endpoints
     AGENTS: "/api/agents",
     AGENT_RUNS: "/api/agents/runs",
+    SAVED_TASKS: "/api/saved-tasks",
 
     // Config endpoints
     CONFIG: "/api/config",

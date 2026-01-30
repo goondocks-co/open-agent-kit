@@ -5,73 +5,22 @@ Exposes tools that AI agents can call via MCP protocol:
 - oak_remember: Store observations for future retrieval
 - oak_context: Get relevant context for current task
 
-These tools use RetrievalEngine directly (same process, no HTTP overhead).
+These tools delegate to shared ToolOperations for actual implementation.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
-
-from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
 
 
-# Tool Input Schemas (following MCP tool specification)
-
-
-class OakSearchInput(BaseModel):
-    """Input for oak_search tool."""
-
-    query: str = Field(..., description="Natural language search query")
-    search_type: str = Field(
-        default="all",
-        description="Type of search: 'code', 'memory', 'plans', or 'all'",
-    )
-    limit: int = Field(
-        default=10,
-        description="Maximum number of results to return",
-        ge=1,
-        le=50,
-    )
-
-
-class OakRememberInput(BaseModel):
-    """Input for oak_remember tool."""
-
-    observation: str = Field(
-        ...,
-        description="The observation or learning to remember",
-    )
-    memory_type: str = Field(
-        default="discovery",
-        description="Type: 'gotcha', 'bug_fix', 'decision', 'discovery', 'trade_off'",
-    )
-    context: str | None = Field(
-        default=None,
-        description="Related file path or context information",
-    )
-
-
-class OakContextInput(BaseModel):
-    """Input for oak_context tool."""
-
-    task: str = Field(
-        ...,
-        description="Description of the current task or what you're working on",
-    )
-    current_files: list[str] = Field(
-        default_factory=list,
-        description="Files currently being viewed or edited",
-    )
-    max_tokens: int = Field(
-        default=2000,
-        description="Maximum tokens of context to return",
-    )
-
-
 # Tool Definitions (for MCP registration)
+# These follow the MCP tool specification schema
 
 MCP_TOOLS = [
     {
@@ -87,13 +36,16 @@ MCP_TOOLS = [
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Natural language search query (e.g., 'authentication middleware', 'database connection handling')",
+                    "description": (
+                        "Natural language search query "
+                        "(e.g., 'authentication middleware', 'database connection handling')"
+                    ),
                 },
                 "search_type": {
                     "type": "string",
                     "enum": ["all", "code", "memory", "plans"],
                     "default": "all",
-                    "description": "Search code, memories, plans, or all. Options: 'all', 'code', 'memory', 'plans'",
+                    "description": "Search code, memories, plans, or all",
                 },
                 "limit": {
                     "type": "integer",
@@ -171,7 +123,7 @@ MCP_TOOLS = [
 class MCPToolHandler:
     """Handler for MCP tool calls.
 
-    Uses RetrievalEngine directly for all operations (same process).
+    Delegates to shared ToolOperations for actual implementation.
     """
 
     def __init__(self, retrieval_engine: RetrievalEngine) -> None:
@@ -180,7 +132,9 @@ class MCPToolHandler:
         Args:
             retrieval_engine: RetrievalEngine instance for all operations.
         """
-        self.engine = retrieval_engine
+        from open_agent_kit.features.codebase_intelligence.tools import ToolOperations
+
+        self.ops = ToolOperations(retrieval_engine)
 
     def handle_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle an MCP tool call.
@@ -193,9 +147,9 @@ class MCPToolHandler:
             Tool result in MCP format.
         """
         handlers = {
-            "oak_search": self._handle_search,
-            "oak_remember": self._handle_remember,
-            "oak_context": self._handle_context,
+            "oak_search": self.ops.search,
+            "oak_remember": self.ops.remember,
+            "oak_context": self.ops.get_context,
         }
 
         handler = handlers.get(tool_name)
@@ -214,118 +168,8 @@ class MCPToolHandler:
             logger.exception(f"Tool {tool_name} failed: {e}")
             return {
                 "isError": True,
-                "content": [{"type": "text", "text": f"Tool error: {str(e)}"}],
+                "content": [{"type": "text", "text": f"Tool error: {e!s}"}],
             }
-
-    def _handle_search(self, args: dict[str, Any]) -> str:
-        """Handle oak_search tool call."""
-        input_data = OakSearchInput(**args)
-
-        # Use engine directly
-        result = self.engine.search(
-            query=input_data.query,
-            search_type=input_data.search_type,
-            limit=input_data.limit,
-        )
-
-        # Format as readable text
-        output = [f"Search results for: {input_data.query}\n"]
-
-        if result.code:
-            output.append("## Code Results\n")
-            for r in result.code:
-                lines = f"{r.get('start_line', 0)}-{r.get('end_line', 0)}"
-                preview = r.get("content", "")[:200]
-                if len(r.get("content", "")) > 200:
-                    preview += "..."
-                output.append(
-                    f"- **{r['filepath']}** ({r['chunk_type']}: {r.get('name', '')}) "
-                    f"[lines {lines}] (relevance: {round(r['relevance'], 2)})\n"
-                    f"  ```\n  {preview}\n  ```\n"
-                )
-
-        if result.memory:
-            output.append("## Memories\n")
-            for r in result.memory:
-                context_str = f" (context: {r.get('context', '')})" if r.get("context") else ""
-                output.append(f"- [{r['memory_type']}] {r['observation']}{context_str}\n")
-
-        if result.plans:
-            output.append("## Plans\n")
-            for r in result.plans:
-                confidence = r.get("confidence", "medium")
-                output.append(
-                    f"- **{r.get('title', 'Untitled Plan')}** ({confidence})\n"
-                    f"  {r.get('preview', '')[:150]}...\n"
-                )
-
-        if not result.code and not result.memory and not result.plans:
-            output.append("No results found.")
-
-        return "\n".join(output)
-
-    def _handle_remember(self, args: dict[str, Any]) -> str:
-        """Handle oak_remember tool call."""
-        input_data = OakRememberInput(**args)
-
-        # Use engine directly
-        observation_id = self.engine.remember(
-            observation=input_data.observation,
-            memory_type=input_data.memory_type,
-            context=input_data.context,
-        )
-
-        return (
-            f"Observation stored successfully.\n"
-            f"- Type: {input_data.memory_type}\n"
-            f"- ID: {observation_id}\n"
-            f"This will be surfaced in future searches when relevant."
-        )
-
-    def _handle_context(self, args: dict[str, Any]) -> str:
-        """Handle oak_context tool call."""
-        input_data = OakContextInput(**args)
-
-        # Use engine directly
-        result = self.engine.get_task_context(
-            task=input_data.task,
-            current_files=input_data.current_files,
-            max_tokens=input_data.max_tokens,
-        )
-
-        # Format context parts
-        context_parts = []
-
-        if result.code:
-            context_parts.append("## Relevant Code\n")
-            for r in result.code:
-                context_parts.append(
-                    f"### {r['file_path']} ({r.get('chunk_type', 'code')}: {r.get('name', '')})\n"
-                    f"Line {r.get('start_line', 0)} "
-                    f"(relevance: {round(r['relevance'], 2)})\n"
-                )
-
-        if result.memories:
-            context_parts.append("## Related Memories\n")
-            for r in result.memories:
-                emoji = {
-                    "gotcha": "⚠️",
-                    "bug_fix": "🐛",
-                    "decision": "📋",
-                    "discovery": "💡",
-                    "trade_off": "⚖️",
-                }.get(r.get("memory_type", ""), "📝")
-
-                context_parts.append(
-                    f"{emoji} **{r.get('memory_type', 'note')}**: {r['observation']}\n"
-                )
-
-        if not context_parts:
-            context_parts.append(
-                "No specific context found for this task. This may be a new area of the codebase."
-            )
-
-        return "\n".join(context_parts)
 
     @staticmethod
     def get_tool_definitions() -> list[dict]:

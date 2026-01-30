@@ -3,7 +3,7 @@ import { Layout } from "@/layouts/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Logs from "@/pages/Logs";
 import Search from "@/pages/Search";
-import DataExplorer from "@/pages/DataExplorer";
+import Activity from "@/pages/Activity";
 import SessionList from "@/components/data/SessionList";
 import PlansList from "@/components/data/PlansList";
 import MemoriesList from "@/components/data/MemoriesList";
@@ -12,7 +12,10 @@ import Config from "@/pages/Config";
 import DevTools from "@/pages/DevTools";
 import Team from "@/pages/Team";
 import Help from "@/pages/Help";
-import Agents from "@/pages/Agents";
+import AgentsLayout from "@/pages/AgentsLayout";
+import AgentsList from "@/components/agents/AgentsList";
+import RunHistory from "@/components/agents/RunHistory";
+import SavedTasks from "@/components/agents/SavedTasks";
 
 export const router = createBrowserRouter([
     {
@@ -23,8 +26,8 @@ export const router = createBrowserRouter([
             // Placeholders for other routes
             { path: "search", element: <Search /> },
             {
-                path: "data",
-                element: <DataExplorer />,
+                path: "activity",
+                element: <Activity />,
                 children: [
                     { index: true, element: <Navigate to="sessions" replace /> },
                     { path: "sessions", element: <SessionList /> },
@@ -32,9 +35,17 @@ export const router = createBrowserRouter([
                     { path: "memories", element: <MemoriesList /> },
                 ]
             },
-            { path: "data/sessions/:id", element: <SessionDetail /> },
+            { path: "activity/sessions/:id", element: <SessionDetail /> },
             { path: "logs", element: <Logs /> },
-            { path: "agents", element: <Agents /> },
+            {
+                path: "agents",
+                element: <AgentsLayout />,
+                children: [
+                    { index: true, element: <AgentsList /> },
+                    { path: "runs", element: <RunHistory /> },
+                    { path: "saved", element: <SavedTasks /> },
+                ]
+            },
             { path: "team", element: <Team /> },
             { path: "config", element: <Config /> },
             { path: "help", element: <Help /> },

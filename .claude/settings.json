@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SessionStart",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh UserPromptSubmit",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh PostToolUse",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -43,7 +43,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh Stop",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -55,7 +55,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SessionEnd",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -67,7 +67,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh PostToolUseFailure",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -79,7 +79,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SubagentStart",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }
@@ -91,7 +91,7 @@
           {
             "type": "command",
             "command": "/Users/chris/Repos/open-agent-kit/.claude/hooks/oak-ci-hook.sh SubagentStop",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }

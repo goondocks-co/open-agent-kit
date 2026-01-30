@@ -1,7 +1,11 @@
 """Pydantic models for the CI Agent subsystem.
 
 This module defines the data structures for agent definitions, runs,
-and execution tracking.
+execution tracking, and agent instances.
+
+Agent Instances are user-configured specializations of agent templates.
+Templates define capabilities (tools, permissions, system prompt).
+Instances define tasks (default_task, maintained_files, ci_queries).
 """
 
 from datetime import datetime
@@ -9,6 +13,96 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+# =============================================================================
+# Instance Configuration Models
+# =============================================================================
+
+
+class MaintainedFile(BaseModel):
+    """A file or pattern that an agent instance maintains.
+
+    Used by instances to declare which files they're responsible for,
+    enabling focused documentation, code generation, or maintenance tasks.
+    """
+
+    path: str = Field(..., description="File path or glob pattern (e.g., 'docs/api/*.md')")
+    purpose: str = Field(default="", description="Why this file is maintained")
+    naming: str | None = Field(default=None, description="Naming convention for new files")
+    auto_create: bool = Field(default=False, description="Create file if it doesn't exist")
+
+
+class CIQueryTemplate(BaseModel):
+    """A CI query template for agent instances.
+
+    Defines queries that instances run against CI tools (search, memories, etc.)
+    to gather context before executing their task.
+    """
+
+    tool: str = Field(
+        ..., description="CI tool: ci_search, ci_memories, ci_sessions, ci_project_stats"
+    )
+    query_template: str = Field(default="", description="Query template with {placeholders}")
+    search_type: str | None = Field(
+        default=None, description="Search type: all, code, memory, plans"
+    )
+    min_confidence: str = Field(
+        default="medium", description="Minimum confidence: high, medium, low, all"
+    )
+    filter: str | None = Field(default=None, description="Optional filter expression")
+    limit: int = Field(default=10, ge=1, le=100, description="Maximum results")
+    purpose: str = Field(default="", description="Why this query is needed")
+    required: bool = Field(default=False, description="Fail if query returns no results")
+
+
+class AgentInstance(BaseModel):
+    """User-configured agent instance.
+
+    Instances are stored in oak/agents/*.yaml and define:
+    - Which template to use (agent_type)
+    - What task to perform (default_task - REQUIRED)
+    - What files to maintain
+    - What CI queries to run
+
+    Templates cannot be run directly - only instances can be executed.
+    """
+
+    # Identity
+    name: str = Field(..., min_length=1, max_length=50, description="Unique ID (filename)")
+    display_name: str = Field(..., min_length=1, max_length=100, description="Human-readable name")
+    agent_type: str = Field(..., description="Template reference (e.g., 'documentation')")
+    description: str = Field(default="", description="What this instance does")
+
+    # Task (REQUIRED - no ad-hoc prompts)
+    default_task: str = Field(..., min_length=1, description="Task to execute when run")
+
+    # Configuration
+    maintained_files: list[MaintainedFile] = Field(
+        default_factory=list, description="Files this agent maintains"
+    )
+    ci_queries: dict[str, list[CIQueryTemplate]] = Field(
+        default_factory=dict, description="CI queries by phase (discovery, validation, etc.)"
+    )
+    output_requirements: dict[str, Any] = Field(
+        default_factory=dict, description="Required sections, format, etc."
+    )
+    style: dict[str, Any] = Field(
+        default_factory=dict, description="Style preferences (tone, examples, etc.)"
+    )
+    extra: dict[str, Any] = Field(
+        default_factory=dict, description="Additional instance-specific config"
+    )
+
+    # Metadata
+    instance_path: str | None = Field(
+        default=None, description="Path to instance YAML (set by registry)"
+    )
+    schema_version: int = Field(default=1, ge=1, description="Instance schema version")
+
+
+# =============================================================================
+# Run Status and Execution Models
+# =============================================================================
 
 
 class AgentRunStatus(str, Enum):
@@ -105,6 +199,12 @@ class AgentDefinition(BaseModel):
         default=None, description="Path to agent.yaml (set by registry)"
     )
 
+    # Project-specific configuration (loaded from oak/agents/{name}.yaml)
+    project_config: dict[str, Any] | None = Field(
+        default=None,
+        description="Project-specific config from oak/agents/{name}.yaml",
+    )
+
     def get_effective_tools(self) -> list[str]:
         """Get the effective list of allowed tools after applying disallowed list."""
         return [t for t in self.allowed_tools if t not in self.disallowed_tools]
@@ -172,18 +272,59 @@ class AgentRunResponse(BaseModel):
 
 
 class AgentListItem(BaseModel):
-    """Agent summary for list endpoints."""
+    """Agent summary for list endpoints (legacy - use TemplateListItem/InstanceListItem)."""
 
     name: str
     display_name: str
     description: str
     max_turns: int
     timeout_seconds: int
+    project_config: dict[str, Any] | None = Field(
+        default=None,
+        description="Project-specific config from oak/agents/{name}.yaml",
+    )
+
+
+class AgentTemplateListItem(BaseModel):
+    """Template summary for list endpoints.
+
+    Templates define agent capabilities but cannot be run directly.
+    Users create instances from templates.
+    """
+
+    name: str = Field(..., description="Template identifier")
+    display_name: str = Field(..., description="Human-readable name")
+    description: str = Field(..., description="What this template does")
+    max_turns: int = Field(..., description="Default max turns for instances")
+    timeout_seconds: int = Field(..., description="Default timeout for instances")
+
+
+class AgentInstanceListItem(BaseModel):
+    """Instance summary for list endpoints.
+
+    Instances are runnable - they have a configured default_task.
+    """
+
+    name: str = Field(..., description="Instance identifier (filename without .yaml)")
+    display_name: str = Field(..., description="Human-readable name")
+    agent_type: str = Field(..., description="Template this instance uses")
+    description: str = Field(default="", description="What this instance does")
+    default_task: str = Field(..., description="Task executed when run")
+    max_turns: int = Field(..., description="Max turns from template")
+    timeout_seconds: int = Field(..., description="Timeout from template")
 
 
 class AgentListResponse(BaseModel):
-    """Response for listing available agents."""
+    """Response for listing available agents.
 
+    Returns both templates (not directly runnable) and instances (runnable).
+    """
+
+    # New structured response
+    templates: list[AgentTemplateListItem] = Field(default_factory=list)
+    instances: list[AgentInstanceListItem] = Field(default_factory=list)
+
+    # Legacy fields for backwards compatibility
     agents: list[AgentListItem] = Field(default_factory=list)
     total: int = 0
 
@@ -208,3 +349,18 @@ class AgentRunDetailResponse(BaseModel):
     """Detailed run information."""
 
     run: AgentRun
+
+
+class CreateInstanceRequest(BaseModel):
+    """Request to create a new agent instance from a template."""
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$",
+        description="Instance name (becomes filename, lowercase with hyphens)",
+    )
+    display_name: str = Field(..., min_length=1, max_length=100, description="Human-readable name")
+    description: str = Field(default="", description="What this instance does")
+    default_task: str = Field(..., min_length=1, description="Task to execute when run")

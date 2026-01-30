@@ -562,3 +562,18 @@ class RegenerateSummaryResponse(BaseModel):
     summary: str | None = None
     title: str | None = None
     message: str = ""
+
+
+# ============================================================================
+# Plan Refresh Models
+# ============================================================================
+
+
+class RefreshPlanResponse(BaseModel):
+    """Response after refreshing a plan from disk."""
+
+    success: bool = True
+    batch_id: int
+    plan_file_path: str | None = None
+    content_length: int = 0
+    message: str = ""
