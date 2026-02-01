@@ -1018,19 +1018,17 @@ class UpgradeService:
 
         # Check each enabled feature for MCP configurations
         for feature_name in enabled_features:
-            feature_mcp_dir = self.package_features_dir / _feature_name_to_dir(feature_name) / "mcp"
-            if not feature_mcp_dir.exists():
+            # Check if feature has MCP configuration (mcp.yaml)
+            feature_mcp_config = (
+                self.package_features_dir / _feature_name_to_dir(feature_name) / "mcp" / "mcp.yaml"
+            )
+            if not feature_mcp_config.exists():
                 continue
 
             # Check each configured agent for MCP support
             for agent in configured_agents:
-                # Check if agent has MCP support (has_mcp=True in manifest)
+                # Check if agent has MCP support (has_mcp=True and mcp config in manifest)
                 if not self._agent_has_mcp(agent):
-                    continue
-
-                # Check if there's an install script for this agent
-                agent_mcp_install = feature_mcp_dir / agent / "install.sh"
-                if not agent_mcp_install.exists():
                     continue
 
                 # Check if MCP is already configured for this agent
@@ -1109,6 +1107,7 @@ class UpgradeService:
 
         config_file = manifest.mcp.config_file
         servers_key = manifest.mcp.servers_key
+        config_format = manifest.mcp.format or "json"
 
         # Check if server is registered in the config file
         config_path = self.project_root / config_file
@@ -1116,8 +1115,14 @@ class UpgradeService:
             return False
 
         try:
-            with open(config_path) as f:
-                config = json.load(f)
+            if config_format == "toml":
+                import tomli
+
+                with open(config_path, "rb") as f:
+                    config = tomli.load(f)
+            else:
+                with open(config_path) as f:
+                    config = json.load(f)
             return server_name in config.get(servers_key, {})
         except Exception:
             return False

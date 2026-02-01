@@ -6,6 +6,10 @@ import {
     getRegenerateSummaryEndpoint,
     getSuggestedParentEndpoint,
     getDismissSuggestionEndpoint,
+    getRelatedSessionsEndpoint,
+    getAddRelatedEndpoint,
+    getRemoveRelatedEndpoint,
+    getSuggestedRelatedEndpoint,
 } from "@/lib/constants";
 
 // =============================================================================
@@ -263,6 +267,152 @@ export function useAcceptSuggestion() {
             queryClient.invalidateQueries({ queryKey: ["suggested_parent", sessionId] });
             // Invalidate sessions list
             queryClient.invalidateQueries({ queryKey: ["sessions"] });
+        },
+    });
+}
+
+
+// =============================================================================
+// Session Relationships Types (many-to-many semantic links)
+// =============================================================================
+
+export interface RelatedSessionItem {
+    id: string;
+    title: string | null;
+    first_prompt_preview: string | null;
+    started_at: string;
+    ended_at: string | null;
+    status: string;
+    prompt_batch_count: number;
+    relationship_id: number;
+    similarity_score: number | null;
+    created_by: string;
+    related_at: string;
+}
+
+export interface RelatedSessionsResponse {
+    session_id: string;
+    related: RelatedSessionItem[];
+}
+
+export interface AddRelatedRequest {
+    related_session_id: string;
+    similarity_score?: number;
+}
+
+export interface AddRelatedResponse {
+    success: boolean;
+    session_id: string;
+    related_session_id: string;
+    relationship_id: number | null;
+    message: string;
+}
+
+export interface RemoveRelatedResponse {
+    success: boolean;
+    session_id: string;
+    related_session_id: string;
+    message: string;
+}
+
+export interface SuggestedRelatedItem {
+    id: string;
+    title: string | null;
+    first_prompt_preview: string | null;
+    started_at: string;
+    ended_at: string | null;
+    status: string;
+    prompt_batch_count: number;
+    confidence: "high" | "medium" | "low";
+    confidence_score: number;
+    reason: string;
+}
+
+export interface SuggestedRelatedResponse {
+    session_id: string;
+    suggestions: SuggestedRelatedItem[];
+}
+
+
+// =============================================================================
+// Session Relationships Hooks
+// =============================================================================
+
+/**
+ * Hook to fetch related sessions for a given session.
+ * Returns sessions with many-to-many semantic relationships.
+ */
+export function useSessionRelated(sessionId: string | undefined) {
+    return useQuery<RelatedSessionsResponse>({
+        queryKey: ["session_related", sessionId],
+        queryFn: () => fetchJson(getRelatedSessionsEndpoint(sessionId!)),
+        enabled: !!sessionId,
+    });
+}
+
+/**
+ * Hook to fetch suggested related sessions.
+ * Uses vector similarity to find semantically similar sessions.
+ */
+export function useSuggestedRelated(sessionId: string | undefined) {
+    return useQuery<SuggestedRelatedResponse>({
+        queryKey: ["suggested_related", sessionId],
+        queryFn: () => fetchJson(getSuggestedRelatedEndpoint(sessionId!)),
+        enabled: !!sessionId,
+        // Don't refetch too aggressively as this involves vector search
+        staleTime: 30000, // 30 seconds
+        refetchOnWindowFocus: false,
+    });
+}
+
+/**
+ * Hook to add a related session relationship.
+ */
+export function useAddRelated() {
+    const queryClient = useQueryClient();
+
+    return useMutation<
+        AddRelatedResponse,
+        Error,
+        { sessionId: string; relatedSessionId: string; similarityScore?: number }
+    >({
+        mutationFn: ({ sessionId, relatedSessionId, similarityScore }) =>
+            postJson<AddRelatedRequest, AddRelatedResponse>(
+                getAddRelatedEndpoint(sessionId),
+                {
+                    related_session_id: relatedSessionId,
+                    similarity_score: similarityScore,
+                }
+            ),
+        onSuccess: (_data, { sessionId, relatedSessionId }) => {
+            // Invalidate related sessions for both sides
+            queryClient.invalidateQueries({ queryKey: ["session_related", sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["session_related", relatedSessionId] });
+            // Invalidate suggested related (one was accepted)
+            queryClient.invalidateQueries({ queryKey: ["suggested_related", sessionId] });
+        },
+    });
+}
+
+/**
+ * Hook to remove a related session relationship.
+ */
+export function useRemoveRelated() {
+    const queryClient = useQueryClient();
+
+    return useMutation<
+        RemoveRelatedResponse,
+        Error,
+        { sessionId: string; relatedSessionId: string }
+    >({
+        mutationFn: ({ sessionId, relatedSessionId }) =>
+            deleteResource<RemoveRelatedResponse>(
+                getRemoveRelatedEndpoint(sessionId, relatedSessionId)
+            ),
+        onSuccess: (_data, { sessionId, relatedSessionId }) => {
+            // Invalidate related sessions for both sides
+            queryClient.invalidateQueries({ queryKey: ["session_related", sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["session_related", relatedSessionId] });
         },
     });
 }

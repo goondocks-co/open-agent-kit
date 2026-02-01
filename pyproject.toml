@@ -32,6 +32,7 @@ dependencies = [
     "platformdirs>=4.0.0",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
+    "claude-agent-sdk>=0.1.26",
 ]
 
 [project.optional-dependencies]
@@ -55,8 +56,11 @@ codebase-intelligence = [
     "watchdog>=4.0.0",
     "aiofiles>=23.0.0",
     "mcp>=1.0.0",
-    # Agent subsystem - uses Claude Code CLI via SDK
-    "claude-code-sdk>=0.0.19",
+    # Cron scheduling for agents
+    "croniter>=2.0.0",
+    # TOML support for Codex MCP config
+    "tomli>=2.0.0",
+    "tomli-w>=1.0.0",
 ]
 
 # Core language parsers (most common - top languages)
@@ -175,8 +179,10 @@ module = [
     "aiofiles.*",
     "uvicorn",
     "uvicorn.*",
-    "claude_code_sdk",
-    "claude_code_sdk.*",
+    "claude_agent_sdk",
+    "claude_agent_sdk.*",
+    "croniter",
+    "croniter.*",
 ]
 ignore_missing_imports = true
 

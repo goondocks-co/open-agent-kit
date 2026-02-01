@@ -1,0 +1,165 @@
+# =============================================================================
+# README & Overview Documentation Agent
+# =============================================================================
+#
+# Focused agent for maintaining README.md and project overview documentation.
+# For specialized docs, use: feature-docs, architecture-docs, or changelog.
+#
+# =============================================================================
+
+name: readme
+display_name: "README & Overview"
+agent_type: documentation
+description: |
+  Maintains the main README.md with Codebase Intelligence as the primary value proposition.
+  OAK CI provides semantic search, project memory, and AI-powered documentation agents.
+  Secondary features like rules management and strategic planning are also highlighted.
+
+# Execution limits - controls resource usage and prevents runaway agents
+execution:
+  # timeout_seconds: Wall-clock limit for the entire agent run.
+  # README updates are moderate complexity - 5 minutes should be sufficient.
+  timeout_seconds: 300
+
+  # max_turns: Limits API round-trips (each turn ~ one Claude response).
+  # Moderate task with exploration and updates.
+  max_turns: 50
+
+default_task: |
+  Review and update README.md to position OAK with **Codebase Intelligence** as the
+  primary value proposition. Secondary features (rules management, strategic planning)
+  should be mentioned but not overshadow CI.
+
+  **Step 1: Gather Codebase Intelligence context**
+  Run these CI queries to understand the feature deeply:
+  1. ci_project_stats → Get overview of what CI has indexed
+  2. ci_search "codebase intelligence" type=code → Find CI implementation
+  3. ci_search "oak_search oak_context oak_remember" type=code → Find MCP tools
+  4. ci_memories filter=discovery limit=10 → Find CI patterns and insights
+
+  **Step 2: Structure the README with CI as the hero**
+  Ensure these sections emphasize CI as the main value:
+
+  **Overview/Hero Section:**
+  - Lead with "Codebase Intelligence" - semantic search, project memory, documentation agents
+  - Position OAK as "your AI-powered development companion that learns your codebase"
+  - Highlight: indexed code chunks, stored memories, smart context retrieval
+
+  **Features Section (in priority order):**
+  1. **Codebase Intelligence** (PRIMARY) - The headline feature
+     - Semantic code search via `oak_search`
+     - Project memory that persists learnings via `oak_remember`
+     - Smart context for tasks via `oak_context`
+     - Documentation agents that maintain docs automatically
+     - Daemon UI for exploring indexed data (port shown by `oak ci status`)
+  2. **Rules Management** (SECONDARY)
+     - CLAUDE.md and constitution management
+     - Project-specific coding standards
+  3. **Strategic Planning** (SECONDARY)
+     - RFC generation and management
+     - Feature planning workflows
+
+  **Quick Start Section:**
+  - Show `oak ci start` as the first command after install
+  - Demonstrate MCP tools: `oak_search`, `oak_context`, `oak_remember`
+  - Mention `oak ci status` to find the Daemon UI URL
+
+  **Step 3: Verify CI data paths are documented**
+  Ensure the README mentions key CI resources:
+  - SQLite database: `.oak/ci/activities.db`
+  - ChromaDB vectors: `.oak/ci/chroma/`
+  - Agent configs: `oak/ci/agents/`
+  - Daemon logs: `.oak/ci/daemon.log`
+
+  **Step 4: Update installation to highlight CI setup**
+  Installation should naturally flow into CI activation:
+  1. `pip install open-agent-kit` or `uv add open-agent-kit`
+  2. `oak init` (one-time project setup)
+  3. `oak ci start` (start the CI daemon)
+  4. `oak ci status` (shows Daemon UI URL and indexing stats)
+
+  **Step 5: Surface CI-related gotchas**
+  From ci_memories, add any critical notes about:
+  - First-time indexing may take a moment
+  - MCP server configuration for Claude Code integration
+  - Background daemon requirements
+
+maintained_files:
+  - path: "README.md"
+    purpose: "Project overview with Codebase Intelligence as hero feature"
+
+  - path: "QUICKSTART.md"
+    purpose: "Getting started guide focused on CI activation"
+
+  - path: "CONTRIBUTING.md"
+    purpose: "Contribution guidelines"
+
+ci_queries:
+  overview:
+    - tool: ci_project_stats
+      purpose: "Get codebase overview and CI indexing stats"
+      required: true
+
+    - tool: ci_search
+      query_template: "codebase intelligence daemon MCP"
+      search_type: code
+      limit: 15
+      purpose: "Find CI implementation details for accurate feature description"
+
+    - tool: ci_search
+      query_template: "oak_search oak_context oak_remember"
+      search_type: code
+      limit: 10
+      purpose: "Find MCP tool implementations to document"
+
+  context:
+    - tool: ci_memories
+      filter: gotcha
+      limit: 10
+      purpose: "Find CI-related gotchas for quick start warnings"
+
+    - tool: ci_memories
+      filter: discovery
+      limit: 15
+      purpose: "Find CI patterns and insights to highlight"
+
+    - tool: ci_search
+      query_template: "rules management constitution"
+      search_type: code
+      limit: 5
+      purpose: "Find rules management feature for secondary mention"
+
+    - tool: ci_search
+      query_template: "strategic planning rfc"
+      search_type: code
+      limit: 5
+      purpose: "Find planning feature for secondary mention"
+
+output_requirements:
+  required_sections:
+    - name: "Overview"
+      description: "Lead with Codebase Intelligence as the primary value proposition"
+    - name: "Codebase Intelligence"
+      description: "Dedicated section for CI features: search, memory, agents, daemon"
+    - name: "Installation"
+      source: "code"
+      description: "Install steps that flow into CI activation"
+    - name: "Quick Start"
+      description: "Focus on oak ci start and MCP tool usage"
+    - name: "Features"
+      description: "CI first, then rules management and planning"
+    - name: "Documentation"
+      description: "Links to detailed docs"
+
+style:
+  tone: "welcoming"
+  include_examples: true
+  conventions:
+    - "Lead with Codebase Intelligence in every major section"
+    - "Position OAK as an AI-powered development companion"
+    - "Show MCP tool examples (oak_search, oak_context, oak_remember)"
+    - "Reference oak ci status for Daemon UI URL (port is dynamic per project)"
+    - "Keep secondary features (rules, planning) brief but visible"
+    - "Quick start should get CI running in < 5 minutes"
+
+schema_version: 1

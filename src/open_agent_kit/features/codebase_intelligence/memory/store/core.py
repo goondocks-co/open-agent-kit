@@ -405,7 +405,12 @@ class VectorStore:
     ) -> list[tuple[str, float]]:
         """Find sessions with similar summaries using vector search."""
         return session_ops.find_similar_sessions(
-            self, query_text, project_root, exclude_session_id, limit, max_age_days
+            self,
+            query_text,
+            project_root,
+            exclude_session_id,
+            limit,
+            max_age_days,
         )
 
     def search_session_summaries(self, query: str, limit: int = 10) -> list[dict]:

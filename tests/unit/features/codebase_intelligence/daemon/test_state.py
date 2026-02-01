@@ -2,13 +2,10 @@
 
 Tests cover:
 - IndexStatus state transitions
-- SessionInfo lifecycle and recording
 - DaemonState initialization and properties
-- Session management (create, get, end)
 - State reset for testing
 """
 
-from datetime import datetime
 from pathlib import Path
 
 from open_agent_kit.features.codebase_intelligence.constants import (
@@ -21,7 +18,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     DaemonState,
     IndexStatus,
-    SessionInfo,
     daemon_state,
     get_state,
     reset_state,
@@ -202,97 +198,6 @@ class TestIndexStatusSerialization:
 
 
 # =============================================================================
-# SessionInfo Tests
-# =============================================================================
-
-
-class TestSessionInfoInit:
-    """Test SessionInfo initialization."""
-
-    def test_session_info_initialization(self, sample_session_info: SessionInfo):
-        """Test basic SessionInfo initialization.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        assert sample_session_info.session_id == "test-session-123"
-        assert sample_session_info.agent == "claude"
-        assert isinstance(sample_session_info.started_at, datetime)
-        assert sample_session_info.observations == []
-        assert sample_session_info.tool_calls == 0
-        assert sample_session_info.last_activity is not None
-
-
-class TestSessionInfoRecording:
-    """Test session activity recording."""
-
-    def test_record_tool_call(self, sample_session_info: SessionInfo):
-        """Test recording tool calls in session.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        initial_count = sample_session_info.tool_calls
-        sample_session_info.record_tool_call()
-
-        assert sample_session_info.tool_calls == initial_count + 1
-        assert sample_session_info.last_activity is not None
-
-    def test_record_multiple_tool_calls(self, sample_session_info: SessionInfo):
-        """Test recording multiple tool calls.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        for _ in range(5):
-            sample_session_info.record_tool_call()
-
-        assert sample_session_info.tool_calls == 5
-
-    def test_add_observation(self, sample_session_info: SessionInfo):
-        """Test adding observations to session.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        sample_session_info.add_observation("obs-123")
-        assert "obs-123" in sample_session_info.observations
-
-    def test_add_multiple_observations(self, sample_session_info: SessionInfo):
-        """Test adding multiple observations.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        obs_ids = ["obs-1", "obs-2", "obs-3"]
-        for obs_id in obs_ids:
-            sample_session_info.add_observation(obs_id)
-
-        assert sample_session_info.observations == obs_ids
-
-    def test_last_activity_updates_on_tool_call(self, sample_session_info: SessionInfo):
-        """Test that last_activity is updated when recording tool call.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        initial_activity = sample_session_info.last_activity
-        sample_session_info.record_tool_call()
-        # Activity might be same moment, but shouldn't be before
-        assert sample_session_info.last_activity >= initial_activity
-
-    def test_last_activity_updates_on_observation(self, sample_session_info: SessionInfo):
-        """Test that last_activity is updated when adding observation.
-
-        Args:
-            sample_session_info: Sample SessionInfo fixture.
-        """
-        initial_activity = sample_session_info.last_activity
-        sample_session_info.add_observation("obs-123")
-        assert sample_session_info.last_activity >= initial_activity
-
-
-# =============================================================================
 # DaemonState Tests
 # =============================================================================
 
@@ -316,7 +221,6 @@ class TestDaemonStateInit:
         assert daemon_state.ci_config is None
         assert daemon_state.log_level == "INFO"
         assert isinstance(daemon_state.index_status, IndexStatus)
-        assert daemon_state.sessions == {}
 
     def test_initialize_method(self, daemon_state: DaemonState, tmp_path: Path):
         """Test the initialize method sets expected values.
@@ -410,78 +314,6 @@ class TestDaemonStateReadiness:
         assert initialized_daemon_state.is_ready is True
 
 
-class TestDaemonStateSessionManagement:
-    """Test session management."""
-
-    def test_create_session(self, daemon_state: DaemonState):
-        """Test creating a session.
-
-        Args:
-            daemon_state: DaemonState fixture.
-        """
-        session = daemon_state.create_session("session-1", "claude")
-
-        assert session.session_id == "session-1"
-        assert session.agent == "claude"
-        assert "session-1" in daemon_state.sessions
-
-    def test_get_existing_session(self, daemon_state: DaemonState):
-        """Test getting an existing session.
-
-        Args:
-            daemon_state: DaemonState fixture.
-        """
-        created = daemon_state.create_session("session-1", "cursor")
-        retrieved = daemon_state.get_session("session-1")
-
-        assert retrieved == created
-        assert retrieved.agent == "cursor"
-
-    def test_get_nonexistent_session_returns_none(self, daemon_state: DaemonState):
-        """Test that getting nonexistent session returns None.
-
-        Args:
-            daemon_state: DaemonState fixture.
-        """
-        result = daemon_state.get_session("nonexistent")
-        assert result is None
-
-    def test_end_session(self, daemon_state: DaemonState):
-        """Test ending a session.
-
-        Args:
-            daemon_state: DaemonState fixture.
-        """
-        daemon_state.create_session("session-1", "claude")
-        ended = daemon_state.end_session("session-1")
-
-        assert ended is not None
-        assert ended.session_id == "session-1"
-        assert "session-1" not in daemon_state.sessions
-
-    def test_end_nonexistent_session_returns_none(self, daemon_state: DaemonState):
-        """Test that ending nonexistent session returns None.
-
-        Args:
-            daemon_state: DaemonState fixture.
-        """
-        result = daemon_state.end_session("nonexistent")
-        assert result is None
-
-    def test_multiple_sessions(self, daemon_state: DaemonState):
-        """Test managing multiple sessions simultaneously.
-
-        Args:
-            daemon_state: DaemonState fixture.
-        """
-        s1 = daemon_state.create_session("session-1", "claude")
-        s2 = daemon_state.create_session("session-2", "cursor")
-
-        assert daemon_state.get_session("session-1") == s1
-        assert daemon_state.get_session("session-2") == s2
-        assert len(daemon_state.sessions) == 2
-
-
 class TestDaemonStateReset:
     """Test state reset functionality."""
 
@@ -497,7 +329,6 @@ class TestDaemonStateReset:
         assert initialized_daemon_state.project_root is None
         assert initialized_daemon_state.embedding_chain is None
         assert initialized_daemon_state.config == {}
-        assert initialized_daemon_state.sessions == {}
 
     def test_reset_reinitializes_collections(self, daemon_state: DaemonState):
         """Test that reset reinitializes collections.
@@ -506,18 +337,14 @@ class TestDaemonStateReset:
             daemon_state: DaemonState fixture.
         """
         # Add some data
-        daemon_state.sessions["test"] = SessionInfo(
-            session_id="test",
-            agent="claude",
-            started_at=datetime.now(),
-        )
+        daemon_state.config["test"] = "value"
 
         # Reset
         daemon_state.reset()
 
         # Collections should be fresh
         assert isinstance(daemon_state.index_status, IndexStatus)
-        assert daemon_state.sessions == {}
+        assert daemon_state.config == {}
 
     def test_reset_restores_defaults(self, daemon_state: DaemonState):
         """Test that reset restores default values.

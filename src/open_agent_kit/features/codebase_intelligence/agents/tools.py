@@ -1,7 +1,7 @@
 """CI data tools for agents.
 
 This module provides MCP tools that expose Codebase Intelligence data
-to agents running via the claude-code-sdk. These tools allow agents to:
+to agents running via the claude-agent-sdk. These tools allow agents to:
 - Search code and memories semantically
 - Access session history and summaries
 - Get project statistics
@@ -25,7 +25,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 )
 
 if TYPE_CHECKING:
-    from claude_code_sdk.types import McpSdkServerConfig
+    from claude_agent_sdk.types import McpSdkServerConfig
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
@@ -39,7 +39,7 @@ def create_ci_tools(
     activity_store: ActivityStore | None,
     vector_store: VectorStore | None,
 ) -> list[Any]:
-    """Create CI data tools for use with claude-code-sdk.
+    """Create CI data tools for use with claude-agent-sdk.
 
     These tools are implemented as decorated functions that can be passed
     to create_sdk_mcp_server(). They delegate to shared ToolOperations
@@ -54,9 +54,9 @@ def create_ci_tools(
         List of tool functions decorated with @tool.
     """
     try:
-        from claude_code_sdk import tool
+        from claude_agent_sdk import tool
     except ImportError:
-        logger.warning("claude-code-sdk not installed, CI tools unavailable")
+        logger.warning("claude-agent-sdk not installed, CI tools unavailable")
         return []
 
     from open_agent_kit.features.codebase_intelligence.tools import ToolOperations
@@ -193,9 +193,9 @@ def create_ci_mcp_server(
         McpSdkServerConfig instance, or None if SDK not available.
     """
     try:
-        from claude_code_sdk import create_sdk_mcp_server
+        from claude_agent_sdk import create_sdk_mcp_server
     except ImportError:
-        logger.warning("claude-code-sdk not installed, cannot create MCP server")
+        logger.warning("claude-agent-sdk not installed, cannot create MCP server")
         return None
 
     tools = create_ci_tools(retrieval_engine, activity_store, vector_store)

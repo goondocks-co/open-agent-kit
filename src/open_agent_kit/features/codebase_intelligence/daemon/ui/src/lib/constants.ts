@@ -183,7 +183,10 @@ export const API_ENDPOINTS = {
     // Agent endpoints
     AGENTS: "/api/agents",
     AGENT_RUNS: "/api/agents/runs",
-    SAVED_TASKS: "/api/saved-tasks",
+
+    // Schedule endpoints
+    SCHEDULES: "/api/schedules",
+    SCHEDULES_SYNC: "/api/schedules/sync",
 
     // Config endpoints
     CONFIG: "/api/config",
@@ -989,6 +992,17 @@ export const AGENT_RUN_STATUS_LABELS: Record<AgentRunStatusType, string> = {
     [AGENT_RUN_STATUS.TIMEOUT]: "Timeout",
 } as const;
 
+/** Error message pattern for runs recovered by the watchdog */
+export const WATCHDOG_RECOVERY_ERROR_PATTERN = "Recovered by watchdog";
+
+/**
+ * Check if a run was recovered by the watchdog process.
+ * Watchdog marks stale runs (stuck in RUNNING status) as FAILED with a specific error message.
+ */
+export function isWatchdogRecoveredRun(error: string | null | undefined): boolean {
+    return error?.includes(WATCHDOG_RECOVERY_ERROR_PATTERN) ?? false;
+}
+
 /** CSS classes for agent run status badges */
 export const AGENT_RUN_STATUS_COLORS: Record<AgentRunStatusType, { dot: string; badge: string }> = {
     [AGENT_RUN_STATUS.PENDING]: {
@@ -1092,3 +1106,60 @@ export function getDismissSuggestionEndpoint(sessionId: string): string {
 
 /** Re-embed sessions endpoint */
 export const REEMBED_SESSIONS_ENDPOINT = "/api/activity/reembed-sessions";
+
+
+// =============================================================================
+// Session Relationships (many-to-many semantic links)
+// =============================================================================
+
+/**
+ * Relationship types for many-to-many session links.
+ * Currently only 'related' is supported.
+ */
+export const RELATIONSHIP_TYPES = {
+    RELATED: "related",
+} as const;
+
+export type RelationshipType = typeof RELATIONSHIP_TYPES[keyof typeof RELATIONSHIP_TYPES];
+
+/**
+ * Created by values for relationships.
+ */
+export const RELATIONSHIP_CREATED_BY = {
+    SUGGESTION: "suggestion",
+    MANUAL: "manual",
+} as const;
+
+export type RelationshipCreatedBy = typeof RELATIONSHIP_CREATED_BY[keyof typeof RELATIONSHIP_CREATED_BY];
+
+/** Human-readable labels for relationship created_by */
+export const RELATIONSHIP_CREATED_BY_LABELS: Record<RelationshipCreatedBy, string> = {
+    [RELATIONSHIP_CREATED_BY.SUGGESTION]: "From Suggestion",
+    [RELATIONSHIP_CREATED_BY.MANUAL]: "Manually Added",
+} as const;
+
+/** CSS classes for relationship created_by badges */
+export const RELATIONSHIP_CREATED_BY_BADGE_CLASSES: Record<RelationshipCreatedBy, string> = {
+    [RELATIONSHIP_CREATED_BY.SUGGESTION]: "bg-amber-500/10 text-amber-600",
+    [RELATIONSHIP_CREATED_BY.MANUAL]: "bg-green-500/10 text-green-600",
+} as const;
+
+/** Build related sessions endpoint */
+export function getRelatedSessionsEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/related`;
+}
+
+/** Build add related session endpoint */
+export function getAddRelatedEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/related`;
+}
+
+/** Build remove related session endpoint */
+export function getRemoveRelatedEndpoint(sessionId: string, relatedSessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/related/${relatedSessionId}`;
+}
+
+/** Build suggested related sessions endpoint */
+export function getSuggestedRelatedEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/suggested-related`;
+}

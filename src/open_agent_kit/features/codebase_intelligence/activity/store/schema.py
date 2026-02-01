@@ -18,7 +18,9 @@ Contains schema version and SQL for creating the database schema.
 # v15: Added saved_tasks table for reusable task templates
 # v16: Updated source_machine_id to privacy-preserving format (github_username_hash)
 # v17: Added suggested_parent_dismissed to sessions, session_link_events table for analytics
-SCHEMA_VERSION = 17
+# v18: Added session_relationships table for many-to-many semantic session relationships
+# v19: Added agent_schedules table for cron scheduling runtime state
+SCHEMA_VERSION = 19
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -252,4 +254,46 @@ CREATE TABLE IF NOT EXISTS session_link_events (
 CREATE INDEX IF NOT EXISTS idx_session_link_events_session ON session_link_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_link_events_type ON session_link_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_session_link_events_created ON session_link_events(created_at_epoch DESC);
+
+-- Session relationships table (v18 - many-to-many semantic relationships)
+-- Complements parent-child (temporal continuity) with semantic relationships
+CREATE TABLE IF NOT EXISTS session_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_a_id TEXT NOT NULL,
+    session_b_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,  -- 'related'
+    similarity_score REAL,            -- Vector similarity when created
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    created_by TEXT NOT NULL,         -- 'suggestion', 'manual'
+
+    FOREIGN KEY (session_a_id) REFERENCES sessions(id),
+    FOREIGN KEY (session_b_id) REFERENCES sessions(id),
+    UNIQUE(session_a_id, session_b_id)  -- Prevent duplicates (a->b only, not b->a)
+);
+
+-- Indexes for session_relationships
+CREATE INDEX IF NOT EXISTS idx_session_relationships_a ON session_relationships(session_a_id);
+CREATE INDEX IF NOT EXISTS idx_session_relationships_b ON session_relationships(session_b_id);
+CREATE INDEX IF NOT EXISTS idx_session_relationships_type ON session_relationships(relationship_type);
+
+-- Agent schedules table (v19 - runtime state for cron scheduling)
+-- YAML defines schedule (cron + description), DB tracks runtime state
+CREATE TABLE IF NOT EXISTS agent_schedules (
+    instance_name TEXT PRIMARY KEY,
+    enabled INTEGER DEFAULT 1,
+    last_run_at TEXT,
+    last_run_at_epoch INTEGER,
+    last_run_id TEXT,
+    next_run_at TEXT,
+    next_run_at_epoch INTEGER,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_at_epoch INTEGER NOT NULL
+);
+
+-- Index for finding due schedules
+CREATE INDEX IF NOT EXISTS idx_agent_schedules_enabled_next
+    ON agent_schedules(enabled, next_run_at_epoch);
 """

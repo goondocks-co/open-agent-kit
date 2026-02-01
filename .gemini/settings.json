@@ -61,9 +61,7 @@
       "command": "oak",
       "args": [
         "ci",
-        "mcp",
-        "--project",
-        "/Users/chris/Repos/open-agent-kit"
+        "mcp"
       ]
     }
   }

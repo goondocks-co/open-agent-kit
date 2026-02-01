@@ -37,6 +37,7 @@ import {
     FileCode,
     Layers,
     X,
+    Settings2,
 } from "lucide-react";
 import { FALLBACK_MESSAGES } from "@/lib/constants";
 
@@ -89,7 +90,7 @@ function InstanceCard({
             {expanded && (
                 <CardContent className="pt-0 pb-3 space-y-4">
                     {/* Execution limits */}
-                    <div className="flex gap-4 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                             <Timer className="w-3 h-3" />
                             Max {instance.max_turns} turns
@@ -102,6 +103,12 @@ function InstanceCard({
                             <Layers className="w-3 h-3" />
                             Template: {instance.agent_type}
                         </span>
+                        {instance.has_execution_override && (
+                            <span className="flex items-center gap-1 text-amber-600" title="Instance has custom execution limits (overrides template defaults)">
+                                <Settings2 className="w-3 h-3" />
+                                Custom limits
+                            </span>
+                        )}
                     </div>
 
                     {/* Default task preview */}

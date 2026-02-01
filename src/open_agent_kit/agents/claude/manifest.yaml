@@ -64,3 +64,24 @@ mcp:
   config_file: ".mcp.json"
   format: json
   servers_key: "mcpServers"
+  # CLI commands (preferred method if claude CLI is available)
+  # Placeholders: {name} = server name, {command} = full command string
+  cli:
+    install: "claude mcp add {name} --scope project -- {command}"
+    remove: "claude mcp remove {name} --scope project"
+  # JSON entry format for direct manipulation fallback
+  # Placeholders: {cmd} = executable, {args} = argument list
+  entry_format:
+    type: "stdio"
+    command: "{cmd}"
+    args: "{args}"
+    env: {}
+
+# Hooks configuration for Codebase Intelligence
+# Claude Code uses settings.json with nested hook structure
+hooks:
+  type: json
+  config_file: "settings.json"
+  hooks_key: "hooks"
+  format: nested
+  template_file: "hooks.json"

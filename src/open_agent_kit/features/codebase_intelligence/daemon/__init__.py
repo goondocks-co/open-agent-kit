@@ -4,8 +4,9 @@ This module uses lazy imports to avoid loading heavy dependencies (FastAPI, etc.
 until they're actually needed. This allows the DaemonManager to be imported
 for lifecycle hooks without requiring all dependencies to be installed.
 
-State management classes (DaemonState, IndexStatus, SessionInfo) are imported
-directly as they have no heavy dependencies.
+State management classes (DaemonState, IndexStatus) are imported directly as
+they have no heavy dependencies. Session tracking is handled entirely by SQLite
+(ActivityStore) - there is no in-memory session state.
 """
 
 from typing import Any
@@ -14,7 +15,6 @@ from typing import Any
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     DaemonState,
     IndexStatus,
-    SessionInfo,
     daemon_state,
     get_state,
     reset_state,
@@ -43,7 +43,6 @@ __all__ = [
     "DaemonManager",
     "DaemonState",
     "IndexStatus",
-    "SessionInfo",
     "daemon_state",
     "get_state",
     "reset_state",

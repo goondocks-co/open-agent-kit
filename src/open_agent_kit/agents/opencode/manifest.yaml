@@ -65,11 +65,17 @@ mcp:
   config_file: "opencode.json"
   format: json
   servers_key: "mcp"  # OpenCode uses "mcp" not "mcpServers"
+  # No CLI support - direct JSON manipulation only
+  # JSON entry format (OpenCode uses array format for command)
+  # Note: OpenCode uses "command" as an array, not separate cmd/args
+  entry_format:
+    type: "local"
+    command: "{command_array}"  # Special: full command as array
 
 # Hooks configuration for plugin-based CI integration
 # OpenCode uses TypeScript/JavaScript plugins instead of JSON hooks
 hooks:
-  type: "plugin"                          # "plugin" for TS/JS, "json" for JSON hooks
-  plugin_dir: ".opencode/plugins"         # Where plugins are installed
-  plugin_file: "oak-ci.ts"                # The CI hook plugin filename
-  template_dir: "codebase_intelligence/hooks/opencode"  # Source template directory
+  type: plugin
+  plugin_dir: "plugins"
+  plugin_file: "oak-ci.ts"
+  template_file: "oak-ci.ts"

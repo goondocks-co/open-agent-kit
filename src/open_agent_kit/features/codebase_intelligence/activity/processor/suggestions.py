@@ -10,15 +10,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CONFIDENCE_GAP_BOOST_THRESHOLD,
+    CONFIDENCE_HIGH_THRESHOLD,
+    CONFIDENCE_MEDIUM_THRESHOLD,
+    CONFIDENCE_MIN_MEANINGFUL_RANGE,
+    RELATED_SUGGESTION_MAX_AGE_DAYS,
     SUGGESTION_CONFIDENCE_HIGH,
     SUGGESTION_CONFIDENCE_LOW,
     SUGGESTION_CONFIDENCE_MEDIUM,
-    SUGGESTION_HIGH_THRESHOLD,
     SUGGESTION_LLM_WEIGHT,
-    SUGGESTION_LOW_THRESHOLD,
     SUGGESTION_MAX_AGE_DAYS,
     SUGGESTION_MAX_CANDIDATES,
-    SUGGESTION_MEDIUM_THRESHOLD,
     SUGGESTION_TIME_BONUS_1H_SECONDS,
     SUGGESTION_TIME_BONUS_1H_VALUE,
     SUGGESTION_TIME_BONUS_6H_SECONDS,
@@ -44,6 +46,17 @@ class SuggestionCandidate:
     llm_score: float | None = None
     time_gap_seconds: float | None = None
     final_score: float = 0.0
+
+
+@dataclass
+class RelatedSuggestion:
+    """Result of related session suggestion computation."""
+
+    session_id: str
+    title: str | None
+    confidence: str  # high, medium, low
+    confidence_score: float
+    reason: str
 
 
 @dataclass
@@ -112,6 +125,13 @@ def compute_suggested_parent(
 
     query_text = f"{session.title or ''}\n\n{summary_obs.observation}"
 
+    # Get already-related sessions to exclude from suggestions
+    from open_agent_kit.features.codebase_intelligence.activity.store.relationships import (
+        get_related_session_ids,
+    )
+
+    related_ids = get_related_session_ids(activity_store, session_id)
+
     # Vector search for similar sessions
     similar_sessions = vector_store.find_similar_sessions(
         query_text=query_text,
@@ -134,6 +154,10 @@ def compute_suggested_parent(
 
         # Skip sessions that are already linked to this one (avoid reverse links)
         if candidate_session.parent_session_id == session_id:
+            continue
+
+        # Skip sessions that are already related
+        if candidate_id in related_ids:
             continue
 
         # Get candidate's summary
@@ -169,26 +193,30 @@ def compute_suggested_parent(
             call_llm=call_llm,
         )
 
-    # Compute final scores
+    # Compute final scores (combines vector similarity, optional LLM, and time bonus)
     for candidate in candidates:
         _compute_final_score(candidate, has_llm_scores=call_llm is not None)
 
-    # Sort by final score
+    # Sort by final score (descending - best first)
     candidates.sort(key=lambda c: c.final_score, reverse=True)
 
     # Get best candidate
     best = candidates[0]
 
-    # Check if score is above minimum threshold
-    if best.final_score < SUGGESTION_LOW_THRESHOLD:
+    # Use relative confidence scoring (model-agnostic)
+    # This compares results within this result set, not against absolute thresholds
+    # which vary significantly across different embedding models
+    scores = [c.final_score for c in candidates]
+    confidence = _calculate_relative_confidence(scores, index=0)
+
+    # Only show suggestions with high or medium relative confidence
+    # Low confidence means the best result isn't significantly better than others
+    if confidence == SUGGESTION_CONFIDENCE_LOW:
         logger.debug(
-            f"Best candidate for {session_id} scored {best.final_score:.2f}, "
-            f"below threshold {SUGGESTION_LOW_THRESHOLD}"
+            f"Best candidate for {session_id} has low relative confidence "
+            f"(score={best.final_score:.2f}), not suggesting"
         )
         return None
-
-    # Determine confidence level
-    confidence = _get_confidence_level(best.final_score)
 
     # Build reason string
     reason = _build_reason(best, has_llm=call_llm is not None)
@@ -314,14 +342,62 @@ def _compute_final_score(candidate: SuggestionCandidate, has_llm_scores: bool) -
     candidate.final_score = min(1.0, base_score + time_bonus)
 
 
-def _get_confidence_level(score: float) -> str:
-    """Map score to confidence level."""
-    if score >= SUGGESTION_HIGH_THRESHOLD:
-        return SUGGESTION_CONFIDENCE_HIGH
-    elif score >= SUGGESTION_MEDIUM_THRESHOLD:
+def _calculate_relative_confidence(scores: list[float], index: int) -> str:
+    """Calculate confidence level based on relative position in result set.
+
+    This is model-agnostic - it compares results within the same query rather
+    than using absolute thresholds that vary by embedding model.
+
+    Adapted from RetrievalEngine.calculate_confidence() for consistency.
+
+    Args:
+        scores: List of relevance scores, sorted descending (best first).
+        index: Index of the result to calculate confidence for.
+
+    Returns:
+        Confidence level string: "high", "medium", or "low".
+    """
+    if not scores or index >= len(scores):
         return SUGGESTION_CONFIDENCE_MEDIUM
-    else:
+
+    # Single result - can't determine relative confidence, be conservative
+    if len(scores) == 1:
+        # With only one candidate, we can't compare. Default to medium.
+        return SUGGESTION_CONFIDENCE_MEDIUM
+
+    score = scores[index]
+    max_score = scores[0]
+    min_score = scores[-1]
+    score_range = max_score - min_score
+
+    # If all scores are essentially the same, model is uncertain
+    if score_range < CONFIDENCE_MIN_MEANINGFUL_RANGE:
+        # Fall back to position-based: first is medium (can't be sure), rest are low
+        if index == 0:
+            return SUGGESTION_CONFIDENCE_MEDIUM
         return SUGGESTION_CONFIDENCE_LOW
+
+    # Calculate normalized position (0.0 = min, 1.0 = max)
+    normalized = (score - min_score) / score_range
+
+    # Calculate gap to next result (for confidence boost)
+    gap_ratio = 0.0
+    if index < len(scores) - 1:
+        gap = score - scores[index + 1]
+        gap_ratio = gap / score_range
+
+    # HIGH: Top 30% of range AND (first result OR clear gap to next)
+    if normalized >= CONFIDENCE_HIGH_THRESHOLD:
+        if index == 0 or gap_ratio >= CONFIDENCE_GAP_BOOST_THRESHOLD:
+            return SUGGESTION_CONFIDENCE_HIGH
+        return SUGGESTION_CONFIDENCE_MEDIUM
+
+    # MEDIUM: Top 60% of range
+    if normalized >= CONFIDENCE_MEDIUM_THRESHOLD:
+        return SUGGESTION_CONFIDENCE_MEDIUM
+
+    # LOW: Bottom 40% of range
+    return SUGGESTION_CONFIDENCE_LOW
 
 
 def _build_reason(candidate: SuggestionCandidate, has_llm: bool) -> str:
@@ -400,3 +476,171 @@ def reset_suggestion_dismissal(
     except (OSError, ValueError) as e:
         logger.error(f"Failed to reset suggestion dismissal for {session_id}: {e}")
         return False
+
+
+# =============================================================================
+# Related Session Suggestions (many-to-many semantic relationships)
+# =============================================================================
+
+
+def compute_related_sessions(
+    activity_store: "ActivityStore",
+    vector_store: "VectorStore",
+    session_id: str,
+    limit: int = 5,
+    exclude_lineage: bool = True,
+    exclude_existing_related: bool = True,
+) -> list[RelatedSuggestion]:
+    """Compute suggested related sessions for semantic linking.
+
+    Unlike parent suggestions (which are for temporal continuity after "clear"),
+    related suggestions find semantically similar sessions regardless of time gap.
+    This enables linking sessions that worked on the same topic months apart.
+
+    Args:
+        activity_store: ActivityStore for session data.
+        vector_store: VectorStore for similarity search.
+        session_id: Session to find related suggestions for.
+        limit: Maximum number of suggestions to return.
+        exclude_lineage: If True, exclude parent/child sessions from results.
+        exclude_existing_related: If True, exclude already-related sessions.
+
+    Returns:
+        List of RelatedSuggestion objects, sorted by confidence (best first).
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.relationships import (
+        get_related_session_ids,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+        get_session_lineage,
+    )
+
+    # Get the session
+    session = activity_store.get_session(session_id)
+    if not session:
+        logger.debug(f"Session {session_id} not found for related suggestions")
+        return []
+
+    # Get session's summary for similarity search
+    summary_obs = activity_store.get_latest_session_summary(session_id)
+    if not summary_obs:
+        logger.debug(f"Session {session_id} has no summary, cannot compute related suggestions")
+        return []
+
+    query_text = f"{session.title or ''}\n\n{summary_obs.observation}"
+
+    # Build exclusion set
+    exclude_ids: set[str] = {session_id}
+
+    # Exclude lineage (ancestors and children)
+    if exclude_lineage:
+        lineage = get_session_lineage(activity_store, session_id)
+        for ancestor in lineage:
+            exclude_ids.add(ancestor.id)
+
+        # Also get children via parent_session_id
+        conn = activity_store._get_connection()
+        cursor = conn.execute(
+            "SELECT id FROM sessions WHERE parent_session_id = ?",
+            (session_id,),
+        )
+        for row in cursor.fetchall():
+            exclude_ids.add(row[0])
+
+    # Exclude already-related sessions
+    if exclude_existing_related:
+        existing_related = get_related_session_ids(activity_store, session_id)
+        exclude_ids.update(existing_related)
+
+    # Vector search for similar sessions with extended age limit
+    # Request more than limit to account for filtering
+    fetch_limit = limit + len(exclude_ids) + 5
+    similar_sessions = vector_store.find_similar_sessions(
+        query_text=query_text,
+        project_root=session.project_root,
+        exclude_session_id=session_id,
+        limit=fetch_limit,
+        max_age_days=RELATED_SUGGESTION_MAX_AGE_DAYS,
+    )
+
+    if not similar_sessions:
+        logger.debug(f"No similar sessions found for {session_id}")
+        return []
+
+    # Filter out excluded sessions and build candidates
+    candidates: list[SuggestionCandidate] = []
+    for candidate_id, vector_similarity in similar_sessions:
+        if candidate_id in exclude_ids:
+            continue
+
+        candidate_session = activity_store.get_session(candidate_id)
+        if not candidate_session:
+            continue
+
+        # Get candidate's summary
+        candidate_summary_obs = activity_store.get_latest_session_summary(candidate_id)
+        candidate_summary = candidate_summary_obs.observation if candidate_summary_obs else None
+
+        # Calculate time gap (for display, not scoring - related doesn't prioritize recent)
+        time_gap_seconds: float | None = None
+        if session.started_at and candidate_session.started_at:
+            time_gap_seconds = abs(
+                (session.started_at - candidate_session.started_at).total_seconds()
+            )
+
+        candidates.append(
+            SuggestionCandidate(
+                session_id=candidate_id,
+                title=candidate_session.title,
+                summary=candidate_summary,
+                vector_similarity=vector_similarity,
+                time_gap_seconds=time_gap_seconds,
+                final_score=vector_similarity,  # Use raw similarity for related (no time bonus)
+            )
+        )
+
+        if len(candidates) >= limit * 2:  # Get extra for confidence calculation
+            break
+
+    if not candidates:
+        logger.debug(f"No valid candidates after filtering for {session_id}")
+        return []
+
+    # Sort by similarity (best first)
+    candidates.sort(key=lambda c: c.final_score, reverse=True)
+
+    # Calculate relative confidence for each candidate
+    scores = [c.final_score for c in candidates]
+    suggestions: list[RelatedSuggestion] = []
+
+    for i, candidate in enumerate(candidates[:limit]):
+        confidence = _calculate_relative_confidence(scores, index=i)
+
+        # Filter out low confidence results (relative to this result set)
+        # The min_confidence threshold filters by absolute score at search level,
+        # but we also filter by relative confidence label here
+        if confidence == SUGGESTION_CONFIDENCE_LOW:
+            continue
+
+        # Build reason string with time gap
+        reason = f"Vector similarity: {candidate.vector_similarity:.0%}"
+        if candidate.time_gap_seconds is not None:
+            hours = candidate.time_gap_seconds / 3600
+            if hours < 24:
+                reason += f" | {hours:.1f}h apart"
+            else:
+                days = hours / 24
+                reason += f" | {days:.0f}d apart"
+
+        suggestions.append(
+            RelatedSuggestion(
+                session_id=candidate.session_id,
+                title=candidate.title,
+                confidence=confidence,
+                confidence_score=candidate.final_score,
+                reason=reason,
+            )
+        )
+
+    logger.debug(f"Found {len(suggestions)} related session suggestions for {session_id[:8]}")
+    return suggestions

@@ -9,15 +9,22 @@ providing seamless integration with AI agents like Claude Code.
 
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Literal, cast
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-from open_agent_kit.config.paths import OAK_DIR
-from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
-from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+# Force all logging to stderr to preserve stdout for MCP protocol
+# This prevents stdout pollution that corrupts the JSON-RPC handshake
+logging.basicConfig(stream=sys.stderr, level=logging.INFO, force=True)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# These imports must be after logging setup to prevent stdout corruption
+from open_agent_kit.config.paths import OAK_DIR  # noqa: E402
+from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR  # noqa: E402
+from open_agent_kit.features.codebase_intelligence.daemon.manager import (  # noqa: E402
     DaemonManager,
     get_project_port,
 )
@@ -147,7 +154,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
                 "limit": min(max(1, limit), 50),
             },
         )
-        return json.dumps(result, indent=2)
+        return json.dumps(result)
 
     @mcp.tool()
     def oak_remember(
@@ -176,7 +183,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             data["context"] = context
 
         result = _call_daemon("/api/remember", data)
-        return json.dumps(result, indent=2)
+        return json.dumps(result)
 
     @mcp.tool()
     def oak_context(
@@ -205,14 +212,12 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             data["current_files"] = current_files
 
         # oak_context calls the MCP tool endpoint
+        # tool_name must be a query parameter
         result = _call_daemon(
-            "/api/mcp/call",
-            {
-                "tool_name": "oak_context",
-                "arguments": data,
-            },
+            "/api/mcp/call?tool_name=oak_context",
+            data,
         )
-        return json.dumps(result, indent=2)
+        return json.dumps(result)
 
     # Note: Keeping tools minimal (3 tools) to avoid context bloat for agents
     # oak_status is available via CLI (oak ci status) but not exposed as MCP tool

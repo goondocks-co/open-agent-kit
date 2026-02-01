@@ -2,9 +2,9 @@
 
 Tests cover:
 - CodebaseIntelligenceService initialization
-- Hook management (detection, update, removal)
+- Hook management via HooksInstaller
 - Configuration file cleanup
-- Constitution section management
+- Integration with manifest-driven hooks
 """
 
 import json
@@ -13,12 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from open_agent_kit.features.codebase_intelligence.constants import (
-    CURSOR_HOOK_SCRIPT_NAME,
-    CURSOR_HOOKS_DIRNAME,
-    OPENCODE_PLUGIN_DIRNAME,
-    OPENCODE_PLUGIN_FILENAME,
-)
+from open_agent_kit.features.codebase_intelligence.hooks.installer import HooksInstaller
 from open_agent_kit.features.codebase_intelligence.service import (
     CodebaseIntelligenceService,
     execute_hook,
@@ -75,421 +70,141 @@ class TestServiceInit:
 
 
 # =============================================================================
-# Hook Detection Tests
+# HooksInstaller Tests
 # =============================================================================
 
 
-class TestOakManagedHookDetection:
-    """Test _is_oak_managed_hook method."""
+class TestHooksInstallerOakDetection:
+    """Test HooksInstaller._is_oak_managed_hook method."""
 
-    def test_detects_oak_ci_api_pattern_claude(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of /api/oak/ci/ pattern for Claude."""
-        hook = {"hooks": [{"command": "curl http://localhost:37800/api/oak/ci/session"}]}
-        assert ci_service._is_oak_managed_hook(hook, "claude") is True
+    def test_detects_oak_ci_hook_command_nested(self, tmp_path: Path):
+        """Test detection of oak ci hook command in nested structure (Claude/Gemini)."""
+        # Mock the manifest with nested format
+        with patch.object(HooksInstaller, "manifest") as mock_manifest:
+            mock_manifest.hooks.format = "nested"
+            installer = HooksInstaller(tmp_path, "claude")
+            installer._hooks_config = MagicMock(format="nested")
 
-    def test_detects_legacy_api_hook_pattern_claude(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of legacy /api/hook/ pattern for Claude."""
-        hook = {"hooks": [{"command": "curl http://localhost:37800/api/hook/event"}]}
-        assert ci_service._is_oak_managed_hook(hook, "claude") is True
+            hook = {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]}
+            assert installer._is_oak_managed_hook(hook) is True
 
-    def test_non_oak_hook_claude(self, ci_service: CodebaseIntelligenceService):
-        """Test that non-OAK hooks are not detected for Claude."""
-        hook = {"hooks": [{"command": "echo 'custom hook'"}]}
-        assert ci_service._is_oak_managed_hook(hook, "claude") is False
+    def test_detects_oak_ci_hook_command_flat(self, tmp_path: Path):
+        """Test detection of oak ci hook command in flat structure (Cursor)."""
+        with patch.object(HooksInstaller, "manifest") as mock_manifest:
+            mock_manifest.hooks.format = "flat"
+            installer = HooksInstaller(tmp_path, "cursor")
+            installer._hooks_config = MagicMock(format="flat")
 
-    def test_detects_oak_ci_api_pattern_cursor(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of /api/oak/ci/ pattern for Cursor."""
-        hook = {"command": "curl http://localhost:37800/api/oak/ci/session"}
-        assert ci_service._is_oak_managed_hook(hook, "cursor") is True
+            hook = {"command": "oak ci hook sessionStart --agent cursor"}
+            assert installer._is_oak_managed_hook(hook) is True
 
-    def test_non_oak_hook_cursor(self, ci_service: CodebaseIntelligenceService):
-        """Test that non-OAK hooks are not detected for Cursor."""
-        hook = {"command": "echo 'custom hook'"}
-        assert ci_service._is_oak_managed_hook(hook, "cursor") is False
+    def test_detects_oak_ci_hook_command_copilot(self, tmp_path: Path):
+        """Test detection of oak ci hook command in copilot format (bash/powershell)."""
+        with patch.object(HooksInstaller, "manifest") as mock_manifest:
+            mock_manifest.hooks.format = "copilot"
+            installer = HooksInstaller(tmp_path, "copilot")
+            installer._hooks_config = MagicMock(format="copilot")
 
-    def test_empty_hook_claude(self, ci_service: CodebaseIntelligenceService):
-        """Test handling of empty hook structure for Claude."""
-        hook = {"hooks": [{}]}
-        assert ci_service._is_oak_managed_hook(hook, "claude") is False
+            hook = {
+                "bash": "oak ci hook sessionStart --agent copilot",
+                "powershell": "oak ci hook sessionStart --agent copilot",
+            }
+            assert installer._is_oak_managed_hook(hook) is True
 
-    def test_empty_hook_cursor(self, ci_service: CodebaseIntelligenceService):
-        """Test handling of empty hook structure for Cursor."""
-        hook = {}
-        assert ci_service._is_oak_managed_hook(hook, "cursor") is False
+    def test_detects_legacy_api_pattern(self, tmp_path: Path):
+        """Test detection of legacy /api/oak/ci/ pattern."""
+        with patch.object(HooksInstaller, "manifest") as mock_manifest:
+            mock_manifest.hooks.format = "nested"
+            installer = HooksInstaller(tmp_path, "claude")
+            installer._hooks_config = MagicMock(format="nested")
 
-    def test_detects_oak_ci_hook_command_claude(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of oak ci hook command for Claude."""
-        hook = {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]}
-        assert ci_service._is_oak_managed_hook(hook, "claude") is True
+            hook = {"hooks": [{"command": "curl http://localhost:37800/api/oak/ci/session"}]}
+            assert installer._is_oak_managed_hook(hook) is True
 
-    def test_detects_oak_ci_hook_command_cursor(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of oak ci hook command for Cursor."""
-        hook = {"command": "oak ci hook sessionStart --agent cursor"}
-        assert ci_service._is_oak_managed_hook(hook, "cursor") is True
+    def test_non_oak_hook_not_detected(self, tmp_path: Path):
+        """Test that non-OAK hooks are not detected."""
+        with patch.object(HooksInstaller, "manifest") as mock_manifest:
+            mock_manifest.hooks.format = "flat"
+            installer = HooksInstaller(tmp_path, "cursor")
+            installer._hooks_config = MagicMock(format="flat")
 
-    def test_detects_oak_ci_hook_command_copilot(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of oak ci hook command for Copilot."""
-        hook = {
-            "bash": "oak ci hook sessionStart --agent copilot",
-            "powershell": "oak ci hook sessionStart --agent copilot",
-        }
-        assert ci_service._is_oak_managed_hook(hook, "copilot") is True
-
-    def test_detects_legacy_shell_script_cursor(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of legacy oak-ci-hook.sh pattern for Cursor."""
-        hook = {"command": ".cursor/hooks/oak-ci-hook.sh sessionStart"}
-        assert ci_service._is_oak_managed_hook(hook, "cursor") is True
-
-    def test_detects_legacy_shell_script_copilot(self, ci_service: CodebaseIntelligenceService):
-        """Test detection of legacy oak-ci-hook.sh pattern for Copilot."""
-        hook = {"bash": ".github/hooks/oak-ci-hook.sh sessionStart"}
-        assert ci_service._is_oak_managed_hook(hook, "copilot") is True
+            hook = {"command": "echo 'custom hook'"}
+            assert installer._is_oak_managed_hook(hook) is False
 
 
 # =============================================================================
-# Config File Cleanup Tests
+# Service Hook Update Tests
 # =============================================================================
 
 
-class TestConfigFileCleanup:
-    """Test _cleanup_empty_config_file method."""
-
-    def test_cleanup_empty_json_file(self, tmp_path: Path):
-        """Test that empty JSON file is removed."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        config_dir = tmp_path / ".claude"
-        config_dir.mkdir()
-        config_file = config_dir / "settings.json"
-        config_file.write_text("{}")
-
-        service._cleanup_empty_config_file(config_file, [{}])
-
-        assert not config_file.exists()
-        assert not config_dir.exists()  # Empty parent also removed
-
-    def test_cleanup_hooks_empty_structure(self, tmp_path: Path):
-        """Test that empty hooks structure is recognized."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        config_dir = tmp_path / ".cursor"
-        config_dir.mkdir()
-        config_file = config_dir / "hooks.json"
-        config_file.write_text('{"version": 1, "hooks": {}}')
-
-        service._cleanup_empty_config_file(
-            config_file, [{}, {"hooks": {}}, {"version": 1}, {"version": 1, "hooks": {}}]
-        )
-
-        assert not config_file.exists()
-
-    def test_no_cleanup_non_empty_file(self, tmp_path: Path):
-        """Test that non-empty file is preserved."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        config_dir = tmp_path / ".claude"
-        config_dir.mkdir()
-        config_file = config_dir / "settings.json"
-        config_file.write_text('{"custom_setting": true}')
-
-        service._cleanup_empty_config_file(config_file, [{}])
-
-        assert config_file.exists()
-
-    def test_cleanup_nonexistent_file(self, tmp_path: Path):
-        """Test handling of nonexistent file."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        config_file = tmp_path / "nonexistent.json"
-
-        # Should not raise
-        service._cleanup_empty_config_file(config_file, [{}])
-
-
-# =============================================================================
-# Hook Update Tests
-# =============================================================================
-
-
-class TestHookUpdates:
-    """Test hook update methods."""
+class TestServiceHookUpdates:
+    """Test service hook update methods using manifest-driven installer."""
 
     def test_update_agent_hooks_returns_results(self, tmp_path: Path):
         """Test that update_agent_hooks returns results dict."""
         service = CodebaseIntelligenceService(tmp_path)
 
-        # Mock the template loading to return empty hooks
-        with patch.object(service, "_load_hook_template", return_value={"hooks": {}}):
-            result = service.update_agent_hooks(["claude", "cursor", "unknown"])
+        # Mock install_hooks to simulate success
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.install_hooks"
+        ) as mock_install:
+            mock_install.return_value = MagicMock(success=True, method="json")
+            result = service.update_agent_hooks(["claude", "cursor"])
 
         assert result["status"] == "success"
         assert "agents" in result
         assert result["agents"]["claude"] == "updated"
         assert result["agents"]["cursor"] == "updated"
-        assert result["agents"]["unknown"] == "skipped"
 
-    def test_update_claude_hooks_creates_settings_dir(self, tmp_path: Path):
-        """Test that Claude hook update creates .claude directory."""
+    def test_update_agent_hooks_handles_errors(self, tmp_path: Path):
+        """Test that update_agent_hooks handles errors gracefully."""
         service = CodebaseIntelligenceService(tmp_path)
 
-        with patch.object(service, "_load_hook_template", return_value={"hooks": {}}):
-            service._update_claude_hooks()
+        # Mock install_hooks to simulate failure
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.install_hooks"
+        ) as mock_install:
+            mock_install.return_value = MagicMock(success=False, message="Test error")
+            result = service.update_agent_hooks(["claude"])
 
-        assert (tmp_path / ".claude").exists()
-
-    def test_update_cursor_hooks_creates_hooks_file(self, tmp_path: Path):
-        """Test that Cursor hook update creates hooks.json."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        with patch.object(service, "_load_hook_template", return_value={"hooks": {}}):
-            service._update_cursor_hooks()
-
-        assert (tmp_path / ".cursor" / "hooks.json").exists()
-
-    def test_update_cursor_hooks_uses_oak_ci_hook_command(self, tmp_path: Path):
-        """Test that Cursor hook update uses oak ci hook command (no shell scripts)."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Mock template with oak ci hook command
-        mock_hooks = {
-            "hooks": {"sessionStart": [{"command": "oak ci hook sessionStart --agent cursor"}]}
-        }
-        with patch.object(service, "_load_hook_template", return_value=mock_hooks):
-            service._update_cursor_hooks()
-
-        # Verify hooks.json contains the command
-        hooks_file = tmp_path / ".cursor" / "hooks.json"
-        assert hooks_file.exists()
-        hooks_content = json.loads(hooks_file.read_text())
-        assert "oak ci hook" in hooks_content["hooks"]["sessionStart"][0]["command"]
-
-        # Verify no shell script was installed (we use oak CLI now)
-        script_path = tmp_path / ".cursor" / CURSOR_HOOKS_DIRNAME / CURSOR_HOOK_SCRIPT_NAME
-        assert not script_path.exists()
-
-    def test_update_gemini_hooks_creates_settings_file(self, tmp_path: Path):
-        """Test that Gemini hook update creates settings.json."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        with patch.object(service, "_load_hook_template", return_value={"hooks": {}}):
-            service._update_gemini_hooks()
-
-        assert (tmp_path / ".gemini" / "settings.json").exists()
-
-    def test_update_opencode_hooks_creates_plugin_dir(self, tmp_path: Path):
-        """Test that OpenCode hook update creates .opencode/plugins directory."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Create the template file that the update method expects
-        from open_agent_kit.features.codebase_intelligence.service import HOOKS_TEMPLATE_DIR
-
-        template_dir = HOOKS_TEMPLATE_DIR / "opencode"
-        if not template_dir.exists():
-            pytest.skip("OpenCode hook template not found")
-
-        service._update_opencode_hooks()
-
-        assert (tmp_path / ".opencode" / OPENCODE_PLUGIN_DIRNAME).exists()
-
-    def test_update_opencode_hooks_installs_plugin_file(self, tmp_path: Path):
-        """Test that OpenCode hook update installs the TypeScript plugin."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        from open_agent_kit.features.codebase_intelligence.service import HOOKS_TEMPLATE_DIR
-
-        template_file = HOOKS_TEMPLATE_DIR / "opencode" / OPENCODE_PLUGIN_FILENAME
-        if not template_file.exists():
-            pytest.skip("OpenCode plugin template not found")
-
-        service._update_opencode_hooks()
-
-        plugin_file = tmp_path / ".opencode" / OPENCODE_PLUGIN_DIRNAME / OPENCODE_PLUGIN_FILENAME
-        assert plugin_file.exists()
-        # Verify it's a TypeScript file with expected content
-        content = plugin_file.read_text()
-        assert "OAK" in content or "oak" in content
-
-    def test_update_agent_hooks_includes_opencode(self, tmp_path: Path):
-        """Test that update_agent_hooks handles opencode agent."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        from open_agent_kit.features.codebase_intelligence.service import HOOKS_TEMPLATE_DIR
-
-        template_file = HOOKS_TEMPLATE_DIR / "opencode" / OPENCODE_PLUGIN_FILENAME
-        if not template_file.exists():
-            pytest.skip("OpenCode plugin template not found")
-
-        result = service.update_agent_hooks(["opencode"])
-
-        assert result["status"] == "success"
-        assert result["agents"]["opencode"] == "updated"
+        assert result["status"] == "success"  # Overall status is still success
+        assert "error: Test error" in result["agents"]["claude"]
 
 
 # =============================================================================
-# Hook Removal Tests
+# Service Hook Removal Tests
 # =============================================================================
 
 
-class TestHookRemoval:
-    """Test hook removal methods."""
+class TestServiceHookRemoval:
+    """Test service hook removal methods."""
 
-    def test_remove_claude_hooks_cleans_oak_hooks(self, tmp_path: Path):
-        """Test that Claude hook removal cleans OAK hooks only."""
+    def test_remove_agent_hooks_returns_results(self, tmp_path: Path):
+        """Test that _remove_agent_hooks returns results dict."""
         service = CodebaseIntelligenceService(tmp_path)
 
-        # Create settings with mixed hooks
-        settings_dir = tmp_path / ".claude"
-        settings_dir.mkdir()
-        settings_file = settings_dir / "settings.json"
-        settings_file.write_text(
-            json.dumps(
-                {
-                    "hooks": {
-                        "session-start": [
-                            {"hooks": [{"command": "curl /api/oak/ci/session"}]},
-                            {"hooks": [{"command": "echo custom"}]},
-                        ]
-                    }
-                }
-            )
-        )
-
-        service._remove_claude_hooks()
-
-        # Read result
-        with open(settings_file) as f:
-            result = json.load(f)
-
-        # OAK hook should be removed, custom hook preserved
-        assert len(result["hooks"]["session-start"]) == 1
-        assert "custom" in result["hooks"]["session-start"][0]["hooks"][0]["command"]
-
-    def test_remove_cursor_hooks_nonexistent_file(self, tmp_path: Path):
-        """Test that cursor hook removal handles missing file."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Should not raise
-        service._remove_cursor_hooks()
-
-    def test_remove_gemini_hooks_no_hooks_section(self, tmp_path: Path):
-        """Test that gemini hook removal handles missing hooks section."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        settings_dir = tmp_path / ".gemini"
-        settings_dir.mkdir()
-        settings_file = settings_dir / "settings.json"
-        settings_file.write_text('{"other_setting": true}')
-
-        # Should not raise
-        service._remove_gemini_hooks()
-
-        # File should be unchanged
-        with open(settings_file) as f:
-            result = json.load(f)
-        assert result == {"other_setting": True}
-
-    def test_remove_agent_hooks_all_agents(self, tmp_path: Path):
-        """Test removing hooks from multiple agents."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Create minimal hook files
-        for agent_dir in [".claude", ".cursor", ".gemini"]:
-            d = tmp_path / agent_dir
-            d.mkdir()
-            fname = "hooks.json" if agent_dir == ".cursor" else "settings.json"
-            (d / fname).write_text('{"hooks": {}}')
-
-        result = service._remove_agent_hooks(["claude", "cursor", "gemini", "unknown"])
+        # Mock remove_hooks to simulate success
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.remove_hooks"
+        ) as mock_remove:
+            mock_remove.return_value = MagicMock(success=True, method="json")
+            result = service._remove_agent_hooks(["claude", "cursor"])
 
         assert result["claude"] == "removed"
         assert result["cursor"] == "removed"
-        assert result["gemini"] == "removed"
-        assert result["unknown"] == "skipped"
 
-    def test_remove_opencode_hooks_removes_plugin_file(self, tmp_path: Path):
-        """Test that OpenCode hook removal removes the plugin file and directories."""
+    def test_remove_agent_hooks_handles_errors(self, tmp_path: Path):
+        """Test that _remove_agent_hooks handles errors gracefully."""
         service = CodebaseIntelligenceService(tmp_path)
 
-        # Create plugin file
-        agent_dir = tmp_path / ".opencode"
-        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
-        plugins_dir.mkdir(parents=True)
-        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
-        plugin_file.write_text("// OAK CI plugin")
+        # Mock remove_hooks to simulate failure
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.remove_hooks"
+        ) as mock_remove:
+            mock_remove.return_value = MagicMock(success=False, message="Test error")
+            result = service._remove_agent_hooks(["claude"])
 
-        service._remove_opencode_hooks()
-
-        assert not plugin_file.exists()
-        # Empty plugins directory should be removed
-        assert not plugins_dir.exists()
-        # Empty agent directory should also be removed
-        assert not agent_dir.exists()
-
-    def test_remove_opencode_hooks_nonexistent_file(self, tmp_path: Path):
-        """Test that OpenCode hook removal handles missing file gracefully."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Should not raise
-        service._remove_opencode_hooks()
-
-    def test_remove_opencode_hooks_preserves_other_plugins(self, tmp_path: Path):
-        """Test that OpenCode hook removal preserves other plugin files."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Create plugin directory with multiple files
-        agent_dir = tmp_path / ".opencode"
-        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
-        plugins_dir.mkdir(parents=True)
-        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
-        plugin_file.write_text("// OAK CI plugin")
-        other_plugin = plugins_dir / "other-plugin.ts"
-        other_plugin.write_text("// Other plugin")
-
-        service._remove_opencode_hooks()
-
-        assert not plugin_file.exists()
-        # Other plugin, plugins dir, and agent dir should be preserved
-        assert other_plugin.exists()
-        assert plugins_dir.exists()
-        assert agent_dir.exists()
-
-    def test_remove_opencode_hooks_preserves_agent_dir_with_other_content(self, tmp_path: Path):
-        """Test that OpenCode hook removal preserves agent dir with other content."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Create agent directory with plugins and other content
-        agent_dir = tmp_path / ".opencode"
-        plugins_dir = agent_dir / OPENCODE_PLUGIN_DIRNAME
-        plugins_dir.mkdir(parents=True)
-        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
-        plugin_file.write_text("// OAK CI plugin")
-        # Add other content to agent directory
-        other_file = agent_dir / "config.json"
-        other_file.write_text("{}")
-
-        service._remove_opencode_hooks()
-
-        assert not plugin_file.exists()
-        # Empty plugins directory should be removed
-        assert not plugins_dir.exists()
-        # Agent directory with other content should be preserved
-        assert other_file.exists()
-        assert agent_dir.exists()
-
-    def test_remove_agent_hooks_includes_opencode(self, tmp_path: Path):
-        """Test that _remove_agent_hooks handles opencode agent."""
-        service = CodebaseIntelligenceService(tmp_path)
-
-        # Create plugin file
-        plugins_dir = tmp_path / ".opencode" / OPENCODE_PLUGIN_DIRNAME
-        plugins_dir.mkdir(parents=True)
-        plugin_file = plugins_dir / OPENCODE_PLUGIN_FILENAME
-        plugin_file.write_text("// OAK CI plugin")
-
-        result = service._remove_agent_hooks(["opencode"])
-
-        assert result["opencode"] == "removed"
-        assert not plugin_file.exists()
+        assert "error: Test error" in result["claude"]
 
 
 # =============================================================================
@@ -523,75 +238,176 @@ class TestExecuteHook:
 
 
 # =============================================================================
-# Integration Tests
+# HooksInstaller Integration Tests
 # =============================================================================
 
 
-class TestServiceIntegration:
-    """Integration tests for service operations."""
+class TestHooksInstallerIntegration:
+    """Integration tests for HooksInstaller operations."""
 
-    def test_full_hook_lifecycle(self, tmp_path: Path):
-        """Test adding and removing hooks."""
-        service = CodebaseIntelligenceService(tmp_path)
+    def test_install_json_hooks_creates_config_dir(self, tmp_path: Path):
+        """Test that JSON hooks installation creates the config directory."""
+        # Create a mock hooks config
+        mock_hooks_config = MagicMock()
+        mock_hooks_config.type = "json"
+        mock_hooks_config.config_file = "settings.json"
+        mock_hooks_config.hooks_key = "hooks"
+        mock_hooks_config.format = "nested"
+        mock_hooks_config.version_key = None
+        mock_hooks_config.template_file = "hooks.json"
 
-        # Mock template loading
-        template = {
-            "hooks": {"session-start": [{"hooks": [{"command": "curl /api/oak/ci/start"}]}]}
-        }
+        mock_manifest = MagicMock()
+        mock_manifest.installation.folder = ".claude/"
+        mock_manifest.hooks = mock_hooks_config
 
-        with patch.object(service, "_load_hook_template", return_value=template):
-            # Add hooks
-            service._update_claude_hooks()
+        installer = HooksInstaller(tmp_path, "claude")
+        installer._manifest = mock_manifest
+        installer._hooks_config = mock_hooks_config
 
-            # Verify added
-            settings_file = tmp_path / ".claude" / "settings.json"
-            with open(settings_file) as f:
-                settings = json.load(f)
-            assert "hooks" in settings
-            assert len(settings["hooks"]["session-start"]) == 1
+        # Mock the template loading
+        with patch.object(installer, "_load_hook_template", return_value={"hooks": {}}):
+            result = installer.install()
 
-            # Remove hooks
-            service._remove_claude_hooks()
+        # Directory should be created
+        assert (tmp_path / ".claude").exists()
+        assert result.success
 
-            # File should be cleaned up since it's empty
-            assert not settings_file.exists()
+    def test_install_plugin_copies_file(self, tmp_path: Path):
+        """Test that plugin installation copies the file."""
+        from open_agent_kit.features.codebase_intelligence.hooks.installer import (
+            HOOKS_TEMPLATE_DIR,
+        )
 
-    def test_preserves_existing_hooks(self, tmp_path: Path):
-        """Test that existing non-OAK hooks are preserved."""
-        service = CodebaseIntelligenceService(tmp_path)
+        # Check if template exists
+        template_file = HOOKS_TEMPLATE_DIR / "opencode" / "oak-ci.ts"
+        if not template_file.exists():
+            pytest.skip("OpenCode template not found")
 
-        # Create existing settings with custom hook
+        # Create a mock hooks config
+        mock_hooks_config = MagicMock()
+        mock_hooks_config.type = "plugin"
+        mock_hooks_config.plugin_dir = "plugins"
+        mock_hooks_config.plugin_file = "oak-ci.ts"
+        mock_hooks_config.template_file = "oak-ci.ts"
+
+        mock_manifest = MagicMock()
+        mock_manifest.installation.folder = ".opencode/"
+        mock_manifest.hooks = mock_hooks_config
+
+        installer = HooksInstaller(tmp_path, "opencode")
+        installer._manifest = mock_manifest
+        installer._hooks_config = mock_hooks_config
+
+        result = installer.install()
+
+        assert result.success
+        assert (tmp_path / ".opencode" / "plugins" / "oak-ci.ts").exists()
+
+    def test_remove_json_hooks_cleans_oak_hooks_only(self, tmp_path: Path):
+        """Test that JSON hook removal only removes OAK hooks."""
+        # Create settings with mixed hooks
         settings_dir = tmp_path / ".claude"
         settings_dir.mkdir()
         settings_file = settings_dir / "settings.json"
         settings_file.write_text(
             json.dumps(
                 {
-                    "hooks": {"session-start": [{"hooks": [{"command": "echo 'my custom hook'"}]}]},
-                    "other_setting": "preserved",
+                    "hooks": {
+                        "SessionStart": [
+                            {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]},
+                            {"hooks": [{"command": "echo custom"}]},
+                        ]
+                    }
                 }
             )
         )
 
-        # Add OAK hooks
-        template = {
-            "hooks": {"session-start": [{"hooks": [{"command": "curl /api/oak/ci/start"}]}]}
-        }
+        # Create a mock hooks config
+        mock_hooks_config = MagicMock()
+        mock_hooks_config.type = "json"
+        mock_hooks_config.config_file = "settings.json"
+        mock_hooks_config.hooks_key = "hooks"
+        mock_hooks_config.format = "nested"
+        mock_hooks_config.version_key = None
 
-        with patch.object(service, "_load_hook_template", return_value=template):
-            service._update_claude_hooks()
+        mock_manifest = MagicMock()
+        mock_manifest.installation.folder = ".claude/"
+        mock_manifest.hooks = mock_hooks_config
 
-            # Verify both hooks exist
-            with open(settings_file) as f:
-                settings = json.load(f)
-            assert len(settings["hooks"]["session-start"]) == 2
-            assert settings["other_setting"] == "preserved"
+        installer = HooksInstaller(tmp_path, "claude")
+        installer._manifest = mock_manifest
+        installer._hooks_config = mock_hooks_config
 
-            # Remove OAK hooks
-            service._remove_claude_hooks()
+        result = installer.remove()
 
-            # Custom hook should still exist
-            with open(settings_file) as f:
-                settings = json.load(f)
-            assert len(settings["hooks"]["session-start"]) == 1
-            assert "custom" in settings["hooks"]["session-start"][0]["hooks"][0]["command"]
+        # Read result
+        with open(settings_file) as f:
+            settings = json.load(f)
+
+        # OAK hook should be removed, custom hook preserved
+        assert result.success
+        assert len(settings["hooks"]["SessionStart"]) == 1
+        assert "custom" in settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+
+    def test_remove_plugin_cleans_up_empty_dirs(self, tmp_path: Path):
+        """Test that plugin removal cleans up empty directories."""
+        # Create plugin file
+        agent_dir = tmp_path / ".opencode"
+        plugins_dir = agent_dir / "plugins"
+        plugins_dir.mkdir(parents=True)
+        plugin_file = plugins_dir / "oak-ci.ts"
+        plugin_file.write_text("// OAK CI plugin")
+
+        # Create a mock hooks config
+        mock_hooks_config = MagicMock()
+        mock_hooks_config.type = "plugin"
+        mock_hooks_config.plugin_dir = "plugins"
+        mock_hooks_config.plugin_file = "oak-ci.ts"
+
+        mock_manifest = MagicMock()
+        mock_manifest.installation.folder = ".opencode/"
+        mock_manifest.hooks = mock_hooks_config
+
+        installer = HooksInstaller(tmp_path, "opencode")
+        installer._manifest = mock_manifest
+        installer._hooks_config = mock_hooks_config
+
+        result = installer.remove()
+
+        assert result.success
+        assert not plugin_file.exists()
+        assert not plugins_dir.exists()
+        assert not agent_dir.exists()
+
+    def test_remove_plugin_preserves_other_files(self, tmp_path: Path):
+        """Test that plugin removal preserves other plugin files."""
+        # Create plugin directory with multiple files
+        agent_dir = tmp_path / ".opencode"
+        plugins_dir = agent_dir / "plugins"
+        plugins_dir.mkdir(parents=True)
+        plugin_file = plugins_dir / "oak-ci.ts"
+        plugin_file.write_text("// OAK CI plugin")
+        other_plugin = plugins_dir / "other-plugin.ts"
+        other_plugin.write_text("// Other plugin")
+
+        # Create a mock hooks config
+        mock_hooks_config = MagicMock()
+        mock_hooks_config.type = "plugin"
+        mock_hooks_config.plugin_dir = "plugins"
+        mock_hooks_config.plugin_file = "oak-ci.ts"
+
+        mock_manifest = MagicMock()
+        mock_manifest.installation.folder = ".opencode/"
+        mock_manifest.hooks = mock_hooks_config
+
+        installer = HooksInstaller(tmp_path, "opencode")
+        installer._manifest = mock_manifest
+        installer._hooks_config = mock_hooks_config
+
+        result = installer.remove()
+
+        assert result.success
+        assert not plugin_file.exists()
+        assert other_plugin.exists()
+        assert plugins_dir.exists()
+        assert agent_dir.exists()

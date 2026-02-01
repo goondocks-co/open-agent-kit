@@ -59,6 +59,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "Remove deprecated IDE settings (now handled by agent settings)",
             _migrate_remove_ide_settings_config,
         ),
+        (
+            "2026.01.31_mcp_remove_project_flag",
+            "Remove --project flag from MCP configs (portability)",
+            _migrate_mcp_remove_project_flag,
+        ),
     ]
 
 
@@ -307,6 +312,64 @@ def _migrate_remove_ide_settings_config(project_root: Path) -> None:
     if "ides" in data:
         del data["ides"]
         write_yaml(config_path, data)
+
+
+def _migrate_mcp_remove_project_flag(project_root: Path) -> None:
+    """Remove --project flag from MCP server configurations.
+
+    MCP configs now use cwd-relative paths instead of absolute --project flags.
+    This makes configs portable across machines.
+
+    Args:
+        project_root: Project root directory
+    """
+    import json
+
+    # MCP config files to check (from agent manifests)
+    mcp_configs = [
+        (".mcp.json", "mcpServers"),  # Claude
+        (".cursor/mcp.json", "mcpServers"),  # Cursor
+        (".gemini/settings.json", "mcpServers"),  # Gemini
+        (".vscode/mcp.json", "servers"),  # Copilot
+        ("opencode.json", "mcp"),  # OpenCode
+    ]
+
+    for config_file, servers_key in mcp_configs:
+        config_path = project_root / config_file
+        if not config_path.exists():
+            continue
+
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+
+            servers = config.get(servers_key, {})
+            modified = False
+
+            # Check each server for oak-ci pattern
+            for _server_name, server_config in servers.items():
+                # Handle standard format: {"command": "oak", "args": ["ci", "mcp", "--project", "<path>"]}
+                args = server_config.get("args", [])
+                if isinstance(args, list) and len(args) >= 4:
+                    if args[:2] == ["ci", "mcp"] and args[2] == "--project":
+                        # Remove --project and its value
+                        server_config["args"] = ["ci", "mcp"]
+                        modified = True
+
+                # Handle opencode format: {"command": ["oak", "ci", "mcp", "--project", "<path>"]}
+                cmd = server_config.get("command", [])
+                if isinstance(cmd, list) and len(cmd) >= 5:
+                    if cmd[:3] == ["oak", "ci", "mcp"] and cmd[3] == "--project":
+                        server_config["command"] = ["oak", "ci", "mcp"]
+                        modified = True
+
+            if modified:
+                with open(config_path, "w") as f:
+                    json.dump(config, f, indent=2)
+                logger.info(f"Migrated MCP config {config_path}: removed --project flag")
+
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Failed to migrate MCP config {config_path}: {e}")
 
 
 def run_migrations(

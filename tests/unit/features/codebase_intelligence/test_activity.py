@@ -2423,7 +2423,7 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
 class TestPlanDetectionDuringOrphanRecovery:
     """Test plan detection in orphan recovery (fixes plan mode detection gap)."""
 
-    def test_orphaned_plan_write_detected_at_recovery(self, activity_store):
+    def test_orphaned_plan_write_detected_at_recovery(self, activity_store, tmp_path):
         """Plan Write activities with NULL batch should be detected during recovery.
 
         This tests the fix for the bug where plan detection was skipped during
@@ -2437,15 +2437,20 @@ class TestPlanDetectionDuringOrphanRecovery:
 
         # Create a session
         activity_store.create_session(
-            "plan-mode-session", agent="claude", project_root="/test/project"
+            "plan-mode-session", agent="claude", project_root=str(tmp_path)
         )
 
-        # Simulate plan mode: activity stored with NULL batch_id
-        # (This happens when agent enters plan mode before any user prompt)
+        # Create the actual plan file on disk (recovery reads from disk)
         plan_content = "# My Test Plan\n\nThis is the plan content."
+        plan_dir = tmp_path / ".claude" / "plans"
+        plan_dir.mkdir(parents=True)
+        plan_file = plan_dir / "test-plan.md"
+        plan_file.write_text(plan_content)
+
+        # Use absolute path in tool_input (matches what recovery code will look for)
         tool_input = json.dumps(
             {
-                "file_path": ".claude/plans/test-plan.md",
+                "file_path": str(plan_file),
                 "content": plan_content,
             }
         )
@@ -2485,7 +2490,7 @@ class TestPlanDetectionDuringOrphanRecovery:
         assert row is not None
         assert row[0] == PROMPT_SOURCE_PLAN
         assert row[1] == plan_content
-        assert row[2] == ".claude/plans/test-plan.md"
+        assert row[2] == str(plan_file)
 
     def test_orphaned_non_plan_write_not_marked_as_plan(self, activity_store):
         """Non-plan Write activities should not be marked as plan during recovery."""

@@ -92,11 +92,22 @@ async def list_agents() -> AgentListResponse:
         for t in templates
     ]
 
-    # Build instance list items (include template execution settings)
+    # Build instance list items (use effective execution settings - instance override or template default)
     instance_items = []
     for inst in instances:
         template = registry.get_template(inst.agent_type)
         if template:
+            # Compute effective execution config (instance override takes precedence)
+            has_override = inst.execution is not None
+            if has_override and inst.execution:
+                effective_max_turns = inst.execution.max_turns or template.execution.max_turns
+                effective_timeout = (
+                    inst.execution.timeout_seconds or template.execution.timeout_seconds
+                )
+            else:
+                effective_max_turns = template.execution.max_turns
+                effective_timeout = template.execution.timeout_seconds
+
             instance_items.append(
                 AgentInstanceListItem(
                     name=inst.name,
@@ -104,8 +115,9 @@ async def list_agents() -> AgentListResponse:
                     agent_type=inst.agent_type,
                     description=inst.description,
                     default_task=inst.default_task,
-                    max_turns=template.execution.max_turns,
-                    timeout_seconds=template.execution.timeout_seconds,
+                    max_turns=effective_max_turns,
+                    timeout_seconds=effective_timeout,
+                    has_execution_override=has_override,
                 )
             )
 

@@ -39,6 +39,7 @@ import {
     Filter,
     X,
     RotateCcw,
+    ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -46,6 +47,7 @@ import {
     AGENT_RUN_STATUS,
     AGENT_RUN_STATUS_LABELS,
     AGENT_RUN_STATUS_COLORS,
+    isWatchdogRecoveredRun,
 } from "@/lib/constants";
 
 // =============================================================================
@@ -88,6 +90,7 @@ function RunRow({
     const isActive = run.status === AGENT_RUN_STATUS.PENDING || run.status === AGENT_RUN_STATUS.RUNNING;
     const statusLabel = AGENT_RUN_STATUS_LABELS[run.status] || run.status;
     const statusColors = AGENT_RUN_STATUS_COLORS[run.status] || AGENT_RUN_STATUS_COLORS.pending;
+    const wasRecoveredByWatchdog = isWatchdogRecoveredRun(run.error);
 
     return (
         <div className="border rounded-md overflow-hidden">
@@ -102,6 +105,12 @@ function RunRow({
                         <span className={cn("px-2 py-0.5 text-xs rounded-full", statusColors.badge)}>
                             {statusLabel}
                         </span>
+                        {wasRecoveredByWatchdog && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-600" title="This run was recovered by the watchdog after being stuck">
+                                <ShieldAlert className="w-3 h-3" />
+                                Recovered
+                            </span>
+                        )}
                         <span className="text-xs text-muted-foreground">
                             {formatRelativeTime(run.created_at)}
                         </span>
@@ -172,8 +181,28 @@ function RunRow({
                     </div>
 
                     {run.error && (
-                        <div className="p-2 rounded bg-red-500/10 text-red-600 text-xs">
-                            <strong>Error:</strong> {run.error}
+                        <div className={cn(
+                            "p-2 rounded text-xs",
+                            wasRecoveredByWatchdog
+                                ? "bg-amber-500/10 text-amber-700"
+                                : "bg-red-500/10 text-red-600"
+                        )}>
+                            {wasRecoveredByWatchdog ? (
+                                <>
+                                    <strong className="flex items-center gap-1">
+                                        <ShieldAlert className="w-3 h-3" />
+                                        Watchdog Recovery:
+                                    </strong>
+                                    <span className="ml-4">
+                                        This run was stuck and recovered by the background watchdog process.
+                                        The agent may have hung or the daemon was restarted during execution.
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <strong>Error:</strong> {run.error}
+                                </>
+                            )}
                         </div>
                     )}
 

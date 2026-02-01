@@ -19,7 +19,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     batches,
     delete,
     observations,
-    saved_tasks,
+    schedules,
     sessions,
     stats,
 )
@@ -666,65 +666,71 @@ class ActivityStore:
         """Delete an agent run."""
         return agent_runs.delete_run(self, run_id)
 
-    # ==========================================================================
-    # Saved Tasks (Delegates to saved_tasks module)
-    # ==========================================================================
-
-    def create_saved_task(
+    def recover_stale_runs(
         self,
-        name: str,
-        agent_name: str,
-        task: str,
-        description: str | None = None,
-        schedule_cron: str | None = None,
-    ) -> str:
-        """Create a new saved task template."""
-        return saved_tasks.create_task(self, name, agent_name, task, description, schedule_cron)
+        buffer_seconds: int = 300,
+        default_timeout_seconds: int = 600,
+    ) -> list[str]:
+        """Mark runs stuck in RUNNING status as FAILED.
 
-    def get_saved_task(self, task_id: str) -> dict[str, Any] | None:
-        """Get a saved task by ID."""
-        return saved_tasks.get_task(self, task_id)
+        A run is considered stale if it has been running for longer than
+        default_timeout + buffer seconds. This handles daemon crashes
+        that leave runs in RUNNING state.
 
-    def update_saved_task(
+        Args:
+            buffer_seconds: Grace period beyond expected timeout (default 5 min).
+            default_timeout_seconds: Default timeout if not tracked per-run.
+
+        Returns:
+            List of recovered run IDs.
+        """
+        return agent_runs.recover_stale_runs(self, buffer_seconds, default_timeout_seconds)
+
+    # ==========================================================================
+    # Schedule operations - delegate to schedules module
+    # ==========================================================================
+
+    def create_schedule(
         self,
-        task_id: str,
-        name: str | None = None,
-        description: str | None = None,
-        task: str | None = None,
-        schedule_cron: str | None = None,
-        schedule_enabled: bool | None = None,
+        instance_name: str,
+        next_run_at: Any | None = None,
+    ) -> None:
+        """Create a new schedule record."""
+        schedules.create_schedule(self, instance_name, next_run_at)
+
+    def get_schedule(self, instance_name: str) -> dict[str, Any] | None:
+        """Get a schedule by instance name."""
+        return schedules.get_schedule(self, instance_name)
+
+    def update_schedule(
+        self,
+        instance_name: str,
+        enabled: bool | None = None,
         last_run_at: Any | None = None,
         last_run_id: str | None = None,
-        increment_runs: bool = False,
+        next_run_at: Any | None = None,
     ) -> None:
-        """Update a saved task."""
-        saved_tasks.update_task(
-            self,
-            task_id,
-            name,
-            description,
-            task,
-            schedule_cron,
-            schedule_enabled,
-            last_run_at,
-            last_run_id,
-            increment_runs,
+        """Update a schedule record."""
+        schedules.update_schedule(
+            self, instance_name, enabled, last_run_at, last_run_id, next_run_at
         )
 
-    def list_saved_tasks(
+    def list_schedules(self, enabled_only: bool = False) -> list[dict[str, Any]]:
+        """List all schedules."""
+        return schedules.list_schedules(self, enabled_only)
+
+    def get_due_schedules(self) -> list[dict[str, Any]]:
+        """Get schedules that are due to run."""
+        return schedules.get_due_schedules(self)
+
+    def delete_schedule(self, instance_name: str) -> bool:
+        """Delete a schedule record."""
+        return schedules.delete_schedule(self, instance_name)
+
+    def upsert_schedule(
         self,
-        limit: int = 50,
-        offset: int = 0,
-        agent_name: str | None = None,
-        scheduled_only: bool = False,
-    ) -> tuple[list[dict[str, Any]], int]:
-        """List saved tasks with optional filtering."""
-        return saved_tasks.list_tasks(self, limit, offset, agent_name, scheduled_only)
-
-    def delete_saved_task(self, task_id: str) -> bool:
-        """Delete a saved task."""
-        return saved_tasks.delete_task(self, task_id)
-
-    def get_due_tasks(self) -> list[dict[str, Any]]:
-        """Get tasks that are due to run based on their schedule."""
-        return saved_tasks.get_due_tasks(self)
+        instance_name: str,
+        next_run_at: Any | None = None,
+    ) -> None:
+        """Create or update a schedule record."""
+        schedules.upsert_schedule(self, instance_name, next_run_at)

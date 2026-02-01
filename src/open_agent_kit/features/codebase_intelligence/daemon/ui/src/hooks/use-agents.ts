@@ -33,6 +33,8 @@ export interface AgentInstance {
     default_task: string;
     max_turns: number;
     timeout_seconds: number;
+    /** True if instance has custom execution config (overrides template defaults) */
+    has_execution_override: boolean;
 }
 
 /** Agent list item from the API (legacy) */

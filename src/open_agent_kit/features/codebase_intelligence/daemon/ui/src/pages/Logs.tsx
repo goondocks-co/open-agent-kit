@@ -3,7 +3,7 @@ import { useLogs, DEFAULT_LOG_LINES, DEFAULT_LOG_FILE } from "@/hooks/use-logs";
 import { useConfig, toggleDebugLogging, restartDaemon } from "@/hooks/use-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { RefreshCw, Pause, Play, Bug, Loader2 } from "lucide-react";
+import { RefreshCw, Pause, Play, Bug, Loader2, Copy, Check } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     LOG_LEVELS,
@@ -17,7 +17,7 @@ import type { LogFileType, LogTagType, LogTagCategory } from "@/lib/constants";
 const RESTART_REFETCH_DELAY_MS = 1000;
 
 /** Log line options for the dropdown */
-const LOG_LINE_OPTIONS = [50, 100, 500] as const;
+const LOG_LINE_OPTIONS = [100, 500, 1000, 2000, 5000] as const;
 
 export default function Logs() {
     const [lines, setLines] = useState(DEFAULT_LOG_LINES);
@@ -25,10 +25,12 @@ export default function Logs() {
     const [autoScroll, setAutoScroll] = useState(true);
     const [isTogglingDebug, setIsTogglingDebug] = useState(false);
     const [selectedTags, setSelectedTags] = useState<Set<LogTagType>>(new Set());
+    const [copied, setCopied] = useState(false);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const queryClient = useQueryClient();
 
-    const { data, isLoading, isError, refetch, isFetching } = useLogs(lines, logFile);
+    // When paused (autoScroll=false), disable polling so content stays frozen for copy/paste
+    const { data, isLoading, isError, refetch, isFetching } = useLogs(lines, logFile, autoScroll);
     const { data: config } = useConfig();
 
     const isDebugEnabled = config?.log_level === LOG_LEVELS.DEBUG;
@@ -55,6 +57,17 @@ export default function Logs() {
             newTags.add(tag);
         }
         setSelectedTags(newTags);
+    };
+
+    const handleCopyPath = async () => {
+        if (!data?.log_file) return;
+        try {
+            await navigator.clipboard.writeText(data.log_file);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (e) {
+            console.error("Failed to copy path:", e);
+        }
     };
 
     const handleToggleDebug = async () => {
@@ -85,9 +98,24 @@ export default function Logs() {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">System Logs</h1>
-                    <p className="text-muted-foreground text-sm font-mono mt-1">
-                        {data?.log_file || "Loading..."}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-muted-foreground text-sm font-mono">
+                            {data?.log_file || "Loading..."}
+                        </p>
+                        {data?.log_file && (
+                            <button
+                                onClick={handleCopyPath}
+                                className="p-1 rounded hover:bg-muted transition-colors"
+                                title={copied ? "Copied!" : "Copy path to clipboard"}
+                            >
+                                {copied ? (
+                                    <Check className="w-3.5 h-3.5 text-green-500" />
+                                ) : (
+                                    <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                                )}
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2">

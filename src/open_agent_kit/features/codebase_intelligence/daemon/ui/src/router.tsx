@@ -15,7 +15,7 @@ import Help from "@/pages/Help";
 import AgentsLayout from "@/pages/AgentsLayout";
 import AgentsList from "@/components/agents/AgentsList";
 import RunHistory from "@/components/agents/RunHistory";
-import SavedTasks from "@/components/agents/SavedTasks";
+import Schedules from "@/components/agents/Schedules";
 
 export const router = createBrowserRouter([
     {
@@ -43,7 +43,7 @@ export const router = createBrowserRouter([
                 children: [
                     { index: true, element: <AgentsList /> },
                     { path: "runs", element: <RunHistory /> },
-                    { path: "saved", element: <SavedTasks /> },
+                    { path: "schedules", element: <Schedules /> },
                 ]
             },
             { path: "team", element: <Team /> },

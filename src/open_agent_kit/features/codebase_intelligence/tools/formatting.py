@@ -168,6 +168,40 @@ def format_session_results(sessions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def format_session_search_results(sessions: list[dict[str, Any]]) -> str:
+    """Format session search results for agent consumption.
+
+    Sessions are searched via embedded summaries in ChromaDB.
+
+    Args:
+        sessions: Session search results from RetrievalEngine.
+
+    Returns:
+        Formatted markdown string with session results.
+    """
+    if not sessions:
+        return "No sessions found."
+
+    lines = [f"Found {len(sessions)} sessions:\n"]
+    for i, s in enumerate(sessions, 1):
+        session_id = s.get("id", "unknown")
+        title = s.get("title") or "Untitled"
+        if title and len(title) > 80:
+            title = title[:77] + "..."
+        confidence = s.get("confidence", "medium")
+        preview = s.get("preview", "")
+
+        lines.append(f"{i}. **{title}** [{confidence}]")
+        lines.append(f"   ID: {session_id}")
+        if preview:
+            # Truncate and indent preview
+            preview_text = preview[:200] + "..." if len(preview) > 200 else preview
+            lines.append(f"   {preview_text}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def format_search_results(result: SearchResult, query: str | None = None) -> str:
     """Format combined search results from RetrievalEngine.
 
@@ -194,6 +228,10 @@ def format_search_results(result: SearchResult, query: str | None = None) -> str
     if hasattr(result, "plans") and result.plans:
         output_parts.append("\n## Plan Results\n")
         output_parts.append(format_plan_results(result.plans))
+
+    if hasattr(result, "sessions") and result.sessions:
+        output_parts.append("\n## Session Results\n")
+        output_parts.append(format_session_search_results(result.sessions))
 
     if not output_parts or (query and len(output_parts) == 1):
         output_parts.append("No results found for your query.")

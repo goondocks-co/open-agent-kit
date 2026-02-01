@@ -629,3 +629,82 @@ class ReembedSessionsResponse(BaseModel):
     sessions_processed: int = 0
     sessions_embedded: int = 0
     message: str = ""
+
+
+# ============================================================================
+# Session Relationship Models (many-to-many semantic links)
+# ============================================================================
+
+
+class RelatedSessionItem(BaseModel):
+    """A session related to another via many-to-many relationship."""
+
+    id: str
+    title: str | None = None
+    first_prompt_preview: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str = "completed"
+    prompt_batch_count: int = 0
+    # Relationship metadata
+    relationship_id: int
+    similarity_score: float | None = None
+    created_by: str  # 'suggestion' or 'manual'
+    related_at: datetime
+
+
+class RelatedSessionsResponse(BaseModel):
+    """Response for session related sessions query."""
+
+    session_id: str
+    related: list[RelatedSessionItem] = Field(default_factory=list)
+
+
+class AddRelatedRequest(BaseModel):
+    """Request to add a related session."""
+
+    related_session_id: str = Field(..., min_length=1, description="Session to relate to")
+    similarity_score: float | None = Field(
+        default=None, description="Vector similarity score (if from suggestion)"
+    )
+
+
+class AddRelatedResponse(BaseModel):
+    """Response after adding a related session."""
+
+    success: bool = True
+    session_id: str
+    related_session_id: str
+    relationship_id: int | None = None
+    message: str = ""
+
+
+class RemoveRelatedResponse(BaseModel):
+    """Response after removing a related session."""
+
+    success: bool = True
+    session_id: str
+    related_session_id: str
+    message: str = ""
+
+
+class SuggestedRelatedItem(BaseModel):
+    """A suggested related session."""
+
+    id: str
+    title: str | None = None
+    first_prompt_preview: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str = "completed"
+    prompt_batch_count: int = 0
+    confidence: str  # high, medium, low
+    confidence_score: float
+    reason: str
+
+
+class SuggestedRelatedResponse(BaseModel):
+    """Response for suggested related sessions query."""
+
+    session_id: str
+    suggestions: list[SuggestedRelatedItem] = Field(default_factory=list)

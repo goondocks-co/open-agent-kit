@@ -14,6 +14,16 @@ description: |
   Documents individual OAK features by combining code analysis with CI memories.
   Surfaces gotchas, explains design decisions, and keeps docs accurate.
 
+# Execution limits - controls resource usage and prevents runaway agents
+execution:
+  # timeout_seconds: Wall-clock limit for the entire agent run.
+  # Feature docs involve exploration and multiple file updates - 5 minutes.
+  timeout_seconds: 300
+
+  # max_turns: Limits API round-trips (each turn ~ one Claude response).
+  # Moderate task with CI queries, code exploration, and doc generation.
+  max_turns: 50
+
 default_task: |
   Document OAK features that are missing or outdated documentation.
 

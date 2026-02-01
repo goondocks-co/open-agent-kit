@@ -1,16 +1,29 @@
-version: 0.5.2.dev20+g241246783.d20260130
+version: 0.5.2.dev23+g3d340c901.d20260131
 agents:
-- cursor
-- copilot
-- codex
 - gemini
+- cursor
+- opencode
+- codex
 - claude
+- copilot
 agent_capabilities:
   claude:
     has_background_agents: true
     has_native_web: true
     has_mcp: true
     research_strategy: Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)
+    custom: {}
+  gemini:
+    has_background_agents: false
+    has_native_web: true
+    has_mcp: true
+    research_strategy: Use built-in search + fetch as primary; MCP for extras
+    custom: {}
+  codex:
+    has_background_agents: false
+    has_native_web: false
+    has_mcp: true
+    research_strategy: Offline/spec-only; degrade gracefully to general knowledge
     custom: {}
   cursor:
     has_background_agents: true
@@ -24,17 +37,12 @@ agent_capabilities:
     has_mcp: true
     research_strategy: Use Copilot's built-in web tools + keyless MCP
     custom: {}
-  gemini:
-    has_background_agents: false
+  opencode:
+    has_background_agents: true
     has_native_web: true
     has_mcp: true
-    research_strategy: Use built-in search + fetch as primary; MCP for extras
-    custom: {}
-  codex:
-    has_background_agents: false
-    has_native_web: false
-    has_mcp: false
-    research_strategy: Offline/spec-only; degrade gracefully to general knowledge
+    research_strategy: Use built-in web tools or configure MCP servers in opencode.json
+      under the 'mcp' key
     custom: {}
 rfc:
   directory: oak/rfc

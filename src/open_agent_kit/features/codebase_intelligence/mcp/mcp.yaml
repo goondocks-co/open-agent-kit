@@ -3,25 +3,18 @@
 # This configuration defines the MCP server that agents can use
 # for semantic code search and persistent memory.
 #
-# Agent-specific install/remove scripts are in subdirectories:
-#   claude/install.sh, claude/remove.sh
-#   cursor/install.sh, cursor/remove.sh
-#   codex/install.sh, codex/remove.sh
-#
-# Scripts receive environment variables:
-#   OAK_PROJECT_ROOT  - Project root directory
-#   OAK_MCP_NAME      - Server name from this config
-#   OAK_MCP_COMMAND   - Full command to run the MCP server
-#   OAK_MCP_ARGS      - Arguments portion only (for agents that separate them)
+# Agent-specific MCP registration is handled by the Python MCPInstaller class,
+# which reads configuration from each agent's manifest.yaml mcp: section.
+# No shell scripts are needed - it's all done in Python for cross-platform support.
 
 # Server identity
 name: oak-ci
 description: "OAK Codebase Intelligence - semantic code search and persistent memory for AI assistants"
 
 # The command to run the MCP server
-# {{PROJECT_ROOT}} is replaced with the actual project root
+# The MCP server uses the current working directory to find the project.
 # Uses 'oak' directly, expecting it to be on PATH (installed via pipx, uv tool install, etc.)
-command: "oak ci mcp --project {{PROJECT_ROOT}}"
+command: "oak ci mcp"
 
 # Server capabilities (for documentation/validation)
 capabilities:

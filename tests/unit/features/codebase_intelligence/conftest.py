@@ -4,7 +4,6 @@ This module provides common fixtures for testing the CI feature, including
 configuration objects, temporary directories, and mock instances.
 """
 
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -23,7 +22,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     DaemonState,
     IndexStatus,
-    SessionInfo,
 )
 
 # =============================================================================
@@ -182,22 +180,6 @@ def error_status() -> IndexStatus:
     status = IndexStatus()
     status.set_error()
     return status
-
-
-@pytest.fixture
-def sample_session_info() -> SessionInfo:
-    """Provide a sample session info instance.
-
-    Returns:
-        SessionInfo for testing.
-    """
-    now = datetime.now()
-    return SessionInfo(
-        session_id="test-session-123",
-        agent="claude",
-        started_at=now,
-        last_activity=now,
-    )
 
 
 @pytest.fixture

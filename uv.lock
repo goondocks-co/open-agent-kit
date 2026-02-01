@@ -257,16 +257,19 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-code-sdk"
-version = "0.0.25"
+name = "claude-agent-sdk"
+version = "0.1.26"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ec/0d/0f4a71415826578a5ace16817c52df84d76ffbda5cdad02f520a2b963bde/claude_code_sdk-0.0.25.tar.gz", hash = "sha256:0d9e1eba432d4fe8a2f75f06ec9bb4c310f39b1d55246e7e4b2c69bfdd69eab3", size = 41273 }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/c5/587e4d22188726d2c7ac11f3146f4ef7f7f1864cdc31a183edcbb6eb8367/claude_agent_sdk-0.1.26.tar.gz", hash = "sha256:b03124346111c018b1ae77f537d4f7dcc62dcfd97db634cc142a057b0b051a9b", size = 57211 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/41/c934058080f3233bbc95bc9abac5e0191bf336ad5f69a33b5f54a4737e88/claude_code_sdk-0.0.25-py3-none-any.whl", hash = "sha256:3d6a4ef958182f311d6050776d2675d9b39650a2db221c582a0a5156472dcee3", size = 31031 },
+    { url = "https://files.pythonhosted.org/packages/a8/ce/0e80d9c141547595b230d33e18d5f940c84bf5560f42d0ed16026290cd67/claude_agent_sdk-0.1.26-py3-none-macosx_11_0_arm64.whl", hash = "sha256:344408b83576cef9b98d12826ae74a347bd6fe6f31c5ff7e6b0e3b73fcd37666", size = 53901821 },
+    { url = "https://files.pythonhosted.org/packages/42/bc/f7e8180ee4721c81d88fd4b83478f779a11f7a95dfdf354fb4209f4f30af/claude_agent_sdk-0.1.26-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:940fc82b0d222ee07b6d20e31063aa255533cabc02f1e404c35b9ea6786b4d43", size = 68106745 },
+    { url = "https://files.pythonhosted.org/packages/85/88/dc8da2a38b3441c3c8a35ab26229daa3fdfd67f7e461ca9ab497d70a1589/claude_agent_sdk-0.1.26-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:aa5d5eb90a662912ce77c6023af1471c7e6bdfeb193dd945d4a170785206eda3", size = 69819882 },
+    { url = "https://files.pythonhosted.org/packages/57/c7/9b3ddc3bc1c70b7372a6ee0a3de5627662e126946ad0f3d5a6a0d551941a/claude_agent_sdk-0.1.26-py3-none-win_amd64.whl", hash = "sha256:789235d9b7dd4df61f86b735b2563926dbf23e78e81e78d6b8177506567cc005", size = 72001402 },
 ]
 
 [[package]]
@@ -335,6 +338,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/52/60f64d932d555102611c366afb0eb434b34266b1d9266fc2fe18ab641c47/coverage-7.12.0-cp313-cp313t-win_amd64.whl", hash = "sha256:24cff9d1f5743f67db7ba46ff284018a6e9aeb649b67aa1e70c396aa1b7cb23c", size = 222001 },
     { url = "https://files.pythonhosted.org/packages/77/df/c303164154a5a3aea7472bf323b7c857fed93b26618ed9fc5c2955566bb0/coverage-7.12.0-cp313-cp313t-win_arm64.whl", hash = "sha256:c87395744f5c77c866d0f5a43d97cc39e17c7f1cb0115e54a2fe67ca75c5d14d", size = 220273 },
     { url = "https://files.pythonhosted.org/packages/ce/a3/43b749004e3c09452e39bb56347a008f0a0668aad37324a99b5c8ca91d9e/coverage-7.12.0-py3-none-any.whl", hash = "sha256:159d50c0b12e060b15ed3d39f87ed43d4f7f7ad40b8a534f4dd331adbb51104a", size = 209503 },
+]
+
+[[package]]
+name = "croniter"
+version = "6.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ad/2f/44d1ae153a0e27be56be43465e5cb39b9650c781e001e7864389deb25090/croniter-6.0.0.tar.gz", hash = "sha256:37c504b313956114a983ece2c2b07790b1f1094fe9d81cc94739214748255577", size = 64481 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/4b/290b4c3efd6417a8b0c284896de19b1d5855e6dbdb97d2a35e68fa42de85/croniter-6.0.0-py2.py3-none-any.whl", hash = "sha256:2f878c3856f17896979b2a4379ba1f09c83e374931ea15cc835c5dd2eee9b368", size = 25468 },
 ]
 
 [[package]]
@@ -915,6 +931,7 @@ wheels = [
 name = "open-agent-kit"
 source = { editable = "." }
 dependencies = [
+    { name = "claude-agent-sdk" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "platformdirs" },
@@ -955,9 +972,11 @@ ci-parsers-all = [
 codebase-intelligence = [
     { name = "aiofiles" },
     { name = "chromadb" },
-    { name = "claude-code-sdk" },
+    { name = "croniter" },
     { name = "fastapi" },
     { name = "mcp" },
+    { name = "tomli" },
+    { name = "tomli-w" },
     { name = "tree-sitter" },
     { name = "uvicorn" },
     { name = "watchdog" },
@@ -977,7 +996,8 @@ requires-dist = [
     { name = "aiofiles", marker = "extra == 'codebase-intelligence'", specifier = ">=23.0.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
     { name = "chromadb", marker = "extra == 'codebase-intelligence'", specifier = ">=0.5.0" },
-    { name = "claude-code-sdk", marker = "extra == 'codebase-intelligence'", specifier = ">=0.0.19" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.26" },
+    { name = "croniter", marker = "extra == 'codebase-intelligence'", specifier = ">=2.0.0" },
     { name = "fastapi", marker = "extra == 'codebase-intelligence'", specifier = ">=0.109.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
@@ -994,6 +1014,8 @@ requires-dist = [
     { name = "readchar", specifier = ">=4.0.0" },
     { name = "rich", specifier = ">=13.7.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "tomli", marker = "extra == 'codebase-intelligence'", specifier = ">=2.0.0" },
+    { name = "tomli-w", marker = "extra == 'codebase-intelligence'", specifier = ">=1.0.0" },
     { name = "tree-sitter", marker = "extra == 'codebase-intelligence'", specifier = ">=0.23.0" },
     { name = "tree-sitter-c", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
     { name = "tree-sitter-c-sharp", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
@@ -1468,6 +1490,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pytz"
+version = "2025.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/bf/abbd3cdfb8fbc7fb3d4d38d320f2441b1e7cbe29be4f23797b4a2b5d8aac/pytz-2025.2.tar.gz", hash = "sha256:360b9e3dbb49a209c21ad61809c7fb453643e048b38924c765813546746e81c3", size = 320884 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/c4/34e93fe5f5429d7570ec1fa436f1986fb1f00c3e0f43a589fe2bbcd22c3f/pytz-2025.2-py2.py3-none-any.whl", hash = "sha256:5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00", size = 509225 },
+]
+
+[[package]]
 name = "pywin32"
 version = "311"
 source = { registry = "https://pypi.org/simple" }
@@ -1730,6 +1761,33 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/18/a545c4ea42af3df6effd7d13d250ba77a0a86fb20393143bbb9a92e434d4/tokenizers-0.22.2-cp39-abi3-win32.whl", hash = "sha256:a6bf3f88c554a2b653af81f3204491c818ae2ac6fbc09e76ef4773351292bc92", size = 2502363 },
     { url = "https://files.pythonhosted.org/packages/65/71/0670843133a43d43070abeb1949abfdef12a86d490bea9cd9e18e37c5ff7/tokenizers-0.22.2-cp39-abi3-win_amd64.whl", hash = "sha256:c9ea31edff2968b44a88f97d784c2f16dc0729b8b143ed004699ebca91f05c48", size = 2747786 },
     { url = "https://files.pythonhosted.org/packages/72/f4/0de46cfa12cdcbcd464cc59fde36912af405696f687e53a091fb432f694c/tokenizers-0.22.2-cp39-abi3-win_arm64.whl", hash = "sha256:9ce725d22864a1e965217204946f830c37876eee3b2ba6fc6255e8e903d5fcbc", size = 2612133 },
+]
+
+[[package]]
+name = "tomli"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/30/31573e9457673ab10aa432461bee537ce6cef177667deca369efb79df071/tomli-2.4.0.tar.gz", hash = "sha256:aa89c3f6c277dd275d8e243ad24f3b5e701491a860d5121f2cdd399fbb31fc9c", size = 17477 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/91/7f65f9809f2936e1f4ce6268ae1903074563603b2a2bd969ebbda802744f/tomli-2.4.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:84d081fbc252d1b6a982e1870660e7330fb8f90f676f6e78b052ad4e64714bf0", size = 154915 },
+    { url = "https://files.pythonhosted.org/packages/20/aa/64dd73a5a849c2e8f216b755599c511badde80e91e9bc2271baa7b2cdbb1/tomli-2.4.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:9a08144fa4cba33db5255f9b74f0b89888622109bd2776148f2597447f92a94e", size = 149038 },
+    { url = "https://files.pythonhosted.org/packages/9e/8a/6d38870bd3d52c8d1505ce054469a73f73a0fe62c0eaf5dddf61447e32fa/tomli-2.4.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c73add4bb52a206fd0c0723432db123c0c75c280cbd67174dd9d2db228ebb1b4", size = 242245 },
+    { url = "https://files.pythonhosted.org/packages/59/bb/8002fadefb64ab2669e5b977df3f5e444febea60e717e755b38bb7c41029/tomli-2.4.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1fb2945cbe303b1419e2706e711b7113da57b7db31ee378d08712d678a34e51e", size = 250335 },
+    { url = "https://files.pythonhosted.org/packages/a5/3d/4cdb6f791682b2ea916af2de96121b3cb1284d7c203d97d92d6003e91c8d/tomli-2.4.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:bbb1b10aa643d973366dc2cb1ad94f99c1726a02343d43cbc011edbfac579e7c", size = 245962 },
+    { url = "https://files.pythonhosted.org/packages/f2/4a/5f25789f9a460bd858ba9756ff52d0830d825b458e13f754952dd15fb7bb/tomli-2.4.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:4cbcb367d44a1f0c2be408758b43e1ffb5308abe0ea222897d6bfc8e8281ef2f", size = 250396 },
+    { url = "https://files.pythonhosted.org/packages/aa/2f/b73a36fea58dfa08e8b3a268750e6853a6aac2a349241a905ebd86f3047a/tomli-2.4.0-cp313-cp313-win32.whl", hash = "sha256:7d49c66a7d5e56ac959cb6fc583aff0651094ec071ba9ad43df785abc2320d86", size = 97530 },
+    { url = "https://files.pythonhosted.org/packages/3b/af/ca18c134b5d75de7e8dc551c5234eaba2e8e951f6b30139599b53de9c187/tomli-2.4.0-cp313-cp313-win_amd64.whl", hash = "sha256:3cf226acb51d8f1c394c1b310e0e0e61fecdd7adcb78d01e294ac297dd2e7f87", size = 108227 },
+    { url = "https://files.pythonhosted.org/packages/22/c3/b386b832f209fee8073c8138ec50f27b4460db2fdae9ffe022df89a57f9b/tomli-2.4.0-cp313-cp313-win_arm64.whl", hash = "sha256:d20b797a5c1ad80c516e41bc1fb0443ddb5006e9aaa7bda2d71978346aeb9132", size = 94748 },
+    { url = "https://files.pythonhosted.org/packages/23/d1/136eb2cb77520a31e1f64cbae9d33ec6df0d78bdf4160398e86eec8a8754/tomli-2.4.0-py3-none-any.whl", hash = "sha256:1f776e7d669ebceb01dee46484485f43a4048746235e683bcdffacdf1fb4785a", size = 14477 },
+]
+
+[[package]]
+name = "tomli-w"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/75/241269d1da26b624c0d5e110e8149093c759b7a286138f4efd61a60e75fe/tomli_w-1.2.0.tar.gz", hash = "sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021", size = 7184 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/18/c86eb8e0202e32dd3df50d43d7ff9854f8e0603945ff398974c1d91ac1ef/tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90", size = 6675 },
 ]
 
 [[package]]

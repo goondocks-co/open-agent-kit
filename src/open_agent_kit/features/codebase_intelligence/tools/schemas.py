@@ -20,7 +20,7 @@ class SearchInput(BaseModel):
     query: str = Field(..., description="Natural language search query")
     search_type: str = Field(
         default=SEARCH_TYPE_ALL,
-        description="Type of search: 'code', 'memory', 'plans', or 'all'",
+        description="Type of search: 'code', 'memory', 'plans', 'sessions', or 'all'",
     )
     limit: int = Field(
         default=DEFAULT_SEARCH_LIMIT,

@@ -1,8 +1,8 @@
-"""Agent Executor for running agents via claude-code-sdk.
+"""Agent Executor for running agents via claude-agent-sdk.
 
 This module provides the AgentExecutor class that manages agent execution
 lifecycle including:
-- Building claude-code-sdk options from agent definitions
+- Building claude-agent-sdk options from agent definitions
 - Running agents with proper timeout handling
 - Tracking execution state and results
 - Cancellation support
@@ -21,6 +21,7 @@ import yaml
 
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
+    AgentExecution,
     AgentInstance,
     AgentPermissionMode,
     AgentRun,
@@ -29,12 +30,12 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
 from open_agent_kit.features.codebase_intelligence.agents.tools import create_ci_mcp_server
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_FORBIDDEN_TOOLS,
+    AGENT_INTERRUPT_GRACE_SECONDS,
     CI_MCP_SERVER_NAME,
 )
 
 if TYPE_CHECKING:
-    from claude_code_sdk import ClaudeSDKClient
-    from claude_code_sdk.types import McpSdkServerConfig
+    from claude_agent_sdk.types import McpSdkServerConfig
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 class AgentExecutor:
-    """Executor for running CI agents via claude-code-sdk.
+    """Executor for running CI agents via claude-agent-sdk.
 
     The executor manages:
     - Agent execution lifecycle
@@ -81,8 +82,8 @@ class AgentExecutor:
         self._runs: OrderedDict[str, AgentRun] = OrderedDict()
         self._runs_lock = RLock()
 
-        # Active client tracking for cancellation
-        self._active_clients: dict[str, ClaudeSDKClient] = {}
+        # Active SDK clients for interrupt support (run_id -> client)
+        self._active_clients: dict[str, Any] = {}
         self._clients_lock = RLock()
 
         # MCP server for CI tools (lazy initialization)
@@ -139,22 +140,57 @@ class AgentExecutor:
                 del self._runs[run_id]
                 logger.debug(f"Cleaned up old run from cache: {run_id}")
 
+    def _get_effective_execution(
+        self,
+        agent: AgentDefinition,
+        instance: AgentInstance | None = None,
+    ) -> AgentExecution:
+        """Get effective execution config, preferring instance overrides.
+
+        Instance config takes precedence over template defaults for timeout_seconds,
+        max_turns, and permission_mode. This allows per-instance tuning of resource
+        limits based on task complexity.
+
+        Args:
+            agent: Agent definition (template) with default execution config.
+            instance: Optional instance with execution overrides.
+
+        Returns:
+            AgentExecution with merged settings.
+        """
+        base = agent.execution
+
+        if instance and instance.execution:
+            inst_exec = instance.execution
+            return AgentExecution(
+                timeout_seconds=inst_exec.timeout_seconds or base.timeout_seconds,
+                max_turns=inst_exec.max_turns or base.max_turns,
+                permission_mode=inst_exec.permission_mode or base.permission_mode,
+            )
+
+        return base
+
     def _build_options(
         self,
         agent: AgentDefinition,
+        execution: AgentExecution | None = None,
     ) -> Any:
         """Build ClaudeAgentOptions from agent definition.
 
         Args:
             agent: Agent definition with configuration.
+            execution: Optional execution config override (from instance).
 
         Returns:
             ClaudeAgentOptions instance.
         """
         try:
-            from claude_code_sdk import ClaudeCodeOptions
+            from claude_agent_sdk import ClaudeAgentOptions
         except ImportError as e:
-            raise RuntimeError("claude-code-sdk not installed") from e
+            raise RuntimeError("claude-agent-sdk not installed") from e
+
+        # Use provided execution config or template default
+        effective_execution = execution or agent.execution
 
         # Build allowed tools list, filtering forbidden tools
         allowed_tools = [t for t in agent.get_effective_tools() if t not in AGENT_FORBIDDEN_TOOLS]
@@ -177,16 +213,16 @@ class AgentExecutor:
 
         # Map permission mode
         permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions"] = "default"
-        if agent.execution.permission_mode == AgentPermissionMode.ACCEPT_EDITS:
+        if effective_execution.permission_mode == AgentPermissionMode.ACCEPT_EDITS:
             permission_mode = "acceptEdits"
-        elif agent.execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS:
+        elif effective_execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS:
             permission_mode = "bypassPermissions"
 
-        options = ClaudeCodeOptions(
+        options = ClaudeAgentOptions(
             system_prompt=agent.system_prompt,
             allowed_tools=allowed_tools,
             disallowed_tools=list(AGENT_FORBIDDEN_TOOLS),
-            max_turns=agent.execution.max_turns,
+            max_turns=effective_execution.max_turns,
             permission_mode=permission_mode,
             cwd=str(self._project_root),
         )
@@ -230,7 +266,7 @@ class AgentExecutor:
             # Build instance configuration block
             config: dict[str, Any] = {}
 
-            # Always inject daemon URL for session/memory links
+            # Inject daemon URL for session/memory links
             config["daemon_url"] = daemon_url
 
             if instance.maintained_files:
@@ -256,7 +292,7 @@ class AgentExecutor:
             config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
             return f"{task}\n\n## Instance Configuration\n```yaml\n{config_yaml}```"
 
-        # No instance - still inject daemon URL as runtime context
+        # No instance - inject daemon URL as runtime context
         runtime_context = f"daemon_url: {daemon_url}"
         return f"{task}\n\n## Runtime Context\n```yaml\n{runtime_context}\n```"
 
@@ -449,8 +485,8 @@ class AgentExecutor:
 
         This is the main entry point for running an agent. It:
         1. Creates a run record if not provided
-        2. Builds SDK options from agent definition
-        3. Runs the agent with timeout
+        2. Builds SDK options from agent definition (with instance overrides)
+        3. Runs the agent with timeout and graceful interrupt support
         4. Tracks results and handles errors
 
         Args:
@@ -463,7 +499,7 @@ class AgentExecutor:
             Updated AgentRun with results.
         """
         try:
-            from claude_code_sdk import (
+            from claude_agent_sdk import (
                 AssistantMessage,
                 ClaudeSDKClient,
                 ResultMessage,
@@ -473,13 +509,16 @@ class AgentExecutor:
         except ImportError as e:
             if run:
                 run.status = AgentRunStatus.FAILED
-                run.error = "claude-code-sdk not installed"
+                run.error = "claude-agent-sdk not installed"
                 run.completed_at = datetime.now()
-            raise RuntimeError("claude-code-sdk not installed") from e
+            raise RuntimeError("claude-agent-sdk not installed") from e
 
         # Create run record if not provided
         if run is None:
             run = self.create_run(agent, task, instance)
+
+        # Get effective execution config (instance overrides template)
+        execution = self._get_effective_execution(agent, instance)
 
         # Mark as running
         run.status = AgentRunStatus.RUNNING
@@ -494,28 +533,31 @@ class AgentExecutor:
             )
 
         try:
-            # Build options
-            options = self._build_options(agent)
+            # Build options with effective execution config
+            options = self._build_options(agent, execution)
 
-            # Create client and track for cancellation
-            client = ClaudeSDKClient(options=options)
-            with self._clients_lock:
-                self._active_clients[run.id] = client
+            # Build task prompt with config injection
+            task_prompt = self._build_task_prompt(agent, task, instance)
 
             result_text_parts: list[str] = []
             turns_count = 0
 
+            logger.debug(
+                f"Agent run {run.id}: Starting query with prompt length {len(task_prompt)}, "
+                f"timeout={execution.timeout_seconds}s, max_turns={execution.max_turns}"
+            )
+
+            # Use ClaudeSDKClient for bidirectional communication with MCP servers
+            # The query() function doesn't support MCP servers properly
             try:
-                async with client:
-                    # Build task prompt with config injection
-                    task_prompt = self._build_task_prompt(agent, task, instance)
+                async with asyncio.timeout(execution.timeout_seconds):
+                    async with ClaudeSDKClient(options=options) as client:
+                        # Track active client for interrupt support
+                        with self._clients_lock:
+                            self._active_clients[run.id] = client
 
-                    # Send the task prompt
-                    await client.query(task_prompt)
-
-                    # Process responses with timeout
-                    try:
-                        async with asyncio.timeout(agent.execution.timeout_seconds):
+                        try:
+                            await client.query(task_prompt)
                             async for msg in client.receive_response():
                                 if isinstance(msg, AssistantMessage):
                                     turns_count += 1
@@ -543,16 +585,28 @@ class AgentExecutor:
                                     # Capture cost if available
                                     if msg.total_cost_usd:
                                         run.cost_usd = msg.total_cost_usd
+                        finally:
+                            # Always untrack client
+                            with self._clients_lock:
+                                self._active_clients.pop(run.id, None)
 
-                    except TimeoutError:
-                        run.status = AgentRunStatus.TIMEOUT
-                        run.error = f"Execution timed out after {agent.execution.timeout_seconds}s"
-                        logger.warning(f"Agent run {run.id} timed out")
-
-            finally:
-                # Remove from active clients
+            except TimeoutError:
+                # Attempt graceful interrupt before hard timeout
                 with self._clients_lock:
-                    self._active_clients.pop(run.id, None)
+                    active_client = self._active_clients.pop(run.id, None)
+
+                if active_client:
+                    try:
+                        logger.info(f"Agent run {run.id}: Attempting graceful interrupt")
+                        await active_client.interrupt()
+                        # Give grace period for clean shutdown
+                        await asyncio.sleep(AGENT_INTERRUPT_GRACE_SECONDS)
+                    except (RuntimeError, OSError, AttributeError) as interrupt_err:
+                        logger.debug(f"Interrupt failed (expected): {interrupt_err}")
+
+                run.status = AgentRunStatus.TIMEOUT
+                run.error = f"Execution timed out after {execution.timeout_seconds}s"
+                logger.warning(f"Agent run {run.id} timed out")
 
             # Update run with results
             run.turns_used = turns_count
@@ -571,16 +625,30 @@ class AgentExecutor:
             )
 
         except asyncio.CancelledError:
+            # Clean up active client tracking on cancellation
+            with self._clients_lock:
+                self._active_clients.pop(run.id, None)
+
             run.status = AgentRunStatus.CANCELLED
             run.error = "Execution cancelled"
             run.completed_at = datetime.now()
             logger.info(f"Agent run {run.id} was cancelled")
 
-        except (OSError, RuntimeError, ValueError) as e:
+        except Exception as e:
+            # Clean up active client tracking on error
+            with self._clients_lock:
+                self._active_clients.pop(run.id, None)
+
+            # Catch all exceptions including SDK timeouts, connection errors, etc.
+            import traceback
+
             run.status = AgentRunStatus.FAILED
             run.error = str(e)
             run.completed_at = datetime.now()
-            logger.error(f"Agent run {run.id} failed: {e}")
+
+            # Log full traceback for debugging
+            tb_str = traceback.format_exc()
+            logger.error(f"Agent run {run.id} failed: {e}\n{tb_str}")
 
         # Persist final state to SQLite
         self._persist_run_completion(run)
@@ -633,15 +701,9 @@ class AgentExecutor:
         # Persist to SQLite
         self._persist_run_completion(run)
 
-        # Close the client if active
-        with self._clients_lock:
-            client = self._active_clients.pop(run_id, None)
-            if client:
-                try:
-                    # The context manager will handle cleanup
-                    pass
-                except (OSError, RuntimeError) as e:
-                    logger.warning(f"Error closing client for {run_id}: {e}")
+        # Note: With the query() API, we cannot cancel the subprocess directly.
+        # The subprocess will continue running until completion or timeout,
+        # but the run status is correctly marked as cancelled.
 
         logger.info(f"Agent run {run_id} cancelled")
         return True

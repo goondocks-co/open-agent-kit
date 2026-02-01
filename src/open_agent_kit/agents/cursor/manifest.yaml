@@ -65,3 +65,18 @@ mcp:
   config_file: ".cursor/mcp.json"
   format: json
   servers_key: "mcpServers"
+  # No CLI support - direct JSON manipulation only
+  # JSON entry format
+  entry_format:
+    command: "{cmd}"
+    args: "{args}"
+
+# Hooks configuration for Codebase Intelligence
+# Cursor uses a standalone hooks.json with flat structure
+hooks:
+  type: json
+  config_file: "hooks.json"
+  hooks_key: "hooks"
+  format: flat
+  version_key: "version"
+  template_file: "hooks.json"

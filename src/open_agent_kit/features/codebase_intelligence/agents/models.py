@@ -15,6 +15,22 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # =============================================================================
+# Schedule Configuration Models
+# =============================================================================
+
+
+class ScheduleDefinition(BaseModel):
+    """Cron schedule definition for agent instances.
+
+    Enables periodic execution of agent tasks. The schedule is defined
+    in the instance YAML and runtime state is tracked in the database.
+    """
+
+    cron: str = Field(..., description="Cron expression (e.g., '0 0 * * MON' for weekly Monday)")
+    description: str = Field(default="", description="Human-readable schedule description")
+
+
+# =============================================================================
 # Instance Configuration Models
 # =============================================================================
 
@@ -63,6 +79,7 @@ class AgentInstance(BaseModel):
     - What task to perform (default_task - REQUIRED)
     - What files to maintain
     - What CI queries to run
+    - Optional schedule for periodic execution
 
     Templates cannot be run directly - only instances can be executed.
     """
@@ -75,6 +92,17 @@ class AgentInstance(BaseModel):
 
     # Task (REQUIRED - no ad-hoc prompts)
     default_task: str = Field(..., min_length=1, description="Task to execute when run")
+
+    # Execution limits (optional - overrides template defaults)
+    execution: "AgentExecution | None" = Field(
+        default=None,
+        description="Execution config override (timeout_seconds, max_turns, permission_mode)",
+    )
+
+    # Schedule (optional - for periodic execution)
+    schedule: ScheduleDefinition | None = Field(
+        default=None, description="Cron schedule for periodic execution"
+    )
 
     # Configuration
     maintained_files: list[MaintainedFile] = Field(
@@ -310,8 +338,18 @@ class AgentInstanceListItem(BaseModel):
     agent_type: str = Field(..., description="Template this instance uses")
     description: str = Field(default="", description="What this instance does")
     default_task: str = Field(..., description="Task executed when run")
-    max_turns: int = Field(..., description="Max turns from template")
-    timeout_seconds: int = Field(..., description="Timeout from template")
+    max_turns: int = Field(
+        ..., description="Effective max turns (instance override or template default)"
+    )
+    timeout_seconds: int = Field(
+        ..., description="Effective timeout (instance override or template default)"
+    )
+    has_execution_override: bool = Field(
+        default=False, description="True if instance overrides template execution config"
+    )
+    schedule: ScheduleDefinition | None = Field(
+        default=None, description="Cron schedule if configured"
+    )
 
 
 class AgentListResponse(BaseModel):

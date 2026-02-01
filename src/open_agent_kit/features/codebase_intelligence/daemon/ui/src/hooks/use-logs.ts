@@ -13,15 +13,15 @@ export interface LogResponse {
 }
 
 /** Default number of log lines to fetch */
-export const DEFAULT_LOG_LINES = 100;
+export const DEFAULT_LOG_LINES = 500;
 
 /** Default log file to display */
 export const DEFAULT_LOG_FILE = LOG_FILES.DAEMON;
 
-export function useLogs(lines: number = DEFAULT_LOG_LINES, file: LogFileType = DEFAULT_LOG_FILE) {
+export function useLogs(lines: number = DEFAULT_LOG_LINES, file: LogFileType = DEFAULT_LOG_FILE, enabled: boolean = true) {
     return useQuery<LogResponse>({
         queryKey: ["logs", lines, file],
         queryFn: () => fetchJson(`${API_ENDPOINTS.LOGS}?lines=${lines}&file=${file}`),
-        refetchInterval: LOGS_POLL_INTERVAL_MS,
+        refetchInterval: enabled ? LOGS_POLL_INTERVAL_MS : false,
     });
 }

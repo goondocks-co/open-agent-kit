@@ -1,23 +1,28 @@
+import { useState, useEffect } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Activity, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot } from "lucide-react";
+import { LayoutDashboard, Search, Activity, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { useStatus } from "@/hooks/use-status";
 
 import type { LucideIcon } from "lucide-react";
 
-const NavItem = ({ to, icon: Icon, label, active }: { to: string; icon: LucideIcon; label: string; active: boolean }) => (
+const SIDEBAR_COLLAPSED_KEY = "oak-ci-sidebar-collapsed";
+
+const NavItem = ({ to, icon: Icon, label, active, collapsed }: { to: string; icon: LucideIcon; label: string; active: boolean; collapsed: boolean }) => (
     <Link
         to={to}
+        title={collapsed ? label : undefined}
         className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium",
+            collapsed && "justify-center px-2",
             active
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )}
     >
-        <Icon className="w-4 h-4" />
-        {label}
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        {!collapsed && <span>{label}</span>}
     </Link>
 );
 
@@ -25,6 +30,15 @@ export function Layout() {
     const location = useLocation();
     const { setTheme, theme } = useTheme();
     const { data: status } = useStatus();
+
+    const [collapsed, setCollapsed] = useState(() => {
+        const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+        return saved === "true";
+    });
+
+    useEffect(() => {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+    }, [collapsed]);
 
     const projectName = status?.project_root
         ? status.project_root.split('/').pop()
@@ -42,18 +56,23 @@ export function Layout() {
         { to: "/devtools", icon: Wrench, label: "DevTools" },
     ];
 
+    const toggleCollapse = () => setCollapsed(!collapsed);
+
     return (
         <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans">
             {/* Sidebar */}
-            <aside className="w-64 border-r bg-card flex flex-col">
-                <div className="p-6 border-b">
-                    <div className="flex items-center gap-2 mb-3">
-                        <div className="w-8 h-8 flex items-center justify-center">
+            <aside className={cn(
+                "border-r bg-card flex flex-col transition-all duration-200",
+                collapsed ? "w-16" : "w-64"
+            )}>
+                <div className={cn("border-b", collapsed ? "p-3" : "p-6")}>
+                    <div className={cn("flex items-center mb-3", collapsed ? "justify-center" : "gap-2")}>
+                        <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
                             <img src="/logo.png" alt="Oak CI" className="w-8 h-8 object-contain" />
                         </div>
-                        <span className="font-bold text-lg tracking-tight">Oak CI</span>
+                        {!collapsed && <span className="font-bold text-lg tracking-tight">Oak CI</span>}
                     </div>
-                    {projectName && (
+                    {!collapsed && projectName && (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
                             <Folder className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate" title={status?.project_root}>{projectName}</span>
@@ -61,28 +80,64 @@ export function Layout() {
                     )}
                 </div>
 
-                <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                <nav className={cn("flex-1 space-y-1 overflow-y-auto", collapsed ? "p-2" : "p-4")}>
                     {navItems.map((item) => (
                         <NavItem
                             key={item.to}
                             {...item}
+                            collapsed={collapsed}
                             active={location.pathname === item.to || (item.to !== "/" && location.pathname.startsWith(item.to))}
                         />
                     ))}
                 </nav>
 
-                <div className="p-4 border-t">
-                    <div className="flex items-center justify-between px-2 py-1 rounded-md bg-muted/50">
-                        <button onClick={() => setTheme("light")} className={cn("p-1.5 rounded-sm transition-all", theme === "light" && "bg-background shadow-sm")}>
+                <div className={cn("border-t", collapsed ? "p-2" : "p-4")}>
+                    {/* Theme switcher */}
+                    <div className={cn(
+                        "flex items-center rounded-md bg-muted/50 mb-2",
+                        collapsed ? "flex-col gap-1 px-1 py-2" : "justify-between px-2 py-1"
+                    )}>
+                        <button
+                            onClick={() => setTheme("light")}
+                            title="Light theme"
+                            className={cn("p-1.5 rounded-sm transition-all", theme === "light" && "bg-background shadow-sm")}
+                        >
                             <Sun className="w-4 h-4" />
                         </button>
-                        <button onClick={() => setTheme("system")} className={cn("p-1.5 rounded-sm transition-all", theme === "system" && "bg-background shadow-sm")}>
+                        <button
+                            onClick={() => setTheme("system")}
+                            title="System theme"
+                            className={cn("p-1.5 rounded-sm transition-all", theme === "system" && "bg-background shadow-sm")}
+                        >
                             <Laptop className="w-4 h-4" />
                         </button>
-                        <button onClick={() => setTheme("dark")} className={cn("p-1.5 rounded-sm transition-all", theme === "dark" && "bg-background shadow-sm")}>
+                        <button
+                            onClick={() => setTheme("dark")}
+                            title="Dark theme"
+                            className={cn("p-1.5 rounded-sm transition-all", theme === "dark" && "bg-background shadow-sm")}
+                        >
                             <Moon className="w-4 h-4" />
                         </button>
                     </div>
+
+                    {/* Collapse toggle */}
+                    <button
+                        onClick={toggleCollapse}
+                        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className={cn(
+                            "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
+                            collapsed && "justify-center px-2"
+                        )}
+                    >
+                        {collapsed ? (
+                            <PanelLeft className="w-4 h-4" />
+                        ) : (
+                            <>
+                                <PanelLeftClose className="w-4 h-4" />
+                                <span>Collapse</span>
+                            </>
+                        )}
+                    </button>
                 </div>
             </aside>
 

@@ -60,3 +60,20 @@ mcp:
   config_file: ".gemini/settings.json"
   format: json
   servers_key: "mcpServers"
+  # CLI commands (preferred method if gemini CLI is available)
+  cli:
+    install: "gemini mcp add --name {name} -- {command}"
+    remove: "gemini mcp remove {name}"
+  # JSON entry format for direct manipulation fallback
+  entry_format:
+    command: "{cmd}"
+    args: "{args}"
+
+# Hooks configuration for Codebase Intelligence
+# Gemini CLI uses settings.json with nested hook structure (like Claude)
+hooks:
+  type: json
+  config_file: "settings.json"
+  hooks_key: "hooks"
+  format: nested
+  template_file: "hooks.json"

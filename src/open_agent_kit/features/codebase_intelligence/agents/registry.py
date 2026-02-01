@@ -24,6 +24,7 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentPermissionMode,
     CIQueryTemplate,
     MaintainedFile,
+    ScheduleDefinition,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_DEFINITION_FILENAME,
@@ -35,6 +36,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_SYSTEM_PROMPT_FILENAME,
     AGENTS_DEFINITIONS_DIR,
     AGENTS_DIR,
+    MAX_AGENT_MAX_TURNS,
+    MAX_AGENT_TIMEOUT_SECONDS,
+    MIN_AGENT_TIMEOUT_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -234,12 +238,59 @@ class AgentRegistry:
                 if isinstance(q_data, dict):
                     ci_queries[phase].append(CIQueryTemplate(**q_data))
 
+        # Parse execution config (optional override of template defaults)
+        execution = None
+        execution_data = data.get("execution")
+        if execution_data and isinstance(execution_data, dict):
+            # Build execution config with validation
+            timeout_seconds = execution_data.get("timeout_seconds")
+            max_turns = execution_data.get("max_turns")
+            permission_mode_str = execution_data.get("permission_mode")
+
+            # Validate timeout bounds if provided
+            if timeout_seconds is not None:
+                timeout_seconds = max(
+                    MIN_AGENT_TIMEOUT_SECONDS,
+                    min(MAX_AGENT_TIMEOUT_SECONDS, int(timeout_seconds)),
+                )
+
+            # Validate max_turns bounds if provided
+            if max_turns is not None:
+                max_turns = max(1, min(MAX_AGENT_MAX_TURNS, int(max_turns)))
+
+            # Parse permission mode if provided
+            permission_mode = None
+            if permission_mode_str:
+                try:
+                    permission_mode = AgentPermissionMode(permission_mode_str)
+                except ValueError:
+                    logger.warning(
+                        f"Invalid permission_mode '{permission_mode_str}' in '{name}', ignoring"
+                    )
+
+            execution = AgentExecution(
+                timeout_seconds=timeout_seconds or 600,  # Default if not specified
+                max_turns=max_turns or 50,
+                permission_mode=permission_mode or AgentPermissionMode.ACCEPT_EDITS,
+            )
+
+        # Parse schedule
+        schedule = None
+        schedule_data = data.get("schedule")
+        if schedule_data and isinstance(schedule_data, dict) and "cron" in schedule_data:
+            schedule = ScheduleDefinition(
+                cron=schedule_data["cron"],
+                description=schedule_data.get("description", ""),
+            )
+
         return AgentInstance(
             name=name,
             display_name=data.get("display_name", name),
             agent_type=data["agent_type"],
             description=data.get("description", ""),
             default_task=data["default_task"],
+            execution=execution,
+            schedule=schedule,
             maintained_files=maintained_files,
             ci_queries=ci_queries,
             output_requirements=data.get("output_requirements", {}),
@@ -484,46 +535,21 @@ class AgentRegistry:
         instances_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
         instances_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate YAML content with scaffolding
-        yaml_content = f"""# Agent Instance: {display_name}
-# Auto-generated from template: {template_name}
+        # Generate YAML content using Jinja2 template
+        from jinja2 import Environment, FileSystemLoader
 
-name: {name}
-display_name: "{display_name}"
-agent_type: {template_name}
-description: "{description}"
+        template_dir = Path(__file__).parent / "templates"
+        env = Environment(loader=FileSystemLoader(template_dir), keep_trailing_newline=True)
+        jinja_template = env.get_template("instance.yaml")
 
-# Task this agent executes when run (REQUIRED)
-default_task: |
-  {default_task}
-
-# Files this agent maintains (customize for your project)
-maintained_files:
-  - path: "TODO: add file patterns"
-    purpose: "TODO: describe purpose"
-    auto_create: false
-
-# CI queries to run before executing the task
-ci_queries:
-  discovery:
-    - tool: ci_search
-      query_template: "TODO: add search query"
-      search_type: all
-      min_confidence: medium
-      limit: 10
-      purpose: "TODO: describe what this finds"
-
-# Output requirements (optional)
-output_requirements:
-  required_sections: []
-
-# Style preferences (optional)
-style:
-  tone: "technical"
-  include_examples: true
-
-schema_version: {AGENT_INSTANCE_SCHEMA_VERSION}
-"""
+        yaml_content = jinja_template.render(
+            name=name,
+            display_name=display_name,
+            agent_type=template_name,
+            description=description,
+            default_task=default_task,
+            schema_version=AGENT_INSTANCE_SCHEMA_VERSION,
+        )
 
         # Write YAML file
         yaml_path = instances_dir / f"{name}{AGENT_PROJECT_CONFIG_EXTENSION}"

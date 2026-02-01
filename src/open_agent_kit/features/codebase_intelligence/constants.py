@@ -90,26 +90,6 @@ SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
 # File Names and Paths
 # =============================================================================
 
-HOOK_FILENAME: Final[str] = "hooks.json"
-SETTINGS_FILENAME: Final[str] = "settings.json"
-
-# Claude hooks directory (under .claude/)
-CLAUDE_HOOKS_DIRNAME: Final[str] = "hooks"
-CLAUDE_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
-
-CURSOR_HOOKS_DIRNAME: Final[str] = "hooks"
-CURSOR_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
-
-# Copilot hooks directory (under .github/)
-COPILOT_HOOKS_DIRNAME: Final[str] = "hooks"
-COPILOT_HOOK_CONFIG_FILENAME: Final[str] = "oak-ci-hooks.json"
-COPILOT_HOOK_SCRIPT_NAME: Final[str] = "oak-ci-hook.sh"
-
-# OpenCode plugin configuration (under .opencode/)
-# OpenCode uses TypeScript/JavaScript plugins instead of JSON hooks
-OPENCODE_PLUGIN_DIRNAME: Final[str] = "plugins"
-OPENCODE_PLUGIN_FILENAME: Final[str] = "oak-ci.ts"
-
 # CI data directory structure (relative to .oak/)
 CI_DATA_DIR: Final[str] = "ci"
 CI_CHROMA_DIR: Final[str] = "chroma"
@@ -375,9 +355,11 @@ VALID_SUGGESTION_CONFIDENCE_LEVELS: Final[tuple[str, ...]] = (
 )
 
 # Confidence thresholds for categorizing suggestions
-SUGGESTION_HIGH_THRESHOLD: Final[float] = 0.8
-SUGGESTION_MEDIUM_THRESHOLD: Final[float] = 0.5
-SUGGESTION_LOW_THRESHOLD: Final[float] = 0.3
+# These are intentionally conservative to avoid showing poor-quality suggestions
+# With LLM refinement enabled, scores combine vector similarity (40%) + LLM (60%)
+SUGGESTION_HIGH_THRESHOLD: Final[float] = 0.8  # Strong match - high confidence
+SUGGESTION_MEDIUM_THRESHOLD: Final[float] = 0.65  # Decent match - worth considering
+SUGGESTION_LOW_THRESHOLD: Final[float] = 0.5  # Minimum to show any suggestion
 
 # Time bonus thresholds for suggestion scoring
 SUGGESTION_TIME_BONUS_1H_SECONDS: Final[int] = 3600  # < 1 hour: +0.1 bonus
@@ -394,6 +376,25 @@ SUGGESTION_MAX_CANDIDATES: Final[int] = 5
 
 # Max age in days for suggestion candidates
 SUGGESTION_MAX_AGE_DAYS: Final[int] = 7
+
+# =============================================================================
+# Session Relationships (many-to-many semantic links)
+# =============================================================================
+# These complement parent-child links (temporal continuity) with semantic
+# relationships that can span any time gap.
+
+# Relationship types
+RELATIONSHIP_TYPE_RELATED: Final[str] = "related"
+
+# Created by sources
+RELATIONSHIP_CREATED_BY_SUGGESTION: Final[str] = "suggestion"
+RELATIONSHIP_CREATED_BY_MANUAL: Final[str] = "manual"
+
+# Extended age limit for related session suggestions (effectively unlimited)
+# Unlike parent suggestions (7 days), related sessions can span any time gap
+# because they're based on semantic similarity, not temporal proximity.
+RELATED_SUGGESTION_MAX_AGE_DAYS: Final[int] = 365
+
 
 # =============================================================================
 # Confidence Levels (model-agnostic)
@@ -550,6 +551,12 @@ DEFAULT_AGENT_TIMEOUT_SECONDS: Final[int] = 600
 MAX_AGENT_MAX_TURNS: Final[int] = 500
 MAX_AGENT_TIMEOUT_SECONDS: Final[int] = 3600
 MIN_AGENT_TIMEOUT_SECONDS: Final[int] = 60
+
+# Agent recovery and shutdown timeouts
+AGENT_RUN_RECOVERY_BUFFER_SECONDS: Final[int] = 300  # 5 min grace before marking stale
+SHUTDOWN_TASK_TIMEOUT_SECONDS: Final[float] = 10.0  # Timeout for canceling background tasks
+SCHEDULER_STOP_TIMEOUT_SECONDS: Final[float] = 5.0  # Timeout for stopping scheduler loop
+AGENT_INTERRUPT_GRACE_SECONDS: Final[float] = 2.0  # Grace period after interrupt before timeout
 
 # Agent run status values (match AgentRunStatus enum)
 AGENT_STATUS_PENDING: Final[str] = "pending"

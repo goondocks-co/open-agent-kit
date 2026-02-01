@@ -50,6 +50,8 @@ from open_agent_kit.features.codebase_intelligence.activity.prompts import (
     render_prompt,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_RUN_RECOVERY_BUFFER_SECONDS,
+    DEFAULT_AGENT_TIMEOUT_SECONDS,
     INJECTION_MAX_SESSION_SUMMARIES,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
@@ -720,6 +722,18 @@ class ActivityProcessor:
                 )
                 if stuck_count:
                     logger.info(f"Recovered {stuck_count} stuck batches")
+
+                # Recovery: Mark stale agent runs as failed
+                # This handles daemon crashes that leave runs in RUNNING state
+                stale_run_ids = self.activity_store.recover_stale_runs(
+                    buffer_seconds=AGENT_RUN_RECOVERY_BUFFER_SECONDS,
+                    default_timeout_seconds=DEFAULT_AGENT_TIMEOUT_SECONDS,
+                )
+                if stale_run_ids:
+                    logger.info(
+                        f"Recovered {len(stale_run_ids)} stale agent runs: "
+                        f"{[r[:8] for r in stale_run_ids]}"
+                    )
 
                 # Recovery: Auto-end or delete sessions inactive too long
                 # Empty sessions are deleted, non-empty sessions are marked completed

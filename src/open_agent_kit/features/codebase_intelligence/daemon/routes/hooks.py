@@ -194,30 +194,7 @@ async def hook_session_start(request: Request) -> dict:
     # Detailed logging to daemon.log (debug mode only)
     logger.debug(f"[SESSION-START] Raw request body: {body}")
 
-    # Check if session already exists (idempotency check for duplicate hooks)
-    existing_in_memory = session_id in state.sessions
-    existing_in_db = False
-    if state.activity_store:
-        existing_db_session = state.activity_store.get_session(session_id)
-        existing_in_db = existing_db_session is not None
-
-    if existing_in_memory or existing_in_db:
-        logger.warning(
-            f"[SESSION-START] Duplicate hook detected for session_id={session_id} "
-            f"(in_memory={existing_in_memory}, in_db={existing_in_db}). "
-            "This is safe - returning existing session."
-        )
-
-    # Create or get session tracking (in-memory) - idempotent
-    if not existing_in_memory:
-        state.create_session(session_id, agent)
-    else:
-        # Update last_activity for existing session
-        existing_session = state.sessions[session_id]
-        existing_session.last_activity = datetime.now()
-        logger.debug(f"Updated existing in-memory session: {session_id}")
-
-    # Create or resume session in activity store (persistent SQLite) - idempotent
+    # Create or resume session in activity store (SQLite) - idempotent
     # For source="clear", find the session that just ended and link as parent
     parent_session_id = None
     parent_session_reason = None
@@ -358,26 +335,16 @@ async def hook_prompt_submit(request: Request) -> dict:
         )
         return {"status": "ok", "context": {}}
 
-    # Get or create session tracking
-    # Auto-create session if it doesn't exist (e.g., after daemon restart)
-    session = state.get_session(session_id) if session_id else None
-
     logger.debug(f"Prompt submit: {prompt[:50]}...")
-    if session_id and not session:
-        logger.info(f"Auto-creating session {session_id} (daemon may have restarted)")
-        session = state.create_session(session_id, agent)
 
-    if session:
-        session.last_generation_id = generation_id or None
-        session.last_prompt_hash = prompt_hash
-
-    # Create new prompt batch in activity store
+    # Create new prompt batch in activity store (SQLite handles all session/batch tracking)
     prompt_batch_id = None
     if state.activity_store and session_id:
         try:
-            # End previous prompt batch if exists
-            if session and session.current_prompt_batch_id:
-                previous_batch_id = session.current_prompt_batch_id
+            # End previous prompt batch if exists (query SQLite for active batch)
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch and active_batch.id:
+                previous_batch_id = active_batch.id
                 state.activity_store.end_prompt_batch(previous_batch_id)
                 logger.debug(f"Ended previous prompt batch: {previous_batch_id}")
 
@@ -457,9 +424,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                     f"for session {session_id}"
                 )
 
-            # Update session with current batch ID
-            if session:
-                session.current_prompt_batch_id = prompt_batch_id
+            # Note: batch ID is tracked in SQLite, no in-memory state needed
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to create prompt batch: {e}")
@@ -669,34 +634,6 @@ async def hook_post_tool_use(request: Request) -> dict:
             preview = tool_output[:300].replace("\n", "\\n")
             logger.debug(f"  Tool output preview: {preview}...")
 
-    # Update session tracking with detailed execution info
-    # Auto-create session if it doesn't exist (e.g., after daemon restart)
-    agent = body.get("agent", "unknown")
-    session = state.get_session(session_id) if session_id else None
-    if session_id and not session:
-        logger.info(
-            f"Auto-creating session {session_id} in post-tool-use (daemon may have restarted)"
-        )
-        session = state.create_session(session_id, agent)
-    if session:
-        # Extract file path for file operations
-        file_path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
-
-        # Build execution summary
-        summary = ""
-        if tool_name == "Bash":
-            summary = tool_input.get("command", "")[:100] if isinstance(tool_input, dict) else ""
-        elif tool_name in ("Edit", "Write"):
-            summary = f"Modified {file_path}" if file_path else ""
-        elif tool_name == "Read":
-            summary = f"Read {file_path}" if file_path else ""
-
-        session.record_tool_execution(
-            tool_name=tool_name,
-            file_path=file_path,
-            summary=summary,
-        )
-
     # Store activity in SQLite for background processing (liberal capture)
     if state.activity_store and session_id:
         try:
@@ -733,10 +670,11 @@ async def hook_post_tool_use(request: Request) -> dict:
                     is_error = True
                     error_msg = output_data.get("stderr", "")[:500]
 
-            # Get current prompt batch ID from session
+            # Get current prompt batch ID from SQLite
             prompt_batch_id = None
-            if session:
-                prompt_batch_id = session.current_prompt_batch_id
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
 
             activity = Activity(
                 session_id=session_id,
@@ -762,10 +700,34 @@ async def hook_post_tool_use(request: Request) -> dict:
                 if file_path:
                     detection = detect_plan(file_path)
                     if detection.is_plan:
-                        # Get plan content from tool_input (Write tool includes content)
-                        plan_content = (
-                            tool_input.get("content", "") if isinstance(tool_input, dict) else ""
-                        )
+                        # Read plan content from the file that was just written.
+                        # This is more reliable than tool_input because:
+                        # 1. tool_input in stored activities is sanitized (<N chars>)
+                        # 2. The file is the source of truth
+                        plan_content = ""
+                        plan_path = Path(file_path)
+                        if not plan_path.is_absolute() and state.project_root:
+                            plan_path = state.project_root / plan_path
+
+                        try:
+                            if plan_path.exists():
+                                plan_content = plan_path.read_text(encoding="utf-8")
+                            else:
+                                # Fallback to tool_input if file doesn't exist yet
+                                plan_content = (
+                                    tool_input.get("content", "")
+                                    if isinstance(tool_input, dict)
+                                    else ""
+                                )
+                        except (OSError, ValueError) as e:
+                            logger.warning(f"Failed to read plan file {plan_path}: {e}")
+                            # Fallback to tool_input
+                            plan_content = (
+                                tool_input.get("content", "")
+                                if isinstance(tool_input, dict)
+                                else ""
+                            )
+
                         state.activity_store.update_prompt_batch_source_type(
                             prompt_batch_id,
                             PROMPT_SOURCE_PLAN,
@@ -850,26 +812,15 @@ async def hook_post_tool_use(request: Request) -> dict:
     injected_context = None
     if tool_name in ("Read", "Edit", "Write") and state.retrieval_engine:
         file_path = tool_input.get("file_path", "")
-        if file_path:
+        if file_path and state.activity_store:
             try:
                 normalized_path = _normalize_file_path(file_path, state.project_root)
-                prompt_batch_id = session.current_prompt_batch_id if session else None
-                should_inject = True
-                if session and not session.should_inject_file_memory(
-                    prompt_batch_id,
-                    normalized_path,
-                ):
-                    should_inject = False
 
-                if should_inject:
-                    # Get user prompt for richer context
-                    user_prompt = None
-                    if session and session.current_prompt_batch_id and state.activity_store:
-                        batch = state.activity_store.get_prompt_batch(
-                            session.current_prompt_batch_id
-                        )
-                        if batch:
-                            user_prompt = batch.user_prompt
+                # Get user prompt for richer context from active batch
+                user_prompt = None
+                active_batch = state.activity_store.get_active_prompt_batch(session_id)
+                if active_batch:
+                    user_prompt = active_batch.user_prompt
 
                     # Build rich query (not just file path) for better semantic matching
                     search_query = build_rich_search_query(
@@ -962,22 +913,21 @@ async def hook_stop(request: Request) -> dict:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped stop hook: missing session_id")
         return result
 
-    session = state.get_session(session_id) if session_id else None
-    if not session:
+    if not state.activity_store:
         return result
 
     # Flush any buffered activities before ending the batch
-    if state.activity_store:
-        try:
-            flushed_ids = state.activity_store.flush_activity_buffer()
-            if flushed_ids:
-                logger.debug(f"Flushed {len(flushed_ids)} buffered activities before batch end")
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.debug(f"Failed to flush activity buffer: {e}")
+    try:
+        flushed_ids = state.activity_store.flush_activity_buffer()
+        if flushed_ids:
+            logger.debug(f"Flushed {len(flushed_ids)} buffered activities before batch end")
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.debug(f"Failed to flush activity buffer: {e}")
 
-    # End current prompt batch and queue for processing
-    prompt_batch_id = session.current_prompt_batch_id
-    if prompt_batch_id and state.activity_store:
+    # End current prompt batch and queue for processing (get batch from SQLite)
+    active_batch = state.activity_store.get_active_prompt_batch(session_id)
+    prompt_batch_id = active_batch.id if active_batch else None
+    if prompt_batch_id:
         dedupe_key = _build_dedupe_key(
             HOOK_EVENT_STOP,
             session_id,
@@ -1032,8 +982,7 @@ async def hook_stop(request: Request) -> dict:
                 asyncio.create_task(_process_batch())
                 result["processing_scheduled"] = True
 
-            # Clear current batch from session
-            session.current_prompt_batch_id = None
+            # Note: batch status is tracked in SQLite, no in-memory cleanup needed
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to end prompt batch: {e}")
@@ -1087,16 +1036,19 @@ async def hook_session_end(request: Request) -> dict:
         logger.debug("Deduped session-end session=%s agent=%s", session_id, agent)
         return result
 
-    session = state.get_session(session_id) if session_id else None
-    if not session:
+    if not state.activity_store:
         return result
 
-    # Calculate session duration
-    duration_minutes = (datetime.now() - session.started_at).total_seconds() / 60
+    # Calculate session duration from SQLite session record
+    duration_minutes = 0.0
+    db_session = state.activity_store.get_session(session_id)
+    if db_session and db_session.started_at:
+        duration_minutes = (datetime.now() - db_session.started_at).total_seconds() / 60
 
-    # End any remaining prompt batch
-    prompt_batch_id = session.current_prompt_batch_id
-    if prompt_batch_id and state.activity_store:
+    # End any remaining prompt batch (query SQLite for active batch)
+    active_batch = state.activity_store.get_active_prompt_batch(session_id)
+    prompt_batch_id = active_batch.id if active_batch else None
+    if prompt_batch_id:
         try:
             state.activity_store.end_prompt_batch(prompt_batch_id)
             logger.debug(f"Ended final prompt batch: {prompt_batch_id}")
@@ -1169,15 +1121,8 @@ async def hook_session_end(request: Request) -> dict:
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to end activity session: {e}")
 
-    # Include session stats from in-memory tracking
-    result["observations_captured"] = len(session.observations)
-    result["tool_calls"] = session.tool_calls
-    result["files_modified"] = len(session.files_modified)
-    result["files_created"] = len(session.files_created)
+    # Session stats come from activity_stats (SQLite) - no in-memory tracking
     result["duration_minutes"] = round(duration_minutes, 1)
-
-    # Clean up in-memory session
-    state.end_session(session_id)
 
     return result
 
@@ -1300,22 +1245,16 @@ async def hook_post_tool_use_failure(request: Request) -> dict:
     elif tool_input is None:
         tool_input = {}
 
-    # Get or create session
-    agent = body.get("agent", "unknown")
-    session = state.get_session(session_id)
-    if not session:
-        logger.info(f"Auto-creating session {session_id} in post-tool-use-failure")
-        session = state.create_session(session_id, agent)
-
     # Store activity in SQLite with success=False
     if state.activity_store and session_id:
         try:
             from open_agent_kit.features.codebase_intelligence.activity import Activity
 
-            # Get current prompt batch ID from session
+            # Get current prompt batch ID from SQLite
             prompt_batch_id = None
-            if session:
-                prompt_batch_id = session.current_prompt_batch_id
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
 
             activity = Activity(
                 session_id=session_id,
@@ -1381,19 +1320,16 @@ async def hook_subagent_start(request: Request) -> dict:
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[SUBAGENT-START] type={agent_type} id={agent_id} session={session_id}")
 
-    # Get or create session
-    agent = body.get("agent", "unknown")
-    session = state.get_session(session_id)
-    if not session:
-        logger.info(f"Auto-creating session {session_id} in subagent-start")
-        session = state.create_session(session_id, agent)
-
     # Store as activity to track subagent spawn
     if state.activity_store and session_id:
         try:
             from open_agent_kit.features.codebase_intelligence.activity import Activity
 
-            prompt_batch_id = session.current_prompt_batch_id if session else None
+            # Get current prompt batch ID from SQLite
+            prompt_batch_id = None
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
 
             activity = Activity(
                 session_id=session_id,
@@ -1457,15 +1393,16 @@ async def hook_subagent_stop(request: Request) -> dict:
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[SUBAGENT-STOP] type={agent_type} id={agent_id} session={session_id}")
 
-    # Get session
-    session = state.get_session(session_id)
-
     # Store as activity to track subagent completion
     if state.activity_store and session_id:
         try:
             from open_agent_kit.features.codebase_intelligence.activity import Activity
 
-            prompt_batch_id = session.current_prompt_batch_id if session else None
+            # Get current prompt batch ID from SQLite
+            prompt_batch_id = None
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
 
             activity = Activity(
                 session_id=session_id,
@@ -1542,19 +1479,16 @@ async def hook_agent_thought(request: Request) -> dict:
         f"length={len(thought_text)}"
     )
 
-    # Get or create session
-    agent = body.get("agent", "unknown")
-    session = state.get_session(session_id)
-    if not session:
-        logger.info(f"Auto-creating session {session_id} in agent-thought")
-        session = state.create_session(session_id, agent)
-
     # Store as activity for analysis
     if state.activity_store and session_id:
         try:
             from open_agent_kit.features.codebase_intelligence.activity import Activity
 
-            prompt_batch_id = session.current_prompt_batch_id if session else None
+            # Get current prompt batch ID from SQLite
+            prompt_batch_id = None
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
 
             # Truncate thought text if too long (keep first 2000 chars for summary)
             summary = thought_text[:2000] if len(thought_text) > 2000 else thought_text
@@ -1625,19 +1559,16 @@ async def hook_pre_compact(request: Request) -> dict:
         f"usage={context_usage_percent}% tokens={context_tokens} messages={message_count}"
     )
 
-    # Get or create session
-    agent = body.get("agent", "unknown")
-    session = state.get_session(session_id)
-    if not session:
-        logger.info(f"Auto-creating session {session_id} in pre-compact")
-        session = state.create_session(session_id, agent)
-
     # Store as activity for debugging context pressure
     if state.activity_store and session_id:
         try:
             from open_agent_kit.features.codebase_intelligence.activity import Activity
 
-            prompt_batch_id = session.current_prompt_batch_id if session else None
+            # Get current prompt batch ID from SQLite
+            prompt_batch_id = None
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
 
             activity = Activity(
                 session_id=session_id,

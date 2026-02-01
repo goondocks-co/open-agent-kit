@@ -15,6 +15,17 @@ description: |
   from CI memories. Keeps the constitution and architecture docs in sync with
   how the system actually works.
 
+# Execution limits - controls resource usage and prevents runaway agents
+execution:
+  # timeout_seconds: Wall-clock limit for the entire agent run.
+  # Architecture docs are complex - extensive CI queries and multi-file updates.
+  # 10 minutes for thorough analysis.
+  timeout_seconds: 600
+
+  # max_turns: Limits API round-trips (each turn ~ one Claude response).
+  # Complex task with many CI queries and cross-referencing.
+  max_turns: 100
+
 default_task: |
   Review and update OAK's architecture documentation.
 

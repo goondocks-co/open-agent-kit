@@ -1,10 +1,11 @@
 # OpenAI Codex CLI Agent Manifest
-# OpenAI's Codex CLI - limited capabilities, primarily offline
+# OpenAI's Codex CLI with MCP support
+# See: https://developers.openai.com/codex/mcp
 
 name: codex
 display_name: "Codex CLI"
 version: "1.0.0"
-description: "OpenAI Codex CLI agent - offline-first, limited agent features"
+description: "OpenAI Codex CLI agent with MCP support"
 
 installation:
   folder: ".codex/"
@@ -19,9 +20,9 @@ requirements:
 
 capabilities:
   has_background_agents: false  # No true background worker
-  has_native_web: false         # Usually no web access
-  has_mcp: false                # Usually no MCP support
-  research_strategy: "Offline/spec-only; degrade gracefully to general knowledge"
+  has_native_web: true         # has native web search capabilities
+  has_mcp: true                 # Full MCP support via config.toml
+  research_strategy: "Use MCP servers for extended capabilities; degrade gracefully to general knowledge"
 
   # Capability tiers for prompt complexity adaptation
   # Codex uses OpenAI's first-party models
@@ -53,3 +54,17 @@ settings:
     file: "~/.codex/config.toml"
     format: toml
     # Note: No per-command approval in Codex - uses approval_policy (untrusted|on-failure|on-request|never)
+
+mcp:
+  # MCP server registration config
+  # Codex uses TOML format in .codex/config.toml (project-scoped)
+  # See: https://developers.openai.com/codex/mcp
+  config_file: ".codex/config.toml"
+  format: toml
+  servers_key: "mcp_servers"  # Section prefix: [mcp_servers.<name>]
+  # Note: Codex CLI (codex mcp add) always installs globally to ~/.codex/config.toml
+  # For project-scoped MCP servers, we use direct TOML manipulation
+  # TOML entry format: [mcp_servers.<name>] section with command and args
+  entry_format:
+    command: "{cmd}"
+    args: "{args}"

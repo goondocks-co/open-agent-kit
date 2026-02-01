@@ -45,8 +45,13 @@ def add_session_summary(
     """
     store._ensure_initialized()
 
-    # Create embedding text combining title and summary
-    embed_text = f"{title}\n\n{summary}" if title else summary
+    # Create embedding text with semantic prefix (like Plans use "Plan:")
+    # This helps the embedding model understand document type for better matching
+    if title:
+        embed_text = f"Session: {title}\n\n{summary}"
+    else:
+        embed_text = f"Session Summary:\n\n{summary}"
+
     if not embed_text or not embed_text.strip():
         logger.debug(f"Skipping session summary embedding for {session_id}: empty text")
         return

@@ -191,15 +191,8 @@ class TestAgentNameConstants:
 class TestFileNamesConstants:
     """Test file name and path constants."""
 
-    def test_hook_filename_defined(self):
-        """Test that HOOK_FILENAME constant exists."""
-        assert hasattr(constants, "HOOK_FILENAME")
-        assert constants.HOOK_FILENAME == "hooks.json"
-
-    def test_settings_filename_defined(self):
-        """Test that SETTINGS_FILENAME constant exists."""
-        assert hasattr(constants, "SETTINGS_FILENAME")
-        assert constants.SETTINGS_FILENAME == "settings.json"
+    # Note: HOOK_FILENAME and SETTINGS_FILENAME moved to agent manifests
+    # as part of the declarative hooks configuration refactor.
 
     def test_ci_data_dir_defined(self):
         """Test that CI_DATA_DIR constant exists."""

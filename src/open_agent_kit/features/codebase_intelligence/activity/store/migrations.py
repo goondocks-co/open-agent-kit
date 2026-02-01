@@ -45,6 +45,10 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v15_to_v16(conn)
     if from_version < 17:
         migrate_v16_to_v17(conn)
+    if from_version < 18:
+        migrate_v17_to_v18(conn)
+    if from_version < 19:
+        migrate_v18_to_v19(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -982,3 +986,110 @@ def migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
             logger.warning(f"Index creation warning (may already exist): {e}")
 
     logger.info("Migration v16->v17 complete: added suggestion tracking")
+
+
+def migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v17 to v18: Add session_relationships table.
+
+    Creates the session_relationships table for many-to-many semantic
+    relationships between sessions. This complements the existing parent-child
+    model (designed for temporal continuity after "clear context") with
+    relationships that capture semantic similarity regardless of time gap.
+
+    Use cases:
+    - Working on a feature a month ago and iterating on it now
+    - Related sessions working on the same component/concept
+    - User-driven linking of sessions that work on similar topics
+    """
+    logger.info("Migrating activity store schema v17 -> v18: Adding session_relationships table")
+
+    # Check if table already exists (idempotent migration)
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='session_relationships'"
+    )
+    if cursor.fetchone():
+        logger.info("session_relationships table already exists, skipping table creation")
+    else:
+        # Create the session_relationships table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_relationships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_a_id TEXT NOT NULL,
+                session_b_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,
+                similarity_score REAL,
+                created_at TEXT NOT NULL,
+                created_at_epoch INTEGER NOT NULL,
+                created_by TEXT NOT NULL,
+
+                FOREIGN KEY (session_a_id) REFERENCES sessions(id),
+                FOREIGN KEY (session_b_id) REFERENCES sessions(id),
+                UNIQUE(session_a_id, session_b_id)
+            )
+            """
+        )
+        logger.debug("Created session_relationships table")
+
+    # Create indexes for efficient queries (idempotent)
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_session_relationships_a ON session_relationships(session_a_id)",
+        "CREATE INDEX IF NOT EXISTS idx_session_relationships_b ON session_relationships(session_b_id)",
+        "CREATE INDEX IF NOT EXISTS idx_session_relationships_type ON session_relationships(relationship_type)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.Error as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v17->v18 complete: added session_relationships table")
+
+
+def migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v18 to v19: Add agent_schedules table.
+
+    Creates the agent_schedules table for tracking cron scheduling runtime state.
+    The schedule definition (cron expression, description) lives in YAML,
+    while the runtime state (enabled, last_run, next_run) lives in the database.
+    """
+    logger.info("Migrating activity store schema v18 -> v19: Adding agent_schedules table")
+
+    # Check if table already exists (idempotent migration)
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='agent_schedules'"
+    )
+    if cursor.fetchone():
+        logger.info("agent_schedules table already exists, skipping table creation")
+    else:
+        # Create the agent_schedules table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_schedules (
+                instance_name TEXT PRIMARY KEY,
+                enabled INTEGER DEFAULT 1,
+                last_run_at TEXT,
+                last_run_at_epoch INTEGER,
+                last_run_id TEXT,
+                next_run_at TEXT,
+                next_run_at_epoch INTEGER,
+                created_at TEXT NOT NULL,
+                created_at_epoch INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_at_epoch INTEGER NOT NULL
+            )
+            """
+        )
+        logger.debug("Created agent_schedules table")
+
+    # Create index for efficient due schedule queries (idempotent)
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_schedules_enabled_next "
+            "ON agent_schedules(enabled, next_run_at_epoch)"
+        )
+    except sqlite3.Error as e:
+        logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v18->v19 complete: added agent_schedules table")

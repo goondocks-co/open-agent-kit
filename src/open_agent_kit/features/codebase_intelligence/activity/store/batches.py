@@ -566,6 +566,7 @@ def _detect_plans_in_recovered_activities(
         activities: List of (tool_name, tool_input) tuples.
     """
     import json
+    from pathlib import Path
 
     from open_agent_kit.features.codebase_intelligence.constants import (
         PROMPT_SOURCE_PLAN,
@@ -590,8 +591,26 @@ def _detect_plans_in_recovered_activities(
 
         detection = detect_plan(file_path)
         if detection.is_plan:
-            # Get plan content from tool_input
-            plan_content = tool_input.get("content", "")
+            # Read plan content from disk instead of tool_input.
+            # The stored tool_input is sanitized and contains "<N chars>"
+            # instead of actual content. The file is the source of truth.
+            plan_content = ""
+            plan_path = Path(file_path)
+
+            try:
+                if plan_path.exists():
+                    plan_content = plan_path.read_text(encoding="utf-8")
+                    logger.debug(
+                        f"Read plan content from disk: {file_path} ({len(plan_content)} chars)"
+                    )
+                else:
+                    # File doesn't exist, can't recover content
+                    logger.warning(f"Plan file not found for recovery: {file_path}")
+                    # Skip this activity - we can't capture content from missing file
+                    continue
+            except (OSError, ValueError) as e:
+                logger.warning(f"Failed to read plan file {file_path}: {e}")
+                continue
 
             # Update batch with plan source type
             update_prompt_batch_source_type(

@@ -148,6 +148,23 @@ class AgentRequirements(BaseModel):
     )
 
 
+class AgentMcpCliConfig(BaseModel):
+    """CLI commands for MCP server management.
+
+    Optional CLI commands that can be used instead of direct JSON manipulation.
+    Placeholders: {name} = server name, {command} = full command string
+    """
+
+    install: str | None = Field(
+        default=None,
+        description="CLI command to install MCP server (e.g., 'claude mcp add {name} --scope project -- {command}')",
+    )
+    remove: str | None = Field(
+        default=None,
+        description="CLI command to remove MCP server (e.g., 'claude mcp remove {name} --scope project')",
+    )
+
+
 class AgentMcpConfig(BaseModel):
     """MCP (Model Context Protocol) server configuration for the agent.
 
@@ -158,7 +175,7 @@ class AgentMcpConfig(BaseModel):
 
     config_file: str = Field(
         ...,
-        description="Path to the MCP config file relative to project root (e.g., '.claude/settings.local.json')",
+        description="Path to the MCP config file relative to project root (e.g., '.mcp.json')",
     )
     format: str = Field(
         default="json",
@@ -167,6 +184,60 @@ class AgentMcpConfig(BaseModel):
     servers_key: str = Field(
         default="mcpServers",
         description="Key name in the config file where servers are registered (e.g., 'mcpServers' or 'servers')",
+    )
+    cli: AgentMcpCliConfig | None = Field(
+        default=None,
+        description="Optional CLI commands for install/remove (if agent has CLI support)",
+    )
+    entry_format: dict[str, Any] | None = Field(
+        default=None,
+        description="Template for the server entry JSON structure. Placeholders: {cmd}, {args}",
+    )
+
+
+class AgentHooksConfig(BaseModel):
+    """Hooks configuration for Codebase Intelligence integration.
+
+    Defines how CI hooks are installed for this agent. Hooks enable
+    session tracking, activity capture, and context injection.
+
+    Two types are supported:
+    - "json": Hooks are added to a JSON config file (Claude, Cursor, Gemini, Copilot)
+    - "plugin": Hooks are installed as a plugin file (OpenCode)
+    """
+
+    type: str = Field(
+        default="json",
+        description="Hook type: 'json' for JSON config manipulation, 'plugin' for file copy",
+    )
+    config_file: str | None = Field(
+        default=None,
+        description="Config file path relative to agent folder (e.g., 'settings.json', 'hooks.json')",
+    )
+    hooks_key: str = Field(
+        default="hooks",
+        description="Key name in config file where hooks are stored",
+    )
+    format: str = Field(
+        default="nested",
+        description="Hook structure format: 'nested' (Claude/Gemini), 'flat' (Cursor), 'copilot' (bash/powershell)",
+    )
+    version_key: str | None = Field(
+        default=None,
+        description="Optional version field to add to config (e.g., 'version' -> {version: 1})",
+    )
+    template_file: str = Field(
+        default="hooks.json",
+        description="Template filename in hooks/{agent}/ directory",
+    )
+    # Plugin-specific fields (for type="plugin")
+    plugin_dir: str | None = Field(
+        default=None,
+        description="Directory for plugins relative to agent folder (e.g., 'plugins')",
+    )
+    plugin_file: str | None = Field(
+        default=None,
+        description="Plugin filename to install (e.g., 'oak-ci.ts')",
     )
 
 
@@ -249,6 +320,12 @@ class AgentManifest(BaseModel):
     mcp: AgentMcpConfig | None = Field(
         default=None,
         description="MCP server registration configuration",
+    )
+
+    # Hooks configuration for Codebase Intelligence
+    hooks: AgentHooksConfig | None = Field(
+        default=None,
+        description="Hooks configuration for CI integration",
     )
 
     # Codebase Intelligence configuration

@@ -41,8 +41,15 @@ def client():
 @pytest.fixture
 def mock_activity_store():
     """Mock activity store."""
+    from datetime import datetime, timedelta
+
     mock = MagicMock()
-    mock_session = MagicMock(id="session-123", title=None)  # title=None for new sessions
+    # Create mock session with started_at for duration calculation
+    mock_session = MagicMock(
+        id="session-123",
+        title=None,  # title=None for new sessions
+        started_at=datetime.now() - timedelta(minutes=5),  # Session started 5 minutes ago
+    )
     mock.create_session.return_value = mock_session
     # get_or_create_session returns (session, created) tuple
     mock.get_or_create_session.return_value = (mock_session, True)
@@ -264,11 +271,8 @@ class TestSessionStartHook:
         data1 = response1.json()
         assert data1["session_id"] == session_id
 
-        # Simulate existing session in memory and DB
-        state = get_state()
-        assert session_id in state.sessions
-
         # Mock get_session to return existing session (simulating duplicate hook)
+        # Session tracking is now SQLite-only, so we mock the activity_store
         mock_existing_session = MagicMock(id=session_id, status="active")
         setup_state_with_mocks.activity_store.get_session.return_value = mock_existing_session
         setup_state_with_mocks.activity_store.get_or_create_session.return_value = (

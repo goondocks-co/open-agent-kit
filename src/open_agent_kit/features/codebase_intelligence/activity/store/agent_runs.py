@@ -257,6 +257,80 @@ def delete_run(store: ActivityStore, run_id: str) -> bool:
     return deleted
 
 
+def recover_stale_runs(
+    store: ActivityStore,
+    buffer_seconds: int = 300,
+    default_timeout_seconds: int = 600,
+) -> list[str]:
+    """Mark runs stuck in RUNNING status as FAILED.
+
+    A run is considered stale if:
+    - status = 'running'
+    - started_at_epoch + default_timeout + buffer < now
+
+    This handles the case where the daemon crashes during agent execution,
+    leaving runs in RUNNING state indefinitely.
+
+    Args:
+        store: ActivityStore instance.
+        buffer_seconds: Grace period beyond expected timeout (default 5 min).
+        default_timeout_seconds: Default timeout if not tracked per-run (default 10 min).
+
+    Returns:
+        List of recovered run IDs.
+    """
+    import time
+
+    now_epoch = int(time.time())
+    # Consider stale if started_at + timeout + buffer < now
+    # Since we don't track per-run timeout, use default + buffer as cutoff
+    stale_threshold = now_epoch - (default_timeout_seconds + buffer_seconds)
+
+    conn = store._get_connection()
+
+    # Find stale runs
+    cursor = conn.execute(
+        """
+        SELECT id, agent_name, started_at_epoch
+        FROM agent_runs
+        WHERE status = 'running'
+          AND started_at_epoch IS NOT NULL
+          AND started_at_epoch < ?
+        """,
+        (stale_threshold,),
+    )
+    stale_runs = cursor.fetchall()
+
+    if not stale_runs:
+        return []
+
+    recovered_ids: list[str] = []
+    now = datetime.now()
+
+    for row in stale_runs:
+        run_id = row[0]
+        agent_name = row[1]
+        started_epoch = row[2]
+
+        # Calculate how long the run was stuck
+        stuck_seconds = now_epoch - started_epoch
+
+        update_run(
+            store,
+            run_id=run_id,
+            status="failed",
+            completed_at=now,
+            error=f"Recovered by watchdog - exceeded timeout (stuck for {stuck_seconds}s)",
+        )
+        recovered_ids.append(run_id)
+        logger.warning(
+            f"Recovered stale agent run '{run_id}' for '{agent_name}' "
+            f"(stuck for {stuck_seconds}s)"
+        )
+
+    return recovered_ids
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """Convert a database row to a dictionary.
 

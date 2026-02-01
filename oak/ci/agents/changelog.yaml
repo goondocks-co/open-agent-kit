@@ -14,6 +14,21 @@ description: |
   Generates changelogs by analyzing CI session history and memories.
   Creates accurate release notes from what actually happened, not guesses.
 
+# Execution limits - controls resource usage and prevents runaway agents
+execution:
+  # timeout_seconds: Wall-clock limit for the entire agent run.
+  # Changelog is a simple, focused task - 2 minutes is generous.
+  timeout_seconds: 300
+
+  # max_turns: Limits API round-trips (each turn ~ one Claude response).
+  # Changelog should complete in ~10-20 turns typically.
+  max_turns: 50
+
+# Optional scheduling - runs weekly on Mondays at midnight
+schedule:
+  cron: "0 0 * * MON"
+  description: "Weekly changelog update every Monday at midnight"
+
 default_task: |
   Update CHANGELOG.md with NEW changes only (incremental update).
 

@@ -23,6 +23,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_HOOKS_LOG_FILE,
     CI_LOG_FILE,
     DEFAULT_INDEXING_TIMEOUT_SECONDS,
+    SHUTDOWN_TASK_TIMEOUT_SECONDS,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
@@ -575,6 +576,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         vector_store=state.vector_store,
                     )
                     logger.info("Agent executor initialized")
+
+                    # Initialize scheduler if activity_store is available
+                    if state.activity_store:
+                        from open_agent_kit.features.codebase_intelligence.agents.scheduler import (
+                            AgentScheduler,
+                        )
+
+                        state.agent_scheduler = AgentScheduler(
+                            activity_store=state.activity_store,
+                            agent_registry=state.agent_registry,
+                            agent_executor=state.agent_executor,
+                        )
+                        # Sync schedules from YAML definitions to database
+                        sync_result = state.agent_scheduler.sync_schedules()
+                        logger.info(
+                            f"Agent scheduler initialized: {sync_result['total']} schedules "
+                            f"({sync_result['created']} created, {sync_result['updated']} updated)"
+                        )
+                        # Start the background scheduling loop
+                        state.agent_scheduler.start(interval_seconds=60)
                 else:
                     logger.info("Agent subsystem disabled in config")
             except ImportError as e:
@@ -583,6 +604,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger.warning(f"Failed to initialize agent subsystem: {e}")
                 state.agent_registry = None
                 state.agent_executor = None
+                state.agent_scheduler = None
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to initialize: {e}")
@@ -594,14 +616,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Graceful shutdown sequence
     logger.info("Initiating graceful shutdown...")
 
-    # 1. Cancel background tasks and wait for them
+    # 1. Cancel background tasks and wait for them with timeout
     for task in state.background_tasks:
         if not task.done():
             task.cancel()
             try:
-                await task
+                await asyncio.wait_for(task, timeout=SHUTDOWN_TASK_TIMEOUT_SECONDS)
             except asyncio.CancelledError:
                 pass
+            except TimeoutError:
+                logger.warning(
+                    f"Task {task.get_name()} did not cancel within "
+                    f"{SHUTDOWN_TASK_TIMEOUT_SECONDS}s"
+                )
             except (RuntimeError, OSError) as e:
                 logger.warning(f"Error cancelling task {task.get_name()}: {e}")
     state.background_tasks.clear()
@@ -611,7 +638,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if state.activity_processor:
         logger.info("Activity processor will terminate with daemon shutdown")
 
-    # 3. Stop file watcher and wait for thread cleanup
+    # 3. Stop agent scheduler
+    if state.agent_scheduler:
+        logger.info("Stopping agent scheduler...")
+        try:
+            state.agent_scheduler.stop()
+        except (RuntimeError, OSError) as e:
+            logger.warning(f"Error stopping agent scheduler: {e}")
+        finally:
+            state.agent_scheduler = None
+
+    # 4. Stop file watcher and wait for thread cleanup
     if state.file_watcher:
         logger.info("Stopping file watcher...")
         try:
@@ -684,7 +721,7 @@ def create_app(
         hooks,
         index,
         mcp,
-        saved_tasks,
+        schedules,
         search,
         ui,
     )
@@ -702,7 +739,7 @@ def create_app(
     app.include_router(hooks.router)
     app.include_router(mcp.router)
     app.include_router(agents.router)
-    app.include_router(saved_tasks.router)
+    app.include_router(schedules.router)
     app.include_router(devtools.router)
     app.include_router(backup.router)
 
