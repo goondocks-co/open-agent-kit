@@ -35,15 +35,13 @@ class LoadExistingConfigStage(BaseStage):
 
         # Store previous state for delta calculations
         context.selections.previous_agents = config.agents.copy()
-        context.selections.previous_features = (
-            config.features.enabled.copy() if config.features.enabled else []
-        )
+        context.selections.previous_languages = config.languages.installed.copy()
 
         return StageOutcome.success(
             "Loaded existing configuration",
             data={
                 "agents": config.agents,
-                "features": config.features.enabled,
+                "languages": config.languages.installed,
                 "version": config.version,
             },
         )
@@ -68,10 +66,11 @@ class CreateConfigStage(BaseStage):
         agent_service = self._get_agent_service(context)
 
         # Create config with selections
-        # Features are empty here - FeatureInstallStage adds them properly
+        # Features are always enabled (not user-selectable)
+        # Languages come from selections
         config = config_service.create_default_config(
             agents=context.selections.agents,
-            features=[],  # Let install_feature add them for proper skill installation
+            languages=context.selections.languages,
         )
 
         # Build agent capabilities from manifests

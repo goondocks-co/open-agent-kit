@@ -21,12 +21,12 @@ class TestStageOutcome:
     def test_success_outcome_with_data(self):
         """Test success outcome with data."""
         outcome = StageOutcome.success(
-            "Installed features",
-            data={"installed": ["constitution", "rfc"]},
+            "Installed languages",
+            data={"installed": ["python", "javascript"]},
         )
 
         assert outcome.result == StageResult.SUCCESS
-        assert outcome.data == {"installed": ["constitution", "rfc"]}
+        assert outcome.data == {"installed": ["python", "javascript"]}
 
     def test_skipped_outcome(self):
         """Test creating skipped outcome."""
@@ -216,63 +216,63 @@ class TestAgentStages:
         assert stage.should_run(context) is True
 
 
-class TestFeatureStages:
-    """Tests for feature stages."""
+class TestLanguageStages:
+    """Tests for language stages."""
 
-    def test_resolve_dependencies_stage_fresh_init(self, tmp_path: Path):
-        """Test ResolveDependenciesStage runs for fresh init with features."""
-        from open_agent_kit.pipeline.stages.features import ResolveDependenciesStage
+    def test_install_language_parsers_stage_fresh_init(self, tmp_path: Path):
+        """Test InstallLanguageParsersStage runs for fresh init with languages."""
+        from open_agent_kit.pipeline.stages.languages import InstallLanguageParsersStage
 
-        stage = ResolveDependenciesStage()
+        stage = InstallLanguageParsersStage()
 
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.FRESH_INIT,
-            selections=SelectionState(features=["constitution", "rfc"]),
+            selections=SelectionState(languages=["python", "javascript"]),
         )
         assert stage.should_run(context) is True
 
-    def test_resolve_dependencies_stage_no_features(self, tmp_path: Path):
-        """Test ResolveDependenciesStage doesn't run without features."""
-        from open_agent_kit.pipeline.stages.features import ResolveDependenciesStage
+    def test_install_language_parsers_stage_no_languages(self, tmp_path: Path):
+        """Test InstallLanguageParsersStage doesn't run without languages."""
+        from open_agent_kit.pipeline.stages.languages import InstallLanguageParsersStage
 
-        stage = ResolveDependenciesStage()
+        stage = InstallLanguageParsersStage()
 
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.FRESH_INIT,
-            selections=SelectionState(features=[]),
+            selections=SelectionState(languages=[]),
         )
         assert stage.should_run(context) is False
 
-    def test_remove_features_stage(self, tmp_path: Path):
-        """Test RemoveFeaturesStage runs when features removed."""
-        from open_agent_kit.pipeline.stages.features import RemoveFeaturesStage
+    def test_remove_language_parsers_stage(self, tmp_path: Path):
+        """Test RemoveLanguageParsersStage runs when languages removed."""
+        from open_agent_kit.pipeline.stages.languages import RemoveLanguageParsersStage
 
-        stage = RemoveFeaturesStage()
+        stage = RemoveLanguageParsersStage()
 
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
-                features=["constitution"],
-                previous_features=["constitution", "rfc"],
+                languages=["python"],
+                previous_languages=["python", "javascript"],
             ),
         )
         assert stage.should_run(context) is True
 
-    def test_install_features_stage_update(self, tmp_path: Path):
-        """Test InstallFeaturesStage runs when features added."""
-        from open_agent_kit.pipeline.stages.features import InstallFeaturesStage
+    def test_install_language_parsers_stage_update(self, tmp_path: Path):
+        """Test InstallLanguageParsersStage runs when languages added."""
+        from open_agent_kit.pipeline.stages.languages import InstallLanguageParsersStage
 
-        stage = InstallFeaturesStage()
+        stage = InstallLanguageParsersStage()
 
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
-                features=["constitution", "rfc", "issues"],
-                previous_features=["constitution", "rfc"],
+                languages=["python", "javascript", "typescript"],
+                previous_languages=["python", "javascript"],
             ),
         )
         assert stage.should_run(context) is True
@@ -281,8 +281,11 @@ class TestFeatureStages:
 class TestSkillStages:
     """Tests for skill stages."""
 
-    def test_reconcile_skills_stage_with_features(self, tmp_path: Path):
-        """Test ReconcileSkillsStage runs when features are configured."""
+    def test_reconcile_skills_stage_with_agents(self, tmp_path: Path):
+        """Test ReconcileSkillsStage runs when agents are configured.
+
+        All features are always enabled, so we just check for agents.
+        """
         from open_agent_kit.pipeline.stages.skills import ReconcileSkillsStage
 
         stage = ReconcileSkillsStage()
@@ -290,12 +293,12 @@ class TestSkillStages:
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.FRESH_INIT,
-            selections=SelectionState(features=["constitution"]),
+            selections=SelectionState(agents=["claude"]),
         )
         assert stage.should_run(context) is True
 
-    def test_reconcile_skills_stage_no_features(self, tmp_path: Path):
-        """Test ReconcileSkillsStage doesn't run without features."""
+    def test_reconcile_skills_stage_no_agents(self, tmp_path: Path):
+        """Test ReconcileSkillsStage doesn't run without agents."""
         from open_agent_kit.pipeline.stages.skills import ReconcileSkillsStage
 
         stage = ReconcileSkillsStage()
@@ -303,12 +306,12 @@ class TestSkillStages:
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.FRESH_INIT,
-            selections=SelectionState(features=[]),
+            selections=SelectionState(agents=[]),
         )
         assert stage.should_run(context) is False
 
     def test_reconcile_skills_stage_runs_for_all_flows(self, tmp_path: Path):
-        """Test ReconcileSkillsStage runs for any flow type with features."""
+        """Test ReconcileSkillsStage runs for any flow type with agents."""
         from open_agent_kit.pipeline.stages.skills import ReconcileSkillsStage
 
         stage = ReconcileSkillsStage()
@@ -317,7 +320,7 @@ class TestSkillStages:
         context = PipelineContext(
             project_root=tmp_path,
             flow_type=FlowType.UPDATE,
-            selections=SelectionState(features=["constitution"]),
+            selections=SelectionState(agents=["claude"]),
         )
         assert stage.should_run(context) is True
 
@@ -326,14 +329,12 @@ class TestHookStages:
     """Tests for hook stages."""
 
     def test_reconcile_feature_hooks_stage(self, tmp_path: Path):
-        """Test ReconcileFeatureHooksStage runs when codebase-intelligence is installed."""
-        from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
-        from open_agent_kit.services.config_service import ConfigService
+        """Test ReconcileFeatureHooksStage runs when agents are configured.
 
-        # Create config with codebase-intelligence enabled
-        config_service = ConfigService(tmp_path)
-        config_service.create_default_config()
-        config_service.add_features(["codebase-intelligence"])
+        All features including codebase-intelligence are always enabled,
+        so we just need to check if agents are present.
+        """
+        from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
 
         stage = ReconcileFeatureHooksStage()
 
@@ -342,26 +343,9 @@ class TestHookStages:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude", "codex"],
-                features=["codebase-intelligence"],
             ),
         )
         assert stage.should_run(context) is True
-
-    def test_reconcile_feature_hooks_stage_no_features(self, tmp_path: Path):
-        """Test ReconcileFeatureHooksStage doesn't run without features."""
-        from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage
-
-        stage = ReconcileFeatureHooksStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.UPDATE,
-            selections=SelectionState(
-                agents=["claude"],
-                features=[],
-            ),
-        )
-        assert stage.should_run(context) is False
 
     def test_reconcile_feature_hooks_stage_no_agents(self, tmp_path: Path):
         """Test ReconcileFeatureHooksStage doesn't run without agents."""
@@ -374,7 +358,6 @@ class TestHookStages:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=[],
-                features=["constitution"],
             ),
         )
         assert stage.should_run(context) is False
@@ -491,45 +474,3 @@ class TestUpgradeStages:
         )
 
         assert stage.should_run(context) is False
-
-    def test_run_migrations_stage(self, tmp_path: Path):
-        """Test RunMigrationsStage runs when migrations pending."""
-        from open_agent_kit.pipeline.stages.upgrade import RunMigrationsStage
-
-        stage = RunMigrationsStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.UPGRADE,
-            dry_run=False,
-        )
-        context.set_result(
-            "plan_upgrade",
-            {
-                "plan": {"migrations": [{"id": "test", "description": "Test migration"}]},
-                "has_upgrades": True,
-            },
-        )
-
-        assert stage.should_run(context) is True
-
-    def test_update_version_stage(self, tmp_path: Path):
-        """Test UpdateVersionStage runs when version outdated."""
-        from open_agent_kit.pipeline.stages.upgrade import UpdateVersionStage
-
-        stage = UpdateVersionStage()
-
-        context = PipelineContext(
-            project_root=tmp_path,
-            flow_type=FlowType.UPGRADE,
-            dry_run=False,
-        )
-        context.set_result(
-            "plan_upgrade",
-            {
-                "plan": {"version_outdated": True},
-                "has_upgrades": True,
-            },
-        )
-
-        assert stage.should_run(context) is True

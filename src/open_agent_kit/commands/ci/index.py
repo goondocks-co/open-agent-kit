@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from open_agent_kit.constants import SKIP_DIRECTORIES
+from open_agent_kit.features.codebase_intelligence.constants import HTTP_TIMEOUT_LONG
 from open_agent_kit.utils import (
     print_error,
     print_header,
@@ -50,7 +51,7 @@ def ci_index(
     try:
         import httpx
 
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_LONG) as client:
             response = client.post(
                 f"http://localhost:{manager.port}/api/index/build",
                 json={"full_rebuild": force},

@@ -6,7 +6,12 @@ import typer
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.constants import SKIP_DIRECTORIES
-from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DATA_DIR,
+    DEFAULT_LOG_LINES,
+    HTTP_TIMEOUT_QUICK,
+    MAX_LANGUAGE_DETECTION_FILES,
+)
 from open_agent_kit.utils import (
     print_error,
     print_header,
@@ -44,7 +49,7 @@ def _check_missing_parsers(project_root: Path) -> list[str]:
     # Detect languages in project (quick scan)
     detected_languages: set[str] = set()
     file_count = 0
-    max_files = 1000  # Limit scan for speed
+    max_files = MAX_LANGUAGE_DETECTION_FILES
 
     for filepath in project_root.rglob("*"):
         if file_count > max_files:
@@ -102,7 +107,7 @@ def ci_status() -> None:
         try:
             import httpx
 
-            with httpx.Client(timeout=5.0) as client:
+            with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
                 response = client.get(f"http://localhost:{status['port']}/api/index/status")
                 if response.status_code == 200:
                     stats = response.json()
@@ -335,7 +340,7 @@ def ci_reset(
 
 @ci_app.command("logs")
 def ci_logs(
-    lines: int = typer.Option(50, "--lines", "-n", help="Number of lines to show"),
+    lines: int = typer.Option(DEFAULT_LOG_LINES, "--lines", "-n", help="Number of lines to show"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output"),
 ) -> None:
     """Show Codebase Intelligence daemon logs."""

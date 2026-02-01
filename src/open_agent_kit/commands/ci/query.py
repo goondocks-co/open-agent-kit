@@ -7,6 +7,10 @@ from typing import Any
 
 import typer
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    HTTP_TIMEOUT_QUICK,
+    HTTP_TIMEOUT_STANDARD,
+)
 from open_agent_kit.utils import (
     print_error,
     print_header,
@@ -84,7 +88,7 @@ def ci_memories(
         if exclude_sessions:
             params["exclude_sessions"] = "true"
 
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_STANDARD) as client:
             response = client.get(
                 f"http://localhost:{manager.port}/api/memories",
                 params=params,
@@ -195,7 +199,7 @@ def ci_sessions(
             "memory_type": "session_summary",
         }
 
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_STANDARD) as client:
             response = client.get(
                 f"http://localhost:{manager.port}/api/memories",
                 params=query_params,
@@ -294,7 +298,7 @@ def ci_test(
 
     # Test 1: Daemon health
     def test_health() -> bool:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
             r = client.get(f"{base_url}/api/health")
             return r.status_code == 200
 
@@ -302,7 +306,7 @@ def ci_test(
 
     # Test 2: Index status
     def test_index() -> bool:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
             r = client.get(f"{base_url}/api/index/status")
             data = r.json()
             return data.get("status") in ["ready", "indexing"]
@@ -311,7 +315,7 @@ def ci_test(
 
     # Test 3: Session start hook
     def test_session_start() -> bool:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
             r = client.post(f"{base_url}/api/hook/session-start", json={"agent": "test"})
             data = r.json()
             return data.get("status") == "ok" and "session_id" in data
@@ -320,7 +324,7 @@ def ci_test(
 
     # Test 4: Search API
     def test_search() -> bool:
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_STANDARD) as client:
             r = client.post(f"{base_url}/api/search", json={"query": "main function", "limit": 3})
             data = r.json()
             return "code" in data or "memory" in data
@@ -329,7 +333,7 @@ def ci_test(
 
     # Test 5: Remember API
     def test_remember() -> bool:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
             r = client.post(
                 f"{base_url}/api/remember",
                 json={
@@ -345,7 +349,7 @@ def ci_test(
 
     # Test 6: MCP tools listing
     def test_mcp_tools() -> bool:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
             r = client.get(f"{base_url}/api/mcp/tools")
             data = r.json()
             tools = [t["name"] for t in data.get("tools", [])]
@@ -362,7 +366,7 @@ def ci_test(
         tool_input = {"command": "pytest tests/"}
         output_b64 = base64.b64encode(error_output.encode()).decode()
 
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
             r = client.post(
                 f"{base_url}/api/hook/post-tool-use",
                 json={

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from open_agent_kit.constants import SUPPORTED_FEATURES
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.feature_service import FeatureService
 
@@ -35,25 +36,29 @@ class TestFeatureServiceBasics:
         assert manifest is None
 
     def test_list_installed_features(self, initialized_project: Path) -> None:
-        """Test listing installed features."""
+        """Test listing installed features.
+
+        All features are always installed (not user-selectable).
+        """
         service = FeatureService(initialized_project)
         installed = service.list_installed_features()
 
-        # After init, should have some features installed
-        assert isinstance(installed, list)
+        # All supported features should be installed
+        assert installed == list(SUPPORTED_FEATURES)
 
     def test_is_feature_installed(self, initialized_project: Path) -> None:
-        """Test checking if a feature is installed."""
+        """Test checking if a feature is installed.
+
+        All features are always installed.
+        """
         service = FeatureService(initialized_project)
 
-        # Install rules-management
-        config_service = ConfigService(initialized_project)
-        config = config_service.load_config()
-        if "rules-management" not in config.features.enabled:
-            config.features.enabled.append("rules-management")
-            config_service.save_config(config)
-
+        # All supported features should be installed
         assert service.is_feature_installed("rules-management") is True
+        assert service.is_feature_installed("strategic-planning") is True
+        assert service.is_feature_installed("codebase-intelligence") is True
+
+        # Non-existent features should not be installed
         assert service.is_feature_installed("nonexistent") is False
 
 
@@ -106,32 +111,27 @@ class TestFeatureDependencies:
         assert "strategic-planning" in dependents
 
     def test_can_remove_feature_no_dependents(self, initialized_project: Path) -> None:
-        """Test can_remove_feature when no dependents are installed."""
+        """Test can_remove_feature when checking a feature with no dependents installed.
+
+        All features are always installed, but can_remove checks if dependents
+        (also always installed) block removal.
+        """
         service = FeatureService(initialized_project)
-        config_service = ConfigService(initialized_project)
 
-        # Setup: only rules-management is installed
-        config = config_service.load_config()
-        config.features.enabled = ["rules-management"]
-        config_service.save_config(config)
-
-        can_remove, blocking = service.can_remove_feature("rules-management")
-        assert can_remove is True
-        assert blocking == []
-
-    def test_can_remove_feature_with_dependents(self, initialized_project: Path) -> None:
-        """Test can_remove_feature when dependents are installed."""
-        service = FeatureService(initialized_project)
-        config_service = ConfigService(initialized_project)
-
-        # Setup: both rules-management and strategic-planning are installed
-        config = config_service.load_config()
-        config.features.enabled = ["rules-management", "strategic-planning"]
-        config_service.save_config(config)
-
+        # Since all features are always installed, and strategic-planning depends
+        # on rules-management, rules-management cannot be removed
         can_remove, blocking = service.can_remove_feature("rules-management")
         assert can_remove is False
         assert "strategic-planning" in blocking
+
+    def test_can_remove_feature_leaf_feature(self, initialized_project: Path) -> None:
+        """Test can_remove_feature for a feature that nothing depends on."""
+        service = FeatureService(initialized_project)
+
+        # codebase-intelligence has no dependents
+        can_remove, blocking = service.can_remove_feature("codebase-intelligence")
+        assert can_remove is True
+        assert blocking == []
 
 
 class TestFeatureInstallation:
@@ -152,10 +152,6 @@ class TestFeatureInstallation:
         config_service.save_config(config)
 
         # Install codebase-intelligence (which has commands)
-        # First ensure dependency rules-management is in place
-        if "rules-management" not in config.features.enabled:
-            config.features.enabled.append("rules-management")
-            config_service.save_config(config)
         results = service.install_feature("codebase-intelligence", ["cursor"])
 
         assert "commands_installed" in results
@@ -163,7 +159,7 @@ class TestFeatureInstallation:
         assert "backend-python-expert" in results["commands_installed"]
         assert "cursor" in results["agents"]
 
-        # Verify feature is marked as installed
+        # All features are always installed
         assert service.is_feature_installed("codebase-intelligence")
 
     def test_install_feature_creates_directories(self, initialized_project: Path) -> None:
@@ -219,7 +215,7 @@ class TestFeatureRemoval:
     """Tests for feature removal."""
 
     def test_remove_feature_basic(self, initialized_project: Path) -> None:
-        """Test basic feature removal."""
+        """Test basic feature removal (command files, not the feature itself)."""
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)
 
@@ -233,7 +229,9 @@ class TestFeatureRemoval:
         results = service.remove_feature("rules-management", ["claude"])
 
         assert "commands_removed" in results
-        assert service.is_feature_installed("rules-management") is False
+        # All features are always installed (in SUPPORTED_FEATURES)
+        # The remove_feature just removes command files, not the feature itself
+        assert service.is_feature_installed("rules-management") is True
 
     def test_remove_feature_removes_agent_commands(self, initialized_project: Path) -> None:
         """Test that removal cleans up agent command files.
@@ -246,9 +244,6 @@ class TestFeatureRemoval:
 
         config = config_service.load_config()
         config.agents = ["cursor"]
-        # Ensure dependency is in place
-        if "rules-management" not in config.features.enabled:
-            config.features.enabled.append("rules-management")
         config_service.save_config(config)
         service.install_feature("codebase-intelligence", ["cursor"])
 
@@ -274,7 +269,6 @@ class TestFeatureRefresh:
         # Setup and install
         config = config_service.load_config()
         config.agents = ["claude"]
-        config.features.enabled = ["rules-management"]
         config_service.save_config(config)
         service.install_feature("rules-management", ["claude"])
 
@@ -282,23 +276,10 @@ class TestFeatureRefresh:
         results = service.refresh_features()
 
         assert "features_refreshed" in results
+        # All features are always installed
         assert "rules-management" in results["features_refreshed"]
         assert "claude" in results["agents"]
         assert "rules-management" in results["commands_rendered"]
-
-    def test_refresh_features_empty(self, initialized_project: Path) -> None:
-        """Test refresh with no features installed."""
-        service = FeatureService(initialized_project)
-        config_service = ConfigService(initialized_project)
-
-        config = config_service.load_config()
-        config.agents = ["claude"]
-        config.features.enabled = []
-        config_service.save_config(config)
-
-        results = service.refresh_features()
-
-        assert results["features_refreshed"] == []
 
     def test_refresh_features_no_agents(self, initialized_project: Path) -> None:
         """Test refresh with no agents configured."""
@@ -307,33 +288,12 @@ class TestFeatureRefresh:
 
         config = config_service.load_config()
         config.agents = []
-        config.features.enabled = ["rules-management"]
         config_service.save_config(config)
 
         results = service.refresh_features()
 
         assert results["agents"] == []
         assert results["features_refreshed"] == []
-
-    def test_refresh_features_multiple(self, initialized_project: Path) -> None:
-        """Test refreshing multiple features."""
-        service = FeatureService(initialized_project)
-        config_service = ConfigService(initialized_project)
-
-        config = config_service.load_config()
-        config.agents = ["claude"]
-        config.features.enabled = ["rules-management", "strategic-planning"]
-        config_service.save_config(config)
-
-        # Install both features
-        service.install_feature("rules-management", ["claude"])
-        service.install_feature("strategic-planning", ["claude"])
-
-        # Refresh
-        results = service.refresh_features()
-
-        assert "rules-management" in results["features_refreshed"]
-        assert "strategic-planning" in results["features_refreshed"]
 
 
 class TestJinja2Rendering:

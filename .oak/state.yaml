@@ -7,6 +7,7 @@ migrations:
 - 2026.01.05_remove_oak_features_dir
 - 2026.01.09_remove_ide_settings_config
 - 2026.01.31_mcp_remove_project_flag
+- 2026.02.01_features_to_languages
 managed_assets:
   directories:
   - .claude/commands
@@ -35,3 +36,7 @@ managed_assets:
     hash: 833f4c4c1606bbdc0d9b9ce9e059212bce46a1c6af9edc8758c274e533a2b304
     created_at: '2026-01-30T16:50:57.813085'
   modified_files: []
+initialized_features:
+- codebase-intelligence
+- rules-management
+- strategic-planning

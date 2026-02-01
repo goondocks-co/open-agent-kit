@@ -409,11 +409,11 @@ class AgentService:
         """
         commands_dir = self.create_agent_commands_dir(agent_type)
 
-        # Get features to install commands for
+        # Get features to install commands for - all features are always enabled
         if features is None:
-            from open_agent_kit.constants import DEFAULT_FEATURES
+            from open_agent_kit.constants import SUPPORTED_FEATURES
 
-            features = DEFAULT_FEATURES
+            features = SUPPORTED_FEATURES
 
         created_files = []
 

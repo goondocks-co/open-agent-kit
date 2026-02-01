@@ -696,11 +696,8 @@ class SkillService:
             "errors": [],
         }
 
-        # Get all valid skills from enabled features
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
+        # All features are always enabled
+        enabled_features = SUPPORTED_FEATURES
 
         all_valid_skills: set[str] = set()
         for feature_name in enabled_features:

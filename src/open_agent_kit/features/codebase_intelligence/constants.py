@@ -173,6 +173,41 @@ DEFAULT_INDEXING_BATCH_SIZE: Final[int] = 50
 DEFAULT_INDEXING_TIMEOUT_SECONDS: Final[float] = 3600.0
 
 # =============================================================================
+# HTTP Client Timeouts
+# =============================================================================
+
+# Quick operations: health checks, model listing, simple API calls
+HTTP_TIMEOUT_QUICK: Final[float] = 5.0
+
+# Standard operations: search queries, status checks
+HTTP_TIMEOUT_STANDARD: Final[float] = 10.0
+
+# Long operations: hook requests, indexing triggers
+HTTP_TIMEOUT_LONG: Final[float] = 30.0
+
+# Health check timeout (very quick, just checking if daemon is alive)
+HTTP_TIMEOUT_HEALTH_CHECK: Final[float] = 2.0
+
+# Daemon start timeout (subprocess)
+DAEMON_START_TIMEOUT_SECONDS: Final[int] = 10
+
+# Daemon restart delay
+DAEMON_RESTART_DELAY_SECONDS: Final[float] = 1.0
+
+# Hook stdin select timeout
+HOOK_STDIN_TIMEOUT_SECONDS: Final[float] = 2.0
+
+# =============================================================================
+# CLI Defaults
+# =============================================================================
+
+# Default number of log lines to show
+DEFAULT_LOG_LINES: Final[int] = 50
+
+# Max files to scan for language detection
+MAX_LANGUAGE_DETECTION_FILES: Final[int] = 1000
+
+# =============================================================================
 # Resiliency and Recovery
 # =============================================================================
 

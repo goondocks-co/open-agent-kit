@@ -450,11 +450,8 @@ class UpgradeService:
         except ValueError:
             return []
 
-        # Get enabled features from config
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
+        # All features are always enabled
+        enabled_features = SUPPORTED_FEATURES
 
         # Check each enabled feature's commands
         for feature_name in enabled_features:
@@ -616,11 +613,8 @@ class UpgradeService:
             except OSError:
                 pass
 
-        # Get enabled features
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
+        # All features are always enabled
+        enabled_features = SUPPORTED_FEATURES
 
         # Check each feature's declared gitignore entries
         for feature_name in enabled_features:
@@ -666,11 +660,8 @@ class UpgradeService:
         if not skill_service._has_skills_capable_agent():
             return result
 
-        # Get enabled features
-        config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
+        # All features are always enabled
+        enabled_features = SUPPORTED_FEATURES
 
         # Get currently installed skills
         installed_skills = set(skill_service.list_installed_skills())
@@ -803,11 +794,9 @@ class UpgradeService:
         """
         result: list[UpgradePlanHookItem] = []
 
-        # Get enabled features and configured agents
+        # All features are always enabled
         config = self.config_service.load_config()
-        enabled_features = (
-            config.features.enabled if config.features.enabled else SUPPORTED_FEATURES
-        )
+        enabled_features = SUPPORTED_FEATURES
         configured_agents = config.agents
 
         # Check each enabled feature for hooks
@@ -1011,9 +1000,9 @@ class UpgradeService:
         """
         result: list[UpgradePlanMcpItem] = []
 
-        # Get enabled features and configured agents
+        # All features are always enabled
         config = self.config_service.load_config()
-        enabled_features = config.features.enabled if config.features.enabled else []
+        enabled_features = SUPPORTED_FEATURES
         configured_agents = config.agents
 
         # Check each enabled feature for MCP configurations

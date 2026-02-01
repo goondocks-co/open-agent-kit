@@ -133,7 +133,7 @@ def upgrade_command(
             dry_run=False,
             selections=SelectionState(
                 agents=config.agents,
-                features=config.features.enabled if config.features.enabled else [],
+                languages=config.languages.installed,
             ),
         )
         # Pre-populate the plan in context so stages don't need to re-plan

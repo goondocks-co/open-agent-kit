@@ -13,7 +13,13 @@ from typing import Any, cast
 import typer
 
 from open_agent_kit.config.paths import OAK_DIR
-from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DATA_DIR,
+    DAEMON_START_TIMEOUT_SECONDS,
+    HOOK_STDIN_TIMEOUT_SECONDS,
+    HTTP_TIMEOUT_HEALTH_CHECK,
+    HTTP_TIMEOUT_LONG,
+)
 
 from . import ci_app
 
@@ -54,7 +60,7 @@ def ci_hook(
     # instead of read() which would block waiting for EOF
     try:
         # Wait up to 2 seconds for stdin to be readable
-        if select.select([sys.stdin], [], [], 2.0)[0]:
+        if select.select([sys.stdin], [], [], HOOK_STDIN_TIMEOUT_SECONDS)[0]:
             # Use readline() since Claude sends JSON as a single line
             # read() would block waiting for EOF which Claude may not send
             input_data = sys.stdin.readline()
@@ -97,7 +103,7 @@ def ci_hook(
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_LONG) as resp:
                 return cast(dict[str, Any], json_module.loads(resp.read().decode("utf-8")))
         except urllib.error.URLError:
             return {}
@@ -108,7 +114,7 @@ def ci_hook(
         """Ensure daemon is running, start if not."""
         health_url = f"http://localhost:{port}/api/health"
         try:
-            with urllib.request.urlopen(health_url, timeout=2):
+            with urllib.request.urlopen(health_url, timeout=HTTP_TIMEOUT_HEALTH_CHECK):
                 return  # Daemon is running
         except Exception:
             pass
@@ -120,7 +126,7 @@ def ci_hook(
             subprocess.run(
                 ["oak", "ci", "start", "--quiet"],
                 capture_output=True,
-                timeout=10,
+                timeout=DAEMON_START_TIMEOUT_SECONDS,
             )
         except Exception:
             pass

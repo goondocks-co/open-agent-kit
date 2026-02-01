@@ -1,13 +1,11 @@
 """Initialize command for setting up open-agent-kit in a project."""
 
 from pathlib import Path
-from typing import cast
 
 import typer
 
 from open_agent_kit.config.messages import (
     ERROR_MESSAGES,
-    FEATURE_MESSAGES,
     INFO_MESSAGES,
     INIT_HELP_TEXT,
     NEXT_STEPS_INIT,
@@ -16,10 +14,9 @@ from open_agent_kit.config.messages import (
 )
 from open_agent_kit.config.paths import OAK_DIR, TEMPLATES_DIR
 from open_agent_kit.constants import (
-    DEFAULT_FEATURES,
-    FEATURE_CONFIG,
-    FEATURE_DISPLAY_NAMES,
-    SUPPORTED_FEATURES,
+    DEFAULT_LANGUAGES,
+    LANGUAGE_DISPLAY_NAMES,
+    SUPPORTED_LANGUAGES,
 )
 from open_agent_kit.models.config import AgentCapabilitiesConfig
 from open_agent_kit.pipeline.context import FlowType, PipelineContext, SelectionState
@@ -35,7 +32,6 @@ from open_agent_kit.utils import (
     print_header,
     print_info,
     print_panel,
-    print_warning,
 )
 
 
@@ -77,10 +73,11 @@ def init_command(
         "-a",
         help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
     ),
-    feature: list[str] = typer.Option(
+    language: list[str] = typer.Option(
         None,
-        "--feature",
-        help="Feature(s) to install (can specify multiple times). Options: constitution, rfc, issues, none",
+        "--language",
+        "-l",
+        help="Language(s) for code intelligence (can specify multiple times). Options: python, javascript, typescript, java, csharp, go, rust, c, cpp, ruby, php, kotlin, scala",
     ),
     no_interactive: bool = typer.Option(
         False,
@@ -138,32 +135,35 @@ def init_command(
     # Load existing configuration if applicable
     config_service = ConfigService(project_root)
     existing_agents: list[str] = []
-    existing_features: list[str] = []
+    existing_languages: list[str] = []
 
     if is_existing:
         existing_agents = config_service.get_agents()
         config = config_service.load_config()
-        existing_features = config.features.enabled
+        existing_languages = config.languages.installed
 
     # Gather selections (CLI args or interactive)
     selected_agents = _gather_agent_selection(
         agent, no_interactive, existing_agents if is_existing else None
     )
-    selected_features = _gather_feature_selection(
-        feature, no_interactive, is_existing, existing_features
+    selected_languages = _gather_language_selection(
+        language, no_interactive, is_existing, existing_languages
     )
 
     # Check for no changes in update flow
     if flow_type == FlowType.UPDATE:
         agents_changed = set(selected_agents) != set(existing_agents)
-        features_changed = set(selected_features) != set(existing_features)
+        languages_changed = set(selected_languages) != set(existing_languages)
 
-        if not agents_changed and not features_changed:
+        if not agents_changed and not languages_changed:
             print_info("\nNo changes to configuration. Current setup:")
             if existing_agents:
                 print_info(f"  Agents: {', '.join(existing_agents)}")
-            if existing_features:
-                print_info(f"  Features: {', '.join(existing_features)}")
+            if existing_languages:
+                display_names = [
+                    LANGUAGE_DISPLAY_NAMES.get(lang, lang) for lang in existing_languages
+                ]
+                print_info(f"  Languages: {', '.join(display_names)}")
             return
 
     # Build pipeline context
@@ -174,9 +174,9 @@ def init_command(
         interactive=not no_interactive,
         selections=SelectionState(
             agents=selected_agents,
-            features=selected_features,
+            languages=selected_languages,
             previous_agents=existing_agents,
-            previous_features=existing_features,
+            previous_languages=existing_languages,
         ),
     )
 
@@ -194,12 +194,12 @@ def init_command(
             _display_update_message(
                 existing_agents,
                 selected_agents,
-                existing_features,
-                selected_features,
+                existing_languages,
+                selected_languages,
             )
         else:
             tracker.finish("open-agent-kit initialized successfully!")
-            _display_next_steps(selected_agents)
+            _display_next_steps(selected_agents, selected_languages)
 
         # Display any hook information
         _display_hook_results(context)
@@ -247,52 +247,40 @@ def _gather_agent_selection(
         return []
 
 
-def _gather_feature_selection(
-    feature: list[str] | None,
+def _gather_language_selection(
+    language: list[str] | None,
     no_interactive: bool,
     is_existing: bool,
-    existing_features: list[str],
+    existing_languages: list[str],
 ) -> list[str]:
-    """Gather feature selection from CLI args or interactive prompt.
+    """Gather language selection from CLI args or interactive prompt.
 
     Args:
-        feature: CLI-provided features
+        language: CLI-provided languages
         no_interactive: Whether to skip interactive prompts
         is_existing: Whether this is an existing installation
-        existing_features: Previously installed features
+        existing_languages: Previously installed languages
 
     Returns:
-        List of selected feature names
+        List of selected language names
     """
-    if feature and isinstance(feature, list) and len(feature) > 0:
-        # Validate provided features
-        for f in feature:
-            if f.lower() not in SUPPORTED_FEATURES and f.lower() != "none":
-                print_error(f"Invalid feature: {f}")
-                print_info(f"Supported features: {', '.join(SUPPORTED_FEATURES)}")
+    if language and isinstance(language, list) and len(language) > 0:
+        # Validate provided languages
+        for lang in language:
+            if lang.lower() not in SUPPORTED_LANGUAGES:
+                print_error(f"Invalid language: {lang}")
+                print_info(f"Supported languages: {', '.join(SUPPORTED_LANGUAGES.keys())}")
                 raise typer.Exit(code=1)
 
-        # Convert to lowercase and filter out 'none'
-        selected_features = [f.lower() for f in feature if f.lower() != "none"]
-
-        # Handle 'none' with others
-        if (
-            isinstance(feature, list)
-            and len(feature) != len(selected_features)
-            and len(selected_features) > 0
-        ):
-            print_error("Cannot specify 'none' with other features")
-            raise typer.Exit(code=1)
-
-        return selected_features
+        return [lang.lower() for lang in language]
     elif not no_interactive:
-        return _interactive_feature_selection(existing_features if is_existing else None)
+        return _interactive_language_selection(existing_languages if is_existing else None)
     else:
         # Non-interactive mode - use defaults for new installs, preserve existing for updates
         if is_existing:
-            return existing_features
+            return existing_languages
         else:
-            return list(DEFAULT_FEATURES)
+            return list(DEFAULT_LANGUAGES)
 
 
 def _display_hook_results(context: PipelineContext) -> None:
@@ -372,11 +360,59 @@ def _interactive_agent_selection(existing_agents: list[str] | None = None) -> li
     return selected
 
 
-def _display_next_steps(agents: list[str]) -> None:
+def _interactive_language_selection(existing_languages: list[str] | None = None) -> list[str]:
+    """Interactive language selection with checkboxes.
+
+    Args:
+        existing_languages: List of currently installed languages (will be pre-selected)
+
+    Returns:
+        List of selected language names
+    """
+    if existing_languages:
+        print_header("Update Languages")
+        print_info("Current languages are pre-selected. Check/uncheck to modify.\n")
+    else:
+        print_header("Select Languages")
+        print_info("Choose languages for code intelligence. Parsers will be installed.\n")
+
+    existing_languages = existing_languages or []
+    existing_languages_lower = [lang.lower() for lang in existing_languages]
+
+    options = []
+    default_selections = []
+
+    for lang_id, info in SUPPORTED_LANGUAGES.items():
+        options.append(
+            SelectOption(
+                value=lang_id,
+                label=info["display"],
+                description=f"Parser: {info['package']}",
+            )
+        )
+
+        # Pre-select if already installed or if it's default for new installs
+        if lang_id.lower() in existing_languages_lower:
+            default_selections.append(lang_id)
+        elif not existing_languages and lang_id in DEFAULT_LANGUAGES:
+            default_selections.append(lang_id)
+
+    selected = multi_select(
+        options,
+        "Which languages would you like to enable? (Space to select, Enter to confirm)",
+        defaults=default_selections,
+        min_selections=0,
+    )
+
+    return selected
+
+
+def _display_next_steps(agents: list[str], languages: list[str] | None = None) -> None:
     """Display next steps after initialization.
 
     Args:
         agents: List of selected agent names
+        languages: List of selected language names
     """
     from open_agent_kit.config.paths import CONFIG_FILE
 
@@ -440,68 +476,18 @@ def _display_next_steps(agents: list[str]) -> None:
                 "\nType [cyan]/oak[/cyan] in your AI assistant to see available commands."
             )
 
+        # Show languages
+        if languages:
+            display_names = [LANGUAGE_DISPLAY_NAMES.get(lang, lang) for lang in languages]
+            panel_parts.append(
+                f"\n[bold]Languages ({len(languages)}):[/bold]\n  {', '.join(display_names)}"
+            )
+
         print_panel(
             "\n".join(panel_parts),
             title="Ready to Use",
             style="green",
         )
-
-    print_info(f"\n{INFO_MESSAGES['more_info'].format(url=PROJECT_URL)}")
-
-
-def _display_additions_message(agents: list[str]) -> None:
-    """Display message after adding agents to existing installation.
-
-    Args:
-        agents: List of agent names that were added
-    """
-    if not agents:
-        print_info(f"\n{INFO_MESSAGES['no_agents_added']}")
-        return
-
-    agent_service = AgentService()
-    message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
-
-    # Categorize agents by capability
-    skills_agents = []
-    command_agents = []
-
-    for agent in agents:
-        try:
-            manifest = agent_service.get_agent_manifest(agent.lower())
-            display_name = manifest.display_name
-
-            if manifest.capabilities.has_skills:
-                skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
-                skills_base = skills_base.rstrip("/")
-                skills_dir = manifest.capabilities.skills_directory
-                skills_agents.append(
-                    f"  • [cyan]{display_name}[/cyan]: {skills_base}/{skills_dir}/"
-                )
-            else:
-                folder = manifest.installation.folder
-                commands_subfolder = manifest.installation.commands_subfolder
-                command_agents.append(
-                    f"  • [cyan]{display_name}[/cyan]: {folder}{commands_subfolder}/"
-                )
-        except ValueError:
-            command_agents.append(f"  • [cyan]{agent.capitalize()}[/cyan]")
-
-    if skills_agents:
-        message_parts.append(
-            f"\n[bold]Skills added ({len(skills_agents)}):[/bold]\n" + "\n".join(skills_agents)
-        )
-
-    if command_agents:
-        message_parts.append(
-            f"\n[bold]Commands added ({len(command_agents)}):[/bold]\n" + "\n".join(command_agents)
-        )
-
-    print_panel(
-        "\n".join(message_parts),
-        title="Update Complete",
-        style="green",
-    )
 
     print_info(f"\n{INFO_MESSAGES['more_info'].format(url=PROJECT_URL)}")
 
@@ -526,16 +512,16 @@ def _get_agent_display_name(agent_service: AgentService, agent: str) -> str:
 def _display_update_message(
     old_agents: list[str],
     new_agents: list[str],
-    old_features: list[str] | None = None,
-    new_features: list[str] | None = None,
+    old_languages: list[str] | None = None,
+    new_languages: list[str] | None = None,
 ) -> None:
     """Display message showing what changed in configuration.
 
     Args:
         old_agents: Previously configured agents
         new_agents: Newly configured agents
-        old_features: Previously installed features
-        new_features: Newly installed features
+        old_languages: Previously installed languages
+        new_languages: Newly installed languages
     """
     agent_service = AgentService()
     message_parts = ["[bold green]Configuration Updated Successfully[/bold green]\n"]
@@ -574,39 +560,39 @@ def _display_update_message(
 
         message_parts.append("\n**Agent Configuration:**\n" + "\n".join(agent_lines))
 
-    # Show feature changes
-    old_features_set = set(old_features or [])
-    new_features_set = set(new_features or [])
-    features_added = new_features_set - old_features_set
-    features_removed = old_features_set - new_features_set
-    features_kept = old_features_set & new_features_set
+    # Show language changes
+    old_languages_set = set(old_languages or [])
+    new_languages_set = set(new_languages or [])
+    languages_added = new_languages_set - old_languages_set
+    languages_removed = old_languages_set - new_languages_set
+    languages_kept = old_languages_set & new_languages_set
 
-    if features_added or features_removed or features_kept:
-        feature_lines = []
+    if languages_added or languages_removed or languages_kept:
+        language_lines = []
 
-        if features_kept:
-            feature_lines.append("[dim]Keeping:[/dim]")
-            for feature in sorted(features_kept):
-                feature_name = FEATURE_DISPLAY_NAMES.get(feature, feature)
-                feature_lines.append(f"  • [cyan]{feature_name}[/cyan]")
+        if languages_kept:
+            language_lines.append("[dim]Keeping:[/dim]")
+            for lang in sorted(languages_kept):
+                lang_name = LANGUAGE_DISPLAY_NAMES.get(lang, lang)
+                language_lines.append(f"  • [cyan]{lang_name}[/cyan]")
 
-        if features_added:
-            if feature_lines:
-                feature_lines.append("")
-            feature_lines.append("[green]Added:[/green]")
-            for feature in sorted(features_added):
-                feature_name = FEATURE_DISPLAY_NAMES.get(feature, feature)
-                feature_lines.append(f"  • [green]{feature_name}[/green]")
+        if languages_added:
+            if language_lines:
+                language_lines.append("")
+            language_lines.append("[green]Added:[/green]")
+            for lang in sorted(languages_added):
+                lang_name = LANGUAGE_DISPLAY_NAMES.get(lang, lang)
+                language_lines.append(f"  • [green]{lang_name}[/green]")
 
-        if features_removed:
-            if feature_lines:
-                feature_lines.append("")
-            feature_lines.append("[red]Removed:[/red]")
-            for feature in sorted(features_removed):
-                feature_name = FEATURE_DISPLAY_NAMES.get(feature, feature)
-                feature_lines.append(f"  • [red]{feature_name}[/red]")
+        if languages_removed:
+            if language_lines:
+                language_lines.append("")
+            language_lines.append("[red]Removed:[/red]")
+            for lang in sorted(languages_removed):
+                lang_name = LANGUAGE_DISPLAY_NAMES.get(lang, lang)
+                language_lines.append(f"  • [red]{lang_name}[/red]")
 
-        message_parts.append("\n**Feature Configuration:**\n" + "\n".join(feature_lines))
+        message_parts.append("\n**Language Configuration:**\n" + "\n".join(language_lines))
 
     print_panel(
         "\n".join(message_parts),
@@ -615,119 +601,3 @@ def _display_update_message(
     )
 
     print_info(f"\n{INFO_MESSAGES['more_info'].format(url=PROJECT_URL)}")
-
-
-def _display_agent_added_message(agents: list[str]) -> None:
-    """Display message after adding agents to existing installation.
-
-    DEPRECATED: Use _display_additions_message instead.
-
-    Args:
-        agents: List of agent names that were added
-    """
-    _display_additions_message(agents)
-
-
-def _interactive_feature_selection(existing_features: list[str] | None = None) -> list[str]:
-    """Interactive feature selection with checkboxes.
-
-    Args:
-        existing_features: List of currently installed features (will be pre-selected)
-
-    Returns:
-        List of selected feature names
-    """
-    if existing_features:
-        print_header("Update Features")
-        print_info("Current features are pre-selected. Check/uncheck to modify.\n")
-    else:
-        print_header("Select Features")
-        print_info(FEATURE_MESSAGES["select_features_prompt"] + "\n")
-
-    existing_features = existing_features or []
-    existing_features_lower = [f.lower() for f in existing_features]
-
-    options = []
-    default_selections = []
-
-    for feature_name in SUPPORTED_FEATURES:
-        config = FEATURE_CONFIG.get(feature_name, {})
-        display_name = FEATURE_DISPLAY_NAMES.get(feature_name, feature_name)
-        deps = cast(list[str], config.get("dependencies", []))
-        deps_str = f" (requires: {', '.join(deps)})" if deps else ""
-
-        options.append(
-            SelectOption(
-                value=feature_name,
-                label=display_name,
-                description=str(config.get("description", "")) + deps_str,
-            )
-        )
-
-        # Pre-select if already installed or if it's default for new installs
-        if feature_name.lower() in existing_features_lower:
-            default_selections.append(feature_name)
-        elif not existing_features and config.get("default_enabled", False):
-            default_selections.append(feature_name)
-
-    # Loop until we have a valid selection (dependencies satisfied or user confirms removal)
-    while True:
-        selected = multi_select(
-            options,
-            "Which features would you like to enable? (Space to select, Enter to confirm)",
-            defaults=default_selections,
-            min_selections=0,
-        )
-
-        # Check for dependency violations
-        features_to_remove = _get_features_with_unmet_dependencies(selected)
-
-        if not features_to_remove:
-            # All dependencies satisfied
-            return selected
-
-        # Show what would be removed and ask for confirmation
-        display_names = [FEATURE_DISPLAY_NAMES.get(f, f) for f in features_to_remove]
-        print_warning(
-            f"\nThe following features will be removed (missing dependencies):\n"
-            f"  {', '.join(display_names)}\n"
-        )
-
-        confirm = typer.confirm("Continue with these features removed?", default=True)
-
-        if confirm:
-            # Remove features with unmet dependencies
-            return [f for f in selected if f not in features_to_remove]
-        else:
-            # Let user re-select - use their last selection as the new defaults
-            print_info("\nReturning to feature selection...\n")
-            default_selections = selected
-
-
-def _get_features_with_unmet_dependencies(selected_features: list[str]) -> list[str]:
-    """Find features whose dependencies are not selected.
-
-    Args:
-        selected_features: List of selected feature names
-
-    Returns:
-        List of features that would need to be removed
-    """
-    selected_set = set(selected_features)
-    features_to_remove: list[str] = []
-
-    # Keep iterating until no more changes (handles transitive dependencies)
-    changed = True
-    while changed:
-        changed = False
-        for feature_name in list(selected_set):
-            config = FEATURE_CONFIG.get(feature_name, {})
-            deps = cast(list[str], config.get("dependencies", []))
-
-            # Check if all dependencies are selected
-            if deps and not all(dep in selected_set for dep in deps):
-                selected_set.remove(feature_name)
-                features_to_remove.append(feature_name)
-                changed = True
-
-    return features_to_remove

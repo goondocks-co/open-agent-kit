@@ -184,6 +184,9 @@ class TestMigrationIdempotency:
     ):
         """Test that features restructure migration can run multiple times.
 
+        This migration now converts legacy features config to the new languages
+        config format. All features are always enabled (not user-selectable).
+
         Args:
             project_with_legacy_structure: Project with legacy structure.
         """
@@ -198,8 +201,10 @@ class TestMigrationIdempotency:
 
         # Read config after first run
         config_after_first = read_yaml(config_path)
-        assert "features" in config_after_first
-        assert "enabled" in config_after_first["features"]
+        # Features are removed from config (always enabled internally)
+        # Languages section should exist
+        assert "languages" in config_after_first
+        assert "installed" in config_after_first["languages"]
 
         # Templates should be cleaned up
         assert not (templates_dir / "constitution").exists()

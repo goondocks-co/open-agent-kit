@@ -58,7 +58,7 @@ For more information, visit: https://github.com/sirkirby/open-agent-kit
 
 NEXT_STEPS_INIT = """[bold green]What's Next?[/bold green]
 
-OAK enhances your AI coding assistants with skills and project context.
+OAK enhances your AI coding assistants with code intelligence.
 
 [bold]For agents with skills support (Claude, Copilot, Gemini):[/bold]
   Skills are automatically discovered. Use them naturally:
@@ -68,10 +68,10 @@ OAK enhances your AI coding assistants with skills and project context.
 [bold]For agents with commands (Cursor, Windsurf, Codex):[/bold]
   Type [cyan]/oak[/cyan] to see available commands.
 
-[bold]Manage features:[/bold]
-  [dim]$ oak feature list[/dim]     # See installed features
-  [dim]$ oak feature add[/dim]      # Add new features
-  [dim]$ oak upgrade[/dim]          # Keep OAK updated"""
+[bold]Start code intelligence:[/bold]
+  [dim]$ oak ci start[/dim]          # Start the CI daemon
+  [dim]$ oak languages list[/dim]    # See installed languages
+  [dim]$ oak languages add ruby[/dim] # Add more language support"""
 
 # =============================================================================
 # Success Messages

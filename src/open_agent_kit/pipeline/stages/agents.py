@@ -101,11 +101,12 @@ class InstallAgentCommandsStage(BaseStage):
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Install feature commands for all configured agents."""
-        config_service = self._get_config_service(context)
         feature_service = self._get_feature_service(context)
 
-        # Get installed features
-        installed_features = config_service.get_features()
+        # All features are always enabled
+        from open_agent_kit.constants import SUPPORTED_FEATURES
+
+        installed_features = list(SUPPORTED_FEATURES)
 
         # Reconcile: ensure all agents have commands for all features
         # install_feature is idempotent - skips existing commands

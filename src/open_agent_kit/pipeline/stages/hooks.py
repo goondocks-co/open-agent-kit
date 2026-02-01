@@ -23,19 +23,12 @@ class ReconcileFeatureHooksStage(BaseStage):
     is_critical = False
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are agents and codebase-intelligence is installed.
+        """Run if there are agents.
 
-        We check if codebase-intelligence is in the INSTALLED features (from config),
-        not just in selections. This prevents creating hooks when feature installation
-        failed (e.g., pip packages failed to install).
+        All features including codebase-intelligence are always enabled,
+        so we just need to check if agents are selected.
         """
-        if not context.selections.agents:
-            return False
-
-        # Check if codebase-intelligence is actually installed
-        config_service = self._get_config_service(context)
-        config = config_service.load_config()
-        return "codebase-intelligence" in config.features.enabled
+        return bool(context.selections.agents)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Reconcile feature hooks for all configured agents."""
@@ -108,10 +101,13 @@ class TriggerInitCompleteStage(BaseStage):
         """Trigger on_init_complete hooks."""
         feature_service = self._get_feature_service(context)
 
+        # All features are always enabled
+        from open_agent_kit.constants import SUPPORTED_FEATURES
+
         results = feature_service.trigger_init_complete_hooks(
             is_fresh_install=context.is_fresh_install or context.is_force_reinit,
             agents=context.selections.agents,
-            features=context.selections.features,
+            features=list(SUPPORTED_FEATURES),
         )
 
         successful = sum(1 for r in results.values() if r.get("success"))

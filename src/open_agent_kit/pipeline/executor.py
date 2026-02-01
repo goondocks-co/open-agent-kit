@@ -237,11 +237,11 @@ class PipelineBuilder:
 
         return self.add_all(get_agent_stages())
 
-    def with_feature_stages(self) -> "PipelineBuilder":
-        """Add feature installation stages."""
-        from open_agent_kit.pipeline.stages.features import get_feature_stages
+    def with_language_stages(self) -> "PipelineBuilder":
+        """Add language parser installation stages."""
+        from open_agent_kit.pipeline.stages.languages import get_language_stages
 
-        return self.add_all(get_feature_stages())
+        return self.add_all(get_language_stages())
 
     def with_skill_stages(self) -> "PipelineBuilder":
         """Add skill installation stages."""
@@ -361,7 +361,7 @@ def build_init_pipeline() -> PipelineBuilder:
         .with_setup_stages()
         .with_config_stages()
         .with_agent_stages()
-        .with_feature_stages()
+        .with_language_stages()
         .with_skill_stages()
         .with_hook_stages()
         .with_mcp_stages()

@@ -370,7 +370,7 @@ class TestBuildInitPipeline:
             flow_type=FlowType.FRESH_INIT,
             selections=SelectionState(
                 agents=["claude"],
-                features=["constitution"],
+                languages=["python", "javascript"],
             ),
         )
 
@@ -388,9 +388,9 @@ class TestBuildInitPipeline:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude", "codex"],
-                features=["constitution"],
+                languages=["python", "javascript"],
                 previous_agents=["claude"],
-                previous_features=["constitution"],
+                previous_languages=["python"],
             ),
         )
 

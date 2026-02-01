@@ -24,9 +24,9 @@ class TestSelectionState:
         state = SelectionState()
 
         assert state.agents == []
-        assert state.features == []
+        assert state.languages == []
         assert state.previous_agents == []
-        assert state.previous_features == []
+        assert state.previous_languages == []
 
     def test_agents_added(self):
         """Test agents_added property."""
@@ -57,23 +57,23 @@ class TestSelectionState:
         assert state.agents_removed == set()
         assert not state.has_agent_changes
 
-    def test_features_added(self):
-        """Test features_added property."""
+    def test_languages_added(self):
+        """Test languages_added property."""
         state = SelectionState(
-            features=["constitution", "rfc", "issues"],
-            previous_features=["constitution"],
+            languages=["python", "javascript", "typescript"],
+            previous_languages=["python"],
         )
 
-        assert state.features_added == {"rfc", "issues"}
+        assert state.languages_added == {"javascript", "typescript"}
 
-    def test_features_removed(self):
-        """Test features_removed property."""
+    def test_languages_removed(self):
+        """Test languages_removed property."""
         state = SelectionState(
-            features=["constitution"],
-            previous_features=["constitution", "rfc"],
+            languages=["python"],
+            previous_languages=["python", "javascript"],
         )
 
-        assert state.features_removed == {"rfc"}
+        assert state.languages_removed == {"javascript"}
 
     def test_has_agent_changes_true(self):
         """Test has_agent_changes when agents changed."""
@@ -93,22 +93,22 @@ class TestSelectionState:
 
         assert state.has_agent_changes is False
 
-    def test_has_feature_changes_true(self):
-        """Test has_feature_changes when features changed."""
+    def test_has_language_changes_true(self):
+        """Test has_language_changes when languages changed."""
         state = SelectionState(
-            features=["constitution", "rfc"],
-            previous_features=["constitution"],
+            languages=["python", "javascript"],
+            previous_languages=["python"],
         )
 
-        assert state.has_feature_changes is True
+        assert state.has_language_changes is True
 
     def test_has_any_changes_true(self):
         """Test has_any_changes when any configuration changed."""
         state = SelectionState(
             agents=["claude"],
             previous_agents=["claude"],
-            features=["constitution", "rfc"],  # Features changed
-            previous_features=["constitution"],
+            languages=["python", "javascript"],  # Languages changed
+            previous_languages=["python"],
         )
 
         assert state.has_any_changes is True
@@ -118,8 +118,8 @@ class TestSelectionState:
         state = SelectionState(
             agents=["claude"],
             previous_agents=["claude"],
-            features=["constitution"],
-            previous_features=["constitution"],
+            languages=["python"],
+            previous_languages=["python"],
         )
 
         assert state.has_any_changes is False
@@ -243,7 +243,7 @@ class TestPipelineContext:
         )
 
         assert context.selections.agents == []
-        assert context.selections.features == []
+        assert context.selections.languages == []
 
     def test_custom_selections(self, tmp_path: Path):
         """Test context with custom selections."""
@@ -252,14 +252,14 @@ class TestPipelineContext:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude", "codex"],
-                features=["constitution", "rfc"],
+                languages=["python", "javascript"],
                 previous_agents=["claude"],
-                previous_features=["constitution"],
+                previous_languages=["python"],
             ),
         )
 
         assert context.selections.agents == ["claude", "codex"]
         assert context.selections.agents_added == {"codex"}
-        assert context.selections.features_added == {"rfc"}
+        assert context.selections.languages_added == {"javascript"}
         assert context.selections.has_agent_changes is True
-        assert context.selections.has_feature_changes is True
+        assert context.selections.has_language_changes is True

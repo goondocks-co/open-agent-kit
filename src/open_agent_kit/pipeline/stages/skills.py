@@ -87,8 +87,8 @@ class ReconcileSkillsStage(BaseStage):
     counterpart_stage = StageResultRegistry.CLEANUP_AGENT_SKILLS
 
     def _should_run(self, context: PipelineContext) -> bool:
-        """Run if there are features configured."""
-        return bool(context.selections.features)
+        """Run if there are agents configured (all features are always enabled)."""
+        return bool(context.selections.agents)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Reconcile skills for all skills-capable agents."""

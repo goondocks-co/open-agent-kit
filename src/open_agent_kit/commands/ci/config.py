@@ -4,6 +4,10 @@ from pathlib import Path
 
 import typer
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    DAEMON_RESTART_DELAY_SECONDS,
+    HTTP_TIMEOUT_QUICK,
+)
 from open_agent_kit.utils import (
     print_error,
     print_header,
@@ -99,7 +103,7 @@ def ci_config(
         import httpx
 
         try:
-            with httpx.Client(timeout=5.0) as client:
+            with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
                 url = emb_config.base_url.rstrip("/")
                 if emb_config.provider == "ollama":
                     response = client.get(f"{url}/api/tags")
@@ -554,7 +558,7 @@ def ci_debug(
             manager.stop()
             import time
 
-            time.sleep(1)
+            time.sleep(DAEMON_RESTART_DELAY_SECONDS)
             manager.start()
             print_success("Daemon restarted with new log level")
         else:

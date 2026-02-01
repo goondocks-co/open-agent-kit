@@ -27,8 +27,7 @@ def test_upgrade_installs_new_copilot_files(temp_project_dir: Path) -> None:
     config_service = ConfigService(temp_project_dir)
     config = config_service.load_config()
     config.agents = ["copilot"]
-    # Enable rules-management feature for this test
-    config.features.enabled = ["rules-management"]
+    # All features are always enabled (not user-selectable)
     config_service.save_config(config)
 
     # 3. Run upgrade

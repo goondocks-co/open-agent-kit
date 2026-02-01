@@ -5,6 +5,7 @@ from pathlib import Path
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.pipeline.context import FlowType, PipelineContext
+from open_agent_kit.pipeline.models import StageResultRegistry
 from open_agent_kit.pipeline.ordering import StageOrder
 from open_agent_kit.pipeline.stage import BaseStage, StageLifecycle, StageOutcome
 
@@ -217,7 +218,7 @@ class RemoveSkillsStage(BaseStage):
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Remove all installed skills."""
-        plan = context.get_result("plan_removal", {})
+        plan = context.get_result(StageResultRegistry.PLAN_REMOVAL, {})
         installed_skills = plan.get("installed_skills", [])
 
         if not installed_skills:
@@ -265,7 +266,7 @@ class RemoveCreatedFilesStage(BaseStage):
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Remove created files."""
-        plan = context.get_result("plan_removal", {})
+        plan = context.get_result(StageResultRegistry.PLAN_REMOVAL, {})
         files_to_remove = plan.get("files_to_remove", [])
 
         if not files_to_remove:
@@ -361,7 +362,7 @@ class CleanupDirectoriesStage(BaseStage):
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Clean up empty directories including agent directories."""
-        plan = context.get_result("plan_removal", {})
+        plan = context.get_result(StageResultRegistry.PLAN_REMOVAL, {})
         directories = plan.get("directories_to_check", [])
 
         # Collect all directories to check

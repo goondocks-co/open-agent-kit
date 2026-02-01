@@ -18,15 +18,15 @@ class FlowType(str, Enum):
 
 @dataclass
 class SelectionState:
-    """User selections for agents and features."""
+    """User selections for agents and languages."""
 
     # Current selections (what user wants)
     agents: list[str] = field(default_factory=list)
-    features: list[str] = field(default_factory=list)
+    languages: list[str] = field(default_factory=list)
 
     # Previous state (for update flows)
     previous_agents: list[str] = field(default_factory=list)
-    previous_features: list[str] = field(default_factory=list)
+    previous_languages: list[str] = field(default_factory=list)
 
     @property
     def agents_added(self) -> set[str]:
@@ -39,14 +39,14 @@ class SelectionState:
         return set(self.previous_agents) - set(self.agents)
 
     @property
-    def features_added(self) -> set[str]:
-        """Features being added in this flow."""
-        return set(self.features) - set(self.previous_features)
+    def languages_added(self) -> set[str]:
+        """Languages being added in this flow."""
+        return set(self.languages) - set(self.previous_languages)
 
     @property
-    def features_removed(self) -> set[str]:
-        """Features being removed in this flow."""
-        return set(self.previous_features) - set(self.features)
+    def languages_removed(self) -> set[str]:
+        """Languages being removed in this flow."""
+        return set(self.previous_languages) - set(self.languages)
 
     @property
     def has_agent_changes(self) -> bool:
@@ -54,14 +54,14 @@ class SelectionState:
         return set(self.agents) != set(self.previous_agents)
 
     @property
-    def has_feature_changes(self) -> bool:
-        """Whether features changed from previous state."""
-        return set(self.features) != set(self.previous_features)
+    def has_language_changes(self) -> bool:
+        """Whether languages changed from previous state."""
+        return set(self.languages) != set(self.previous_languages)
 
     @property
     def has_any_changes(self) -> bool:
         """Whether any configuration changed."""
-        return self.has_agent_changes or self.has_feature_changes
+        return self.has_agent_changes or self.has_language_changes
 
 
 @dataclass

@@ -397,11 +397,12 @@ class FeatureService:
     def list_installed_features(self) -> list[str]:
         """List features currently installed in the project.
 
+        All features are always installed (not user-selectable).
+
         Returns:
             List of installed feature names
         """
-        config = self.config_service.load_config()
-        return config.features.enabled
+        return list(SUPPORTED_FEATURES)
 
     def is_feature_installed(self, feature_name: str) -> bool:
         """Check if a feature is installed.
@@ -668,12 +669,12 @@ class FeatureService:
         # Feature assets are read directly from the installed package.
         # Only agent-native directories receive the rendered commands.
 
-        # Update config to mark feature as installed
+        # All features are always installed (not user-selectable)
+        # Check state to determine if this is a fresh install for hooks
         config = self.config_service.load_config()
-        was_disabled = feature_name not in config.features.enabled
+        was_disabled = not self.state_service.is_feature_initialized(feature_name)
         if was_disabled:
-            config.features.enabled.append(feature_name)
-            self.config_service.save_config(config)
+            self.state_service.mark_feature_initialized(feature_name)
 
         # Trigger feature enabled hook if this is a new install
         if was_disabled:
@@ -776,19 +777,18 @@ class FeatureService:
         except Exception as e:
             logger.warning(f"Failed to remove skills for {feature_name}: {e}")
 
-        # Trigger feature disabled hook BEFORE removing from config
-        config = self.config_service.load_config()
-        was_enabled = feature_name in config.features.enabled
+        # Trigger feature disabled hook BEFORE updating state
+        # All features are always installed, but track initialization state
+        was_enabled = self.state_service.is_feature_initialized(feature_name)
         if was_enabled:
             try:
                 self.trigger_feature_disabled_hook(feature_name)
             except Exception as e:
                 logger.warning(f"Failed to trigger feature disabled hook for {feature_name}: {e}")
 
-        # Update config to mark feature as uninstalled
+        # Update state to mark feature as uninitialized
         if was_enabled:
-            config.features.enabled.remove(feature_name)
-            self.config_service.save_config(config)
+            self.state_service.unmark_feature_initialized(feature_name)
 
         return results
 
@@ -812,8 +812,9 @@ class FeatureService:
         }
 
         # Get installed features and configured agents
+        # All features are always installed
         config = self.config_service.load_config()
-        installed_features = config.features.enabled
+        installed_features = SUPPORTED_FEATURES
         agents = config.agents
 
         if not agents:

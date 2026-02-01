@@ -78,6 +78,10 @@ class OakState(BaseModel):
         default_factory=ManagedAssets,
         description="Assets created or modified by oak",
     )
+    initialized_features: list[str] = Field(
+        default_factory=list,
+        description="Features that have been initialized (hooks triggered)",
+    )
 
     @classmethod
     def load(cls, state_path: Path) -> "OakState":

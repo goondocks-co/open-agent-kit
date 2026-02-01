@@ -9,6 +9,7 @@ from typing import Any, cast
 from open_agent_kit.pipeline.context import FlowType, PipelineContext
 from open_agent_kit.pipeline.models import (
     CollectedUpgradeResults,
+    StageResultRegistry,
     plan_has_upgrades,
 )
 from open_agent_kit.pipeline.ordering import StageOrder
@@ -27,7 +28,7 @@ class ValidateUpgradeEnvironmentStage(BaseStage):
 
     def _should_run(self, context: PipelineContext) -> bool:
         """Run unless plan is already provided (CLI already validated)."""
-        existing_plan = context.get_result("plan_upgrade")
+        existing_plan = context.get_result(StageResultRegistry.PLAN_UPGRADE)
         return existing_plan is None
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
@@ -63,7 +64,7 @@ class PlanUpgradeStage(BaseStage):
 
     def _should_run(self, context: PipelineContext) -> bool:
         """Run unless plan is already provided in context."""
-        existing_plan = context.get_result("plan_upgrade")
+        existing_plan = context.get_result(StageResultRegistry.PLAN_UPGRADE)
         return existing_plan is None
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
@@ -108,13 +109,13 @@ class TriggerPreUpgradeHooksStage(BaseStage):
 
     def _should_run(self, context: PipelineContext) -> bool:
         """Run if there are upgrades to perform."""
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         return plan_result.get("has_upgrades", False) and not context.dry_run
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Trigger pre-upgrade hooks."""
         feature_service = self._get_feature_service(context)
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
 
         try:
@@ -145,7 +146,7 @@ class UpgradeStructuralRepairsStage(BaseStage):
         """Run if there are structural repairs needed."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("structural_repairs"))
 
@@ -180,7 +181,7 @@ class CleanupLegacyCommandsStage(BaseStage):
         """Run if there are legacy commands to clean up."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("legacy_commands_cleanup"))
 
@@ -189,7 +190,7 @@ class CleanupLegacyCommandsStage(BaseStage):
         from open_agent_kit.services.upgrade_service import UpgradeService
 
         upgrade_service = UpgradeService(context.project_root)
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
 
         cleanup_items = plan.get("legacy_commands_cleanup", [])
@@ -227,7 +228,7 @@ class UpgradeCommandsStage(BaseStage):
         """Run if there are commands to upgrade."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("commands"))
 
@@ -236,7 +237,7 @@ class UpgradeCommandsStage(BaseStage):
         from open_agent_kit.services.upgrade_service import UpgradeService
 
         upgrade_service = UpgradeService(context.project_root)
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
 
         result = process_items(
@@ -271,7 +272,7 @@ class UpgradeAgentSettingsStage(BaseStage):
         """Run if there are agent settings to upgrade."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("agent_settings"))
 
@@ -280,7 +281,7 @@ class UpgradeAgentSettingsStage(BaseStage):
         from open_agent_kit.services.upgrade_service import UpgradeService
 
         upgrade_service = UpgradeService(context.project_root)
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
 
         result = process_items(
@@ -310,7 +311,7 @@ class UpgradeGitignoreStage(BaseStage):
         """Run if there are gitignore entries to add."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("gitignore"))
 
@@ -322,7 +323,7 @@ class UpgradeGitignoreStage(BaseStage):
         from open_agent_kit.models.feature import FeatureManifest
         from open_agent_kit.utils import add_gitignore_entries
 
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
         gitignore_plan = plan.get("gitignore", [])
 
@@ -381,7 +382,7 @@ class UpgradeSkillsStage(BaseStage):
         """Run if there are skills to install, upgrade, or remove."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         skill_plan = plan.get("skills", {})
         return bool(
@@ -393,7 +394,7 @@ class UpgradeSkillsStage(BaseStage):
         from open_agent_kit.services.upgrade_service import UpgradeService
 
         upgrade_service = UpgradeService(context.project_root)
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
         skill_plan = plan.get("skills", {})
 
@@ -450,13 +451,13 @@ class UpgradeHooksStage(BaseStage):
         """Run if there are hooks to upgrade."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("hooks"))
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Upgrade feature hooks by calling feature services."""
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
         hooks_plan = plan.get("hooks", [])
 
@@ -507,7 +508,7 @@ class RunMigrationsStage(BaseStage):
         """Run if there are migrations to run."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan = plan_result.get("plan", {})
         return bool(plan.get("migrations"))
 
@@ -555,7 +556,7 @@ class UpdateVersionStage(BaseStage):
         """Run if version is outdated or upgrades were performed."""
         if context.dry_run:
             return False
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict = plan_result.get("plan", {})  # type: ignore[assignment]
         return bool(plan.get("version_outdated", False) or plan.get("has_upgrades", False))
 
@@ -589,7 +590,7 @@ class TriggerPostUpgradeHooksStage(BaseStage):
 
     def _should_run(self, context: PipelineContext) -> bool:
         """Run if upgrades were performed."""
-        plan_result = context.get_result("plan_upgrade", {})
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         return plan_result.get("has_upgrades", False) and not context.dry_run
 
     def _execute(self, context: PipelineContext) -> StageOutcome:

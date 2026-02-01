@@ -75,6 +75,54 @@ class StateService:
         return migration_id in self.get_applied_migrations()
 
     # =========================================================================
+    # Feature Initialization Tracking
+    # =========================================================================
+
+    def is_feature_initialized(self, feature_name: str) -> bool:
+        """Check if a feature has been initialized.
+
+        Args:
+            feature_name: Name of the feature to check
+
+        Returns:
+            True if feature has been initialized
+        """
+        state = self.load_state()
+        return feature_name in state.initialized_features
+
+    def mark_feature_initialized(self, feature_name: str) -> None:
+        """Mark a feature as initialized.
+
+        Args:
+            feature_name: Name of the feature to mark
+        """
+        state = self.load_state()
+        if feature_name not in state.initialized_features:
+            state.initialized_features.append(feature_name)
+            state.initialized_features.sort()
+            self.save_state(state)
+
+    def unmark_feature_initialized(self, feature_name: str) -> None:
+        """Remove initialization mark from a feature.
+
+        Args:
+            feature_name: Name of the feature to unmark
+        """
+        state = self.load_state()
+        if feature_name in state.initialized_features:
+            state.initialized_features.remove(feature_name)
+            self.save_state(state)
+
+    def get_initialized_features(self) -> list[str]:
+        """Get list of initialized feature names.
+
+        Returns:
+            List of initialized feature names
+        """
+        state = self.load_state()
+        return state.initialized_features
+
+    # =========================================================================
     # Managed Assets Tracking
     # =========================================================================
 

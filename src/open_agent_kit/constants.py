@@ -168,50 +168,107 @@ REQUIRED_RFC_SECTIONS = [
 ]
 
 # =============================================================================
-# Feature Configuration
+# Feature Configuration (Internal)
 # =============================================================================
 
-SUPPORTED_FEATURES = ["codebase-intelligence", "rules-management", "strategic-planning"]
-DEFAULT_FEATURES = ["codebase-intelligence"]
-CORE_FEATURE = "core"
+# Features are always installed - not user-selectable
+# This list defines the internal features that OAK manages
+SUPPORTED_FEATURES = [
+    "rules-management",
+    "strategic-planning",
+    "codebase-intelligence",
+]
 
-# Legacy feature name mapping for backward compatibility during migration
-LEGACY_FEATURE_NAMES = {
-    "constitution": "rules-management",
-    "rfc": "strategic-planning",
-    "plan": "strategic-planning",
+# Core feature that's always required (has no dependencies)
+CORE_FEATURE = "rules-management"
+
+# Feature display names for UI/logging
+FEATURE_DISPLAY_NAMES = {
+    "rules-management": "Rules Management",
+    "strategic-planning": "Strategic Planning",
+    "codebase-intelligence": "Codebase Intelligence",
 }
 
-FEATURE_CONFIG = {
-    "codebase-intelligence": {
-        "name": "Codebase Intelligence",
-        "description": "Semantic search and persistent memory for AI assistants. Provides context-aware code retrieval and cross-session knowledge management via MCP tools.",
-        "default_enabled": True,
-        "dependencies": ["rules-management"],
-        "commands": ["backend-python-expert"],  # Sub-agent command
-        "pip_extras": ["codebase-intelligence"],
-    },
+# Feature configuration metadata
+# Used by FeatureService when manifest.yaml doesn't exist
+FEATURE_CONFIG: dict[str, dict] = {
     "rules-management": {
         "name": "Rules Management",
-        "description": "Create, validate, and maintain AI agent rules files (constitution.md)",
+        "description": "Project constitution and rules for AI agents",
         "default_enabled": True,
         "dependencies": [],
-        "commands": [],  # Skills only - no sub-agent commands
+        "commands": [
+            "add-project-rule",
+            "constitution-amend",
+            "constitution-create",
+            "constitution-validate",
+        ],
     },
     "strategic-planning": {
         "name": "Strategic Planning",
-        "description": "Unified SDD workflow supporting RFCs and ADRs for formal planning documentation",
-        "default_enabled": False,
+        "description": "RFCs, plans, and issue-driven development",
+        "default_enabled": True,
         "dependencies": ["rules-management"],
-        "commands": [],  # Skills only - no sub-agent commands
+        "commands": [
+            "rfc-create",
+            "rfc-list",
+            "rfc-validate",
+            "plan-create",
+            "plan-list",
+            "plan-tasks",
+            "plan-research",
+            "plan-status",
+            "issue-plan",
+            "issue-impl",
+            "issue-submit",
+        ],
+    },
+    "codebase-intelligence": {
+        "name": "Codebase Intelligence",
+        "description": "AI-powered code analysis and search",
+        "default_enabled": True,
+        "dependencies": ["rules-management"],
+        "commands": [
+            "backend-python-expert",
+        ],
     },
 }
 
-FEATURE_DISPLAY_NAMES = {
-    "codebase-intelligence": "Codebase Intelligence",
-    "rules-management": "Rules Management",
-    "strategic-planning": "Strategic Planning",
+# =============================================================================
+# Language Parser Configuration
+# =============================================================================
+
+# Supported languages for code intelligence
+# Keys are language identifiers, values contain display name and pip extra
+SUPPORTED_LANGUAGES: dict[str, dict[str, str]] = {
+    "python": {"display": "Python", "extra": "parser-python", "package": "tree-sitter-python"},
+    "javascript": {
+        "display": "JavaScript",
+        "extra": "parser-javascript",
+        "package": "tree-sitter-javascript",
+    },
+    "typescript": {
+        "display": "TypeScript",
+        "extra": "parser-typescript",
+        "package": "tree-sitter-typescript",
+    },
+    "java": {"display": "Java", "extra": "parser-java", "package": "tree-sitter-java"},
+    "csharp": {"display": "C#", "extra": "parser-csharp", "package": "tree-sitter-c-sharp"},
+    "go": {"display": "Go", "extra": "parser-go", "package": "tree-sitter-go"},
+    "rust": {"display": "Rust", "extra": "parser-rust", "package": "tree-sitter-rust"},
+    "c": {"display": "C", "extra": "parser-c", "package": "tree-sitter-c"},
+    "cpp": {"display": "C++", "extra": "parser-cpp", "package": "tree-sitter-cpp"},
+    "ruby": {"display": "Ruby", "extra": "parser-ruby", "package": "tree-sitter-ruby"},
+    "php": {"display": "PHP", "extra": "parser-php", "package": "tree-sitter-php"},
+    "kotlin": {"display": "Kotlin", "extra": "parser-kotlin", "package": "tree-sitter-kotlin"},
+    "scala": {"display": "Scala", "extra": "parser-scala", "package": "tree-sitter-scala"},
 }
+
+# Default languages installed on fresh init
+DEFAULT_LANGUAGES = ["python", "javascript", "typescript"]
+
+# Language display names for UI
+LANGUAGE_DISPLAY_NAMES = {lang: info["display"] for lang, info in SUPPORTED_LANGUAGES.items()}
 
 # =============================================================================
 # Upgrade Configuration

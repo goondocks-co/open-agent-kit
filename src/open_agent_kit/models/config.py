@@ -97,12 +97,12 @@ class ConstitutionConfig(BaseModel):
     directory: str = Field(default="oak", description="Directory for constitution files")
 
 
-class FeaturesConfig(BaseModel):
-    """Features configuration tracking installed features and their settings."""
+class LanguagesConfig(BaseModel):
+    """Languages configuration for code intelligence parsers."""
 
-    enabled: list[str] = Field(
+    installed: list[str] = Field(
         default_factory=list,
-        description="List of enabled feature names",
+        description="List of installed language parser names",
     )
 
 
@@ -137,9 +137,9 @@ class OakConfig(BaseModel):
     constitution: ConstitutionConfig = Field(
         default_factory=ConstitutionConfig, description="Constitution configuration"
     )
-    features: FeaturesConfig = Field(
-        default_factory=FeaturesConfig,
-        description="Features configuration",
+    languages: LanguagesConfig = Field(
+        default_factory=LanguagesConfig,
+        description="Languages configuration for code intelligence parsers",
     )
     skills: SkillsConfig = Field(
         default_factory=SkillsConfig,
@@ -186,34 +186,14 @@ class OakConfig(BaseModel):
                     for agent, caps in data["agent_capabilities"].items()
                 }
 
-            # Migration: Infer enabled features from installed commands
-            if "features" not in data:
-                enabled_features = set()
-                claude_dir = config_path.parent.parent / ".claude"
-                commands_dir = claude_dir / "commands"
+            # Migration: Convert old features config to languages config
+            # Remove old features section if present
+            if "features" in data:
+                data.pop("features")
 
-                if commands_dir.exists():
-                    # Map command prefixes to feature names
-                    command_prefix_map = {
-                        "oak.rfc-": "rfc",
-                        "oak.constitution-": "constitution",
-                        "oak.issue-": "issues",
-                    }
-
-                    # Scan for command files to infer features
-                    for cmd_file in commands_dir.glob("oak.*.md"):
-                        cmd_name = cmd_file.name
-                        for prefix, feature in command_prefix_map.items():
-                            if cmd_name.startswith(prefix):
-                                enabled_features.add(feature)
-                                break
-
-                # Add dependencies for inferred features
-                # constitution is a dependency of rfc and issues
-                if "rfc" in enabled_features or "issues" in enabled_features:
-                    enabled_features.add("constitution")
-
-                data["features"] = {"enabled": sorted(enabled_features)}
+            # Initialize languages if not present
+            if "languages" not in data:
+                data["languages"] = {"installed": []}
 
             return cls(**data)
 

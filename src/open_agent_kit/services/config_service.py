@@ -44,7 +44,7 @@ from typing import Any
 from open_agent_kit.config.paths import CONFIG_FILE, OAK_DIR
 from open_agent_kit.constants import (
     DEFAULT_CONFIG_YAML,
-    DEFAULT_FEATURES,
+    DEFAULT_LANGUAGES,
     ISSUE_PROVIDER_CONFIG_MAP,
     VERSION,
 )
@@ -110,13 +110,13 @@ class ConfigService:
     def create_default_config(
         self,
         agents: list[str] | None = None,
-        features: list[str] | None = None,
+        languages: list[str] | None = None,
     ) -> OakConfig:
         """Create and save default configuration.
 
         Args:
             agents: List of agent types (optional)
-            features: List of feature names (optional, defaults to DEFAULT_FEATURES)
+            languages: List of language names (optional, defaults to DEFAULT_LANGUAGES)
 
         Returns:
             Created OakConfig object
@@ -139,10 +139,10 @@ class ConfigService:
         # Load config
         config = self.load_config()
 
-        # Set features (defaults to DEFAULT_FEATURES if not specified)
-        if features is None:
-            features = list(DEFAULT_FEATURES)
-        config.features.enabled = features
+        # Set languages (defaults to DEFAULT_LANGUAGES if not specified)
+        if languages is None:
+            languages = list(DEFAULT_LANGUAGES)
+        config.languages.installed = languages
         self.save_config(config)
 
         return config
@@ -429,54 +429,54 @@ class ConfigService:
         state_service.add_applied_migrations(migration_ids)
         return self.load_config()
 
-    def get_features(self) -> list[str]:
-        """Get configured features list.
+    def get_languages(self) -> list[str]:
+        """Get configured languages list.
 
         Returns:
-            List of enabled feature names
+            List of installed language names
         """
         config = self.load_config()
-        return config.features.enabled
+        return config.languages.installed
 
-    def update_features(self, features: list[str]) -> OakConfig:
-        """Update features list in configuration.
+    def update_languages(self, languages: list[str]) -> OakConfig:
+        """Update languages list in configuration.
 
         Args:
-            features: List of feature names
+            languages: List of language names
 
         Returns:
             Updated OakConfig object
         """
         config = self.load_config()
-        config.features.enabled = features
+        config.languages.installed = languages
         self.save_config(config)
         return config
 
-    def add_features(self, new_features: list[str]) -> OakConfig:
-        """Add features to configuration (merges with existing).
+    def add_languages(self, new_languages: list[str]) -> OakConfig:
+        """Add languages to configuration (merges with existing).
 
         Args:
-            new_features: List of feature names to add
+            new_languages: List of language names to add
 
         Returns:
             Updated OakConfig object
         """
-        existing = self.get_features()
-        all_features = list(set(existing + new_features))
-        return self.update_features(all_features)
+        existing = self.get_languages()
+        all_languages = list(set(existing + new_languages))
+        return self.update_languages(all_languages)
 
-    def remove_features(self, features_to_remove: list[str]) -> OakConfig:
-        """Remove features from configuration.
+    def remove_languages(self, languages_to_remove: list[str]) -> OakConfig:
+        """Remove languages from configuration.
 
         Args:
-            features_to_remove: List of feature names to remove
+            languages_to_remove: List of language names to remove
 
         Returns:
             Updated OakConfig object
         """
-        existing = self.get_features()
-        remaining = [f for f in existing if f not in features_to_remove]
-        return self.update_features(remaining)
+        existing = self.get_languages()
+        remaining = [lang for lang in existing if lang not in languages_to_remove]
+        return self.update_languages(remaining)
 
 
 def get_config_service(project_root: Path | None = None) -> ConfigService:

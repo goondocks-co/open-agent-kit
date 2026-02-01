@@ -931,9 +931,14 @@ wheels = [
 name = "open-agent-kit"
 source = { editable = "." }
 dependencies = [
+    { name = "aiofiles" },
+    { name = "chromadb" },
     { name = "claude-agent-sdk" },
+    { name = "croniter" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "jinja2" },
+    { name = "mcp" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -941,20 +946,64 @@ dependencies = [
     { name = "pyyaml" },
     { name = "readchar" },
     { name = "rich" },
+    { name = "tomli" },
+    { name = "tomli-w" },
+    { name = "tree-sitter" },
     { name = "typer" },
+    { name = "uvicorn" },
+    { name = "watchdog" },
 ]
 
 [package.optional-dependencies]
-ci-parsers = [
+dev = [
+    { name = "black" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+parser-c = [
+    { name = "tree-sitter-c" },
+]
+parser-cpp = [
+    { name = "tree-sitter-cpp" },
+]
+parser-csharp = [
     { name = "tree-sitter-c-sharp" },
+]
+parser-go = [
     { name = "tree-sitter-go" },
+]
+parser-java = [
     { name = "tree-sitter-java" },
+]
+parser-javascript = [
     { name = "tree-sitter-javascript" },
+]
+parser-kotlin = [
+    { name = "tree-sitter-kotlin" },
+]
+parser-php = [
+    { name = "tree-sitter-php" },
+]
+parser-python = [
     { name = "tree-sitter-python" },
+]
+parser-ruby = [
+    { name = "tree-sitter-ruby" },
+]
+parser-rust = [
     { name = "tree-sitter-rust" },
+]
+parser-scala = [
+    { name = "tree-sitter-scala" },
+]
+parser-typescript = [
     { name = "tree-sitter-typescript" },
 ]
-ci-parsers-all = [
+parsers-all = [
     { name = "tree-sitter-c" },
     { name = "tree-sitter-c-sharp" },
     { name = "tree-sitter-cpp" },
@@ -969,39 +1018,23 @@ ci-parsers-all = [
     { name = "tree-sitter-scala" },
     { name = "tree-sitter-typescript" },
 ]
-codebase-intelligence = [
-    { name = "aiofiles" },
-    { name = "chromadb" },
-    { name = "croniter" },
-    { name = "fastapi" },
-    { name = "mcp" },
-    { name = "tomli" },
-    { name = "tomli-w" },
-    { name = "tree-sitter" },
-    { name = "uvicorn" },
-    { name = "watchdog" },
-]
-dev = [
-    { name = "black" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
+parsers-common = [
+    { name = "tree-sitter-javascript" },
+    { name = "tree-sitter-python" },
+    { name = "tree-sitter-typescript" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "aiofiles", marker = "extra == 'codebase-intelligence'", specifier = ">=23.0.0" },
+    { name = "aiofiles", specifier = ">=23.0.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
-    { name = "chromadb", marker = "extra == 'codebase-intelligence'", specifier = ">=0.5.0" },
+    { name = "chromadb", specifier = ">=0.5.0" },
     { name = "claude-agent-sdk", specifier = ">=0.1.26" },
-    { name = "croniter", marker = "extra == 'codebase-intelligence'", specifier = ">=2.0.0" },
-    { name = "fastapi", marker = "extra == 'codebase-intelligence'", specifier = ">=0.109.0" },
+    { name = "croniter", specifier = ">=2.0.0" },
+    { name = "fastapi", specifier = ">=0.109.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
-    { name = "mcp", marker = "extra == 'codebase-intelligence'", specifier = ">=1.0.0" },
+    { name = "mcp", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "platformdirs", specifier = ">=4.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -1014,35 +1047,44 @@ requires-dist = [
     { name = "readchar", specifier = ">=4.0.0" },
     { name = "rich", specifier = ">=13.7.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "tomli", marker = "extra == 'codebase-intelligence'", specifier = ">=2.0.0" },
-    { name = "tomli-w", marker = "extra == 'codebase-intelligence'", specifier = ">=1.0.0" },
-    { name = "tree-sitter", marker = "extra == 'codebase-intelligence'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-c", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-c-sharp", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-c-sharp", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-cpp", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-go", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-go", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-java", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-java", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-javascript", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-javascript", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-kotlin", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-php", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-python", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-python", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-ruby", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-rust", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-rust", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-scala", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-typescript", marker = "extra == 'ci-parsers'", specifier = ">=0.23.0" },
-    { name = "tree-sitter-typescript", marker = "extra == 'ci-parsers-all'", specifier = ">=0.23.0" },
+    { name = "tomli", specifier = ">=2.0.0" },
+    { name = "tomli-w", specifier = ">=1.0.0" },
+    { name = "tree-sitter", specifier = ">=0.23.0" },
+    { name = "tree-sitter-c", marker = "extra == 'parser-c'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-c", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-c-sharp", marker = "extra == 'parser-csharp'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-c-sharp", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-cpp", marker = "extra == 'parser-cpp'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-cpp", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-go", marker = "extra == 'parser-go'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-go", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-java", marker = "extra == 'parser-java'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-java", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-javascript", marker = "extra == 'parser-javascript'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-javascript", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-javascript", marker = "extra == 'parsers-common'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-kotlin", marker = "extra == 'parser-kotlin'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-kotlin", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-php", marker = "extra == 'parser-php'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-php", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-python", marker = "extra == 'parser-python'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-python", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-python", marker = "extra == 'parsers-common'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-ruby", marker = "extra == 'parser-ruby'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-ruby", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-rust", marker = "extra == 'parser-rust'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-rust", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-scala", marker = "extra == 'parser-scala'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-scala", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-typescript", marker = "extra == 'parser-typescript'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-typescript", marker = "extra == 'parsers-all'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-typescript", marker = "extra == 'parsers-common'", specifier = ">=0.23.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "uvicorn", marker = "extra == 'codebase-intelligence'", specifier = ">=0.27.0" },
-    { name = "watchdog", marker = "extra == 'codebase-intelligence'", specifier = ">=4.0.0" },
+    { name = "uvicorn", specifier = ">=0.27.0" },
+    { name = "watchdog", specifier = ">=4.0.0" },
 ]
-provides-extras = ["ci-parsers", "ci-parsers-all", "codebase-intelligence", "dev"]
+provides-extras = ["dev", "parser-c", "parser-cpp", "parser-csharp", "parser-go", "parser-java", "parser-javascript", "parser-kotlin", "parser-php", "parser-python", "parser-ruby", "parser-rust", "parser-scala", "parser-typescript", "parsers-all", "parsers-common"]
 
 [[package]]
 name = "opentelemetry-api"

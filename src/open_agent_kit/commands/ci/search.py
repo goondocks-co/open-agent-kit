@@ -6,6 +6,10 @@ from typing import Any
 
 import typer
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    HTTP_TIMEOUT_LONG,
+    HTTP_TIMEOUT_STANDARD,
+)
 from open_agent_kit.utils import (
     print_error,
     print_header,
@@ -65,7 +69,7 @@ def ci_search(
         raise typer.Exit(code=1)
 
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_LONG) as client:
             response = client.post(
                 f"http://localhost:{manager.port}/api/search",
                 json={
@@ -200,7 +204,7 @@ def ci_remember(
         if context:
             data["context"] = context
 
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_STANDARD) as client:
             response = client.post(
                 f"http://localhost:{manager.port}/api/remember",
                 json=data,
@@ -272,7 +276,7 @@ def ci_context(
         if files:
             data["current_files"] = list(files)
 
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_LONG) as client:
             response = client.post(
                 f"http://localhost:{manager.port}/api/context",
                 json=data,

@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
+import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
 import { BrainCircuit, Trash2, Filter, Tag, Calendar, Archive, ArchiveRestore, CheckSquare, Square, X, Plus, Minus, Maximize2 } from "lucide-react";
 import {
@@ -16,6 +17,7 @@ import {
     getDateRangeStart,
     BULK_ACTIONS,
     MEMORY_OBSERVATION_TRUNCATION_LIMIT,
+    MEMORY_TYPES,
 } from "@/lib/constants";
 import type { MemoryTypeFilter, MemoryType, DateRangePreset, BulkAction } from "@/lib/constants";
 
@@ -541,15 +543,20 @@ export default function MemoriesList() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-4 text-sm">
-                            <div className="whitespace-pre-wrap">
-                                {getTruncatedObservation(mem.observation)}
-                            </div>
+                            {mem.memory_type === MEMORY_TYPES.SESSION_SUMMARY ? (
+                                <Markdown content={getTruncatedObservation(mem.observation)} />
+                            ) : (
+                                <div className="whitespace-pre-wrap">
+                                    {getTruncatedObservation(mem.observation)}
+                                </div>
+                            )}
                             {isContentTruncated(mem.observation) && (
                                 <button
                                     onClick={() => openContentDialog(
                                         `${getMemoryTypeLabel(mem.memory_type)} Memory`,
                                         mem.observation,
-                                        mem.context || undefined
+                                        mem.context || undefined,
+                                        mem.memory_type === MEMORY_TYPES.SESSION_SUMMARY
                                     )}
                                     className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
                                 >
@@ -616,6 +623,7 @@ export default function MemoriesList() {
                     subtitle={dialogContent.subtitle}
                     content={dialogContent.content}
                     icon={<BrainCircuit className="h-5 w-5 text-primary" />}
+                    renderMarkdown={dialogContent.renderMarkdown}
                 />
             )}
         </div>

@@ -1,4 +1,4 @@
-version: 0.5.2.dev23+g3d340c901.d20260131
+version: 0.5.2.dev24+g97ef7c7e8.d20260201
 agents:
 - gemini
 - cursor
@@ -59,8 +59,8 @@ plan:
   directory: oak/plan
 constitution:
   directory: oak
-features:
-  enabled: [rules-management, codebase-intelligence, strategic-planning]
+languages:
+  installed: [javascript, python, typescript]
 skills:
   installed:
   - project-rules

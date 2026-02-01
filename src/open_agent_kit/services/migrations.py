@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
 from open_agent_kit.utils import ensure_gitignore_has_issue_context
 
@@ -64,6 +63,16 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "Remove --project flag from MCP configs (portability)",
             _migrate_mcp_remove_project_flag,
         ),
+        (
+            "2026.02.01_populate_initialized_features",
+            "Populate initialized_features in state for existing installs",
+            _migrate_populate_initialized_features,
+        ),
+        (
+            "2026.02.01_features_to_languages",
+            "Convert features config to languages config",
+            _migrate_features_to_languages,
+        ),
     ]
 
 
@@ -110,67 +119,14 @@ def _migrate_copilot_agents_folder(project_root: Path) -> None:
 def _migrate_features_restructure(project_root: Path) -> None:
     """Migrate to features-based organization.
 
-    This migration:
-    1. Infers enabled features from installed commands
-    2. Updates config.yaml with features.enabled list
-    3. Removes the old .oak/templates/ directory structure
-
-    Note: We no longer create .oak/features/ directories - feature assets
-    are now read directly from the installed package.
+    This migration cleans up the old .oak/templates/ directory structure.
+    Features are now always enabled (not user-selectable) and all feature
+    assets are read directly from the installed package.
 
     Args:
         project_root: Project root directory
     """
     import shutil
-
-    from open_agent_kit.config.paths import CONFIG_FILE
-    from open_agent_kit.constants import DEFAULT_FEATURES, FEATURE_CONFIG, SUPPORTED_FEATURES
-    from open_agent_kit.utils import read_yaml
-
-    config_path = project_root / CONFIG_FILE
-    if not config_path.exists():
-        return
-
-    # Load current config
-    data = read_yaml(config_path)
-    if not data:
-        return
-
-    # Check if features already configured (but still run cleanup)
-    features_already_configured = "features" in data and data["features"].get("enabled")
-
-    if not features_already_configured:
-        # Infer features from installed commands
-        # Look in .claude/commands/ for oak.* files
-        enabled_features: set[str] = set()
-
-        claude_commands_dir = project_root / ".claude" / "commands"
-        if claude_commands_dir.exists():
-            for cmd_file in claude_commands_dir.glob("oak.*.md"):
-                cmd_name = cmd_file.stem.replace("oak.", "")
-
-                # Find which feature this command belongs to
-                for feature_name in SUPPORTED_FEATURES:
-                    feature_config = FEATURE_CONFIG.get(feature_name, {})
-                    commands = cast(list[str], feature_config.get("commands", []))
-                    if cmd_name in commands:
-                        enabled_features.add(feature_name)
-                        break
-
-        # If no commands found, use defaults
-        if not enabled_features:
-            enabled_features = set(DEFAULT_FEATURES)
-
-        # Add dependencies (constitution is required by rfc and issues)
-        if "rfc" in enabled_features or "issues" in enabled_features:
-            enabled_features.add("constitution")
-
-        # Update config with features
-        from open_agent_kit.models.config import OakConfig
-
-        config = OakConfig.load(config_path)
-        config.features.enabled = sorted(enabled_features)
-        config.save(config_path)
 
     # Clean up old .oak/templates/ directory if it exists
     old_templates_dir = project_root / ".oak" / "templates"
@@ -370,6 +326,78 @@ def _migrate_mcp_remove_project_flag(project_root: Path) -> None:
 
         except (OSError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to migrate MCP config {config_path}: {e}")
+
+
+def _migrate_populate_initialized_features(project_root: Path) -> None:
+    """Populate initialized_features in state.yaml for existing installs.
+
+    This ensures that existing installs don't re-trigger on_feature_enabled
+    hooks when upgrading. All features are considered initialized if the
+    .oak directory exists.
+
+    Args:
+        project_root: Project root directory
+    """
+    from open_agent_kit.config.paths import STATE_FILE
+    from open_agent_kit.constants import SUPPORTED_FEATURES
+    from open_agent_kit.utils import read_yaml, write_yaml
+
+    state_path = project_root / STATE_FILE
+    if not state_path.exists():
+        return
+
+    data = read_yaml(state_path)
+    if not data:
+        data = {}
+
+    # If initialized_features already exists and is populated, skip
+    if data.get("initialized_features"):
+        return
+
+    # For existing installs, mark all features as initialized
+    # This prevents re-triggering on_feature_enabled hooks
+    data["initialized_features"] = list(SUPPORTED_FEATURES)
+
+    write_yaml(state_path, data)
+    logger.info(f"Migrated state {state_path}: populated initialized_features")
+
+
+def _migrate_features_to_languages(project_root: Path) -> None:
+    """Convert old features config to languages config.
+
+    This migration removes the 'features' section from config.yaml and
+    adds an empty 'languages' section. Users can add languages later
+    via 'oak languages add'.
+
+    Args:
+        project_root: Project root directory
+    """
+    from open_agent_kit.config.paths import CONFIG_FILE
+    from open_agent_kit.utils import read_yaml, write_yaml
+
+    config_path = project_root / CONFIG_FILE
+    if not config_path.exists():
+        return
+
+    data = read_yaml(config_path)
+    if not data:
+        return
+
+    modified = False
+
+    # Remove features section if present
+    if "features" in data:
+        del data["features"]
+        modified = True
+
+    # Add empty languages section if not present
+    if "languages" not in data:
+        data["languages"] = {"installed": []}
+        modified = True
+
+    if modified:
+        write_yaml(config_path, data)
+        logger.info(f"Migrated config {config_path}: converted features to languages")
 
 
 def run_migrations(
