@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, ExternalLink, Terminal, BookOpen, Wrench } from "lucide-react";
+import { Copy, Check, ExternalLink, Terminal, BookOpen, Wrench, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // =============================================================================
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 const HELP_TABS = {
     SETUP: "setup",
+    TEAM_SYNC: "team-sync",
     TROUBLESHOOTING: "troubleshooting",
 } as const;
 
@@ -254,6 +255,159 @@ function SetupGuideContent() {
 }
 
 // =============================================================================
+// Sync Guide Tab Content
+// =============================================================================
+
+function SyncGuideContent() {
+    return (
+        <div className="space-y-6">
+            {/* Overview */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        Team Sync
+                        <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full font-normal">
+                            Recommended
+                        </span>
+                    </CardTitle>
+                    <CardDescription>
+                        The <code className="bg-muted px-1 rounded">oak ci sync</code> command is the preferred way to synchronize CI state after pulling code changes or merging team backups.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                            <strong>Why CLI?</strong> The CLI handles the complete sync workflow automatically: stopping the daemon, running migrations, importing backups in the correct order, and restarting with new code. This ensures schema compatibility and prevents data corruption.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">When to Use</h3>
+                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-2">
+                            <li><strong>After pulling OAK code changes</strong> - Restarts daemon with new code and runs any pending schema migrations</li>
+                            <li><strong>After pulling project changes with team backups</strong> - Imports team knowledge from <code className="bg-muted px-1 rounded">oak/ci/history/</code></li>
+                            <li><strong>When search results seem stale</strong> - Full rebuild recreates the vector index from scratch</li>
+                        </ul>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Basic Commands */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Quick Commands</CardTitle>
+                    <CardDescription>
+                        Common sync workflows for everyday use.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Quick Sync (After Code Pull)</h3>
+                        <CommandBlock command="oak ci sync" />
+                        <p className="text-sm text-muted-foreground">
+                            Detects version mismatches and restarts the daemon with new code. Use this after pulling OAK updates.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Team Sync (Merge Team Knowledge)</h3>
+                        <CommandBlock command="oak ci sync --team" />
+                        <p className="text-sm text-muted-foreground">
+                            Imports all team backup files from <code className="bg-muted px-1 rounded">oak/ci/history/</code>. Duplicates are automatically skipped using content-based hashing.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Full Rebuild (Fresh Start)</h3>
+                        <CommandBlock command="oak ci sync --full" />
+                        <p className="text-sm text-muted-foreground">
+                            Deletes the vector index (ChromaDB) and rebuilds from scratch. Use this if search results seem incorrect or after major schema changes.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Preview Mode (Dry Run)</h3>
+                        <CommandBlock command="oak ci sync --team --full --dry-run" />
+                        <p className="text-sm text-muted-foreground">
+                            Shows what would happen without making any changes. Great for verifying before a sync.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Include Activities in Backup</h3>
+                        <CommandBlock command="oak ci sync --team --include-activities" />
+                        <p className="text-sm text-muted-foreground">
+                            Creates larger backup files that include the activities table. Useful for debugging or when you want complete history preserved.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Workflow Details */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Sync Workflow</CardTitle>
+                    <CardDescription>
+                        Understanding what happens during a sync operation.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                        The sync command orchestrates multiple operations in the correct order:
+                    </p>
+                    <ol className="list-decimal list-inside text-sm space-y-2">
+                        <li><strong>Version Detection</strong> - Compares running daemon version against current code</li>
+                        <li><strong>Stop Daemon</strong> - Gracefully stops the daemon if a restart is needed</li>
+                        <li><strong>First Restore Pass</strong> - <span className="text-muted-foreground">(--team)</span> Imports all team backups</li>
+                        <li><strong>Delete ChromaDB</strong> - <span className="text-muted-foreground">(--full)</span> Removes vector index for rebuild</li>
+                        <li><strong>Start Daemon</strong> - Starts with new code, runs pending migrations</li>
+                        <li><strong>Create Backup</strong> - <span className="text-muted-foreground">(--team)</span> Creates fresh backup with current schema</li>
+                        <li><strong>Second Restore Pass</strong> - <span className="text-muted-foreground">(--team)</span> Re-imports team backups after migrations</li>
+                        <li><strong>Background Rebuild</strong> - Vector index rebuilds automatically if needed</li>
+                    </ol>
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Steps marked with flags only run when those flags are provided. Duplicates are always skipped using content-based hashing.
+                    </p>
+                </CardContent>
+            </Card>
+
+            {/* Common Scenarios */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Common Scenarios</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-sm">New team member joining</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            After cloning the project, run <code className="bg-muted px-1 rounded">oak ci sync --team</code> to import all existing team knowledge.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Daily workflow</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            After <code className="bg-muted px-1 rounded">git pull</code>, run <code className="bg-muted px-1 rounded">oak ci sync --team</code> to get the latest from teammates.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">After OAK upgrade</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Run <code className="bg-muted px-1 rounded">oak ci sync</code> to restart the daemon with the new version and run any schema migrations.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Search returning wrong results</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Run <code className="bg-muted px-1 rounded">oak ci sync --full</code> to rebuild the vector index from scratch.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// =============================================================================
 // Troubleshooting Tab Content
 // =============================================================================
 
@@ -354,7 +508,16 @@ function TroubleshootingContent() {
 // =============================================================================
 
 export default function Help() {
+    const location = useLocation();
     const [activeTab, setActiveTab] = useState<HelpTab>(HELP_TABS.SETUP);
+
+    // Handle navigation state (e.g., from Team page linking to team-sync tab)
+    useEffect(() => {
+        const state = location.state as { tab?: string } | null;
+        if (state?.tab === "team-sync") {
+            setActiveTab(HELP_TABS.TEAM_SYNC);
+        }
+    }, [location.state]);
 
     return (
         <div className="space-y-6">
@@ -375,6 +538,12 @@ export default function Help() {
                     label="Setup Guide"
                 />
                 <TabButton
+                    active={activeTab === HELP_TABS.TEAM_SYNC}
+                    onClick={() => setActiveTab(HELP_TABS.TEAM_SYNC)}
+                    icon={<RefreshCw className="h-4 w-4" />}
+                    label="Team Sync"
+                />
+                <TabButton
                     active={activeTab === HELP_TABS.TROUBLESHOOTING}
                     onClick={() => setActiveTab(HELP_TABS.TROUBLESHOOTING)}
                     icon={<Wrench className="h-4 w-4" />}
@@ -384,6 +553,7 @@ export default function Help() {
 
             {/* Tab Content */}
             {activeTab === HELP_TABS.SETUP && <SetupGuideContent />}
+            {activeTab === HELP_TABS.TEAM_SYNC && <SyncGuideContent />}
             {activeTab === HELP_TABS.TROUBLESHOOTING && <TroubleshootingContent />}
         </div>
     );

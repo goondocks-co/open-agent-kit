@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help venv setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart dogfood-reset
+.PHONY: help setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart dogfood-reset
 
 # Default target
 help:
@@ -18,12 +18,10 @@ help:
 	@echo "Prerequisites: Python 3.13, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make setup         Install minimal dev dependencies (recommended for development)"
-	@echo "    make setup-full    Install all dependencies including optional features"
-	@echo "    make venv          Setup virtual environment and show activation command"
-	@echo "    make sync          Sync dependencies with lockfile"
+	@echo "    make setup         Install all dependencies and oak CLI tool"
+	@echo "    make sync          Re-sync dependencies after git pull"
 	@echo "    make lock          Update lockfile after changing pyproject.toml"
-	@echo "    make uninstall     Remove dev environment and clean build artifacts"
+	@echo "    make uninstall     Remove dev environment and oak tool"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test          Run all tests with coverage"
@@ -59,54 +57,36 @@ help:
 	@echo "    make dogfood-reset Reset oak environment (reinstall with all features)"
 
 # Setup targets
-venv:
-	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	@if [ ! -d ".venv" ]; then \
-		echo "Creating virtual environment..."; \
-		uv sync --extra dev; \
-	else \
-		echo "Virtual environment already exists."; \
-	fi
-	@echo "\nTo activate the virtual environment, run:"
-	@echo "  source .venv/bin/activate"
-
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	uv sync --extra dev
-	@echo "\nMinimal setup complete! Core dev dependencies installed."
+	uv sync
+	uv tool install -e . --force
+	@echo "\nSetup complete! All dependencies installed."
 	@echo "Run 'make check' to verify everything works."
-	@echo "For development, activate venv: source .venv/bin/activate"
 	@echo ""
-	@echo "To install optional features:"
-	@echo "  make setup-full           Install all dependencies (for full-stack dev)"
-	@echo "  oak init --enable-ci      Install CI feature via oak installer (tests installer)"
-
-setup-full:
-	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	uv sync --all-extras
-	@echo "\nFull setup complete! All features installed (including CI)."
-	@echo "Run 'make check' to verify everything works."
-	@echo "For development, activate venv: source .venv/bin/activate"
+	@echo "The 'oak' command is now available globally (editable install)."
 	@echo ""
 	@echo "CI feature dev workflow:"
 	@echo "  make ci-dev      Run daemon with hot reload (auto-restarts on code changes)"
 	@echo "  make ci-restart  Manual restart after code changes"
 	@echo "  make ui-restart  Build UI and restart daemon (for UI changes)"
 
+# Alias for backwards compatibility
+setup-full: setup
+
 sync:
-	uv sync --all-extras
-	@echo "All dependencies synced with lockfile."
+	uv sync
+	uv tool install -e . --force
+	@echo "Dependencies synced and oak tool reinstalled."
 
 lock:
 	uv lock
 	@echo "Lockfile updated. Run 'make sync' to install."
 
 uninstall:
-	uv pip uninstall open-agent-kit 2>/dev/null || true
+	uv tool uninstall open-agent-kit 2>/dev/null || true
 	rm -rf .venv
-	@# Clean up any stale installations
-	@rm -f ~/.local/bin/oak 2>/dev/null || true
-	@echo "Dev environment removed."
+	@echo "Dev environment and oak tool removed."
 	@echo "To reinstall: make setup"
 
 # Testing targets

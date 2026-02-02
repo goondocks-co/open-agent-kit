@@ -130,6 +130,21 @@ class ActivityStore:
                 )
                 logger.info(f"Activity store schema initialized (v{SCHEMA_VERSION})")
 
+    def get_schema_version(self) -> int:
+        """Get current database schema version.
+
+        Returns:
+            Schema version number, or 0 if schema_version table doesn't exist.
+        """
+        try:
+            cursor = self._get_connection().execute(
+                "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        except sqlite3.OperationalError:
+            return 0
+
     def optimize_database(self) -> None:
         """Run database optimization (VACUUM + ANALYZE + FTS optimize).
 

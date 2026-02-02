@@ -44,7 +44,9 @@ class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str = "healthy"
-    version: str = "1.0.0"
+    version: str = "1.0.0"  # Keep for backward compat
+    oak_version: str | None = None  # OAK package version
+    schema_version: int | None = None  # DB schema version
     uptime_seconds: float = 0.0
     project_root: str | None = None
 

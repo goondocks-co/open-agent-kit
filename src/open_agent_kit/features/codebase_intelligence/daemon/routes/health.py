@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 
 from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.constants import VERSION
+from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
@@ -54,6 +56,8 @@ async def health_check() -> HealthResponse:
     uptime = state.uptime_seconds
     return HealthResponse(
         status=DaemonStatus.HEALTHY,
+        oak_version=VERSION,
+        schema_version=SCHEMA_VERSION,
         uptime_seconds=uptime,
         project_root=str(state.project_root) if state.project_root else None,
     )

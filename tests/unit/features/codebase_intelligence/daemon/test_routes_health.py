@@ -154,6 +154,45 @@ class TestHealthCheck:
         assert "uptime_seconds" in data
         assert "project_root" in data
 
+    def test_health_check_includes_oak_version(self, client, setup_state_fully_initialized):
+        """Test that health check includes OAK version."""
+        response = client.get("/api/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "oak_version" in data
+        assert data["oak_version"] is not None
+        assert isinstance(data["oak_version"], str)
+
+    def test_health_check_includes_schema_version(self, client, setup_state_fully_initialized):
+        """Test that health check includes schema version."""
+        response = client.get("/api/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "schema_version" in data
+        assert data["schema_version"] is not None
+        assert isinstance(data["schema_version"], int)
+
+    def test_health_check_version_fields_for_sync(self, client, setup_state_fully_initialized):
+        """Test that version fields are usable for sync detection."""
+        response = client.get("/api/health")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Both version fields should be present for sync detection
+        assert "oak_version" in data
+        assert "schema_version" in data
+
+        # OAK version should be a valid semver-like string
+        oak_version = data["oak_version"]
+        assert "." in oak_version  # Has at least one dot (e.g., "0.10.0")
+
+        # Schema version should be a positive integer
+        schema_version = data["schema_version"]
+        assert schema_version > 0
+
 
 # =============================================================================
 # GET /api/status Tests

@@ -362,13 +362,14 @@ class MCPInstaller:
         Used for Codex which stores MCP config in .codex/config.toml with
         [mcp_servers.<name>] section format.
         """
+        import tomllib
+
         try:
-            import tomli
             import tomli_w
         except ImportError:
             return InstallResult(
                 success=False,
-                message="TOML support requires 'tomli' and 'tomli_w' packages",
+                message="TOML write support requires 'tomli_w' package",
                 method="toml",
             )
 
@@ -393,7 +394,7 @@ class MCPInstaller:
             # Load existing config or create new
             if config_path.exists():
                 with open(config_path, "rb") as f:
-                    config = tomli.load(f)
+                    config = tomllib.load(f)
             else:
                 config = {}
 
@@ -417,7 +418,7 @@ class MCPInstaller:
                 method="toml",
             )
 
-        except (OSError, tomli.TOMLDecodeError) as e:
+        except (OSError, tomllib.TOMLDecodeError) as e:
             return InstallResult(
                 success=False,
                 message=f"TOML manipulation failed: {e}",
@@ -503,13 +504,14 @@ class MCPInstaller:
 
         Used for Codex which stores MCP config in .codex/config.toml.
         """
+        import tomllib
+
         try:
-            import tomli
             import tomli_w
         except ImportError:
             return InstallResult(
                 success=False,
-                message="TOML support requires 'tomli' and 'tomli_w' packages",
+                message="TOML write support requires 'tomli_w' package",
                 method="toml",
             )
 
@@ -532,7 +534,7 @@ class MCPInstaller:
 
         try:
             with open(config_path, "rb") as f:
-                config = tomli.load(f)
+                config = tomllib.load(f)
 
             # Remove server if present
             if servers_key in config and self.server_name in config[servers_key]:
@@ -558,7 +560,7 @@ class MCPInstaller:
                     method="toml",
                 )
 
-        except (OSError, tomli.TOMLDecodeError) as e:
+        except (OSError, tomllib.TOMLDecodeError) as e:
             return InstallResult(
                 success=False,
                 message=f"TOML manipulation failed: {e}",

@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -98,6 +99,34 @@ export default function Team() {
                     Share session history and memories across your team.
                 </p>
             </div>
+
+            {/* CLI Sync Callout */}
+            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+                <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                            <Terminal className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                                Recommended: Use CLI for Team Sync
+                            </h3>
+                            <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
+                                For the best experience, use <code className="bg-blue-100 dark:bg-blue-900 px-1.5 py-0.5 rounded text-xs font-mono">oak ci sync --team</code> from the command line.
+                                It handles version detection, schema migrations, and backup ordering automatically.
+                            </p>
+                            <Link
+                                to="/help"
+                                state={{ tab: "team-sync" }}
+                                className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline mt-2"
+                            >
+                                Learn more about Team Sync
+                                <span aria-hidden="true">&rarr;</span>
+                            </Link>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {message && (
                 <Alert variant={message.type === MESSAGE_TYPES.ERROR ? "destructive" : "default"} className={message.type === MESSAGE_TYPES.SUCCESS ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400" : ""}>

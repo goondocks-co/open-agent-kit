@@ -269,9 +269,14 @@ def rebuild_chromadb_from_sqlite(
         f"{stats['failed']} failed, {stats['total']} total"
     )
 
-    # Step 3: Also rebuild plans if we cleared ChromaDB (plans were wiped too)
-    if clear_chromadb_first:
-        logger.info("Rebuilding plan index (cleared with ChromaDB)")
+    # Step 3: Also rebuild plans when doing full rebuild or when ChromaDB was cleared
+    # Plans need to be rebuilt whenever memories are being fully rebuilt, since both
+    # are stored in the same memory collection. This handles:
+    # - CLI deleted ChromaDB (oak ci sync --full) - daemon starts with empty ChromaDB
+    # - Restore operation that cleared ChromaDB first
+    # - Manual full rebuild request
+    if reset_embedded_flags or clear_chromadb_first:
+        logger.info("Rebuilding plan index (full rebuild)")
         plan_stats = rebuild_plan_index(activity_store, vector_store, batch_size)
         stats["plans_indexed"] = plan_stats.get("indexed", 0)
         stats["plans_failed"] = plan_stats.get("failed", 0)

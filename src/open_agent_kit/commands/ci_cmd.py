@@ -9,6 +9,7 @@ Commands are organized into submodules:
 - ci.search: AI-facing search/remember/context
 - ci.query: History queries (memories, sessions, test)
 - ci.data: Backup and restore
+- ci.sync: Code sync after upgrades
 - ci.hooks: Hook event handling (hidden)
 """
 
@@ -23,6 +24,7 @@ from open_agent_kit.commands.ci import (
     mcp,
     query,
     search,
+    sync,
 )
 
 # Re-export for backwards compatibility and explicit reference
@@ -36,5 +38,6 @@ __all__ = [
     "search",
     "query",
     "data",
+    "sync",
     "hooks",
 ]

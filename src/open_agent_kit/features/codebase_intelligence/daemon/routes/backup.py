@@ -17,11 +17,13 @@ from pydantic import BaseModel
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
     ImportResult,
+    _parse_backup_schema_version,
     discover_backup_files,
     extract_machine_id_from_filename,
     get_backup_filename,
     get_machine_identifier,
 )
+from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_DATA_DIR,
@@ -62,6 +64,9 @@ class BackupFileInfo(BaseModel):
     machine_id: str
     size_bytes: int
     last_modified: str
+    schema_version: int | None = None  # Schema version from backup file header
+    schema_compatible: bool = True  # Compatible with current schema?
+    schema_warning: str | None = None  # Warning message if not fully compatible
 
 
 class BackupStatusResponse(BaseModel):
@@ -161,12 +166,39 @@ async def get_backup_status() -> BackupStatusResponse:
         stat = bf.stat()
         mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
         file_machine_id = extract_machine_id_from_filename(bf.name)
+
+        # Parse schema version from backup file header
+        backup_schema: int | None = None
+        schema_compatible = True
+        schema_warning: str | None = None
+        try:
+            content = bf.read_text(encoding="utf-8")
+            lines = content.split("\n")[:10]
+            backup_schema = _parse_backup_schema_version(lines)
+            if backup_schema is not None:
+                if backup_schema > SCHEMA_VERSION:
+                    schema_compatible = False
+                    schema_warning = (
+                        f"Backup schema v{backup_schema} is newer than current v{SCHEMA_VERSION}. "
+                        "Some data may not be imported. Upgrade OAK to import fully."
+                    )
+                elif backup_schema < SCHEMA_VERSION:
+                    schema_warning = (
+                        f"Backup schema v{backup_schema} is older than current v{SCHEMA_VERSION}. "
+                        "Import will use default values for new fields."
+                    )
+        except (OSError, UnicodeDecodeError):
+            pass
+
         all_backups.append(
             BackupFileInfo(
                 filename=bf.name,
                 machine_id=file_machine_id,
                 size_bytes=stat.st_size,
                 last_modified=mtime,
+                schema_version=backup_schema,
+                schema_compatible=schema_compatible,
+                schema_warning=schema_warning,
             )
         )
 

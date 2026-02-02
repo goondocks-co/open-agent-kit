@@ -1212,10 +1212,10 @@ class UpgradeService:
 
         try:
             if config_format == "toml":
-                import tomli
+                import tomllib
 
                 with open(config_path, "rb") as f:
-                    config = tomli.load(f)
+                    config = tomllib.load(f)
             else:
                 with open(config_path) as f:
                     config = json.load(f)

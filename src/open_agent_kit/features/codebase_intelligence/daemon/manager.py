@@ -680,3 +680,26 @@ class DaemonManager:
             return "\n".join(log_lines[-lines:])
         except OSError:
             return "Failed to read log file"
+
+    def get_daemon_version(self) -> dict | None:
+        """Get version info from running daemon.
+
+        Returns:
+            Dict with oak_version and schema_version, or None if not running.
+        """
+        if not self.is_running():
+            return None
+        try:
+            import httpx
+
+            with httpx.Client(timeout=2.0) as client:
+                response = client.get(f"{self.base_url}/api/health")
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        "oak_version": data.get("oak_version"),
+                        "schema_version": data.get("schema_version"),
+                    }
+        except Exception:
+            pass
+        return None
