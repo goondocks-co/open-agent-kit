@@ -1,14 +1,14 @@
 /**
- * Agent list component showing instances and templates.
+ * Agent list component showing tasks and templates.
  *
  * UI Flow:
- * - Instances section: Shows runnable instances with Run button (no task input)
- * - Templates section: Shows available templates with Create Instance button
+ * - Tasks section: Shows runnable agent tasks with Run button (no task input)
+ * - Templates section: Shows available agent templates with Create Task button
  *
  * Architecture:
  * - Templates define capabilities (tools, permissions, system prompt)
- * - Instances define tasks (default_task, maintained_files, ci_queries)
- * - Only instances can be run directly - templates create instances
+ * - Tasks define what the agent does (default_task, maintained_files, ci_queries)
+ * - Only tasks can be run directly - templates create tasks
  */
 
 import { useState } from "react";
@@ -20,6 +20,7 @@ import {
     useAgents,
     useRunInstance,
     useCreateInstance,
+    useCopyInstance,
     useReloadAgents,
     type AgentTemplate,
     type AgentInstance,
@@ -38,22 +39,28 @@ import {
     Layers,
     X,
     Settings2,
+    Copy,
+    Package,
 } from "lucide-react";
 import { FALLBACK_MESSAGES } from "@/lib/constants";
 
 // =============================================================================
-// Instance Card Component
+// Task Card Component
 // =============================================================================
 
-function InstanceCard({
+function TaskCard({
     instance,
     onRun,
+    onCopy,
     isRunning,
+    isCopying,
     instancesDir,
 }: {
     instance: AgentInstance;
     onRun: (instanceName: string) => void;
+    onCopy: (instanceName: string) => void;
     isRunning: boolean;
+    isCopying: boolean;
     instancesDir: string;
 }) {
     const [expanded, setExpanded] = useState(false);
@@ -67,9 +74,17 @@ function InstanceCard({
                             <Bot className="w-5 h-5 text-green-600" />
                         </div>
                         <div>
-                            <CardTitle className="text-lg">{instance.display_name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                                <CardTitle className="text-lg">{instance.display_name}</CardTitle>
+                                {instance.is_builtin && (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-500/10 text-blue-600" title="Built-in task shipped with OAK">
+                                        <Package className="w-3 h-3" />
+                                        OAK Built-in
+                                    </span>
+                                )}
+                            </div>
                             <CardDescription className="mt-1">
-                                {instance.description || `Based on: ${instance.agent_type}`}
+                                {instance.description || `${instance.agent_type} Agent Task`}
                             </CardDescription>
                         </div>
                     </div>
@@ -101,10 +116,10 @@ function InstanceCard({
                         </span>
                         <span className="flex items-center gap-1">
                             <Layers className="w-3 h-3" />
-                            Template: {instance.agent_type}
+                            Agent: {instance.agent_type}
                         </span>
                         {instance.has_execution_override && (
-                            <span className="flex items-center gap-1 text-amber-600" title="Instance has custom execution limits (overrides template defaults)">
+                            <span className="flex items-center gap-1 text-amber-600" title="Task has custom execution limits (overrides agent defaults)">
                                 <Settings2 className="w-3 h-3" />
                                 Custom limits
                             </span>
@@ -126,12 +141,12 @@ function InstanceCard({
                 </CardContent>
             )}
 
-            <CardFooter className="pt-0">
+            <CardFooter className="pt-0 gap-2">
                 <Button
                     onClick={() => onRun(instance.name)}
                     disabled={isRunning}
-                    className="w-full"
-                    title="Run this instance with its configured task"
+                    className="flex-1"
+                    title="Run this task"
                 >
                     {isRunning ? (
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -140,21 +155,35 @@ function InstanceCard({
                     )}
                     Run
                 </Button>
+                {instance.is_builtin && (
+                    <Button
+                        variant="outline"
+                        onClick={() => onCopy(instance.name)}
+                        disabled={isCopying}
+                        title="Copy to customize"
+                    >
+                        {isCopying ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Copy className="w-4 h-4" />
+                        )}
+                    </Button>
+                )}
             </CardFooter>
         </Card>
     );
 }
 
 // =============================================================================
-// Template Card Component
+// Agent Template Card Component
 // =============================================================================
 
-function TemplateCard({
+function AgentTemplateCard({
     template,
-    onCreateInstance,
+    onCreateTask,
 }: {
     template: AgentTemplate;
-    onCreateInstance: (templateName: string) => void;
+    onCreateTask: (templateName: string) => void;
 }) {
     const [expanded, setExpanded] = useState(false);
 
@@ -203,12 +232,12 @@ function TemplateCard({
             <CardFooter className="pt-0">
                 <Button
                     variant="outline"
-                    onClick={() => onCreateInstance(template.name)}
+                    onClick={() => onCreateTask(template.name)}
                     className="w-full"
-                    title="Create a new instance from this template"
+                    title="Create a new task for this agent"
                 >
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Instance
+                    Create Task
                 </Button>
             </CardFooter>
         </Card>
@@ -216,10 +245,10 @@ function TemplateCard({
 }
 
 // =============================================================================
-// Create Instance Modal
+// Create Task Modal
 // =============================================================================
 
-function CreateInstanceModal({
+function CreateTaskModal({
     open,
     onOpenChange,
     templateName,
@@ -275,22 +304,22 @@ function CreateInstanceModal({
 
                 {/* Header */}
                 <div className="mb-4">
-                    <h2 className="text-lg font-semibold">Create Instance from "{templateName}"</h2>
+                    <h2 className="text-lg font-semibold">Create Task for {templateName} Agent</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Create a new agent instance with a specific task. The instance will be saved
+                        Create a new task for this agent. The task will be saved
                         to <code className="bg-muted px-1 rounded">{instancesDir}/</code> and can be customized later.
                     </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="name">Instance Name</Label>
+                        <Label htmlFor="name">Task Name</Label>
                         <input
                             id="name"
                             type="text"
                             value={name}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-                            placeholder="my-docs-agent"
+                            placeholder="my-docs-task"
                             pattern="[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]"
                             required
                             className="w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -307,7 +336,7 @@ function CreateInstanceModal({
                             type="text"
                             value={displayName}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
-                            placeholder="My Documentation Agent"
+                            placeholder="My Documentation Task"
                             required
                             className="w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
                         />
@@ -351,7 +380,7 @@ function CreateInstanceModal({
                             ) : (
                                 <Plus className="w-4 h-4 mr-2" />
                             )}
-                            Create Instance
+                            Create Task
                         </Button>
                     </div>
                 </form>
@@ -368,6 +397,7 @@ export default function AgentsList() {
     const { data: agentsData, isLoading, isError } = useAgents();
     const runInstance = useRunInstance();
     const createInstance = useCreateInstance();
+    const copyInstance = useCopyInstance();
     const reloadAgents = useReloadAgents();
 
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -386,7 +416,20 @@ export default function AgentsList() {
         } catch (error) {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to start instance",
+                text: error instanceof Error ? error.message : "Failed to start task",
+            });
+        }
+    };
+
+    const handleCopyInstance = async (instanceName: string) => {
+        setMessage(null);
+        try {
+            const result = await copyInstance.mutateAsync({ instanceName });
+            setMessage({ type: "success", text: result.message });
+        } catch (error) {
+            setMessage({
+                type: "error",
+                text: error instanceof Error ? error.message : "Failed to copy task",
             });
         }
     };
@@ -408,7 +451,7 @@ export default function AgentsList() {
         } catch (error) {
             setMessage({
                 type: "error",
-                text: error instanceof Error ? error.message : "Failed to create instance",
+                text: error instanceof Error ? error.message : "Failed to create task",
             });
         }
     };
@@ -466,11 +509,11 @@ export default function AgentsList() {
                 </div>
             ) : (
                 <>
-                    {/* Instances Section */}
+                    {/* Tasks Section */}
                     <section className="space-y-4">
                         <div className="flex items-center gap-2">
                             <Bot className="w-5 h-5 text-green-600" />
-                            <h2 className="text-lg font-semibold">Agent Instances</h2>
+                            <h2 className="text-lg font-semibold">Agent Tasks</h2>
                             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                                 {instancesDir}/
                             </span>
@@ -480,20 +523,22 @@ export default function AgentsList() {
                             <Card className="border-dashed">
                                 <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                                     <Bot className="w-10 h-10 mb-3 opacity-30" />
-                                    <p className="text-sm font-medium">No instances configured</p>
+                                    <p className="text-sm font-medium">No tasks configured</p>
                                     <p className="text-xs mt-1">
-                                        Create an instance from a template below to get started
+                                        Create a task from an agent template below to get started
                                     </p>
                                 </CardContent>
                             </Card>
                         ) : (
                             <div className="grid gap-4 md:grid-cols-2">
                                 {instances.map((instance) => (
-                                    <InstanceCard
+                                    <TaskCard
                                         key={instance.name}
                                         instance={instance}
                                         onRun={handleRunInstance}
+                                        onCopy={handleCopyInstance}
                                         isRunning={runInstance.isPending}
+                                        isCopying={copyInstance.isPending}
                                         instancesDir={instancesDir}
                                     />
                                 ))}
@@ -504,18 +549,18 @@ export default function AgentsList() {
                     {/* Divider */}
                     <hr className="border-dashed" />
 
-                    {/* Templates Section */}
+                    {/* Agent Templates Section */}
                     <section className="space-y-4">
                         <div className="flex items-center gap-2">
                             <Layers className="w-5 h-5 text-muted-foreground" />
-                            <h2 className="text-lg font-semibold text-muted-foreground">Available Templates</h2>
+                            <h2 className="text-lg font-semibold text-muted-foreground">Agent Templates</h2>
                         </div>
 
                         {templates.length === 0 ? (
                             <Card>
                                 <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                                     <Layers className="w-10 h-10 mb-3 opacity-30" />
-                                    <p className="text-sm">No templates available</p>
+                                    <p className="text-sm">No agent templates available</p>
                                     <p className="text-xs mt-1">
                                         Add agent definitions to agents/definitions/
                                     </p>
@@ -524,10 +569,10 @@ export default function AgentsList() {
                         ) : (
                             <div className="grid gap-4 md:grid-cols-2">
                                 {templates.map((template) => (
-                                    <TemplateCard
+                                    <AgentTemplateCard
                                         key={template.name}
                                         template={template}
-                                        onCreateInstance={handleCreateInstance}
+                                        onCreateTask={handleCreateInstance}
                                     />
                                 ))}
                             </div>
@@ -536,8 +581,8 @@ export default function AgentsList() {
                 </>
             )}
 
-            {/* Create Instance Modal */}
-            <CreateInstanceModal
+            {/* Create Task Modal */}
+            <CreateTaskModal
                 open={createModalOpen}
                 onOpenChange={setCreateModalOpen}
                 templateName={selectedTemplate}

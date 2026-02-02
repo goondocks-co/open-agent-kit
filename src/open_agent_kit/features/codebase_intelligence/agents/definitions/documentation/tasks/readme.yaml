@@ -1,0 +1,118 @@
+# =============================================================================
+# Built-in Task: README & Overview
+# =============================================================================
+# Task for: documentation agent
+#
+# This task maintains your project's README.md using CODE as the primary source
+# of truth, enriched with CI context (memories, decisions, gotchas).
+#
+# To customize: Copy to oak/ci/agents/readme.yaml and modify as needed.
+# =============================================================================
+
+name: readme
+display_name: "README & Overview"
+agent_type: documentation
+description: >
+  Maintains README.md by exploring the actual codebase, then enriching with
+  CI memories and insights. Code is truth; CI provides context and polish.
+
+default_task: |
+  Update the project README.md to reflect the current state of the codebase.
+
+  ## 1. Understand Current State (Read First — CRITICAL)
+  - Read the existing README.md completely
+  - Note: current structure, tone, what's accurate vs. outdated
+  - Identify sections that need updating vs. sections that are fine
+  - PRESERVE sections that are still accurate — don't rewrite what works
+
+  ## 2. Explore the Codebase (Primary Source of Truth)
+  - Use Glob to find entry points: cli.py, main.py, __init__.py, setup.py, pyproject.toml
+  - Use Grep to find key patterns: commands, features, APIs, exports
+  - Read key files to understand:
+    - What the project actually does (not what docs say it does)
+    - How to install it (pyproject.toml, setup.py, package.json)
+    - How to use it (CLI commands, API entry points)
+    - Key features and capabilities
+
+  ## 3. Enrich with CI Context (What Code Can't Tell You)
+  - ci_memories(type=gotcha) → Warnings for Getting Started section
+  - ci_memories(type=decision) → Why things work the way they do
+  - ci_memories(type=discovery) → Key insights about the project
+  - ci_sessions (if available) → Recent significant changes
+
+  ## 4. Update the README (Incremental, Not Rewrite)
+
+  **Update strategy:**
+  - KEEP sections that are still accurate (don't touch what works)
+  - UPDATE sections where code has changed
+  - ADD new sections for new features/capabilities
+  - REMOVE only content that's demonstrably wrong
+
+  **Sections to review:**
+  - Project description: Update only if scope changed
+  - Features: Add new, update changed, keep accurate ones
+  - Installation: Update only if dependencies changed
+  - Usage: Update examples only if API changed
+  - Getting Started: Add new gotchas from CI memories
+
+  ## 5. Quality Checks
+  - Verify code examples actually exist in the codebase
+  - Confirm installation commands match dependency files
+  - Check that referenced files/paths exist
+
+  **Periodic run mindset:** This task runs regularly. Make targeted
+  improvements, not wholesale rewrites. The goal is keeping docs
+  accurate, not rewriting them every time.
+
+# Execution limits (moderate task)
+execution:
+  timeout_seconds: 300
+  max_turns: 50
+  permission_mode: acceptEdits
+
+# Files this task maintains
+maintained_files:
+  - path: "{project_root}/README.md"
+    purpose: "Project overview and getting started"
+    auto_create: false
+
+# CI queries to gather context
+ci_queries:
+  discovery:
+    - tool: ci_project_stats
+      purpose: "Get codebase overview and structure"
+
+    - tool: ci_sessions
+      limit: 10
+      include_summary: true
+      purpose: "Recent session context for what's changed"
+
+  context:
+    - tool: ci_memories
+      filter: discovery
+      limit: 10
+      purpose: "Key project insights and patterns"
+
+    - tool: ci_memories
+      filter: gotcha
+      limit: 5
+      purpose: "Important warnings for getting started"
+
+# Output format
+output_requirements:
+  required_sections:
+    - name: "Project Title & Description"
+      description: "Clear, accurate project summary"
+    - name: "Features"
+      description: "Key capabilities based on actual code"
+    - name: "Getting Started"
+      description: "Installation and basic usage"
+
+# Style preferences
+style:
+  tone: "welcoming"
+  include_examples: true
+  link_code_files: true
+  code_link_format: "relative"
+
+schema_version: 1

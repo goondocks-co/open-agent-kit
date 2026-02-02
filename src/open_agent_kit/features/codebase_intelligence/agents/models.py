@@ -125,6 +125,9 @@ class AgentInstance(BaseModel):
     instance_path: str | None = Field(
         default=None, description="Path to instance YAML (set by registry)"
     )
+    is_builtin: bool = Field(
+        default=False, description="True if this is a built-in task shipped with OAK"
+    )
     schema_version: int = Field(default=1, ge=1, description="Instance schema version")
 
 
@@ -346,6 +349,9 @@ class AgentInstanceListItem(BaseModel):
     )
     has_execution_override: bool = Field(
         default=False, description="True if instance overrides template execution config"
+    )
+    is_builtin: bool = Field(
+        default=False, description="True if this is a built-in task shipped with OAK"
     )
     schedule: ScheduleDefinition | None = Field(
         default=None, description="Cron schedule if configured"

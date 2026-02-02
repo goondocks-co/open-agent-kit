@@ -83,26 +83,12 @@ def upgrade_command(
         templates=upgrade_templates,
     )
 
-    # Check if there's anything to upgrade
-    skill_plan = plan.get("skills", {})
-    has_upgrades = (
-        plan.get("commands")
-        or plan.get("templates")
-        or plan.get("obsolete_templates")
-        or plan.get("agent_settings")
-        or skill_plan.get("install")
-        or skill_plan.get("upgrade")
-        or skill_plan.get("obsolete")
-        or plan.get("hooks")
-        or plan.get("mcp_servers")
-        or plan.get("gitignore")
-        or plan.get("migrations")
-        or plan.get("structural_repairs")
-        or plan.get("legacy_commands_cleanup")
-        or plan.get("version_outdated")
-    )
+    # Check if there's anything to upgrade (use centralized utility)
+    from typing import Any, cast
 
-    if not has_upgrades:
+    from open_agent_kit.pipeline.models import plan_has_upgrades
+
+    if not plan_has_upgrades(cast(dict[str, Any], plan)):
         print_info(f"[green]✓[/green] {SUCCESS_MESSAGES['up_to_date']}")
         return
 
@@ -188,6 +174,7 @@ def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
         "hooks": {"upgraded": [], "failed": []},
         "mcp_servers": {"upgraded": [], "failed": []},
         "gitignore": {"upgraded": [], "failed": []},
+        "agent_tasks": {"upgraded": [], "failed": []},
         "structural_repairs": [],
         "version_updated": False,
     }
@@ -239,6 +226,14 @@ def _collect_pipeline_results(context: PipelineContext) -> UpgradeResults:
         results["mcp_servers"]["upgraded"] = mcp_result.get("installed", [])
         # MCP doesn't track failures in the same way, but we can check for skipped
         results["mcp_servers"]["failed"] = []
+
+    agent_tasks_result = context.get_result("upgrade_agent_tasks", {})
+    if agent_tasks_result:
+        # Combine installed and upgraded into the "upgraded" list
+        results["agent_tasks"]["upgraded"] = agent_tasks_result.get(
+            "installed", []
+        ) + agent_tasks_result.get("upgraded", [])
+        results["agent_tasks"]["failed"] = agent_tasks_result.get("failed", [])
 
     migration_result = context.get_result("run_migrations", {})
     if migration_result:
@@ -350,6 +345,27 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
             f"[cyan]Obsolete Skills to Remove[/cyan] ({len(skills_to_remove)} skill(s))\n{remove_list}"
         )
 
+    # Agent tasks installation and upgrade
+    agent_tasks_plan = plan.get("agent_tasks") or {"install": [], "upgrade": []}
+    tasks_to_install = agent_tasks_plan.get("install", [])
+    tasks_to_upgrade = agent_tasks_plan.get("upgrade", [])
+
+    if tasks_to_install:
+        install_list = "\n".join(
+            [f"  • {t['task']} ({t['agent_type']} agent)" for t in tasks_to_install]
+        )
+        sections.append(
+            f"[cyan]Agent Tasks to Install[/cyan] ({len(tasks_to_install)} task(s))\n{install_list}"
+        )
+
+    if tasks_to_upgrade:
+        upgrade_list = "\n".join(
+            [f"  • {t['task']} ({t['agent_type']} agent)" for t in tasks_to_upgrade]
+        )
+        sections.append(
+            f"[cyan]Agent Tasks to Upgrade[/cyan] ({len(tasks_to_upgrade)} task(s))\n{upgrade_list}"
+        )
+
     # Feature hooks
     hooks_to_upgrade = plan.get("hooks", [])
     if hooks_to_upgrade:
@@ -419,6 +435,8 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
     if results.get("agent_settings", {}).get("upgraded"):
         steps += 1
     if results.get("skills", {}).get("upgraded"):
+        steps += 1
+    if results.get("agent_tasks", {}).get("upgraded"):
         steps += 1
     if results.get("hooks", {}).get("upgraded"):
         steps += 1
@@ -518,6 +536,22 @@ def _display_upgrade_results(results: UpgradeResults) -> None:
             tracker.start_step("Skill installation failures")
             tracker.fail_step(
                 f"Failed to install/upgrade {len(failed)} skill(s)",
+                ", ".join(failed),
+            )
+
+    # Agent tasks installation/upgrade
+    if results.get("agent_tasks"):
+        upgraded = results["agent_tasks"]["upgraded"]
+        failed = results["agent_tasks"]["failed"]
+
+        if upgraded:
+            tracker.start_step(f"Installing/upgrading {len(upgraded)} agent task(s)")
+            tracker.complete_step(f"Installed/upgraded {len(upgraded)} agent task(s)")
+
+        if failed:
+            tracker.start_step("Agent task installation failures")
+            tracker.fail_step(
+                f"Failed to install/upgrade {len(failed)} agent task(s)",
                 ", ".join(failed),
             )
 

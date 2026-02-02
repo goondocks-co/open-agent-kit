@@ -133,6 +133,20 @@ class CodebaseIntelligenceService:
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to restore history backup: {e}")
 
+        # Install built-in agent tasks to project (won't overwrite existing)
+        try:
+            from open_agent_kit.features.codebase_intelligence.agents.registry import (
+                AgentRegistry,
+            )
+
+            registry = AgentRegistry(project_root=self.project_root)
+            install_results = registry.install_builtin_tasks(force=False)
+            installed = [k for k, v in install_results.items() if v == "installed"]
+            if installed:
+                console.print(f"[green]Installed agent tasks: {', '.join(installed)}[/green]")
+        except Exception as e:
+            logger.warning(f"Failed to install built-in agent tasks: {e}")
+
         # Note: .gitignore is handled declaratively via manifest.yaml gitignore field
         # The feature_service adds .oak/ci/ on enable and removes it on disable
 

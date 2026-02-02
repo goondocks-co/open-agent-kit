@@ -8,6 +8,7 @@ migrations:
 - 2026.01.09_remove_ide_settings_config
 - 2026.01.31_mcp_remove_project_flag
 - 2026.02.01_features_to_languages
+- 2026.02.01_populate_initialized_features
 managed_assets:
   directories:
   - .claude/commands

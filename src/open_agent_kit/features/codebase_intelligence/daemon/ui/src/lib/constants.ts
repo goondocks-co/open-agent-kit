@@ -718,6 +718,12 @@ export const ACTIVITY_TRUNCATION_LIMIT = 100;
 /** Character limit for memory observation before truncation */
 export const MEMORY_OBSERVATION_TRUNCATION_LIMIT = 200;
 
+/** Character limit for agent run task before truncation in Run History */
+export const RUN_TASK_TRUNCATION_LIMIT = 300;
+
+/** Character limit for agent run result before truncation in Run History */
+export const RUN_RESULT_TRUNCATION_LIMIT = 500;
+
 /** Maximum length for session title display */
 export const SESSION_TITLE_MAX_LENGTH = 60;
 

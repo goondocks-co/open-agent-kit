@@ -274,12 +274,22 @@ class AgentExecutor:
             # Build instance configuration block
             config: dict[str, Any] = {}
 
+            # CRITICAL: Inject project_root so the agent knows where it's working
+            # Without this, the agent may hallucinate paths or get confused
+            project_root_str = str(self._project_root)
+            config["project_root"] = project_root_str
+
             # Inject daemon URL for session/memory links
             config["daemon_url"] = daemon_url
 
             if instance.maintained_files:
+                # Resolve {project_root} placeholder in paths
                 config["maintained_files"] = [
-                    mf.model_dump(exclude_none=True) for mf in instance.maintained_files
+                    {
+                        **mf.model_dump(exclude_none=True),
+                        "path": mf.path.replace("{project_root}", project_root_str),
+                    }
+                    for mf in instance.maintained_files
                 ]
 
             if instance.ci_queries:
@@ -300,8 +310,8 @@ class AgentExecutor:
             config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
             return f"{task}\n\n## Instance Configuration\n```yaml\n{config_yaml}```"
 
-        # No instance - inject daemon URL as runtime context
-        runtime_context = f"daemon_url: {daemon_url}"
+        # No instance - inject project_root and daemon URL as runtime context
+        runtime_context = f"project_root: {self._project_root}\ndaemon_url: {daemon_url}"
         return f"{task}\n\n## Runtime Context\n```yaml\n{runtime_context}\n```"
 
         # Legacy: use project_config if no instance

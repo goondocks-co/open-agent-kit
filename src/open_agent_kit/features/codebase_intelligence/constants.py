@@ -608,9 +608,11 @@ MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 600
 # Agent definition directories
 AGENTS_DIR: Final[str] = "agents"
 AGENTS_DEFINITIONS_DIR: Final[str] = "definitions"
+AGENTS_TASKS_SUBDIR: Final[str] = "tasks"  # Tasks subdirectory within each agent definition
 AGENT_DEFINITION_FILENAME: Final[str] = "agent.yaml"
 AGENT_PROMPTS_DIR: Final[str] = "prompts"
 AGENT_SYSTEM_PROMPT_FILENAME: Final[str] = "system.md"
+AGENT_TASK_TEMPLATE_FILENAME: Final[str] = "task.yaml"  # Jinja2 template for new tasks
 
 # Agent execution defaults
 DEFAULT_AGENT_MAX_TURNS: Final[int] = 50

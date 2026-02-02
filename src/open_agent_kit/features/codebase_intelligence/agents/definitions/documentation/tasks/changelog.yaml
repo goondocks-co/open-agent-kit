@@ -1,0 +1,129 @@
+# =============================================================================
+# Built-in Task: Changelog Generator
+# =============================================================================
+# Task for: documentation agent
+#
+# This built-in task generates changelogs from CI session history. Can be
+# scheduled weekly to automatically update your CHANGELOG.md.
+#
+# To customize: Copy to oak/ci/agents/changelog.yaml and modify as needed.
+# =============================================================================
+
+name: changelog
+display_name: "Changelog Generator"
+agent_type: documentation
+description: >
+  Generates changelog entries from session history. Uses CI data to accurately
+  document what changed, why, and any important notes for each period.
+
+default_task: |
+  Generate a changelog entry for the recent development period.
+
+  ## Your CI-Powered Workflow (History IS the Source of Truth)
+
+  1. **Read Existing Changelog First**
+     - Read CHANGELOG.md to understand current format and style
+     - Note the last documented date/version to avoid duplicates
+     - Identify any project-specific conventions
+
+  2. **Gather Session History**
+     - Use `ci_sessions(limit=20)` to get recent coding sessions
+     - Filter to sessions AFTER the last changelog entry
+     - Group sessions by logical feature/fix
+     - Identify the date range covered
+
+  3. **Categorize Changes**
+     Using session summaries and memories:
+     - **Added**: New features (from sessions mentioning "add", "create", "implement")
+     - **Changed**: Modifications to existing behavior
+     - **Fixed**: Bug fixes (from `ci_memories(type=bug_fix)`)
+     - **Deprecated**: Features marked for removal
+     - **Removed**: Deleted functionality
+     - **Security**: Security-related changes
+
+  4. **Enrich with CI Context**
+     - Link each change to its source session
+     - Include relevant gotchas as notes
+     - Reference related memories for context
+
+  5. **Write Keep-a-Changelog Format**
+     ```markdown
+     ## [Version/Date] - YYYY-MM-DD
+
+     ### Added
+     - Feature description — [Session Title](session_link)
+
+     ### Fixed
+     - Bug fix description — [Session Title](session_link)
+
+     ### Notes
+     - Any gotchas or important information from memories
+     ```
+
+  Focus on user-facing changes and significant internal improvements.
+  Skip trivial refactors unless they affect behavior.
+
+# Schedule for weekly execution (optional - uncomment to enable)
+# schedule:
+#   cron: "0 0 * * MON"
+#   description: "Weekly changelog update every Monday at midnight"
+
+# Execution limits
+execution:
+  timeout_seconds: 300
+  max_turns: 50
+  permission_mode: acceptEdits
+
+# Files this task maintains
+maintained_files:
+  - path: "{project_root}/CHANGELOG.md"
+    purpose: "Version history and release notes"
+    auto_create: true
+
+# CI queries to gather context
+ci_queries:
+  discovery:
+    - tool: ci_sessions
+      limit: 30
+      include_summary: true
+      purpose: "Get recent sessions for changelog content"
+
+  context:
+    - tool: ci_memories
+      filter: bug_fix
+      limit: 15
+      purpose: "Find bug fixes to document"
+
+    - tool: ci_memories
+      filter: discovery
+      limit: 10
+      purpose: "Find significant discoveries"
+
+    - tool: ci_memories
+      filter: decision
+      limit: 10
+      purpose: "Find architectural decisions"
+
+# Output format
+output_requirements:
+  format: "keepachangelog"
+  link_sources: true
+  required_sections:
+    - name: "Added"
+      source: "sessions"
+      description: "New features"
+    - name: "Fixed"
+      source: "memories"
+      description: "Bug fixes from bug_fix memories"
+
+# Style preferences
+style:
+  tone: "concise"
+  include_examples: false
+  link_sessions: true
+  conventions:
+    - "Use imperative mood (Add, Fix, Change)"
+    - "Link every entry to source session"
+    - "Group related changes together"
+
+schema_version: 1

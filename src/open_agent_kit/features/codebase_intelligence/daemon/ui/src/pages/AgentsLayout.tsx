@@ -31,7 +31,7 @@ export default function AgentsLayout() {
             <div className="flex flex-col gap-2">
                 <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
                 <p className="text-muted-foreground">
-                    Autonomous agents powered by Claude Code SDK
+                    Autonomous agents powered by Claude Agent SDK
                 </p>
             </div>
 

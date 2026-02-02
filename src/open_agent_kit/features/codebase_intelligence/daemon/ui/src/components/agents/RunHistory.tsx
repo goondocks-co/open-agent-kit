@@ -40,6 +40,7 @@ import {
     X,
     RotateCcw,
     ShieldAlert,
+    Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -48,7 +49,32 @@ import {
     AGENT_RUN_STATUS_LABELS,
     AGENT_RUN_STATUS_COLORS,
     isWatchdogRecoveredRun,
+    RUN_TASK_TRUNCATION_LIMIT,
+    RUN_RESULT_TRUNCATION_LIMIT,
 } from "@/lib/constants";
+import { Markdown } from "@/components/ui/markdown";
+import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Check if content exceeds the truncation limit.
+ */
+function isContentTruncated(content: string | null | undefined, limit: number): boolean {
+    if (!content) return false;
+    return content.length > limit;
+}
+
+/**
+ * Get truncated content with ellipsis if needed.
+ */
+function getTruncatedContent(content: string | null | undefined, limit: number): string {
+    if (!content) return "";
+    if (content.length <= limit) return content;
+    return content.slice(0, limit) + "...";
+}
 
 // =============================================================================
 // Components
@@ -87,10 +113,14 @@ function RunRow({
     isRerunning: boolean;
 }) {
     const [expanded, setExpanded] = useState(false);
+    const contentDialog = useContentDialog();
     const isActive = run.status === AGENT_RUN_STATUS.PENDING || run.status === AGENT_RUN_STATUS.RUNNING;
     const statusLabel = AGENT_RUN_STATUS_LABELS[run.status] || run.status;
     const statusColors = AGENT_RUN_STATUS_COLORS[run.status] || AGENT_RUN_STATUS_COLORS.pending;
     const wasRecoveredByWatchdog = isWatchdogRecoveredRun(run.error);
+
+    const isTaskTruncated = isContentTruncated(run.task, RUN_TASK_TRUNCATION_LIMIT);
+    const isResultTruncated = isContentTruncated(run.result, RUN_RESULT_TRUNCATION_LIMIT);
 
     return (
         <div className="border rounded-md overflow-hidden">
@@ -176,8 +206,24 @@ function RunRow({
                 <div className="border-t bg-muted/30 p-3 space-y-3">
                     {/* Task */}
                     <div className="space-y-1">
-                        <span className="text-xs font-medium text-muted-foreground">Task:</span>
-                        <p className="text-sm">{run.task}</p>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">Task:</span>
+                            {isTaskTruncated && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        contentDialog.openDialog("Task", run.task, run.agent_name, true);
+                                    }}
+                                    className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                >
+                                    <Maximize2 className="w-3 h-3" />
+                                    Show more
+                                </button>
+                            )}
+                        </div>
+                        <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">
+                            <Markdown content={getTruncatedContent(run.task, RUN_TASK_TRUNCATION_LIMIT)} />
+                        </div>
                     </div>
 
                     {run.error && (
@@ -208,10 +254,24 @@ function RunRow({
 
                     {run.result && (
                         <div className="space-y-1">
-                            <span className="text-xs font-medium text-muted-foreground">Result:</span>
-                            <pre className="p-2 rounded bg-background text-xs whitespace-pre-wrap max-h-48 overflow-y-auto">
-                                {run.result}
-                            </pre>
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-muted-foreground">Result:</span>
+                                {isResultTruncated && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            contentDialog.openDialog("Result", run.result || "", run.agent_name, true);
+                                        }}
+                                        className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                    >
+                                        <Maximize2 className="w-3 h-3" />
+                                        Show more
+                                    </button>
+                                )}
+                            </div>
+                            <div className="p-2 rounded bg-background max-h-48 overflow-y-auto prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 prose-headings:text-sm">
+                                <Markdown content={getTruncatedContent(run.result, RUN_RESULT_TRUNCATION_LIMIT)} />
+                            </div>
                         </div>
                     )}
 
@@ -253,6 +313,18 @@ function RunRow({
                         <span>Run ID: <code className="bg-muted px-1 rounded">{run.id}</code></span>
                     </div>
                 </div>
+            )}
+
+            {/* Content Dialog for viewing full task/result */}
+            {contentDialog.dialogContent && (
+                <ContentDialog
+                    open={contentDialog.isOpen}
+                    onOpenChange={contentDialog.setIsOpen}
+                    title={contentDialog.dialogContent.title}
+                    subtitle={contentDialog.dialogContent.subtitle}
+                    content={contentDialog.dialogContent.content}
+                    renderMarkdown={contentDialog.dialogContent.renderMarkdown}
+                />
             )}
         </div>
     );

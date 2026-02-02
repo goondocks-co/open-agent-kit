@@ -60,6 +60,7 @@ class UpgradeResults(TypedDict):
     hooks: UpgradeCategoryResults
     mcp_servers: UpgradeCategoryResults
     gitignore: UpgradeCategoryResults
+    agent_tasks: UpgradeCategoryResults
     structural_repairs: list[str]
     version_updated: bool
 
@@ -140,6 +141,22 @@ class UpgradePlanLegacyCommandsCleanup(TypedDict):
     commands: list[UpgradePlanLegacyCommandItem]
 
 
+class UpgradePlanAgentTaskItem(TypedDict):
+    """A single agent task plan item."""
+
+    task: str
+    agent_type: str
+    source_path: Path
+    target_path: Path
+
+
+class UpgradePlanAgentTasks(TypedDict):
+    """Agent tasks upgrade plan."""
+
+    install: list[UpgradePlanAgentTaskItem]
+    upgrade: list[UpgradePlanAgentTaskItem]
+
+
 class UpgradePlan(TypedDict):
     """Structure returned by plan_upgrade()."""
 
@@ -155,6 +172,7 @@ class UpgradePlan(TypedDict):
     migrations: list[UpgradePlanMigration]
     structural_repairs: list[str]
     legacy_commands_cleanup: list[UpgradePlanLegacyCommandsCleanup]
+    agent_tasks: UpgradePlanAgentTasks
     version_outdated: bool
     current_version: str
     package_version: str
@@ -226,6 +244,7 @@ class UpgradeService:
             "migrations": [],
             "structural_repairs": [],
             "legacy_commands_cleanup": [],
+            "agent_tasks": {"install": [], "upgrade": []},
             "version_outdated": version_outdated,
             "current_version": current_version,
             "package_version": VERSION,
@@ -279,6 +298,9 @@ class UpgradeService:
             if migration_id not in completed_migrations:
                 plan["migrations"].append({"id": migration_id, "description": description})
 
+        # Plan CI agent tasks installation/upgrade
+        plan["agent_tasks"] = self._get_upgradeable_agent_tasks()
+
         return plan
 
     def execute_upgrade(self, plan: UpgradePlan) -> UpgradeResults:
@@ -304,6 +326,7 @@ class UpgradeService:
             "hooks": {"upgraded": [], "failed": []},
             "mcp_servers": {"upgraded": [], "failed": []},
             "gitignore": {"upgraded": [], "failed": []},
+            "agent_tasks": {"upgraded": [], "failed": []},
             "structural_repairs": [],
             "version_updated": False,
         }
@@ -345,6 +368,22 @@ class UpgradeService:
                 results["skills"]["upgraded"].append(skill_info["skill"])
             except Exception as e:
                 results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
+
+        # Install and upgrade CI agent tasks
+        agent_tasks_plan = plan.get("agent_tasks") or {"install": [], "upgrade": []}
+        for task_info in agent_tasks_plan.get("install", []):
+            try:
+                self._install_agent_task(task_info)
+                results["agent_tasks"]["upgraded"].append(task_info["task"])
+            except Exception as e:
+                results["agent_tasks"]["failed"].append(f"{task_info['task']}: {e}")
+
+        for task_info in agent_tasks_plan.get("upgrade", []):
+            try:
+                self._upgrade_agent_task(task_info)
+                results["agent_tasks"]["upgraded"].append(task_info["task"])
+            except Exception as e:
+                results["agent_tasks"]["failed"].append(f"{task_info['task']}: {e}")
 
         # Add missing gitignore entries (grouped by feature for cleaner output)
         gitignore_plan = plan.get("gitignore", [])
@@ -414,6 +453,7 @@ class UpgradeService:
             + len(results["skills"]["upgraded"])
             + len(results["gitignore"]["upgraded"])
             + len(results["migrations"]["upgraded"])
+            + len(results["agent_tasks"]["upgraded"])
             + len(results["structural_repairs"])
         )
         version_outdated = plan.get("version_outdated", False)
@@ -782,6 +822,73 @@ class UpgradeService:
                 return True
 
         return False
+
+    def _get_upgradeable_agent_tasks(self) -> UpgradePlanAgentTasks:
+        """Get CI agent tasks that need to be installed or upgraded.
+
+        Built-in tasks are overwritten during upgrade when content differs.
+        Users who want to customize should copy and rename a built-in task.
+        The original files are in git, so users can revert if needed.
+
+        Returns:
+            UpgradePlanAgentTasks with install and upgrade lists
+        """
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            AGENT_PROJECT_CONFIG_DIR,
+        )
+
+        result: UpgradePlanAgentTasks = {"install": [], "upgrade": []}
+
+        # Get the project's agent tasks directory
+        user_agents_dir = self.project_root / AGENT_PROJECT_CONFIG_DIR
+
+        try:
+            # Import the registry to get built-in tasks
+            from open_agent_kit.features.codebase_intelligence.agents.registry import (
+                AgentRegistry,
+            )
+
+            registry = AgentRegistry(project_root=self.project_root)
+            registry.load_all()  # Ensure registry is loaded
+            builtin_tasks = registry._builtin_tasks
+
+            for task_name, task in builtin_tasks.items():
+                if not task.instance_path:
+                    continue
+                source_path = Path(task.instance_path)
+                if not source_path.exists():
+                    continue
+
+                target_path = user_agents_dir / f"{task_name}.yaml"
+
+                if not target_path.exists():
+                    # New task - needs installation
+                    result["install"].append(
+                        {
+                            "task": task_name,
+                            "agent_type": task.agent_type,
+                            "source_path": source_path,
+                            "target_path": target_path,
+                        }
+                    )
+                elif self._files_differ(source_path, target_path):
+                    # Content differs - needs upgrade (overwrites user changes)
+                    result["upgrade"].append(
+                        {
+                            "task": task_name,
+                            "agent_type": task.agent_type,
+                            "source_path": source_path,
+                            "target_path": target_path,
+                        }
+                    )
+
+        except ImportError:
+            # CI feature not available
+            logger.debug("CI feature not available, skipping agent task upgrade planning")
+        except Exception as e:
+            logger.warning(f"Failed to plan agent task upgrades: {e}")
+
+        return result
 
     def _get_upgradeable_hooks(self) -> list[UpgradePlanHookItem]:
         """Get feature hooks that need to be upgraded.
@@ -1189,6 +1296,37 @@ class UpgradeService:
 
         if "error" in result:
             raise ValueError(result["error"])
+
+    def _install_agent_task(self, task_info: UpgradePlanAgentTaskItem) -> None:
+        """Install a CI agent task from the package to the project.
+
+        Args:
+            task_info: Task installation info with source and target paths
+        """
+        import shutil
+
+        source_path = task_info["source_path"]
+        target_path = task_info["target_path"]
+
+        # Ensure target directory exists
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Copy the task file
+        shutil.copy2(source_path, target_path)
+
+    def _upgrade_agent_task(self, task_info: UpgradePlanAgentTaskItem) -> None:
+        """Upgrade a CI agent task to the latest package version.
+
+        Args:
+            task_info: Task upgrade info with source and target paths
+        """
+        import shutil
+
+        source_path = task_info["source_path"]
+        target_path = task_info["target_path"]
+
+        # Copy the updated task file (overwrites existing)
+        shutil.copy2(source_path, target_path)
 
     def _files_differ(self, file1: Path, file2: Path) -> bool:
         """Check if two files have different content.

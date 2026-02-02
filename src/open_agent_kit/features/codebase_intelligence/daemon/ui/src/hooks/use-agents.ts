@@ -35,6 +35,8 @@ export interface AgentInstance {
     timeout_seconds: number;
     /** True if instance has custom execution config (overrides template defaults) */
     has_execution_override: boolean;
+    /** True if this is a built-in task shipped with OAK */
+    is_builtin: boolean;
 }
 
 /** Agent list item from the API (legacy) */
@@ -244,6 +246,24 @@ export function useCreateInstance() {
                 `${API_ENDPOINTS.AGENTS}/templates/${templateName}/create-instance`,
                 data
             ),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents"] });
+        },
+    });
+}
+
+/** Copy an instance (typically a built-in) for customization */
+export function useCopyInstance() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ instanceName, newName }: { instanceName: string; newName?: string }) => {
+            const params = newName ? `?new_name=${encodeURIComponent(newName)}` : "";
+            return postJson<{ success: boolean; message: string; instance: { name: string; display_name: string; agent_type: string; instance_path: string; is_builtin: boolean } }>(
+                `${API_ENDPOINTS.AGENTS}/instances/${instanceName}/copy${params}`,
+                {}
+            );
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
         },

@@ -224,9 +224,20 @@ features:
 class TestAgentInstances:
     """Tests for agent instance functionality."""
 
-    def test_list_instances_empty_without_project_root(self) -> None:
-        """list_instances should return empty list without project_root."""
+    def test_list_instances_returns_builtins_without_project_root(self) -> None:
+        """list_instances should return built-in tasks even without project_root."""
         registry = AgentRegistry()
+        instances = registry.list_instances()
+        # Should have built-in tasks from the package
+        assert len(instances) >= 1
+        # All should be marked as built-in
+        for instance in instances:
+            assert instance.is_builtin is True
+
+    def test_list_instances_empty_when_no_definitions_dir(self, tmp_path: Path) -> None:
+        """list_instances should return empty list when no definitions dir exists."""
+        # Use a non-existent directory for definitions (no templates = no built-in tasks)
+        registry = AgentRegistry(definitions_dir=tmp_path / "nonexistent_defs")
         instances = registry.list_instances()
         assert instances == []
 
@@ -309,7 +320,7 @@ class TestAgentInstances:
             )
 
     def test_load_instances_from_project(self, tmp_path: "Path") -> None:
-        """Registry should load instances from oak/agents/*.yaml."""
+        """Registry should load user instances from oak/agents/*.yaml."""
         # Create instance YAML
         config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
@@ -332,14 +343,16 @@ maintained_files:
         registry = AgentRegistry(project_root=tmp_path)
         instances = registry.list_instances()
 
-        assert len(instances) == 1
-        assert instances[0].name == "my-docs"
-        assert instances[0].display_name == "My Documentation"
-        assert instances[0].agent_type == "documentation"
-        assert "Update all markdown" in instances[0].default_task
+        # Find our user instance
+        user_instance = next((i for i in instances if i.name == "my-docs"), None)
+        assert user_instance is not None
+        assert user_instance.display_name == "My Documentation"
+        assert user_instance.agent_type == "documentation"
+        assert "Update all markdown" in user_instance.default_task
+        assert user_instance.is_builtin is False
 
     def test_load_instances_skips_invalid_template_reference(self, tmp_path: "Path") -> None:
-        """Registry should skip instances with unknown agent_type."""
+        """Registry should skip user instances with unknown agent_type."""
         config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
@@ -354,8 +367,9 @@ default_task: Do something
         registry = AgentRegistry(project_root=tmp_path)
         instances = registry.list_instances()
 
-        # Should skip the bad instance
-        assert len(instances) == 0
+        # Should skip the bad user instance (but may still have built-ins)
+        bad_instance = next((i for i in instances if i.name == "bad-instance"), None)
+        assert bad_instance is None
 
 
 class TestAgentModels:

@@ -25,23 +25,25 @@ AI agents typically "forget" everything when you start a new session. OAK solves
 Add the intelligence layer to any project:
 
 ```bash
-# Initialize with Codebase Intelligence
-oak init --feature codebase-intelligence
+# Initialize OAK (interactive mode)
+oak init
 
-# Start the daemon
+# Or specify agents directly
+oak init --agent claude
+
+# Start the Codebase Intelligence daemon
 oak ci start
 ```
 
 ## Features
 
-- **Codebase Intelligence**: Semantic code search, AST-aware indexing, and persistent memory.
-- **Agent Skills**: OAK installs specialized capabilities for your agent:
-    - **Constitution**: `project-rules` skill to enforce standards.
-    - **RFCs**: `creating-rfcs` and `reviewing-rfcs` skills for technical decision making.
-    - **Plans**: Implementation planning skills.
-    - **Codebase**: `finding-related-code` and `impact-analysis` skills.
-- **Universal Compatibility**: Works with Claude Code, Cursor, Copilot, Windsurf, and any MCP-compatible agent.
-- **Auto-Configuration**: Automatically configures hooks, MCP servers, and IDE settings (VSCode/Cursor) during init.
+- **Codebase Intelligence**: Semantic code search, AST-aware indexing, and persistent memory via MCP tools (`oak_search`, `oak_remember`, `oak_context`).
+- **Rules Management**: Create and maintain a project constitution with shared coding standards that AI agents follow.
+- **Strategic Planning (RFCs)**: Manage RFC documents for technical decisions and architecture records.
+- **Language Support**: Install tree-sitter parsers for 13 languages (Python, TypeScript, Go, Rust, and more).
+- **Claude Agent Skills**: Installable skills for specialized agent workflows.
+- **Universal Compatibility**: Works with Claude Code, Cursor, Copilot, Windsurf, Gemini, Codex, and any MCP-compatible agent.
+- **Auto-Configuration**: Automatically configures MCP servers and agent instruction files during init.
 
 
 ## Installation
@@ -72,78 +74,58 @@ pip install git+https://github.com/sirkirby/open-agent-kit.git
 ## Quick Start
 
 ```bash
-# Interactive mode (select agents, IDEs, and features with checkboxes):
+# Interactive mode (select agents and languages with checkboxes):
 oak init
 
-# Single agent with all default features:
+# Single agent with default languages (python, javascript, typescript):
 oak init --agent claude
 
 # Multiple agents (for teams using different tools):
 oak init --agent claude --agent copilot
 
-# Select specific features:
-oak init --agent claude --feature constitution --feature rfc
+# Specify languages for code intelligence:
+oak init --agent claude --language python --language go --language rust
 ```
 
-## IDE Auto-Approval Settings
+## Agent Auto-Approval Settings
 
-During initialization, Open Agent Kit can install IDE settings that enable auto-approval for `oak` commands:
+During initialization, Open Agent Kit installs agent-specific settings that enable auto-approval for `oak` commands. These settings are placed in each agent's configuration directory:
 
-- **VSCode**: Creates/updates `.vscode/settings.json`
-- **Cursor**: Creates/updates `.cursor/settings.json`
+- **Claude**: `.claude/settings.json`
+- **Copilot**: `.github/copilot-settings.json`
+- **Cursor**: `.cursor/settings.json`
+- **Gemini**: `.gemini/settings.json`
+- **Windsurf**: `.windsurf/settings.json`
 
-These settings configure your IDE to:
+**Upgrading**: Run `oak upgrade` to update agent settings to the latest version.
 
-- Auto-approve `oak` commands referenced in agent prompts
-- Recommend Open Agent Kit prompt files in your AI assistant
+## Core Features
 
-**Smart Merging**: Settings are intelligently merged with your existing configuration - your custom settings are preserved, and only new Open Agent Kit settings are added.
+Open Agent Kit includes three core features that are always enabled:
 
-**Upgrading**: Run `oak upgrade` to update IDE settings to the latest version.
+| Feature | Description |
+|---------|-------------|
+| **Rules Management** | Project constitution and coding standards for AI agents |
+| **Strategic Planning** | RFC workflow for documenting technical decisions |
+| **Codebase Intelligence** | Semantic code search, AST-aware indexing, and persistent memory |
 
-## Features
+### Language Parsers
 
-Open Agent Kit uses a modular feature system that lets you install only the workflows you need:
-
-| Feature | Description | Dependencies |
-|---------|-------------|--------------|
-| **constitution** | Engineering standards, architectural patterns, team conventions | None |
-| **rfc** | RFC workflow for documenting technical decisions | constitution |
-| **plan** | Issue-driven implementation planning with research, task breakdown, and validation | constitution |
-| **codebase-intelligence** | Semantic code search, AST-aware indexing, and persistent memory for AI agents | None |
-
-### Feature Selection
-
-During `oak init`, you can select which features to install. Features with dependencies automatically include their required features (e.g., selecting `rfc` will also install `constitution`).
-
-### Managing Features
+Add language support for better code understanding:
 
 ```bash
-# Interactive feature management
-oak feature
+# List available parsers and installation status
+oak languages list
 
-# List installed and available features
-oak feature list
+# Add language parsers
+oak languages add python javascript typescript
+oak languages add --all  # Install all 13 supported languages
 
-# Add a feature
-oak feature add rfc
-
-# Remove a feature (with dependency check)
-oak feature remove plan
-
-# Refresh features after config changes
-oak feature refresh
+# Remove parsers
+oak languages remove ruby php
 ```
 
-### Refreshing Features
-
-The `oak feature refresh` command re-renders all installed feature commands using your current configuration. This is useful when you've modified agent capabilities in `.oak/config.yaml` and want to apply those changes without upgrading the package.
-
-```bash
-# Edit agent capabilities in .oak/config.yaml
-# Then refresh to apply changes
-oak feature refresh
-```
+**Supported languages**: Python, JavaScript, TypeScript, Java, C#, Go, Rust, C, C++, Ruby, PHP, Kotlin, Scala
 
 ## Commands
 
@@ -151,49 +133,45 @@ oak feature refresh
 
 #### `oak init`
 
-Initialize Open Agent Kit in the current project. Creates the `.oak` directory structure with templates, configuration, and IDE settings.
+Initialize Open Agent Kit in the current project. Creates the `.oak` directory structure with configuration, agent command directories, and Codebase Intelligence data.
 
 **Multi-Agent Support**: You can initialize with multiple agents to support teams using different AI tools. Running `oak init` on an already-initialized project will let you add more agents.
-
-**IDE Configuration**: During init, you'll be prompted to select which IDEs to configure (VSCode, Cursor, or none). This installs auto-approval settings for `oak` commands.
 
 Options:
 
 - `--agent, -a`: Choose AI agent(s) - can be specified multiple times (claude, copilot, codex, cursor, gemini, windsurf)
-- `--ide, -i`: Choose IDE(s) to configure - can be specified multiple times (vscode, cursor, none)
-- `--feature, -f`: Choose feature(s) to install - can be specified multiple times (constitution, rfc, issues, none)
-- `--force`: Force re-initialization
-- `--no-interactive`: Skip interactive prompts
+- `--language, -l`: Choose language(s) for code intelligence - can be specified multiple times (python, javascript, typescript, java, csharp, go, rust, c, cpp, ruby, php, kotlin, scala)
+- `--force, -f`: Force re-initialization
+- `--no-interactive`: Skip interactive prompts and use defaults
 
 Examples:
 
 ```bash
-# Interactive mode with multi-select checkboxes (agents, IDEs, and features)
+# Interactive mode with multi-select checkboxes (agents and languages)
 oak init
 
-# With specific agent, IDE, and features
-oak init --agent claude --ide vscode --feature constitution --feature rfc
+# With specific agent and languages
+oak init --agent claude --language python --language typescript
 
-# Multiple agents and IDEs with all features
-oak init --agent claude --agent copilot --ide vscode --ide cursor
+# Multiple agents with default languages
+oak init --agent claude --agent copilot
 
-# Skip IDE configuration, install only constitution
-oak init --agent claude --ide none --feature constitution
+# Non-interactive with defaults
+oak init --agent claude --no-interactive
 
-# Add agents to existing installation (preserves existing features)
+# Add agents to existing installation
 oak init --agent cursor  # Adds Cursor to existing setup
 ```
 
 #### `oak upgrade`
 
-Upgrade Open Agent Kit templates, agent commands, and IDE settings to the latest versions from the package.
+Upgrade Open Agent Kit templates and agent commands to the latest versions from the package.
 
 **What gets upgraded:**
 
 - **Agent commands**: Updates command templates with latest features
 - **Feature templates**: Replaced with latest versions
-- **IDE settings**: Smart merge with existing settings - your custom settings are preserved
-- **Core**: Updates shared scripts, config, and state
+- **Agent settings**: Smart merge with existing settings - your custom settings are preserved
 
 Options:
 
@@ -207,23 +185,32 @@ Examples:
 # Preview what would be upgraded
 oak upgrade --dry-run
 
-# Upgrade everything (with confirmation) - includes IDE settings
+# Upgrade everything (with confirmation)
 oak upgrade
 
-# Upgrade only agent commands (safe)
+# Upgrade only agent commands
 oak upgrade --commands
 
-# Upgrade only command templates
+# Upgrade only templates
 oak upgrade --templates --force
 ```
 
-### AI Agent Commands (Primary Workflow)
+### AI Agent Skills
 
-These commands are available in your AI agent interface after running `oak init --agent <name>`:
+After initialization, skills provide specialized capabilities to your AI agent:
 
-- [Constitution Management](docs/features/constitution.md)
-- [RFC Management](docs/features/rfc.md)
-- [Plan Management](docs/features/plan.md) - Issue-driven implementation planning
+- **project-rules** — Create and maintain project constitutions with coding standards
+- **creating-rfcs** — Create RFC documents for technical decisions
+- **reviewing-rfcs** — Review and validate RFC documents
+
+Manage skills with the `oak skill` command:
+
+```bash
+oak skill list         # List available skills
+oak skill install <n>  # Install a skill
+oak skill remove <n>   # Remove a skill
+oak skill refresh      # Refresh all installed skills
+```
 
 ## Configuration
 
@@ -235,55 +222,44 @@ agents:
   - claude
   - copilot
 
-features:
-  enabled:
-    - constitution
-    - rfc
-    - plan
-
 rfc:
   directory: oak/rfc
   template: engineering
   auto_number: true
+  number_format: sequential
   validate_on_create: true
-
-# Agent capabilities (auto-populated from agent manifests)
-agent_capabilities:
-  claude:
-    has_background_agents: true
-    has_native_web: true
-    has_mcp: true
-    reasoning_tier: high
-    context_handling: large
-  copilot:
-    has_background_agents: false
-    has_native_web: false
-    has_mcp: false
-    reasoning_tier: variable
-    context_handling: medium
 ```
 
-### Agent Capabilities
+### RFC Templates
 
-Agent capabilities control how feature commands are rendered for each agent. These are auto-populated from agent manifests during `oak init`, but you can override them:
+Available RFC templates (specified via `--template` on `oak rfc create`):
 
-| Capability | Description |
-|-----------|-------------|
-| `has_background_agents` | Agent supports spawning background/parallel agents |
-| `has_native_web` | Agent has built-in web search/fetch capabilities |
-| `has_mcp` | Agent supports Model Context Protocol servers |
-| `reasoning_tier` | Agent reasoning capability: `high`, `medium`, `basic`, or `variable` |
-| `context_handling` | Context window size: `large` (1M+), `medium` (100K+), or `small` |
-| `model_consistency` | Model availability: `high` (first-party), `medium`, or `variable` |
+- `engineering` — Engineering RFC Template (default)
+- `architecture` — Architecture Decision Record
+- `feature` — Feature Proposal
+- `process` — Process Improvement
 
-**Capability Tiers**: Commands are rendered differently based on agent capabilities. High-reasoning agents (Claude, Codex, Gemini) receive concise, autonomous prompts. Variable-reasoning agents (Copilot, Cursor, Windsurf) receive more detailed step-by-step guidance.
+### Codebase Intelligence
 
-**Customizing Capabilities:**
+The CI daemon runs locally and exposes MCP tools for AI agents:
 
-1. Edit `.oak/config.yaml` to change capability values
-2. Run `oak feature refresh` to re-render commands with new capabilities
+| Tool | Description |
+|------|-------------|
+| `oak_search` | Semantic search over code, memories, and implementation plans |
+| `oak_remember` | Store observations (gotchas, decisions, discoveries, bug fixes) for future sessions |
+| `oak_context` | Get relevant context for the current task |
 
-This allows you to tune command prompts based on your agent's actual capabilities.
+**Daemon Commands:**
+
+```bash
+oak ci status      # Show daemon status and index statistics
+oak ci start       # Start the daemon
+oak ci start -o    # Start and open dashboard in browser
+oak ci stop        # Stop the daemon
+oak ci restart     # Restart the daemon
+oak ci reset       # Clear all indexed data
+oak ci logs -f     # Follow daemon logs
+```
 
 ## AI Agent Integration
 
@@ -379,14 +355,15 @@ uv tool uninstall open-agent-kit
 pip uninstall open-agent-kit
 ```
 
-**Note**: This removes the CLI tool but does not delete project files created by `oak init` (`.oak/`, agent command directories, etc.). To clean up a project, manually delete:
+**Note**: This removes the CLI tool but does not delete project files created by `oak init` (`.oak/`, agent command directories, etc.). To clean up a project, run `oak remove` or manually delete:
 
-- `.oak/` - Configuration and templates
-- `.vscode/settings.json` - VSCode settings (if no other settings)
-- `.cursor/settings.json` - Cursor settings (if no other settings)
-- `.claude/commands/oak.*` - Claude commands
-- `.github/agents/oak.*` - Copilot commands
-- Agent instruction file references to `oak/constitution.md`
+- `.oak/` - Configuration and CI data
+- `.claude/` - Claude commands and settings
+- `.github/agents/` - Copilot commands
+- `.cursor/commands/` - Cursor commands
+- `.codex/prompts/` - Codex commands
+- `.gemini/commands/` - Gemini commands
+- `.windsurf/commands/` - Windsurf commands
 
 ## Removing from a Project
 
@@ -398,14 +375,13 @@ oak remove
 ```
 
 This command will:
-- Remove the `.oak` directory
+- Remove the `.oak` directory (configuration and CI data)
 - Remove agent-specific command files (e.g., `.claude/commands/oak.*`)
-- Remove IDE settings added by OAK (unless `--keep-ide-settings` is used)
+- Remove agent settings files added by OAK
 - Clean up empty directories created by OAK
 
 It will **not** remove:
-- Generated artifacts in the `oak/` directory (RFCs, constitution, etc.)
-- Files you have modified after OAK created them
+- User content in the `oak/` directory (RFCs, constitution, etc.)
 - The `oak` CLI tool itself
 
 ## Troubleshooting

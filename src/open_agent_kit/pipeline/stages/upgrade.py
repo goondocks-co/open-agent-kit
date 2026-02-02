@@ -438,6 +438,65 @@ class UpgradeSkillsStage(BaseStage):
         )
 
 
+class UpgradeAgentTasksStage(BaseStage):
+    """Install and upgrade CI agent tasks."""
+
+    name = "upgrade_agent_tasks"
+    display_name = "Upgrading agent tasks"
+    order = 242
+    applicable_flows = {FlowType.UPGRADE}
+    is_critical = False
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Run if there are agent tasks to install or upgrade."""
+        if context.dry_run:
+            return False
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
+        plan = plan_result.get("plan", {})
+        agent_tasks_plan = plan.get("agent_tasks", {})
+        return bool(agent_tasks_plan.get("install") or agent_tasks_plan.get("upgrade"))
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Install and upgrade agent tasks."""
+        from open_agent_kit.services.upgrade_service import UpgradeService
+
+        upgrade_service = UpgradeService(context.project_root)
+        plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
+        plan: dict[str, Any] = plan_result.get("plan", {})
+        agent_tasks_plan = plan.get("agent_tasks", {})
+
+        # Process task installations
+        install_result = process_items(
+            agent_tasks_plan.get("install", []),
+            upgrade_service._install_agent_task,
+            lambda info: info["task"],
+        )
+
+        # Process task upgrades
+        upgrade_result = process_items(
+            agent_tasks_plan.get("upgrade", []),
+            upgrade_service._upgrade_agent_task,
+            lambda info: info["task"],
+        )
+
+        # Combine results
+        all_succeeded = install_result.succeeded + upgrade_result.succeeded
+        all_failed = install_result.failed + upgrade_result.failed
+
+        message = format_count_message(
+            "Processed", len(all_succeeded), len(all_failed), "agent task"
+        )
+
+        return StageOutcome.success(
+            message,
+            data={
+                "installed": install_result.succeeded,
+                "upgraded": upgrade_result.succeeded,
+                "failed": all_failed,
+            },
+        )
+
+
 class UpgradeHooksStage(BaseStage):
     """Upgrade feature hooks for agents."""
 
@@ -635,6 +694,7 @@ def get_upgrade_stages() -> list[BaseStage]:
         # Note: UpgradeHooksStage removed - handled by reconciliation
         UpgradeGitignoreStage(),
         UpgradeSkillsStage(),  # Upgrades outdated skill files
+        UpgradeAgentTasksStage(),  # Installs/upgrades CI agent tasks
         RunMigrationsStage(),
         UpdateVersionStage(),
         TriggerPostUpgradeHooksStage(),

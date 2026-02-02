@@ -118,6 +118,7 @@ async def list_agents() -> AgentListResponse:
                     max_turns=effective_max_turns,
                     timeout_seconds=effective_timeout,
                     has_execution_override=has_override,
+                    is_builtin=inst.is_builtin,
                 )
             )
 
@@ -379,6 +380,46 @@ async def create_instance(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Failed to write instance file: {e}") from e
+
+
+@router.post("/instances/{instance_name}/copy")
+async def copy_instance(
+    instance_name: str,
+    new_name: str | None = Query(default=None, description="New name for the copy"),
+) -> dict:
+    """Copy an instance to the user's instances directory.
+
+    Useful for customizing built-in tasks. The copy becomes a user-owned
+    instance that can be freely modified.
+
+    Args:
+        instance_name: Name of the instance to copy.
+        new_name: Optional new name for the copy.
+
+    Returns:
+        Copied instance details.
+    """
+    registry, _executor, _state = _get_agent_components()
+
+    try:
+        instance = registry.copy_task(instance_name, new_name)
+
+        return {
+            "success": True,
+            "message": f"Copied instance '{instance_name}' to '{instance.name}'",
+            "instance": {
+                "name": instance.name,
+                "display_name": instance.display_name,
+                "agent_type": instance.agent_type,
+                "description": instance.description,
+                "instance_path": instance.instance_path,
+                "is_builtin": instance.is_builtin,
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to copy instance: {e}") from e
 
 
 # =============================================================================

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Upgrade logic for built-in task templates with stable identifier support — [Implement upgrade logic for built‑in task templates](http://localhost:38167/activity/sessions/73094f41-9caa-4c8b-b2ad-5594e21f49b3)
 - Filter chips and context indicator for daemon log viewer — [Add filter chips and context indicator to daemon log viewer](http://localhost:38167/activity/sessions/735f34fd-3899-437e-848f-e279228138dd)
 - Minimum activity check before generating session titles — [Add minimum activity check before generating session titles](http://localhost:38167/activity/sessions/a812c6a9-27ad-4893-b5ae-17c25f17160e)
 - Safe reset all processing state with confirmation dialog — [Implement safe reset all processing state with confirmation](http://localhost:38167/activity/sessions/16d4bd63-87a7-4fc9-88a1-f85fcbc3be4c)
@@ -33,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactor Agent Instance to Configuration across UI and API — [Refactor Agent Instance to Configuration across UI and API](http://localhost:38167/activity/sessions/9017876a-5cab-4c1c-b5da-89f97cd24ca0)
+- Configure plan capture workflow for Claude sessions — [Configure plan capture workflow for Claude sessions](http://localhost:38167/activity/sessions/96d99f2a-0e0f-449d-b3b3-ccd584f944a7)
 - Removed unused issue provider functionality — [Refactor codebase: Remove unused issue provider](http://localhost:38167/activity/sessions/479bf687-46dd-4366-a1d6-b7d8163d7396)
 - Enabled all CI features by default in Oak — [Refactor Oak to enable all CI features by default](http://localhost:38167/activity/sessions/d284e22a-f111-4439-b5fc-50adc873afff)
 - Refactored agent hook installation to manifest-driven approach — [Refactor agent hook installation to manifest‑driven approach](http://localhost:38167/activity/sessions/23385f20-190f-4927-a703-a67a8dbadafc)
@@ -48,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Renamed agent tasks now correctly installed during upgrade (name-based lookup replaced with stable identifiers) — [Implement upgrade logic for built‑in task templates](http://localhost:38167/activity/sessions/73094f41-9caa-4c8b-b2ad-5594e21f49b3)
 - Fixed Vite configuration causing UI build failure — [Configure minimal Vite config to fix UI build](http://localhost:38167/activity/sessions/c0457435-38b1-4d48-bd53-af22a6ac08ae)
 - Fixed UI build error related to dependency injection setup — [Fix UI build error and outline DI plan](http://localhost:38167/activity/sessions/461a8c4d-b772-4f41-8075-f4dd993ea874)
 - Fixed filter chips in Logs page clearing entire log list instead of filtering — see [`Logs.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/pages/Logs.tsx)

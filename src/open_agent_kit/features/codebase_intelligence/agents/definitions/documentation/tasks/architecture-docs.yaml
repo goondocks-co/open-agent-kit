@@ -1,0 +1,190 @@
+# =============================================================================
+# Built-in Task: Architecture Documentation
+# =============================================================================
+# Task for: documentation agent
+#
+# Documents architecture by exploring CODE to understand what exists, then
+# enriching with CI memories to capture WHY it's designed that way.
+#
+# To customize: Copy to oak/ci/agents/architecture-docs.yaml and modify as needed.
+# =============================================================================
+
+name: architecture-docs
+display_name: "Architecture Documentation"
+agent_type: documentation
+description: >
+  Documents architecture by first exploring the codebase structure, then
+  enriching with CI memories to capture decisions, trade-offs, and rationale.
+
+default_task: |
+  Create or update architecture documentation for this project.
+
+  ## 0. Check Existing Documentation First
+  - Use Glob to find existing: docs/architecture/*.md, ARCHITECTURE.md
+  - Read existing ADRs and overview documents
+  - Note: which decisions are already documented, what's missing
+  - This task ADDS new documentation, doesn't rewrite existing ADRs
+
+  ## 1. Explore the Actual Architecture (Code is Truth)
+
+  **Discover the structure:**
+  - Use Glob to find top-level directories and understand organization
+  - Look for: src/, lib/, app/, services/, models/, features/, components/
+  - Identify the architectural pattern: monolith, modular, microservices, etc.
+
+  **Find key abstractions:**
+  - Use Grep to find base classes, interfaces, abstract patterns
+  - Look for: "class.*Base", "interface", "abstract", "Protocol"
+  - Read these files to understand the core abstractions
+
+  **Map dependencies:**
+  - Check pyproject.toml, package.json, requirements.txt for external deps
+  - Use Grep to find imports between modules
+  - Identify which components depend on which
+
+  **Identify patterns:**
+  - Look for common patterns: Repository, Service, Factory, etc.
+  - Check for consistent naming conventions
+  - Find how error handling is structured
+
+  ## 2. Gather the "Why" from CI (Context & Rationale)
+
+  - ci_memories(type="decision") → Why architectural choices were made
+  - ci_memories(type="trade_off") → What alternatives were considered
+  - ci_memories(type="gotcha") → What to watch out for
+  - ci_search(type="plans") → Original design documents if they exist
+
+  ## 3. Write Architecture Documentation (Incremental)
+
+  **Update strategy:**
+  - CREATE new ADRs for decisions not yet documented
+  - UPDATE overview doc if architecture has changed
+  - KEEP existing ADRs unchanged (they're historical records)
+  - Only DEPRECATE an ADR if the decision was reversed
+
+  **Overview document (ARCHITECTURE.md or docs/architecture/README.md):**
+  - Update if structure changed, otherwise leave alone
+  - Directory/module structure with explanations
+  - Key patterns and conventions used
+  - Data flow between components
+
+  **ADR-style docs for NEW decisions only:**
+  ```markdown
+  # ADR: {Decision Title}
+
+  ## Status: Accepted | Proposed | Deprecated
+
+  ## Context
+  {Why this decision was needed — from CI plans/memories}
+
+  ## Decision
+  {What was decided — link to actual implementation}
+
+  ## Consequences
+  - Positive: {Benefits}
+  - Negative: {Trade-offs from CI memories}
+  - Gotchas: {Warnings from CI memories}
+
+  ## Implementation
+  - [Core implementation](../../src/path/to/code.py)
+  ```
+
+  ## 4. Link Everything Together
+  - Link decisions to the actual code that implements them
+  - Reference related decisions
+  - Connect gotchas to the code they apply to
+
+  Code shows WHAT and HOW. CI memories preserve WHY.
+  Together they create architecture docs that actually help.
+
+# Execution limits (thorough documentation)
+execution:
+  timeout_seconds: 600
+  max_turns: 100
+  permission_mode: acceptEdits
+
+# Files this task maintains
+maintained_files:
+  - path: "{project_root}/docs/architecture/*.md"
+    purpose: "Architecture Decision Records (ADRs)"
+    naming: "docs/architecture/{number}-{decision-name}.md"
+    auto_create: true
+
+  - path: "{project_root}/docs/architecture/README.md"
+    purpose: "Architecture overview and index"
+    auto_create: true
+
+  - path: "{project_root}/ARCHITECTURE.md"
+    purpose: "High-level architecture overview"
+    auto_create: true
+
+# CI queries to gather context
+ci_queries:
+  discovery:
+    - tool: ci_memories
+      filter: decision
+      limit: 50
+      purpose: "Find all architectural decisions"
+      required: true
+
+    - tool: ci_memories
+      filter: trade_off
+      limit: 30
+      purpose: "Find explicit trade-offs"
+      required: true
+
+  context:
+    - tool: ci_search
+      query_template: "architecture design"
+      search_type: plans
+      min_confidence: medium
+      limit: 15
+      purpose: "Find original design documents"
+
+    - tool: ci_memories
+      filter: gotcha
+      limit: 20
+      purpose: "Find architecture-related gotchas"
+
+    - tool: ci_project_stats
+      purpose: "Understand codebase structure"
+
+  verification:
+    - tool: ci_sessions
+      limit: 15
+      include_summary: true
+      purpose: "Find sessions where decisions were made"
+
+# Output format
+output_requirements:
+  required_sections:
+    - name: "Context"
+      source: "plans"
+      description: "Why the decision was needed"
+    - name: "Decision"
+      source: "memories"
+      description: "What was decided"
+    - name: "Consequences"
+      source: "memories"
+      description: "Trade-offs and implications"
+    - name: "Gotchas"
+      source: "memories"
+      description: "Warnings from gotcha memories"
+  format: "adr"
+  link_sources: true
+
+# Style preferences
+style:
+  tone: "technical"
+  include_examples: true
+  link_code_files: true
+  code_link_format: "relative"
+  link_sessions: true
+  conventions:
+    - "Use ADR format for each decision"
+    - "Always include Context explaining why"
+    - "Document both positive and negative consequences"
+    - "Link to implementation code"
+    - "Reference related decisions"
+
+schema_version: 1
