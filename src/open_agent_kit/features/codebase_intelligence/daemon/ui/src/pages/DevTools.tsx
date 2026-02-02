@@ -3,12 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Play, RefreshCw, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench, MessageSquare } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { AlertCircle, CheckCircle2, Play, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench, FileCode, HardDrive, Eraser } from "lucide-react";
 // Note: Backup functionality moved to Team page
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { API_ENDPOINTS, MEMORY_SYNC_STATUS, MESSAGE_TYPES } from "@/lib/constants";
+import { useStatus } from "@/hooks/use-status";
+
+/** Confirmation text required for the nuclear reset option */
+const RESET_CONFIRM_TEXT = "REBUILD";
 
 /** Refetch interval for memory stats (5 seconds) */
 const MEMORY_STATS_REFETCH_INTERVAL_MS = 5000;
@@ -17,6 +22,7 @@ interface MemoryStats {
     sqlite: { total: number; embedded: number; unembedded: number; plans_embedded?: number; plans_unembedded?: number };
     chromadb: { count: number };
     sync_status: string;
+    sync_difference?: number;  // Positive = orphaned, negative = missing
     needs_rebuild: boolean;
 }
 
@@ -50,13 +56,16 @@ interface MaintenanceResult {
 export default function DevTools() {
     const queryClient = useQueryClient();
     const [message, setMessage] = useState<{ type: typeof MESSAGE_TYPES.SUCCESS | typeof MESSAGE_TYPES.ERROR, text: string } | null>(null);
-    const [clearChromaFirst, setClearChromaFirst] = useState(false);
     const [dryRunResult, setDryRunResult] = useState<ReprocessDryRunResult | null>(null);
     const [showDryRunDialog, setShowDryRunDialog] = useState(false);
+    const [showResetDialog, setShowResetDialog] = useState(false);
+    const [showCompactDialog, setShowCompactDialog] = useState(false);
+    const [showCleanupDialog, setShowCleanupDialog] = useState(false);
     const [maintenanceOpts, setMaintenanceOpts] = useState({
         vacuum: true,
         analyze: true,
         fts_optimize: true,
+        reindex: false,
         integrity_check: false,
     });
 
@@ -67,10 +76,54 @@ export default function DevTools() {
         refetchInterval: MEMORY_STATS_REFETCH_INTERVAL_MS,
     });
 
+    // Fetch status for code index stats
+    const { data: status } = useStatus();
+
+    const compactChromaDBFn = useMutation({
+        mutationFn: () => fetchJson<{ message?: string; size_before_mb?: number }>(
+            API_ENDPOINTS.DEVTOOLS_COMPACT_CHROMADB,
+            { method: "POST" }
+        ),
+        onSuccess: (data) => {
+            setShowCompactDialog(false);
+            const msg = data.size_before_mb
+                ? `${data.message} (${data.size_before_mb}MB before compaction)`
+                : data.message || "ChromaDB compaction started.";
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: msg });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
+            queryClient.invalidateQueries({ queryKey: ["status"] });
+        },
+        onError: (err: Error) => {
+            setShowCompactDialog(false);
+            // Handle "indexing in progress" error specially
+            const errorMsg = err.message || "Failed to compact ChromaDB";
+            if (errorMsg.includes("indexing is in progress")) {
+                setMessage({ type: MESSAGE_TYPES.ERROR, text: "Cannot compact while indexing is in progress. Please wait for the current index build to complete and try again." });
+            } else {
+                setMessage({ type: MESSAGE_TYPES.ERROR, text: errorMsg });
+            }
+        }
+    });
+
     const rebuildIndexFn = useMutation({
         mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
-        onSuccess: () => setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Index rebuild started in background." }),
-        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to start rebuild" })
+        onSuccess: () => {
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Code index rebuild started in background." });
+            queryClient.invalidateQueries({ queryKey: ["status"] });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to start code index rebuild" })
+    });
+
+    const reembedSessionsFn = useMutation({
+        mutationFn: () => fetchJson<{ success: boolean; sessions_processed: number; sessions_embedded: number; message: string }>(
+            API_ENDPOINTS.DEVTOOLS_REEMBED_SESSIONS,
+            { method: "POST" }
+        ),
+        onSuccess: (data) => {
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || `Re-embedded ${data.sessions_embedded} session summaries` });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to re-embed session summaries" })
     });
 
     const rebuildMemoriesFn = useMutation({
@@ -79,7 +132,6 @@ export default function DevTools() {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || "Memory re-embedding started." });
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
             queryClient.invalidateQueries({ queryKey: ["status"] });
-            setClearChromaFirst(false);
         },
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to rebuild memories" })
     });
@@ -174,15 +226,21 @@ export default function DevTools() {
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to backfill hashes" })
     });
 
-    const reembedSessionsFn = useMutation({
-        mutationFn: () => fetchJson<{ success: boolean; sessions_processed: number; sessions_embedded: number; message: string }>(
-            API_ENDPOINTS.DEVTOOLS_REEMBED_SESSIONS,
+    const cleanupMinimalSessionsFn = useMutation({
+        mutationFn: () => fetchJson<{ status: string; message: string; deleted_count: number; deleted_ids: string[] }>(
+            API_ENDPOINTS.DEVTOOLS_CLEANUP_MINIMAL_SESSIONS,
             { method: "POST" }
         ),
         onSuccess: (data) => {
-            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || `Re-embedded ${data.sessions_embedded} session summaries` });
+            setShowCleanupDialog(false);
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+            queryClient.invalidateQueries({ queryKey: ["status"] });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
         },
-        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to re-embed session summaries" })
+        onError: (err: Error) => {
+            setShowCleanupDialog(false);
+            setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to cleanup sessions" });
+        }
     });
 
     return (
@@ -193,108 +251,144 @@ export default function DevTools() {
             </div>
 
             {message && (
-                <Alert variant={message.type === MESSAGE_TYPES.ERROR ? "destructive" : "default"} className={message.type === MESSAGE_TYPES.SUCCESS ? "border-green-500 text-green-600 bg-green-50" : ""}>
+                <Alert variant={message.type === MESSAGE_TYPES.ERROR ? "destructive" : "default"} className={message.type === MESSAGE_TYPES.SUCCESS ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400" : ""}>
                     {message.type === MESSAGE_TYPES.SUCCESS ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                    <AlertTitle>{message.type === MESSAGE_TYPES.SUCCESS ? "Success" : "Error"}</AlertTitle>
-                    <AlertDescription>{message.text}</AlertDescription>
+                    <div>
+                        <AlertTitle>{message.type === MESSAGE_TYPES.SUCCESS ? "Success" : "Error"}</AlertTitle>
+                        <AlertDescription>{message.text}</AlertDescription>
+                    </div>
                 </Alert>
             )}
 
-            {/* Memory Stats Card */}
-            {memoryStats && (
-                <Card className={memoryStats.needs_rebuild ? "border-yellow-500" : ""}>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Brain className="h-5 w-5" /> Memory Status
-                            {memoryStats.needs_rebuild && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
-                        </CardTitle>
-                        <CardDescription>
-                            {memoryStats.sync_status === MEMORY_SYNC_STATUS.SYNCED && "All memories are synced."}
-                            {memoryStats.sync_status === MEMORY_SYNC_STATUS.PENDING_EMBED && `${memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)} items pending embedding.`}
-                            {memoryStats.sync_status === MEMORY_SYNC_STATUS.OUT_OF_SYNC && "ChromaDB has orphaned entries. Use 'Clear orphaned entries' below to fix."}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                            <div>
-                                <div className="text-2xl font-bold">{memoryStats.sqlite.embedded + (memoryStats.sqlite.plans_embedded || 0)}</div>
-                                <div className="text-xs text-muted-foreground">SQLite Total</div>
-                                <div className="text-xs text-muted-foreground/60">({memoryStats.sqlite.embedded} memories + {memoryStats.sqlite.plans_embedded || 0} plans)</div>
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold">{memoryStats.chromadb.count}</div>
-                                <div className="text-xs text-muted-foreground">ChromaDB</div>
-                            </div>
-                            <div>
-                                <div className={`text-2xl font-bold ${(memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)) > 0 ? "text-yellow-500" : ""}`}>
-                                    {memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)}
+            {/* Index Stats Cards */}
+            <div className="grid gap-4 md:grid-cols-2">
+                {/* Code Index Stats Card */}
+                {status?.index_stats && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <FileCode className="h-5 w-5" /> Code Index
+                            </CardTitle>
+                            <CardDescription>
+                                Codebase vector embeddings for semantic search.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                                <div>
+                                    <div className="text-2xl font-bold">{status.index_stats.files_indexed || 0}</div>
+                                    <div className="text-xs text-muted-foreground">Files Indexed</div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">Pending</div>
+                                <div>
+                                    <div className="text-2xl font-bold">{status.index_stats.chunks_indexed?.toLocaleString() || 0}</div>
+                                    <div className="text-xs text-muted-foreground">Code Chunks</div>
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-bold">{status.storage?.total_size_mb || "0"}</div>
+                                    <div className="text-xs text-muted-foreground">Storage (MB)</div>
+                                </div>
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Memory Stats Card */}
+                {memoryStats && (
+                    <Card className={memoryStats.needs_rebuild ? "border-yellow-500" : ""}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Brain className="h-5 w-5" /> Memory Status
+                                {memoryStats.needs_rebuild && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                            </CardTitle>
+                            <CardDescription>
+                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.SYNCED && "All memories are synced."}
+                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.PENDING_EMBED && `${memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)} items pending embedding.`}
+                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.ORPHANED && `ChromaDB has ${memoryStats.sync_difference || 0} orphaned entries. Use 'Clear orphaned entries' below to fix.`}
+                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.MISSING && `ChromaDB is missing ${Math.abs(memoryStats.sync_difference || 0)} entries. Use 'Re-embed Memories' below to fix.`}
+                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.OUT_OF_SYNC && "ChromaDB is out of sync. Use 'Re-embed Memories' below to fix."}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                                <div>
+                                    <div className="text-2xl font-bold">{memoryStats.sqlite.embedded + (memoryStats.sqlite.plans_embedded || 0)}</div>
+                                    <div className="text-xs text-muted-foreground">SQLite Total</div>
+                                    <div className="text-xs text-muted-foreground/60">({memoryStats.sqlite.embedded} memories + {memoryStats.sqlite.plans_embedded || 0} plans)</div>
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-bold">{memoryStats.chromadb.count}</div>
+                                    <div className="text-xs text-muted-foreground">ChromaDB</div>
+                                </div>
+                                <div>
+                                    <div className={`text-2xl font-bold ${(memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)) > 0 ? "text-yellow-500" : ""}`}>
+                                        {memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Pending</div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-                {/* Indexing & Embedding Tools (ChromaDB-focused) */}
+                {/* ChromaDB Storage Management */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5" /> Indexing & Embedding</CardTitle>
-                        <CardDescription>Manage ChromaDB vector indexes.</CardDescription>
+                        <CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5" /> ChromaDB Maintenance</CardTitle>
+                        <CardDescription>Manage vector index storage and reclaim disk space.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <Button
                             variant="secondary"
+                            onClick={() => setShowCompactDialog(true)}
+                            disabled={compactChromaDBFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <HardDrive className={`mr-2 h-4 w-4 ${compactChromaDBFn.isPending ? "animate-spin" : ""}`} />
+                            {compactChromaDBFn.isPending ? "Compacting..." : "Compact All (Reclaim Space)"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Rebuilds all ChromaDB collections from SQLite. This is the <strong>only way to reclaim disk space</strong> after deletions.
+                        </p>
+
+                        <div className="h-px bg-border my-4" />
+                        <p className="text-xs text-muted-foreground font-medium">Individual Collection Rebuilds:</p>
+
+                        <Button
+                            variant="outline"
                             onClick={() => rebuildIndexFn.mutate()}
                             disabled={rebuildIndexFn.isPending}
                             className="w-full justify-start"
+                            size="sm"
                         >
-                            <RefreshCw className={`mr-2 h-4 w-4 ${rebuildIndexFn.isPending ? "animate-spin" : ""}`} />
-                            {rebuildIndexFn.isPending ? "Rebuilding..." : "Rebuild Codebase Index"}
+                            <FileCode className={`mr-2 h-4 w-4 ${rebuildIndexFn.isPending ? "animate-spin" : ""}`} />
+                            {rebuildIndexFn.isPending ? "Rebuilding..." : "Rebuild Code Index"}
                         </Button>
-                        <p className="text-xs text-muted-foreground">
-                            Forces a complete re-scan of the codebase and updates the vector store. Useful if the index is out of sync with files.
-                        </p>
-
-                        <div className="h-px bg-border my-4" />
 
                         <Button
-                            variant="secondary"
+                            variant="outline"
                             onClick={() => reembedSessionsFn.mutate()}
                             disabled={reembedSessionsFn.isPending}
                             className="w-full justify-start"
+                            size="sm"
                         >
-                            <MessageSquare className={`mr-2 h-4 w-4 ${reembedSessionsFn.isPending ? "animate-pulse" : ""}`} />
+                            <Database className={`mr-2 h-4 w-4 ${reembedSessionsFn.isPending ? "animate-pulse" : ""}`} />
                             {reembedSessionsFn.isPending ? "Re-embedding..." : "Re-embed Session Summaries"}
                         </Button>
-                        <p className="text-xs text-muted-foreground">
-                            Re-embeds all session summaries from SQLite to ChromaDB. Use after backup restore or to enable session search.
-                        </p>
 
-                        <div className="h-px bg-border my-4" />
-
-                        <div className="flex items-center gap-2 mb-2">
-                            <Checkbox
-                                id="clear-chroma-first"
-                                checked={clearChromaFirst}
-                                onCheckedChange={(checked) => setClearChromaFirst(checked === true)}
-                            />
-                            <Label htmlFor="clear-chroma-first" className="text-sm">
-                                Clear orphaned entries first
-                            </Label>
-                        </div>
                         <Button
-                            variant="secondary"
-                            onClick={() => rebuildMemoriesFn.mutate(clearChromaFirst)}
+                            variant="outline"
+                            onClick={() => rebuildMemoriesFn.mutate(true)}
                             disabled={rebuildMemoriesFn.isPending}
                             className="w-full justify-start"
+                            size="sm"
                         >
                             <Brain className={`mr-2 h-4 w-4 ${rebuildMemoriesFn.isPending ? "animate-pulse" : ""}`} />
                             {rebuildMemoriesFn.isPending ? "Re-embedding..." : "Re-embed Memories"}
                         </Button>
-                        <p className="text-xs text-muted-foreground">
-                            Re-embeds all memories from SQLite to ChromaDB. Check "Clear orphaned entries" to remove stale data after restores or deletions.
+                        <p className="text-xs text-muted-foreground/70">
+                            Use individual rebuilds when only one collection needs updating.
                         </p>
                     </CardContent>
                 </Card>
@@ -351,11 +445,7 @@ export default function DevTools() {
 
                         <Button
                             variant="destructive"
-                            onClick={() => {
-                                if (confirm("Are you sure? This will DELETE all existing memory observations and force re-processing of all history.")) {
-                                    resetProcessingFn.mutate();
-                                }
-                            }}
+                            onClick={() => setShowResetDialog(true)}
                             disabled={resetProcessingFn.isPending}
                             className="w-full justify-start"
                         >
@@ -363,7 +453,7 @@ export default function DevTools() {
                             {resetProcessingFn.isPending ? "Resetting..." : "Reset All Processing State"}
                         </Button>
                         <p className="text-xs text-muted-foreground">
-                            Deletes generated memories and marks all past sessions as "unprocessed". The system will re-read activity logs and regenerate memories.
+                            <strong>Nuclear option.</strong> Deletes all generated memories and marks all past sessions as "unprocessed". The system will re-read activity logs and regenerate memories. This is time-consuming for large histories.
                         </p>
                     </CardContent>
                 </Card>
@@ -408,6 +498,16 @@ export default function DevTools() {
                             </div>
                             <div className="flex items-center gap-2">
                                 <Checkbox
+                                    id="maint-reindex"
+                                    checked={maintenanceOpts.reindex}
+                                    onCheckedChange={(checked) => setMaintenanceOpts(o => ({ ...o, reindex: checked === true }))}
+                                />
+                                <Label htmlFor="maint-reindex" className="text-sm">
+                                    REINDEX <span className="text-muted-foreground">(rebuild indexes)</span>
+                                </Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
                                     id="maint-integrity"
                                     checked={maintenanceOpts.integrity_check}
                                     onCheckedChange={(checked) => setMaintenanceOpts(o => ({ ...o, integrity_check: checked === true }))}
@@ -421,7 +521,7 @@ export default function DevTools() {
                         <Button
                             variant="secondary"
                             onClick={() => maintenanceFn.mutate()}
-                            disabled={maintenanceFn.isPending || (!maintenanceOpts.vacuum && !maintenanceOpts.analyze && !maintenanceOpts.fts_optimize && !maintenanceOpts.integrity_check)}
+                            disabled={maintenanceFn.isPending || (!maintenanceOpts.vacuum && !maintenanceOpts.analyze && !maintenanceOpts.fts_optimize && !maintenanceOpts.reindex && !maintenanceOpts.integrity_check)}
                             className="w-full justify-start"
                         >
                             <Wrench className={`mr-2 h-4 w-4 ${maintenanceFn.isPending ? "animate-spin" : ""}`} />
@@ -445,9 +545,74 @@ export default function DevTools() {
                         <p className="text-xs text-muted-foreground">
                             Compute content_hash for records missing them. Run after reprocessing to ensure deduplication works during backup/restore.
                         </p>
+
+                        <div className="h-px bg-border my-4" />
+
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowCleanupDialog(true)}
+                            disabled={cleanupMinimalSessionsFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <Eraser className={`mr-2 h-4 w-4 ${cleanupMinimalSessionsFn.isPending ? "animate-pulse" : ""}`} />
+                            {cleanupMinimalSessionsFn.isPending ? "Cleaning..." : "Cleanup Low-Quality Sessions"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Delete completed sessions with &lt;3 activities. These sessions will never be summarized or embedded, so keeping them just creates clutter.
+                        </p>
                     </CardContent>
                 </Card>
+
             </div>
+
+            {/* Compact ChromaDB Confirmation Dialog */}
+            <ConfirmDialog
+                open={showCompactDialog}
+                onOpenChange={setShowCompactDialog}
+                title="Compact ChromaDB Storage"
+                description="This will delete and rebuild all ChromaDB collections (code, memories, session summaries) from SQLite to reclaim disk space. This may take a while for large datasets."
+                confirmLabel="Compact All"
+                loadingLabel="Compacting..."
+                onConfirm={async () => {
+                    await compactChromaDBFn.mutateAsync();
+                    setShowCompactDialog(false);
+                }}
+                isLoading={compactChromaDBFn.isPending}
+                variant="default"
+            />
+
+            {/* Reset Processing Confirmation Dialog */}
+            <ConfirmDialog
+                open={showResetDialog}
+                onOpenChange={setShowResetDialog}
+                title="Reset All Processing State"
+                description="This will DELETE all generated memories and mark all sessions as unprocessed. The system will re-read activity logs and regenerate all memories from scratch. This is time-consuming for large histories."
+                confirmLabel="Reset Everything"
+                loadingLabel="Resetting..."
+                requireConfirmText={RESET_CONFIRM_TEXT}
+                onConfirm={async () => {
+                    await resetProcessingFn.mutateAsync();
+                    setShowResetDialog(false);
+                }}
+                isLoading={resetProcessingFn.isPending}
+                variant="destructive"
+            />
+
+            {/* Cleanup Low-Quality Sessions Confirmation Dialog */}
+            <ConfirmDialog
+                open={showCleanupDialog}
+                onOpenChange={setShowCleanupDialog}
+                title="Cleanup Low-Quality Sessions"
+                description="This will permanently delete completed sessions with fewer than 3 activities. These sessions will never be summarized or embedded. This action cannot be undone."
+                confirmLabel="Cleanup Sessions"
+                loadingLabel="Cleaning..."
+                onConfirm={async () => {
+                    await cleanupMinimalSessionsFn.mutateAsync();
+                    setShowCleanupDialog(false);
+                }}
+                isLoading={cleanupMinimalSessionsFn.isPending}
+                variant="default"
+            />
 
             {/* Dry Run Preview Dialog */}
             {showDryRunDialog && (
@@ -510,18 +675,22 @@ export default function DevTools() {
                                     {dryRunResult.batches_found === 0 && (
                                         <Alert>
                                             <AlertCircle className="h-4 w-4" />
-                                            <AlertDescription>
-                                                No batches found to reprocess. This may mean all your data is already processed.
-                                            </AlertDescription>
+                                            <div>
+                                                <AlertDescription>
+                                                    No batches found to reprocess. This may mean all your data is already processed.
+                                                </AlertDescription>
+                                            </div>
                                         </Alert>
                                     )}
 
                                     {dryRunResult.batches_found > 0 && (
-                                        <Alert variant="default" className="border-yellow-500/50 bg-yellow-50">
-                                            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                                            <AlertDescription className="text-yellow-800">
-                                                After reprocessing, run <strong>Re-embed Memories to ChromaDB</strong> to sync the search index.
-                                            </AlertDescription>
+                                        <Alert variant="default" className="border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20">
+                                            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                                            <div>
+                                                <AlertDescription className="text-yellow-800 dark:text-yellow-300">
+                                                    After reprocessing, run <strong>Re-embed Memories to ChromaDB</strong> to sync the search index.
+                                                </AlertDescription>
+                                            </div>
                                         </Alert>
                                     )}
                                 </>

@@ -14,6 +14,8 @@ from open_agent_kit.features.codebase_intelligence.memory.store.constants import
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from open_agent_kit.features.codebase_intelligence.memory.store.core import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -395,10 +397,75 @@ def clear_code_index(store: VectorStore) -> None:
     logger.info("Cleared code index (memories preserved)")
 
 
+def _close_chromadb_client(store: VectorStore) -> None:
+    """Safely close ChromaDB client and release all resources.
+
+    This helper properly closes the ChromaDB client, releases file handles,
+    and clears all collection references. Call this before deleting the
+    ChromaDB directory or when reinitializing.
+
+    Args:
+        store: The VectorStore instance to close.
+    """
+    import gc
+
+    if store._client is not None:
+        try:
+            # Try to reset the client if it supports it (releases all resources)
+            if hasattr(store._client, "reset"):
+                store._client.reset()
+        except Exception as e:
+            logger.debug(f"Client reset failed (expected if already closed): {e}")
+
+    # Clear all references to allow garbage collection
+    store._code_collection = None
+    store._memory_collection = None
+    store._session_summaries_collection = None
+    store._client = None
+
+    # Force garbage collection to release file handles
+    gc.collect()
+
+
+def _delete_directory_with_retry(directory: Path, max_retries: int = 3) -> None:
+    """Delete a directory with retries for locked file handles.
+
+    ChromaDB uses SQLite internally which may hold file handles briefly after
+    closing. This function retries deletion with small delays to handle this.
+
+    Args:
+        directory: Path to directory to delete.
+        max_retries: Number of retry attempts.
+
+    Raises:
+        OSError: If deletion fails after all retries.
+    """
+    import shutil
+    import time
+
+    if not directory.exists():
+        return
+
+    for attempt in range(max_retries):
+        try:
+            shutil.rmtree(directory)
+            return
+        except OSError as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Retry {attempt + 1}: Failed to delete directory: {e}")
+                time.sleep(1)
+            else:
+                logger.error(f"Failed to delete directory after {max_retries} attempts: {e}")
+                raise
+
+
 def clear_all(store: VectorStore) -> None:
     """Clear all data from both collections.
 
     WARNING: This also clears memories! Use clear_code_index() for rebuilds.
+
+    Note: This uses delete_collection which does NOT release disk space.
+    Use hard_reset() to actually reclaim disk space.
 
     Args:
         store: The VectorStore instance.
@@ -427,3 +494,59 @@ def clear_all(store: VectorStore) -> None:
     )
 
     logger.info("Cleared all vector store data (including memories)")
+
+
+def hard_reset(store: VectorStore) -> int:
+    """Delete the entire ChromaDB directory to reclaim disk space.
+
+    ChromaDB's delete_collection() does NOT release disk space - the underlying
+    HNSW indexes and Parquet files remain on disk. The ONLY way to reclaim
+    space is to delete the entire persist directory and reinitialize.
+
+    IMPORTANT: Caller must ensure no other operations (indexing, embedding) are
+    in progress before calling this. This function will forcefully close the
+    ChromaDB client and delete all data.
+
+    After calling this:
+    1. All ChromaDB data is deleted (code, memories, session summaries)
+    2. Disk space is actually reclaimed
+    3. The VectorStore is reinitialized with empty collections
+    4. Caller must rebuild from SQLite (memories, plans, sessions) and re-index code
+
+    Args:
+        store: The VectorStore instance.
+
+    Returns:
+        Approximate bytes freed (directory size before deletion).
+    """
+    import time
+
+    # Get directory size before deletion for reporting
+    bytes_freed = 0
+    if store.persist_directory.exists():
+        for f in store.persist_directory.rglob("*"):
+            if f.is_file():
+                try:
+                    bytes_freed += f.stat().st_size
+                except OSError:
+                    pass
+
+    logger.info(
+        f"Hard reset: deleting ChromaDB directory at {store.persist_directory} "
+        f"({bytes_freed / 1024 / 1024:.1f} MB)"
+    )
+
+    # Close client and release all resources
+    _close_chromadb_client(store)
+
+    # Small delay to allow OS to release file handles
+    time.sleep(0.5)
+
+    # Delete the directory with retries
+    _delete_directory_with_retry(store.persist_directory)
+
+    # Reinitialize with fresh empty collections
+    store._ensure_initialized()
+
+    logger.info("Hard reset complete: ChromaDB reinitialized with empty collections")
+    return bytes_freed

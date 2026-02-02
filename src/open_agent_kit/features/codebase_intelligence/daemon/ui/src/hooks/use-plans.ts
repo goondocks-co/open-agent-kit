@@ -3,6 +3,9 @@ import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, DEFAULT_PLAN_SORT } from "@/lib/constants";
 import type { PlanSortOption } from "@/lib/constants";
 
+/** Refetch interval for plans list (10 seconds) */
+const PLANS_REFETCH_INTERVAL_MS = 10000;
+
 export interface PlanListItem {
     id: number;
     title: string;
@@ -43,5 +46,6 @@ export function usePlans(options: UsePlansOptions = {}) {
             }
             return fetchJson(`${API_ENDPOINTS.ACTIVITY_PLANS}?${params.toString()}`);
         },
+        refetchInterval: PLANS_REFETCH_INTERVAL_MS,
     });
 }

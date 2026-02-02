@@ -396,8 +396,12 @@ async def list_sessions(
             first_prompt = first_prompts_map.get(session.id)
             items.append(_session_to_item(session, stats, first_prompt))
 
-        # Get total count (approximation)
-        total = len(items) + offset
+        # Get accurate total count
+        from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+            count_sessions,
+        )
+
+        total = count_sessions(state.activity_store, status=status)
 
         return SessionListResponse(
             sessions=items,

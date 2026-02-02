@@ -13,7 +13,7 @@ agent_type: documentation
 description: |
   Maintains the main README.md with Codebase Intelligence as the primary value proposition.
   OAK CI provides semantic search, project memory, and AI-powered documentation agents.
-  Secondary features like rules management and strategic planning are also highlighted.
+  Complementary features like rules management and strategic planning skills are also highlighted.
 
 # Execution limits - controls resource usage and prevents runaway agents
 execution:

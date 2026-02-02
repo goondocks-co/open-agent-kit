@@ -6,7 +6,7 @@ Functions for cascade delete operations on sessions, batches, and activities.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -144,22 +144,31 @@ def delete_prompt_batch(store: ActivityStore, batch_id: int) -> dict[str, int]:
     return result
 
 
-def delete_session(store: ActivityStore, session_id: str) -> dict[str, int]:
+def delete_session(
+    store: ActivityStore,
+    session_id: str,
+    vector_store: Any | None = None,
+) -> dict[str, int]:
     """Delete a session and all related data.
 
     Cascade deletes:
     - All prompt batches for this session
     - All activities for this session
     - All memory observations for this session
+    - ChromaDB embeddings if vector_store is provided
 
     Args:
         store: The ActivityStore instance.
         session_id: The session ID to delete.
+        vector_store: Optional vector store for ChromaDB cleanup.
 
     Returns:
         Dictionary with counts: batches_deleted, activities_deleted, observations_deleted
     """
     result = {"batches_deleted": 0, "activities_deleted": 0, "observations_deleted": 0}
+
+    # Get observation IDs before deleting (for ChromaDB cleanup)
+    observation_ids = get_session_observation_ids(store, session_id) if vector_store else []
 
     with store._transaction() as conn:
         # Delete activities for this session
@@ -185,6 +194,18 @@ def delete_session(store: ActivityStore, session_id: str) -> dict[str, int]:
 
         # Delete the session itself
         conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+
+    # Clean up ChromaDB embeddings if vector_store provided
+    # This handles both memory observations and session summaries
+    if vector_store and observation_ids:
+        try:
+            vector_store.delete_memories(observation_ids)
+            logger.debug(
+                f"Cleaned up {len(observation_ids)} ChromaDB embeddings for session {session_id}"
+            )
+        except (ValueError, RuntimeError) as e:
+            # Log but don't fail - SQLite cleanup already succeeded
+            logger.warning(f"Failed to clean up ChromaDB embeddings for session {session_id}: {e}")
 
     logger.info(
         f"Deleted session {session_id}: "

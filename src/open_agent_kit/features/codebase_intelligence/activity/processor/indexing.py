@@ -307,3 +307,115 @@ def embed_pending_observations(
         batch_size=batch_size,
         reset_embedded_flags=False,
     )
+
+
+def compact_all_chromadb(
+    activity_store: "ActivityStore",
+    vector_store: "VectorStore",
+    clear_code_index: bool = True,
+    hard_reset: bool = True,
+) -> dict[str, int]:
+    """Compact all ChromaDB collections by rebuilding from SQLite source of truth.
+
+    This is the ONLY way to reclaim disk space after deletions - ChromaDB has no
+    built-in vacuum/compaction. Use after large refactors, deletions, embedding
+    model changes, or periodically to maintain optimal storage size.
+
+    When hard_reset=True (default), this deletes the entire ChromaDB directory
+    and rebuilds from scratch. This is the ONLY way to actually reclaim disk
+    space since ChromaDB's delete_collection() doesn't release file space.
+
+    Operations performed:
+    1. Hard reset ChromaDB (delete directory, reclaim space)
+    2. Re-embed session summaries from SQLite
+    3. Re-embed memories from SQLite
+    4. Code index cleared - caller must trigger re-indexing
+
+    This function is synchronous and may take a while for large datasets.
+    Callers should run it in a background task/thread.
+
+    Args:
+        activity_store: SQLite activity store.
+        vector_store: ChromaDB vector store.
+        clear_code_index: Whether to clear the code index. Caller is responsible
+            for triggering re-indexing afterward (e.g., via background indexer).
+        hard_reset: If True, delete ChromaDB directory to reclaim disk space.
+            If False, use delete_collection which doesn't release space.
+
+    Returns:
+        Dictionary with compaction statistics:
+        - bytes_freed: Disk space reclaimed (only if hard_reset=True)
+        - code_cleared: Whether code index was cleared
+        - sessions_processed: Total sessions processed
+        - sessions_embedded: Successfully embedded sessions
+        - memories_embedded: Successfully embedded memories
+        - memories_cleared: Orphaned memory entries removed
+        - memories_failed: Failed memory embeddings
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+        reembed_session_summaries,
+    )
+
+    stats: dict[str, int] = {
+        "bytes_freed": 0,
+        "code_cleared": 0,
+        "sessions_processed": 0,
+        "sessions_embedded": 0,
+        "memories_embedded": 0,
+        "memories_cleared": 0,
+        "memories_failed": 0,
+        "plans_indexed": 0,
+        "plans_failed": 0,
+    }
+
+    # 1. Hard reset to reclaim disk space (or soft clear if hard_reset=False)
+    if hard_reset:
+        bytes_freed = vector_store.hard_reset()
+        stats["bytes_freed"] = bytes_freed
+        stats["code_cleared"] = 1
+        logger.info(f"Hard reset complete: freed {bytes_freed / 1024 / 1024:.1f} MB")
+    elif clear_code_index:
+        vector_store.clear_code_index()
+        stats["code_cleared"] = 1
+        logger.info("Cleared ChromaDB code index (soft clear, no space reclaimed)")
+
+    # 2. Re-embed session summaries from SQLite
+    try:
+        sessions_processed, sessions_embedded = reembed_session_summaries(
+            activity_store,
+            vector_store,
+        )
+        stats["sessions_processed"] = sessions_processed
+        stats["sessions_embedded"] = sessions_embedded
+        logger.info(f"Re-embedded {sessions_embedded}/{sessions_processed} session summaries")
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.error(f"Session summary re-embedding failed: {e}")
+
+    # 3. Re-embed memories from SQLite
+    try:
+        # Mark all as unembedded and rebuild (ChromaDB is already empty from hard reset)
+        memory_stats = rebuild_chromadb_from_sqlite(
+            activity_store=activity_store,
+            vector_store=vector_store,
+            batch_size=50,
+            reset_embedded_flags=True,
+            clear_chromadb_first=False,  # Already cleared by hard_reset
+        )
+        stats["memories_embedded"] = memory_stats.get("embedded", 0)
+        stats["memories_cleared"] = memory_stats.get("cleared", 0)
+        stats["memories_failed"] = memory_stats.get("failed", 0)
+        logger.info(f"Re-embedded {stats['memories_embedded']} memories")
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.error(f"Memory re-embedding failed: {e}")
+
+    # 4. Re-index plans (stored in prompt_batches, indexed to memory collection)
+    try:
+        plan_stats = rebuild_plan_index(activity_store, vector_store, batch_size=50)
+        stats["plans_indexed"] = plan_stats.get("indexed", 0)
+        stats["plans_failed"] = plan_stats.get("failed", 0)
+        logger.info(f"Re-indexed {stats['plans_indexed']} plans")
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.error(f"Plan re-indexing failed: {e}")
+
+    logger.info("ChromaDB compaction complete")
+    return stats

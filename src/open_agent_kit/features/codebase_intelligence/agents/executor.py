@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from claude_agent_sdk.types import McpSdkServerConfig
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+    from open_agent_kit.features.codebase_intelligence.config import AgentConfig
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
@@ -61,6 +62,7 @@ class AgentExecutor:
     def __init__(
         self,
         project_root: Path,
+        agent_config: "AgentConfig",
         retrieval_engine: "RetrievalEngine | None" = None,
         activity_store: "ActivityStore | None" = None,
         vector_store: "VectorStore | None" = None,
@@ -69,11 +71,13 @@ class AgentExecutor:
 
         Args:
             project_root: Project root directory for agent operations.
+            agent_config: AgentConfig with executor settings.
             retrieval_engine: RetrievalEngine for CI tools (optional).
             activity_store: ActivityStore for CI tools (optional).
             vector_store: VectorStore for CI tools (optional).
         """
         self._project_root = project_root
+        self._agent_config = agent_config
         self._retrieval_engine = retrieval_engine
         self._activity_store = activity_store
         self._vector_store = vector_store
@@ -99,6 +103,11 @@ class AgentExecutor:
         """Get all run records (copy for thread safety)."""
         with self._runs_lock:
             return dict(self._runs)
+
+    @property
+    def max_cache_size(self) -> int:
+        """Get the maximum in-memory cache size from config."""
+        return self._agent_config.executor_cache_size
 
     def _get_ci_mcp_server(self) -> "McpSdkServerConfig | None":
         """Get or create the CI MCP server.
@@ -126,14 +135,13 @@ class AgentExecutor:
         Note: SQLite storage is not cleaned up here - that should be done
         separately via maintenance jobs if needed.
         """
-        max_cache_size = 100
         with self._runs_lock:
-            if len(self._runs) <= max_cache_size:
+            if len(self._runs) <= self.max_cache_size:
                 return
 
             # Keep only the most recent runs in memory
             items = list(self._runs.items())
-            to_remove = len(items) - max_cache_size
+            to_remove = len(items) - self.max_cache_size
 
             for i in range(to_remove):
                 run_id = items[i][0]

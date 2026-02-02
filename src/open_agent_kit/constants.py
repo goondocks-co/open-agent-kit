@@ -3,7 +3,6 @@
 This module contains:
 - VERSION: Package version
 - Feature configuration (SUPPORTED_FEATURES, FEATURE_CONFIG, etc.)
-- Issue provider and IDE configuration derived from enums
 - Validation patterns and heuristics
 - Upgrade configuration
 - Default config template
@@ -18,7 +17,7 @@ For type-safe enums, import from:
 """
 
 from open_agent_kit import __version__
-from open_agent_kit.models.enums import IssueProvider, RFCNumberFormat
+from open_agent_kit.models.enums import RFCNumberFormat
 
 # =============================================================================
 # Version
@@ -49,16 +48,8 @@ MAX_MEMORY_RESULTS = 100
 JSON_INDENT = 2
 
 # =============================================================================
-# Issue Provider Configuration (derived from enums)
+# RFC Configuration
 # =============================================================================
-
-SUPPORTED_ISSUE_PROVIDERS = IssueProvider.values()
-ISSUE_PROVIDER_DISPLAY_NAMES = {p.value: p.display_name for p in IssueProvider}
-ISSUE_PROVIDER_CONFIG_MAP = {p.value: p.config_key for p in IssueProvider}
-ISSUE_PROVIDER_DEFAULTS = {
-    "ado": {"organization": ""},
-    "github": {"owner": ""},
-}
 
 # RFC number formats
 RFC_NUMBER_FORMATS = {f.value: f.pattern for f in RFCNumberFormat}
@@ -67,25 +58,6 @@ DEFAULT_RFC_FORMAT = RFCNumberFormat.SEQUENTIAL.value
 # =============================================================================
 # Validation Patterns and Heuristics
 # =============================================================================
-
-# Issue plan section headings
-ISSUE_PLAN_SECTION_HEADINGS = {
-    "Objectives": "### Objectives",
-    "Environment / Constraints": "### Environment / Constraints",
-    "Risks & Mitigations": "### Risks & Mitigations",
-    "Dependencies": "### Dependencies",
-    "Definition of Done": "### Definition of Done",
-}
-
-# Plan section headings
-PLAN_SECTION_HEADINGS = {
-    "Overview": "## Overview",
-    "Goals": "## Goals",
-    "Success Criteria": "## Success Criteria",
-    "Scope": "## Scope",
-    "Constraints": "## Constraints",
-    "Research Topics": "## Research Topics",
-}
 
 # Constitution validation
 CONSTITUTION_RULE_SECTIONS = frozenset(
@@ -206,21 +178,13 @@ FEATURE_CONFIG: dict[str, dict] = {
     },
     "strategic-planning": {
         "name": "Strategic Planning",
-        "description": "RFCs, plans, and issue-driven development",
+        "description": "RFCs and Architecture Decision Records",
         "default_enabled": True,
         "dependencies": ["rules-management"],
         "commands": [
             "rfc-create",
             "rfc-list",
             "rfc-validate",
-            "plan-create",
-            "plan-list",
-            "plan-tasks",
-            "plan-research",
-            "plan-status",
-            "issue-plan",
-            "issue-impl",
-            "issue-submit",
         ],
     },
     "codebase-intelligence": {
@@ -297,18 +261,4 @@ rfc:
   auto_number: true
   number_format: sequential
   validate_on_create: true
-
-# Issue provider configuration
-issue:
-  provider:
-  azure_devops:
-    organization:
-    project:
-    team:
-    area_path:
-    pat_env:
-  github:
-    owner:
-    repo:
-    token_env:
 """

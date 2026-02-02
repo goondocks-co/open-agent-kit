@@ -1,14 +1,14 @@
 ---
 name: "Bug: Agent Command"
-about: Report an issue with oak agent commands (/oak.rfc-create, /oak.issue-plan, etc.)
+about: Report an issue with oak agent commands or skills
 title: '[Agent] '
 labels: bug, agent-commands
 assignees: ''
 ---
 
-## Command Used
+## Command/Skill Used
 
-Which command? (e.g., `/oak.rfc-create`, `/oak.issue-plan`, `/oak.constitution-create`)
+Which command or skill? (e.g., `oak rfc create`, `/creating-rfcs`, `/project-rules`)
 
 ## AI Agent
 

@@ -7,6 +7,9 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+    is_session_sufficient,
+)
 from open_agent_kit.features.codebase_intelligence.constants import RECOVERY_BATCH_PROMPT
 
 if TYPE_CHECKING:
@@ -58,10 +61,12 @@ def generate_session_title(
     activity_store: "ActivityStore",
     prompt_config: "PromptTemplateConfig",
     call_llm: Callable[[str], dict[str, Any]],
+    min_activities: int | None = None,
 ) -> str | None:
     """Generate a short title for a session based on its prompts.
 
     Handles special cases:
+    - Skips sessions below quality threshold (< min_activities)
     - Filters out continuation placeholders from prompts (from session transitions)
     - For linked sessions with only placeholders, derives title from parent session
 
@@ -70,10 +75,17 @@ def generate_session_title(
         activity_store: Activity store for fetching batches.
         prompt_config: Prompt template configuration.
         call_llm: Function to call LLM.
+        min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
+            Pass session_quality.min_activities if available.
 
     Returns:
         Title text if generated, None otherwise.
     """
+    # Check quality threshold - skip sessions with insufficient activities
+    if not is_session_sufficient(activity_store, session_id, min_activities=min_activities):
+        logger.debug(f"Session {session_id} below quality threshold, skipping title generation")
+        return None
+
     # Get session info for parent linking check
     session = activity_store.get_session(session_id)
     if not session:
@@ -248,17 +260,23 @@ def generate_pending_titles(
     prompt_config: "PromptTemplateConfig",
     call_llm: Callable[[str], dict[str, Any]],
     limit: int = 5,
+    min_activities: int | None = None,
 ) -> int:
     """Generate titles for sessions that don't have them.
 
     Called periodically by background processing to ensure all sessions
     get titles, even if they were created before the title feature was added.
 
+    Sessions below the quality threshold (< min_activities) are
+    filtered out since they will never be titled, summarized, or embedded.
+
     Args:
         activity_store: Activity store for fetching sessions.
         prompt_config: Prompt template configuration.
         call_llm: Function to call LLM.
         limit: Maximum sessions to process per call.
+        min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
+            Pass session_quality.min_activities if available.
 
     Returns:
         Number of titles generated.
@@ -268,14 +286,28 @@ def generate_pending_titles(
     if not sessions:
         return 0
 
+    # Filter out sessions below quality threshold (they'll be cleaned up later)
+    quality_sessions = [
+        s
+        for s in sessions
+        if is_session_sufficient(activity_store, s.id, min_activities=min_activities)
+    ]
+
+    if not quality_sessions:
+        logger.debug(
+            f"Found {len(sessions)} sessions needing titles but none meet quality threshold"
+        )
+        return 0
+
     generated = 0
-    for session in sessions:
+    for session in quality_sessions:
         try:
             title = generate_session_title(
                 session.id,
                 activity_store,
                 prompt_config,
                 call_llm,
+                min_activities=min_activities,
             )
             if title:
                 generated += 1

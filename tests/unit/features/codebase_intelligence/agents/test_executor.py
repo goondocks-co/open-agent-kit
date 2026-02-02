@@ -8,6 +8,7 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentInstance,
     MaintainedFile,
 )
+from open_agent_kit.features.codebase_intelligence.config import AgentConfig
 
 
 class TestAgentExecutorTaskPrompt:
@@ -15,7 +16,7 @@ class TestAgentExecutorTaskPrompt:
 
     def test_build_task_prompt_without_instance(self, tmp_path: Path) -> None:
         """Task prompt should include runtime context even without instance."""
-        executor = AgentExecutor(project_root=tmp_path)
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
         agent = AgentDefinition(
             name="test",
             display_name="Test Agent",
@@ -32,7 +33,7 @@ class TestAgentExecutorTaskPrompt:
 
     def test_build_task_prompt_with_instance(self, tmp_path: Path) -> None:
         """Task prompt should include instance config when provided."""
-        executor = AgentExecutor(project_root=tmp_path)
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
         agent = AgentDefinition(
             name="test",
             display_name="Test Agent",
@@ -62,7 +63,7 @@ class TestAgentExecutorTaskPrompt:
 
     def test_build_task_prompt_with_empty_instance(self, tmp_path: Path) -> None:
         """Task prompt should include daemon_url even with minimal instance."""
-        executor = AgentExecutor(project_root=tmp_path)
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
         agent = AgentDefinition(
             name="test",
             display_name="Test Agent",

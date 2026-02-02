@@ -377,6 +377,18 @@ class VectorStore:
         """Clear all data from both collections."""
         management.clear_all(self)
 
+    def hard_reset(self) -> int:
+        """Delete ChromaDB directory to reclaim disk space.
+
+        ChromaDB's delete_collection() does NOT release disk space.
+        This deletes the entire directory and reinitializes empty collections.
+        Caller must rebuild from SQLite afterward.
+
+        Returns:
+            Approximate bytes freed.
+        """
+        return management.hard_reset(self)
+
     # ==========================================================================
     # Session summary operations - for similarity-based session linking
     # ==========================================================================

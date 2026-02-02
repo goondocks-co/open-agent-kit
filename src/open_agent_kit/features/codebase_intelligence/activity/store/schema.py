@@ -20,7 +20,8 @@ Contains schema version and SQL for creating the database schema.
 # v17: Added suggested_parent_dismissed to sessions, session_link_events table for analytics
 # v18: Added session_relationships table for many-to-many semantic session relationships
 # v19: Added agent_schedules table for cron scheduling runtime state
-SCHEMA_VERSION = 19
+# v20: Added idx_sessions_created_at for dashboard sorting performance
+SCHEMA_VERSION = 20
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -156,6 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_activities_processed ON activities(processed);
 CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp_epoch);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_processed ON sessions(processed);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_session ON prompt_batches(session_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_processed ON prompt_batches(processed);
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_hash ON prompt_batches(content_hash);

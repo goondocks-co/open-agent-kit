@@ -102,8 +102,10 @@ export default function Team() {
             {message && (
                 <Alert variant={message.type === MESSAGE_TYPES.ERROR ? "destructive" : "default"} className={message.type === MESSAGE_TYPES.SUCCESS ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400" : ""}>
                     {message.type === MESSAGE_TYPES.SUCCESS ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                    <AlertTitle>{message.type === MESSAGE_TYPES.SUCCESS ? "Success" : "Error"}</AlertTitle>
-                    <AlertDescription>{message.text}</AlertDescription>
+                    <div>
+                        <AlertTitle>{message.type === MESSAGE_TYPES.SUCCESS ? "Success" : "Error"}</AlertTitle>
+                        <AlertDescription>{message.text}</AlertDescription>
+                    </div>
                 </Alert>
             )}
 
@@ -253,8 +255,9 @@ export default function Team() {
                     {restoreResult && (
                         <Alert className="border-green-500 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400">
                             <CheckCircle2 className="h-4 w-4" />
-                            <AlertTitle>Restore Complete</AlertTitle>
-                            <AlertDescription>
+                            <div>
+                                <AlertTitle>Restore Complete</AlertTitle>
+                                <AlertDescription>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-xs">
                                     <div>Memories imported: <strong>{restoreResult.observations_imported}</strong></div>
                                     <div>Memories skipped: {restoreResult.observations_skipped}</div>
@@ -287,7 +290,8 @@ export default function Team() {
                                 <p className="mt-3 text-xs opacity-80">
                                     After restore, ChromaDB will rebuild automatically in the background.
                                 </p>
-                            </AlertDescription>
+                                </AlertDescription>
+                            </div>
                         </Alert>
                     )}
 

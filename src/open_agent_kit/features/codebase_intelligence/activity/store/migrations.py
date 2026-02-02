@@ -49,6 +49,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v17_to_v18(conn)
     if from_version < 19:
         migrate_v18_to_v19(conn)
+    if from_version < 20:
+        migrate_v19_to_v20(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -1093,3 +1095,25 @@ def migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
         logger.warning(f"Index creation warning (may already exist): {e}")
 
     logger.info("Migration v18->v19 complete: added agent_schedules table")
+
+
+def migrate_v19_to_v20(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v19 to v20: Add sessions created_at index for sorting.
+
+    Adds index for common dashboard query pattern:
+    - idx_sessions_created_at: Sort sessions by creation time (for pagination)
+    """
+    logger.info("Migrating activity store schema v19 -> v20: Adding sessions created_at index")
+
+    indexes = [
+        # For: ORDER BY created_at_epoch DESC (dashboard session listing)
+        "CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at_epoch DESC)",
+    ]
+
+    for index_sql in indexes:
+        try:
+            conn.execute(index_sql)
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info("Migration v19->v20 complete: added sessions created_at index")

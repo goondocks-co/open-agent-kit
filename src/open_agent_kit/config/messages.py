@@ -31,26 +31,26 @@ HELP_TEXT = """
 
 [bold]Primary Commands:[/bold]
   [cyan]init[/cyan]        Initialize .oak directory with templates and configs
-  [cyan]config[/cyan]      Configure issue providers and project settings
   [cyan]upgrade[/cyan]     Upgrade templates and agent commands to latest versions
+  [cyan]rfc[/cyan]         Manage RFCs and Architecture Decision Records
   [cyan]version[/cyan]     Show version information
 
 [bold]Examples:[/bold]
   [dim]# Initialize with guided setup[/dim]
   [dim]$ oak init[/dim]
 
-  [dim]# Configure issue provider interactively[/dim]
-  [dim]$ oak config[/dim]
-
   [dim]# One-shot initialize by setting agents[/dim]
   [dim]$ oak init --agent copilot --agent codex[/dim]
+
+  [dim]# Create an RFC[/dim]
+  [dim]$ oak rfc create "New authentication system"[/dim]
 
   [dim]# Upgrade to latest version[/dim]
   [dim]$ oak upgrade --dry-run[/dim]
 
 [bold]Get Started:[/bold]
   1. Run [cyan]oak init[/cyan] to set up your project
-  2. Run [cyan]oak config[/cyan] to configure issue providers
+  2. Run [cyan]oak rfc create[/cyan] to create your first RFC
   3. See the Quick Start guide: [dim]QUICKSTART.md[/dim]
 
 For more information, visit: https://github.com/sirkirby/open-agent-kit
@@ -87,9 +87,6 @@ SUCCESS_MESSAGES = {
     "constitution_amended": "Amendment added successfully!",
     "agent_files_generated": "Agent instruction files generated",
     "agent_files_updated": "Agent instruction files updated",
-    "issue_artifacts_ready": "Issue item artifacts ready",
-    "issue_branch_ready": "Branch {branch} is ready for implementation",
-    "issue_validated": "Issue item artifacts look complete. Ready for review!",
     "upgrade_complete": "Upgrade complete!",
     "upgraded_agent_commands": "Updated {count} agent command(s) with latest improvements",
     "upgraded_templates": "Updated {count} template(s)",
@@ -125,18 +122,6 @@ ERROR_MESSAGES = {
     "token_not_replaced": "Template token not replaced: {token}",
     "invalid_amendment_type": "Invalid amendment type. Must be: major, minor, or patch",
     "no_agents_detected": "No agents detected. Run: oak init",
-    "issue_provider_not_set": "No issue provider configured. Run: oak config issue-provider set",
-    "issue_provider_invalid": "Issue provider '{provider}' is not supported.",
-    "issue_provider_missing_secret": "Environment variable '{env_var}' is not set.",
-    "issue_fetch_failed": "Failed to load issue item {identifier}: {error}",
-    "issue_dir_missing": "Issue directory not found: {path}",
-    "issue_context_missing": "Issue context file not found: {path}",
-    "issue_plan_missing": "Issue plan file not found: {path}",
-    "issue_not_found": "Unable to determine issue item context. Provide an issue or run /oak.issue-plan first.",
-    "issue_provider_api_error": "{provider} API error ({error_type}): {details}",
-    "issue_provider_env_var_missing": "Environment variable '{var}' is not set or empty",
-    "issue_provider_invalid_response": "Invalid API response format from {provider}",
-    "issue_notes_too_long": "Notes exceed maximum length of {max_length} characters",
     "git_command_failed": "Git command failed: {details}",
     "file_system_error": "File system error: {details}",
 }
@@ -194,11 +179,6 @@ INFO_MESSAGES = {
     "updating_agent_files": "Updating agent instruction files...",
     "detecting_agents": "Detecting installed agents...",
     "loading_constitution": "Loading constitution...",
-    "issue_artifacts_location": "Issue item assets saved to {path}",
-    "issue_branch_exists": "Branch {branch} already exists. Switching to it.",
-    "issue_config_prompt": "Configure your issue provider with: oak config issue-provider set",
-    "issue_plan_hint": "Generate a plan first via /oak.issue-plan {issue}",
-    "issue_inferred": "Using issue item {issue} ({provider}).",
 }
 
 # =============================================================================
@@ -234,46 +214,6 @@ UPGRADE_MESSAGES = {
 }
 
 # =============================================================================
-# Plan Feature Messages
-# =============================================================================
-
-PLAN_SUCCESS_MESSAGES = {
-    "plan_created": "Plan created successfully!",
-    "plan_research_complete": "Research completed for {count} topic(s)",
-    "plan_tasks_generated": "Generated {count} task(s) from plan",
-    "plan_exported": "Exported {count} issue(s) to {provider}",
-    "plan_branch_ready": "Branch {branch} is ready for planning",
-    "branch_created": "Switched to branch {branch}",
-    "status_updated": "Plan '{name}' status updated to {status}",
-}
-
-PLAN_ERROR_MESSAGES = {
-    "no_oak_dir": "Not an oak project. Run `oak init` first.",
-    "plan_not_found": "Plan '{name}' not found. Run `oak plan create {name}` first.",
-    "plan_not_specified": "No plan specified. Provide a plan name or switch to a plan branch.",
-    "plan_exists": "Plan '{name}' already exists at {path}",
-    "plan_already_exists": "Plan '{name}' already exists. Use a different name or delete the existing plan.",
-    "plan_no_research_topics": "Plan has no research topics defined. Add topics to plan.md first.",
-    "plan_no_tasks": "Plan has no tasks. Run `/oak.plan-tasks` to generate tasks from research.",
-    "plan_export_failed": "Failed to export task '{task}' to {provider}: {error}",
-    "plan_research_incomplete": "Research incomplete. Complete research for: {topics}",
-    "constitution_required": "Constitution is required for the plan feature. Run `oak constitution init` first.",
-}
-
-PLAN_INFO_MESSAGES = {
-    "plan_branch_exists": "Branch {branch} already exists. Switching to it.",
-    "plan_encourage_web_search": (
-        "Web search is strongly encouraged for comprehensive research. Use available search tools."
-    ),
-    "plan_encourage_background": "Consider using background agents for context-efficient research.",
-    "plan_encourage_mcp": "MCP tools are available for enhanced research capabilities.",
-    "plan_research_fallback": "Web search unavailable. Using general knowledge for research.",
-    "no_plans": "No plans found. Create one with `oak plan create <name>`.",
-    "no_research_topics": "No research topics defined for plan '{name}'. Add topics via /oak.plan-research.",
-    "no_tasks": "No tasks found for plan '{name}'. Generate tasks via /oak.plan-tasks.",
-}
-
-# =============================================================================
 # Feature Messages
 # =============================================================================
 
@@ -288,20 +228,6 @@ FEATURE_MESSAGES = {
     "feature_deps_auto_added": "Auto-adding required dependencies: {dependencies}",
     "no_features_selected": "No features selected.",
     "select_features_prompt": "Choose features to install. Dependencies will be auto-selected.",
-}
-
-# =============================================================================
-# Issue Provider Validation Messages
-# =============================================================================
-
-ISSUE_PROVIDER_VALIDATION_MESSAGES = {
-    "ado_org_missing": "Azure DevOps organization is not configured (issue.azure_devops.organization)",
-    "ado_project_missing": "Azure DevOps project is not configured (issue.azure_devops.project)",
-    "ado_pat_env_missing": "Azure DevOps PAT environment variable is not configured (issue.azure_devops.pat_env)",
-    "github_owner_missing": "GitHub repository owner is not configured (issue.github.owner)",
-    "github_repo_missing": "GitHub repository name is not configured (issue.github.repo)",
-    "github_token_env_missing": "GitHub token environment variable is not configured (issue.github.token_env)",
-    "env_var_not_set": "Environment variable '{var_name}' is not set",
 }
 
 # =============================================================================

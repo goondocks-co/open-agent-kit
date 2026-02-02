@@ -21,12 +21,15 @@ from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_AGENT_MAX_TURNS,
     DEFAULT_AGENT_TIMEOUT_SECONDS,
+    DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
     DEFAULT_BASE_URL,
+    DEFAULT_EXECUTOR_CACHE_SIZE,
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_SIZE_MB,
     DEFAULT_LOG_ROTATION_ENABLED,
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
+    DEFAULT_SCHEDULER_INTERVAL_SECONDS,
     DEFAULT_SUMMARIZATION_BASE_URL,
     DEFAULT_SUMMARIZATION_MODEL,
     DEFAULT_SUMMARIZATION_PROVIDER,
@@ -35,10 +38,18 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     LOG_LEVEL_INFO,
     MAX_AGENT_MAX_TURNS,
     MAX_AGENT_TIMEOUT_SECONDS,
+    MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    MAX_EXECUTOR_CACHE_SIZE,
     MAX_LOG_BACKUP_COUNT,
     MAX_LOG_MAX_SIZE_MB,
+    MAX_SCHEDULER_INTERVAL_SECONDS,
     MIN_AGENT_TIMEOUT_SECONDS,
+    MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    MIN_EXECUTOR_CACHE_SIZE,
     MIN_LOG_MAX_SIZE_MB,
+    MIN_SCHEDULER_INTERVAL_SECONDS,
+    MIN_SESSION_ACTIVITIES,
+    SESSION_INACTIVE_TIMEOUT_SECONDS,
     VALID_LOG_LEVELS,
     VALID_PROVIDERS,
     VALID_SUMMARIZATION_PROVIDERS,
@@ -509,11 +520,17 @@ class AgentConfig:
         enabled: Whether to enable the agent subsystem.
         max_turns: Default maximum turns for agent execution.
         timeout_seconds: Default timeout for agent execution.
+        scheduler_interval_seconds: Interval between scheduler checks for due schedules.
+        executor_cache_size: Max runs to keep in executor's in-memory cache.
+        background_processing_interval_seconds: Interval for activity processor background tasks.
     """
 
     enabled: bool = True
     max_turns: int = DEFAULT_AGENT_MAX_TURNS
     timeout_seconds: int = DEFAULT_AGENT_TIMEOUT_SECONDS
+    scheduler_interval_seconds: int = DEFAULT_SCHEDULER_INTERVAL_SECONDS
+    executor_cache_size: int = DEFAULT_EXECUTOR_CACHE_SIZE
+    background_processing_interval_seconds: int = DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -553,6 +570,53 @@ class AgentConfig:
                 value=self.timeout_seconds,
                 expected=f"<= {MAX_AGENT_TIMEOUT_SECONDS}",
             )
+        # Validate scheduler interval
+        if self.scheduler_interval_seconds < MIN_SCHEDULER_INTERVAL_SECONDS:
+            raise ValidationError(
+                f"scheduler_interval_seconds must be at least {MIN_SCHEDULER_INTERVAL_SECONDS}",
+                field="scheduler_interval_seconds",
+                value=self.scheduler_interval_seconds,
+                expected=f">= {MIN_SCHEDULER_INTERVAL_SECONDS}",
+            )
+        if self.scheduler_interval_seconds > MAX_SCHEDULER_INTERVAL_SECONDS:
+            raise ValidationError(
+                f"scheduler_interval_seconds must be at most {MAX_SCHEDULER_INTERVAL_SECONDS}",
+                field="scheduler_interval_seconds",
+                value=self.scheduler_interval_seconds,
+                expected=f"<= {MAX_SCHEDULER_INTERVAL_SECONDS}",
+            )
+        # Validate executor cache size
+        if self.executor_cache_size < MIN_EXECUTOR_CACHE_SIZE:
+            raise ValidationError(
+                f"executor_cache_size must be at least {MIN_EXECUTOR_CACHE_SIZE}",
+                field="executor_cache_size",
+                value=self.executor_cache_size,
+                expected=f">= {MIN_EXECUTOR_CACHE_SIZE}",
+            )
+        if self.executor_cache_size > MAX_EXECUTOR_CACHE_SIZE:
+            raise ValidationError(
+                f"executor_cache_size must be at most {MAX_EXECUTOR_CACHE_SIZE}",
+                field="executor_cache_size",
+                value=self.executor_cache_size,
+                expected=f"<= {MAX_EXECUTOR_CACHE_SIZE}",
+            )
+        # Validate background processing interval
+        if self.background_processing_interval_seconds < MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS:
+            raise ValidationError(
+                f"background_processing_interval_seconds must be at least "
+                f"{MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
+                field="background_processing_interval_seconds",
+                value=self.background_processing_interval_seconds,
+                expected=f">= {MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
+            )
+        if self.background_processing_interval_seconds > MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS:
+            raise ValidationError(
+                f"background_processing_interval_seconds must be at most "
+                f"{MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
+                field="background_processing_interval_seconds",
+                value=self.background_processing_interval_seconds,
+                expected=f"<= {MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
+            )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentConfig":
@@ -568,6 +632,14 @@ class AgentConfig:
             enabled=data.get("enabled", True),
             max_turns=data.get("max_turns", DEFAULT_AGENT_MAX_TURNS),
             timeout_seconds=data.get("timeout_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS),
+            scheduler_interval_seconds=data.get(
+                "scheduler_interval_seconds", DEFAULT_SCHEDULER_INTERVAL_SECONDS
+            ),
+            executor_cache_size=data.get("executor_cache_size", DEFAULT_EXECUTOR_CACHE_SIZE),
+            background_processing_interval_seconds=data.get(
+                "background_processing_interval_seconds",
+                DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -576,6 +648,102 @@ class AgentConfig:
             "enabled": self.enabled,
             "max_turns": self.max_turns,
             "timeout_seconds": self.timeout_seconds,
+            "scheduler_interval_seconds": self.scheduler_interval_seconds,
+            "executor_cache_size": self.executor_cache_size,
+            "background_processing_interval_seconds": self.background_processing_interval_seconds,
+        }
+
+
+# =============================================================================
+# Session Quality Configuration
+# =============================================================================
+
+# Validation limits for session quality settings
+MIN_SESSION_ACTIVITY_THRESHOLD: int = 1
+MAX_SESSION_ACTIVITY_THRESHOLD: int = 20
+MIN_STALE_SESSION_TIMEOUT: int = 300  # 5 minutes minimum
+MAX_STALE_SESSION_TIMEOUT: int = 86400  # 24 hours maximum
+
+
+@dataclass
+class SessionQualityConfig:
+    """Configuration for session quality thresholds.
+
+    These settings control when sessions are considered "quality" enough
+    to be titled, summarized, and embedded. Sessions below the quality
+    threshold are cleaned up during stale session recovery.
+
+    Attributes:
+        min_activities: Minimum tool calls for a session to be considered quality.
+            Sessions below this threshold will not be titled, summarized, or embedded.
+        stale_timeout_seconds: How long before an inactive session is considered stale.
+            Stale sessions are either marked completed (if quality) or deleted (if not).
+    """
+
+    min_activities: int = MIN_SESSION_ACTIVITIES
+    stale_timeout_seconds: int = SESSION_INACTIVE_TIMEOUT_SECONDS
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate configuration values.
+
+        Raises:
+            ValidationError: If any configuration value is invalid.
+        """
+        if self.min_activities < MIN_SESSION_ACTIVITY_THRESHOLD:
+            raise ValidationError(
+                f"min_activities must be at least {MIN_SESSION_ACTIVITY_THRESHOLD}",
+                field="min_activities",
+                value=self.min_activities,
+                expected=f">= {MIN_SESSION_ACTIVITY_THRESHOLD}",
+            )
+        if self.min_activities > MAX_SESSION_ACTIVITY_THRESHOLD:
+            raise ValidationError(
+                f"min_activities must be at most {MAX_SESSION_ACTIVITY_THRESHOLD}",
+                field="min_activities",
+                value=self.min_activities,
+                expected=f"<= {MAX_SESSION_ACTIVITY_THRESHOLD}",
+            )
+        if self.stale_timeout_seconds < MIN_STALE_SESSION_TIMEOUT:
+            raise ValidationError(
+                f"stale_timeout_seconds must be at least {MIN_STALE_SESSION_TIMEOUT}",
+                field="stale_timeout_seconds",
+                value=self.stale_timeout_seconds,
+                expected=f">= {MIN_STALE_SESSION_TIMEOUT}",
+            )
+        if self.stale_timeout_seconds > MAX_STALE_SESSION_TIMEOUT:
+            raise ValidationError(
+                f"stale_timeout_seconds must be at most {MAX_STALE_SESSION_TIMEOUT}",
+                field="stale_timeout_seconds",
+                value=self.stale_timeout_seconds,
+                expected=f"<= {MAX_STALE_SESSION_TIMEOUT}",
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SessionQualityConfig":
+        """Create config from dictionary.
+
+        Args:
+            data: Configuration dictionary.
+
+        Returns:
+            SessionQualityConfig instance.
+        """
+        return cls(
+            min_activities=data.get("min_activities", MIN_SESSION_ACTIVITIES),
+            stale_timeout_seconds=data.get(
+                "stale_timeout_seconds", SESSION_INACTIVE_TIMEOUT_SECONDS
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "min_activities": self.min_activities,
+            "stale_timeout_seconds": self.stale_timeout_seconds,
         }
 
 
@@ -676,6 +844,7 @@ class CIConfig:
         embedding: Embedding provider configuration.
         summarization: LLM summarization configuration.
         agents: Agent subsystem configuration.
+        session_quality: Session quality threshold configuration.
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
@@ -686,6 +855,7 @@ class CIConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
+    session_quality: SessionQualityConfig = field(default_factory=SessionQualityConfig)
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
@@ -727,11 +897,13 @@ class CIConfig:
         embedding_data = data.get("embedding", {})
         summarization_data = data.get("summarization", {})
         agents_data = data.get("agents", {})
+        session_quality_data = data.get("session_quality", {})
         log_rotation_data = data.get("log_rotation", {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
             summarization=SummarizationConfig.from_dict(summarization_data),
             agents=AgentConfig.from_dict(agents_data),
+            session_quality=SessionQualityConfig.from_dict(session_quality_data),
             index_on_startup=data.get("index_on_startup", True),
             watch_files=data.get("watch_files", True),
             exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
@@ -745,6 +917,7 @@ class CIConfig:
             "embedding": self.embedding.to_dict(),
             "summarization": self.summarization.to_dict(),
             "agents": self.agents.to_dict(),
+            "session_quality": self.session_quality.to_dict(),
             "index_on_startup": self.index_on_startup,
             "watch_files": self.watch_files,
             "exclude_patterns": self.exclude_patterns,

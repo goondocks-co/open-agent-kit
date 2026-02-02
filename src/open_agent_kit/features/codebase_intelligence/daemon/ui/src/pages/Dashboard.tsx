@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-components";
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
-import { Check, FileCode, Database, Cpu, Clock, Activity, Terminal, ArrowRight } from "lucide-react";
+import { usePlans } from "@/hooks/use-plans";
+import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     formatRelativeTime,
@@ -56,13 +57,26 @@ function SessionRow({ session }: { session: SessionItem }) {
     );
 }
 
+function formatBackupAge(ageHours: number | null): string {
+    if (ageHours === null) return "Never";
+    if (ageHours < 1) return "< 1h ago";
+    if (ageHours < 24) return `${Math.round(ageHours)}h ago`;
+    const days = Math.floor(ageHours / 24);
+    if (days === 1) return "1 day ago";
+    if (days < 7) return `${days} days ago`;
+    return `${Math.floor(days / 7)}w ago`;
+}
+
 export default function Dashboard() {
     const { data: status, isLoading, isError } = useStatus();
     const { data: sessionsData, isLoading: sessionsLoading, isError: sessionsError } = useSessions(PAGINATION.DASHBOARD_SESSION_LIMIT);
+    const { data: plansData, isLoading: plansLoading } = usePlans({ limit: 1 });
 
     const isIndexing = status?.indexing;
     const indexStats = status?.index_stats;
     const sessions = sessionsData?.sessions || [];
+    const totalSessions = sessionsData?.total || 0;
+    const totalPlans = plansData?.total || 0;
     const systemStatus = isIndexing ? "indexing" : "ready";
     const systemStatusLabel = isIndexing ? SYSTEM_STATUS_LABELS.indexing : SYSTEM_STATUS_LABELS.ready;
 
@@ -96,33 +110,45 @@ export default function Dashboard() {
                 </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Stats Cards */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                 <StatCard
                     title="Files Indexed"
                     value={indexStats?.files_indexed || 0}
                     icon={FileCode}
                     subtext={indexStats?.ast_stats?.ast_success ? `${indexStats.ast_stats.ast_success} AST parsed` : "Files in index"}
                     loading={isLoading}
-                />
-                <StatCard
-                    title="Code Chunks"
-                    value={indexStats?.chunks_indexed?.toLocaleString() || 0}
-                    icon={Database}
-                    subtext="Vector embeddings"
-                    loading={isLoading}
+                    href="/search?tab=code"
                 />
                 <StatCard
                     title="Memories"
                     value={indexStats?.memories_stored || 0}
-                    icon={Cpu}
+                    icon={Brain}
                     subtext="Stored observations"
                     loading={isLoading}
+                    href="/activity/memories"
+                />
+                <StatCard
+                    title="Sessions"
+                    value={totalSessions}
+                    icon={Layers}
+                    subtext="Agent sessions tracked"
+                    loading={sessionsLoading}
+                    href="/activity/sessions"
+                />
+                <StatCard
+                    title="Plans"
+                    value={totalPlans}
+                    icon={ClipboardList}
+                    subtext="Implementation plans"
+                    loading={plansLoading}
+                    href="/activity/plans"
                 />
                 <StatCard
                     title="Uptime"
                     value={status ? formatUptime(status.uptime_seconds) : "0m"}
                     icon={Clock}
-                    subtext="Session duration"
+                    subtext="Daemon session"
                     loading={isLoading}
                 />
             </div>
@@ -131,11 +157,20 @@ export default function Dashboard() {
                 <Card className="col-span-4">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle>Recent Sessions</CardTitle>
-                        {sessions.length > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                                {sessionsData?.total || sessions.length} total
-                            </span>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {sessions.length > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                    {totalSessions} total
+                                </span>
+                            )}
+                            <Link
+                                to="/activity/sessions"
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                                View all
+                                <ArrowRight className="w-3 h-3" />
+                            </Link>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {sessionsError ? (
@@ -167,11 +202,32 @@ export default function Dashboard() {
                         <CardTitle>System Health</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4">
+                        <div className="space-y-3">
+                            {/* Embedding Provider */}
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Provider</span>
-                                <span className="font-medium text-sm">{status?.embedding_provider || "Unknown"}</span>
+                                <span className="text-sm text-muted-foreground">Embedding</span>
+                                <span className="font-medium text-sm truncate max-w-[180px]" title={status?.embedding_provider || undefined}>
+                                    {status?.embedding_provider || "Not configured"}
+                                </span>
                             </div>
+
+                            {/* Summarization Provider */}
+                            <div className="flex items-center justify-between gap-4">
+                                <span className="text-sm text-muted-foreground flex-shrink-0">Summarization</span>
+                                <span className={cn(
+                                    "font-medium text-sm text-right",
+                                    !status?.summarization?.enabled && "text-muted-foreground"
+                                )}>
+                                    {status?.summarization?.enabled
+                                        ? `${status.summarization.provider}:${status.summarization.model}`
+                                        : "Disabled"
+                                    }
+                                </span>
+                            </div>
+
+                            <div className="h-px bg-border my-1" />
+
+                            {/* File Watcher */}
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">File Watcher</span>
                                 <span className={cn("text-sm flex items-center gap-1", status?.file_watcher?.running ? "text-green-500" : "text-yellow-500")}>
@@ -179,9 +235,47 @@ export default function Dashboard() {
                                     {status?.file_watcher?.running ? "Active" : "Inactive"}
                                 </span>
                             </div>
+
+                            {/* Pending Changes */}
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">Pending Changes</span>
-                                <span className="font-medium text-sm">{status?.file_watcher?.pending_changes || 0}</span>
+                                <span className={cn(
+                                    "font-medium text-sm",
+                                    (status?.file_watcher?.pending_changes || 0) > 0 && "text-yellow-500"
+                                )}>
+                                    {status?.file_watcher?.pending_changes || 0}
+                                </span>
+                            </div>
+
+                            <div className="h-px bg-border my-1" />
+
+                            {/* Database Storage */}
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <HardDrive className="w-3 h-3" />
+                                    Storage
+                                </span>
+                                <span className="font-medium text-sm">
+                                    {status?.storage?.total_size_mb || "0.0"} MB
+                                </span>
+                            </div>
+
+                            {/* Backup Status */}
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <Save className="w-3 h-3" />
+                                    <a href="/team" className="hover:underline">Backup</a>
+                                </span>
+                                <span className={cn(
+                                    "font-medium text-sm",
+                                    !status?.backup?.exists && "text-yellow-500",
+                                    status?.backup?.exists && (status.backup.age_hours || 0) > 24 && "text-yellow-500"
+                                )}>
+                                    {status?.backup?.exists
+                                        ? `${formatBackupAge(status.backup.age_hours)} · ${((status.backup.size_bytes || 0) / (1024 * 1024)).toFixed(1)} MB`
+                                        : "Not created"
+                                    }
+                                </span>
                             </div>
                         </div>
                     </CardContent>

@@ -1,8 +1,8 @@
 # Strategic Planning Feature Manifest
-# Merged from: plan + rfc features
+# RFC/ADR management for formal technical planning
 name: strategic-planning
 display_name: "Strategic Planning"
-description: "Unified SDD workflow supporting implementation planning, RFCs, research phases, structured task generation, and export to issue trackers."
+description: "RFC and Architecture Decision Record (ADR) management for formal technical planning and documentation."
 version: "2.0.0"
 default_enabled: true
 dependencies:
@@ -15,18 +15,8 @@ skills:
   - creating-rfcs
   - reviewing-rfcs
 
-# Templates from both plan and rfc features
+# RFC templates only (plan templates removed)
 templates:
-  # Plan templates
-  - early_triage.md
-  - issue_context.md
-  - clarifying_questions.md
-  - constitution_compliance.md
-  - codebase_exploration.md
-  - plan_structure.md
-  - research_strategy.md
-  - final_report.md
-  # RFC templates
   - architecture.md
   - engineering.md
   - feature.md
@@ -34,5 +24,4 @@ templates:
 
 # Feature-specific default configuration
 config_defaults:
-  plan_directory: oak/plan
   rfc_directory: oak/rfc

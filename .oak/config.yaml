@@ -50,13 +50,6 @@ rfc:
   auto_number: true
   number_format: sequential
   validate_on_create: true
-issue:
-  azure_devops:
-    default_branch: main
-  github:
-    default_branch: main
-plan:
-  directory: oak/plan
 constitution:
   directory: oak
 languages:

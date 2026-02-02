@@ -52,8 +52,8 @@ export function Layout() {
         { to: "/logs", icon: FileTerminal, label: "Logs" },
         { to: "/team", icon: Users, label: "Team" },
         { to: "/config", icon: Settings, label: "Configuration" },
-        { to: "/help", icon: HelpCircle, label: "Setup Guide" },
         { to: "/devtools", icon: Wrench, label: "DevTools" },
+        { to: "/help", icon: HelpCircle, label: "Help" },
     ];
 
     const toggleCollapse = () => setCollapsed(!collapsed);

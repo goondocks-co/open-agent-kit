@@ -11,6 +11,11 @@ export interface LogRotationConfig {
     backup_count: number;
 }
 
+export interface SessionQualityConfig {
+    min_activities: number;
+    stale_timeout_seconds: number;
+}
+
 export interface Config {
     embedding: {
         provider: string;
@@ -28,6 +33,7 @@ export interface Config {
         context_tokens: number | null;
     };
     log_rotation: LogRotationConfig;
+    session_quality: SessionQualityConfig;
     log_level: string;
 }
 

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearch } from "@/hooks/use-search";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/config-components";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search as SearchIcon, FileText, Loader2, AlertCircle, Brain, ClipboardList, MessageSquare } from "lucide-react";
 import {
@@ -21,12 +21,33 @@ import {
 } from "@/lib/constants";
 import type { CodeResult, MemoryResult, PlanResult, SessionResult } from "@/hooks/use-search";
 
+// Valid search type values for URL param validation
+const VALID_SEARCH_TYPES = Object.values(SEARCH_TYPES) as string[];
+
 export default function Search() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [query, setQuery] = useState("");
     const [debouncedQuery, setDebouncedQuery] = useState("");
     const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all");
     const [applyDocTypeWeights, setApplyDocTypeWeights] = useState(true);
-    const [searchType, setSearchType] = useState<SearchType>(SEARCH_TYPES.ALL);
+
+    // Initialize searchType from URL param, defaulting to ALL
+    const tabParam = searchParams.get("tab");
+    const initialSearchType = tabParam && VALID_SEARCH_TYPES.includes(tabParam)
+        ? tabParam as SearchType
+        : SEARCH_TYPES.ALL;
+    const [searchType, setSearchType] = useState<SearchType>(initialSearchType);
+
+    // Sync URL when searchType changes
+    const handleSearchTypeChange = (newType: SearchType) => {
+        setSearchType(newType);
+        if (newType === SEARCH_TYPES.ALL) {
+            searchParams.delete("tab");
+        } else {
+            searchParams.set("tab", newType);
+        }
+        setSearchParams(searchParams, { replace: true });
+    };
 
     const { data: results, isLoading, error } = useSearch(debouncedQuery, confidenceFilter, applyDocTypeWeights, searchType);
 
@@ -71,7 +92,7 @@ export default function Search() {
                 />
                 <Select
                     value={searchType}
-                    onChange={(e) => setSearchType(e.target.value as SearchType)}
+                    onChange={(e) => handleSearchTypeChange(e.target.value as SearchType)}
                     className="w-40"
                 >
                     {SEARCH_TYPE_OPTIONS.map((opt) => (

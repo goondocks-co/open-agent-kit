@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.agents.executor import AgentExecutor
     from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
+    from open_agent_kit.features.codebase_intelligence.config import AgentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class AgentScheduler:
         activity_store: "ActivityStore",
         agent_registry: "AgentRegistry",
         agent_executor: "AgentExecutor",
+        agent_config: "AgentConfig",
     ):
         """Initialize the scheduler.
 
@@ -60,10 +62,12 @@ class AgentScheduler:
             activity_store: ActivityStore for schedule persistence.
             agent_registry: AgentRegistry for loading instance definitions.
             agent_executor: AgentExecutor for running agents.
+            agent_config: AgentConfig with scheduler settings.
         """
         self._activity_store = activity_store
         self._agent_registry = agent_registry
         self._agent_executor = agent_executor
+        self._agent_config = agent_config
 
         # Background loop control
         self._running = False
@@ -74,6 +78,11 @@ class AgentScheduler:
     def is_running(self) -> bool:
         """Check if the scheduler background loop is running."""
         return self._running
+
+    @property
+    def scheduler_interval_seconds(self) -> int:
+        """Get the scheduler check interval from config."""
+        return self._agent_config.scheduler_interval_seconds
 
     def compute_next_run(self, cron_expr: str, after: datetime | None = None) -> datetime:
         """Compute the next run time for a cron expression.
@@ -328,11 +337,10 @@ class AgentScheduler:
 
         logger.info("Scheduler loop stopped")
 
-    def start(self, interval_seconds: int = 60) -> None:
+    def start(self) -> None:
         """Start the background scheduling loop.
 
-        Args:
-            interval_seconds: Seconds between schedule checks.
+        Uses scheduler_interval_seconds from AgentConfig.
         """
         if self._running:
             logger.warning("Scheduler already running")
@@ -344,12 +352,12 @@ class AgentScheduler:
         # Start the loop in the current event loop
         try:
             loop = asyncio.get_running_loop()
-            self._loop_task = loop.create_task(self._run_loop(interval_seconds))
+            self._loop_task = loop.create_task(self._run_loop(self.scheduler_interval_seconds))
         except RuntimeError:
             # No running loop - caller will need to run it manually
             logger.warning("No running event loop - scheduler loop not started automatically")
 
-        logger.info("Scheduler started")
+        logger.info(f"Scheduler started (interval={self.scheduler_interval_seconds}s)")
 
     def stop(self) -> None:
         """Stop the background scheduling loop with timeout.

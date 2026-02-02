@@ -541,6 +541,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         summarizer=summarizer,
                         project_root=str(project_root),
                         context_tokens=ci_config.summarization.get_context_tokens(),
+                        session_quality_config=ci_config.session_quality,
                     )
 
                     # Check for SQLite/ChromaDB mismatch on startup
@@ -548,9 +549,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     # we need to rebuild ChromaDB from SQLite
                     await _check_and_rebuild_chromadb(state)
 
-                    # Schedule background processing every 60 seconds
-                    state.activity_processor.schedule_background_processing(interval_seconds=60)
-                    logger.info("Activity processor initialized with background scheduling")
+                    # Schedule background processing using config interval
+                    bg_interval = ci_config.agents.background_processing_interval_seconds
+                    state.activity_processor.schedule_background_processing(
+                        interval_seconds=bg_interval
+                    )
+                    logger.info(
+                        f"Activity processor initialized with background scheduling "
+                        f"(interval={bg_interval}s)"
+                    )
 
             except (OSError, ValueError, RuntimeError) as e:
                 logger.warning(f"Failed to initialize activity store: {e}")
@@ -571,11 +578,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
                     state.agent_executor = AgentExecutor(
                         project_root=project_root,
+                        agent_config=ci_config.agents,
                         retrieval_engine=state.retrieval_engine,
                         activity_store=state.activity_store,
                         vector_store=state.vector_store,
                     )
-                    logger.info("Agent executor initialized")
+                    logger.info(
+                        f"Agent executor initialized (cache_size={ci_config.agents.executor_cache_size})"
+                    )
 
                     # Initialize scheduler if activity_store is available
                     if state.activity_store:
@@ -587,6 +597,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                             activity_store=state.activity_store,
                             agent_registry=state.agent_registry,
                             agent_executor=state.agent_executor,
+                            agent_config=ci_config.agents,
                         )
                         # Sync schedules from YAML definitions to database
                         sync_result = state.agent_scheduler.sync_schedules()
@@ -594,8 +605,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                             f"Agent scheduler initialized: {sync_result['total']} schedules "
                             f"({sync_result['created']} created, {sync_result['updated']} updated)"
                         )
-                        # Start the background scheduling loop
-                        state.agent_scheduler.start(interval_seconds=60)
+                        # Start the background scheduling loop (uses config interval)
+                        state.agent_scheduler.start()
                 else:
                     logger.info("Agent subsystem disabled in config")
             except ImportError as e:

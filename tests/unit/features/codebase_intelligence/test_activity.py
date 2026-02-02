@@ -1043,38 +1043,62 @@ class TestActivityStoreRecoveryOperations:
     def test_recover_stale_sessions_marks_nonempty_as_completed(
         self, activity_store: ActivityStore
     ):
-        """Test that recover_stale_sessions marks non-empty sessions as completed."""
+        """Test that recover_stale_sessions marks quality sessions as completed.
+
+        Sessions need MIN_SESSION_ACTIVITIES (3) to be considered quality.
+        Sessions below this threshold are deleted instead of recovered.
+        """
         import time
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.models import Activity
+        from open_agent_kit.features.codebase_intelligence.constants import MIN_SESSION_ACTIVITIES
 
         # Create a session with a prompt batch
         activity_store.create_session(
-            session_id="test-session-nonempty-stale",
+            session_id="test-session-quality-stale",
             agent="claude",
             project_root="/path",
         )
         activity_store.create_prompt_batch(
-            session_id="test-session-nonempty-stale",
+            session_id="test-session-quality-stale",
             user_prompt="Test prompt",
         )
 
-        # Make it stale by setting created_at_epoch to a long time ago
+        # Add enough activities to meet quality threshold
+        for i in range(MIN_SESSION_ACTIVITIES):
+            activity = Activity(
+                session_id="test-session-quality-stale",
+                tool_name="Read",
+                tool_input={"path": f"/test/file{i}.py"},
+                tool_output_summary=f"Read file {i}",
+                file_path=f"/test/file{i}.py",
+                success=True,
+            )
+            activity_store.add_activity(activity)
+
+        # Make it stale by setting created_at_epoch and activity timestamps to a long time ago
         conn = activity_store._get_connection()
         old_epoch = time.time() - 7200  # 2 hours ago
         conn.execute(
             "UPDATE sessions SET created_at_epoch = ? WHERE id = ?",
-            (old_epoch, "test-session-nonempty-stale"),
+            (old_epoch, "test-session-quality-stale"),
+        )
+        # Also update activity timestamps so session is detected as stale
+        conn.execute(
+            "UPDATE activities SET timestamp_epoch = ? WHERE session_id = ?",
+            (old_epoch, "test-session-quality-stale"),
         )
         conn.commit()
 
         # Recover with 1 hour timeout
         recovered_ids, deleted_ids = activity_store.recover_stale_sessions(timeout_seconds=3600)
 
-        # Non-empty session should be recovered, not deleted
-        assert "test-session-nonempty-stale" in recovered_ids
-        assert "test-session-nonempty-stale" not in deleted_ids
+        # Quality session should be recovered, not deleted
+        assert "test-session-quality-stale" in recovered_ids
+        assert "test-session-quality-stale" not in deleted_ids
 
         # Session should be marked as completed
-        session = activity_store.get_session("test-session-nonempty-stale")
+        session = activity_store.get_session("test-session-quality-stale")
         assert session is not None
         assert session.status == "completed"
 

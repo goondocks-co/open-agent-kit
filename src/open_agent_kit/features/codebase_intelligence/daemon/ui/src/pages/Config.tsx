@@ -31,7 +31,10 @@ import {
     LARGE_CONTEXT_WINDOW_PLACEHOLDER,
     LOG_ROTATION_DEFAULTS,
     LOG_ROTATION_LIMITS,
+    SESSION_QUALITY_DEFAULTS,
+    SESSION_QUALITY_LIMITS,
     calculateMaxLogDiskUsage,
+    formatStaleTimeout,
     getDefaultProviderUrl,
     calculateChunkSize,
     toApiNumber,
@@ -85,10 +88,16 @@ interface LogRotationFormData {
     backup_count: number;
 }
 
+interface SessionQualityFormData {
+    min_activities: number;
+    stale_timeout_seconds: number;
+}
+
 interface FormData {
     embedding: EmbeddingFormData;
     summarization: SummarizationFormData;
     log_rotation: LogRotationFormData;
+    session_quality: SessionQualityFormData;
 }
 
 /** Validation result structure */
@@ -230,6 +239,12 @@ export default function Config() {
                 enabled: LOG_ROTATION_DEFAULTS.ENABLED,
                 max_size_mb: LOG_ROTATION_DEFAULTS.MAX_SIZE_MB,
                 backup_count: LOG_ROTATION_DEFAULTS.BACKUP_COUNT,
+            };
+
+            // Session quality mapping - use defaults if not present
+            mappedData.session_quality = config.session_quality ?? {
+                min_activities: SESSION_QUALITY_DEFAULTS.MIN_ACTIVITIES,
+                stale_timeout_seconds: SESSION_QUALITY_DEFAULTS.STALE_TIMEOUT_SECONDS,
             };
 
             console.log("[Config Load] Mapped to summarization.max_tokens:", mappedData.summarization.max_tokens);
@@ -502,6 +517,7 @@ export default function Config() {
             const emb = formData.embedding;
             const sum = formData.summarization;
             const rot = formData.log_rotation;
+            const sq = formData.session_quality;
 
             // Transform UI field names back to API field names
             const apiPayload = {
@@ -526,6 +542,10 @@ export default function Config() {
                     enabled: rot.enabled,
                     max_size_mb: rot.max_size_mb,
                     backup_count: rot.backup_count,
+                },
+                session_quality: {
+                    min_activities: sq.min_activities,
+                    stale_timeout_seconds: sq.stale_timeout_seconds,
                 },
             };
             const result = await updateConfig.mutateAsync(apiPayload) as { message?: string };
@@ -802,7 +822,7 @@ export default function Config() {
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter className="bg-muted/30 py-4 flex flex-col gap-3 sticky bottom-0 z-10 border-t">
+                <CardFooter className="bg-muted/30 py-4 flex flex-col gap-3 border-t">
                     {/* Validation Status - show errors and warnings */}
                     {isDirty && (
                         !embeddingValidation.isValid ||
@@ -843,6 +863,89 @@ export default function Config() {
                             <Save className="mr-2 h-4 w-4" /> Save Configuration
                         </Button>
                     </div>
+                </CardFooter>
+            </Card>
+
+            {/* Session Quality Section */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Session Quality</CardTitle>
+                    <CardDescription>Configure thresholds for session quality and cleanup behavior.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Minimum Activities</Label>
+                            <Input
+                                type="number"
+                                min={SESSION_QUALITY_LIMITS.MIN_ACTIVITY_THRESHOLD}
+                                max={SESSION_QUALITY_LIMITS.MAX_ACTIVITY_THRESHOLD}
+                                value={formData.session_quality?.min_activities ?? SESSION_QUALITY_DEFAULTS.MIN_ACTIVITIES}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10) || SESSION_QUALITY_DEFAULTS.MIN_ACTIVITIES;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            session_quality: {
+                                                ...prev.session_quality,
+                                                min_activities: Math.min(Math.max(value, SESSION_QUALITY_LIMITS.MIN_ACTIVITY_THRESHOLD), SESSION_QUALITY_LIMITS.MAX_ACTIVITY_THRESHOLD),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Sessions with fewer tool calls are not titled, summarized, or embedded.
+                                Range: {SESSION_QUALITY_LIMITS.MIN_ACTIVITY_THRESHOLD}-{SESSION_QUALITY_LIMITS.MAX_ACTIVITY_THRESHOLD}
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Stale Timeout (seconds)</Label>
+                            <Input
+                                type="number"
+                                min={SESSION_QUALITY_LIMITS.MIN_STALE_TIMEOUT}
+                                max={SESSION_QUALITY_LIMITS.MAX_STALE_TIMEOUT}
+                                value={formData.session_quality?.stale_timeout_seconds ?? SESSION_QUALITY_DEFAULTS.STALE_TIMEOUT_SECONDS}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10) || SESSION_QUALITY_DEFAULTS.STALE_TIMEOUT_SECONDS;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            session_quality: {
+                                                ...prev.session_quality,
+                                                stale_timeout_seconds: Math.min(Math.max(value, SESSION_QUALITY_LIMITS.MIN_STALE_TIMEOUT), SESSION_QUALITY_LIMITS.MAX_STALE_TIMEOUT),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Sessions inactive longer than this are auto-completed or deleted.
+                                Currently: {formatStaleTimeout(formData.session_quality?.stale_timeout_seconds ?? SESSION_QUALITY_DEFAULTS.STALE_TIMEOUT_SECONDS)}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>
+                            Sessions below the quality threshold are deleted during stale recovery.
+                            Quality sessions are marked completed for summarization.
+                        </span>
+                    </div>
+                </CardContent>
+                <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                        Changes take effect immediately for new sessions.
+                    </p>
+                    <Button onClick={handleSave} disabled={!isDirty || updateConfig.isPending} size="sm">
+                        {updateConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
                 </CardFooter>
             </Card>
 

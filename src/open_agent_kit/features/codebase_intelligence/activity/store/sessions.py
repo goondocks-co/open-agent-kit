@@ -17,6 +17,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     LINK_EVENT_MANUAL_LINKED,
     LINK_EVENT_SUGGESTION_ACCEPTED,
     LINK_EVENT_UNLINKED,
+    MIN_SESSION_ACTIVITIES,
     SESSION_LINK_REASON_MANUAL,
     SESSION_LINK_REASON_SUGGESTION,
 )
@@ -304,6 +305,25 @@ def mark_session_processed(store: ActivityStore, session_id: str) -> None:
         )
 
 
+def count_sessions(store: ActivityStore, status: str | None = None) -> int:
+    """Count total sessions with optional status filter.
+
+    Args:
+        store: The ActivityStore instance.
+        status: Optional status filter (e.g., 'active', 'completed').
+
+    Returns:
+        Total number of sessions matching the filter.
+    """
+    conn = store._get_connection()
+    if status:
+        cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE status = ?", (status,))
+    else:
+        cursor = conn.execute("SELECT COUNT(*) FROM sessions")
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+
 def get_recent_sessions(
     store: ActivityStore,
     limit: int = 10,
@@ -420,7 +440,9 @@ def get_sessions_missing_summaries(store: ActivityStore, limit: int = 10) -> lis
 
 
 def recover_stale_sessions(
-    store: ActivityStore, timeout_seconds: int = 3600
+    store: ActivityStore,
+    timeout_seconds: int = 3600,
+    min_activities: int | None = None,
 ) -> tuple[list[str], list[str]]:
     """Auto-end or delete sessions that have been inactive for too long.
 
@@ -431,33 +453,42 @@ def recover_stale_sessions(
     - It has activities and the most recent activity is older than timeout_seconds
     - It has NO activities and was created more than timeout_seconds ago
 
-    Sessions with prompt batches are marked as 'completed'.
-    Empty sessions (no prompt batches) are deleted entirely to avoid clutter.
+    Sessions that meet the quality threshold (>= min_activities) are
+    marked as 'completed' for later summarization and embedding.
+
+    Sessions below the quality threshold are deleted entirely - they will never
+    be summarized or embedded anyway, so keeping them just creates clutter.
 
     Args:
         store: The ActivityStore instance.
         timeout_seconds: Sessions inactive longer than this are auto-ended.
+            Pass session_quality.stale_timeout_seconds if available.
+        min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
+            Pass session_quality.min_activities if available.
 
     Returns:
         Tuple of (recovered_ids, deleted_ids) for state synchronization.
-        - recovered_ids: Sessions marked as 'completed' (had prompt batches)
-        - deleted_ids: Sessions deleted (were empty)
+        - recovered_ids: Sessions marked as 'completed' (met quality threshold)
+        - deleted_ids: Sessions deleted (below quality threshold)
     """
     # Import here to avoid circular imports
     from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
         delete_session,
     )
 
+    if min_activities is None:
+        min_activities = MIN_SESSION_ACTIVITIES
+
     cutoff_epoch = time.time() - timeout_seconds
 
-    # Find active sessions with no recent activity, including their prompt count
+    # Find active sessions with no recent activity, including their activity count
     # IMPORTANT: For sessions with no activities, check created_at_epoch
     # to avoid marking brand new sessions as stale
     conn = store._get_connection()
     cursor = conn.execute(
         """
         SELECT s.id, MAX(a.timestamp_epoch) as last_activity, s.created_at_epoch,
-               s.prompt_count
+               COUNT(a.id) as activity_count
         FROM sessions s
         LEFT JOIN activities a ON s.id = a.session_id
         WHERE s.status = 'active'
@@ -474,13 +505,15 @@ def recover_stale_sessions(
 
     recovered_ids = []
     deleted_ids = []
-    for session_id, _last_activity, _created_at, prompt_count in stale_sessions:
-        if prompt_count == 0:
-            # Empty session - delete it entirely
+    for session_id, _last_activity, _created_at, activity_count in stale_sessions:
+        # Use unified quality threshold: sessions below min_activities
+        # will never be summarized or embedded, so delete them
+        if activity_count < min_activities:
+            # Low-quality session - delete it entirely
             delete_session(store, session_id)
             deleted_ids.append(session_id)
         else:
-            # Non-empty session - mark as completed
+            # Quality session - mark as completed for summarization
             with store._transaction() as conn:
                 conn.execute(
                     """
@@ -499,8 +532,9 @@ def recover_stale_sessions(
         )
     if deleted_ids:
         logger.info(
-            f"Deleted {len(deleted_ids)} empty stale sessions "
-            f"(inactive > {timeout_seconds}s): {[s[:8] for s in deleted_ids]}"
+            f"Deleted {len(deleted_ids)} low-quality stale sessions "
+            f"(< {min_activities} activities, inactive > {timeout_seconds}s): "
+            f"{[s[:8] for s in deleted_ids]}"
         )
 
     return recovered_ids, deleted_ids
@@ -981,3 +1015,96 @@ def would_create_cycle(
         depth += 1
 
     return False
+
+
+def is_session_sufficient(
+    store: ActivityStore,
+    session_id: str,
+    min_activities: int | None = None,
+) -> bool:
+    """Check if a session meets the quality threshold for summarization.
+
+    Sessions that don't meet this threshold will not be titled, summarized,
+    or embedded. They will be cleaned up after the stale timeout.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session ID to check.
+        min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
+            Pass a configured value from session_quality.min_activities if available.
+
+    Returns:
+        True if session has >= min_activities tool calls.
+    """
+    if min_activities is None:
+        min_activities = MIN_SESSION_ACTIVITIES
+
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM activities WHERE session_id = ?",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    activity_count = row[0] if row else 0
+    return activity_count >= min_activities
+
+
+def cleanup_low_quality_sessions(
+    store: ActivityStore,
+    vector_store: Any | None = None,
+    min_activities: int | None = None,
+) -> list[str]:
+    """Delete completed sessions that don't meet the quality threshold.
+
+    This is a manual cleanup trigger for removing sessions that will never
+    be summarized or embedded (< min_activities tool calls).
+
+    Only deletes COMPLETED sessions to avoid touching active work.
+
+    Args:
+        store: The ActivityStore instance.
+        vector_store: Optional vector store for ChromaDB cleanup.
+        min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
+            Pass a configured value from session_quality.min_activities if available.
+
+    Returns:
+        List of deleted session IDs.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+        delete_session,
+    )
+
+    if min_activities is None:
+        min_activities = MIN_SESSION_ACTIVITIES
+
+    conn = store._get_connection()
+
+    # Find completed sessions with fewer than min_activities activities
+    cursor = conn.execute(
+        """
+        SELECT s.id, COUNT(a.id) as activity_count
+        FROM sessions s
+        LEFT JOIN activities a ON s.id = a.session_id
+        WHERE s.status = 'completed'
+        GROUP BY s.id
+        HAVING activity_count < ?
+        """,
+        (min_activities,),
+    )
+    low_quality_sessions = [row[0] for row in cursor.fetchall()]
+
+    if not low_quality_sessions:
+        return []
+
+    deleted_ids = []
+    for session_id in low_quality_sessions:
+        delete_session(store, session_id, vector_store=vector_store)
+        deleted_ids.append(session_id)
+
+    if deleted_ids:
+        logger.info(
+            f"Cleaned up {len(deleted_ids)} low-quality sessions "
+            f"(< {min_activities} activities): {[s[:8] for s in deleted_ids]}"
+        )
+
+    return deleted_ids

@@ -229,35 +229,45 @@ async def _on_embedding_model_changed(
         result.indexing_scheduled = True
         logger.info("Scheduled code re-indexing with new embedding model")
 
-    # Schedule memory re-embedding using rebuild_chromadb_from_sqlite
-    # This is the canonical way to rebuild memories - it handles:
-    # 1. Resetting all embedded flags (reset_embedded_flags=True)
-    # 2. Re-embedding all observations with the new model
-    # 3. Marking each as embedded after success
-    if state.activity_processor and state.activity_store:
+    # Schedule memory and session summary re-embedding using shared compaction logic
+    # Note: Code index is already cleared above; we skip clearing it again here
+    if state.activity_store and state.vector_store:
         total_observations = state.activity_store.count_observations()
-        if total_observations > 0:
-            processor = state.activity_processor  # Capture for closure
+        activity_store = state.activity_store  # Capture for closure
+        vector_store = state.vector_store
 
-            async def _rebuild_memories() -> None:
-                loop = asyncio.get_event_loop()
-                try:
-                    # reset_embedded_flags=True ensures all observations are re-embedded
-                    stats = await loop.run_in_executor(
-                        None,
-                        lambda: processor.rebuild_chromadb_from_sqlite(reset_embedded_flags=True),
-                    )
-                    logger.info(
-                        f"Memory re-embedding complete: {stats['embedded']} embedded, "
-                        f"{stats['failed']} failed, {stats['total']} total"
-                    )
-                except (OSError, ValueError, RuntimeError) as e:
-                    logger.error(f"Memory re-embedding failed: {e}")
+        async def _rebuild_all_embeddings() -> None:
+            from open_agent_kit.features.codebase_intelligence.activity.processor.indexing import (
+                compact_all_chromadb,
+            )
 
-            asyncio.create_task(_rebuild_memories())
-            result.memory_rebuild_scheduled = True
-            result.memories_reset = total_observations  # Will be reset by rebuild
-            logger.info(f"Scheduled re-embedding of {total_observations} memory observations")
+            loop = asyncio.get_event_loop()
+            try:
+                # Use shared compaction logic (skip code index - already cleared above)
+                # Use hard_reset=False since we just need to re-embed, not reclaim space
+                stats = await loop.run_in_executor(
+                    None,
+                    lambda: compact_all_chromadb(
+                        activity_store=activity_store,
+                        vector_store=vector_store,
+                        clear_code_index=False,  # Already cleared above
+                        hard_reset=False,  # No need to delete directory for model change
+                    ),
+                )
+                logger.info(
+                    f"Embedding rebuild complete: {stats['memories_embedded']} memories, "
+                    f"{stats['sessions_embedded']} sessions, "
+                    f"{stats['memories_cleared']} orphaned entries cleared"
+                )
+            except (OSError, ValueError, RuntimeError) as e:
+                logger.error(f"Embedding rebuild failed: {e}")
+
+        asyncio.create_task(_rebuild_all_embeddings())
+        result.memory_rebuild_scheduled = True
+        result.memories_reset = total_observations
+        logger.info(
+            f"Scheduled re-embedding of {total_observations} memories and session summaries"
+        )
 
     return result
 
@@ -367,6 +377,10 @@ async def get_config() -> dict:
             "base_url": config.summarization.base_url,
             "timeout": config.summarization.timeout,
             "context_tokens": config.summarization.context_tokens,
+        },
+        "session_quality": {
+            "min_activities": config.session_quality.min_activities,
+            "stale_timeout_seconds": config.session_quality.stale_timeout_seconds,
         },
         "log_rotation": {
             "enabled": config.log_rotation.enabled,
@@ -478,6 +492,20 @@ async def update_config(request: Request) -> dict:
             config.log_rotation.backup_count = rot["backup_count"]
             log_rotation_changed = True
 
+    # Handle session_quality updates (takes effect immediately)
+    session_quality_changed = False
+    if "session_quality" in data and isinstance(data["session_quality"], dict):
+        sq = data["session_quality"]
+        if "min_activities" in sq and sq["min_activities"] != config.session_quality.min_activities:
+            config.session_quality.min_activities = sq["min_activities"]
+            session_quality_changed = True
+        if (
+            "stale_timeout_seconds" in sq
+            and sq["stale_timeout_seconds"] != config.session_quality.stale_timeout_seconds
+        ):
+            config.session_quality.stale_timeout_seconds = sq["stale_timeout_seconds"]
+            session_quality_changed = True
+
     save_ci_config(state.project_root, config)
     logger.info(
         f"Config saved. summarization.context_tokens = {config.summarization.context_tokens}"
@@ -503,6 +531,10 @@ async def update_config(request: Request) -> dict:
                 "base_url": config.summarization.base_url,
                 "context_tokens": config.summarization.context_tokens,
             },
+            "session_quality": {
+                "min_activities": config.session_quality.min_activities,
+                "stale_timeout_seconds": config.session_quality.stale_timeout_seconds,
+            },
             "log_rotation": {
                 "enabled": config.log_rotation.enabled,
                 "max_size_mb": config.log_rotation.max_size_mb,
@@ -511,6 +543,7 @@ async def update_config(request: Request) -> dict:
             "log_level": config.log_level,
             "embedding_changed": embedding_changed,
             "summarization_changed": summarization_changed,
+            "session_quality_changed": session_quality_changed,
             "log_level_changed": log_level_changed,
             "log_rotation_changed": log_rotation_changed,
             "auto_applied": True,
@@ -519,8 +552,8 @@ async def update_config(request: Request) -> dict:
         }
 
     message = "Configuration saved."
-    if summarization_changed:
-        message += " Summarization changes take effect immediately."
+    if summarization_changed or session_quality_changed:
+        message += " Changes take effect immediately."
     elif log_level_changed or log_rotation_changed:
         changes = []
         if log_level_changed:
@@ -544,6 +577,10 @@ async def update_config(request: Request) -> dict:
             "base_url": config.summarization.base_url,
             "context_tokens": config.summarization.context_tokens,
         },
+        "session_quality": {
+            "min_activities": config.session_quality.min_activities,
+            "stale_timeout_seconds": config.session_quality.stale_timeout_seconds,
+        },
         "log_rotation": {
             "enabled": config.log_rotation.enabled,
             "max_size_mb": config.log_rotation.max_size_mb,
@@ -552,6 +589,7 @@ async def update_config(request: Request) -> dict:
         "log_level": config.log_level,
         "embedding_changed": embedding_changed,
         "summarization_changed": summarization_changed,
+        "session_quality_changed": session_quality_changed,
         "log_level_changed": log_level_changed,
         "log_rotation_changed": log_rotation_changed,
         "auto_applied": False,

@@ -7,11 +7,23 @@ import { RefreshCw, Pause, Play, Bug, Loader2, Copy, Check } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query";
 import {
     LOG_LEVELS,
+    LOG_FILES,
     LOG_FILE_OPTIONS,
-    LOG_TAG_CATEGORIES,
-    LOG_TAG_DISPLAY_NAMES,
+    HOOKS_LOG_TAG_CATEGORIES,
+    HOOKS_LOG_TAG_DISPLAY_NAMES,
+    DAEMON_LOG_TAG_CATEGORIES,
+    DAEMON_LOG_TAG_DISPLAY_NAMES,
 } from "@/lib/constants";
-import type { LogFileType, LogTagType, LogTagCategory } from "@/lib/constants";
+import type {
+    LogFileType,
+    HooksLogTagType,
+    HooksLogTagCategory,
+    DaemonLogTagType,
+    DaemonLogTagCategory,
+} from "@/lib/constants";
+
+/** Union type for all possible log filter tags */
+type LogFilterTag = HooksLogTagType | DaemonLogTagType;
 
 /** Delay before refetching logs after restart (ms) */
 const RESTART_REFETCH_DELAY_MS = 1000;
@@ -24,7 +36,7 @@ export default function Logs() {
     const [logFile, setLogFile] = useState<LogFileType>(DEFAULT_LOG_FILE);
     const [autoScroll, setAutoScroll] = useState(true);
     const [isTogglingDebug, setIsTogglingDebug] = useState(false);
-    const [selectedTags, setSelectedTags] = useState<Set<LogTagType>>(new Set());
+    const [selectedTags, setSelectedTags] = useState<Set<LogFilterTag>>(new Set());
     const [copied, setCopied] = useState(false);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const queryClient = useQueryClient();
@@ -49,7 +61,7 @@ export default function Logs() {
     };
 
     /** Toggle a tag in the selection */
-    const handleTagToggle = (tag: LogTagType) => {
+    const handleTagToggle = (tag: LogFilterTag) => {
         const newTags = new Set(selectedTags);
         if (newTags.has(tag)) {
             newTags.delete(tag);
@@ -123,7 +135,11 @@ export default function Logs() {
                     <select
                         className="bg-background border border-input rounded-md px-3 py-1 text-sm font-medium"
                         value={logFile}
-                        onChange={(e) => setLogFile(e.target.value as LogFileType)}
+                        onChange={(e) => {
+                            setLogFile(e.target.value as LogFileType);
+                            // Clear tag filters when switching log files (tags are hooks-log specific)
+                            setSelectedTags(new Set());
+                        }}
                         title="Select log file to view"
                     >
                         {LOG_FILE_OPTIONS.map((option) => (
@@ -169,30 +185,58 @@ export default function Logs() {
                 </div>
             </div>
 
-            {/* Tag Filter Chips */}
+            {/* Tag Filter Chips - different filters for each log type */}
             <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground mr-1">Filter:</span>
-                {(Object.entries(LOG_TAG_CATEGORIES) as [LogTagCategory, typeof LOG_TAG_CATEGORIES[LogTagCategory]][]).map(
-                    ([category, { tags }], categoryIndex) => (
-                        <div key={category} className="flex items-center gap-1">
-                            {tags.map((tag) => (
-                                <button
-                                    key={tag}
-                                    onClick={() => handleTagToggle(tag)}
-                                    className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-                                        selectedTags.has(tag)
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-background border-input hover:bg-accent"
-                                    }`}
-                                    title={`Filter to show only ${LOG_TAG_DISPLAY_NAMES[tag]} entries`}
-                                >
-                                    {LOG_TAG_DISPLAY_NAMES[tag]}
-                                </button>
-                            ))}
-                            {categoryIndex < Object.keys(LOG_TAG_CATEGORIES).length - 1 && (
-                                <div className="w-px h-4 bg-border mx-1" />
-                            )}
-                        </div>
+                {logFile === LOG_FILES.HOOKS ? (
+                    /* Hooks log filters - structured event tags */
+                    (Object.entries(HOOKS_LOG_TAG_CATEGORIES) as [HooksLogTagCategory, typeof HOOKS_LOG_TAG_CATEGORIES[HooksLogTagCategory]][]).map(
+                        ([category, { tags }], categoryIndex) => (
+                            <div key={category} className="flex items-center gap-1">
+                                {tags.map((tag) => (
+                                    <button
+                                        key={tag}
+                                        onClick={() => handleTagToggle(tag)}
+                                        className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                                            selectedTags.has(tag)
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background border-input hover:bg-accent"
+                                        }`}
+                                        title={`Filter to show only ${HOOKS_LOG_TAG_DISPLAY_NAMES[tag]} entries`}
+                                    >
+                                        {HOOKS_LOG_TAG_DISPLAY_NAMES[tag]}
+                                    </button>
+                                ))}
+                                {categoryIndex < Object.keys(HOOKS_LOG_TAG_CATEGORIES).length - 1 && (
+                                    <div className="w-px h-4 bg-border mx-1" />
+                                )}
+                            </div>
+                        )
+                    )
+                ) : (
+                    /* Daemon log filters - log level tags + debug topics */
+                    (Object.entries(DAEMON_LOG_TAG_CATEGORIES) as [DaemonLogTagCategory, typeof DAEMON_LOG_TAG_CATEGORIES[DaemonLogTagCategory]][]).map(
+                        ([category, { tags }], categoryIndex) => (
+                            <div key={category} className="flex items-center gap-1">
+                                {tags.map((tag) => (
+                                    <button
+                                        key={tag}
+                                        onClick={() => handleTagToggle(tag)}
+                                        className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                                            selectedTags.has(tag)
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background border-input hover:bg-accent"
+                                        }`}
+                                        title={`Filter to show only ${DAEMON_LOG_TAG_DISPLAY_NAMES[tag]} entries`}
+                                    >
+                                        {DAEMON_LOG_TAG_DISPLAY_NAMES[tag]}
+                                    </button>
+                                ))}
+                                {categoryIndex < Object.keys(DAEMON_LOG_TAG_CATEGORIES).length - 1 && (
+                                    <div className="w-px h-4 bg-border mx-1" />
+                                )}
+                            </div>
+                        )
                     )
                 )}
                 {selectedTags.size > 0 && (

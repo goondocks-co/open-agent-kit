@@ -253,6 +253,19 @@ MACHINE_ID_SUBPROCESS_TIMEOUT: Final[int] = 5
 MACHINE_ID_CACHE_FILENAME: Final[str] = "machine_id"
 
 # =============================================================================
+# Session Quality Threshold
+# =============================================================================
+# Minimum activities (tool calls) for a session to be considered "quality".
+# Sessions below this threshold:
+# - Will NOT have titles generated (avoids hallucinated titles from minimal context)
+# - Will NOT have summaries generated
+# - Will NOT be embedded to ChromaDB
+# - Will be deleted during stale session cleanup
+# This matches the existing threshold in summaries.py:182 for summary generation.
+
+MIN_SESSION_ACTIVITIES: Final[int] = 3
+
+# =============================================================================
 # Logging
 # =============================================================================
 
@@ -568,6 +581,25 @@ INJECTION_SESSION_START_REMINDER_BLOCK: Final[str] = MEMORY_EMBED_LINE_SEPARATOR
     (INJECTION_SESSION_START_REMINDER_TITLE, *INJECTION_SESSION_START_REMINDER_LINES)
 )
 
+
+# =============================================================================
+# Agent Scheduler/Executor Configuration
+# =============================================================================
+
+# Scheduler interval: how often the scheduler checks for due schedules
+DEFAULT_SCHEDULER_INTERVAL_SECONDS: Final[int] = 60
+MIN_SCHEDULER_INTERVAL_SECONDS: Final[int] = 10
+MAX_SCHEDULER_INTERVAL_SECONDS: Final[int] = 3600
+
+# Executor cache size: max runs to keep in memory
+DEFAULT_EXECUTOR_CACHE_SIZE: Final[int] = 100
+MIN_EXECUTOR_CACHE_SIZE: Final[int] = 10
+MAX_EXECUTOR_CACHE_SIZE: Final[int] = 1000
+
+# Background processing interval: how often activity processor runs
+DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 60
+MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 10
+MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 600
 
 # =============================================================================
 # Agent Subsystem Constants

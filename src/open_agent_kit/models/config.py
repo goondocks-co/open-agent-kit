@@ -47,50 +47,6 @@ class RFCConfig(BaseModel):
     validate_on_create: bool = Field(default=True, description="Run validation after creating RFC")
 
 
-class AzureDevOpsProviderConfig(BaseModel):
-    """Azure DevOps issue provider configuration."""
-
-    organization: str | None = Field(default=None, description="Azure DevOps organization name")
-    project: str | None = Field(default=None, description="Azure DevOps project name")
-    team: str | None = Field(default=None, description="Default team name")
-    area_path: str | None = Field(default=None, description="Default area path")
-    pat_env: str | None = Field(default=None, description="Environment variable containing PAT")
-    default_branch: str = Field(
-        default="main", description="Default branch to base new issue branches on"
-    )
-
-
-class GitHubIssuesProviderConfig(BaseModel):
-    """GitHub Issues issue provider configuration."""
-
-    owner: str | None = Field(default=None, description="Repository owner or organization")
-    repo: str | None = Field(default=None, description="Repository name")
-    token_env: str | None = Field(default=None, description="Environment variable containing token")
-    default_branch: str = Field(
-        default="main", description="Default branch to base new issue branches on"
-    )
-
-
-class IssueConfig(BaseModel):
-    """Issue provider settings."""
-
-    provider: str | None = Field(default=None, description="Active issue provider key")
-    azure_devops: AzureDevOpsProviderConfig = Field(
-        default_factory=AzureDevOpsProviderConfig,
-        description="Azure DevOps provider settings",
-    )
-    github: GitHubIssuesProviderConfig = Field(
-        default_factory=GitHubIssuesProviderConfig,
-        description="GitHub Issues provider settings",
-    )
-
-
-class PlanConfig(BaseModel):
-    """Plan feature configuration."""
-
-    directory: str = Field(default="oak/plan", description="Directory for strategic plans")
-
-
 class ConstitutionConfig(BaseModel):
     """Constitution feature configuration."""
 
@@ -132,8 +88,6 @@ class OakConfig(BaseModel):
         description="Per-agent capability overrides (merged with manifest defaults)",
     )
     rfc: RFCConfig = Field(default_factory=RFCConfig, description="RFC configuration")
-    issue: IssueConfig = Field(default_factory=IssueConfig, description="Issue configuration")
-    plan: PlanConfig = Field(default_factory=PlanConfig, description="Plan configuration")
     constitution: ConstitutionConfig = Field(
         default_factory=ConstitutionConfig, description="Constitution configuration"
     )

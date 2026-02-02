@@ -270,6 +270,11 @@ async def hook_session_start(request: Request) -> dict:
     injected = build_session_context(state, include_memories=inject_full_context)
     if injected:
         context["injected_context"] = injected
+        # Summary to hooks.log for easy visibility
+        hooks_logger.info(
+            f"[CONTEXT-INJECT] session_context session={session_id} "
+            f"include_memories={inject_full_context} hook=session-start"
+        )
         logger.debug(f"[INJECT:session-start] Content:\n{injected}")
 
     # Add metadata (not injected, just for reference)
@@ -479,9 +484,12 @@ async def hook_prompt_submit(request: Request) -> dict:
                 if mem_lines:
                     injected_text = "**Relevant memories for this task:**\n" + "\n".join(mem_lines)
                     context["injected_context"] = injected_text
-                    logger.info(
-                        f"Injecting {len(high_confidence_memories[:5])} high-confidence "
-                        f"memories for prompt"
+                    num_memories = len(high_confidence_memories[:5])
+                    logger.info(f"Injecting {num_memories} high-confidence " f"memories for prompt")
+                    # Summary to hooks.log for easy visibility
+                    hooks_logger.info(
+                        f"[CONTEXT-INJECT] memories={num_memories} session={session_id} "
+                        f"hook=prompt-submit"
                     )
                     logger.debug(f"[INJECT:prompt-submit] Content:\n{injected_text}")
 
@@ -519,8 +527,12 @@ async def hook_prompt_submit(request: Request) -> dict:
                         )
                     else:
                         context["injected_context"] = code_text
-                    logger.info(
-                        f"Injecting {min(3, len(high_confidence_code))} code chunks for prompt"
+                    num_code = min(3, len(high_confidence_code))
+                    logger.info(f"Injecting {num_code} code chunks for prompt")
+                    # Summary to hooks.log for easy visibility
+                    hooks_logger.info(
+                        f"[CONTEXT-INJECT] code={num_code} session={session_id} "
+                        f"hook=prompt-submit"
                     )
                     logger.debug(f"[INJECT:prompt-submit-code] Content:\n{code_text}")
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
@@ -866,9 +878,15 @@ async def hook_post_tool_use(request: Request) -> dict:
                             injected_context = (
                                 f"**Memories about {normalized_path}:**\n" + "\n".join(mem_lines)
                             )
+                            num_file_memories = len(confident_memories[:3])
                             logger.debug(
-                                f"Injecting {len(confident_memories[:3])} confident memories "
+                                f"Injecting {num_file_memories} confident memories "
                                 f"for {normalized_path}"
+                            )
+                            # Summary to hooks.log for easy visibility
+                            hooks_logger.info(
+                                f"[CONTEXT-INJECT] file_memories={num_file_memories} "
+                                f"file={normalized_path} session={session_id} hook=post-tool-use"
                             )
                             logger.debug(f"[INJECT:post-tool-use] Content:\n{injected_context}")
 

@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import (
         ActivityStore,
     )
+    from open_agent_kit.features.codebase_intelligence.config import SessionQualityConfig
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.summarization.base import (
         BaseSummarizer,
@@ -85,6 +86,7 @@ class ActivityProcessor:
         prompt_config: PromptTemplateConfig | None = None,
         project_root: str | None = None,
         context_tokens: int = 4096,
+        session_quality_config: "SessionQualityConfig | None" = None,
     ):
         """Initialize the processor.
 
@@ -95,6 +97,9 @@ class ActivityProcessor:
             prompt_config: Prompt template configuration.
             project_root: Project root for oak ci commands.
             context_tokens: Model's context window size (from config).
+            session_quality_config: Session quality thresholds for determining
+                which sessions to title, summarize, and embed. If not provided,
+                uses default values from constants.
         """
         self.activity_store = activity_store
         self.vector_store = vector_store
@@ -102,10 +107,33 @@ class ActivityProcessor:
         self.prompt_config = prompt_config or PromptTemplateConfig.load_from_directory()
         self.project_root = project_root
         self.context_budget = ContextBudget.from_context_tokens(context_tokens)
+        self.session_quality_config = session_quality_config
 
         self._processing_lock = threading.Lock()
         self._is_processing = False
         self._last_process_time: datetime | None = None
+
+    @property
+    def min_session_activities(self) -> int:
+        """Get minimum activities threshold from config or constant."""
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            MIN_SESSION_ACTIVITIES,
+        )
+
+        if self.session_quality_config:
+            return self.session_quality_config.min_activities
+        return MIN_SESSION_ACTIVITIES
+
+    @property
+    def stale_timeout_seconds(self) -> int:
+        """Get stale timeout from config or constant."""
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            SESSION_INACTIVE_TIMEOUT_SECONDS,
+        )
+
+        if self.session_quality_config:
+            return self.session_quality_config.stale_timeout_seconds
+        return SESSION_INACTIVE_TIMEOUT_SECONDS
 
     def _call_llm(self, prompt: str) -> dict[str, Any]:
         """Call LLM for observation extraction.
@@ -570,6 +598,7 @@ class ActivityProcessor:
             activity_store=self.activity_store,
             prompt_config=self.prompt_config,
             call_llm=self._call_llm,
+            min_activities=self.min_session_activities,
         )
 
     def generate_pending_titles(self, limit: int = 5) -> int:
@@ -579,6 +608,7 @@ class ActivityProcessor:
             prompt_config=self.prompt_config,
             call_llm=self._call_llm,
             limit=limit,
+            min_activities=self.min_session_activities,
         )
 
     def process_session_summary(
@@ -713,7 +743,6 @@ class ActivityProcessor:
             try:
                 from open_agent_kit.features.codebase_intelligence.constants import (
                     BATCH_ACTIVE_TIMEOUT_SECONDS,
-                    SESSION_INACTIVE_TIMEOUT_SECONDS,
                 )
 
                 # Recovery: Auto-end batches stuck in 'active' too long
@@ -737,8 +766,10 @@ class ActivityProcessor:
 
                 # Recovery: Auto-end or delete sessions inactive too long
                 # Empty sessions are deleted, non-empty sessions are marked completed
+                # Uses configured thresholds from session_quality_config (via properties)
                 recovered_ids, deleted_ids = self.activity_store.recover_stale_sessions(
-                    timeout_seconds=SESSION_INACTIVE_TIMEOUT_SECONDS
+                    timeout_seconds=self.stale_timeout_seconds,
+                    min_activities=self.min_session_activities,
                 )
                 if deleted_ids:
                     logger.info(

@@ -7,7 +7,7 @@ Key Classes:
     ConfigService: Main service for configuration CRUD operations
 
 Dependencies:
-    - Pydantic models (OakConfig, RFCConfig, IssueConfig, PlanConfig, ConstitutionConfig)
+    - Pydantic models (OakConfig, RFCConfig, PlanConfig, ConstitutionConfig)
     - YAML for serialization
 
 Configuration Hierarchy:
@@ -20,21 +20,12 @@ Configuration Sections:
     - project: Name, description, version
     - agents: Configured AI agents (claude, copilot, etc.)
     - rfc: RFC settings (auto_number, format, template, validation)
-    - issue: Issue provider configuration (Azure DevOps, GitHub)
 
 Typical Usage:
     >>> service = ConfigService(project_root=Path.cwd())
     >>> config = service.load_config()
     >>> config.rfc.auto_number = True
     >>> service.save_config(config)
-
-Issue Provider Configuration:
-    >>> config_service.update_issue_provider(
-    ...     "ado",
-    ...     organization="myorg",
-    ...     project="myproject",
-    ...     pat_env="ADO_PAT"
-    ... )
 """
 
 import logging
@@ -45,10 +36,9 @@ from open_agent_kit.config.paths import CONFIG_FILE, OAK_DIR
 from open_agent_kit.constants import (
     DEFAULT_CONFIG_YAML,
     DEFAULT_LANGUAGES,
-    ISSUE_PROVIDER_CONFIG_MAP,
     VERSION,
 )
-from open_agent_kit.models.config import IssueConfig, OakConfig
+from open_agent_kit.models.config import OakConfig
 from open_agent_kit.utils import file_exists, read_yaml, write_file
 
 logger = logging.getLogger(__name__)
@@ -208,26 +198,6 @@ class ConfigService:
         """
         return self.get_oak_dir() / "commands"
 
-    def get_issue_dir(self) -> Path:
-        """Get issue artifacts directory path.
-
-        Note: Issue directory is now hardcoded to oak/issue since issue contexts
-        can be stored either standalone or within plan directories.
-
-        Returns:
-            Path to issue directory (oak/issue)
-        """
-        return self.project_root / "oak" / "issue"
-
-    def get_plan_dir(self) -> Path:
-        """Get plan artifacts directory path from config.
-
-        Returns:
-            Path to plan directory
-        """
-        config = self.load_config()
-        return self.project_root / config.plan.directory
-
     def get_constitution_dir(self) -> Path:
         """Get constitution directory path from config.
 
@@ -273,83 +243,6 @@ class ConfigService:
         all_agents = list(set(existing_agents + new_agents))
         # Update both agents and version
         return self.update_config(agents=all_agents, version=VERSION)
-
-    def get_issue_config(self) -> IssueConfig:
-        """Get issue configuration.
-
-        Returns:
-            IssueConfig object
-        """
-        config = self.load_config()
-        return config.issue
-
-    def get_active_issue_provider(self) -> str | None:
-        """Get the active issue provider key.
-
-        Returns:
-            Provider key or None
-        """
-        issue_config = self.get_issue_config()
-        return issue_config.provider
-
-    def update_issue_provider(
-        self,
-        provider_key: str,
-        **settings: Any,
-    ) -> IssueConfig:
-        """Update issue provider configuration and set it active.
-
-        Args:
-            provider_key: Provider identifier (e.g., 'ado', 'github')
-            **settings: Provider-specific settings
-
-        Returns:
-            Updated IssueConfig object
-        """
-        provider_attr = ISSUE_PROVIDER_CONFIG_MAP.get(provider_key)
-        if not provider_attr:
-            raise ValueError(f"Unsupported issue provider: {provider_key}")
-
-        config = self.load_config()
-        provider_config = getattr(config.issue, provider_attr, None)
-        if provider_config is None:
-            raise ValueError(f"No configuration section for provider '{provider_key}'")
-
-        # Apply provided settings
-        for key, value in settings.items():
-            if value is None:
-                continue
-            if hasattr(provider_config, key):
-                setattr(provider_config, key, value)
-
-        config.issue.provider = provider_key
-        self.save_config(config)
-        return config.issue
-
-    def get_provider_settings(self, provider_key: str | None = None) -> dict[str, Any]:
-        """Get provider-specific settings as dictionary.
-
-        Args:
-            provider_key: Provider identifier (defaults to active provider)
-
-        Returns:
-            Dictionary of provider settings
-        """
-        issue_config = self.get_issue_config()
-        resolved_key = provider_key or issue_config.provider
-        if not resolved_key:
-            return {}
-
-        provider_attr = ISSUE_PROVIDER_CONFIG_MAP.get(resolved_key)
-        if not provider_attr:
-            return {}
-
-        provider_config = getattr(issue_config, provider_attr, None)
-        if provider_config is None:
-            return {}
-
-        result: dict[str, Any] = provider_config.model_dump(mode="json", exclude_none=True)
-        return result
 
     def validate_config(self) -> tuple[bool, list[str]]:
         """Validate current configuration.

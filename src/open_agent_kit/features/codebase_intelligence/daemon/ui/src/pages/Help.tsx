@@ -2,8 +2,19 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Copy, Check, ExternalLink, Terminal } from "lucide-react";
+import { Copy, Check, ExternalLink, Terminal, BookOpen, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// =============================================================================
+// Tab Constants
+// =============================================================================
+
+const HELP_TABS = {
+    SETUP: "setup",
+    TROUBLESHOOTING: "troubleshooting",
+} as const;
+
+type HelpTab = typeof HELP_TABS[keyof typeof HELP_TABS];
 
 // =============================================================================
 // Copy Button Component
@@ -64,29 +75,40 @@ function CommandBlock({ command, label }: CommandBlockProps) {
 }
 
 // =============================================================================
-// Help Page Component
+// Tab Button Component
 // =============================================================================
 
-export default function Help() {
+interface TabButtonProps {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string;
+}
+
+function TabButton({ active, onClick, icon, label }: TabButtonProps) {
+    return (
+        <button
+            onClick={onClick}
+            className={cn(
+                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+        >
+            {icon}
+            {label}
+        </button>
+    );
+}
+
+// =============================================================================
+// Setup Guide Tab Content
+// =============================================================================
+
+function SetupGuideContent() {
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <Link to="/config">
-                    <Button variant="ghost" size="sm" className="gap-2">
-                        <ArrowLeft className="h-4 w-4" />
-                        Back to Config
-                    </Button>
-                </Link>
-            </div>
-
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Setup Guide</h1>
-                <p className="text-muted-foreground mt-2">
-                    Get Codebase Intelligence up and running with an embedding provider.
-                </p>
-            </div>
-
             {/* Ollama Setup (Recommended) */}
             <Card>
                 <CardHeader>
@@ -227,33 +249,142 @@ export default function Help() {
                     </ul>
                 </CardContent>
             </Card>
+        </div>
+    );
+}
 
-            {/* Troubleshooting */}
+// =============================================================================
+// Troubleshooting Tab Content
+// =============================================================================
+
+function TroubleshootingContent() {
+    return (
+        <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Troubleshooting</CardTitle>
+                    <CardTitle>Common Issues</CardTitle>
+                    <CardDescription>
+                        Solutions for frequently encountered problems.
+                    </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
                     <div>
                         <h3 className="font-semibold text-sm">Connection refused</h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground mt-1">
                             Make sure your embedding provider is running. For Ollama, run <code className="bg-muted px-1 rounded">ollama serve</code> or start the desktop app.
                         </p>
                     </div>
                     <div>
                         <h3 className="font-semibold text-sm">No models found</h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground mt-1">
                             You need to pull/download a model first. For Ollama: <code className="bg-muted px-1 rounded">ollama pull nomic-embed-text</code>
                         </p>
                     </div>
                     <div>
                         <h3 className="font-semibold text-sm">Test & Detect fails</h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground mt-1">
                             Verify your base URL is correct and the model supports embeddings. Some LLM-only models don't support the embeddings API.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Indexing seems slow</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Large codebases take time to index. Check the Dashboard for progress. You can also add exclusions on the <Link to="/config" className="text-primary hover:underline">Configuration page</Link> to skip large directories like <code className="bg-muted px-1 rounded">node_modules</code> or <code className="bg-muted px-1 rounded">vendor</code>.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Search returns no results</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Make sure indexing is complete (check Dashboard). If the index is out of sync, use the "Rebuild Codebase Index" option in <Link to="/devtools" className="text-primary hover:underline">DevTools</Link>.
                         </p>
                     </div>
                 </CardContent>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Memory & Data Issues</CardTitle>
+                    <CardDescription>
+                        Resolving problems with memories and observations.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-sm">Memories not appearing in search</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Check the Memory Status in <Link to="/devtools" className="text-primary hover:underline">DevTools</Link>. If there are pending items, wait for background processing. If ChromaDB is out of sync, use "Re-embed Memories".
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">After backup restore, data seems incomplete</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            After restoring from backup, go to <Link to="/devtools" className="text-primary hover:underline">DevTools</Link> and run "Re-embed Memories" with "Clear orphaned entries" checked to rebuild the search index.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Duplicate memories appearing</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            This shouldn't happen with the content-hash deduplication. If it does, run "Backfill Content Hashes" in DevTools, then restore from backup again.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Getting More Help</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                        If you're still having issues:
+                    </p>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                        <li>Check the <Link to="/logs" className="text-primary hover:underline">Logs page</Link> for detailed error messages</li>
+                        <li>Review the daemon log file at <code className="bg-muted px-1 rounded">.oak/ci/daemon.log</code></li>
+                        <li>Open an issue on the project repository</li>
+                    </ul>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// =============================================================================
+// Help Page Component
+// =============================================================================
+
+export default function Help() {
+    const [activeTab, setActiveTab] = useState<HelpTab>(HELP_TABS.SETUP);
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Help</h1>
+                <p className="text-muted-foreground mt-2">
+                    Get started with Codebase Intelligence and troubleshoot common issues.
+                </p>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex gap-2 border-b pb-2">
+                <TabButton
+                    active={activeTab === HELP_TABS.SETUP}
+                    onClick={() => setActiveTab(HELP_TABS.SETUP)}
+                    icon={<BookOpen className="h-4 w-4" />}
+                    label="Setup Guide"
+                />
+                <TabButton
+                    active={activeTab === HELP_TABS.TROUBLESHOOTING}
+                    onClick={() => setActiveTab(HELP_TABS.TROUBLESHOOTING)}
+                    icon={<Wrench className="h-4 w-4" />}
+                    label="Troubleshooting"
+                />
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === HELP_TABS.SETUP && <SetupGuideContent />}
+            {activeTab === HELP_TABS.TROUBLESHOOTING && <TroubleshootingContent />}
         </div>
     );
 }

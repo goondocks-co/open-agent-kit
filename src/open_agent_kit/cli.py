@@ -8,10 +8,8 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from open_agent_kit.commands.ci_cmd import ci_app
-from open_agent_kit.commands.config_cmd import config_app
 from open_agent_kit.commands.init_cmd import init_command
 from open_agent_kit.commands.languages_cmd import languages_app
-from open_agent_kit.commands.plan_cmd import plan_app
 from open_agent_kit.commands.remove_cmd import remove_command
 from open_agent_kit.commands.rfc_cmd import rfc_app
 from open_agent_kit.commands.rules_cmd import rules_app
@@ -35,9 +33,7 @@ app = typer.Typer(
 
 # Add command groups
 app.add_typer(rules_app, name="rules")
-app.add_typer(plan_app, name="plan")
 app.add_typer(rfc_app, name="rfc")
-app.add_typer(config_app, name="config")
 app.add_typer(languages_app, name="languages")
 app.add_typer(skill_app, name="skill")
 app.add_typer(ci_app, name="ci")

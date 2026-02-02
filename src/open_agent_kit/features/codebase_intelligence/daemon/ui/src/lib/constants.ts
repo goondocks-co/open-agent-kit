@@ -235,6 +235,8 @@ export const API_ENDPOINTS = {
     DEVTOOLS_DATABASE_MAINTENANCE: "/api/devtools/database-maintenance",
     DEVTOOLS_BACKFILL_HASHES: "/api/devtools/backfill-hashes",
     DEVTOOLS_REEMBED_SESSIONS: "/api/activity/reembed-sessions",
+    DEVTOOLS_COMPACT_CHROMADB: "/api/devtools/compact-chromadb",
+    DEVTOOLS_CLEANUP_MINIMAL_SESSIONS: "/api/devtools/cleanup-minimal-sessions",
 
     // Backup endpoints
     BACKUP_STATUS: "/api/backup/status",
@@ -401,7 +403,9 @@ export const SYSTEM_STATUS_LABELS = {
 export const MEMORY_SYNC_STATUS = {
     SYNCED: "synced",
     PENDING_EMBED: "pending_embed",
-    OUT_OF_SYNC: "out_of_sync",
+    OUT_OF_SYNC: "out_of_sync",  // Legacy - kept for backwards compatibility
+    ORPHANED: "orphaned",  // ChromaDB has more entries than SQLite expects
+    MISSING: "missing",  // ChromaDB has fewer entries than SQLite expects
 } as const;
 
 export type MemorySyncStatusType = typeof MEMORY_SYNC_STATUS[keyof typeof MEMORY_SYNC_STATUS];
@@ -453,6 +457,43 @@ export function calculateMaxLogDiskUsage(maxSizeMb: number, backupCount: number)
 
 
 // =============================================================================
+// Session Quality Configuration
+// =============================================================================
+
+/** Default session quality settings (must match Python constants) */
+export const SESSION_QUALITY_DEFAULTS = {
+    MIN_ACTIVITIES: 3,
+    STALE_TIMEOUT_SECONDS: 3600,  // 1 hour
+} as const;
+
+/** Session quality validation limits (must match Python constants) */
+export const SESSION_QUALITY_LIMITS = {
+    MIN_ACTIVITY_THRESHOLD: 1,
+    MAX_ACTIVITY_THRESHOLD: 20,
+    MIN_STALE_TIMEOUT: 300,      // 5 minutes
+    MAX_STALE_TIMEOUT: 86400,    // 24 hours
+} as const;
+
+/**
+ * Format stale timeout in human-readable form.
+ * @param seconds Timeout in seconds
+ * @returns Human-readable string (e.g., "1 hour", "30 minutes")
+ */
+export function formatStaleTimeout(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    if (hours >= 1 && minutes === 0) {
+        return hours === 1 ? "1 hour" : `${hours} hours`;
+    }
+    if (hours >= 1) {
+        return `${hours}h ${minutes}m`;
+    }
+    return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
+
+// =============================================================================
 // Log Files
 // =============================================================================
 
@@ -484,8 +525,8 @@ export const DEFAULT_LOG_FILE = LOG_FILES.DAEMON;
 // Log Tag Filtering
 // =============================================================================
 
-/** Log tags for filtering log content */
-export const LOG_TAGS = {
+/** Log tags for filtering HOOKS log content (structured tags) */
+export const HOOKS_LOG_TAGS = {
     // Hook lifecycle
     SESSION_START: "[SESSION-START]",
     SESSION_END: "[SESSION-END]",
@@ -493,48 +534,89 @@ export const LOG_TAGS = {
     TOOL_USE: "[TOOL-USE]",
     SUBAGENT_START: "[SUBAGENT-START]",
     SUBAGENT_STOP: "[SUBAGENT-STOP]",
-    // Search & injection (debug mode)
-    SEARCH_MEMORY: "[SEARCH:memory",
-    SEARCH_CODE: "[SEARCH:code",
-    SEARCH_FILE: "[SEARCH:file-context",
-    FILTER: "[FILTER]",
-    INJECT: "[INJECT:",
+    // Context injection summaries (logged to hooks.log for visibility)
+    CONTEXT_INJECT: "[CONTEXT-INJECT]",
 } as const;
 
-export type LogTagType = typeof LOG_TAGS[keyof typeof LOG_TAGS];
+export type HooksLogTagType = typeof HOOKS_LOG_TAGS[keyof typeof HOOKS_LOG_TAGS];
 
-/** Tag categories for UI grouping */
-export const LOG_TAG_CATEGORIES = {
+/** Tag categories for hooks log UI grouping */
+export const HOOKS_LOG_TAG_CATEGORIES = {
     lifecycle: {
         label: "Lifecycle",
-        tags: [LOG_TAGS.SESSION_START, LOG_TAGS.SESSION_END, LOG_TAGS.PROMPT_SUBMIT] as LogTagType[],
+        tags: [HOOKS_LOG_TAGS.SESSION_START, HOOKS_LOG_TAGS.SESSION_END, HOOKS_LOG_TAGS.PROMPT_SUBMIT] as HooksLogTagType[],
     },
     tools: {
         label: "Tools",
-        tags: [LOG_TAGS.TOOL_USE, LOG_TAGS.SUBAGENT_START, LOG_TAGS.SUBAGENT_STOP] as LogTagType[],
+        tags: [HOOKS_LOG_TAGS.TOOL_USE, HOOKS_LOG_TAGS.SUBAGENT_START, HOOKS_LOG_TAGS.SUBAGENT_STOP] as HooksLogTagType[],
+    },
+    context: {
+        label: "Context",
+        tags: [HOOKS_LOG_TAGS.CONTEXT_INJECT] as HooksLogTagType[],
+    },
+} as const;
+
+export type HooksLogTagCategory = keyof typeof HOOKS_LOG_TAG_CATEGORIES;
+
+/** Tag display names for hooks log (short labels for chips) */
+export const HOOKS_LOG_TAG_DISPLAY_NAMES: Record<HooksLogTagType, string> = {
+    [HOOKS_LOG_TAGS.SESSION_START]: "Session Start",
+    [HOOKS_LOG_TAGS.SESSION_END]: "Session End",
+    [HOOKS_LOG_TAGS.PROMPT_SUBMIT]: "Prompt",
+    [HOOKS_LOG_TAGS.TOOL_USE]: "Tool Use",
+    [HOOKS_LOG_TAGS.SUBAGENT_START]: "Agent Start",
+    [HOOKS_LOG_TAGS.SUBAGENT_STOP]: "Agent Stop",
+    [HOOKS_LOG_TAGS.CONTEXT_INJECT]: "Context Inject",
+} as const;
+
+/** Log tags for filtering DAEMON log content (Python log levels + debug topics) */
+export const DAEMON_LOG_TAGS = {
+    // Log levels
+    DEBUG: "[DEBUG]",
+    INFO: "[INFO]",
+    WARNING: "[WARNING]",
+    ERROR: "[ERROR]",
+    // Debug topics (for filtering when debug mode is on)
+    SEARCH_MEMORY: "[SEARCH:memory",
+    SEARCH_CODE: "[SEARCH:code",
+    SEARCH_FILE: "[SEARCH:file-context",
+    INJECT: "[INJECT:",
+} as const;
+
+export type DaemonLogTagType = typeof DAEMON_LOG_TAGS[keyof typeof DAEMON_LOG_TAGS];
+
+/** Tag categories for daemon log UI grouping */
+export const DAEMON_LOG_TAG_CATEGORIES = {
+    levels: {
+        label: "Log Levels",
+        tags: [DAEMON_LOG_TAGS.DEBUG, DAEMON_LOG_TAGS.INFO, DAEMON_LOG_TAGS.WARNING, DAEMON_LOG_TAGS.ERROR] as DaemonLogTagType[],
     },
     search: {
-        label: "Search (Debug)",
-        tags: [LOG_TAGS.SEARCH_MEMORY, LOG_TAGS.SEARCH_CODE, LOG_TAGS.SEARCH_FILE, LOG_TAGS.FILTER] as LogTagType[],
+        label: "Search & Inject",
+        tags: [DAEMON_LOG_TAGS.SEARCH_MEMORY, DAEMON_LOG_TAGS.SEARCH_CODE, DAEMON_LOG_TAGS.SEARCH_FILE, DAEMON_LOG_TAGS.INJECT] as DaemonLogTagType[],
     },
 } as const;
 
-export type LogTagCategory = keyof typeof LOG_TAG_CATEGORIES;
+export type DaemonLogTagCategory = keyof typeof DAEMON_LOG_TAG_CATEGORIES;
 
-/** Tag display names (short labels for chips) */
-export const LOG_TAG_DISPLAY_NAMES: Record<LogTagType, string> = {
-    [LOG_TAGS.SESSION_START]: "Session Start",
-    [LOG_TAGS.SESSION_END]: "Session End",
-    [LOG_TAGS.PROMPT_SUBMIT]: "Prompt",
-    [LOG_TAGS.TOOL_USE]: "Tool Use",
-    [LOG_TAGS.SUBAGENT_START]: "Agent Start",
-    [LOG_TAGS.SUBAGENT_STOP]: "Agent Stop",
-    [LOG_TAGS.SEARCH_MEMORY]: "Search Memory",
-    [LOG_TAGS.SEARCH_CODE]: "Search Code",
-    [LOG_TAGS.SEARCH_FILE]: "Search File",
-    [LOG_TAGS.FILTER]: "Filter",
-    [LOG_TAGS.INJECT]: "Inject",
+/** Tag display names for daemon log (short labels for chips) */
+export const DAEMON_LOG_TAG_DISPLAY_NAMES: Record<DaemonLogTagType, string> = {
+    [DAEMON_LOG_TAGS.DEBUG]: "Debug",
+    [DAEMON_LOG_TAGS.INFO]: "Info",
+    [DAEMON_LOG_TAGS.WARNING]: "Warning",
+    [DAEMON_LOG_TAGS.ERROR]: "Error",
+    [DAEMON_LOG_TAGS.SEARCH_MEMORY]: "Search Memory",
+    [DAEMON_LOG_TAGS.SEARCH_CODE]: "Search Code",
+    [DAEMON_LOG_TAGS.SEARCH_FILE]: "Search File",
+    [DAEMON_LOG_TAGS.INJECT]: "Inject",
 } as const;
+
+// Legacy aliases for backwards compatibility
+export const LOG_TAGS = HOOKS_LOG_TAGS;
+export type LogTagType = HooksLogTagType;
+export const LOG_TAG_CATEGORIES = HOOKS_LOG_TAG_CATEGORIES;
+export type LogTagCategory = HooksLogTagCategory;
+export const LOG_TAG_DISPLAY_NAMES = HOOKS_LOG_TAG_DISPLAY_NAMES;
 
 
 // =============================================================================

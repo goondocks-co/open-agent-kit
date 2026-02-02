@@ -238,9 +238,13 @@ class ActivityStore:
         """Get completed sessions missing session summaries."""
         return sessions.get_sessions_missing_summaries(self, limit)
 
-    def recover_stale_sessions(self, timeout_seconds: int = 3600) -> tuple[list[str], list[str]]:
+    def recover_stale_sessions(
+        self,
+        timeout_seconds: int = 3600,
+        min_activities: int | None = None,
+    ) -> tuple[list[str], list[str]]:
         """Auto-end or delete sessions that have been inactive for too long."""
-        return sessions.recover_stale_sessions(self, timeout_seconds)
+        return sessions.recover_stale_sessions(self, timeout_seconds, min_activities)
 
     # ==========================================================================
     # Prompt batch operations - delegate to batches module

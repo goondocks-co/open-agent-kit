@@ -11,10 +11,8 @@ Exception Hierarchy:
     ├── TemplateError - Template rendering/loading errors
     ├── MigrationError - State migration errors
     └── ServiceError (base for service-layer errors)
-        ├── PlanServiceError - Plan service specific errors
         ├── RFCServiceError - RFC service specific errors
-        ├── ConstitutionServiceError - Constitution service errors
-        └── IssueProviderError - Issue provider (GitHub/ADO) errors
+        └── ConstitutionServiceError - Constitution service errors
 
 Example:
     >>> raise ValidationError(
@@ -24,9 +22,9 @@ Example:
     ... )
 
     >>> raise ConfigurationError(
-    ...     "Provider not configured",
-    ...     provider="github",
-    ...     suggestion="Run 'oak config --setup-provider github' to configure"
+    ...     "Agent not configured",
+    ...     agent="claude",
+    ...     suggestion="Run 'oak init --agent claude' to configure"
     ... )
 """
 
@@ -88,9 +86,9 @@ class ConfigurationError(OakError):
 
     Example:
         >>> raise ConfigurationError(
-        ...     "Provider not configured",
-        ...     provider="github",
-        ...     suggestion="Run 'oak config --setup-provider github'"
+        ...     "Agent not configured",
+        ...     agent="claude",
+        ...     suggestion="Run 'oak init --agent claude'"
         ... )
     """
 
@@ -152,23 +150,6 @@ class ServiceError(OakError):
     pass
 
 
-class PlanServiceError(ServiceError):
-    """Plan service specific errors.
-
-    Raised when errors occur in the plan service, such as plan creation,
-    validation, or state management failures.
-
-    Example:
-        >>> raise PlanServiceError(
-        ...     "Failed to create plan",
-        ...     plan_id="plan-001",
-        ...     reason="Invalid task dependencies"
-        ... )
-    """
-
-    pass
-
-
 class RFCServiceError(ServiceError):
     """RFC service specific errors.
 
@@ -197,25 +178,6 @@ class ConstitutionServiceError(ServiceError):
         ...     "Failed to apply amendment",
         ...     amendment_number="A001",
         ...     reason="Constitution not found"
-        ... )
-    """
-
-    pass
-
-
-class IssueProviderError(ServiceError):
-    """Issue provider (GitHub/ADO) errors.
-
-    Raised when errors occur while interacting with issue providers such as
-    GitHub Issues or Azure DevOps. Context should include provider details
-    and the specific operation that failed.
-
-    Example:
-        >>> raise IssueProviderError(
-        ...     "Failed to fetch issue",
-        ...     provider="github",
-        ...     issue_id="123",
-        ...     reason="Authentication failed"
         ... )
     """
 

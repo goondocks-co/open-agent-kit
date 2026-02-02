@@ -4,11 +4,6 @@
 # Feature-specific services
 # Note: ConstitutionService is imported from its feature module to avoid circular imports:
 #       from open_agent_kit.features.rules_management.constitution import ConstitutionService
-from open_agent_kit.features.strategic_planning.plan import (
-    PlanService,
-    PlanServiceError,
-    get_plan_service,
-)
 from open_agent_kit.features.strategic_planning.rfc import RFCService, get_rfc_service
 from open_agent_kit.services.agent_service import AgentService, get_agent_service
 from open_agent_kit.services.agent_settings_service import (
@@ -26,9 +21,6 @@ __all__ = [
     "get_agent_settings_service",
     "ConfigService",
     "get_config_service",
-    "PlanService",
-    "PlanServiceError",
-    "get_plan_service",
     "RFCService",
     "get_rfc_service",
     "StateService",

@@ -13,6 +13,10 @@ interface ConfirmDialogProps {
     onConfirm: () => void | Promise<void>;
     isLoading?: boolean;
     variant?: "destructive" | "default";
+    /** If set, user must type this exact text (case-sensitive) to enable the confirm button */
+    requireConfirmText?: string;
+    /** Custom loading label (default: "Deleting...") */
+    loadingLabel?: string;
 }
 
 export function ConfirmDialog({
@@ -25,10 +29,23 @@ export function ConfirmDialog({
     onConfirm,
     isLoading = false,
     variant = "destructive",
+    requireConfirmText,
+    loadingLabel = "Deleting...",
 }: ConfirmDialogProps) {
+    const [confirmInput, setConfirmInput] = React.useState("");
+
+    // Reset input when dialog opens/closes
+    React.useEffect(() => {
+        if (!open) {
+            setConfirmInput("");
+        }
+    }, [open]);
+
     const handleConfirm = async () => {
         await onConfirm();
     };
+
+    const isConfirmDisabled = isLoading || (requireConfirmText !== undefined && confirmInput !== requireConfirmText);
 
     if (!open) return null;
 
@@ -62,6 +79,30 @@ export function ConfirmDialog({
                         </div>
                     </div>
 
+                    {/* Confirmation text input (optional) */}
+                    {requireConfirmText && (
+                        <div className="space-y-2">
+                            <label className="text-sm text-muted-foreground">
+                                Type <code className="px-1.5 py-0.5 rounded bg-muted font-mono text-foreground">{requireConfirmText}</code> to confirm:
+                            </label>
+                            <input
+                                type="text"
+                                value={confirmInput}
+                                onChange={(e) => setConfirmInput(e.target.value)}
+                                placeholder={requireConfirmText}
+                                className={cn(
+                                    "w-full px-3 py-2 rounded-md border bg-background text-sm",
+                                    "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                                    confirmInput === requireConfirmText
+                                        ? "border-green-500 focus:ring-green-500"
+                                        : "border-input"
+                                )}
+                                autoFocus
+                                disabled={isLoading}
+                            />
+                        </div>
+                    )}
+
                     {/* Actions */}
                     <div className="flex justify-end gap-3">
                         <Button
@@ -74,12 +115,12 @@ export function ConfirmDialog({
                         <Button
                             variant={variant}
                             onClick={handleConfirm}
-                            disabled={isLoading}
+                            disabled={isConfirmDisabled}
                         >
                             {isLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Deleting...
+                                    {loadingLabel}
                                 </>
                             ) : (
                                 confirmLabel
