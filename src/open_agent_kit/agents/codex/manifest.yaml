@@ -44,6 +44,22 @@ ci:
   plan_execution_prefix: null
   exit_plan_tool: null
 
+# Hooks configuration for Codebase Intelligence
+# Codex uses OpenTelemetry events instead of traditional hooks
+# See: https://github.com/openai/codex/pull/2103
+hooks:
+  type: otel
+  config_file: "config.toml"
+  otel:
+    enabled: true
+    config_template: "otel_config.toml.j2"
+    config_section: "otel"
+    session_id_attribute: "conversation.id"
+    event_mapping:
+      "codex.conversation_starts": "session-start"
+      "codex.user_prompt": "prompt-submit"
+      "codex.tool_result": "post-tool-use"
+
 settings:
   # Auto-approval settings for oak commands
   # Codex uses global TOML config (~/.codex/config.toml) that affects ALL projects

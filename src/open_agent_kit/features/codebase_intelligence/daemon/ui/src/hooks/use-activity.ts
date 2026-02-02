@@ -51,6 +51,7 @@ export interface PromptBatchItem {
     started_at: string;
     ended_at: string | null;
     activity_count: number;
+    response_summary: string | null;  // Agent's final response (v21)
 }
 
 export interface SessionStats {

@@ -195,20 +195,50 @@ class AgentMcpConfig(BaseModel):
     )
 
 
+class AgentOtelConfig(BaseModel):
+    """OpenTelemetry configuration for agents that emit OTLP telemetry.
+
+    Used for agents like Codex that don't support traditional hooks but
+    emit OpenTelemetry events that can be translated to OAK CI activities.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether to configure OTLP receiver for this agent",
+    )
+    event_mapping: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map OTel event names to OAK hook actions",
+    )
+    session_id_attribute: str = Field(
+        default="conversation.id",
+        description="OTel attribute containing session identifier",
+    )
+    config_template: str | None = Field(
+        default=None,
+        description="Jinja2 template for generating agent's OTel config",
+    )
+    config_section: str | None = Field(
+        default=None,
+        description="Section name in config file (e.g., 'otel' for [otel] in TOML)",
+    )
+
+
 class AgentHooksConfig(BaseModel):
     """Hooks configuration for Codebase Intelligence integration.
 
     Defines how CI hooks are installed for this agent. Hooks enable
     session tracking, activity capture, and context injection.
 
-    Two types are supported:
+    Three types are supported:
     - "json": Hooks are added to a JSON config file (Claude, Cursor, Gemini, Copilot)
     - "plugin": Hooks are installed as a plugin file (OpenCode)
+    - "otel": Hooks use OpenTelemetry events translated via OTLP receiver (Codex)
     """
 
     type: str = Field(
         default="json",
-        description="Hook type: 'json' for JSON config manipulation, 'plugin' for file copy",
+        description="Hook type: 'json' for JSON config, 'plugin' for file copy, 'otel' for OTLP",
     )
     config_file: str | None = Field(
         default=None,
@@ -238,6 +268,11 @@ class AgentHooksConfig(BaseModel):
     plugin_file: str | None = Field(
         default=None,
         description="Plugin filename to install (e.g., 'oak-ci.ts')",
+    )
+    # OTEL-specific fields (for type="otel")
+    otel: AgentOtelConfig | None = Field(
+        default=None,
+        description="OpenTelemetry receiver configuration for OTLP-emitting agents",
     )
 
 

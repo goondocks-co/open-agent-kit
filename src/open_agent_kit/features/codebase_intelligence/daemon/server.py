@@ -732,6 +732,7 @@ def create_app(
         hooks,
         index,
         mcp,
+        otel,
         schedules,
         search,
         ui,
@@ -748,6 +749,7 @@ def create_app(
     app.include_router(search.router)
     app.include_router(activity.router)
     app.include_router(hooks.router)
+    app.include_router(otel.router)
     app.include_router(mcp.router)
     app.include_router(agents.router)
     app.include_router(schedules.router)

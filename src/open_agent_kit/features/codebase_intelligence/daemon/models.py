@@ -387,6 +387,7 @@ class PromptBatchItem(BaseModel):
     started_at: datetime
     ended_at: datetime | None = None
     activity_count: int = 0
+    response_summary: str | None = None  # Agent's final response (v21)
 
 
 class SessionItem(BaseModel):

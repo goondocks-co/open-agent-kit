@@ -2,6 +2,11 @@
 
 Provides a generic Python-based installer for CI hooks that reads
 configuration from agent manifests. Replaces agent-specific hook methods.
+
+Supports three hook types:
+- JSON: Merge hooks into a JSON config file (Claude, Cursor, Gemini, Copilot)
+- Plugin: Copy a plugin file to the agent's plugins directory (OpenCode)
+- OTEL: Generate OTLP config for agents that emit OpenTelemetry events (Codex)
 """
 
 from __future__ import annotations
@@ -90,7 +95,7 @@ class HooksInstaller:
     def install(self) -> HooksInstallResult:
         """Install hooks for the agent.
 
-        Routes to JSON or plugin installer based on manifest config.
+        Routes to JSON, plugin, or OTEL installer based on manifest config.
 
         Returns:
             HooksInstallResult with success status and details.
@@ -103,13 +108,15 @@ class HooksInstaller:
 
         if self.hooks_config.type == "plugin":
             return self._install_plugin()
+        elif self.hooks_config.type == "otel":
+            return self._install_otel_hooks()
         else:
             return self._install_json_hooks()
 
     def remove(self) -> HooksInstallResult:
         """Remove hooks from the agent.
 
-        Routes to JSON or plugin remover based on manifest config.
+        Routes to JSON, plugin, or OTEL remover based on manifest config.
 
         Returns:
             HooksInstallResult with success status and details.
@@ -122,6 +129,8 @@ class HooksInstaller:
 
         if self.hooks_config.type == "plugin":
             return self._remove_plugin()
+        elif self.hooks_config.type == "otel":
+            return self._remove_otel_hooks()
         else:
             return self._remove_json_hooks()
 
@@ -445,4 +454,186 @@ class HooksInstaller:
                 success=False,
                 message=f"Failed to remove plugin: {e}",
                 method="plugin",
+            )
+
+    def _install_otel_hooks(self) -> HooksInstallResult:
+        """Install OTEL hooks by generating and merging config into agent's TOML file.
+
+        Used for agents like Codex that emit OpenTelemetry events instead of
+        using traditional hooks. Generates an [otel] section in the agent's
+        config file that points to the CI daemon's OTLP receiver.
+        """
+        if not self.hooks_config or not self.hooks_config.otel:
+            return HooksInstallResult(
+                success=False,
+                message="No OTEL configuration in hooks config",
+                method="otel",
+            )
+
+        otel_config = self.hooks_config.otel
+        if not otel_config.enabled:
+            return HooksInstallResult(
+                success=True,
+                message="OTEL hooks disabled in manifest",
+                method="otel",
+            )
+
+        if not otel_config.config_template:
+            return HooksInstallResult(
+                success=False,
+                message="No config_template specified in OTEL config",
+                method="otel",
+            )
+
+        # Load the Jinja2 template
+        template_path = HOOKS_TEMPLATE_DIR / self.agent / otel_config.config_template
+        if not template_path.exists():
+            return HooksInstallResult(
+                success=False,
+                message=f"OTEL config template not found: {template_path}",
+                method="otel",
+            )
+
+        try:
+            # Render the template
+            # Note: The template uses ${OAK_CI_PORT} env var for the daemon port,
+            # which is set at runtime. No Jinja2 variables needed for core config.
+            from jinja2 import Template
+
+            template_content = template_path.read_text()
+            template = Template(template_content)
+            rendered_config = template.render(
+                # Future: add any template variables here if needed
+            )
+
+            # Parse the rendered TOML
+            import tomllib
+
+            try:
+                import tomli_w
+            except ImportError:
+                return HooksInstallResult(
+                    success=False,
+                    message="TOML write support requires 'tomli_w' package",
+                    method="otel",
+                )
+
+            new_config = tomllib.loads(rendered_config)
+
+            # Determine the config file path
+            # For Codex, the config is at .codex/config.toml (project-scoped)
+            config_file = self.hooks_config.config_file or "config.toml"
+            config_path = self.agent_folder / config_file
+
+            # Ensure parent directory exists
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Load existing config or create new
+            existing_config: dict[str, Any] = {}
+            if config_path.exists():
+                existing_config = tomllib.loads(config_path.read_text())
+
+            # Merge the OTEL section (replace if exists)
+            config_section = otel_config.config_section or "otel"
+            existing_config[config_section] = new_config.get(config_section, new_config)
+
+            # Write the merged config
+            config_path.write_text(tomli_w.dumps(existing_config))
+
+            return HooksInstallResult(
+                success=True,
+                message=f"OTEL hooks installed at {config_path} (uses $OAK_CI_PORT env var)",
+                method="otel",
+            )
+
+        except ImportError as e:
+            return HooksInstallResult(
+                success=False,
+                message=f"Missing dependency for OTEL hooks: {e}. Install with: pip install jinja2 tomli-w",
+                method="otel",
+            )
+        except (OSError, ValueError) as e:
+            return HooksInstallResult(
+                success=False,
+                message=f"Failed to install OTEL hooks: {e}",
+                method="otel",
+            )
+
+    def _remove_otel_hooks(self) -> HooksInstallResult:
+        """Remove OTEL hooks from the agent's config file.
+
+        Removes the [otel] section from the config file while preserving
+        other configuration.
+        """
+        if not self.hooks_config or not self.hooks_config.otel:
+            return HooksInstallResult(
+                success=True,
+                message="No OTEL configuration, nothing to remove",
+                method="otel",
+            )
+
+        otel_config = self.hooks_config.otel
+
+        # Determine the config file path
+        config_file = self.hooks_config.config_file or "config.toml"
+        config_path = self.agent_folder / config_file
+
+        if not config_path.exists():
+            return HooksInstallResult(
+                success=True,
+                message=f"Config file {config_path} doesn't exist, nothing to remove",
+                method="otel",
+            )
+
+        try:
+            import tomllib
+
+            try:
+                import tomli_w
+            except ImportError:
+                return HooksInstallResult(
+                    success=False,
+                    message="TOML write support requires 'tomli_w' package",
+                    method="otel",
+                )
+
+            # Load existing config
+            existing_config = tomllib.loads(config_path.read_text())
+
+            # Remove the OTEL section
+            config_section = otel_config.config_section or "otel"
+            if config_section in existing_config:
+                del existing_config[config_section]
+                logger.info(f"Removed [{config_section}] section from {config_path}")
+
+            # Write updated config or remove if empty
+            if existing_config:
+                config_path.write_text(tomli_w.dumps(existing_config))
+            else:
+                config_path.unlink()
+                logger.info(f"Removed empty config file: {config_path}")
+
+                # Remove parent directory if empty
+                parent = config_path.parent
+                if parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
+                    logger.info(f"Removed empty directory: {parent}")
+
+            return HooksInstallResult(
+                success=True,
+                message=f"OTEL hooks removed from {config_path}",
+                method="otel",
+            )
+
+        except ImportError as e:
+            return HooksInstallResult(
+                success=False,
+                message=f"Missing dependency for OTEL hooks: {e}. Install with: pip install tomli-w",
+                method="otel",
+            )
+        except (OSError, ValueError) as e:
+            return HooksInstallResult(
+                success=False,
+                message=f"Failed to remove OTEL hooks: {e}",
+                method="otel",
             )

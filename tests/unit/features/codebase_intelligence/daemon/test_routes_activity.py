@@ -149,6 +149,7 @@ def mock_activity_store():
     batch1.source_type = "user"
     batch1.plan_file_path = None  # Plan file path (only set for plan source_type)
     batch1.plan_content = None  # Plan content (only set for plan source_type)
+    batch1.response_summary = None  # Agent's final response (v21)
     batch1.started_at = now - timedelta(hours=1, minutes=45)
     batch1.ended_at = now - timedelta(hours=1, minutes=15)
 

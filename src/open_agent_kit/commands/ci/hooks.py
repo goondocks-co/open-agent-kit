@@ -243,12 +243,16 @@ def ci_hook(
                 output = _format_claude_response(response, "PostToolUse")
 
         elif event_lower == "stop":
+            transcript_path = input_json.get("transcript_path", "")
+            stop_hook_active = input_json.get("stop_hook_active", False)
             _call_api(
                 "stop",
                 {
                     "agent": agent,
                     "session_id": session_id,
                     "conversation_id": conversation_id,
+                    "transcript_path": transcript_path,
+                    "stop_hook_active": stop_hook_active,
                     "hook_origin": hook_origin,
                     "hook_event_name": event,
                     "generation_id": generation_id,

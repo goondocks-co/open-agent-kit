@@ -148,6 +148,7 @@ def _prompt_batch_to_item(batch: PromptBatch, activity_count: int = 0) -> Prompt
         started_at=batch.started_at,
         ended_at=batch.ended_at,
         activity_count=activity_count,
+        response_summary=batch.response_summary,
     )
 
 

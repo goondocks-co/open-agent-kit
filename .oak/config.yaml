@@ -1,11 +1,11 @@
 version: 0.5.2.dev29+gd45d7eb45.d20260202
 agents:
-- cursor
-- copilot
 - gemini
-- opencode
+- cursor
 - claude
+- opencode
 - codex
+- copilot
 agent_capabilities:
   claude:
     has_background_agents: true

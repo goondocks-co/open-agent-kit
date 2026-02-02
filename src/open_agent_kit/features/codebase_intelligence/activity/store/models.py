@@ -117,11 +117,14 @@ class PromptBatch:
     plan_embedded: bool = False  # Has plan been indexed in ChromaDB?
     source_plan_batch_id: int | None = None  # Link to plan batch being implemented (v12)
     source_machine_id: str | None = None  # Machine that originated this record (v13)
+    response_summary: str | None = None  # Agent's final response/summary (v21)
 
     # Maximum prompt length to store (10K chars should capture most prompts)
     MAX_PROMPT_LENGTH = 10000
     # Maximum plan content length (100K chars for large plans)
     MAX_PLAN_CONTENT_LENGTH = 100000
+    # Maximum response summary length (5K chars captures most summaries)
+    MAX_RESPONSE_SUMMARY_LENGTH = 5000
 
     def _compute_content_hash(self) -> str:
         """Compute content hash for deduplication."""
@@ -152,6 +155,11 @@ class PromptBatch:
             "source_plan_batch_id": self.source_plan_batch_id,
             "source_machine_id": self.source_machine_id,
             "content_hash": self._compute_content_hash(),
+            "response_summary": (
+                self.response_summary[: self.MAX_RESPONSE_SUMMARY_LENGTH]
+                if self.response_summary
+                else None
+            ),
         }
 
     @classmethod
@@ -191,6 +199,12 @@ class PromptBatch:
         except (KeyError, IndexError):
             pass
 
+        response_summary = None
+        try:
+            response_summary = row["response_summary"]
+        except (KeyError, IndexError):
+            pass
+
         return cls(
             id=row["id"],
             session_id=row["session_id"],
@@ -208,6 +222,7 @@ class PromptBatch:
             plan_embedded=plan_embedded,
             source_plan_batch_id=source_plan_batch_id,
             source_machine_id=source_machine_id,
+            response_summary=response_summary,
         )
 
 

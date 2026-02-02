@@ -374,6 +374,10 @@ class ActivityStore:
         """Mark all plans as not embedded."""
         return batches.mark_all_plans_unembedded(self)
 
+    def update_prompt_batch_response(self, batch_id: int, response_summary: str) -> None:
+        """Update a prompt batch with the agent's response summary."""
+        batches.update_prompt_batch_response(self, batch_id, response_summary)
+
     # ==========================================================================
     # Activity operations - delegate to activities module
     # ==========================================================================

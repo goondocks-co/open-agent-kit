@@ -21,7 +21,8 @@ Contains schema version and SQL for creating the database schema.
 # v18: Added session_relationships table for many-to-many semantic session relationships
 # v19: Added agent_schedules table for cron scheduling runtime state
 # v20: Added idx_sessions_created_at for dashboard sorting performance
-SCHEMA_VERSION = 20
+# v21: Added response_summary to prompt_batches for capturing agent responses
+SCHEMA_VERSION = 21
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -122,6 +123,7 @@ CREATE TABLE IF NOT EXISTS prompt_batches (
     content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
     source_plan_batch_id INTEGER,  -- Link to plan batch being implemented (v12)
     source_machine_id TEXT,  -- Machine that originated this record (v13)
+    response_summary TEXT,  -- Agent's final response/summary (v21)
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (source_plan_batch_id) REFERENCES prompt_batches(id)
 );

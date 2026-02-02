@@ -4,3 +4,11 @@ args = [
     "ci",
     "mcp",
 ]
+
+[otel]
+environment = "dev"
+log_user_prompt = true
+
+[otel.exporter.otlp-http]
+endpoint = "http://127.0.0.1:${OAK_CI_PORT}/v1/logs"
+protocol = "json"

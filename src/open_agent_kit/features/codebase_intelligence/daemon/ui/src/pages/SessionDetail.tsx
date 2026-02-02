@@ -466,6 +466,23 @@ export default function SessionDetail() {
                                     </div>
                                 </div>
 
+                                {/* Agent Response Summary */}
+                                {batch.response_summary && (
+                                    <div className={cn(
+                                        "p-4 rounded-lg border text-sm whitespace-pre-wrap mt-2",
+                                        "bg-green-500/5 border-green-500/20"
+                                    )}>
+                                        <div className="font-semibold text-green-600 text-xs mb-2">
+                                            Agent Response
+                                        </div>
+                                        <div className="text-foreground">
+                                            {batch.response_summary.length > PROMPT_TRUNCATE_LENGTH
+                                                ? `${batch.response_summary.slice(0, PROMPT_TRUNCATE_LENGTH)}...`
+                                                : batch.response_summary}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="text-xs text-muted-foreground flex items-center gap-4 mt-2 flex-wrap">
                                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDate(batch.started_at)}</span>
                                     <Button

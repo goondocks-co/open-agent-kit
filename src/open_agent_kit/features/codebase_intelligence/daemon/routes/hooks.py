@@ -963,6 +963,21 @@ async def hook_stop(request: Request) -> dict:
             state.activity_store.end_prompt_batch(prompt_batch_id)
             logger.info(f"Ended prompt batch {prompt_batch_id}")
 
+            # Capture response summary from transcript if available
+            transcript_path = body.get("transcript_path", "")
+            if transcript_path:
+                from open_agent_kit.features.codebase_intelligence.transcript import (
+                    parse_transcript_response,
+                )
+
+                response_summary = parse_transcript_response(transcript_path)
+                if response_summary:
+                    state.activity_store.update_prompt_batch_response(
+                        prompt_batch_id, response_summary
+                    )
+                    result["response_captured"] = True
+                    logger.debug(f"Captured response summary for batch {prompt_batch_id}")
+
             # Get batch stats
             stats = state.activity_store.get_prompt_batch_stats(prompt_batch_id)
             result["prompt_batch_stats"] = stats
@@ -1438,6 +1453,19 @@ async def hook_subagent_stop(request: Request) -> dict:
             )
             state.activity_store.add_activity_buffered(activity)
             logger.debug(f"Stored subagent-stop: {agent_type} (batch={prompt_batch_id})")
+
+            # Capture subagent response summary from transcript
+            if agent_transcript_path and prompt_batch_id:
+                from open_agent_kit.features.codebase_intelligence.transcript import (
+                    parse_transcript_response,
+                )
+
+                response_summary = parse_transcript_response(agent_transcript_path)
+                if response_summary:
+                    state.activity_store.update_prompt_batch_response(
+                        prompt_batch_id, response_summary
+                    )
+                    logger.debug(f"Captured subagent response for batch {prompt_batch_id}")
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.debug(f"Failed to store subagent-stop: {e}")

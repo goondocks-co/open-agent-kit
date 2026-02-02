@@ -79,11 +79,13 @@ AGENT_CLAUDE: Final[str] = "claude"
 AGENT_CURSOR: Final[str] = "cursor"
 AGENT_GEMINI: Final[str] = "gemini"
 AGENT_COPILOT: Final[str] = "copilot"
+AGENT_CODEX: Final[str] = "codex"
 SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
     AGENT_CLAUDE,
     AGENT_CURSOR,
     AGENT_GEMINI,
     AGENT_COPILOT,
+    AGENT_CODEX,
 )
 
 # =============================================================================
@@ -301,6 +303,7 @@ MAX_LOG_BACKUP_COUNT: Final[int] = 10
 MAX_QUERY_LENGTH: Final[int] = 10000
 MIN_QUERY_LENGTH: Final[int] = 1
 MAX_OBSERVATION_LENGTH: Final[int] = 50000
+RESPONSE_SUMMARY_MAX_LENGTH: Final[int] = 5000  # Agent response summary truncation
 
 # =============================================================================
 # Session and Hook Events
@@ -336,6 +339,9 @@ HOOK_FIELD_GENERATION_ID: Final[str] = "generation_id"
 HOOK_FIELD_TOOL_USE_ID: Final[str] = "tool_use_id"
 HOOK_FIELD_ERROR_MESSAGE: Final[str] = "error_message"
 
+# Stop hook fields (for transcript parsing)
+HOOK_FIELD_TRANSCRIPT_PATH: Final[str] = "transcript_path"
+
 # Subagent hook fields
 HOOK_FIELD_AGENT_ID: Final[str] = "agent_id"
 HOOK_FIELD_AGENT_TYPE: Final[str] = "agent_type"
@@ -346,6 +352,59 @@ HOOK_FIELD_STOP_HOOK_ACTIVE: Final[str] = "stop_hook_active"
 HOOK_DEDUP_CACHE_MAX: Final[int] = 500
 HOOK_DEDUP_HASH_ALGORITHM: Final[str] = "sha256"
 HOOK_DROP_LOG_TAG: Final[str] = "[DROP]"
+
+# Hook types
+HOOK_TYPE_JSON: Final[str] = "json"
+HOOK_TYPE_PLUGIN: Final[str] = "plugin"
+HOOK_TYPE_OTEL: Final[str] = "otel"
+
+# =============================================================================
+# OpenTelemetry (OTLP) Configuration
+# =============================================================================
+
+# OTLP HTTP defaults
+OTLP_LOGS_ENDPOINT: Final[str] = "/v1/logs"
+OTLP_CONTENT_TYPE_PROTOBUF: Final[str] = "application/x-protobuf"
+OTLP_CONTENT_TYPE_JSON: Final[str] = "application/json"
+
+# Environment variable for daemon port (used by OTEL agents like Codex)
+# Agents can reference this in config files: ${OAK_CI_PORT}
+OAK_CI_PORT_ENV_VAR: Final[str] = "OAK_CI_PORT"
+
+# Codex OTel event names (from Codex telemetry docs)
+OTEL_EVENT_CODEX_CONVERSATION_STARTS: Final[str] = "codex.conversation_starts"
+OTEL_EVENT_CODEX_USER_PROMPT: Final[str] = "codex.user_prompt"
+OTEL_EVENT_CODEX_TOOL_RESULT: Final[str] = "codex.tool_result"
+OTEL_EVENT_CODEX_TOOL_DECISION: Final[str] = "codex.tool_decision"
+OTEL_EVENT_CODEX_API_REQUEST: Final[str] = "codex.api_request"
+OTEL_EVENT_CODEX_SSE_EVENT: Final[str] = "codex.sse_event"
+
+# OTel attribute keys for data extraction (from Codex PR #2103)
+OTEL_ATTR_CONVERSATION_ID: Final[str] = "conversation.id"
+OTEL_ATTR_APP_VERSION: Final[str] = "app.version"
+OTEL_ATTR_MODEL: Final[str] = "model"
+OTEL_ATTR_TERMINAL_TYPE: Final[str] = "terminal.type"
+
+# Tool-related attributes
+OTEL_ATTR_TOOL_NAME: Final[str] = "tool_name"
+OTEL_ATTR_TOOL_CALL_ID: Final[str] = "call_id"
+OTEL_ATTR_TOOL_ARGUMENTS: Final[str] = "arguments"
+OTEL_ATTR_TOOL_DURATION_MS: Final[str] = "duration_ms"
+OTEL_ATTR_TOOL_SUCCESS: Final[str] = "success"
+OTEL_ATTR_TOOL_OUTPUT: Final[str] = "output"
+
+# Prompt-related attributes
+OTEL_ATTR_PROMPT_LENGTH: Final[str] = "prompt_length"
+OTEL_ATTR_PROMPT: Final[str] = "prompt"
+
+# Decision-related attributes
+OTEL_ATTR_DECISION: Final[str] = "decision"
+OTEL_ATTR_DECISION_SOURCE: Final[str] = "source"
+
+# Token metrics (from sse_event)
+OTEL_ATTR_INPUT_TOKENS: Final[str] = "input_token_count"
+OTEL_ATTR_OUTPUT_TOKENS: Final[str] = "output_token_count"
+OTEL_ATTR_TOOL_TOKENS: Final[str] = "tool_token_count"
 
 # Tags for auto-captured observations
 TAG_AUTO_CAPTURED: Final[str] = "auto-captured"

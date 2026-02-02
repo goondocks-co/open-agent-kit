@@ -197,6 +197,29 @@ def end_prompt_batch(store: ActivityStore, batch_id: int) -> None:
     logger.debug(f"Ended prompt batch {batch_id}")
 
 
+def update_prompt_batch_response(
+    store: ActivityStore,
+    batch_id: int,
+    response_summary: str,
+    max_length: int = 5000,
+) -> None:
+    """Update a prompt batch with the agent's response summary.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_id: Prompt batch to update.
+        response_summary: Agent's final response text.
+        max_length: Maximum length to store (default 5000 chars).
+    """
+    truncated = response_summary[:max_length] if response_summary else None
+    with store._transaction() as conn:
+        conn.execute(
+            "UPDATE prompt_batches SET response_summary = ? WHERE id = ?",
+            (truncated, batch_id),
+        )
+    logger.debug(f"Updated response summary for batch {batch_id}")
+
+
 def get_unprocessed_prompt_batches(store: ActivityStore, limit: int = 10) -> list[PromptBatch]:
     """Get prompt batches that haven't been processed yet.
 

@@ -51,6 +51,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v18_to_v19(conn)
     if from_version < 20:
         migrate_v19_to_v20(conn)
+    if from_version < 21:
+        migrate_v20_to_v21(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -1117,3 +1119,26 @@ def migrate_v19_to_v20(conn: sqlite3.Connection) -> None:
             logger.warning(f"Index creation warning (may already exist): {e}")
 
     logger.info("Migration v19->v20 complete: added sessions created_at index")
+
+
+def migrate_v20_to_v21(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v20 to v21: Add response_summary to prompt_batches.
+
+    Adds response_summary column to store the agent's final response/summary
+    for each prompt batch. This captures what the agent said after completing
+    a task, enabling full prompt→work→response tracking.
+    """
+    logger.info("Migrating activity store schema v20 -> v21: Adding response_summary column")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(prompt_batches)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "response_summary" in columns:
+        logger.info("response_summary column already exists, skipping migration")
+        return
+
+    # Add the response_summary column
+    conn.execute("ALTER TABLE prompt_batches ADD COLUMN response_summary TEXT")
+
+    logger.info("Migration v20->v21 complete: added response_summary column to prompt_batches")
