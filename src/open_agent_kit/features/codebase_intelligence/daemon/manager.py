@@ -12,8 +12,13 @@ from typing import IO, Any
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DAEMON_LOG_OPEN_MODE,
     CI_DATA_DIR,
+    CI_LOG_FALLBACK_MESSAGE,
     CI_LOG_FILE,
+    CI_NULL_DEVICE_OPEN_MODE,
+    CI_NULL_DEVICE_POSIX,
+    CI_NULL_DEVICE_WINDOWS,
     CI_PID_FILE,
     CI_PORT_FILE,
     CI_SHARED_PORT_DIR,
@@ -442,20 +447,33 @@ class DaemonManager:
             if self.pid_file.exists():
                 self._remove_pid()
 
-            # Check if port is already in use by something else
+            # Check if port is already in use - likely a hanging daemon
             if self._is_port_in_use():
-                logger.info(f"Port {self.port} is in use, searching for available port...")
-                new_port = find_available_port(self.port + 1)
-                if new_port is None:
+                logger.info(f"Port {self.port} is in use, attempting to kill hanging process...")
+                hanging_pid = self._find_pid_by_port()
+                if hanging_pid:
+                    logger.info(f"Found process {hanging_pid} on port {self.port}, terminating...")
+                    if terminate_process(hanging_pid, graceful=True):
+                        logger.info(f"Terminated hanging process {hanging_pid}")
+                        # Wait briefly for port to be released
+                        time.sleep(0.5)
+                    else:
+                        # Try force kill
+                        logger.warning(f"Graceful termination failed, force killing {hanging_pid}")
+                        if terminate_process(hanging_pid, graceful=False):
+                            logger.info(f"Force killed hanging process {hanging_pid}")
+                            time.sleep(0.5)
+                        else:
+                            raise RuntimeError(
+                                f"Port {self.port} is in use by PID {hanging_pid} "
+                                f"and could not be terminated"
+                            )
+                else:
+                    # Can't find the PID - very rare, port may be used by unrelated process
                     raise RuntimeError(
-                        f"Port {self.port} is in use and no available ports found "
-                        f"in range {self.port + 1}-{PORT_RANGE_START + PORT_RANGE_SIZE - 1}"
+                        f"Port {self.port} is in use by an unknown process. "
+                        f"This is unexpected - please check what's using the port."
                     )
-                logger.info(f"Found available port: {new_port}")
-                self.port = new_port
-                self.base_url = f"http://localhost:{self.port}"
-                # Update port file so hooks use the correct port
-                self._write_port(self.port)
 
             self._ensure_data_dir()
 
@@ -481,15 +499,21 @@ class DaemonManager:
             env["OAK_CI_PROJECT_ROOT"] = str(self.project_root)
 
             # Start the process (platform-aware detachment)
-            # Redirect stdout/stderr to null device instead of log file.
-            # All logging is now handled by RotatingFileHandler in server.py,
-            # which also captures uvicorn errors through the uvicorn.error logger.
-            null_device = "NUL" if os.name == "nt" else "/dev/null"
-            with open(null_device, "w") as null_out:
+            # Redirect stdout/stderr to daemon.log during bootstrap so startup
+            # failures are visible even before logging is configured.
+            try:
+                log_handle = open(self.log_file, CI_DAEMON_LOG_OPEN_MODE)
+                output_handle = log_handle
+            except OSError as e:
+                logger.warning(CI_LOG_FALLBACK_MESSAGE.format(log_file=self.log_file, error=e))
+                null_device = CI_NULL_DEVICE_WINDOWS if os.name == "nt" else CI_NULL_DEVICE_POSIX
+                output_handle = open(null_device, CI_NULL_DEVICE_OPEN_MODE)
+
+            with output_handle:
                 process = subprocess.Popen(
                     cmd,
-                    stdout=null_out,
-                    stderr=subprocess.STDOUT,
+                    stdout=output_handle,
+                    stderr=output_handle,
                     env=env,
                     cwd=str(self.project_root),
                     **get_process_detach_kwargs(),  # Platform-aware detachment

@@ -22,6 +22,7 @@ from open_agent_kit.commands.ci import (
     hooks,
     index,
     mcp,
+    notify,
     query,
     search,
     sync,
@@ -40,4 +41,5 @@ __all__ = [
     "data",
     "sync",
     "hooks",
+    "notify",
 ]

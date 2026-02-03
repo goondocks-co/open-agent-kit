@@ -260,6 +260,7 @@ class CodebaseIntelligenceService:
             "daemon_stopped": False,
             "data_removed": False,
             "hooks_removed": {},
+            "notifications_removed": {},
             "mcp_removed": {},
             "history_exported": False,
         }
@@ -302,7 +303,15 @@ class CodebaseIntelligenceService:
             if removed:
                 print_success(f"  Hooks removed from: {', '.join(removed)}")
 
-        # 4. Remove MCP server registrations
+        # 4. Remove agent notifications
+        if agents:
+            results["notifications_removed"] = self._remove_agent_notifications(agents)
+            notifications_removed = cast(dict[str, str], results["notifications_removed"])
+            removed_notifications = [a for a, s in notifications_removed.items() if s == "removed"]
+            if removed_notifications:
+                print_success(f"  Notifications removed from: {', '.join(removed_notifications)}")
+
+        # 5. Remove MCP server registrations
         if agents:
             results["mcp_removed"] = self.remove_mcp_server(agents)
             mcp_removed = cast(dict[str, str], results["mcp_removed"])
@@ -377,6 +386,16 @@ class CodebaseIntelligenceService:
                 if installed:
                     print_info(f"  CI hooks installed for: {', '.join(installed)}")
 
+        # Install agent notifications (notify handlers)
+        notifications_result: dict[str, Any] = {"agents": {}}
+        if agents:
+            logger.info(f"Installing CI notifications for agents: {agents}")
+            notifications_result = self.update_agent_notifications(agents)
+            if notifications_result.get("agents"):
+                installed = [a for a, s in notifications_result["agents"].items() if s == "updated"]
+                if installed:
+                    print_info(f"  CI notifications installed for: {', '.join(installed)}")
+
         # Install MCP servers for agents that support it
         mcp_result: dict[str, Any] = {"agents": {}}
         if agents:
@@ -389,6 +408,7 @@ class CodebaseIntelligenceService:
         return {
             **daemon_result,
             "hooks": hooks_result,
+            "notifications": notifications_result,
             "mcp": mcp_result,
         }
 
@@ -440,6 +460,39 @@ class CodebaseIntelligenceService:
         results = self.install_mcp_server(agents)
         return {"status": "success", "agents": results}
 
+    def update_agent_notifications(self, agents: list[str]) -> dict:
+        """Install or update agent notification handlers.
+
+        Uses the manifest-driven NotificationsInstaller for all agents.
+
+        Args:
+            agents: List of agent names that are configured.
+
+        Returns:
+            Result dictionary with status.
+        """
+        from open_agent_kit.features.codebase_intelligence.notifications import (
+            install_notifications,
+        )
+
+        logger.info(f"Updating CI notifications for agents: {agents}")
+
+        results = {}
+        for agent in agents:
+            try:
+                result = install_notifications(self.project_root, agent)
+                if result.success:
+                    results[agent] = "updated"
+                    logger.info(f"Installed notifications for {agent} via {result.method}")
+                else:
+                    results[agent] = f"error: {result.message}"
+                    logger.warning(f"Failed to install notifications for {agent}: {result.message}")
+            except Exception as e:
+                logger.warning(f"Failed to update notifications for {agent}: {e}")
+                results[agent] = f"error: {e}"
+
+        return {"status": "success", "agents": results}
+
     def _remove_agent_hooks(self, agents: list[str]) -> dict[str, str]:
         """Remove CI hooks from all specified agents.
 
@@ -467,6 +520,39 @@ class CodebaseIntelligenceService:
                     logger.warning(f"Failed to remove hooks for {agent}: {result.message}")
             except Exception as e:
                 logger.warning(f"Failed to remove hooks for {agent}: {e}")
+                results[agent] = f"error: {e}"
+
+        return results
+
+    def _remove_agent_notifications(self, agents: list[str]) -> dict[str, str]:
+        """Remove CI notification handlers from all specified agents.
+
+        Uses the manifest-driven NotificationsInstaller for all agents.
+
+        Args:
+            agents: List of agent names to remove notifications from.
+
+        Returns:
+            Dictionary mapping agent names to removal status.
+        """
+        from open_agent_kit.features.codebase_intelligence.notifications import (
+            remove_notifications,
+        )
+
+        logger.info(f"Removing CI notifications from agents: {agents}")
+
+        results = {}
+        for agent in agents:
+            try:
+                result = remove_notifications(self.project_root, agent)
+                if result.success:
+                    results[agent] = "removed"
+                    logger.info(f"Removed notifications for {agent} via {result.method}")
+                else:
+                    results[agent] = f"error: {result.message}"
+                    logger.warning(f"Failed to remove notifications for {agent}: {result.message}")
+            except Exception as e:
+                logger.warning(f"Failed to remove notifications for {agent}: {e}")
                 results[agent] = f"error: {e}"
 
         return results
@@ -639,6 +725,11 @@ def execute_hook(hook_action: str, project_root: Path, **kwargs: Any) -> dict[st
         "remove_agent_hooks": lambda: {
             "status": "success",
             "agents": service._remove_agent_hooks(_get_removed_agents()),
+        },
+        "update_agent_notifications": lambda: service.update_agent_notifications(_get_agents()),
+        "remove_agent_notifications": lambda: {
+            "status": "success",
+            "agents": service._remove_agent_notifications(_get_removed_agents()),
         },
         # MCP server management (separate from hooks)
         "update_mcp_servers": lambda: service.update_mcp_servers(_get_agents()),

@@ -68,6 +68,7 @@ UPGRADE_PLAN_KEYS: tuple[str, ...] = (
     "obsolete_templates",
     "agent_settings",
     "hooks",
+    "notifications",
     "mcp_servers",
     "gitignore",
     "migrations",

@@ -46,6 +46,11 @@ class ReconcileFeatureHooksStage(BaseStage):
                     agents_removed=agents_removed,
                 )
                 execute_hook(
+                    "remove_agent_notifications",
+                    context.project_root,
+                    agents_removed=agents_removed,
+                )
+                execute_hook(
                     "remove_mcp_servers",
                     context.project_root,
                     agents_removed=agents_removed,
@@ -54,6 +59,11 @@ class ReconcileFeatureHooksStage(BaseStage):
             # Then update hooks for current agents
             result = execute_hook(
                 "update_agent_hooks",
+                context.project_root,
+                agents=list(context.selections.agents),
+            )
+            execute_hook(
+                "update_agent_notifications",
                 context.project_root,
                 agents=list(context.selections.agents),
             )

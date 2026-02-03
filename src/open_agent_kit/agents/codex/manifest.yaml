@@ -54,11 +54,38 @@ hooks:
     enabled: true
     config_template: "otel_config.toml.j2"
     config_section: "otel"
+    # Codex uses conversation.id as the session identifier
     session_id_attribute: "conversation.id"
+    # Attribute containing agent/service name for auto-detection
+    agent_attribute: "slug"
+    # Map Codex OTel events to OAK hook actions
+    # tool_decision is the first event in a tool call flow, used for prompt batch creation
     event_mapping:
       "codex.conversation_starts": "session-start"
       "codex.user_prompt": "prompt-submit"
+      "codex.tool_decision": "prompt-submit"
       "codex.tool_result": "post-tool-use"
+
+# Notifications configuration for Codebase Intelligence
+# Codex notify handler emits "agent-turn-complete" after each response.
+notifications:
+  type: notify
+  config_file: "config.toml"
+  config_template: "notify_config.toml.j2"
+  notify:
+    enabled: true
+    config_key: "notify"
+    command: "oak"
+    args:
+      - "ci"
+      - "notify"
+      - "--agent"
+      - "codex"
+    session_id_field: "thread-id"
+    response_field: "last-assistant-message"
+    input_messages_field: "input-messages"
+    event_mapping:
+      "agent-turn-complete": "response-summary"
 
 settings:
   # Auto-approval settings for oak commands

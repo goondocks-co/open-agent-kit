@@ -214,6 +214,10 @@ class AgentOtelConfig(BaseModel):
         default="conversation.id",
         description="OTel attribute containing session identifier",
     )
+    agent_attribute: str = Field(
+        default="slug",
+        description="OTel attribute containing agent/service name for auto-detection",
+    )
     config_template: str | None = Field(
         default=None,
         description="Jinja2 template for generating agent's OTel config",
@@ -221,6 +225,79 @@ class AgentOtelConfig(BaseModel):
     config_section: str | None = Field(
         default=None,
         description="Section name in config file (e.g., 'otel' for [otel] in TOML)",
+    )
+
+
+class AgentNotifyConfig(BaseModel):
+    """Agent notification configuration for notify-based event handlers.
+
+    Used for agents like Codex that can emit structured notification events
+    (e.g., agent-turn-complete) via a notify handler.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether notify handlers are enabled for this agent",
+    )
+    event_mapping: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map agent notification event types to OAK actions",
+    )
+    session_id_field: str | None = Field(
+        default=None,
+        description="Notification field containing session identifier",
+    )
+    response_field: str | None = Field(
+        default=None,
+        description="Notification field containing agent response summary",
+    )
+    input_messages_field: str | None = Field(
+        default=None,
+        description="Notification field containing input messages list",
+    )
+    config_key: str | None = Field(
+        default=None,
+        description="Config key name for notify handler registration (e.g., 'notify')",
+    )
+    script_template: str | None = Field(
+        default=None,
+        description="Template filename for notify handler script",
+    )
+    script_path: str | None = Field(
+        default=None,
+        description="Path to install notify handler script relative to agent folder",
+    )
+    command: str | None = Field(
+        default=None,
+        description="Command to invoke notify handler (e.g., 'python3')",
+    )
+    args: list[str] | None = Field(
+        default=None,
+        description="Arguments to pass to notify command (e.g., ['ci', 'notify', '--agent', 'codex'])",
+    )
+
+
+class AgentNotificationsConfig(BaseModel):
+    """Notifications configuration for Codebase Intelligence integration.
+
+    Defines how agent notification handlers are installed for this agent.
+    """
+
+    type: str = Field(
+        default="notify",
+        description="Notification type: 'notify' for command-based handlers",
+    )
+    config_file: str | None = Field(
+        default=None,
+        description="Config file path relative to agent folder (e.g., 'config.toml')",
+    )
+    config_template: str | None = Field(
+        default=None,
+        description="Template filename for generating notify config entries",
+    )
+    notify: AgentNotifyConfig | None = Field(
+        default=None,
+        description="Notify handler configuration",
     )
 
 
@@ -361,6 +438,12 @@ class AgentManifest(BaseModel):
     hooks: AgentHooksConfig | None = Field(
         default=None,
         description="Hooks configuration for CI integration",
+    )
+
+    # Agent notifications configuration (notify handlers)
+    notifications: AgentNotificationsConfig | None = Field(
+        default=None,
+        description="Agent notification configuration for CI integration",
     )
 
     # Codebase Intelligence configuration

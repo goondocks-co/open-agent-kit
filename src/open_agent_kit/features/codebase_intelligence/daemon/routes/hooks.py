@@ -914,8 +914,6 @@ async def hook_stop(request: Request) -> dict:
     This is different from session-end, which is called when the user exits
     Claude Code entirely.
     """
-    import asyncio
-
     state = get_state()
 
     try:
@@ -960,10 +958,7 @@ async def hook_stop(request: Request) -> dict:
             result["prompt_batch_id"] = prompt_batch_id
             return result
         try:
-            state.activity_store.end_prompt_batch(prompt_batch_id)
-            logger.info(f"Ended prompt batch {prompt_batch_id}")
-
-            # Capture response summary from transcript if available
+            response_summary = None
             transcript_path = body.get("transcript_path", "")
             if transcript_path:
                 from open_agent_kit.features.codebase_intelligence.transcript import (
@@ -971,49 +966,19 @@ async def hook_stop(request: Request) -> dict:
                 )
 
                 response_summary = parse_transcript_response(transcript_path)
-                if response_summary:
-                    state.activity_store.update_prompt_batch_response(
-                        prompt_batch_id, response_summary
-                    )
-                    result["response_captured"] = True
-                    logger.debug(f"Captured response summary for batch {prompt_batch_id}")
 
-            # Get batch stats
-            stats = state.activity_store.get_prompt_batch_stats(prompt_batch_id)
-            result["prompt_batch_stats"] = stats
-            result["prompt_batch_id"] = prompt_batch_id
+            from open_agent_kit.features.codebase_intelligence.activity import (
+                finalize_prompt_batch,
+            )
 
-            # Queue for background processing
-            if state.activity_processor:
-                from open_agent_kit.features.codebase_intelligence.activity import (
-                    process_prompt_batch_async,
-                )
-
-                # Capture processor reference to avoid type narrowing issues
-                processor = state.activity_processor
-                batch_id = prompt_batch_id
-
-                async def _process_batch() -> None:
-                    logger.debug(f"[REALTIME] Starting async processing for batch {batch_id}")
-                    try:
-                        proc_result = await process_prompt_batch_async(processor, batch_id)
-                        if proc_result.success:
-                            logger.info(
-                                f"[REALTIME] Prompt batch {batch_id} processed: "
-                                f"{proc_result.observations_extracted} observations from "
-                                f"{proc_result.activities_processed} activities "
-                                f"(type={proc_result.classification})"
-                            )
-                        else:
-                            logger.warning(
-                                f"[REALTIME] Prompt batch processing failed: {proc_result.error}"
-                            )
-                    except (RuntimeError, OSError, ValueError) as e:
-                        logger.warning(f"[REALTIME] Prompt batch processing error: {e}")
-
-                logger.debug(f"[REALTIME] Scheduling async task for batch {batch_id}")
-                asyncio.create_task(_process_batch())
-                result["processing_scheduled"] = True
+            finalize_result = finalize_prompt_batch(
+                activity_store=state.activity_store,
+                activity_processor=state.activity_processor,
+                prompt_batch_id=prompt_batch_id,
+                response_summary=response_summary,
+            )
+            result.update(finalize_result)
+            logger.info(f"Ended prompt batch {prompt_batch_id}")
 
             # Note: batch status is tracked in SQLite, no in-memory cleanup needed
 

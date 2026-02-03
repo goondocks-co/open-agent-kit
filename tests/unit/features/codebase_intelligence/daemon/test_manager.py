@@ -10,11 +10,17 @@ Tests cover:
 - Status retrieval
 """
 
+import builtins
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_LOG_FILE,
+    CI_NULL_DEVICE_POSIX,
+    CI_NULL_DEVICE_WINDOWS,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.manager import (
     DEFAULT_PORT,
     PORT_RANGE_SIZE,
@@ -591,20 +597,54 @@ class TestDaemonManagerStart:
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
     )
-    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.find_available_port")
-    def test_start_raises_when_port_in_use(
-        self, mock_find_port, mock_port_in_use, mock_is_running, mock_check_deps, tmp_path: Path
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._find_pid_by_port"
+    )
+    def test_start_raises_when_port_in_use_by_unknown(
+        self, mock_find_pid, mock_port_in_use, mock_is_running, mock_check_deps, tmp_path: Path
     ):
-        """Test that start raises RuntimeError when no available ports found."""
+        """Test that start raises RuntimeError when port is in use by unknown process."""
         mock_check_deps.return_value = []  # No missing deps
         manager = DaemonManager(tmp_path)
         mock_is_running.return_value = False
         # Port is in use
         mock_port_in_use.return_value = True
-        # No available ports found after retry
-        mock_find_port.return_value = None
+        # Can't find the PID (unknown process)
+        mock_find_pid.return_value = None
 
-        with pytest.raises(RuntimeError, match="no available ports found"):
+        with pytest.raises(RuntimeError, match="in use by an unknown process"):
+            manager.start()
+
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
+    )
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._find_pid_by_port"
+    )
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    def test_start_raises_when_cannot_terminate_hanging_process(
+        self,
+        mock_terminate,
+        mock_find_pid,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
+    ):
+        """Test that start raises RuntimeError when hanging process cannot be terminated."""
+        mock_check_deps.return_value = []  # No missing deps
+        manager = DaemonManager(tmp_path)
+        mock_is_running.return_value = False
+        # Port is in use
+        mock_port_in_use.return_value = True
+        # Found a hanging process
+        mock_find_pid.return_value = 12345
+        # But can't terminate it (both graceful and force fail)
+        mock_terminate.return_value = False
+
+        with pytest.raises(RuntimeError, match="could not be terminated"):
             manager.start()
 
     @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
@@ -640,6 +680,47 @@ class TestDaemonManagerStart:
         assert result is True
         mock_wait.assert_not_called()
         assert manager._read_pid() == 12345
+
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
+    )
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.subprocess.Popen")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.open")
+    def test_start_falls_back_when_log_open_fails(
+        self,
+        mock_open,
+        mock_popen,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
+    ):
+        """Test start falls back when daemon log file cannot be opened."""
+        mock_check_deps.return_value = []  # No missing deps
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        mock_is_running.return_value = False
+        mock_port_in_use.return_value = False
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        def fake_open(path, *args, **kwargs):
+            if str(path).endswith(CI_LOG_FILE):
+                raise OSError("log open failed")
+            return builtins.open(path, *args, **kwargs)
+
+        mock_open.side_effect = fake_open
+
+        result = manager.start(wait=False)
+
+        assert result is True
+        assert mock_popen.called is True
+        opened_paths = [str(call.args[0]) for call in mock_open.call_args_list]
+        assert any(path.endswith(CI_LOG_FILE) for path in opened_paths)
+        assert any(path in {CI_NULL_DEVICE_POSIX, CI_NULL_DEVICE_WINDOWS} for path in opened_paths)
 
 
 class TestDaemonManagerStop:

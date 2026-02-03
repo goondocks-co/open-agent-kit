@@ -536,6 +536,8 @@ export const HOOKS_LOG_TAGS = {
     SUBAGENT_STOP: "[SUBAGENT-STOP]",
     // Context injection summaries (logged to hooks.log for visibility)
     CONTEXT_INJECT: "[CONTEXT-INJECT]",
+    // OTEL events (prefix match)
+    OTEL: "[OTEL:",
 } as const;
 
 export type HooksLogTagType = typeof HOOKS_LOG_TAGS[keyof typeof HOOKS_LOG_TAGS];
@@ -554,6 +556,10 @@ export const HOOKS_LOG_TAG_CATEGORIES = {
         label: "Context",
         tags: [HOOKS_LOG_TAGS.CONTEXT_INJECT] as HooksLogTagType[],
     },
+    otel: {
+        label: "OTEL",
+        tags: [HOOKS_LOG_TAGS.OTEL] as HooksLogTagType[],
+    },
 } as const;
 
 export type HooksLogTagCategory = keyof typeof HOOKS_LOG_TAG_CATEGORIES;
@@ -567,6 +573,7 @@ export const HOOKS_LOG_TAG_DISPLAY_NAMES: Record<HooksLogTagType, string> = {
     [HOOKS_LOG_TAGS.SUBAGENT_START]: "Agent Start",
     [HOOKS_LOG_TAGS.SUBAGENT_STOP]: "Agent Stop",
     [HOOKS_LOG_TAGS.CONTEXT_INJECT]: "Context Inject",
+    [HOOKS_LOG_TAGS.OTEL]: "OTEL",
 } as const;
 
 /** Log tags for filtering DAEMON log content (Python log levels + debug topics) */

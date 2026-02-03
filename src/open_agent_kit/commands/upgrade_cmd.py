@@ -379,6 +379,20 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
             f"[cyan]Hooks to Upgrade[/cyan] ({len(hooks_to_upgrade)} hook(s))\n{hooks_list}"
         )
 
+    # Agent notifications (notify handlers)
+    notifications_to_upgrade = plan.get("notifications", [])
+    if notifications_to_upgrade:
+        notifications_list = "\n".join(
+            [
+                f"  • {n['agent']} → {n['target_description']} (from {n['feature']} feature)"
+                for n in notifications_to_upgrade
+            ]
+        )
+        sections.append(
+            f"[cyan]Notifications to Upgrade[/cyan] ({len(notifications_to_upgrade)} handler(s))\n"
+            f"{notifications_list}"
+        )
+
     # MCP servers
     mcp_servers = plan.get("mcp_servers", [])
     if mcp_servers:

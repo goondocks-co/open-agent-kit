@@ -132,6 +132,17 @@ DEFAULT_RELATED_CHUNKS_LIMIT: Final[int] = 5
 CHARS_PER_TOKEN_ESTIMATE: Final[int] = 4
 
 # =============================================================================
+# CORS (Daemon API)
+# =============================================================================
+
+CI_CORS_SCHEME_HTTP: Final[str] = "http"
+CI_CORS_HOST_LOCALHOST: Final[str] = "localhost"
+CI_CORS_HOST_LOOPBACK: Final[str] = "127.0.0.1"
+CI_CORS_ORIGIN_TEMPLATE: Final[str] = "{scheme}://{host}:{port}"
+CI_CORS_ALLOWED_METHODS: Final[tuple[str, ...]] = ("GET", "POST", "PUT", "DELETE")
+CI_CORS_ALLOWED_HEADERS: Final[tuple[str, ...]] = ("Content-Type", "Authorization")
+
+# =============================================================================
 # Chunk Types
 # =============================================================================
 
@@ -239,6 +250,8 @@ CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"  # Legacy single-file back
 CI_HISTORY_BACKUP_FILE_PATTERN: Final[str] = "*.sql"
 CI_HISTORY_BACKUP_FILE_PREFIX: Final[str] = ""  # No prefix - directory provides context
 CI_HISTORY_BACKUP_FILE_SUFFIX: Final[str] = ".sql"
+CI_BACKUP_HEADER_MAX_LINES: Final[int] = 10
+CI_BACKUP_PATH_INVALID_ERROR: Final[str] = "Backup path must be within {backup_dir}"
 
 # =============================================================================
 # Machine Identifier Configuration (privacy-preserving)
@@ -280,6 +293,17 @@ VALID_LOG_LEVELS: Final[tuple[str, ...]] = (
     LOG_LEVEL_INFO,
     LOG_LEVEL_WARNING,
     LOG_LEVEL_ERROR,
+)
+
+# Daemon log file handling
+CI_DAEMON_LOG_OPEN_MODE: Final[str] = "ab"
+CI_NULL_DEVICE_POSIX: Final[str] = "/dev/null"
+CI_NULL_DEVICE_WINDOWS: Final[str] = "NUL"
+CI_NULL_DEVICE_OPEN_MODE: Final[str] = "w"
+CI_TEXT_ENCODING: Final[str] = "utf-8"
+CI_LINE_SEPARATOR: Final[str] = "\n"
+CI_LOG_FALLBACK_MESSAGE: Final[str] = (
+    "Failed to open daemon log file {log_file}: {error}. " "Falling back to null device."
 )
 
 # =============================================================================
@@ -367,6 +391,11 @@ OTLP_LOGS_ENDPOINT: Final[str] = "/v1/logs"
 OTLP_CONTENT_TYPE_PROTOBUF: Final[str] = "application/x-protobuf"
 OTLP_CONTENT_TYPE_JSON: Final[str] = "application/json"
 
+# HTTP constants
+HTTP_HEADER_CONTENT_TYPE: Final[str] = "Content-Type"
+HTTP_METHOD_POST: Final[str] = "POST"
+ENCODING_UTF8: Final[str] = "utf-8"
+
 # Environment variable for daemon port (used by OTEL agents like Codex)
 # Agents can reference this in config files: ${OAK_CI_PORT}
 OAK_CI_PORT_ENV_VAR: Final[str] = "OAK_CI_PORT"
@@ -378,6 +407,35 @@ OTEL_EVENT_CODEX_TOOL_RESULT: Final[str] = "codex.tool_result"
 OTEL_EVENT_CODEX_TOOL_DECISION: Final[str] = "codex.tool_decision"
 OTEL_EVENT_CODEX_API_REQUEST: Final[str] = "codex.api_request"
 OTEL_EVENT_CODEX_SSE_EVENT: Final[str] = "codex.sse_event"
+
+# Codex notify events (agent notifications)
+AGENT_NOTIFY_EVENT_TURN_COMPLETE: Final[str] = "agent-turn-complete"
+AGENT_NOTIFY_ACTION_RESPONSE_SUMMARY: Final[str] = "response-summary"
+
+# Notify payload fields
+AGENT_NOTIFY_FIELD_TYPE: Final[str] = "type"
+AGENT_NOTIFY_FIELD_THREAD_ID: Final[str] = "thread-id"
+AGENT_NOTIFY_FIELD_TURN_ID: Final[str] = "turn-id"
+AGENT_NOTIFY_FIELD_CWD: Final[str] = "cwd"
+AGENT_NOTIFY_FIELD_INPUT_MESSAGES: Final[str] = "input-messages"
+AGENT_NOTIFY_FIELD_LAST_ASSISTANT_MESSAGE: Final[str] = "last-assistant-message"
+AGENT_NOTIFY_FIELD_AGENT: Final[str] = "agent"
+AGENT_NOTIFY_PAYLOAD_DEFAULT: Final[str] = ""
+AGENT_NOTIFY_PAYLOAD_JOIN_SEPARATOR: Final[str] = " "
+
+# Notify installer configuration
+AGENT_NOTIFY_CONFIG_TYPE: Final[str] = "notify"
+AGENT_NOTIFY_CONFIG_KEY: Final[str] = "notify"
+AGENT_NOTIFY_COMMAND_OAK: Final[str] = "oak"
+AGENT_NOTIFY_DEFAULT_COMMAND: Final[str] = AGENT_NOTIFY_COMMAND_OAK
+AGENT_NOTIFY_DEFAULT_ARGS: Final[tuple[str, ...]] = ("ci", "notify")
+AGENT_NOTIFY_COMMAND_ARGS_CODEX: Final[tuple[str, ...]] = (
+    "ci",
+    "notify",
+    "--agent",
+    AGENT_CODEX,
+)
+AGENT_NOTIFY_ENDPOINT: Final[str] = "/api/oak/ci/notify"
 
 # OTel attribute keys for data extraction (from Codex PR #2103)
 OTEL_ATTR_CONVERSATION_ID: Final[str] = "conversation.id"

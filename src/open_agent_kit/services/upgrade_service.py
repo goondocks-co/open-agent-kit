@@ -120,6 +120,14 @@ class UpgradePlanHookItem(TypedDict):
     target_description: str
 
 
+class UpgradePlanNotificationItem(TypedDict):
+    """A single notification upgrade plan item."""
+
+    feature: str
+    agent: str
+    target_description: str
+
+
 class UpgradePlanMcpItem(TypedDict):
     """A single MCP server plan item."""
 
@@ -167,6 +175,7 @@ class UpgradePlan(TypedDict):
     agent_settings: list[str]
     skills: UpgradePlanSkills
     hooks: list[UpgradePlanHookItem]
+    notifications: list[UpgradePlanNotificationItem]
     mcp_servers: list[UpgradePlanMcpItem]
     gitignore: list[UpgradePlanGitignoreItem]
     migrations: list[UpgradePlanMigration]
@@ -239,6 +248,7 @@ class UpgradeService:
             "agent_settings": [],
             "skills": {"install": [], "upgrade": [], "obsolete": []},
             "hooks": [],
+            "notifications": [],
             "mcp_servers": [],
             "gitignore": [],
             "migrations": [],
@@ -284,6 +294,8 @@ class UpgradeService:
 
         # Plan feature hook upgrades (for installed features with hooks)
         plan["hooks"] = self._get_upgradeable_hooks()
+        # Plan agent notification upgrades (notify handlers)
+        plan["notifications"] = self._get_upgradeable_notifications()
 
         # Plan MCP server installations (for features that provide MCP servers)
         plan["mcp_servers"] = self._get_mcp_servers_to_install()
@@ -940,6 +952,56 @@ class UpgradeService:
                             "target_description": target_desc,
                         }
                     )
+
+        return result
+
+    def _get_upgradeable_notifications(self) -> list[UpgradePlanNotificationItem]:
+        """Get agent notification handlers that need to be upgraded.
+
+        Checks configured agents for notify-based integrations.
+
+        Returns:
+            List of UpgradePlanNotificationItem for notify handlers that need upgrade
+        """
+        result: list[UpgradePlanNotificationItem] = []
+
+        config = self.config_service.load_config()
+        configured_agents = config.agents
+
+        for agent in configured_agents:
+            try:
+                manifest = self.agent_service.get_agent_manifest(agent)
+                if not manifest or not manifest.notifications:
+                    continue
+
+                notifications_config = manifest.notifications
+                if not notifications_config.notify or not notifications_config.notify.enabled:
+                    continue
+
+                from open_agent_kit.features.codebase_intelligence.notifications.installer import (
+                    NotificationsInstaller,
+                )
+
+                installer = NotificationsInstaller(self.project_root, agent)
+                if not installer.needs_upgrade():
+                    continue
+
+                config_file = notifications_config.config_file
+                if config_file:
+                    folder = manifest.installation.folder.rstrip("/")
+                    target_desc = f"{folder}/{config_file}"
+                else:
+                    target_desc = f".{agent}/config"
+
+                result.append(
+                    {
+                        "feature": "codebase-intelligence",
+                        "agent": agent,
+                        "target_description": target_desc,
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to plan notification upgrades for {agent}: {e}")
 
         return result
 

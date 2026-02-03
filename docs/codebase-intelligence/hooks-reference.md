@@ -12,6 +12,35 @@ Codebase Intelligence integrates with AI agents (Claude Code, Cursor, Gemini) vi
 
 All hooks communicate via HTTP POST requests to the daemon's API endpoints.
 
+## OpenTelemetry Agents (Codex)
+
+Codex emits OpenTelemetry (OTLP) log events instead of calling hook endpoints directly. The daemon translates these events into the same hook actions as other agents.
+
+Codex event mapping (via `src/open_agent_kit/agents/codex/manifest.yaml`):
+
+| Codex OTel Event | Hook Action |
+|-----------------|-------------|
+| `codex.conversation_starts` | `session-start` |
+| `codex.user_prompt` | `prompt-submit` |
+| `codex.tool_decision` | `prompt-submit` |
+| `codex.tool_result` | `post-tool-use` |
+
+## Agent Notifications (Codex Notify Handler)
+
+Codex can emit structured notification events via the `notify` handler in `.codex/config.toml`. OAK configures this handler to invoke `oak ci notify`, which forwards events to the daemon endpoint `/api/oak/ci/notify`.
+
+Codex notify mapping (via `src/open_agent_kit/agents/codex/manifest.yaml`):
+
+| Codex Notify Event | OAK Action |
+|-------------------|-----------|
+| `agent-turn-complete` | `response-summary` |
+
+For `agent-turn-complete`, OAK uses:
+- `thread-id` as the session identifier
+- `last-assistant-message` as the response summary to store on the active prompt batch
+
+Codex notify handlers are configured to invoke `oak ci notify` for cross-platform reliability.
+
 ## Hook Events
 
 | Hook Event | Endpoint | When Fired | Primary Purpose |

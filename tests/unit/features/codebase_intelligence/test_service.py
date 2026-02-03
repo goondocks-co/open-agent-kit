@@ -208,6 +208,77 @@ class TestServiceHookRemoval:
 
 
 # =============================================================================
+# Service Notification Update Tests
+# =============================================================================
+
+
+class TestServiceNotificationUpdates:
+    """Test service notification update methods using manifest-driven installer."""
+
+    def test_update_agent_notifications_returns_results(self, tmp_path: Path):
+        """Test that update_agent_notifications returns results dict."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.notifications.install_notifications"
+        ) as mock_install:
+            mock_install.return_value = MagicMock(success=True, method="notify")
+            result = service.update_agent_notifications(["claude", "codex"])
+
+        assert result["status"] == "success"
+        assert "agents" in result
+        assert result["agents"]["claude"] == "updated"
+        assert result["agents"]["codex"] == "updated"
+
+    def test_update_agent_notifications_handles_errors(self, tmp_path: Path):
+        """Test that update_agent_notifications handles errors gracefully."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.notifications.install_notifications"
+        ) as mock_install:
+            mock_install.return_value = MagicMock(success=False, message="Test error")
+            result = service.update_agent_notifications(["claude"])
+
+        assert result["status"] == "success"
+        assert "error: Test error" in result["agents"]["claude"]
+
+
+# =============================================================================
+# Service Notification Removal Tests
+# =============================================================================
+
+
+class TestServiceNotificationRemoval:
+    """Test service notification removal methods."""
+
+    def test_remove_agent_notifications_returns_results(self, tmp_path: Path):
+        """Test that _remove_agent_notifications returns results dict."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.notifications.remove_notifications"
+        ) as mock_remove:
+            mock_remove.return_value = MagicMock(success=True, method="notify")
+            result = service._remove_agent_notifications(["claude", "codex"])
+
+        assert result["claude"] == "removed"
+        assert result["codex"] == "removed"
+
+    def test_remove_agent_notifications_handles_errors(self, tmp_path: Path):
+        """Test that _remove_agent_notifications handles errors gracefully."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.notifications.remove_notifications"
+        ) as mock_remove:
+            mock_remove.return_value = MagicMock(success=False, message="Test error")
+            result = service._remove_agent_notifications(["claude"])
+
+        assert "error: Test error" in result["claude"]
+
+
+# =============================================================================
 # Execute Hook Tests
 # =============================================================================
 

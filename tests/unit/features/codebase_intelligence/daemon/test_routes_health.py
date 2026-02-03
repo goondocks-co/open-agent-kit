@@ -15,11 +15,24 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_CORS_HOST_LOCALHOST,
+    CI_CORS_HOST_LOOPBACK,
+    CI_CORS_ORIGIN_TEMPLATE,
+    CI_CORS_SCHEME_HTTP,
+    CI_SHARED_PORT_DIR,
+    CI_SHARED_PORT_FILE,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+    PORT_RANGE_START,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     get_state,
     reset_state,
 )
+
+TEST_PORT_OFFSET = 1
 
 
 @pytest.fixture(autouse=True)
@@ -192,6 +205,44 @@ class TestHealthCheck:
         # Schema version should be a positive integer
         schema_version = data["schema_version"]
         assert schema_version > 0
+
+
+# =============================================================================
+# CORS Tests
+# =============================================================================
+
+
+class TestCors:
+    """Test CORS behavior for daemon API."""
+
+    def test_cors_allows_only_daemon_port(self, tmp_path: Path):
+        """Test CORS allows only the daemon port from daemon.port."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        shared_port_dir = project_root / CI_SHARED_PORT_DIR
+        shared_port_dir.mkdir(parents=True)
+        port = PORT_RANGE_START
+        (shared_port_dir / CI_SHARED_PORT_FILE).write_text(str(port))
+
+        app = create_app(project_root=project_root)
+        client = TestClient(app)
+
+        allowed_origin = CI_CORS_ORIGIN_TEMPLATE.format(
+            scheme=CI_CORS_SCHEME_HTTP,
+            host=CI_CORS_HOST_LOCALHOST,
+            port=port,
+        )
+        response = client.get("/api/health", headers={"Origin": allowed_origin})
+        assert response.headers.get("access-control-allow-origin") == allowed_origin
+
+        disallowed_origin = CI_CORS_ORIGIN_TEMPLATE.format(
+            scheme=CI_CORS_SCHEME_HTTP,
+            host=CI_CORS_HOST_LOOPBACK,
+            port=port + TEST_PORT_OFFSET,
+        )
+        response = client.get("/api/health", headers={"Origin": disallowed_origin})
+        assert response.headers.get("access-control-allow-origin") is None
 
 
 # =============================================================================

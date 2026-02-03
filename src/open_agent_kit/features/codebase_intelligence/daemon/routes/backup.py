@@ -26,13 +26,45 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
+    CI_BACKUP_HEADER_MAX_LINES,
+    CI_BACKUP_PATH_INVALID_ERROR,
     CI_DATA_DIR,
     CI_HISTORY_BACKUP_DIR,
+    CI_HISTORY_BACKUP_FILE,
+    CI_LINE_SEPARATOR,
+    CI_TEXT_ENCODING,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["backup"])
+
+
+def _ensure_backup_path_within_dir(backup_dir: Path, candidate: Path) -> Path:
+    """Ensure backup path stays within the allowed backup directory."""
+    resolved_candidate = candidate.resolve()
+    resolved_backup_dir = backup_dir.resolve()
+    if not resolved_candidate.is_relative_to(resolved_backup_dir):
+        raise HTTPException(
+            status_code=400,
+            detail=CI_BACKUP_PATH_INVALID_ERROR.format(backup_dir=backup_dir),
+        )
+    return candidate
+
+
+def _read_backup_header_lines(backup_path: Path, max_lines: int) -> list[str]:
+    """Read only the header lines from a backup file."""
+    try:
+        with backup_path.open("r", encoding=CI_TEXT_ENCODING) as handle:
+            lines: list[str] = []
+            for _ in range(max_lines):
+                line = handle.readline()
+                if not line:
+                    break
+                lines.append(line.rstrip(CI_LINE_SEPARATOR))
+            return lines
+    except (OSError, UnicodeDecodeError):
+        return []
 
 
 class BackupRequest(BaseModel):
@@ -172,8 +204,7 @@ async def get_backup_status() -> BackupStatusResponse:
         schema_compatible = True
         schema_warning: str | None = None
         try:
-            content = bf.read_text(encoding="utf-8")
-            lines = content.split("\n")[:10]
+            lines = _read_backup_header_lines(bf, CI_BACKUP_HEADER_MAX_LINES)
             backup_schema = _parse_backup_schema_version(lines)
             if backup_schema is not None:
                 if backup_schema > SCHEMA_VERSION:
@@ -239,12 +270,17 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to backup")
 
+    backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+
     if request.output_path:
-        backup_path = Path(request.output_path)
+        backup_path = _ensure_backup_path_within_dir(
+            backup_dir,
+            Path(request.output_path),
+        )
     else:
         # Use machine-specific filename
         backup_filename = get_backup_filename()
-        backup_path = state.project_root / CI_HISTORY_BACKUP_DIR / backup_filename
+        backup_path = backup_dir / backup_filename
 
     machine_id = get_machine_identifier()
     logger.info(
@@ -296,7 +332,10 @@ async def restore_backup(
     backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
 
     if request.input_path:
-        backup_path = Path(request.input_path)
+        backup_path = _ensure_backup_path_within_dir(
+            backup_dir,
+            Path(request.input_path),
+        )
     else:
         # Default to this machine's backup file
         backup_filename = get_backup_filename()
@@ -304,7 +343,7 @@ async def restore_backup(
 
         # Fall back to legacy filename if machine-specific doesn't exist
         if not backup_path.exists():
-            legacy_path = backup_dir / "ci_history.sql"
+            legacy_path = backup_dir / CI_HISTORY_BACKUP_FILE
             if legacy_path.exists():
                 backup_path = legacy_path
 

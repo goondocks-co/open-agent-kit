@@ -6,6 +6,7 @@ This package contains the FastAPI routers split by domain:
 - index: Index build and status endpoints
 - hooks: AI agent integration hooks (claude-mem inspired)
 - otel: OpenTelemetry (OTLP) receiver for agents that emit OTel events
+- notifications: Agent notify handlers for response summaries
 - mcp: MCP tool endpoints
 - config: Configuration management endpoints
 - activity: SQLite activity browsing endpoints
@@ -28,6 +29,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.health import (
 from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks import router as hook_router
 from open_agent_kit.features.codebase_intelligence.daemon.routes.index import router as index_router
 from open_agent_kit.features.codebase_intelligence.daemon.routes.mcp import router as mcp_router
+from open_agent_kit.features.codebase_intelligence.daemon.routes.notifications import (
+    router as notifications_router,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.routes.otel import router as otel_router
 from open_agent_kit.features.codebase_intelligence.daemon.routes.search import (
     router as search_router,
@@ -41,6 +45,7 @@ __all__ = [
     "search_router",
     "index_router",
     "hook_router",
+    "notifications_router",
     "otel_router",
     "mcp_router",
     "config_router",

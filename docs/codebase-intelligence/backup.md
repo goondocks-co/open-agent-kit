@@ -162,6 +162,9 @@ curl -X POST http://localhost:44827/api/devtools/rebuild-memories
 | `/api/backup/create` | POST | Create new backup |
 | `/api/backup/restore` | POST | Restore from backup |
 
+Notes:
+- Backup input/output paths are restricted to `oak/ci/history/` within the project. Requests that specify paths outside this directory are rejected.
+
 ### CLI Commands
 
 ```bash

@@ -19,6 +19,12 @@ from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
+    CI_CORS_ALLOWED_HEADERS,
+    CI_CORS_ALLOWED_METHODS,
+    CI_CORS_HOST_LOCALHOST,
+    CI_CORS_HOST_LOOPBACK,
+    CI_CORS_ORIGIN_TEMPLATE,
+    CI_CORS_SCHEME_HTTP,
     CI_DATA_DIR,
     CI_HOOKS_LOG_FILE,
     CI_LOG_FILE,
@@ -709,17 +715,30 @@ def create_app(
     )
 
     # Add CORS middleware - restrict to localhost only for security
+    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+        get_project_port,
+    )
+
+    ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
+    port = get_project_port(state.project_root, ci_data_dir)
+    allowed_origins = [
+        CI_CORS_ORIGIN_TEMPLATE.format(
+            scheme=CI_CORS_SCHEME_HTTP,
+            host=CI_CORS_HOST_LOCALHOST,
+            port=port,
+        ),
+        CI_CORS_ORIGIN_TEMPLATE.format(
+            scheme=CI_CORS_SCHEME_HTTP,
+            host=CI_CORS_HOST_LOOPBACK,
+            port=port,
+        ),
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-            "http://localhost",
-            "http://127.0.0.1",
-        ],
+        allow_origins=allowed_origins,
         allow_credentials=False,  # Disabled unless specifically needed
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_methods=list(CI_CORS_ALLOWED_METHODS),
+        allow_headers=list(CI_CORS_ALLOWED_HEADERS),
     )
 
     # Include routers
@@ -732,6 +751,7 @@ def create_app(
         hooks,
         index,
         mcp,
+        notifications,
         otel,
         schedules,
         search,
@@ -748,6 +768,7 @@ def create_app(
     app.include_router(index.router)
     app.include_router(search.router)
     app.include_router(activity.router)
+    app.include_router(notifications.router)
     app.include_router(hooks.router)
     app.include_router(otel.router)
     app.include_router(mcp.router)

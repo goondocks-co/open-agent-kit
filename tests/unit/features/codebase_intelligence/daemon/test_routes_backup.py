@@ -23,15 +23,21 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
+    CI_BACKUP_PATH_INVALID_ERROR,
     CI_DATA_DIR,
     CI_HISTORY_BACKUP_DIR,
     CI_HISTORY_BACKUP_FILE_SUFFIX,
 )
+from open_agent_kit.features.codebase_intelligence.daemon.routes import backup as backup_routes
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     get_state,
     reset_state,
 )
+
+TEST_BACKUP_FILENAME_PREFIX = "test_backup"
+TEST_BACKUP_FILENAME = f"{TEST_BACKUP_FILENAME_PREFIX}{CI_HISTORY_BACKUP_FILE_SUFFIX}"
+TEST_OUTSIDE_DIR_NAME = "outside"
 
 
 @pytest.fixture(autouse=True)
@@ -142,6 +148,29 @@ class TestBackupStatus:
         assert "machine_id" in data
         assert len(data["all_backups"]) >= 1
 
+    def test_backup_status_uses_header_reader(self, client, temp_project: Path, monkeypatch):
+        """Test that status uses the header reader helper."""
+        state = get_state()
+        state.project_root = temp_project
+        state.activity_store = MagicMock()
+
+        backup_filename = get_backup_filename()
+        backup_path = temp_project / CI_HISTORY_BACKUP_DIR / backup_filename
+        backup_path.write_text("-- Test backup")
+
+        called = {"value": False}
+
+        def fake_reader(path: Path, max_lines: int) -> list[str]:
+            called["value"] = True
+            return []
+
+        monkeypatch.setattr(backup_routes, "_read_backup_header_lines", fake_reader)
+
+        response = client.get("/api/backup/status")
+
+        assert response.status_code == 200
+        assert called["value"] is True
+
     def test_backup_status_project_not_initialized(self, client):
         """Test status when project root is not set."""
         state = get_state()
@@ -212,6 +241,22 @@ class TestBackupCreate:
         content = backup_path.read_text()
         assert "INSERT INTO activities" in content
 
+    def test_create_backup_rejects_outside_path(self, client, setup_state_with_activity_store):
+        """Test backup creation rejects paths outside backup dir."""
+        state = get_state()
+        backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+        outside_path = state.project_root / TEST_OUTSIDE_DIR_NAME / TEST_BACKUP_FILENAME
+
+        response = client.post(
+            "/api/backup/create",
+            json={"output_path": str(outside_path)},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == CI_BACKUP_PATH_INVALID_ERROR.format(
+            backup_dir=backup_dir
+        )
+
     def test_create_backup_no_database(self, client, temp_project: Path):
         """Test backup creation when database doesn't exist."""
         state = get_state()
@@ -277,6 +322,22 @@ class TestBackupRestore:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
+
+    def test_restore_backup_rejects_outside_path(self, client, setup_state_with_activity_store):
+        """Test backup restore rejects paths outside backup dir."""
+        state = get_state()
+        backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+        outside_path = state.project_root / TEST_OUTSIDE_DIR_NAME / TEST_BACKUP_FILENAME
+
+        response = client.post(
+            "/api/backup/restore",
+            json={"input_path": str(outside_path)},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == CI_BACKUP_PATH_INVALID_ERROR.format(
+            backup_dir=backup_dir
+        )
 
     def test_restore_backup_no_database(self, client, temp_project: Path):
         """Test restore when database doesn't exist."""

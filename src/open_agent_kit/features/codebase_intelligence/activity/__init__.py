@@ -13,6 +13,9 @@ Key concepts:
 - Activity: A single tool execution event
 """
 
+from open_agent_kit.features.codebase_intelligence.activity.batches import (
+    finalize_prompt_batch,
+)
 from open_agent_kit.features.codebase_intelligence.activity.processor import (
     ActivityProcessor,
     ProcessingResult,
@@ -42,6 +45,7 @@ __all__ = [
     "ProcessingResult",
     "process_prompt_batch_async",
     "process_session_async",
+    "finalize_prompt_batch",
     # Prompts
     "PromptTemplate",
     "PromptTemplateConfig",

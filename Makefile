@@ -59,7 +59,7 @@ help:
 # Setup targets
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	uv sync
+	uv sync --extra dev
 	uv tool install -e . --force
 	@echo "\nSetup complete! All dependencies installed."
 	@echo "Run 'make check' to verify everything works."
@@ -75,7 +75,7 @@ setup:
 setup-full: setup
 
 sync:
-	uv sync
+	uv sync --extra dev
 	uv tool install -e . --force
 	@echo "Dependencies synced and oak tool reinstalled."
 
