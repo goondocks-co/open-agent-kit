@@ -482,21 +482,29 @@ def recover_stale_sessions(
     cutoff_epoch = time.time() - timeout_seconds
 
     # Find active sessions with no recent activity, including their activity count
-    # IMPORTANT: For sessions with no activities, check created_at_epoch
-    # to avoid marking brand new sessions as stale
+    # IMPORTANT: Consider multiple signals to avoid false positives:
+    # 1. Last activity timestamp (tool calls)
+    # 2. Session creation timestamp (for sessions with no activities)
+    # 3. Active prompt batches (session was just resumed but no tool calls yet)
+    # 4. Most recent prompt batch creation (user sent a new prompt)
     conn = store._get_connection()
     cursor = conn.execute(
         """
         SELECT s.id, MAX(a.timestamp_epoch) as last_activity, s.created_at_epoch,
-               COUNT(a.id) as activity_count
+               COUNT(a.id) as activity_count,
+               (SELECT MAX(pb.created_at_epoch) FROM prompt_batches pb WHERE pb.session_id = s.id) as last_batch_epoch,
+               (SELECT COUNT(*) FROM prompt_batches pb WHERE pb.session_id = s.id AND pb.status = 'active') as active_batches
         FROM sessions s
         LEFT JOIN activities a ON s.id = a.session_id
         WHERE s.status = 'active'
         GROUP BY s.id
-        HAVING (last_activity IS NOT NULL AND last_activity < ?)
-            OR (last_activity IS NULL AND s.created_at_epoch < ?)
+        HAVING
+            -- Skip sessions with active prompt batches (currently being worked on)
+            active_batches = 0
+            -- Check staleness: use the most recent of activity, batch creation, or session creation
+            AND COALESCE(last_activity, last_batch_epoch, s.created_at_epoch) < ?
         """,
-        (cutoff_epoch, cutoff_epoch),
+        (cutoff_epoch,),
     )
     stale_sessions = [(row[0], row[1], row[2], row[3] or 0) for row in cursor.fetchall()]
 

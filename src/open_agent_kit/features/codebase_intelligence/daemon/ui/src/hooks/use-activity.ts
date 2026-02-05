@@ -37,6 +37,8 @@ export interface SessionItem {
     parent_session_id: string | null;
     parent_session_reason: string | null;
     child_session_count: number;
+    // Resume command (from agent manifest)
+    resume_command: string | null;
 }
 
 export interface PromptBatchItem {

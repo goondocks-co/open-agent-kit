@@ -11,7 +11,7 @@ import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog"
 import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
-import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit } from "lucide-react";
+import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DELETE_CONFIRMATIONS, type SessionLinkReason } from "@/lib/constants";
@@ -56,6 +56,8 @@ export default function SessionDetail() {
     const [summaryMessage, setSummaryMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     // Track if lineage card is expanded (collapsed by default when no links)
     const [lineageExpanded, setLineageExpanded] = useState(false);
+    // Track copy feedback for resume command
+    const [copiedResume, setCopiedResume] = useState(false);
 
     // Session delete dialog
     const sessionDialog = useConfirmDialog();
@@ -126,6 +128,15 @@ export default function SessionDetail() {
         );
     };
 
+    const handleViewFullResponse = (batch: { response_summary: string | null; prompt_number: number }) => {
+        contentDialog.openDialog(
+            `Response #${batch.prompt_number}`,
+            batch.response_summary || "No response available",
+            "Agent response",
+            true // Enable markdown rendering
+        );
+    };
+
     const handleLinkSession = async (parentSessionId: string, reason: SessionLinkReason) => {
         if (!id) return;
         try {
@@ -171,6 +182,17 @@ export default function SessionDetail() {
         }
     };
 
+    const handleCopyResumeCommand = async () => {
+        if (!session.resume_command) return;
+        try {
+            await navigator.clipboard.writeText(session.resume_command);
+            setCopiedResume(true);
+            setTimeout(() => setCopiedResume(false), 2000);
+        } catch (error) {
+            console.error("Failed to copy resume command:", error);
+        }
+    };
+
     if (isLoading) return <div>Loading session details...</div>;
     if (!data) return <div>Session not found</div>;
 
@@ -181,17 +203,14 @@ export default function SessionDetail() {
         || session.first_prompt_preview
         || `Session ${session.id.slice(0, 8)}`;
 
-    // Filter batches based on toggle
+    // Filter batches based on toggle (hide system prompts only, keep agent_notification visible)
     const filteredBatches = showAgentBatches
         ? prompt_batches
-        : prompt_batches.filter(batch => {
-            const sourceType = batch.source_type || "user";
-            return sourceType === "user" || sourceType === "plan";
-        });
+        : prompt_batches.filter(batch => batch.source_type !== "system");
 
-    // Count agent batches for the toggle label
-    const agentBatchCount = prompt_batches.filter(
-        batch => batch.source_type === "agent_notification" || batch.source_type === "system"
+    // Count system batches for the toggle label
+    const systemBatchCount = prompt_batches.filter(
+        batch => batch.source_type === "system"
     ).length;
 
     // Get plan batches for the Plans section
@@ -216,6 +235,28 @@ export default function SessionDetail() {
                     Delete Session
                 </Button>
             </div>
+
+            {/* Resume Command */}
+            {session.resume_command && (
+                <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3 py-2 text-sm bg-muted/50 rounded-md font-mono text-muted-foreground border">
+                        {session.resume_command}
+                    </code>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 px-3"
+                        onClick={handleCopyResumeCommand}
+                        title="Copy resume command"
+                    >
+                        {copiedResume ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                            <Copy className="w-4 h-4" />
+                        )}
+                    </Button>
+                </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-4">
                 <Card>
@@ -411,15 +452,16 @@ export default function SessionDetail() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <h2 className="text-xl font-semibold">Timeline</h2>
-                    {agentBatchCount > 0 && (
+                    {systemBatchCount > 0 && (
                         <Button
                             variant="outline"
                             size="sm"
                             className="h-8 gap-2 text-xs"
                             onClick={() => setShowAgentBatches(!showAgentBatches)}
+                            title="System prompts are auto-generated during context compaction or continuation"
                         >
                             {showAgentBatches ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                            {showAgentBatches ? "Hide" : "Show"} agent work ({agentBatchCount})
+                            {showAgentBatches ? "Hide" : "Show"} system prompts ({systemBatchCount})
                         </Button>
                     )}
                 </div>
@@ -467,21 +509,38 @@ export default function SessionDetail() {
                                 </div>
 
                                 {/* Agent Response Summary */}
-                                {batch.response_summary && (
-                                    <div className={cn(
-                                        "p-4 rounded-lg border text-sm whitespace-pre-wrap mt-2",
-                                        "bg-green-500/5 border-green-500/20"
-                                    )}>
-                                        <div className="font-semibold text-green-600 text-xs mb-2">
-                                            Agent Response
+                                {batch.response_summary && (() => {
+                                    const isResponseTruncated = batch.response_summary.length > PROMPT_TRUNCATE_LENGTH;
+                                    return (
+                                        <div className={cn(
+                                            "p-4 rounded-lg border text-sm mt-2",
+                                            "bg-green-500/5 border-green-500/20"
+                                        )}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="font-semibold text-green-600 text-xs">
+                                                    Agent Response
+                                                </div>
+                                                {isResponseTruncated && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-auto p-0 text-xs text-green-500 hover:text-green-600"
+                                                        onClick={() => handleViewFullResponse(batch)}
+                                                    >
+                                                        <Maximize2 className="w-3 h-3 mr-1" />
+                                                        View full response
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            <Markdown
+                                                content={isResponseTruncated
+                                                    ? `${batch.response_summary.slice(0, PROMPT_TRUNCATE_LENGTH)}...`
+                                                    : batch.response_summary}
+                                                className="text-foreground"
+                                            />
                                         </div>
-                                        <div className="text-foreground">
-                                            {batch.response_summary.length > PROMPT_TRUNCATE_LENGTH
-                                                ? `${batch.response_summary.slice(0, PROMPT_TRUNCATE_LENGTH)}...`
-                                                : batch.response_summary}
-                                        </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 <div className="text-xs text-muted-foreground flex items-center gap-4 mt-2 flex-wrap">
                                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDate(batch.started_at)}</span>
@@ -502,7 +561,7 @@ export default function SessionDetail() {
                                             className="h-6 gap-1 text-xs text-purple-500 hover:text-purple-600 hover:bg-purple-500/10"
                                             onClick={() => handlePromoteBatch(batch.id)}
                                             disabled={promotingBatchId === batch.id}
-                                            title="Extract memories from this batch using LLM"
+                                            title="Extract memories from this batch. System prompts after compaction or continuation often contain valuable context that's skipped by default."
                                         >
                                             {promotingBatchId === batch.id ? (
                                                 <Loader2 className="w-3 h-3 animate-spin" />

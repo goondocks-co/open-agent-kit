@@ -523,6 +523,20 @@ class AgentConfig:
         scheduler_interval_seconds: Interval between scheduler checks for due schedules.
         executor_cache_size: Max runs to keep in executor's in-memory cache.
         background_processing_interval_seconds: Interval for activity processor background tasks.
+        provider_type: API provider type (cloud, ollama, lmstudio, bedrock, openrouter).
+        provider_base_url: Base URL for the provider API (for local providers).
+        provider_model: Default model to use for agent execution.
+
+    Provider Configuration:
+        The provider settings configure how agents connect to LLM backends.
+        - 'cloud': Uses Anthropic cloud API (default, uses logged-in account or ANTHROPIC_API_KEY)
+        - 'ollama': Local Ollama server with Anthropic-compatible API (v0.14.0+)
+        - 'lmstudio': Local LM Studio server with Anthropic-compatible API
+        - 'bedrock': AWS Bedrock
+        - 'openrouter': OpenRouter proxy
+
+        Note: Claude Agent SDK requires Anthropic API format. Ollama and LM Studio
+        support this format as of their recent versions.
     """
 
     enabled: bool = True
@@ -531,6 +545,10 @@ class AgentConfig:
     scheduler_interval_seconds: int = DEFAULT_SCHEDULER_INTERVAL_SECONDS
     executor_cache_size: int = DEFAULT_EXECUTOR_CACHE_SIZE
     background_processing_interval_seconds: int = DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS
+    # Provider configuration for agent execution
+    provider_type: str = "cloud"
+    provider_base_url: str | None = None
+    provider_model: str | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -617,6 +635,15 @@ class AgentConfig:
                 value=self.background_processing_interval_seconds,
                 expected=f"<= {MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
             )
+        # Validate provider type
+        valid_provider_types = {"cloud", "ollama", "lmstudio", "bedrock", "openrouter"}
+        if self.provider_type not in valid_provider_types:
+            raise ValidationError(
+                f"Invalid provider_type: {self.provider_type}",
+                field="provider_type",
+                value=self.provider_type,
+                expected=f"one of {valid_provider_types}",
+            )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentConfig":
@@ -640,6 +667,9 @@ class AgentConfig:
                 "background_processing_interval_seconds",
                 DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
             ),
+            provider_type=data.get("provider_type", "cloud"),
+            provider_base_url=data.get("provider_base_url"),
+            provider_model=data.get("provider_model"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -651,6 +681,9 @@ class AgentConfig:
             "scheduler_interval_seconds": self.scheduler_interval_seconds,
             "executor_cache_size": self.executor_cache_size,
             "background_processing_interval_seconds": self.background_processing_interval_seconds,
+            "provider_type": self.provider_type,
+            "provider_base_url": self.provider_base_url,
+            "provider_model": self.provider_model,
         }
 
 

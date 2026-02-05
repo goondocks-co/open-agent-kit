@@ -16,6 +16,7 @@ import AgentsLayout from "@/pages/AgentsLayout";
 import AgentsList from "@/components/agents/AgentsList";
 import RunHistory from "@/components/agents/RunHistory";
 import Schedules from "@/components/agents/Schedules";
+import AgentSettings from "@/pages/AgentSettings";
 
 export const router = createBrowserRouter([
     {
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
                     { index: true, element: <AgentsList /> },
                     { path: "runs", element: <RunHistory /> },
                     { path: "schedules", element: <Schedules /> },
+                    { path: "settings", element: <AgentSettings /> },
                 ]
             },
             { path: "team", element: <Team /> },

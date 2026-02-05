@@ -3,7 +3,7 @@ name: session-title-from-summary
 description: Generate a short title from a session summary
 ---
 
-Generate a short, descriptive title (5-10 words) for this coding session based on its summary.
+Generate a short, descriptive title (6-12 words) for this coding session based on its summary.
 
 ## Session Summary
 
@@ -12,7 +12,7 @@ Generate a short, descriptive title (5-10 words) for this coding session based o
 ## Task
 
 Create a brief title that captures the main accomplishment or focus of this session. The title should:
-- Be 5-10 words maximum
+- Be 6-12 words maximum
 - Start with an action verb when appropriate (Add, Fix, Implement, Refactor, Debug, Update, Configure, etc.)
 - Capture the primary task or feature worked on
 - Be specific enough to distinguish from other sessions

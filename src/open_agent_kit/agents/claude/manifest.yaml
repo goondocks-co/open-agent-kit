@@ -38,6 +38,9 @@ capabilities:
 
 # Codebase Intelligence configuration
 ci:
+  # Resume command template - allows UI to show copyable command for session continuation
+  resume_command: "claude --resume {session_id}"
+
   # Plan storage - Claude Code stores plans in .claude/plans/ (project) or ~/.claude/plans/ (global)
   plans_subfolder: "plans"
 
@@ -49,6 +52,21 @@ ci:
   # Tool that signals plan mode exit - when detected, CI re-reads
   # the plan file to capture final content
   exit_plan_tool: "ExitPlanMode"
+
+  # Transcript configuration - Claude Code stores transcripts in ~/.claude/projects/
+  # Path pattern: ~/.claude/projects/-{project-path}/{session-id}.jsonl
+  transcript:
+    base_dir: ".claude/projects"
+    path_pattern: "{encoded_project}/{session_id}.jsonl"
+    project_encoding: "slash-to-dash"
+
+  # Session continuation triggers - which SessionStart sources indicate continuation
+  # Claude Code fires SessionStart with source="clear" when user clears context,
+  # and source="compact" for automatic context compaction
+  continuation:
+    continuation_sources:
+      - clear    # User cleared context to continue in new session
+      - compact  # Automatic context compaction mid-session
 
 settings:
   # Auto-approval settings for oak commands

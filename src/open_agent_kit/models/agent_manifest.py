@@ -82,6 +82,54 @@ class AgentCapabilities(BaseModel):
     )
 
 
+class AgentTranscriptConfig(BaseModel):
+    """Transcript file configuration for agents that store conversation history.
+
+    Defines how to locate and parse transcript files for response summary extraction.
+    Used when the Stop hook doesn't fire (e.g., user queues messages during agent response).
+    """
+
+    # Transcript location
+    base_dir: str | None = Field(
+        default=None,
+        description="Base directory for transcripts relative to home (e.g., '.claude/projects'). Set to null if agent doesn't use file-based transcripts.",
+    )
+
+    # Path pattern with placeholders: {session_id}, {encoded_project}
+    path_pattern: str = Field(
+        default="{encoded_project}/{session_id}.jsonl",
+        description="Path pattern within base_dir. Placeholders: {session_id}, {encoded_project}",
+    )
+
+    # How project paths are encoded in the transcript directory name
+    project_encoding: str = Field(
+        default="slash-to-dash",
+        description="How project paths are encoded: 'slash-to-dash' (/foo/bar -> -foo-bar), 'url-encode', 'none'",
+    )
+
+
+class AgentSessionContinuationConfig(BaseModel):
+    """Configuration for session continuation triggers.
+
+    Defines which SessionStart sources this agent uses for continuation events.
+    The actual behavior (creating batches, reactivating, etc.) is universal
+    across all agents - only the triggers vary.
+
+    Example: Claude fires SessionStart with source="clear" when user clears context,
+    and source="compact" for auto-compaction. Cursor might use different sources.
+    """
+
+    # SessionStart sources that indicate continuation (not a fresh session)
+    # When SessionStart fires with one of these sources, we know:
+    # 1. This is a continuation, not a brand new session
+    # 2. The agent may start executing tools before UserPromptSubmit fires
+    # 3. We should create a system batch to capture the activity
+    continuation_sources: list[str] = Field(
+        default_factory=list,
+        description="SessionStart source values that indicate session continuation (e.g., ['clear', 'compact'] for Claude). When detected, a system batch is created immediately.",
+    )
+
+
 class AgentCIConfig(BaseModel):
     """Codebase Intelligence configuration for an agent.
 
@@ -89,6 +137,12 @@ class AgentCIConfig(BaseModel):
     events like plan mode execution and exit. All plan-related settings
     are centralized here for declarative configuration.
     """
+
+    # Resume command template for session continuation
+    resume_command: str | None = Field(
+        default=None,
+        description="Template for resuming a session. Use {session_id} placeholder. (e.g., 'claude --resume {session_id}')",
+    )
 
     # Plan storage configuration
     plans_subfolder: str | None = Field(
@@ -104,6 +158,18 @@ class AgentCIConfig(BaseModel):
     exit_plan_tool: str | None = Field(
         default=None,
         description="Tool name that signals plan mode exit (e.g., 'ExitPlanMode'). When detected, re-reads plan file to capture final content.",
+    )
+
+    # Transcript configuration for response summary extraction
+    transcript: AgentTranscriptConfig | None = Field(
+        default=None,
+        description="Transcript file configuration for response summary extraction. Set to null if agent uses notify handlers instead.",
+    )
+
+    # Session continuation configuration
+    continuation: AgentSessionContinuationConfig = Field(
+        default_factory=AgentSessionContinuationConfig,
+        description="Configuration for session continuation batch creation (context compaction, cleared context, etc.)",
     )
 
 
@@ -503,6 +569,15 @@ class AgentManifest(BaseModel):
             return None
         folder = self.installation.folder.rstrip("/")
         return f"{folder}/{subfolder}"
+
+    def get_transcript_config(self) -> AgentTranscriptConfig | None:
+        """Get transcript configuration for response summary extraction.
+
+        Returns:
+            AgentTranscriptConfig if agent uses file-based transcripts, None otherwise.
+            Agents using notify handlers (like Codex) return None.
+        """
+        return self.ci.transcript
 
     def get_command_filename(self, command_name: str) -> str:
         """Get the full filename for a command.

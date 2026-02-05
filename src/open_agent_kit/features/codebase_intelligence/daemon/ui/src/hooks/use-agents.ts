@@ -3,12 +3,12 @@
  *
  * Agent Architecture:
  * - Templates: Define capabilities (tools, permissions, system prompt)
- * - Instances: Define tasks (default_task, maintained_files, ci_queries)
- * - Only instances can be run directly - templates create instances
+ * - Tasks: Define what to do (default_task, maintained_files, ci_queries)
+ * - Only tasks can be run directly - templates create tasks
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson, postJson } from "@/lib/api";
+import { fetchJson, postJson, deleteJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 
 // =============================================================================
@@ -24,8 +24,8 @@ export interface AgentTemplate {
     timeout_seconds: number;
 }
 
-/** Agent instance - runnable with pre-configured task */
-export interface AgentInstance {
+/** Agent task - runnable with pre-configured task */
+export interface AgentTask {
     name: string;
     display_name: string;
     agent_type: string;  // Template reference
@@ -33,7 +33,7 @@ export interface AgentInstance {
     default_task: string;
     max_turns: number;
     timeout_seconds: number;
-    /** True if instance has custom execution config (overrides template defaults) */
+    /** True if task has custom execution config (overrides template defaults) */
     has_execution_override: boolean;
     /** True if this is a built-in task shipped with OAK */
     is_builtin: boolean;
@@ -53,16 +53,16 @@ export interface AgentItem {
 /** Agent list response */
 export interface AgentListResponse {
     templates: AgentTemplate[];
-    instances: AgentInstance[];
-    /** Directory where instance YAML files are stored */
-    instances_dir: string;
+    tasks: AgentTask[];
+    /** Directory where task YAML files are stored */
+    tasks_dir: string;
     // Legacy fields
     agents: AgentItem[];
     total: number;
 }
 
-/** Request to create a new instance */
-export interface CreateInstanceRequest {
+/** Request to create a new task */
+export interface CreateTaskRequest {
     name: string;
     display_name: string;
     description: string;
@@ -113,6 +113,7 @@ export interface AgentRun {
     files_created: string[];
     files_modified: string[];
     files_deleted: string[];
+    warnings: string[];
     created_at: string;
     started_at?: string;
     completed_at?: string;
@@ -208,7 +209,7 @@ export function useAgentRun(runId: string | null) {
     });
 }
 
-/** Trigger an agent run (legacy - prefer useRunInstance) */
+/** Trigger an agent run (legacy - prefer useRunTask) */
 export function useRunAgent() {
     const queryClient = useQueryClient();
 
@@ -222,13 +223,13 @@ export function useRunAgent() {
     });
 }
 
-/** Run an instance (no task input - uses configured default_task) */
-export function useRunInstance() {
+/** Run a task (no task input - uses configured default_task) */
+export function useRunTask() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (instanceName: string) =>
-            postJson<AgentRunResponse>(`${API_ENDPOINTS.AGENTS}/instances/${instanceName}/run`, {}),
+        mutationFn: (taskName: string) =>
+            postJson<AgentRunResponse>(`${API_ENDPOINTS.AGENTS}/tasks/${taskName}/run`, {}),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
             queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
@@ -236,14 +237,14 @@ export function useRunInstance() {
     });
 }
 
-/** Create a new instance from a template */
-export function useCreateInstance() {
+/** Create a new task from a template */
+export function useCreateTask() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ templateName, ...data }: CreateInstanceRequest & { templateName: string }) =>
-            postJson<{ success: boolean; message: string; instance: { name: string; display_name: string; agent_type: string; instance_path: string } }>(
-                `${API_ENDPOINTS.AGENTS}/templates/${templateName}/create-instance`,
+        mutationFn: ({ templateName, ...data }: CreateTaskRequest & { templateName: string }) =>
+            postJson<{ success: boolean; message: string; task: { name: string; display_name: string; agent_type: string; task_path: string } }>(
+                `${API_ENDPOINTS.AGENTS}/templates/${templateName}/create-task`,
                 data
             ),
         onSuccess: () => {
@@ -252,15 +253,15 @@ export function useCreateInstance() {
     });
 }
 
-/** Copy an instance (typically a built-in) for customization */
-export function useCopyInstance() {
+/** Copy a task (typically a built-in) for customization */
+export function useCopyTask() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ instanceName, newName }: { instanceName: string; newName?: string }) => {
+        mutationFn: ({ taskName, newName }: { taskName: string; newName?: string }) => {
             const params = newName ? `?new_name=${encodeURIComponent(newName)}` : "";
-            return postJson<{ success: boolean; message: string; instance: { name: string; display_name: string; agent_type: string; instance_path: string; is_builtin: boolean } }>(
-                `${API_ENDPOINTS.AGENTS}/instances/${instanceName}/copy${params}`,
+            return postJson<{ success: boolean; message: string; task: { name: string; display_name: string; agent_type: string; task_path: string; is_builtin: boolean } }>(
+                `${API_ENDPOINTS.AGENTS}/tasks/${taskName}/copy${params}`,
                 {}
             );
         },
@@ -294,6 +295,49 @@ export function useReloadAgents() {
         ),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
+        },
+    });
+}
+
+/** Delete an agent run */
+export function useDeleteAgentRun() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (runId: string) =>
+            deleteJson<{ success: boolean; message: string; deleted: string }>(
+                `${API_ENDPOINTS.AGENT_RUNS}/${runId}`
+            ),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+        },
+    });
+}
+
+/** Bulk delete agent runs with optional filters */
+export function useBulkDeleteAgentRuns() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (params: {
+            agentName?: string;
+            status?: string;
+            before?: string;  // ISO date string
+            keepRecent?: number;
+        }) => {
+            const searchParams = new URLSearchParams();
+            if (params.agentName) searchParams.set("agent_name", params.agentName);
+            if (params.status) searchParams.set("status", params.status);
+            if (params.before) searchParams.set("before", params.before);
+            if (params.keepRecent !== undefined) searchParams.set("keep_recent", String(params.keepRecent));
+
+            const query = searchParams.toString();
+            return deleteJson<{ success: boolean; message: string; deleted_count: number }>(
+                `${API_ENDPOINTS.AGENT_RUNS}${query ? `?${query}` : ""}`
+            );
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
         },
     });
 }

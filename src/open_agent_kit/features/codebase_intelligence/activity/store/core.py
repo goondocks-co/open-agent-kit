@@ -295,6 +295,10 @@ class ActivityStore:
         """Mark a prompt batch as completed."""
         batches.end_prompt_batch(self, batch_id)
 
+    def reactivate_prompt_batch(self, batch_id: int) -> None:
+        """Reactivate a completed prompt batch (when tool activity continues)."""
+        batches.reactivate_prompt_batch(self, batch_id)
+
     def get_unprocessed_prompt_batches(self, limit: int = 10) -> list[PromptBatch]:
         """Get prompt batches that haven't been processed yet."""
         return batches.get_unprocessed_prompt_batches(self, limit)
@@ -332,9 +336,11 @@ class ActivityStore:
         """Get plan batches from prompt_batches table."""
         return batches.get_plans(self, limit, offset, session_id, deduplicate, sort)
 
-    def recover_stuck_batches(self, timeout_seconds: int = 1800) -> int:
+    def recover_stuck_batches(
+        self, timeout_seconds: int = 1800, project_root: str | None = None
+    ) -> int:
         """Auto-end batches stuck in 'active' status for too long."""
-        return batches.recover_stuck_batches(self, timeout_seconds)
+        return batches.recover_stuck_batches(self, timeout_seconds, project_root)
 
     def recover_orphaned_activities(self) -> int:
         """Associate orphaned activities with appropriate batches."""
@@ -655,9 +661,12 @@ class ActivityStore:
         error: str | None = None,
         turns_used: int | None = None,
         cost_usd: float | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
         files_created: list[str] | None = None,
         files_modified: list[str] | None = None,
         files_deleted: list[str] | None = None,
+        warnings: list[str] | None = None,
     ) -> None:
         """Update an agent run record."""
         agent_runs.update_run(
@@ -670,9 +679,12 @@ class ActivityStore:
             error,
             turns_used,
             cost_usd,
+            input_tokens,
+            output_tokens,
             files_created,
             files_modified,
             files_deleted,
+            warnings,
         )
 
     def list_agent_runs(
@@ -681,13 +693,37 @@ class ActivityStore:
         offset: int = 0,
         agent_name: str | None = None,
         status: str | None = None,
+        created_after_epoch: int | None = None,
+        created_before_epoch: int | None = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
-        """List agent runs with optional filtering."""
-        return agent_runs.list_runs(self, limit, offset, agent_name, status)
+        """List agent runs with optional filtering and sorting."""
+        return agent_runs.list_runs(
+            self,
+            limit,
+            offset,
+            agent_name,
+            status,
+            created_after_epoch,
+            created_before_epoch,
+            sort_by,
+            sort_order,
+        )
 
     def delete_agent_run(self, run_id: str) -> bool:
         """Delete an agent run."""
         return agent_runs.delete_run(self, run_id)
+
+    def bulk_delete_agent_runs(
+        self,
+        agent_name: str | None = None,
+        status: str | None = None,
+        before_epoch: int | None = None,
+        keep_recent: int = 10,
+    ) -> int:
+        """Bulk delete agent runs with retention policy."""
+        return agent_runs.bulk_delete_runs(self, agent_name, status, before_epoch, keep_recent)
 
     def recover_stale_runs(
         self,
@@ -715,27 +751,43 @@ class ActivityStore:
 
     def create_schedule(
         self,
-        instance_name: str,
+        task_name: str,
+        cron_expression: str | None = None,
+        description: str | None = None,
+        trigger_type: str = "cron",
         next_run_at: Any | None = None,
     ) -> None:
         """Create a new schedule record."""
-        schedules.create_schedule(self, instance_name, next_run_at)
+        schedules.create_schedule(
+            self, task_name, cron_expression, description, trigger_type, next_run_at
+        )
 
-    def get_schedule(self, instance_name: str) -> dict[str, Any] | None:
-        """Get a schedule by instance name."""
-        return schedules.get_schedule(self, instance_name)
+    def get_schedule(self, task_name: str) -> dict[str, Any] | None:
+        """Get a schedule by task name."""
+        return schedules.get_schedule(self, task_name)
 
     def update_schedule(
         self,
-        instance_name: str,
+        task_name: str,
         enabled: bool | None = None,
+        cron_expression: str | None = None,
+        description: str | None = None,
+        trigger_type: str | None = None,
         last_run_at: Any | None = None,
         last_run_id: str | None = None,
         next_run_at: Any | None = None,
     ) -> None:
         """Update a schedule record."""
         schedules.update_schedule(
-            self, instance_name, enabled, last_run_at, last_run_id, next_run_at
+            self,
+            task_name,
+            enabled,
+            cron_expression,
+            description,
+            trigger_type,
+            last_run_at,
+            last_run_id,
+            next_run_at,
         )
 
     def list_schedules(self, enabled_only: bool = False) -> list[dict[str, Any]]:
@@ -746,14 +798,23 @@ class ActivityStore:
         """Get schedules that are due to run."""
         return schedules.get_due_schedules(self)
 
-    def delete_schedule(self, instance_name: str) -> bool:
+    def delete_schedule(self, task_name: str) -> bool:
         """Delete a schedule record."""
-        return schedules.delete_schedule(self, instance_name)
+        return schedules.delete_schedule(self, task_name)
 
     def upsert_schedule(
         self,
-        instance_name: str,
+        task_name: str,
+        cron_expression: str | None = None,
+        description: str | None = None,
+        trigger_type: str = "cron",
         next_run_at: Any | None = None,
     ) -> None:
         """Create or update a schedule record."""
-        schedules.upsert_schedule(self, instance_name, next_run_at)
+        schedules.upsert_schedule(
+            self, task_name, cron_expression, description, trigger_type, next_run_at
+        )
+
+    def get_all_schedule_task_names(self) -> set[str]:
+        """Get all schedule task names for dedup checking during import."""
+        return schedules.get_all_schedule_task_names(self)

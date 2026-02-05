@@ -38,13 +38,24 @@ def parse_transcript_response(
     try:
         lines = path.read_text(encoding="utf-8").strip().split("\n")
 
-        # Search from end for last assistant message
+        # Search from end for last assistant message with text content
         for line in reversed(lines):
             if not line.strip():
                 continue
             try:
                 msg = json.loads(line)
-                if msg.get("role") == "assistant":
+
+                # Handle Claude Code transcript format: {"type": "assistant", "message": {...}}
+                # The message object contains role, content, etc.
+                if msg.get("type") == "assistant":
+                    inner_msg = msg.get("message", {})
+                    if inner_msg.get("role") == "assistant":
+                        content = inner_msg.get("content", "")
+                        text = _extract_text_from_content(content)
+                        if text:
+                            return text[:max_length]
+                # Handle simple format: {"role": "assistant", "content": ...}
+                elif msg.get("role") == "assistant":
                     content = msg.get("content", "")
                     text = _extract_text_from_content(content)
                     if text:

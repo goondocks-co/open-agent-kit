@@ -36,6 +36,9 @@ capabilities:
 
 # Codebase Intelligence configuration
 ci:
+  # Resume command template - allows UI to show copyable command for session continuation
+  resume_command: "codex resume {session_id}"
+
   # Plan storage - Codex may store plans in .codex/plans/ (TBD - needs verification)
   # Set to null until plan storage location is confirmed
   plans_subfolder: null

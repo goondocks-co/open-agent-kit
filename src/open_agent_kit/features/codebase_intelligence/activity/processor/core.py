@@ -746,8 +746,10 @@ class ActivityProcessor:
                 )
 
                 # Recovery: Auto-end batches stuck in 'active' too long
+                # Pass project_root so recovery can capture response_summary from transcripts
                 stuck_count = self.activity_store.recover_stuck_batches(
-                    timeout_seconds=BATCH_ACTIVE_TIMEOUT_SECONDS
+                    timeout_seconds=BATCH_ACTIVE_TIMEOUT_SECONDS,
+                    project_root=self.project_root,
                 )
                 if stuck_count:
                     logger.info(f"Recovered {stuck_count} stuck batches")

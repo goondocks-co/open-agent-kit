@@ -408,6 +408,8 @@ class SessionItem(BaseModel):
     parent_session_id: str | None = None
     parent_session_reason: str | None = None
     child_session_count: int = 0
+    # Resume command (populated from agent manifest)
+    resume_command: str | None = None
 
 
 class ActivityListResponse(BaseModel):

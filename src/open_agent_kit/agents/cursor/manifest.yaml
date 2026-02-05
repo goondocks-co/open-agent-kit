@@ -51,6 +51,21 @@ ci:
   # Cursor may use a specific tool to signal plan mode completion
   exit_plan_tool: null
 
+  # Transcript configuration - Cursor stores transcripts in ~/.cursor/projects/
+  # Path pattern: ~/.cursor/projects/{project-path}/agent-transcripts/{session-id}.txt
+  # Note: Cursor uses .txt files, not .jsonl, and different encoding (no leading dash)
+  transcript:
+    base_dir: ".cursor/projects"
+    path_pattern: "{encoded_project}/agent-transcripts/{session_id}.txt"
+    project_encoding: "slash-to-dash-no-leading"
+
+  # Session continuation triggers - which SessionStart sources indicate continuation
+  # Note: Cursor's continuation sources may differ from Claude - adjust based on actual behavior
+  continuation:
+    continuation_sources:
+      - resume       # Session resumed after pause
+      - new_context  # New context window started
+
 settings:
   # Auto-approval settings for oak commands
   # Note: Cursor's agent settings use the same file as IDE settings

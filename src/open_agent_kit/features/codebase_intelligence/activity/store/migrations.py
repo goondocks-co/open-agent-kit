@@ -53,6 +53,14 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v19_to_v20(conn)
     if from_version < 21:
         migrate_v20_to_v21(conn)
+    if from_version < 22:
+        migrate_v21_to_v22(conn)
+    if from_version < 23:
+        migrate_v22_to_v23(conn)
+    if from_version < 24:
+        migrate_v23_to_v24(conn)
+    if from_version < 25:
+        migrate_v24_to_v25(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -1142,3 +1150,153 @@ def migrate_v20_to_v21(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE prompt_batches ADD COLUMN response_summary TEXT")
 
     logger.info("Migration v20->v21 complete: added response_summary column to prompt_batches")
+
+
+def migrate_v21_to_v22(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v21 to v22: Add token tracking to agent_runs.
+
+    Adds input_tokens and output_tokens columns to agent_runs table for
+    tracking SDK token usage. This enables cost analysis and context
+    window monitoring for agent executions.
+    """
+    logger.info("Migrating activity store schema v21 -> v22: Adding token tracking columns")
+
+    # Check if columns already exist (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(agent_runs)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "input_tokens" not in columns:
+        conn.execute("ALTER TABLE agent_runs ADD COLUMN input_tokens INTEGER")
+        logger.debug("Added input_tokens column to agent_runs")
+
+    if "output_tokens" not in columns:
+        conn.execute("ALTER TABLE agent_runs ADD COLUMN output_tokens INTEGER")
+        logger.debug("Added output_tokens column to agent_runs")
+
+    logger.info("Migration v21->v22 complete: added input_tokens, output_tokens to agent_runs")
+
+
+def migrate_v22_to_v23(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v22 to v23: Move schedule definitions to database.
+
+    This migration moves schedule definitions (cron expression, description) from
+    YAML files to the database. Previously, YAML defined the schedule while the
+    database only tracked runtime state (enabled, last_run, next_run).
+
+    Now the database is the sole source of truth for schedules, which:
+    - Prevents user-modified schedules from being overwritten during `oak upgrade`
+    - Allows schedule management via UI without editing YAML files
+    - Avoids git merge conflicts for team projects
+
+    Adds:
+    - cron_expression TEXT: The cron schedule expression
+    - description TEXT: Human-readable schedule description
+    - trigger_type TEXT: Type of trigger ('cron', 'manual') for future expansion
+    - source_machine_id TEXT: Machine that created this schedule (for backup filtering)
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
+
+    logger.info("Migrating activity store schema v22 -> v23: Moving schedules to database-only")
+
+    # Check which columns already exist (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(agent_schedules)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    columns_added = 0
+
+    if "cron_expression" not in columns:
+        conn.execute("ALTER TABLE agent_schedules ADD COLUMN cron_expression TEXT")
+        columns_added += 1
+        logger.debug("Added cron_expression column to agent_schedules")
+
+    if "description" not in columns:
+        conn.execute("ALTER TABLE agent_schedules ADD COLUMN description TEXT")
+        columns_added += 1
+        logger.debug("Added description column to agent_schedules")
+
+    if "trigger_type" not in columns:
+        conn.execute("ALTER TABLE agent_schedules ADD COLUMN trigger_type TEXT DEFAULT 'cron'")
+        columns_added += 1
+        logger.debug("Added trigger_type column to agent_schedules")
+
+    if "source_machine_id" not in columns:
+        conn.execute("ALTER TABLE agent_schedules ADD COLUMN source_machine_id TEXT")
+        columns_added += 1
+        logger.debug("Added source_machine_id column to agent_schedules")
+
+    # Backfill source_machine_id for existing schedules
+    machine_id = get_machine_identifier()
+    cursor = conn.execute(
+        "UPDATE agent_schedules SET source_machine_id = ? WHERE source_machine_id IS NULL",
+        (machine_id,),
+    )
+    backfilled = cursor.rowcount
+
+    # Create index for source_machine_id filtering during backup
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_schedules_source_machine "
+            "ON agent_schedules(source_machine_id)"
+        )
+    except Exception as e:
+        logger.warning(f"Index creation warning (may already exist): {e}")
+
+    logger.info(
+        f"Migration v22->v23 complete: added {columns_added} columns to agent_schedules, "
+        f"backfilled {backfilled} records with source_machine_id={machine_id}"
+    )
+
+
+def migrate_v23_to_v24(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v23 to v24: Rename instance_name to task_name.
+
+    Renames the primary key column in agent_schedules from instance_name to task_name
+    to align with the updated terminology (agent tasks instead of agent instances).
+
+    SQLite 3.25+ supports ALTER TABLE RENAME COLUMN which we use here.
+    """
+    logger.info("Migrating activity store schema v23 -> v24: Renaming instance_name to task_name")
+
+    # Check if already migrated (task_name exists)
+    cursor = conn.execute("PRAGMA table_info(agent_schedules)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "task_name" in columns:
+        logger.info("task_name column already exists, skipping migration")
+        return
+
+    if "instance_name" not in columns:
+        logger.warning("instance_name column not found, skipping migration")
+        return
+
+    # Rename the column (SQLite 3.25+)
+    conn.execute("ALTER TABLE agent_schedules RENAME COLUMN instance_name TO task_name")
+
+    logger.info("Migration v23->v24 complete: renamed instance_name to task_name")
+
+
+def migrate_v24_to_v25(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v24 to v25: Add warnings column to agent_runs.
+
+    Adds a warnings column (JSON array) to store non-fatal issues detected
+    during agent execution, such as:
+    - No response from provider (compatibility issues)
+    - Insufficient context window
+    - Other runtime warnings
+    """
+    logger.info("Migrating activity store schema v24 -> v25: Adding warnings to agent_runs")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(agent_runs)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "warnings" in columns:
+        logger.info("warnings column already exists, skipping migration")
+        return
+
+    # Add the warnings column
+    conn.execute("ALTER TABLE agent_runs ADD COLUMN warnings TEXT")
+
+    logger.info("Migration v24->v25 complete: added warnings column to agent_runs")

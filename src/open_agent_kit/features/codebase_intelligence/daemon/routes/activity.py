@@ -64,6 +64,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["activity"])
 
 
+def _get_resume_command(agent: str, session_id: str) -> str | None:
+    """Get the resolved resume command for a session.
+
+    Looks up the agent manifest to get the resume_command template,
+    then substitutes the session_id placeholder.
+
+    Args:
+        agent: Agent name (e.g., 'claude', 'codex').
+        session_id: The session ID to substitute.
+
+    Returns:
+        Resolved resume command string, or None if not available.
+    """
+    try:
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService()
+        manifest = agent_service.get_agent_manifest(agent)
+        if manifest and manifest.ci and manifest.ci.resume_command:
+            return manifest.ci.resume_command.replace("{session_id}", session_id)
+    except Exception as e:
+        logger.debug(f"Failed to get resume command for agent {agent}: {e}")
+
+    return None
+
+
 def _activity_to_item(activity: Activity) -> ActivityItem:
     """Convert Activity dataclass to ActivityItem Pydantic model."""
     return ActivityItem(
@@ -86,6 +112,7 @@ def _session_to_item(
     first_prompt_preview: str | None = None,
     child_session_count: int = 0,
     summary_text: str | None = None,
+    resume_command: str | None = None,
 ) -> SessionItem:
     """Convert Session dataclass to SessionItem Pydantic model.
 
@@ -95,6 +122,7 @@ def _session_to_item(
         first_prompt_preview: Preview of the first prompt.
         child_session_count: Number of child sessions.
         summary_text: Optional summary text from observations (overrides session.summary).
+        resume_command: Resolved resume command for this session (from agent manifest).
     """
     # Use summary_text from observations if provided, otherwise fall back to session.summary
     summary = summary_text if summary_text is not None else session.summary
@@ -113,6 +141,7 @@ def _session_to_item(
         parent_session_id=session.parent_session_id,
         parent_session_reason=session.parent_session_reason,
         child_session_count=child_session_count,
+        resume_command=resume_command,
     )
 
 
@@ -465,8 +494,13 @@ async def get_session(session_id: str) -> SessionDetailResponse:
         first_prompts_map = state.activity_store.get_bulk_first_prompts([session_id])
         first_prompt = first_prompts_map.get(session_id)
 
+        # Get resume command from agent manifest
+        resume_command = _get_resume_command(session.agent, session_id)
+
         return SessionDetailResponse(
-            session=_session_to_item(session, stats, first_prompt, child_count, summary_text),
+            session=_session_to_item(
+                session, stats, first_prompt, child_count, summary_text, resume_command
+            ),
             stats=stats,
             recent_activities=activity_items,
             prompt_batches=batch_items,

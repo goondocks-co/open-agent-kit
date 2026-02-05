@@ -865,9 +865,9 @@ class UpgradeService:
             builtin_tasks = registry._builtin_tasks
 
             for task_name, task in builtin_tasks.items():
-                if not task.instance_path:
+                if not task.task_path:
                     continue
-                source_path = Path(task.instance_path)
+                source_path = Path(task.task_path)
                 if not source_path.exists():
                     continue
 

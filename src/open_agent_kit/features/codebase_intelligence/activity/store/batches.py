@@ -197,6 +197,28 @@ def end_prompt_batch(store: ActivityStore, batch_id: int) -> None:
     logger.debug(f"Ended prompt batch {batch_id}")
 
 
+def reactivate_prompt_batch(store: ActivityStore, batch_id: int) -> None:
+    """Reactivate a completed prompt batch (when tool activity continues).
+
+    This handles cases where stuck batch recovery prematurely marked a batch
+    as completed while Claude is still actively working on it.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_id: Prompt batch to reactivate.
+    """
+    with store._transaction() as conn:
+        conn.execute(
+            """
+            UPDATE prompt_batches
+            SET status = 'active', ended_at = NULL
+            WHERE id = ?
+            """,
+            (batch_id,),
+        )
+    logger.debug(f"Reactivated prompt batch {batch_id}")
+
+
 def update_prompt_batch_response(
     store: ActivityStore,
     batch_id: int,
@@ -439,32 +461,102 @@ def get_plans(
     return plans, total
 
 
-def recover_stuck_batches(store: ActivityStore, timeout_seconds: int = 1800) -> int:
+def recover_stuck_batches(
+    store: ActivityStore,
+    timeout_seconds: int = 1800,
+    project_root: str | None = None,
+) -> int:
     """Auto-end batches stuck in 'active' status for too long.
 
     This handles cases where the session ended unexpectedly (crash, network
     disconnect) without calling the stop hook.
 
+    Before marking batches as completed, attempts to capture the response_summary
+    from the transcript file if available.
+
     Args:
         store: The ActivityStore instance.
         timeout_seconds: Batches active longer than this are auto-ended.
+        project_root: Project root for resolving transcript paths.
 
     Returns:
         Number of batches recovered.
     """
+    from pathlib import Path
+
     cutoff_epoch = time.time() - timeout_seconds
 
+    # First, find stuck batches with their session info
     with store._transaction() as conn:
         cursor = conn.execute(
             """
-            UPDATE prompt_batches
-            SET status = 'completed'
-            WHERE status = 'active' AND created_at_epoch < ?
-            RETURNING id
+            SELECT pb.id, pb.session_id, s.agent, s.project_root
+            FROM prompt_batches pb
+            JOIN sessions s ON pb.session_id = s.id
+            WHERE pb.status = 'active' AND pb.created_at_epoch < ?
             """,
             (cutoff_epoch,),
         )
-        recovered_ids = [row[0] for row in cursor.fetchall()]
+        stuck_batches = cursor.fetchall()
+
+    if not stuck_batches:
+        return 0
+
+    recovered_ids = []
+
+    # Try to capture response_summary for each stuck batch before completing
+    for batch_id, session_id, agent, session_project_root in stuck_batches:
+        response_summary = None
+
+        # Try to capture response from transcript
+        effective_root = session_project_root or project_root
+        if effective_root and session_id:
+            try:
+                from open_agent_kit.features.codebase_intelligence.transcript import (
+                    parse_transcript_response,
+                )
+                from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
+                    get_transcript_resolver,
+                )
+
+                resolver = get_transcript_resolver(Path(effective_root))
+                result = resolver.resolve(
+                    session_id=session_id,
+                    agent_type=agent if agent != "unknown" else None,
+                    project_root=effective_root,
+                )
+                if result.path and result.exists:
+                    response_summary = parse_transcript_response(str(result.path))
+                    if response_summary:
+                        logger.debug(
+                            f"[RECOVERY] Captured response_summary for stuck batch {batch_id}"
+                        )
+            except (OSError, ValueError, RuntimeError, ImportError) as e:
+                logger.debug(f"Failed to capture response for stuck batch {batch_id}: {e}")
+
+        # Update batch: mark as completed and optionally set response_summary
+        # Set ended_at to NOW for consistency with normal batch ending
+        with store._transaction() as conn:
+            if response_summary:
+                conn.execute(
+                    """
+                    UPDATE prompt_batches
+                    SET status = 'completed', ended_at = ?, response_summary = ?
+                    WHERE id = ?
+                    """,
+                    (datetime.now().isoformat(), response_summary, batch_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE prompt_batches
+                    SET status = 'completed', ended_at = ?
+                    WHERE id = ?
+                    """,
+                    (datetime.now().isoformat(), batch_id),
+                )
+
+        recovered_ids.append(batch_id)
 
     if recovered_ids:
         logger.info(

@@ -85,6 +85,15 @@ codebase_intelligence:
     enabled: true
     max_turns: 50
     timeout_seconds: 600
+    scheduler_interval_seconds: 60
+    executor_cache_size: 100
+    background_processing_interval_seconds: 60
+    provider_type: cloud
+    provider_base_url: null
+    provider_model: null
+  session_quality:
+    min_activities: 3
+    stale_timeout_seconds: 3600
   index_on_startup: true
   watch_files: true
   exclude_patterns:

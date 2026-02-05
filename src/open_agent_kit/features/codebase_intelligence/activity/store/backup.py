@@ -287,6 +287,8 @@ class ImportResult:
     observations_skipped: int = 0
     activities_imported: int = 0
     activities_skipped: int = 0
+    schedules_imported: int = 0
+    schedules_skipped: int = 0
     errors: int = 0
     error_messages: list[str] = field(default_factory=list)
 
@@ -298,6 +300,7 @@ class ImportResult:
             + self.batches_imported
             + self.observations_imported
             + self.activities_imported
+            + self.schedules_imported
         )
 
     @property
@@ -308,6 +311,7 @@ class ImportResult:
             + self.batches_skipped
             + self.observations_skipped
             + self.activities_skipped
+            + self.schedules_skipped
         )
 
 
@@ -350,9 +354,11 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
     skipped_foreign = 0
 
     # Tables to export (order matters for foreign keys)
+    # agent_schedules has no FKs - always export user's own schedules
     tables = ["sessions", "prompt_batches", "memory_observations"]
     if include_activities:
         tables.append("activities")
+    tables.append("agent_schedules")
 
     # Build set of valid session IDs for FK validation
     # Only include sessions that originated on this machine (will be exported)
@@ -621,11 +627,15 @@ def import_from_sql_with_dedup(
     existing_batch_hashes = store.get_all_prompt_batch_hashes()
     existing_obs_hashes = store.get_all_observation_hashes()
     existing_activity_hashes = store.get_all_activity_hashes()
+    existing_schedule_names = store.get_all_schedule_task_names()
+
+    # Get current machine ID for schedule filtering
+    current_machine_id = get_machine_identifier()
 
     logger.debug(
         f"Existing records: {len(existing_session_ids)} sessions, "
         f"{len(existing_batch_hashes)} batches, {len(existing_obs_hashes)} observations, "
-        f"{len(existing_activity_hashes)} activities"
+        f"{len(existing_activity_hashes)} activities, {len(existing_schedule_names)} schedules"
     )
 
     # Parse INSERT statements - use proper SQL statement extraction for multi-line values
@@ -634,6 +644,7 @@ def import_from_sql_with_dedup(
         "prompt_batches": [],
         "memory_observations": [],
         "activities": [],
+        "agent_schedules": [],
     }
 
     # Extract complete SQL statements (handles multi-line INSERT with newlines in values)
@@ -685,7 +696,13 @@ def import_from_sql_with_dedup(
     # Track columns removed during filtering (for summary logging)
     all_removed_columns: dict[str, set[str]] = {t: set() for t in statements_by_table}
 
-    for table in ["sessions", "prompt_batches", "memory_observations", "activities"]:
+    for table in [
+        "sessions",
+        "prompt_batches",
+        "memory_observations",
+        "activities",
+        "agent_schedules",
+    ]:
         # After importing sessions, validate parent_session_id references
         if table == "prompt_batches" and not dry_run and imported_session_ids:
             _validate_parent_session_ids(conn, imported_session_ids)
@@ -721,6 +738,8 @@ def import_from_sql_with_dedup(
                     existing_batch_hashes,
                     existing_obs_hashes,
                     existing_activity_hashes,
+                    existing_schedule_names,
+                    current_machine_id,
                 )
 
                 if should_skip:
@@ -756,6 +775,7 @@ def import_from_sql_with_dedup(
                         existing_batch_hashes,
                         existing_obs_hashes,
                         existing_activity_hashes,
+                        existing_schedule_names,
                     )
 
                 # Only count as imported if a row was actually inserted
@@ -956,6 +976,8 @@ def _should_skip_record(
     existing_batch_hashes: set[str],
     existing_obs_hashes: set[str],
     existing_activity_hashes: set[str],
+    existing_schedule_names: set[str] | None = None,
+    current_machine_id: str | None = None,
 ) -> tuple[bool, str]:
     """Determine if a record should be skipped due to duplication.
 
@@ -963,6 +985,8 @@ def _should_skip_record(
         table: Table name.
         row_dict: Parsed row data.
         existing_*: Sets of existing IDs/hashes.
+        existing_schedule_names: Set of existing schedule instance names.
+        current_machine_id: Current machine identifier (for schedule filtering).
 
     Returns:
         Tuple of (should_skip, reason).
@@ -1002,6 +1026,18 @@ def _should_skip_record(
         if content_hash in existing_activity_hashes:
             return True, f"activity with hash {content_hash} already exists"
 
+    elif table == "agent_schedules":
+        # Schedules are user preferences - only import from same machine
+        # This prevents team backups from overwriting personal schedule settings
+        backup_machine_id = row_dict.get("source_machine_id")
+        if current_machine_id and backup_machine_id and backup_machine_id != current_machine_id:
+            return True, f"schedule from different machine ({backup_machine_id})"
+
+        # Check if schedule already exists by task_name (primary key)
+        task_name = row_dict.get("task_name", "")
+        if existing_schedule_names and task_name in existing_schedule_names:
+            return True, f"schedule {task_name} already exists"
+
     return False, ""
 
 
@@ -1012,6 +1048,7 @@ def _update_existing_sets(
     existing_batch_hashes: set[str],
     existing_obs_hashes: set[str],
     existing_activity_hashes: set[str],
+    existing_schedule_names: set[str] | None = None,
 ) -> None:
     """Update existing sets after successful import to prevent duplicates within batch.
 
@@ -1049,6 +1086,11 @@ def _update_existing_sets(
             content_hash = compute_activity_hash(session_id, timestamp_epoch, tool_name)
         existing_activity_hashes.add(content_hash)
 
+    elif table == "agent_schedules":
+        if existing_schedule_names is not None:
+            task_name = str(row_dict.get("task_name", ""))
+            existing_schedule_names.add(task_name)
+
 
 def _prepare_statement_for_import(stmt: str, table: str) -> str:
     """Modify INSERT statement for proper import.
@@ -1056,6 +1098,7 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
     For memory_observations, marks embedded=0 to trigger ChromaDB rebuild.
     For prompt_batches, marks plan_embedded=0 for re-indexing and removes id column.
     For activities, removes id column to avoid PRIMARY KEY conflicts.
+    For agent_schedules, uses INSERT OR IGNORE for TEXT primary key handling.
 
     The id column is removed for prompt_batches and activities because these use
     auto-increment INTEGER PRIMARY KEY, which would conflict when importing from
@@ -1083,6 +1126,10 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
         return _remove_column_from_insert(stmt, "id")
     elif table == "sessions":
         # Use INSERT OR IGNORE to handle potential session ID collisions
+        return stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+    elif table == "agent_schedules":
+        # Use INSERT OR IGNORE for TEXT primary key (task_name)
+        # Schedules are already filtered by machine in _should_skip_record
         return stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
     return stmt
 
@@ -1309,6 +1356,8 @@ def _increment_imported(result: ImportResult, table: str) -> None:
         result.observations_imported += 1
     elif table == "activities":
         result.activities_imported += 1
+    elif table == "agent_schedules":
+        result.schedules_imported += 1
 
 
 def _increment_skipped(result: ImportResult, table: str) -> None:
@@ -1321,6 +1370,8 @@ def _increment_skipped(result: ImportResult, table: str) -> None:
         result.observations_skipped += 1
     elif table == "activities":
         result.activities_skipped += 1
+    elif table == "agent_schedules":
+        result.schedules_skipped += 1
 
 
 # =============================================================================

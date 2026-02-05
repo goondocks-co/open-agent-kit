@@ -15,7 +15,7 @@ import os
 import shutil
 from pathlib import Path
 
-from open_agent_kit.models.agent_manifest import AgentManifest
+from open_agent_kit.models.agent_manifest import AgentManifest, AgentTranscriptConfig
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.state_service import StateService
 from open_agent_kit.utils import (
@@ -188,6 +188,29 @@ class AgentService:
                 exit_tool = manifest.ci.exit_plan_tool
                 if exit_tool:
                     result[agent_type] = exit_tool
+            except ValueError:
+                # Skip agents with invalid manifests
+                continue
+        return result
+
+    def get_all_transcript_configs(self) -> dict[str, AgentTranscriptConfig]:
+        """Get transcript configurations for all agents that use file-based transcripts.
+
+        Transcript configs define how to locate and parse transcript files for
+        response summary extraction. Used when the Stop hook doesn't fire.
+
+        Returns:
+            Dictionary mapping agent_type to AgentTranscriptConfig.
+            Example: {'claude': AgentTranscriptConfig(base_dir='.claude/projects', ...)}
+            Only includes agents that have transcript config defined.
+        """
+        result: dict[str, AgentTranscriptConfig] = {}
+        for agent_type in self.list_available_agents():
+            try:
+                manifest = self.get_agent_manifest(agent_type)
+                transcript_config = manifest.get_transcript_config()
+                if transcript_config and transcript_config.base_dir:
+                    result[agent_type] = transcript_config
             except ValueError:
                 # Skip agents with invalid manifests
                 continue

@@ -17,6 +17,7 @@ import {
     useAgentRuns,
     useCancelAgentRun,
     useRunAgent,
+    useDeleteAgentRun,
     type AgentRun,
     type AgentRunStatus,
 } from "@/hooks/use-agents";
@@ -41,6 +42,7 @@ import {
     RotateCcw,
     ShieldAlert,
     Maximize2,
+    Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -103,14 +105,18 @@ function RunRow({
     run,
     onCancel,
     onRerun,
+    onDelete,
     isCancelling,
     isRerunning,
+    isDeleting,
 }: {
     run: AgentRun;
     onCancel: (runId: string) => void;
     onRerun: (agentName: string, task: string) => void;
+    onDelete: (runId: string) => void;
     isCancelling: boolean;
     isRerunning: boolean;
+    isDeleting: boolean;
 }) {
     const [expanded, setExpanded] = useState(false);
     const contentDialog = useContentDialog();
@@ -139,6 +145,12 @@ function RunRow({
                             <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-600" title="This run was recovered by the watchdog after being stuck">
                                 <ShieldAlert className="w-3 h-3" />
                                 Recovered
+                            </span>
+                        )}
+                        {run.warnings && run.warnings.length > 0 && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-600" title={run.warnings.join("; ")}>
+                                <AlertCircle className="w-3 h-3" />
+                                {run.warnings.length === 1 ? "Warning" : `${run.warnings.length} Warnings`}
                             </span>
                         )}
                         <span className="text-xs text-muted-foreground">
@@ -176,23 +188,41 @@ function RunRow({
                             <span className="ml-1 text-xs">Cancel</span>
                         </Button>
                     ) : (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onRerun(run.agent_name, run.task);
-                            }}
-                            disabled={isRerunning}
-                            className="h-7 px-2"
-                        >
-                            {isRerunning ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                                <RotateCcw className="w-3 h-3" />
-                            )}
-                            <span className="ml-1 text-xs">Re-run</span>
-                        </Button>
+                        <>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRerun(run.agent_name, run.task);
+                                }}
+                                disabled={isRerunning}
+                                className="h-7 px-2"
+                            >
+                                {isRerunning ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                    <RotateCcw className="w-3 h-3" />
+                                )}
+                                <span className="ml-1 text-xs">Re-run</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete(run.id);
+                                }}
+                                disabled={isDeleting}
+                                className="h-7 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                            >
+                                {isDeleting ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-3 h-3" />
+                                )}
+                            </Button>
+                        </>
                     )}
                     {expanded ? (
                         <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -249,6 +279,18 @@ function RunRow({
                                     <strong>Error:</strong> {run.error}
                                 </>
                             )}
+                        </div>
+                    )}
+
+                    {run.warnings && run.warnings.length > 0 && (
+                        <div className="p-2 rounded text-xs bg-amber-500/10 text-amber-700 space-y-1">
+                            <strong className="flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                {run.warnings.length === 1 ? "Warning:" : `Warnings (${run.warnings.length}):`}
+                            </strong>
+                            {run.warnings.map((warning, i) => (
+                                <div key={i} className="ml-4">{warning}</div>
+                            ))}
                         </div>
                     )}
 
@@ -434,6 +476,7 @@ export default function RunHistory() {
     );
     const cancelRun = useCancelAgentRun();
     const runAgent = useRunAgent();
+    const deleteRun = useDeleteAgentRun();
 
     const runs = runsData?.runs || [];
     const total = runsData?.total || 0;
@@ -461,6 +504,14 @@ export default function RunHistory() {
     const handleRerun = async (agentName: string, task: string) => {
         try {
             await runAgent.mutateAsync({ agentName, task });
+        } catch {
+            // Error handling is in the mutation
+        }
+    };
+
+    const handleDeleteRun = async (runId: string) => {
+        try {
+            await deleteRun.mutateAsync(runId);
         } catch {
             // Error handling is in the mutation
         }
@@ -588,8 +639,10 @@ export default function RunHistory() {
                                 run={run}
                                 onCancel={handleCancelRun}
                                 onRerun={handleRerun}
+                                onDelete={handleDeleteRun}
                                 isCancelling={cancelRun.isPending}
                                 isRerunning={runAgent.isPending}
+                                isDeleting={deleteRun.isPending}
                             />
                         ))}
                     </div>

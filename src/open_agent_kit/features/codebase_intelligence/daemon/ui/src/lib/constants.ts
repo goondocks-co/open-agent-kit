@@ -33,6 +33,47 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
     [PROVIDER_TYPES.OPENAI]: "OpenAI Compatible",
 };
 
+// =============================================================================
+// Agent Provider Configuration (for Claude Agent SDK)
+// =============================================================================
+
+/** Agent execution provider types (different from embedding providers) */
+export const AGENT_PROVIDER_TYPES = {
+    CLOUD: "cloud",
+    OLLAMA: "ollama",
+    LMSTUDIO: "lmstudio",
+} as const;
+
+export type AgentProviderType = typeof AGENT_PROVIDER_TYPES[keyof typeof AGENT_PROVIDER_TYPES];
+
+/** Human-readable agent provider display names */
+export const AGENT_PROVIDER_DISPLAY_NAMES: Record<AgentProviderType, string> = {
+    [AGENT_PROVIDER_TYPES.CLOUD]: "Claude Code (Default)",
+    [AGENT_PROVIDER_TYPES.OLLAMA]: "Ollama (Local)",
+    [AGENT_PROVIDER_TYPES.LMSTUDIO]: "LM Studio (Local)",
+};
+
+/** Default base URLs for agent providers */
+export const AGENT_PROVIDER_DEFAULT_URLS: Record<AgentProviderType, string> = {
+    [AGENT_PROVIDER_TYPES.CLOUD]: "",  // No URL needed for cloud
+    [AGENT_PROVIDER_TYPES.OLLAMA]: "http://localhost:11434",
+    [AGENT_PROVIDER_TYPES.LMSTUDIO]: "http://localhost:1234",
+};
+
+/** Agent provider options for Select dropdowns */
+export const AGENT_PROVIDER_OPTIONS = [
+    { value: AGENT_PROVIDER_TYPES.CLOUD, label: AGENT_PROVIDER_DISPLAY_NAMES.cloud },
+    { value: AGENT_PROVIDER_TYPES.OLLAMA, label: AGENT_PROVIDER_DISPLAY_NAMES.ollama },
+    { value: AGENT_PROVIDER_TYPES.LMSTUDIO, label: AGENT_PROVIDER_DISPLAY_NAMES.lmstudio },
+] as const;
+
+/** Recommended models for local providers */
+export const AGENT_PROVIDER_RECOMMENDED_MODELS: Record<AgentProviderType, string[]> = {
+    [AGENT_PROVIDER_TYPES.CLOUD]: [],
+    [AGENT_PROVIDER_TYPES.OLLAMA]: ["qwen3:32b", "glm-4.7:latest", "gpt-oss:20b"],
+    [AGENT_PROVIDER_TYPES.LMSTUDIO]: ["qwen-2.5-coder-32b", "llama-3.3-70b"],
+};
+
 /** Provider options for Select dropdowns */
 export const PROVIDER_OPTIONS = [
     { value: PROVIDER_TYPES.OLLAMA, label: PROVIDER_DISPLAY_NAMES.ollama },
@@ -183,6 +224,9 @@ export const API_ENDPOINTS = {
     // Agent endpoints
     AGENTS: "/api/agents",
     AGENT_RUNS: "/api/agents/runs",
+    AGENT_SETTINGS: "/api/agents/settings",
+    AGENT_PROVIDER_MODELS: "/api/agents/provider-models",
+    AGENT_TEST_PROVIDER: "/api/agents/test-provider",
 
     // Schedule endpoints
     SCHEDULES: "/api/schedules",

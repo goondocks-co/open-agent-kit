@@ -1,10 +1,13 @@
 """Agent Scheduler for cron-based agent execution.
 
 This module provides the AgentScheduler class that manages scheduled agent runs:
-- Syncs schedule definitions from YAML to database runtime state
+- Reads schedule definitions from database (cron, description, trigger_type)
 - Computes next run times from cron expressions
 - Checks for and executes due schedules
 - Background scheduling loop
+
+IMPORTANT: Schedule definitions now live in the database only. YAML schedule
+support is deprecated. Use the API/UI to create and manage schedules.
 """
 
 import asyncio
@@ -19,6 +22,7 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentRunStatus,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
+    SCHEDULE_TRIGGER_CRON,
     SCHEDULER_STOP_TIMEOUT_SECONDS,
 )
 
@@ -35,17 +39,16 @@ class AgentScheduler:
     """Scheduler for cron-based agent execution.
 
     The scheduler:
-    - Syncs schedule definitions from AgentRegistry (YAML) to ActivityStore (SQLite)
+    - Reads schedule definitions from ActivityStore (SQLite) - database is source of truth
     - Computes next run times using croniter
     - Periodically checks for and runs due schedules
     - Tracks run history via AgentExecutor
 
-    YAML defines the schedule (cron expression + description).
-    Database tracks runtime state (enabled, last_run, next_run).
+    YAML schedule support is deprecated. Schedules are managed via API/UI.
 
     Attributes:
         activity_store: ActivityStore for schedule persistence.
-        agent_registry: AgentRegistry for loading instance definitions.
+        agent_registry: AgentRegistry for loading task definitions.
         agent_executor: AgentExecutor for running agents.
     """
 
@@ -60,7 +63,7 @@ class AgentScheduler:
 
         Args:
             activity_store: ActivityStore for schedule persistence.
-            agent_registry: AgentRegistry for loading instance definitions.
+            agent_registry: AgentRegistry for loading task definitions.
             agent_executor: AgentExecutor for running agents.
             agent_config: AgentConfig with scheduler settings.
         """
@@ -105,76 +108,54 @@ class AgentScheduler:
         except (KeyError, ValueError) as e:
             raise ValueError(f"Invalid cron expression '{cron_expr}': {e}") from e
 
-    def sync_schedules(self) -> dict[str, Any]:
-        """Sync schedule definitions from YAML to database.
+    def validate_cron(self, cron_expr: str) -> bool:
+        """Validate a cron expression.
 
-        For each instance with a schedule defined:
-        - Creates schedule record if it doesn't exist
-        - Computes next_run_at from cron expression if missing
-        - Does NOT overwrite enabled state (user-controlled)
+        Args:
+            cron_expr: Cron expression to validate.
 
         Returns:
-            Summary dict with counts of created/updated/removed schedules.
+            True if valid, False otherwise.
         """
-        # Get all instances with schedules from registry
-        instances = self._agent_registry.list_instances()
-        scheduled_instances = {i.name: i for i in instances if i.schedule}
+        try:
+            croniter(cron_expr)
+            return True
+        except (KeyError, ValueError):
+            return False
+
+    def sync_schedules(self) -> dict[str, Any]:
+        """Clean up orphaned schedules.
+
+        YAML schedule sync is deprecated. This now only:
+        - Removes schedules for tasks that no longer exist in the registry
+
+        Returns:
+            Summary dict with counts of removed schedules.
+        """
+        # Get all tasks from registry (to validate schedule targets)
+        tasks = self._agent_registry.list_tasks()
+        task_names = {t.name for t in tasks}
 
         # Get all existing schedules from database
-        existing_schedules = {s["instance_name"]: s for s in self._activity_store.list_schedules()}
+        existing_schedules = {s["task_name"]: s for s in self._activity_store.list_schedules()}
 
-        created = 0
-        updated = 0
         removed = 0
 
-        # Create or update schedules for instances with schedule definitions
-        for instance_name, instance in scheduled_instances.items():
-            if instance.schedule is None:
-                continue
-
-            existing = existing_schedules.get(instance_name)
-
-            if existing is None:
-                # Create new schedule
-                try:
-                    next_run = self.compute_next_run(instance.schedule.cron)
-                    self._activity_store.create_schedule(instance_name, next_run)
-                    created += 1
-                    logger.info(
-                        f"Created schedule for '{instance_name}': "
-                        f"cron={instance.schedule.cron}, next_run={next_run}"
-                    )
-                except ValueError as e:
-                    logger.error(f"Failed to create schedule for '{instance_name}': {e}")
-            else:
-                # Update next_run if it's missing or in the past
-                if existing["next_run_at_epoch"] is None:
-                    try:
-                        next_run = self.compute_next_run(instance.schedule.cron)
-                        self._activity_store.update_schedule(instance_name, next_run_at=next_run)
-                        updated += 1
-                        logger.debug(f"Updated next_run for '{instance_name}': {next_run}")
-                    except ValueError as e:
-                        logger.error(f"Failed to update schedule for '{instance_name}': {e}")
-
-        # Remove schedules for instances that no longer have schedule definitions
-        for instance_name in existing_schedules:
-            if instance_name not in scheduled_instances:
-                self._activity_store.delete_schedule(instance_name)
+        # Remove schedules for tasks that no longer exist
+        for task_name in existing_schedules:
+            if task_name not in task_names:
+                self._activity_store.delete_schedule(task_name)
                 removed += 1
-                logger.info(f"Removed orphaned schedule for '{instance_name}'")
+                logger.info(f"Removed orphaned schedule for '{task_name}' (task not found)")
 
         result = {
-            "created": created,
-            "updated": updated,
+            "created": 0,  # No longer auto-create from YAML
+            "updated": 0,
             "removed": removed,
-            "total": len(scheduled_instances),
+            "total": len(existing_schedules) - removed,
         }
 
-        logger.info(
-            f"Schedule sync complete: {created} created, {updated} updated, "
-            f"{removed} removed, {len(scheduled_instances)} total"
-        )
+        logger.info(f"Schedule sync complete: {removed} orphaned schedules removed")
 
         return result
 
@@ -182,23 +163,24 @@ class AgentScheduler:
         """Get schedules that are due to run.
 
         Returns:
-            List of schedule records where enabled=1 and next_run_at <= now.
+            List of schedule records where enabled=1, trigger_type='cron',
+            and next_run_at <= now.
         """
         return self._activity_store.get_due_schedules()
 
-    def _is_instance_running(self, instance_name: str) -> bool:
-        """Check if an agent instance already has an active run.
+    def _is_task_running(self, task_name: str) -> bool:
+        """Check if an agent task already has an active run.
 
         Used to prevent overlapping scheduled executions of the same agent.
 
         Args:
-            instance_name: Name of the agent instance.
+            task_name: Name of the agent task.
 
         Returns:
-            True if instance has a run in RUNNING status.
+            True if task has a run in RUNNING status.
         """
         runs, _ = self._activity_store.list_agent_runs(
-            agent_name=instance_name,
+            agent_name=task_name,
             status="running",
             limit=1,
         )
@@ -207,7 +189,7 @@ class AgentScheduler:
     async def run_scheduled_agent(self, schedule: dict[str, Any]) -> dict[str, Any]:
         """Run a scheduled agent and update schedule state.
 
-        Prevents concurrent execution of the same agent instance. If an instance
+        Prevents concurrent execution of the same agent task. If a task
         is already running, the scheduled run is skipped.
 
         Args:
@@ -216,39 +198,37 @@ class AgentScheduler:
         Returns:
             Result dict with run_id, status, and any error.
         """
-        instance_name = schedule["instance_name"]
-        result: dict[str, Any] = {"instance_name": instance_name}
+        task_name = schedule["task_name"]
+        result: dict[str, Any] = {"task_name": task_name}
 
         # Check for concurrent execution - skip if already running
-        if self._is_instance_running(instance_name):
+        if self._is_task_running(task_name):
             result["skipped"] = True
             result["reason"] = "already_running"
-            logger.warning(f"Skipping scheduled run for '{instance_name}' - already running")
+            logger.warning(f"Skipping scheduled run for '{task_name}' - already running")
             return result
 
-        # Get the instance and its template
-        instance = self._agent_registry.get_instance(instance_name)
-        if instance is None:
-            result["error"] = f"Instance '{instance_name}' not found"
+        # Get the task and its template
+        task = self._agent_registry.get_task(task_name)
+        if task is None:
+            result["error"] = f"Task '{task_name}' not found"
             logger.error(result["error"])
             return result
 
-        template = self._agent_registry.get_template(instance.agent_type)
+        template = self._agent_registry.get_template(task.agent_type)
         if template is None:
-            result["error"] = (
-                f"Template '{instance.agent_type}' not found for instance '{instance_name}'"
-            )
+            result["error"] = f"Template '{task.agent_type}' not found for task '{task_name}'"
             logger.error(result["error"])
             return result
 
-        logger.info(f"Running scheduled agent: {instance_name}")
+        logger.info(f"Running scheduled agent: {task_name}")
 
         try:
             # Execute the agent
             run = await self._agent_executor.execute(
                 agent=template,
-                task=instance.default_task,
-                instance=instance,
+                task=task.default_task,
+                agent_task=task,
             )
 
             result["run_id"] = run.id
@@ -257,34 +237,34 @@ class AgentScheduler:
             # Update schedule with run info
             now = datetime.now()
 
-            # Compute next run time
-            if instance.schedule:
+            # Compute next run time from schedule's cron expression (from DB)
+            cron_expr = schedule.get("cron_expression")
+            next_run = None
+            if cron_expr:
                 try:
-                    next_run = self.compute_next_run(instance.schedule.cron, after=now)
-                except ValueError:
-                    next_run = None
-            else:
-                next_run = None
+                    next_run = self.compute_next_run(cron_expr, after=now)
+                except ValueError as e:
+                    logger.warning(f"Invalid cron for '{task_name}': {e}")
 
             self._activity_store.update_schedule(
-                instance_name,
+                task_name,
                 last_run_at=now,
                 last_run_id=run.id,
                 next_run_at=next_run,
             )
 
             if run.status == AgentRunStatus.COMPLETED:
-                logger.info(f"Scheduled agent '{instance_name}' completed: run_id={run.id}")
+                logger.info(f"Scheduled agent '{task_name}' completed: run_id={run.id}")
             else:
                 result["error"] = run.error
                 logger.warning(
-                    f"Scheduled agent '{instance_name}' finished with status {run.status}: "
+                    f"Scheduled agent '{task_name}' finished with status {run.status}: "
                     f"run_id={run.id}, error={run.error}"
                 )
 
         except (OSError, RuntimeError, ValueError) as e:
             result["error"] = str(e)
-            logger.error(f"Failed to run scheduled agent '{instance_name}': {e}")
+            logger.error(f"Failed to run scheduled agent '{task_name}': {e}")
 
         return result
 
@@ -392,66 +372,71 @@ class AgentScheduler:
 
         logger.info("Scheduler stopped")
 
-    def get_schedule_status(self, instance_name: str) -> dict[str, Any] | None:
-        """Get the schedule status for an instance.
+    def get_schedule_status(self, task_name: str) -> dict[str, Any] | None:
+        """Get the schedule status for a task.
 
-        Returns combined info from YAML definition and database state.
+        Returns schedule info from database. YAML is no longer consulted.
 
         Args:
-            instance_name: Name of the agent instance.
+            task_name: Name of the agent task.
 
         Returns:
             Schedule status dict, or None if no schedule.
         """
-        instance = self._agent_registry.get_instance(instance_name)
-        db_schedule = self._activity_store.get_schedule(instance_name)
+        db_schedule = self._activity_store.get_schedule(task_name)
 
-        if instance is None and db_schedule is None:
+        if db_schedule is None:
             return None
 
-        result: dict[str, Any] = {
-            "instance_name": instance_name,
-            "has_definition": instance is not None and instance.schedule is not None,
-            "has_db_record": db_schedule is not None,
+        # Check if task exists in registry
+        task = self._agent_registry.get_task(task_name)
+
+        return {
+            "task_name": task_name,
+            "has_definition": db_schedule.get("cron_expression") is not None,
+            "has_db_record": True,
+            "has_task": task is not None,
+            "cron": db_schedule.get("cron_expression"),
+            "description": db_schedule.get("description"),
+            "trigger_type": db_schedule.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+            "enabled": db_schedule.get("enabled"),
+            "last_run_at": db_schedule.get("last_run_at"),
+            "last_run_id": db_schedule.get("last_run_id"),
+            "next_run_at": db_schedule.get("next_run_at"),
         }
 
-        # Add definition info
-        if instance and instance.schedule:
-            result["cron"] = instance.schedule.cron
-            result["description"] = instance.schedule.description
-
-        # Add runtime state
-        if db_schedule:
-            result["enabled"] = db_schedule["enabled"]
-            result["last_run_at"] = db_schedule["last_run_at"]
-            result["last_run_id"] = db_schedule["last_run_id"]
-            result["next_run_at"] = db_schedule["next_run_at"]
-
-        return result
-
     def list_schedule_statuses(self) -> list[dict[str, Any]]:
-        """List schedule statuses for all instances.
+        """List schedule statuses for all schedules.
 
         Returns:
-            List of schedule status dicts.
+            List of schedule status dicts (from database only).
         """
-        # Get all instances with schedules
-        instances = self._agent_registry.list_instances()
-        scheduled_instances = {i.name: i for i in instances if i.schedule}
+        # Get all database schedules (database is source of truth)
+        db_schedules = self._activity_store.list_schedules()
 
-        # Get all database schedules
-        db_schedules = {s["instance_name"]: s for s in self._activity_store.list_schedules()}
-
-        # Build combined list
-        all_names = set(scheduled_instances.keys()) | set(db_schedules.keys())
+        # Build status list
         results = []
+        for db_schedule in db_schedules:
+            task_name = db_schedule["task_name"]
+            task = self._agent_registry.get_task(task_name)
 
-        for name in sorted(all_names):
-            status = self.get_schedule_status(name)
-            if status:
-                results.append(status)
+            results.append(
+                {
+                    "task_name": task_name,
+                    "has_definition": db_schedule.get("cron_expression") is not None,
+                    "has_db_record": True,
+                    "has_task": task is not None,
+                    "cron": db_schedule.get("cron_expression"),
+                    "description": db_schedule.get("description"),
+                    "trigger_type": db_schedule.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+                    "enabled": db_schedule.get("enabled"),
+                    "last_run_at": db_schedule.get("last_run_at"),
+                    "last_run_id": db_schedule.get("last_run_id"),
+                    "next_run_at": db_schedule.get("next_run_at"),
+                }
+            )
 
-        return results
+        return sorted(results, key=lambda x: x["task_name"])
 
     def to_dict(self) -> dict[str, Any]:
         """Convert scheduler state to dictionary for API responses.

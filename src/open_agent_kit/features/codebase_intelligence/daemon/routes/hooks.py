@@ -3,7 +3,7 @@
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +58,55 @@ logger = logging.getLogger(__name__)
 hooks_logger = logging.getLogger("oak.ci.hooks")
 
 router = APIRouter(tags=["hooks"])
+
+
+# =============================================================================
+# Agent Configuration Helpers
+# =============================================================================
+
+
+def _get_continuation_sources(agent: str) -> list[str]:
+    """Get session continuation sources for an agent from its manifest.
+
+    Returns a list of SessionStart source values that indicate continuation
+    (e.g., ["clear", "compact"] for Claude). When SessionStart fires with
+    one of these sources, a system batch should be created immediately.
+
+    Falls back to empty list if agent manifest is not found.
+    """
+    try:
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService()
+        manifest = agent_service.get_agent_manifest(agent)
+        if manifest and manifest.ci and manifest.ci.continuation:
+            return manifest.ci.continuation.continuation_sources or []
+    except Exception as e:
+        logger.debug(f"Failed to load continuation sources for agent {agent}: {e}")
+
+    return []
+
+
+def _get_continuation_label(source: str) -> str:
+    """Get the appropriate batch label for a continuation source.
+
+    Maps continuation source types to their descriptive labels.
+    Uses constants to keep labels consistent across the codebase.
+    """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        BATCH_LABEL_CLEARED_CONTEXT,
+        BATCH_LABEL_CONTEXT_COMPACTION,
+        BATCH_LABEL_SESSION_CONTINUATION,
+    )
+
+    # Map known sources to their labels
+    source_labels = {
+        "clear": BATCH_LABEL_CLEARED_CONTEXT,
+        "compact": BATCH_LABEL_CONTEXT_COMPACTION,
+    }
+
+    return source_labels.get(source, BATCH_LABEL_SESSION_CONTINUATION)
+
 
 # Route prefix - uses /api/oak/ci/ to avoid conflicts with other integrations
 OAK_CI_PREFIX = "/api/oak/ci"
@@ -252,6 +301,27 @@ async def hook_session_start(request: Request) -> dict:
                         )
                     except (OSError, ValueError, RuntimeError) as e:
                         logger.debug(f"Failed to update session parent: {e}")
+
+                # For continuation sources, create a batch immediately
+                # Agents may start executing tools before UserPromptSubmit fires
+                # Use manifest configuration to determine which sources trigger this
+                continuation_sources = _get_continuation_sources(agent)
+
+                if source in continuation_sources:
+                    try:
+                        batch_label = _get_continuation_label(source)
+                        batch = state.activity_store.create_prompt_batch(
+                            session_id=session_id,
+                            user_prompt=batch_label,
+                            source_type="system",
+                        )
+                        if batch:
+                            hooks_logger.info(
+                                f"[BATCH-CREATE-CONTINUATION] batch={batch.id} "
+                                f"session={session_id} source={source} agent={agent}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to create continuation batch: {e}")
             else:
                 logger.debug(f"Resumed activity session: {session_id}")
         except (OSError, ValueError, RuntimeError) as e:
@@ -350,6 +420,56 @@ async def hook_prompt_submit(request: Request) -> dict:
             active_batch = state.activity_store.get_active_prompt_batch(session_id)
             if active_batch and active_batch.id:
                 previous_batch_id = active_batch.id
+
+                # Capture response_summary as fallback if Stop hook didn't fire
+                # This happens when user queues a new message while agent is responding
+                if not active_batch.response_summary:
+                    transcript_path = body.get("transcript_path", "")
+
+                    # If transcript_path not in body, resolve it using TranscriptResolver
+                    # Supports all agents with ci.transcript config in their manifests
+                    if not transcript_path and session_id:
+                        try:
+                            from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
+                                get_transcript_resolver,
+                            )
+
+                            session = state.activity_store.get_session(session_id)
+                            if session and session.project_root:
+                                resolver = get_transcript_resolver(Path(session.project_root))
+                                transcript_result = resolver.resolve(
+                                    session_id=session_id,
+                                    agent_type=(
+                                        session.agent if session.agent != "unknown" else None
+                                    ),
+                                    project_root=session.project_root,
+                                )
+                                if transcript_result.path:
+                                    transcript_path = str(transcript_result.path)
+                                    logger.debug(
+                                        f"[FALLBACK] Resolved transcript_path via {transcript_result.agent_type}: {transcript_path}"
+                                    )
+                        except (OSError, ValueError, RuntimeError) as e:
+                            logger.debug(f"Failed to resolve transcript_path: {e}")
+
+                    if transcript_path:
+                        try:
+                            from open_agent_kit.features.codebase_intelligence.transcript import (
+                                parse_transcript_response,
+                            )
+
+                            response_summary = parse_transcript_response(transcript_path)
+                            if response_summary:
+                                state.activity_store.update_prompt_batch_response(
+                                    previous_batch_id, response_summary
+                                )
+                                logger.debug(
+                                    f"[FALLBACK] Captured response_summary for batch {previous_batch_id} "
+                                    f"(Stop hook didn't fire)"
+                                )
+                        except (OSError, ValueError, RuntimeError) as e:
+                            logger.debug(f"Failed to capture fallback response_summary: {e}")
+
                 state.activity_store.end_prompt_batch(previous_batch_id)
                 logger.debug(f"Ended previous prompt batch: {previous_batch_id}")
 
@@ -370,15 +490,15 @@ async def hook_prompt_submit(request: Request) -> dict:
                             f"[REALTIME] Starting async processing for previous batch {batch_id}"
                         )
                         try:
-                            result = await process_prompt_batch_async(processor, batch_id)
-                            if result.success:
+                            batch_result = await process_prompt_batch_async(processor, batch_id)
+                            if batch_result.success:
                                 logger.info(
                                     f"[REALTIME] Processed previous batch {batch_id}: "
-                                    f"{result.observations_extracted} observations"
+                                    f"{batch_result.observations_extracted} observations"
                                 )
                             else:
                                 logger.warning(
-                                    f"[REALTIME] Previous batch {batch_id} failed: {result.error}"
+                                    f"[REALTIME] Previous batch {batch_id} failed: {batch_result.error}"
                                 )
                         except (RuntimeError, OSError, ValueError) as e:
                             logger.warning(f"[REALTIME] Failed to process previous batch: {e}")
@@ -449,7 +569,7 @@ async def hook_prompt_submit(request: Request) -> dict:
 
             # Search with base threshold, then filter by confidence
             # For prompt injection, only include HIGH confidence (precision over recall)
-            result = state.retrieval_engine.search(
+            search_result = state.retrieval_engine.search(
                 query=search_query,
                 search_type="memory",
                 limit=10,  # Fetch more, filter by confidence
@@ -458,18 +578,18 @@ async def hook_prompt_submit(request: Request) -> dict:
             # Filter by combined score (confidence + importance) for prompt injection
             # High threshold ensures only highly relevant AND important memories are injected
             high_confidence_memories = RetrievalEngine.filter_by_combined_score(
-                result.memory, min_combined="high"
+                search_result.memory, min_combined="high"
             )
 
             # Debug logging for search results (trace mode)
             logger.debug(
-                f"[SEARCH:memory:results] found={len(result.memory)} "
+                f"[SEARCH:memory:results] found={len(search_result.memory)} "
                 f"high_combined={len(high_confidence_memories)}"
             )
-            if result.memory:
+            if search_result.memory:
                 scores_preview = [
                     (round(m.get("relevance", 0), 3), m.get("confidence"))
-                    for m in result.memory[:5]
+                    for m in search_result.memory[:5]
                 ]
                 logger.debug(f"[SEARCH:memory:scores] {scores_preview}")
 
@@ -687,6 +807,75 @@ async def hook_post_tool_use(request: Request) -> dict:
             active_batch = state.activity_store.get_active_prompt_batch(session_id)
             if active_batch:
                 prompt_batch_id = active_batch.id
+            else:
+                # No active batch - check if there's a recently completed batch we should use
+                # This handles cases where stuck batch recovery completed a batch that's
+                # still receiving tool activity
+                # Use constants for universal behavior (same across all agents)
+                from open_agent_kit.features.codebase_intelligence.constants import (
+                    BATCH_LABEL_SESSION_CONTINUATION,
+                    BATCH_REACTIVATION_TIMEOUT_SECONDS,
+                )
+
+                try:
+                    recent_batches = state.activity_store.get_session_prompt_batches(
+                        session_id, limit=1
+                    )
+                    if recent_batches and BATCH_REACTIVATION_TIMEOUT_SECONDS > 0:
+                        last_batch = recent_batches[0]
+                        # If the last batch was completed very recently,
+                        # reactivate it instead of creating a synthetic batch.
+                        # This handles stuck batch recovery marking batches complete
+                        # while the agent is still actively working.
+                        if last_batch.ended_at and last_batch.id is not None:
+                            try:
+                                # ended_at is already a datetime from PromptBatch.from_row
+                                ended = last_batch.ended_at
+                                if ended.tzinfo is None:
+                                    ended = ended.replace(tzinfo=UTC)
+                                now = datetime.now(UTC)
+                                seconds_since_end = (now - ended).total_seconds()
+
+                                if seconds_since_end < BATCH_REACTIVATION_TIMEOUT_SECONDS:
+                                    # Reactivate the batch - it was prematurely completed
+                                    state.activity_store.reactivate_prompt_batch(last_batch.id)
+                                    prompt_batch_id = last_batch.id
+                                    logger.info(
+                                        f"Reactivated batch {last_batch.id} for session "
+                                        f"{session_id} (ended {seconds_since_end:.1f}s ago, "
+                                        f"still receiving tool activity)"
+                                    )
+                                    hooks_logger.info(
+                                        f"[BATCH-REACTIVATE] batch={last_batch.id} "
+                                        f"session={session_id} seconds_since_end={seconds_since_end:.1f}"
+                                    )
+                            except (ValueError, TypeError) as e:
+                                logger.debug(
+                                    f"Failed to parse ended_at for batch reactivation: {e}"
+                                )
+
+                    # If we still don't have a batch, create a synthetic one
+                    # This is for edge cases where no recent batch exists
+                    if prompt_batch_id is None:
+                        session = state.activity_store.get_session(session_id)
+                        if session:
+                            batch = state.activity_store.create_prompt_batch(
+                                session_id=session_id,
+                                user_prompt=BATCH_LABEL_SESSION_CONTINUATION,
+                                source_type="system",
+                            )
+                            if batch:
+                                prompt_batch_id = batch.id
+                                logger.info(
+                                    f"Created synthetic batch {batch.id} for session "
+                                    f"{session_id} (no active batch found during tool use)"
+                                )
+                                hooks_logger.info(
+                                    f"[BATCH-CREATE-SYNTHETIC] batch={batch.id} "
+                                    f"session={session_id} trigger=post-tool-use"
+                                )
+                except Exception as e:
+                    logger.warning(f"Failed to handle missing batch: {e}")
 
             activity = Activity(
                 session_id=session_id,
@@ -923,6 +1112,15 @@ async def hook_stop(request: Request) -> dict:
         body = {}
 
     session_id = body.get("session_id") or body.get("conversation_id")
+    transcript_path = body.get("transcript_path", "")
+
+    # Debug logging to trace transcript_path flow
+    logger.debug(
+        "[STOP] session=%s transcript_path=%s body_keys=%s",
+        session_id,
+        transcript_path[:100] if transcript_path else "(empty)",
+        list(body.keys()),
+    )
 
     result: dict[str, Any] = {"status": "ok"}
     if not session_id:
@@ -959,13 +1157,20 @@ async def hook_stop(request: Request) -> dict:
             return result
         try:
             response_summary = None
-            transcript_path = body.get("transcript_path", "")
             if transcript_path:
                 from open_agent_kit.features.codebase_intelligence.transcript import (
                     parse_transcript_response,
                 )
 
                 response_summary = parse_transcript_response(transcript_path)
+                logger.debug(
+                    "[STOP] Parsed transcript: path=%s summary_len=%s preview=%s",
+                    transcript_path,
+                    len(response_summary) if response_summary else 0,
+                    response_summary[:80] if response_summary else "(none)",
+                )
+            else:
+                logger.debug("[STOP] No transcript_path provided, skipping summary extraction")
 
             from open_agent_kit.features.codebase_intelligence.activity import (
                 finalize_prompt_batch,
@@ -978,7 +1183,11 @@ async def hook_stop(request: Request) -> dict:
                 response_summary=response_summary,
             )
             result.update(finalize_result)
-            logger.info(f"Ended prompt batch {prompt_batch_id}")
+            logger.info(
+                "[STOP] Ended prompt batch %s (has_summary=%s)",
+                prompt_batch_id,
+                response_summary is not None,
+            )
 
             # Note: batch status is tracked in SQLite, no in-memory cleanup needed
 

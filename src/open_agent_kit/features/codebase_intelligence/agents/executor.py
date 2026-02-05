@@ -22,15 +22,18 @@ import yaml
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
     AgentExecution,
-    AgentInstance,
     AgentPermissionMode,
+    AgentProvider,
     AgentRun,
     AgentRunStatus,
+    AgentTask,
 )
 from open_agent_kit.features.codebase_intelligence.agents.tools import create_ci_mcp_server
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_FORBIDDEN_TOOLS,
     AGENT_INTERRUPT_GRACE_SECONDS,
+    AGENT_RETRY_BASE_DELAY,
+    AGENT_RETRY_MAX_ATTEMPTS,
     CI_MCP_SERVER_NAME,
 )
 
@@ -151,32 +154,68 @@ class AgentExecutor:
     def _get_effective_execution(
         self,
         agent: AgentDefinition,
-        instance: AgentInstance | None = None,
+        task: AgentTask | None = None,
     ) -> AgentExecution:
-        """Get effective execution config, preferring instance overrides.
+        """Get effective execution config, preferring task overrides.
 
-        Instance config takes precedence over template defaults for timeout_seconds,
-        max_turns, and permission_mode. This allows per-instance tuning of resource
+        Task config takes precedence over template defaults for timeout_seconds,
+        max_turns, and permission_mode. This allows per-task tuning of resource
         limits based on task complexity.
 
         Args:
             agent: Agent definition (template) with default execution config.
-            instance: Optional instance with execution overrides.
+            task: Optional task with execution overrides.
 
         Returns:
             AgentExecution with merged settings.
         """
         base = agent.execution
 
-        if instance and instance.execution:
-            inst_exec = instance.execution
+        if task and task.execution:
+            task_exec = task.execution
             return AgentExecution(
-                timeout_seconds=inst_exec.timeout_seconds or base.timeout_seconds,
-                max_turns=inst_exec.max_turns or base.max_turns,
-                permission_mode=inst_exec.permission_mode or base.permission_mode,
+                timeout_seconds=task_exec.timeout_seconds or base.timeout_seconds,
+                max_turns=task_exec.max_turns or base.max_turns,
+                permission_mode=task_exec.permission_mode or base.permission_mode,
             )
 
         return base
+
+    def _apply_provider_env(self, provider: AgentProvider | None) -> dict[str, str | None]:
+        """Apply provider environment variables, returning original values for restoration.
+
+        Args:
+            provider: Provider configuration (None = use defaults).
+
+        Returns:
+            Dictionary of original env var values (None if not set) for restoration.
+        """
+        import os
+
+        if provider is None:
+            return {}
+
+        original_values: dict[str, str | None] = {}
+        for key, value in provider.env_vars.items():
+            original_values[key] = os.environ.get(key)
+            os.environ[key] = value
+            logger.debug(f"Set {key}={value[:20]}... for provider {provider.type}")
+
+        return original_values
+
+    def _restore_provider_env(self, original_values: dict[str, str | None]) -> None:
+        """Restore original environment variables after provider execution.
+
+        Args:
+            original_values: Dictionary from _apply_provider_env.
+        """
+        import os
+
+        for key, original_value in original_values.items():
+            if original_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original_value
 
     def _build_options(
         self,
@@ -187,7 +226,7 @@ class AgentExecutor:
 
         Args:
             agent: Agent definition with configuration.
-            execution: Optional execution config override (from instance).
+            execution: Optional execution config override (from task).
 
         Returns:
             ClaudeAgentOptions instance.
@@ -218,6 +257,11 @@ class AgentExecutor:
                     allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_sessions")
                 if agent.ci_access.project_stats:
                     allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_project_stats")
+            else:
+                # Log warning if CI tools were requested but server unavailable
+                logger.warning(
+                    f"CI MCP server unavailable for agent '{agent.name}' - CI tools will not work"
+                )
 
         # Map permission mode
         permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions"] = "default"
@@ -226,14 +270,22 @@ class AgentExecutor:
         elif effective_execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS:
             permission_mode = "bypassPermissions"
 
+        # Determine model to use (execution config or provider fallback)
+        model = effective_execution.model
+        if model is None and effective_execution.provider:
+            model = effective_execution.provider.model
+
         options = ClaudeAgentOptions(
             system_prompt=agent.system_prompt,
             allowed_tools=allowed_tools,
-            disallowed_tools=list(AGENT_FORBIDDEN_TOOLS),
             max_turns=effective_execution.max_turns,
             permission_mode=permission_mode,
             cwd=str(self._project_root),
         )
+
+        # Set model if specified
+        if model:
+            options.model = model
 
         # Add MCP servers if any
         if mcp_servers:
@@ -244,20 +296,20 @@ class AgentExecutor:
     def _build_task_prompt(
         self,
         agent: AgentDefinition,
-        task: str,
-        instance: AgentInstance | None = None,
+        task_description: str,
+        agent_task: AgentTask | None = None,
     ) -> str:
-        """Build the task prompt, optionally injecting instance configuration.
+        """Build the task prompt, optionally injecting task configuration.
 
-        If an instance is provided, its configuration (maintained_files, ci_queries,
+        If an agent_task is provided, its configuration (maintained_files, ci_queries,
         output_requirements, style) is appended to the task as YAML.
 
         Also injects runtime context like daemon_url for linking to sessions.
 
         Args:
             agent: Agent definition (template).
-            task: Task description (usually instance.default_task).
-            instance: Optional instance with configuration.
+            task_description: Task description (usually agent_task.default_task).
+            agent_task: Optional task with configuration.
 
         Returns:
             Task prompt with config injected if available.
@@ -270,8 +322,8 @@ class AgentExecutor:
         daemon_port = get_project_port(self._project_root)
         daemon_url = f"http://localhost:{daemon_port}"
 
-        if instance:
-            # Build instance configuration block
+        if agent_task:
+            # Build task configuration block
             config: dict[str, Any] = {}
 
             # CRITICAL: Inject project_root so the agent knows where it's working
@@ -282,50 +334,94 @@ class AgentExecutor:
             # Inject daemon URL for session/memory links
             config["daemon_url"] = daemon_url
 
-            if instance.maintained_files:
+            if agent_task.maintained_files:
                 # Resolve {project_root} placeholder in paths
                 config["maintained_files"] = [
                     {
                         **mf.model_dump(exclude_none=True),
                         "path": mf.path.replace("{project_root}", project_root_str),
                     }
-                    for mf in instance.maintained_files
+                    for mf in agent_task.maintained_files
                 ]
 
-            if instance.ci_queries:
+            if agent_task.ci_queries:
                 config["ci_queries"] = {
                     phase: [q.model_dump(exclude_none=True) for q in queries]
-                    for phase, queries in instance.ci_queries.items()
+                    for phase, queries in agent_task.ci_queries.items()
                 }
 
-            if instance.output_requirements:
-                config["output_requirements"] = instance.output_requirements
+            if agent_task.output_requirements:
+                config["output_requirements"] = agent_task.output_requirements
 
-            if instance.style:
-                config["style"] = instance.style
+            if agent_task.style:
+                config["style"] = agent_task.style
 
-            if instance.extra:
-                config["extra"] = instance.extra
+            if agent_task.extra:
+                config["extra"] = agent_task.extra
 
             config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
-            return f"{task}\n\n## Instance Configuration\n```yaml\n{config_yaml}```"
+            return f"{task_description}\n\n## Task Configuration\n```yaml\n{config_yaml}```"
 
-        # No instance - inject project_root and daemon URL as runtime context
+        # No task - inject project_root and daemon URL as runtime context
         runtime_context = f"project_root: {self._project_root}\ndaemon_url: {daemon_url}"
-        return f"{task}\n\n## Runtime Context\n```yaml\n{runtime_context}\n```"
+        return f"{task_description}\n\n## Runtime Context\n```yaml\n{runtime_context}\n```"
 
-        # Legacy: use project_config if no instance
+        # Legacy: use project_config if no task
         if agent.project_config:
             config_yaml = yaml.dump(agent.project_config, default_flow_style=False, sort_keys=False)
-            return f"{task}\n\n## Project Configuration\n```yaml\n{config_yaml}```"
+            return f"{task_description}\n\n## Project Configuration\n```yaml\n{config_yaml}```"
 
-        return task
+        return task_description
+
+    def _is_transient_error(self, error: Exception) -> bool:
+        """Check if an error is transient and worth retrying.
+
+        Transient errors include:
+        - Connection errors (network issues)
+        - Timeout errors (temporary overload)
+        - Rate limit errors (429 responses)
+
+        Args:
+            error: The exception that occurred.
+
+        Returns:
+            True if the error is transient and worth retrying.
+        """
+        # Connection/network errors
+        if isinstance(error, (ConnectionError, ConnectionResetError, BrokenPipeError)):
+            return True
+
+        # OSError includes socket errors
+        if isinstance(error, OSError):
+            # Common transient errno values
+            import errno
+
+            transient_errnos = {
+                errno.ECONNREFUSED,
+                errno.ECONNRESET,
+                errno.ETIMEDOUT,
+                errno.ENETUNREACH,
+                errno.EHOSTUNREACH,
+            }
+            if hasattr(error, "errno") and error.errno in transient_errnos:
+                return True
+
+        # Check for rate limit indicators in error message
+        error_str = str(error).lower()
+        if "rate limit" in error_str or "429" in error_str or "overloaded" in error_str:
+            return True
+
+        # HTTP connection errors (if wrapped)
+        if "connection" in error_str and ("refused" in error_str or "reset" in error_str):
+            return True
+
+        return False
 
     def create_run(
         self,
         agent: AgentDefinition,
         task: str,
-        instance: AgentInstance | None = None,
+        agent_task: AgentTask | None = None,
     ) -> AgentRun:
         """Create a new run record.
 
@@ -334,15 +430,15 @@ class AgentExecutor:
         Args:
             agent: Agent definition (template).
             task: Task description.
-            instance: Optional instance being run.
+            agent_task: Optional task being run.
 
         Returns:
             New AgentRun instance.
         """
         import hashlib
 
-        # Use instance name if running an instance, otherwise template name
-        agent_name = instance.name if instance else agent.name
+        # Use task name if running a task, otherwise template name
+        agent_name = agent_task.name if agent_task else agent.name
 
         run = AgentRun(
             id=str(uuid4()),
@@ -359,18 +455,18 @@ class AgentExecutor:
             if agent.system_prompt:
                 system_prompt_hash = hashlib.sha256(agent.system_prompt.encode()).hexdigest()[:16]
 
-            # Build config from instance or legacy project_config
+            # Build config from task or legacy project_config
             project_config = None
-            if instance:
+            if agent_task:
                 project_config = {
-                    "instance_name": instance.name,
-                    "agent_type": instance.agent_type,
+                    "task_name": agent_task.name,
+                    "agent_type": agent_task.agent_type,
                     "maintained_files": [
-                        mf.model_dump(exclude_none=True) for mf in instance.maintained_files
+                        mf.model_dump(exclude_none=True) for mf in agent_task.maintained_files
                     ],
                     "ci_queries": {
                         phase: [q.model_dump(exclude_none=True) for q in queries]
-                        for phase, queries in instance.ci_queries.items()
+                        for phase, queries in agent_task.ci_queries.items()
                     },
                 }
             elif agent.project_config:
@@ -441,6 +537,8 @@ class AgentExecutor:
             error=data.get("error"),
             turns_used=data.get("turns_used", 0),
             cost_usd=data.get("cost_usd"),
+            input_tokens=data.get("input_tokens"),
+            output_tokens=data.get("output_tokens"),
             files_created=data.get("files_created") or [],
             files_modified=data.get("files_modified") or [],
             files_deleted=data.get("files_deleted") or [],
@@ -452,8 +550,12 @@ class AgentExecutor:
         offset: int = 0,
         agent_name: str | None = None,
         status: AgentRunStatus | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
     ) -> tuple[list[AgentRun], int]:
-        """List runs with optional filtering.
+        """List runs with optional filtering and sorting.
 
         Uses SQLite if available (for durability), falls back to in-memory.
 
@@ -462,6 +564,10 @@ class AgentExecutor:
             offset: Pagination offset.
             agent_name: Filter by agent name.
             status: Filter by status.
+            created_after: Filter by creation time (inclusive).
+            created_before: Filter by creation time (exclusive).
+            sort_by: Sort field (created_at, duration, cost).
+            sort_order: Sort order (asc, desc).
 
         Returns:
             Tuple of (runs list, total count).
@@ -469,11 +575,17 @@ class AgentExecutor:
         # Use SQLite if available
         if self._activity_store:
             status_str = status.value if status else None
+            created_after_epoch = int(created_after.timestamp()) if created_after else None
+            created_before_epoch = int(created_before.timestamp()) if created_before else None
             data_list, total = self._activity_store.list_agent_runs(
                 limit=limit,
                 offset=offset,
                 agent_name=agent_name,
                 status=status_str,
+                created_after_epoch=created_after_epoch,
+                created_before_epoch=created_before_epoch,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
             runs = [self._dict_to_run(d) for d in data_list]
             return runs, total
@@ -485,8 +597,20 @@ class AgentExecutor:
                 runs = [r for r in runs if r.agent_name == agent_name]
             if status:
                 runs = [r for r in runs if r.status == status]
+            if created_after:
+                runs = [r for r in runs if r.created_at >= created_after]
+            if created_before:
+                runs = [r for r in runs if r.created_at < created_before]
 
-            runs.sort(key=lambda r: r.created_at, reverse=True)
+            # Sort by the requested field
+            reverse = sort_order.lower() == "desc"
+            if sort_by == "duration":
+                runs.sort(key=lambda r: r.duration_seconds or 0, reverse=reverse)
+            elif sort_by == "cost":
+                runs.sort(key=lambda r: r.cost_usd or 0, reverse=reverse)
+            else:
+                runs.sort(key=lambda r: r.created_at, reverse=reverse)
+
             total = len(runs)
             runs = runs[offset : offset + limit]
 
@@ -497,13 +621,13 @@ class AgentExecutor:
         agent: AgentDefinition,
         task: str,
         run: AgentRun | None = None,
-        instance: AgentInstance | None = None,
+        agent_task: AgentTask | None = None,
     ) -> AgentRun:
         """Execute an agent with the given task.
 
         This is the main entry point for running an agent. It:
         1. Creates a run record if not provided
-        2. Builds SDK options from agent definition (with instance overrides)
+        2. Builds SDK options from agent definition (with task overrides)
         3. Runs the agent with timeout and graceful interrupt support
         4. Tracks results and handles errors
 
@@ -511,7 +635,7 @@ class AgentExecutor:
             agent: Agent definition (template).
             task: Task description for the agent.
             run: Optional existing run record.
-            instance: Optional instance being executed.
+            agent_task: Optional task being executed.
 
         Returns:
             Updated AgentRun with results.
@@ -533,10 +657,10 @@ class AgentExecutor:
 
         # Create run record if not provided
         if run is None:
-            run = self.create_run(agent, task, instance)
+            run = self.create_run(agent, task, agent_task)
 
-        # Get effective execution config (instance overrides template)
-        execution = self._get_effective_execution(agent, instance)
+        # Get effective execution config (task overrides template)
+        execution = self._get_effective_execution(agent, agent_task)
 
         # Mark as running
         run.status = AgentRunStatus.RUNNING
@@ -550,97 +674,174 @@ class AgentExecutor:
                 started_at=run.started_at,
             )
 
+        # Determine effective provider: task override > global config > None (cloud default)
+        effective_provider = execution.provider
+        if effective_provider is None and self._agent_config.provider_type != "cloud":
+            # Fall back to global agent config provider settings
+            from open_agent_kit.features.codebase_intelligence.agents.models import (
+                AgentProvider,
+            )
+
+            effective_provider = AgentProvider(
+                type=self._agent_config.provider_type,  # type: ignore[arg-type]
+                base_url=self._agent_config.provider_base_url,
+                api_key=None,  # Global config doesn't store API keys
+                model=self._agent_config.provider_model,
+            )
+            logger.info(
+                f"Using global provider config: type={effective_provider.type}, "
+                f"base_url={effective_provider.base_url}, model={effective_provider.model}"
+            )
+
+        # Apply provider environment variables if configured
+        original_env = self._apply_provider_env(effective_provider)
+
         try:
             # Build options with effective execution config
             options = self._build_options(agent, execution)
 
             # Build task prompt with config injection
-            task_prompt = self._build_task_prompt(agent, task, instance)
+            task_prompt = self._build_task_prompt(agent, task, agent_task)
 
             result_text_parts: list[str] = []
             turns_count = 0
 
+            provider_info = f", provider={effective_provider.type}" if effective_provider else ""
+            # Determine effective model for logging
+            effective_model = None
+            if effective_provider and effective_provider.model:
+                effective_model = effective_provider.model
+            elif execution.model:
+                effective_model = execution.model
+            model_info = f", model={effective_model}" if effective_model else ""
             logger.debug(
                 f"Agent run {run.id}: Starting query with prompt length {len(task_prompt)}, "
                 f"timeout={execution.timeout_seconds}s, max_turns={execution.max_turns}"
+                f"{model_info}{provider_info}"
             )
 
             # Use ClaudeSDKClient for bidirectional communication with MCP servers
             # The query() function doesn't support MCP servers properly
-            try:
-                async with asyncio.timeout(execution.timeout_seconds):
-                    async with ClaudeSDKClient(options=options) as client:
-                        # Track active client for interrupt support
-                        with self._clients_lock:
-                            self._active_clients[run.id] = client
-
-                        try:
-                            await client.query(task_prompt)
-                            async for msg in client.receive_response():
-                                if isinstance(msg, AssistantMessage):
-                                    turns_count += 1
-                                    for block in msg.content:
-                                        if isinstance(block, TextBlock):
-                                            result_text_parts.append(block.text)
-                                        elif isinstance(block, ToolUseBlock):
-                                            # Track file operations
-                                            tool_name = block.name
-                                            tool_input = block.input or {}
-
-                                            if tool_name == "Write":
-                                                file_path = tool_input.get("file_path", "")
-                                                if file_path:
-                                                    run.files_created.append(file_path)
-                                            elif tool_name == "Edit":
-                                                file_path = tool_input.get("file_path", "")
-                                                if (
-                                                    file_path
-                                                    and file_path not in run.files_modified
-                                                ):
-                                                    run.files_modified.append(file_path)
-
-                                elif isinstance(msg, ResultMessage):
-                                    # Capture cost if available
-                                    if msg.total_cost_usd:
-                                        run.cost_usd = msg.total_cost_usd
-                        finally:
-                            # Always untrack client
+            # Retry logic for transient failures with exponential backoff
+            last_error: Exception | None = None
+            for attempt in range(AGENT_RETRY_MAX_ATTEMPTS):
+                try:
+                    async with asyncio.timeout(execution.timeout_seconds):
+                        async with ClaudeSDKClient(options=options) as client:
+                            # Track active client for interrupt support
                             with self._clients_lock:
-                                self._active_clients.pop(run.id, None)
+                                self._active_clients[run.id] = client
 
-            except TimeoutError:
-                # Attempt graceful interrupt before hard timeout
-                with self._clients_lock:
-                    active_client = self._active_clients.pop(run.id, None)
+                            try:
+                                await client.query(task_prompt)
+                                msg_count = 0
+                                async for msg in client.receive_response():
+                                    msg_count += 1
+                                    logger.debug(
+                                        f"Agent run {run.id}: Received message {msg_count}: "
+                                        f"type={type(msg).__name__}"
+                                    )
+                                    if isinstance(msg, AssistantMessage):
+                                        turns_count += 1
+                                        for block in msg.content:
+                                            if isinstance(block, TextBlock):
+                                                result_text_parts.append(block.text)
+                                            elif isinstance(block, ToolUseBlock):
+                                                # Track file operations
+                                                tool_name = block.name
+                                                tool_input = block.input or {}
 
-                if active_client:
-                    try:
-                        logger.info(f"Agent run {run.id}: Attempting graceful interrupt")
-                        await active_client.interrupt()
-                        # Give grace period for clean shutdown
-                        await asyncio.sleep(AGENT_INTERRUPT_GRACE_SECONDS)
-                    except (RuntimeError, OSError, AttributeError) as interrupt_err:
-                        logger.debug(f"Interrupt failed (expected): {interrupt_err}")
+                                                if tool_name == "Write":
+                                                    file_path = tool_input.get("file_path", "")
+                                                    if file_path:
+                                                        run.files_created.append(file_path)
+                                                elif tool_name == "Edit":
+                                                    file_path = tool_input.get("file_path", "")
+                                                    if (
+                                                        file_path
+                                                        and file_path not in run.files_modified
+                                                    ):
+                                                        run.files_modified.append(file_path)
 
-                run.status = AgentRunStatus.TIMEOUT
-                run.error = f"Execution timed out after {execution.timeout_seconds}s"
-                logger.warning(f"Agent run {run.id} timed out")
+                                    elif isinstance(msg, ResultMessage):
+                                        # Capture cost if available
+                                        if msg.total_cost_usd:
+                                            run.cost_usd = msg.total_cost_usd
+                                        # Capture token usage if available
+                                        if hasattr(msg, "input_tokens") and msg.input_tokens:
+                                            run.input_tokens = msg.input_tokens
+                                        if hasattr(msg, "output_tokens") and msg.output_tokens:
+                                            run.output_tokens = msg.output_tokens
 
-            # Update run with results
-            run.turns_used = turns_count
-            if result_text_parts:
-                run.result = "\n".join(result_text_parts)
+                                # Log summary after response loop completes
+                                logger.debug(
+                                    f"Agent run {run.id}: Response loop finished - "
+                                    f"messages={msg_count}, turns={turns_count}"
+                                )
+                                # Add warning if no messages received (provider compatibility issue)
+                                if msg_count == 0:
+                                    warning_msg = (
+                                        "No response from provider - the provider may not support "
+                                        "Claude Code's API format (e.g., ?beta=true query parameter)"
+                                    )
+                                    run.warnings.append(warning_msg)
+                                    logger.warning(f"Agent run {run.id}: {warning_msg}")
+                            finally:
+                                # Always untrack client
+                                with self._clients_lock:
+                                    self._active_clients.pop(run.id, None)
 
-            # Mark completed if not already terminal
-            if not run.is_terminal():
-                run.status = AgentRunStatus.COMPLETED
+                    # Success - break out of retry loop
+                    last_error = None
+                    break
 
+                except TimeoutError:
+                    # Timeout is not retried - handle below
+                    raise
+
+                except Exception as e:
+                    last_error = e
+                    if not self._is_transient_error(e) or attempt == AGENT_RETRY_MAX_ATTEMPTS - 1:
+                        # Non-transient error or final attempt - re-raise
+                        raise
+
+                    # Transient error - retry with exponential backoff
+                    wait_time = AGENT_RETRY_BASE_DELAY * (2**attempt)
+                    logger.warning(
+                        f"Agent run {run.id}: Transient error on attempt {attempt + 1}/"
+                        f"{AGENT_RETRY_MAX_ATTEMPTS}, retrying in {wait_time}s: {e}"
+                    )
+                    await asyncio.sleep(wait_time)
+
+                    # Reset state for retry (keep run record, clear partial results)
+                    result_text_parts.clear()
+                    turns_count = 0
+
+            # If we exited the loop with last_error set, the final retry also failed
+            if last_error is not None:
+                raise last_error
+
+            # Fall through to TimeoutError handling below if timeout occurred
+            # (TimeoutError is raised, not caught by the Exception handler)
+
+        except TimeoutError:
+            # Attempt graceful interrupt before hard timeout
+            with self._clients_lock:
+                active_client = self._active_clients.pop(run.id, None)
+
+            if active_client:
+                try:
+                    logger.info(f"Agent run {run.id}: Attempting graceful interrupt")
+                    await active_client.interrupt()
+                    # Give grace period for clean shutdown
+                    await asyncio.sleep(AGENT_INTERRUPT_GRACE_SECONDS)
+                except (RuntimeError, OSError, AttributeError) as interrupt_err:
+                    logger.debug(f"Interrupt failed (expected): {interrupt_err}")
+
+            run.status = AgentRunStatus.TIMEOUT
+            run.error = f"Execution timed out after {execution.timeout_seconds}s"
             run.completed_at = datetime.now()
-
-            logger.info(
-                f"Agent run {run.id} completed: status={run.status}, "
-                f"turns={run.turns_used}, cost=${run.cost_usd or 0:.4f}"
-            )
+            logger.warning(f"Agent run {run.id} timed out")
 
         except asyncio.CancelledError:
             # Clean up active client tracking on cancellation
@@ -668,6 +869,23 @@ class AgentExecutor:
             tb_str = traceback.format_exc()
             logger.error(f"Agent run {run.id} failed: {e}\n{tb_str}")
 
+        else:
+            # Success case - update run with results
+            run.turns_used = turns_count
+            if result_text_parts:
+                run.result = "\n".join(result_text_parts)
+            run.status = AgentRunStatus.COMPLETED
+            run.completed_at = datetime.now()
+
+            logger.info(
+                f"Agent run {run.id} completed: status={run.status}, "
+                f"turns={run.turns_used}, cost=${run.cost_usd or 0:.4f}"
+            )
+
+        finally:
+            # Always restore original environment variables
+            self._restore_provider_env(original_env)
+
         # Persist final state to SQLite
         self._persist_run_completion(run)
 
@@ -690,9 +908,12 @@ class AgentExecutor:
             error=run.error,
             turns_used=run.turns_used,
             cost_usd=run.cost_usd,
+            input_tokens=run.input_tokens,
+            output_tokens=run.output_tokens,
             files_created=run.files_created if run.files_created else None,
             files_modified=run.files_modified if run.files_modified else None,
             files_deleted=run.files_deleted if run.files_deleted else None,
+            warnings=run.warnings if run.warnings else None,
         )
 
     async def cancel(self, run_id: str) -> bool:

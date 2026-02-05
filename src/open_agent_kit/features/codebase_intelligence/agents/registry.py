@@ -1,12 +1,12 @@
-"""Agent Registry for loading and managing agent definitions and instances.
+"""Agent Registry for loading and managing agent definitions and tasks.
 
 The registry loads:
 - Agent templates (definitions) from agents/definitions/{name}/agent.yaml
-- Agent instances from the project's agent config directory (AGENT_PROJECT_CONFIG_DIR)
+- Agent tasks from the project's agent config directory (AGENT_PROJECT_CONFIG_DIR)
 
 Templates define capabilities (tools, permissions, system prompt).
-Instances define tasks (default_task, maintained_files, ci_queries).
-Only instances can be executed - templates are used to create instances.
+Tasks define what to do (default_task, maintained_files, ci_queries).
+Only tasks can be executed - templates are used to create tasks.
 """
 
 import logging
@@ -20,20 +20,19 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentCIAccess,
     AgentDefinition,
     AgentExecution,
-    AgentInstance,
     AgentPermissionMode,
+    AgentTask,
     CIQueryTemplate,
     MaintainedFile,
-    ScheduleDefinition,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_DEFINITION_FILENAME,
-    AGENT_INSTANCE_NAME_PATTERN,
-    AGENT_INSTANCE_SCHEMA_VERSION,
     AGENT_PROJECT_CONFIG_DIR,
     AGENT_PROJECT_CONFIG_EXTENSION,
     AGENT_PROMPTS_DIR,
     AGENT_SYSTEM_PROMPT_FILENAME,
+    AGENT_TASK_NAME_PATTERN,
+    AGENT_TASK_SCHEMA_VERSION,
     AGENT_TASK_TEMPLATE_FILENAME,
     AGENTS_DEFINITIONS_DIR,
     AGENTS_DIR,
@@ -52,21 +51,21 @@ _AGENTS_DIR = _FEATURE_ROOT / AGENTS_DIR / AGENTS_DEFINITIONS_DIR
 
 
 class AgentRegistry:
-    """Registry for loading and managing agent templates and instances.
+    """Registry for loading and managing agent templates and tasks.
 
     The registry discovers:
     - Agent templates (definitions) from the built-in definitions directory
     - Built-in tasks from the package's tasks directory
     - User tasks from the project's agent config directory
 
-    Templates define capabilities; instances define tasks.
-    Only instances can be executed.
+    Templates define capabilities; tasks define what to do.
+    Only tasks can be executed.
     User tasks override built-in tasks with the same name.
 
     Attributes:
         agents: Dictionary of loaded agent definitions by name (legacy).
         templates: Dictionary of loaded templates by name.
-        instances: Dictionary of loaded instances by name.
+        tasks: Dictionary of loaded tasks by name.
     """
 
     def __init__(
@@ -79,15 +78,15 @@ class AgentRegistry:
         Args:
             definitions_dir: Optional custom directory for agent definitions.
                            Defaults to the built-in definitions directory.
-            project_root: Project root for loading instances from agent config directory.
-                         If None, user instances are not loaded.
+            project_root: Project root for loading tasks from agent config directory.
+                         If None, user tasks are not loaded.
         """
         self._definitions_dir = definitions_dir or _AGENTS_DIR
         self._project_root = project_root
         self._agents: dict[str, AgentDefinition] = {}  # Legacy: templates only
         self._templates: dict[str, AgentDefinition] = {}
-        self._builtin_tasks: dict[str, AgentInstance] = {}  # Built-in tasks from package
-        self._instances: dict[str, AgentInstance] = {}  # All instances (built-in + user)
+        self._builtin_tasks: dict[str, AgentTask] = {}  # Built-in tasks from package
+        self._tasks: dict[str, AgentTask] = {}  # All tasks (built-in + user)
         self._loaded = False
 
     @property
@@ -105,12 +104,12 @@ class AgentRegistry:
         return self._templates
 
     def load_all(self) -> int:
-        """Load all agent templates and instances.
+        """Load all agent templates and tasks.
 
         Templates are loaded from agents/definitions/{name}/agent.yaml.
         Built-in tasks are loaded from agents/tasks/ in the package.
-        User instances are loaded from the project's agent config directory.
-        User instances override built-in tasks with the same name.
+        User tasks are loaded from the project's agent config directory.
+        User tasks override built-in tasks with the same name.
 
         Returns:
             Number of templates successfully loaded.
@@ -118,7 +117,7 @@ class AgentRegistry:
         self._agents.clear()
         self._templates.clear()
         self._builtin_tasks.clear()
-        self._instances.clear()
+        self._tasks.clear()
 
         # Load templates from definitions directory
         template_count = self._load_templates()
@@ -126,20 +125,20 @@ class AgentRegistry:
         # Load built-in tasks from package
         builtin_count = self._load_builtin_tasks()
 
-        # Load user instances from project root (overrides built-ins)
-        user_count = self._load_user_instances()
+        # Load user tasks from project root (overrides built-ins)
+        user_count = self._load_user_tasks()
 
-        # Merge: built-ins first, then user instances override
+        # Merge: built-ins first, then user tasks override
         for name, task in self._builtin_tasks.items():
-            if name not in self._instances:
-                self._instances[name] = task
+            if name not in self._tasks:
+                self._tasks[name] = task
 
         self._loaded = True
-        total_instances = len(self._instances)
+        total_tasks = len(self._tasks)
         logger.info(
             f"Agent registry loaded {template_count} templates, "
             f"{builtin_count} built-in tasks, {user_count} user tasks "
-            f"({total_instances} total instances)"
+            f"({total_tasks} total tasks)"
         )
         return template_count
 
@@ -201,99 +200,97 @@ class AgentRegistry:
 
             for yaml_file in tasks_dir.glob(f"*{AGENT_PROJECT_CONFIG_EXTENSION}"):
                 try:
-                    instance = self._load_instance(yaml_file, is_builtin=True)
-                    if instance:
+                    task = self._load_task(yaml_file, is_builtin=True)
+                    if task:
                         # Validate template matches the parent directory
-                        if instance.agent_type != template_name:
+                        if task.agent_type != template_name:
                             logger.warning(
-                                f"Built-in task '{instance.name}' in {template_name}/tasks/ "
-                                f"references different template '{instance.agent_type}', skipping"
+                                f"Built-in task '{task.name}' in {template_name}/tasks/ "
+                                f"references different template '{task.agent_type}', skipping"
                             )
                             continue
 
-                        self._builtin_tasks[instance.name] = instance
+                        self._builtin_tasks[task.name] = task
                         count += 1
-                        logger.info(
-                            f"Loaded built-in task: {instance.name} ({instance.display_name})"
-                        )
+                        logger.info(f"Loaded built-in task: {task.name} ({task.display_name})")
                 except (OSError, ValueError, yaml.YAMLError) as e:
                     logger.warning(f"Failed to load built-in task from {yaml_file}: {e}")
 
         return count
 
-    def _load_user_instances(self) -> int:
-        """Load all user instances from the project's agent config directory.
+    def _load_user_tasks(self) -> int:
+        """Load all user tasks from the project's agent config directory.
 
-        User instances override built-in tasks with the same name.
+        User tasks override built-in tasks with the same name.
 
         Returns:
-            Number of user instances successfully loaded.
+            Number of user tasks successfully loaded.
         """
         if self._project_root is None:
-            logger.debug("No project root - skipping user instance loading")
+            logger.debug("No project root - skipping user task loading")
             return 0
 
-        instances_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
-        if not instances_dir.exists():
-            logger.debug(f"User instances directory not found: {instances_dir}")
+        tasks_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
+        if not tasks_dir.exists():
+            logger.debug(f"User tasks directory not found: {tasks_dir}")
             return 0
 
         count = 0
-        for yaml_file in instances_dir.glob(f"*{AGENT_PROJECT_CONFIG_EXTENSION}"):
+        for yaml_file in tasks_dir.glob(f"*{AGENT_PROJECT_CONFIG_EXTENSION}"):
             try:
-                instance = self._load_instance(yaml_file, is_builtin=False)
-                if instance:
+                task = self._load_task(yaml_file, is_builtin=False)
+                if task:
                     # Validate template exists
-                    if instance.agent_type not in self._templates:
+                    if task.agent_type not in self._templates:
                         logger.warning(
-                            f"Instance '{instance.name}' references unknown template "
-                            f"'{instance.agent_type}', skipping"
+                            f"Task '{task.name}' references unknown template "
+                            f"'{task.agent_type}', skipping"
                         )
                         continue
 
                     # Check if overriding a built-in
-                    if instance.name in self._builtin_tasks:
-                        logger.info(f"User instance '{instance.name}' overrides built-in task")
+                    if task.name in self._builtin_tasks:
+                        logger.info(f"User task '{task.name}' overrides built-in task")
 
-                    self._instances[instance.name] = instance
+                    self._tasks[task.name] = task
                     count += 1
-                    logger.info(f"Loaded user instance: {instance.name} ({instance.display_name})")
+                    logger.info(f"Loaded user task: {task.name} ({task.display_name})")
             except (OSError, ValueError, yaml.YAMLError) as e:
-                logger.warning(f"Failed to load instance from {yaml_file}: {e}")
+                logger.warning(f"Failed to load task from {yaml_file}: {e}")
 
         return count
 
-    def _load_instance(self, yaml_file: Path, is_builtin: bool = False) -> AgentInstance | None:
-        """Load a single instance from a YAML file.
+    def _load_task(self, yaml_file: Path, is_builtin: bool = False) -> AgentTask | None:
+        """Load a single task from a YAML file.
 
         Args:
-            yaml_file: Path to instance YAML file.
+            yaml_file: Path to task YAML file.
             is_builtin: True if this is a built-in task from the package.
 
         Returns:
-            AgentInstance if successful, None otherwise.
+            AgentTask if successful, None otherwise.
         """
         with open(yaml_file, encoding="utf-8") as f:
             try:
                 data = yaml.safe_load(f)
             except yaml.YAMLError as e:
-                logger.warning(f"Failed to parse instance YAML from {yaml_file}: {e}")
+                logger.warning(f"Failed to parse task YAML from {yaml_file}: {e}")
                 return None
 
         if not data:
-            logger.warning(f"Empty instance file: {yaml_file}")
+            logger.warning(f"Empty task file: {yaml_file}")
             return None
 
-        # Instance name defaults to filename without extension
+        # Task name defaults to filename without extension
         name = data.get("name", yaml_file.stem)
 
         # Validate required fields
         if "default_task" not in data:
-            logger.warning(f"Instance '{name}' missing required 'default_task', skipping")
+            logger.warning(f"Task '{name}' missing required 'default_task', skipping")
             return None
 
         if "agent_type" not in data:
-            logger.warning(f"Instance '{name}' missing required 'agent_type', skipping")
+            logger.warning(f"Task '{name}' missing required 'agent_type', skipping")
             return None
 
         # Parse maintained_files
@@ -342,37 +339,48 @@ class AgentRegistry:
                         f"Invalid permission_mode '{permission_mode_str}' in '{name}', ignoring"
                     )
 
+            # Parse provider config if present
+            provider = None
+            provider_data = execution_data.get("provider")
+            if provider_data and isinstance(provider_data, dict):
+                from open_agent_kit.features.codebase_intelligence.agents.models import (
+                    AgentProvider,
+                )
+
+                provider = AgentProvider(
+                    type=provider_data.get("type", "cloud"),
+                    base_url=provider_data.get("base_url"),
+                    api_key=provider_data.get("api_key"),
+                    model=provider_data.get("model"),
+                )
+                logger.debug(f"Loaded provider config for '{name}': type={provider.type}")
+
+            # Parse model if present (can be set at execution level or in provider)
+            model = execution_data.get("model")
+
             execution = AgentExecution(
                 timeout_seconds=timeout_seconds or 600,  # Default if not specified
                 max_turns=max_turns or 50,
                 permission_mode=permission_mode or AgentPermissionMode.ACCEPT_EDITS,
+                model=model,
+                provider=provider,
             )
 
-        # Parse schedule
-        schedule = None
-        schedule_data = data.get("schedule")
-        if schedule_data and isinstance(schedule_data, dict) and "cron" in schedule_data:
-            schedule = ScheduleDefinition(
-                cron=schedule_data["cron"],
-                description=schedule_data.get("description", ""),
-            )
-
-        return AgentInstance(
+        return AgentTask(
             name=name,
             display_name=data.get("display_name", name),
             agent_type=data["agent_type"],
             description=data.get("description", ""),
             default_task=data["default_task"],
             execution=execution,
-            schedule=schedule,
             maintained_files=maintained_files,
             ci_queries=ci_queries,
             output_requirements=data.get("output_requirements", {}),
             style=data.get("style", {}),
             extra=data.get("extra", {}),
-            instance_path=str(yaml_file),
+            task_path=str(yaml_file),
             is_builtin=is_builtin,
-            schema_version=data.get("schema_version", AGENT_INSTANCE_SCHEMA_VERSION),
+            schema_version=data.get("schema_version", AGENT_TASK_SCHEMA_VERSION),
         )
 
     def load_project_config(self, agent_name: str) -> dict[str, Any] | None:
@@ -499,18 +507,18 @@ class AgentRegistry:
             self.load_all()
         return self._templates.get(name)
 
-    def get_instance(self, name: str) -> AgentInstance | None:
-        """Get an instance by name.
+    def get_task(self, name: str) -> AgentTask | None:
+        """Get a task by name.
 
         Args:
-            name: Instance name.
+            name: Task name.
 
         Returns:
-            AgentInstance if found, None otherwise.
+            AgentTask if found, None otherwise.
         """
         if not self._loaded:
             self.load_all()
-        return self._instances.get(name)
+        return self._tasks.get(name)
 
     def list_agents(self) -> list[AgentDefinition]:
         """Get all registered agents (legacy - returns templates only).
@@ -532,29 +540,29 @@ class AgentRegistry:
             self.load_all()
         return list(self._templates.values())
 
-    def list_instances(self) -> list[AgentInstance]:
-        """Get all registered instances.
+    def list_tasks(self) -> list[AgentTask]:
+        """Get all registered tasks.
 
         Returns:
-            List of all instances.
+            List of all tasks.
         """
         if not self._loaded:
             self.load_all()
-        return list(self._instances.values())
+        return list(self._tasks.values())
 
     def is_builtin(self, name: str) -> bool:
-        """Check if an instance is a built-in task.
+        """Check if a task is a built-in task.
 
         Args:
-            name: Instance name.
+            name: Task name.
 
         Returns:
-            True if the instance is a built-in task shipped with OAK.
+            True if the task is a built-in task shipped with OAK.
         """
         if not self._loaded:
             self.load_all()
-        instance = self._instances.get(name)
-        return instance.is_builtin if instance else False
+        task = self._tasks.get(name)
+        return task.is_builtin if task else False
 
     def list_names(self) -> list[str]:
         """Get names of all registered agents (legacy - templates only).
@@ -567,7 +575,7 @@ class AgentRegistry:
         return list(self._templates.keys())
 
     def reload(self) -> int:
-        """Reload all agent templates and instances.
+        """Reload all agent templates and tasks.
 
         Returns:
             Number of templates loaded.
@@ -575,25 +583,25 @@ class AgentRegistry:
         self._loaded = False
         return self.load_all()
 
-    def create_instance(
+    def create_task(
         self,
         name: str,
         template_name: str,
         display_name: str,
         description: str,
         default_task: str,
-    ) -> AgentInstance:
-        """Create a new instance YAML file and load it.
+    ) -> AgentTask:
+        """Create a new task YAML file and load it.
 
         Args:
-            name: Instance name (becomes filename).
+            name: Task name (becomes filename).
             template_name: Name of template to use.
             display_name: Human-readable name.
-            description: What this instance does.
+            description: What this task does.
             default_task: Task to execute when run.
 
         Returns:
-            Newly created AgentInstance.
+            Newly created AgentTask.
 
         Raises:
             ValueError: If name is invalid or template doesn't exist.
@@ -603,9 +611,9 @@ class AgentRegistry:
             self.load_all()
 
         # Validate name format
-        if not re.match(AGENT_INSTANCE_NAME_PATTERN, name):
+        if not re.match(AGENT_TASK_NAME_PATTERN, name):
             raise ValueError(
-                f"Invalid instance name '{name}'. Must be lowercase letters, numbers, and hyphens."
+                f"Invalid task name '{name}'. Must be lowercase letters, numbers, and hyphens."
             )
 
         # Check template exists
@@ -613,16 +621,16 @@ class AgentRegistry:
         if not template:
             raise ValueError(f"Template '{template_name}' not found")
 
-        # Check instance doesn't already exist
-        if name in self._instances:
-            raise ValueError(f"Instance '{name}' already exists")
+        # Check task doesn't already exist
+        if name in self._tasks:
+            raise ValueError(f"Task '{name}' already exists")
 
-        # Ensure instances directory exists
+        # Ensure tasks directory exists
         if self._project_root is None:
-            raise ValueError("Cannot create instance - no project root configured")
+            raise ValueError("Cannot create task - no project root configured")
 
-        instances_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
-        instances_dir.mkdir(parents=True, exist_ok=True)
+        tasks_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
+        tasks_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate YAML content using Jinja2 template
         from jinja2 import Environment, FileSystemLoader
@@ -637,33 +645,33 @@ class AgentRegistry:
             agent_type=template_name,
             description=description,
             default_task=default_task,
-            schema_version=AGENT_INSTANCE_SCHEMA_VERSION,
+            schema_version=AGENT_TASK_SCHEMA_VERSION,
         )
 
         # Write YAML file
-        yaml_path = instances_dir / f"{name}{AGENT_PROJECT_CONFIG_EXTENSION}"
+        yaml_path = tasks_dir / f"{name}{AGENT_PROJECT_CONFIG_EXTENSION}"
         with open(yaml_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
 
-        logger.info(f"Created instance YAML: {yaml_path}")
+        logger.info(f"Created task YAML: {yaml_path}")
 
-        # Load and register the new instance
-        instance = self._load_instance(yaml_path)
-        if instance:
-            self._instances[instance.name] = instance
-            return instance
+        # Load and register the new task
+        task = self._load_task(yaml_path)
+        if task:
+            self._tasks[task.name] = task
+            return task
 
-        raise ValueError(f"Failed to load newly created instance '{name}'")
+        raise ValueError(f"Failed to load newly created task '{name}'")
 
-    def copy_task(self, task_name: str, new_name: str | None = None) -> AgentInstance:
-        """Copy a built-in task to the user's instances directory for customization.
+    def copy_task(self, task_name: str, new_name: str | None = None) -> AgentTask:
+        """Copy a built-in task to the user's tasks directory for customization.
 
         Args:
             task_name: Name of the task to copy (usually a built-in).
             new_name: Optional new name for the copy. If None, uses original name.
 
         Returns:
-            Newly created AgentInstance.
+            Newly created AgentTask.
 
         Raises:
             ValueError: If task doesn't exist or target already exists.
@@ -673,7 +681,7 @@ class AgentRegistry:
             self.load_all()
 
         # Get the source task
-        source = self._instances.get(task_name)
+        source = self._tasks.get(task_name)
         if not source:
             raise ValueError(f"Task '{task_name}' not found")
 
@@ -681,7 +689,7 @@ class AgentRegistry:
         target_name = new_name or task_name
 
         # Validate name format
-        if not re.match(AGENT_INSTANCE_NAME_PATTERN, target_name):
+        if not re.match(AGENT_TASK_NAME_PATTERN, target_name):
             raise ValueError(
                 f"Invalid task name '{target_name}'. Must be lowercase letters, numbers, and hyphens."
             )
@@ -690,19 +698,19 @@ class AgentRegistry:
         if self._project_root is None:
             raise ValueError("Cannot copy task - no project root configured")
 
-        instances_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
-        target_path = instances_dir / f"{target_name}{AGENT_PROJECT_CONFIG_EXTENSION}"
+        tasks_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
+        target_path = tasks_dir / f"{target_name}{AGENT_PROJECT_CONFIG_EXTENSION}"
 
         # Check if target already exists as a user file
         if target_path.exists():
             raise ValueError(f"User task '{target_name}' already exists at {target_path}")
 
         # Ensure directory exists
-        instances_dir.mkdir(parents=True, exist_ok=True)
+        tasks_dir.mkdir(parents=True, exist_ok=True)
 
         # Read source YAML and write to target
-        if source.instance_path:
-            source_path = Path(source.instance_path)
+        if source.task_path:
+            source_path = Path(source.task_path)
             with open(source_path, encoding="utf-8") as f:
                 content = f.read()
 
@@ -721,11 +729,11 @@ class AgentRegistry:
 
             logger.info(f"Copied task '{task_name}' to {target_path}")
 
-            # Load and register the new instance
-            instance = self._load_instance(target_path, is_builtin=False)
-            if instance:
-                self._instances[instance.name] = instance
-                return instance
+            # Load and register the new task
+            task = self._load_task(target_path, is_builtin=False)
+            if task:
+                self._tasks[task.name] = task
+                return task
 
         raise ValueError(f"Failed to copy task '{task_name}'")
 
@@ -758,11 +766,11 @@ class AgentRegistry:
         results: dict[str, str] = {}
 
         for task_name, task in self._builtin_tasks.items():
-            if not task.instance_path:
+            if not task.task_path:
                 results[task_name] = "error"
                 continue
 
-            source_path = Path(task.instance_path)
+            source_path = Path(task.task_path)
             target_path = target_dir / f"{task_name}{AGENT_PROJECT_CONFIG_EXTENSION}"
 
             try:
@@ -799,6 +807,6 @@ class AgentRegistry:
         return {
             "count": len(self._templates),
             "templates": list(self._templates.keys()),
-            "instances": list(self._instances.keys()),
+            "tasks": list(self._tasks.keys()),
             "definitions_dir": str(self._definitions_dir),
         }

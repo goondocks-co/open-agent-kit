@@ -1088,6 +1088,11 @@ class TestActivityStoreRecoveryOperations:
             "UPDATE activities SET timestamp_epoch = ? WHERE session_id = ?",
             (old_epoch, "test-session-quality-stale"),
         )
+        # Mark prompt batch as completed and old (active batches block stale recovery)
+        conn.execute(
+            "UPDATE prompt_batches SET status = 'completed', created_at_epoch = ? WHERE session_id = ?",
+            (old_epoch, "test-session-quality-stale"),
+        )
         conn.commit()
 
         # Recover with 1 hour timeout

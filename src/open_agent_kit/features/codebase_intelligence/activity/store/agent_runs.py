@@ -102,9 +102,12 @@ def update_run(
     error: str | None = None,
     turns_used: int | None = None,
     cost_usd: float | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
     files_created: list[str] | None = None,
     files_modified: list[str] | None = None,
     files_deleted: list[str] | None = None,
+    warnings: list[str] | None = None,
 ) -> None:
     """Update an agent run record.
 
@@ -118,9 +121,12 @@ def update_run(
         error: Error message if failed.
         turns_used: Number of turns used.
         cost_usd: Cost in USD.
+        input_tokens: Input tokens used.
+        output_tokens: Output tokens generated.
         files_created: List of created file paths.
         files_modified: List of modified file paths.
         files_deleted: List of deleted file paths.
+        warnings: List of warning messages.
     """
     updates: list[str] = []
     params: list[Any] = []
@@ -157,6 +163,14 @@ def update_run(
         updates.append("cost_usd = ?")
         params.append(cost_usd)
 
+    if input_tokens is not None:
+        updates.append("input_tokens = ?")
+        params.append(input_tokens)
+
+    if output_tokens is not None:
+        updates.append("output_tokens = ?")
+        params.append(output_tokens)
+
     if files_created is not None:
         updates.append("files_created = ?")
         params.append(json.dumps(files_created))
@@ -168,6 +182,10 @@ def update_run(
     if files_deleted is not None:
         updates.append("files_deleted = ?")
         params.append(json.dumps(files_deleted))
+
+    if warnings is not None:
+        updates.append("warnings = ?")
+        params.append(json.dumps(warnings))
 
     if not updates:
         return
@@ -189,8 +207,12 @@ def list_runs(
     offset: int = 0,
     agent_name: str | None = None,
     status: str | None = None,
+    created_after_epoch: int | None = None,
+    created_before_epoch: int | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
 ) -> tuple[list[dict[str, Any]], int]:
-    """List agent runs with optional filtering.
+    """List agent runs with optional filtering and sorting.
 
     Args:
         store: ActivityStore instance.
@@ -198,6 +220,10 @@ def list_runs(
         offset: Pagination offset.
         agent_name: Filter by agent name.
         status: Filter by status.
+        created_after_epoch: Filter by creation time (epoch) - inclusive.
+        created_before_epoch: Filter by creation time (epoch) - exclusive.
+        sort_by: Sort field (created_at, duration, cost).
+        sort_order: Sort order (asc, desc).
 
     Returns:
         Tuple of (runs list, total count).
@@ -216,7 +242,24 @@ def list_runs(
         conditions.append("status = ?")
         params.append(status)
 
+    if created_after_epoch:
+        conditions.append("created_at_epoch >= ?")
+        params.append(created_after_epoch)
+
+    if created_before_epoch:
+        conditions.append("created_at_epoch < ?")
+        params.append(created_before_epoch)
+
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    # Map sort_by to column
+    sort_column_map = {
+        "created_at": "created_at_epoch",
+        "duration": "(COALESCE(completed_at_epoch, 0) - COALESCE(started_at_epoch, 0))",
+        "cost": "COALESCE(cost_usd, 0)",
+    }
+    sort_column = sort_column_map.get(sort_by, "created_at_epoch")
+    order = "DESC" if sort_order.lower() == "desc" else "ASC"
 
     # Get total count
     count_sql = f"SELECT COUNT(*) FROM agent_runs {where_clause}"  # noqa: S608
@@ -227,7 +270,7 @@ def list_runs(
     query_sql = f"""
         SELECT * FROM agent_runs
         {where_clause}
-        ORDER BY created_at_epoch DESC
+        ORDER BY {sort_column} {order}
         LIMIT ? OFFSET ?
     """  # noqa: S608
     cursor = conn.execute(query_sql, [*params, limit, offset])
@@ -255,6 +298,82 @@ def delete_run(store: ActivityStore, run_id: str) -> bool:
         logger.debug(f"Deleted agent run: {run_id}")
 
     return deleted
+
+
+def bulk_delete_runs(
+    store: ActivityStore,
+    agent_name: str | None = None,
+    status: str | None = None,
+    before_epoch: int | None = None,
+    keep_recent: int = 10,
+) -> int:
+    """Bulk delete agent runs with optional filtering and retention policy.
+
+    Only deletes runs in terminal states (completed, failed, cancelled, timeout).
+    Always keeps the N most recent runs per agent to maintain history.
+
+    Args:
+        store: ActivityStore instance.
+        agent_name: Filter by agent name (optional).
+        status: Filter by status (optional, must be terminal).
+        before_epoch: Delete runs created before this epoch timestamp (optional).
+        keep_recent: Keep this many most recent runs per agent (default 10).
+
+    Returns:
+        Number of runs deleted.
+    """
+    terminal_statuses = ("completed", "failed", "cancelled", "timeout")
+
+    # Build conditions
+    conditions = ["status IN (?, ?, ?, ?)"]
+    params: list[Any] = list(terminal_statuses)
+
+    if agent_name:
+        conditions.append("agent_name = ?")
+        params.append(agent_name)
+
+    if status:
+        if status not in terminal_statuses:
+            logger.warning(f"Cannot bulk delete runs with non-terminal status: {status}")
+            return 0
+        conditions.append("status = ?")
+        params.append(status)
+
+    if before_epoch:
+        conditions.append("created_at_epoch < ?")
+        params.append(before_epoch)
+
+    where_clause = " AND ".join(conditions)
+
+    # First, identify runs to delete while respecting keep_recent per agent
+    # This query finds all deletable runs except the N most recent per agent
+    delete_sql = f"""
+        DELETE FROM agent_runs
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id, agent_name,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY agent_name
+                           ORDER BY created_at_epoch DESC
+                       ) as rn
+                FROM agent_runs
+                WHERE {where_clause}
+            )
+            WHERE rn > ?
+        )
+    """  # noqa: S608
+
+    with store._transaction() as conn:
+        cursor = conn.execute(delete_sql, [*params, keep_recent])
+        deleted_count = cursor.rowcount
+
+    if deleted_count > 0:
+        logger.info(
+            f"Bulk deleted {deleted_count} agent runs "
+            f"(agent={agent_name}, status={status}, keep_recent={keep_recent})"
+        )
+
+    return deleted_count
 
 
 def recover_stale_runs(
@@ -339,7 +458,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     data = dict(row)
 
     # Parse JSON fields
-    for field in ["files_created", "files_modified", "files_deleted"]:
+    for field in ["files_created", "files_modified", "files_deleted", "warnings"]:
         if data.get(field):
             try:
                 data[field] = json.loads(data[field])

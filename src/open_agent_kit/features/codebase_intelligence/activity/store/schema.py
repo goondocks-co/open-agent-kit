@@ -22,7 +22,9 @@ Contains schema version and SQL for creating the database schema.
 # v19: Added agent_schedules table for cron scheduling runtime state
 # v20: Added idx_sessions_created_at for dashboard sorting performance
 # v21: Added response_summary to prompt_batches for capturing agent responses
-SCHEMA_VERSION = 21
+# v22: Added input_tokens, output_tokens to agent_runs for SDK token tracking
+# v23: Moved schedule definitions to database (cron_expression, description, trigger_type, source_machine_id)
+SCHEMA_VERSION = 25
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -220,11 +222,16 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     error TEXT,  -- Error message if failed
     turns_used INTEGER DEFAULT 0,
     cost_usd REAL,
+    input_tokens INTEGER,  -- Input tokens used (from SDK ResultMessage)
+    output_tokens INTEGER,  -- Output tokens generated (from SDK ResultMessage)
 
     -- Files modified (JSON arrays)
     files_created TEXT,  -- JSON array of file paths
     files_modified TEXT,  -- JSON array of file paths
     files_deleted TEXT,  -- JSON array of file paths
+
+    -- Warnings (v25) - non-fatal issues during execution
+    warnings TEXT,  -- JSON array of warning messages
 
     -- Configuration snapshot (for reproducibility)
     project_config TEXT,  -- JSON of project config at run time
@@ -281,23 +288,39 @@ CREATE INDEX IF NOT EXISTS idx_session_relationships_a ON session_relationships(
 CREATE INDEX IF NOT EXISTS idx_session_relationships_b ON session_relationships(session_b_id);
 CREATE INDEX IF NOT EXISTS idx_session_relationships_type ON session_relationships(relationship_type);
 
--- Agent schedules table (v19 - runtime state for cron scheduling)
--- YAML defines schedule (cron + description), DB tracks runtime state
+-- Agent schedules table (v19 base, v23 adds schedule definition columns, v24 renames instance_name to task_name)
+-- Database is now the sole source of truth for schedules (YAML support deprecated)
 CREATE TABLE IF NOT EXISTS agent_schedules (
-    instance_name TEXT PRIMARY KEY,
+    task_name TEXT PRIMARY KEY,
     enabled INTEGER DEFAULT 1,
+
+    -- Schedule definition (v23 - moved from YAML to database)
+    cron_expression TEXT,           -- Cron expression (e.g., '0 0 * * MON')
+    description TEXT,               -- Human-readable schedule description
+    trigger_type TEXT DEFAULT 'cron', -- 'cron' or 'manual' (future: 'git_commit', 'file_change')
+
+    -- Runtime state
     last_run_at TEXT,
     last_run_at_epoch INTEGER,
     last_run_id TEXT,
     next_run_at TEXT,
     next_run_at_epoch INTEGER,
+
+    -- Metadata
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
-    updated_at_epoch INTEGER NOT NULL
+    updated_at_epoch INTEGER NOT NULL,
+
+    -- Machine tracking (v23 - for backup/restore filtering)
+    source_machine_id TEXT
 );
 
 -- Index for finding due schedules
 CREATE INDEX IF NOT EXISTS idx_agent_schedules_enabled_next
     ON agent_schedules(enabled, next_run_at_epoch);
+
+-- Index for backup filtering by source machine (v23)
+CREATE INDEX IF NOT EXISTS idx_agent_schedules_source_machine
+    ON agent_schedules(source_machine_id);
 """

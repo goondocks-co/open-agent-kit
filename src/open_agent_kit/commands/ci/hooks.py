@@ -245,6 +245,15 @@ def ci_hook(
         elif event_lower == "stop":
             transcript_path = input_json.get("transcript_path", "")
             stop_hook_active = input_json.get("stop_hook_active", False)
+            # Log what we receive from Claude Code for debugging
+            try:
+                with open(hooks_log, "a") as f:
+                    f.write(
+                        f"  [Stop:debug] transcript_path={transcript_path[:80] if transcript_path else '(empty)'} "
+                        f"input_keys={list(input_json.keys())}\n"
+                    )
+            except Exception:
+                pass
             _call_api(
                 "stop",
                 {

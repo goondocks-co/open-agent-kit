@@ -61,7 +61,7 @@ class TestAgentRegistry:
 
         assert "count" in result
         assert "templates" in result
-        assert "instances" in result
+        assert "tasks" in result
         assert "definitions_dir" in result
         assert result["count"] >= 1
         assert "documentation" in result["templates"]
@@ -221,25 +221,25 @@ features:
         assert config["features"]["patterns"] == ["src/**"]
 
 
-class TestAgentInstances:
-    """Tests for agent instance functionality."""
+class TestAgentTasks:
+    """Tests for agent task functionality."""
 
-    def test_list_instances_returns_builtins_without_project_root(self) -> None:
-        """list_instances should return built-in tasks even without project_root."""
+    def test_list_tasks_returns_builtins_without_project_root(self) -> None:
+        """list_tasks should return built-in tasks even without project_root."""
         registry = AgentRegistry()
-        instances = registry.list_instances()
+        tasks = registry.list_tasks()
         # Should have built-in tasks from the package
-        assert len(instances) >= 1
+        assert len(tasks) >= 1
         # All should be marked as built-in
-        for instance in instances:
-            assert instance.is_builtin is True
+        for task in tasks:
+            assert task.is_builtin is True
 
-    def test_list_instances_empty_when_no_definitions_dir(self, tmp_path: Path) -> None:
-        """list_instances should return empty list when no definitions dir exists."""
+    def test_list_tasks_empty_when_no_definitions_dir(self, tmp_path: Path) -> None:
+        """list_tasks should return empty list when no definitions dir exists."""
         # Use a non-existent directory for definitions (no templates = no built-in tasks)
         registry = AgentRegistry(definitions_dir=tmp_path / "nonexistent_defs")
-        instances = registry.list_instances()
-        assert instances == []
+        tasks = registry.list_tasks()
+        assert tasks == []
 
     def test_list_templates(self) -> None:
         """list_templates should return all templates."""
@@ -258,46 +258,46 @@ class TestAgentInstances:
         assert template is not None
         assert template.name == "documentation"
 
-    def test_get_instance_returns_none_without_instances(self) -> None:
-        """get_instance should return None when no instances exist."""
+    def test_get_task_returns_none_without_tasks(self) -> None:
+        """get_task should return None when no tasks exist."""
         registry = AgentRegistry()
 
-        instance = registry.get_instance("nonexistent")
-        assert instance is None
+        task = registry.get_task("nonexistent")
+        assert task is None
 
-    def test_create_instance(self, tmp_path: "Path") -> None:
-        """create_instance should create instance YAML file."""
+    def test_create_task(self, tmp_path: "Path") -> None:
+        """create_task should create task YAML file."""
         registry = AgentRegistry(project_root=tmp_path)
         registry.load_all()
 
-        instance = registry.create_instance(
+        task = registry.create_task(
             name="test-docs",
             template_name="documentation",
             display_name="Test Documentation",
-            description="Test instance",
+            description="Test task",
             default_task="Update the README",
         )
 
-        assert instance.name == "test-docs"
-        assert instance.display_name == "Test Documentation"
-        assert instance.agent_type == "documentation"
+        assert task.name == "test-docs"
+        assert task.display_name == "Test Documentation"
+        assert task.agent_type == "documentation"
         # default_task may have extra whitespace due to YAML literal block
-        assert "Update the README" in instance.default_task
+        assert "Update the README" in task.default_task
 
         # File should exist
         yaml_path = tmp_path / AGENT_PROJECT_CONFIG_DIR / "test-docs.yaml"
         assert yaml_path.exists()
 
-        # Instance should be registered
-        assert registry.get_instance("test-docs") is not None
+        # Task should be registered
+        assert registry.get_task("test-docs") is not None
 
-    def test_create_instance_invalid_name(self, tmp_path: "Path") -> None:
-        """create_instance should reject invalid names."""
+    def test_create_task_invalid_name(self, tmp_path: "Path") -> None:
+        """create_task should reject invalid names."""
         registry = AgentRegistry(project_root=tmp_path)
         registry.load_all()
 
-        with pytest.raises(ValueError, match="Invalid instance name"):
-            registry.create_instance(
+        with pytest.raises(ValueError, match="Invalid task name"):
+            registry.create_task(
                 name="Invalid Name!",
                 template_name="documentation",
                 display_name="Test",
@@ -305,13 +305,13 @@ class TestAgentInstances:
                 default_task="Do something",
             )
 
-    def test_create_instance_unknown_template(self, tmp_path: "Path") -> None:
-        """create_instance should reject unknown templates."""
+    def test_create_task_unknown_template(self, tmp_path: "Path") -> None:
+        """create_task should reject unknown templates."""
         registry = AgentRegistry(project_root=tmp_path)
         registry.load_all()
 
         with pytest.raises(ValueError, match="not found"):
-            registry.create_instance(
+            registry.create_task(
                 name="test",
                 template_name="nonexistent_template",
                 display_name="Test",
@@ -319,17 +319,17 @@ class TestAgentInstances:
                 default_task="Do something",
             )
 
-    def test_load_instances_from_project(self, tmp_path: "Path") -> None:
-        """Registry should load user instances from oak/agents/*.yaml."""
-        # Create instance YAML
+    def test_load_tasks_from_project(self, tmp_path: "Path") -> None:
+        """Registry should load user tasks from oak/agents/*.yaml."""
+        # Create task YAML
         config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
-        instance_yaml = """
+        task_yaml = """
 name: my-docs
 display_name: "My Documentation"
 agent_type: documentation
-description: "Custom docs instance"
+description: "Custom docs task"
 default_task: |
   Update all markdown files in docs/
 
@@ -337,39 +337,39 @@ maintained_files:
   - path: "docs/*.md"
     purpose: "Project documentation"
 """
-        (config_dir / "my-docs.yaml").write_text(instance_yaml)
+        (config_dir / "my-docs.yaml").write_text(task_yaml)
 
         # Load registry
         registry = AgentRegistry(project_root=tmp_path)
-        instances = registry.list_instances()
+        tasks = registry.list_tasks()
 
-        # Find our user instance
-        user_instance = next((i for i in instances if i.name == "my-docs"), None)
-        assert user_instance is not None
-        assert user_instance.display_name == "My Documentation"
-        assert user_instance.agent_type == "documentation"
-        assert "Update all markdown" in user_instance.default_task
-        assert user_instance.is_builtin is False
+        # Find our user task
+        user_task = next((t for t in tasks if t.name == "my-docs"), None)
+        assert user_task is not None
+        assert user_task.display_name == "My Documentation"
+        assert user_task.agent_type == "documentation"
+        assert "Update all markdown" in user_task.default_task
+        assert user_task.is_builtin is False
 
-    def test_load_instances_skips_invalid_template_reference(self, tmp_path: "Path") -> None:
-        """Registry should skip user instances with unknown agent_type."""
+    def test_load_tasks_skips_invalid_template_reference(self, tmp_path: "Path") -> None:
+        """Registry should skip user tasks with unknown agent_type."""
         config_dir = tmp_path / AGENT_PROJECT_CONFIG_DIR
         config_dir.mkdir(parents=True)
 
-        instance_yaml = """
-name: bad-instance
-display_name: "Bad Instance"
+        task_yaml = """
+name: bad-task
+display_name: "Bad Task"
 agent_type: nonexistent_template
 default_task: Do something
 """
-        (config_dir / "bad-instance.yaml").write_text(instance_yaml)
+        (config_dir / "bad-task.yaml").write_text(task_yaml)
 
         registry = AgentRegistry(project_root=tmp_path)
-        instances = registry.list_instances()
+        tasks = registry.list_tasks()
 
-        # Should skip the bad user instance (but may still have built-ins)
-        bad_instance = next((i for i in instances if i.name == "bad-instance"), None)
-        assert bad_instance is None
+        # Should skip the bad user task (but may still have built-ins)
+        bad_task = next((t for t in tasks if t.name == "bad-task"), None)
+        assert bad_task is None
 
 
 class TestAgentModels:

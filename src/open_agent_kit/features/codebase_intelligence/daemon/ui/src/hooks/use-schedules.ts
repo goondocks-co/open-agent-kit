@@ -4,9 +4,11 @@
  * Provides hooks for:
  * - Listing schedules with their status
  * - Getting individual schedule details
- * - Enabling/disabling schedules
+ * - Creating new schedules
+ * - Updating schedules (enable/disable, cron, description)
+ * - Deleting schedules
  * - Manually triggering scheduled runs
- * - Syncing schedules from YAML
+ * - Cleaning up orphaned schedules
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,11 +19,13 @@ import { API_ENDPOINTS } from "@/lib/constants";
 // =============================================================================
 
 export interface ScheduleStatus {
-    instance_name: string;
+    task_name: string;
     has_definition: boolean;
     has_db_record: boolean;
+    has_task: boolean;
     cron: string | null;
     description: string | null;
+    trigger_type: string;
     enabled: boolean | null;
     last_run_at: string | null;
     last_run_id: string | null;
@@ -34,6 +38,20 @@ export interface ScheduleListResponse {
     scheduler_running: boolean;
 }
 
+export interface ScheduleCreateRequest {
+    task_name: string;
+    cron_expression?: string;
+    description?: string;
+    trigger_type?: string;
+}
+
+export interface ScheduleUpdateRequest {
+    enabled?: boolean;
+    cron_expression?: string;
+    description?: string;
+    trigger_type?: string;
+}
+
 export interface ScheduleSyncResponse {
     created: number;
     updated: number;
@@ -42,10 +60,17 @@ export interface ScheduleSyncResponse {
 }
 
 export interface ScheduleRunResponse {
-    instance_name: string;
+    task_name: string;
     run_id: string | null;
     status: string | null;
     error: string | null;
+    skipped: boolean;
+    message: string;
+}
+
+export interface ScheduleDeleteResponse {
+    task_name: string;
+    deleted: boolean;
     message: string;
 }
 
@@ -56,7 +81,7 @@ export interface ScheduleRunResponse {
 const scheduleKeys = {
     all: ["schedules"] as const,
     list: () => [...scheduleKeys.all, "list"] as const,
-    detail: (instanceName: string) => [...scheduleKeys.all, "detail", instanceName] as const,
+    detail: (taskName: string) => [...scheduleKeys.all, "detail", taskName] as const,
 };
 
 // =============================================================================
@@ -71,31 +96,56 @@ async function fetchSchedules(): Promise<ScheduleListResponse> {
     return response.json();
 }
 
-async function fetchScheduleDetail(instanceName: string): Promise<ScheduleStatus> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${instanceName}`);
+async function fetchScheduleDetail(taskName: string): Promise<ScheduleStatus> {
+    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`);
     if (!response.ok) {
         throw new Error(`Failed to fetch schedule: ${response.statusText}`);
     }
     return response.json();
 }
 
+async function createSchedule(data: ScheduleCreateRequest): Promise<ScheduleStatus> {
+    const response = await fetch(API_ENDPOINTS.SCHEDULES, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to create schedule: ${response.statusText}`);
+    }
+    return response.json();
+}
+
 async function updateSchedule(
-    instanceName: string,
-    data: { enabled?: boolean }
+    taskName: string,
+    data: ScheduleUpdateRequest
 ): Promise<ScheduleStatus> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${instanceName}`, {
+    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
     });
     if (!response.ok) {
-        throw new Error(`Failed to update schedule: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to update schedule: ${response.statusText}`);
     }
     return response.json();
 }
 
-async function runSchedule(instanceName: string): Promise<ScheduleRunResponse> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${instanceName}/run`, {
+async function deleteSchedule(taskName: string): Promise<ScheduleDeleteResponse> {
+    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, {
+        method: "DELETE",
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to delete schedule: ${response.statusText}`);
+    }
+    return response.json();
+}
+
+async function runSchedule(taskName: string): Promise<ScheduleRunResponse> {
+    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}/run`, {
         method: "POST",
     });
     if (!response.ok) {
@@ -132,28 +182,62 @@ export function useSchedules() {
 /**
  * Hook to fetch a single schedule's detail.
  */
-export function useScheduleDetail(instanceName: string) {
+export function useScheduleDetail(taskName: string) {
     return useQuery({
-        queryKey: scheduleKeys.detail(instanceName),
-        queryFn: () => fetchScheduleDetail(instanceName),
-        enabled: !!instanceName,
+        queryKey: scheduleKeys.detail(taskName),
+        queryFn: () => fetchScheduleDetail(taskName),
+        enabled: !!taskName,
     });
 }
 
 /**
- * Hook to update a schedule (enable/disable).
+ * Hook to create a new schedule.
+ */
+export function useCreateSchedule() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (data: ScheduleCreateRequest) => createSchedule(data),
+        onSuccess: (data) => {
+            // Refresh the schedules list
+            queryClient.invalidateQueries({ queryKey: scheduleKeys.list() });
+            // Set the specific schedule cache
+            queryClient.setQueryData(scheduleKeys.detail(data.task_name), data);
+        },
+    });
+}
+
+/**
+ * Hook to update a schedule (enable/disable, cron, description).
  */
 export function useUpdateSchedule() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ instanceName, enabled }: { instanceName: string; enabled: boolean }) =>
-            updateSchedule(instanceName, { enabled }),
+        mutationFn: ({ taskName, ...data }: { taskName: string } & ScheduleUpdateRequest) =>
+            updateSchedule(taskName, data),
         onSuccess: (data) => {
             // Update the list cache
             queryClient.invalidateQueries({ queryKey: scheduleKeys.list() });
             // Update the specific schedule cache
-            queryClient.setQueryData(scheduleKeys.detail(data.instance_name), data);
+            queryClient.setQueryData(scheduleKeys.detail(data.task_name), data);
+        },
+    });
+}
+
+/**
+ * Hook to delete a schedule.
+ */
+export function useDeleteSchedule() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (taskName: string) => deleteSchedule(taskName),
+        onSuccess: (_data, taskName) => {
+            // Refresh the schedules list
+            queryClient.invalidateQueries({ queryKey: scheduleKeys.list() });
+            // Remove the specific schedule from cache
+            queryClient.removeQueries({ queryKey: scheduleKeys.detail(taskName) });
         },
     });
 }
@@ -165,7 +249,7 @@ export function useRunSchedule() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (instanceName: string) => runSchedule(instanceName),
+        mutationFn: (taskName: string) => runSchedule(taskName),
         onSuccess: () => {
             // Refresh schedules list to show updated last_run
             queryClient.invalidateQueries({ queryKey: scheduleKeys.list() });
@@ -176,7 +260,7 @@ export function useRunSchedule() {
 }
 
 /**
- * Hook to sync schedules from YAML definitions.
+ * Hook to clean up orphaned schedules (tasks that no longer exist).
  */
 export function useSyncSchedules() {
     const queryClient = useQueryClient();

@@ -18,12 +18,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import {
     useAgents,
-    useRunInstance,
-    useCreateInstance,
-    useCopyInstance,
+    useRunTask,
+    useCreateTask,
+    useCopyTask,
     useReloadAgents,
     type AgentTemplate,
-    type AgentInstance,
+    type AgentTask,
 } from "@/hooks/use-agents";
 import {
     Bot,
@@ -49,19 +49,19 @@ import { FALLBACK_MESSAGES } from "@/lib/constants";
 // =============================================================================
 
 function TaskCard({
-    instance,
+    task,
     onRun,
     onCopy,
     isRunning,
     isCopying,
-    instancesDir,
+    tasksDir,
 }: {
-    instance: AgentInstance;
-    onRun: (instanceName: string) => void;
-    onCopy: (instanceName: string) => void;
+    task: AgentTask;
+    onRun: (taskName: string) => void;
+    onCopy: (taskName: string) => void;
     isRunning: boolean;
     isCopying: boolean;
-    instancesDir: string;
+    tasksDir: string;
 }) {
     const [expanded, setExpanded] = useState(false);
 
@@ -75,8 +75,8 @@ function TaskCard({
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <CardTitle className="text-lg">{instance.display_name}</CardTitle>
-                                {instance.is_builtin && (
+                                <CardTitle className="text-lg">{task.display_name}</CardTitle>
+                                {task.is_builtin && (
                                     <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-500/10 text-blue-600" title="Built-in task shipped with OAK">
                                         <Package className="w-3 h-3" />
                                         OAK Built-in
@@ -84,7 +84,7 @@ function TaskCard({
                                 )}
                             </div>
                             <CardDescription className="mt-1">
-                                {instance.description || `${instance.agent_type} Agent Task`}
+                                {task.description || `${task.agent_type} Agent Task`}
                             </CardDescription>
                         </div>
                     </div>
@@ -108,17 +108,17 @@ function TaskCard({
                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                             <Timer className="w-3 h-3" />
-                            Max {instance.max_turns} turns
+                            Max {task.max_turns} turns
                         </span>
                         <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {Math.floor(instance.timeout_seconds / 60)}m timeout
+                            {Math.floor(task.timeout_seconds / 60)}m timeout
                         </span>
                         <span className="flex items-center gap-1">
                             <Layers className="w-3 h-3" />
-                            Agent: {instance.agent_type}
+                            Agent: {task.agent_type}
                         </span>
-                        {instance.has_execution_override && (
+                        {task.has_execution_override && (
                             <span className="flex items-center gap-1 text-amber-600" title="Task has custom execution limits (overrides agent defaults)">
                                 <Settings2 className="w-3 h-3" />
                                 Custom limits
@@ -130,20 +130,20 @@ function TaskCard({
                     <div className="space-y-2">
                         <div className="text-xs font-medium">Configured Task:</div>
                         <pre className="p-3 rounded-md bg-muted/50 text-xs overflow-x-auto max-h-32 overflow-y-auto whitespace-pre-wrap">
-                            {instance.default_task}
+                            {task.default_task}
                         </pre>
                     </div>
 
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <FileCode className="w-3 h-3" />
-                        Edit: <code className="bg-muted px-1.5 py-0.5 rounded">{instancesDir}/{instance.name}.yaml</code>
+                        Edit: <code className="bg-muted px-1.5 py-0.5 rounded">{tasksDir}/{task.name}.yaml</code>
                     </p>
                 </CardContent>
             )}
 
             <CardFooter className="pt-0 gap-2">
                 <Button
-                    onClick={() => onRun(instance.name)}
+                    onClick={() => onRun(task.name)}
                     disabled={isRunning}
                     className="flex-1"
                     title="Run this task"
@@ -155,10 +155,10 @@ function TaskCard({
                     )}
                     Run
                 </Button>
-                {instance.is_builtin && (
+                {task.is_builtin && (
                     <Button
                         variant="outline"
-                        onClick={() => onCopy(instance.name)}
+                        onClick={() => onCopy(task.name)}
                         disabled={isCopying}
                         title="Copy to customize"
                     >
@@ -254,14 +254,14 @@ function CreateTaskModal({
     templateName,
     onSubmit,
     isPending,
-    instancesDir,
+    tasksDir,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     templateName: string;
     onSubmit: (data: { name: string; display_name: string; description: string; default_task: string }) => void;
     isPending: boolean;
-    instancesDir: string;
+    tasksDir: string;
 }) {
     const [name, setName] = useState("");
     const [displayName, setDisplayName] = useState("");
@@ -307,7 +307,7 @@ function CreateTaskModal({
                     <h2 className="text-lg font-semibold">Create Task for {templateName} Agent</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
                         Create a new task for this agent. The task will be saved
-                        to <code className="bg-muted px-1 rounded">{instancesDir}/</code> and can be customized later.
+                        to <code className="bg-muted px-1 rounded">{tasksDir}/</code> and can be customized later.
                     </p>
                 </div>
 
@@ -395,9 +395,9 @@ function CreateTaskModal({
 
 export default function AgentsList() {
     const { data: agentsData, isLoading, isError } = useAgents();
-    const runInstance = useRunInstance();
-    const createInstance = useCreateInstance();
-    const copyInstance = useCopyInstance();
+    const runTask = useRunTask();
+    const createTask = useCreateTask();
+    const copyTask = useCopyTask();
     const reloadAgents = useReloadAgents();
 
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -405,13 +405,13 @@ export default function AgentsList() {
     const [selectedTemplate, setSelectedTemplate] = useState<string>("");
 
     const templates = agentsData?.templates || [];
-    const instances = agentsData?.instances || [];
-    const instancesDir = agentsData?.instances_dir || "oak/ci/agents";
+    const tasks = agentsData?.tasks || [];
+    const tasksDir = agentsData?.tasks_dir || "oak/ci/agents";
 
-    const handleRunInstance = async (instanceName: string) => {
+    const handleRunTask = async (taskName: string) => {
         setMessage(null);
         try {
-            const result = await runInstance.mutateAsync(instanceName);
+            const result = await runTask.mutateAsync(taskName);
             setMessage({ type: "success", text: result.message });
         } catch (error) {
             setMessage({
@@ -421,10 +421,10 @@ export default function AgentsList() {
         }
     };
 
-    const handleCopyInstance = async (instanceName: string) => {
+    const handleCopyTask = async (taskName: string) => {
         setMessage(null);
         try {
-            const result = await copyInstance.mutateAsync({ instanceName });
+            const result = await copyTask.mutateAsync({ taskName });
             setMessage({ type: "success", text: result.message });
         } catch (error) {
             setMessage({
@@ -434,15 +434,15 @@ export default function AgentsList() {
         }
     };
 
-    const handleCreateInstance = (templateName: string) => {
+    const handleCreateTask = (templateName: string) => {
         setSelectedTemplate(templateName);
         setCreateModalOpen(true);
     };
 
-    const handleCreateInstanceSubmit = async (data: { name: string; display_name: string; description: string; default_task: string }) => {
+    const handleCreateTaskSubmit = async (data: { name: string; display_name: string; description: string; default_task: string }) => {
         setMessage(null);
         try {
-            const result = await createInstance.mutateAsync({
+            const result = await createTask.mutateAsync({
                 templateName: selectedTemplate,
                 ...data,
             });
@@ -515,11 +515,11 @@ export default function AgentsList() {
                             <Bot className="w-5 h-5 text-green-600" />
                             <h2 className="text-lg font-semibold">Agent Tasks</h2>
                             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                                {instancesDir}/
+                                {tasksDir}/
                             </span>
                         </div>
 
-                        {instances.length === 0 ? (
+                        {tasks.length === 0 ? (
                             <Card className="border-dashed">
                                 <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                                     <Bot className="w-10 h-10 mb-3 opacity-30" />
@@ -531,15 +531,15 @@ export default function AgentsList() {
                             </Card>
                         ) : (
                             <div className="grid gap-4 md:grid-cols-2">
-                                {instances.map((instance) => (
+                                {tasks.map((task) => (
                                     <TaskCard
-                                        key={instance.name}
-                                        instance={instance}
-                                        onRun={handleRunInstance}
-                                        onCopy={handleCopyInstance}
-                                        isRunning={runInstance.isPending}
-                                        isCopying={copyInstance.isPending}
-                                        instancesDir={instancesDir}
+                                        key={task.name}
+                                        task={task}
+                                        onRun={handleRunTask}
+                                        onCopy={handleCopyTask}
+                                        isRunning={runTask.isPending}
+                                        isCopying={copyTask.isPending}
+                                        tasksDir={tasksDir}
                                     />
                                 ))}
                             </div>
@@ -572,7 +572,7 @@ export default function AgentsList() {
                                     <AgentTemplateCard
                                         key={template.name}
                                         template={template}
-                                        onCreateTask={handleCreateInstance}
+                                        onCreateTask={handleCreateTask}
                                     />
                                 ))}
                             </div>
@@ -586,9 +586,9 @@ export default function AgentsList() {
                 open={createModalOpen}
                 onOpenChange={setCreateModalOpen}
                 templateName={selectedTemplate}
-                onSubmit={handleCreateInstanceSubmit}
-                isPending={createInstance.isPending}
-                instancesDir={instancesDir}
+                onSubmit={handleCreateTaskSubmit}
+                isPending={createTask.isPending}
+                tasksDir={tasksDir}
             />
         </div>
     );

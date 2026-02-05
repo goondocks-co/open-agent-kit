@@ -661,6 +661,27 @@ VALID_PROMPT_SOURCES: Final[tuple[str, ...]] = (
 )
 
 # =============================================================================
+# Session Continuation Labels
+# =============================================================================
+# Labels for system-created batches during session continuation events.
+# These are descriptive labels shown in the UI, not agent-specific behavior.
+# The actual triggers (SessionStart sources) are defined in agent manifests.
+
+# When user explicitly clears context to continue in a new session
+BATCH_LABEL_CLEARED_CONTEXT: Final[str] = "[Session continuation from cleared context]"
+
+# When agent automatically compacts context mid-session
+BATCH_LABEL_CONTEXT_COMPACTION: Final[str] = "[Continuation after context compaction]"
+
+# Generic fallback for other continuation scenarios
+BATCH_LABEL_SESSION_CONTINUATION: Final[str] = "[Session continuation]"
+
+# Batch reactivation timeout (seconds) - universal across agents
+# If a batch was completed within this time and tools are still executing,
+# reactivate it instead of creating a new batch
+BATCH_REACTIVATION_TIMEOUT_SECONDS: Final[int] = 60
+
+# =============================================================================
 # Internal Message Detection
 # =============================================================================
 # Prefixes used to detect internal/system messages that should not generate memories.
@@ -744,6 +765,12 @@ SHUTDOWN_TASK_TIMEOUT_SECONDS: Final[float] = 10.0  # Timeout for canceling back
 SCHEDULER_STOP_TIMEOUT_SECONDS: Final[float] = 5.0  # Timeout for stopping scheduler loop
 AGENT_INTERRUPT_GRACE_SECONDS: Final[float] = 2.0  # Grace period after interrupt before timeout
 
+# Agent retry configuration (for transient failures)
+AGENT_RETRY_MAX_ATTEMPTS: Final[int] = 3  # Maximum retry attempts for transient failures
+AGENT_RETRY_BASE_DELAY: Final[float] = (
+    1.0  # Base delay in seconds (exponential backoff: 1s, 2s, 4s)
+)
+
 # Agent run status values (match AgentRunStatus enum)
 AGENT_STATUS_PENDING: Final[str] = "pending"
 AGENT_STATUS_RUNNING: Final[str] = "running"
@@ -796,18 +823,18 @@ AGENT_PROJECT_CONFIG_DIR: Final[str] = "oak/ci/agents"
 AGENT_PROJECT_CONFIG_EXTENSION: Final[str] = ".yaml"
 
 # =============================================================================
-# Agent Instance Constants
+# Agent Task Constants
 # =============================================================================
 
-# Instance schema version (for future migrations)
-AGENT_INSTANCE_SCHEMA_VERSION: Final[int] = 1
+# Task schema version (for future migrations)
+AGENT_TASK_SCHEMA_VERSION: Final[int] = 1
 
-# Instance name validation
-AGENT_INSTANCE_NAME_MIN_LENGTH: Final[int] = 1
-AGENT_INSTANCE_NAME_MAX_LENGTH: Final[int] = 50
-AGENT_INSTANCE_NAME_PATTERN: Final[str] = r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$"
+# Task name validation
+AGENT_TASK_NAME_MIN_LENGTH: Final[int] = 1
+AGENT_TASK_NAME_MAX_LENGTH: Final[int] = 50
+AGENT_TASK_NAME_PATTERN: Final[str] = r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$"
 
-# CI query confidence levels for instance config
+# CI query confidence levels for task config
 CI_QUERY_CONFIDENCE_HIGH: Final[str] = "high"
 CI_QUERY_CONFIDENCE_MEDIUM: Final[str] = "medium"
 CI_QUERY_CONFIDENCE_LOW: Final[str] = "low"
@@ -834,3 +861,17 @@ VALID_CI_QUERY_TOOLS: Final[tuple[str, ...]] = (
 # Default CI query limits
 DEFAULT_CI_QUERY_LIMIT: Final[int] = 10
 MAX_CI_QUERY_LIMIT: Final[int] = 100
+
+# =============================================================================
+# Schedule Trigger Types
+# =============================================================================
+# Trigger types define when an agent schedule runs.
+# - cron: Time-based scheduling via cron expression
+# - manual: Run only when manually triggered by user
+
+SCHEDULE_TRIGGER_CRON: Final[str] = "cron"
+SCHEDULE_TRIGGER_MANUAL: Final[str] = "manual"
+VALID_SCHEDULE_TRIGGER_TYPES: Final[tuple[str, ...]] = (
+    SCHEDULE_TRIGGER_CRON,
+    SCHEDULE_TRIGGER_MANUAL,
+)

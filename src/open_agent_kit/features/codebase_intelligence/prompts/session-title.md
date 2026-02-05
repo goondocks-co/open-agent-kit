@@ -3,7 +3,7 @@ name: session-title
 description: Generate a short title for the session based on prompts
 ---
 
-Generate a short, descriptive title (5-10 words) for this coding session based on the user's prompts.
+Generate a short, descriptive title (6-12 words) for this coding session based on the user's prompts.
 
 ## Prompts
 
@@ -12,7 +12,7 @@ Generate a short, descriptive title (5-10 words) for this coding session based o
 ## Task
 
 Create a brief title that captures what this session was about. The title should:
-- Be 5-10 words maximum
+- Be 6-12 words maximum
 - Start with an action verb when appropriate (Add, Fix, Implement, Refactor, Debug, etc.)
 - Mention the main feature, component, or file being worked on
 - Be specific enough to distinguish from other sessions

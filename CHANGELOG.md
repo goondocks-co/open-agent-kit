@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Database-backed agent schedules with UI management — [Implement database-backed schedules and UI](http://localhost:38283/activity/sessions/a60436e4-9674-4eda-b428-eb3fb6f5da5d)
+- Quick-access panel in daemon UI for CLI agent commands — [Configure daemon UI quick‑access panel for CLI agents](http://localhost:38283/activity/sessions/25db97fd-e4a0-41a8-b30a-0fc858699bed)
+- Generic agent summary hook with Markdown rendering support — [Implement generic agent summary hook and Markdown rendering](http://localhost:38283/activity/sessions/3a594cc8-1f9a-475a-8062-d1640bbffe50)
+- OTLP logging integration for Codex agent — [Implement OTLP logging for Codex integration](http://localhost:38283/activity/sessions/1bf90f3a-9458-4ab5-b297-08cad86473a0)
+- Comprehensive Claude Agent SDK documentation covering Ollama and LM Studio local model integration — [Add comprehensive Claude Agent SDK documentation and UI refresh](http://localhost:38283/activity/sessions/35f4f337-2e86-4452-81eb-cb0065f61f76)
+- Token usage tracking in executor for cost optimization and resource monitoring — [Audit and outline Claude Agent SDK improvements](http://localhost:38283/activity/sessions/587901c4-7ede-4ab4-ac4c-354954c44c0f)
+- OTEL (OpenTelemetry) support with dynamic notify configuration in Oak daemon — [Configure OTEL support and dynamic notify in Oak daemon](http://localhost:38283/activity/sessions/019c2431-0b1a-7023-909b-7c6f7017008d)
+- Session summary extraction from transcripts on session stop — [Implement daemon summary extraction for session stop](http://localhost:38283/activity/sessions/e6adaa12-a72c-4fdd-b02d-d34b373213ff)
+- OTLP telemetry integration for Codex agent — [Implement OTLP telemetry integration for Codex](http://localhost:38283/activity/sessions/76bc1091-d518-4310-94af-9f6d88392dc4)
+- Session change summary logging in daemon — [Update daemon to log session change summaries](http://localhost:38283/activity/sessions/2347a9f5-94d0-4048-9f7f-b1f266861105)
+- Dynamic project root discovery for documentation agent tasks — [Implement dynamic project root discovery for documentation tasks](http://localhost:38283/activity/sessions/33cb3952-8095-4f20-9e14-99136f077276)
+- `oak ci sync` command for daemon and backup alignment — [Implement oak ci sync for daemon and backup alignment](http://localhost:38283/activity/sessions/2cd610d5-263e-4a11-a170-29ea912baeb4)
+- Activity backup and health monitoring via `oak ci sync` — [Update oak ci sync for activity backup and health](http://localhost:38283/activity/sessions/0f87078c-26ce-46a0-a268-d074edadf762)
 - Upgrade logic for built-in task templates with stable identifier support — [Implement upgrade logic for built‑in task templates](http://localhost:38167/activity/sessions/73094f41-9caa-4c8b-b2ad-5594e21f49b3)
 - Filter chips and context indicator for daemon log viewer — [Add filter chips and context indicator to daemon log viewer](http://localhost:38167/activity/sessions/735f34fd-3899-437e-848f-e279228138dd)
 - Minimum activity check before generating session titles — [Add minimum activity check before generating session titles](http://localhost:38167/activity/sessions/a812c6a9-27ad-4893-b5ae-17c25f17160e)
@@ -34,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactored terminology from "Instance" to "Task" across codebase for clarity — [Refactor terminology from Instance to Task across codebase](http://localhost:38283/activity/sessions/d7dff207-6683-4fa3-8b27-7b8ff5ef6b18)
+- Agent schedules now persisted to database instead of in-memory storage — [Update agent schedules to database persistence](http://localhost:38283/activity/sessions/5b1131f2-d55b-487c-8f8d-b6b5fb83915c)
+- Makefile refactored to remove `.venv` dependency for cleaner builds — [Refactor Makefile to remove .venv dependency](http://localhost:38283/activity/sessions/217e9395-812c-4d66-9229-4842ac7dff1b)
 - Refactor Agent Instance to Configuration across UI and API — [Refactor Agent Instance to Configuration across UI and API](http://localhost:38167/activity/sessions/9017876a-5cab-4c1c-b5da-89f97cd24ca0)
 - Configure plan capture workflow for Claude sessions — [Configure plan capture workflow for Claude sessions](http://localhost:38167/activity/sessions/96d99f2a-0e0f-449d-b3b3-ccd584f944a7)
 - Removed unused issue provider functionality — [Refactor codebase: Remove unused issue provider](http://localhost:38167/activity/sessions/479bf687-46dd-4366-a1d6-b7d8163d7396)
@@ -105,6 +121,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed duplicate plans appearing by adding `session_id` filter to `get_plans` query
 - Fixed internal server error caused by missing newline before `ActivityStore` class definition
 - Fixed legacy null-check for `source_machine_id` column that caused unnecessary conditional logic in restore
+- Fixed summary capture activity and Cursor hook payload handling — [Add summary to capture activity and fix cursor hook](http://localhost:38283/activity/sessions/3a594cc8-1f9a-475a-8062-d1640bbffe50)
+- Fixed notification deduplication dropping events due to timestamp suffix in event key — see [`notifications.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/notifications.py)
+- Fixed Claude Code transcript parsing to handle nested message format (`{type: "assistant", message: {...}}`) — see [`transcript.py`](src/open_agent_kit/features/codebase_intelligence/transcript.py)
+- Fixed notification installer guard logic incorrectly skipping script generation — see [`installer.py`](src/open_agent_kit/features/codebase_intelligence/notifications/installer.py)
+- Fixed CI command package missing submodule exports causing import failures — see [`ci/__init__.py`](src/open_agent_kit/commands/ci/__init__.py)
+- Fixed OTEL route accessing manifest as dict instead of Pydantic model — see [`otel.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/otel.py)
+- Fixed response summary not captured when user queues a new message while Claude is responding (interrupt bypasses Stop hook) — added fallback capture in `UserPromptSubmit` — see [`hooks.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks.py)
+- Fixed stale session recovery race condition where resumed sessions were immediately marked stale due to empty prompt batch — see [`sessions.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/sessions.py)
+- Fixed backup restoration failing when run from different working directory due to relative path check — see [`backup.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/backup.py)
+- Fixed SQL query referencing non-existent `parent_reason` column in sessions table — see [`hooks.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks.py)
+- Fixed syntax errors in `hooks.py` caused by incomplete edits leaving stray characters — see [`hooks.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks.py)
+- Fixed notification config template auto-generating unwanted language field — see [`notify_config.toml.j2`](src/open_agent_kit/features/codebase_intelligence/notifications/codex/notify_config.toml.j2)
+- Fixed prompt batch finalization logic duplicated across routes by extracting to shared helper — see [`batches.py`](src/open_agent_kit/features/codebase_intelligence/activity/batches.py)
 
 ### Improved
 
