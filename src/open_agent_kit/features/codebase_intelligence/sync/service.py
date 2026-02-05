@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from open_agent_kit.constants import VERSION
 from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
     discover_backup_files,
+    get_backup_dir,
     get_backup_filename,
 )
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
@@ -23,7 +24,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
     CI_DATA_DIR,
-    CI_HISTORY_BACKUP_DIR,
 )
 from open_agent_kit.features.codebase_intelligence.sync.models import (
     SyncPlan,
@@ -55,7 +55,7 @@ class SyncService:
         """
         self.project_root = project_root
         self.ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
-        self.backup_dir = project_root / CI_HISTORY_BACKUP_DIR
+        self.backup_dir = get_backup_dir(project_root)
         self.chroma_dir = self.ci_data_dir / CI_CHROMA_DIR
         self.db_path = self.ci_data_dir / CI_ACTIVITIES_DB_FILENAME
 

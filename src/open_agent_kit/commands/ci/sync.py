@@ -32,7 +32,7 @@ def ci_sync(
         False,
         "--team",
         "-t",
-        help="Restore team backups from oak/ci/history/",
+        help="Restore team backups (uses OAK_CI_BACKUP_DIR if set, else oak/ci/history/)",
     ),
     include_activities: bool = typer.Option(
         False,

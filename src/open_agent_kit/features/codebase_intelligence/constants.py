@@ -253,6 +253,10 @@ CI_HISTORY_BACKUP_FILE_SUFFIX: Final[str] = ".sql"
 CI_BACKUP_HEADER_MAX_LINES: Final[int] = 10
 CI_BACKUP_PATH_INVALID_ERROR: Final[str] = "Backup path must be within {backup_dir}"
 
+# Environment variable for backup directory override
+# Allows teams to store backups in external locations (shared drives, separate repos)
+OAK_CI_BACKUP_DIR_ENV: Final[str] = "OAK_CI_BACKUP_DIR"
+
 # =============================================================================
 # Machine Identifier Configuration (privacy-preserving)
 # =============================================================================

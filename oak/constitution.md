@@ -352,15 +352,26 @@ For every change:
 
 **Python Version:** OAK requires Python 3.13. The project's `.python-version` file enforces this.
 
-**Global Tool Reinstallation:** When reinstalling the global `oak` CLI after code changes, agents **must use the Makefile target**:
+**Editable Install (MUST preserve):** OAK is developed locally via `uv tool install -e . --force` (see `make setup` / `make sync`). The `-e` flag creates an editable install so Python's `__file__` resolves to the **source tree**, not site-packages. This is critical because:
+
+- The CI daemon uses `Path(__file__)` to locate static assets and templates at runtime.
+- Without `-e`, changes to Python files and rebuilt UI assets are invisible to the running daemon.
+- Breaking the editable install silently causes stale behavior with no error messages.
+
+**Hard rules for install commands:**
+
+- **MUST NOT** run `uv tool install` without the `-e` flag.
+- **MUST NOT** run `uv pip install` without `-e`.
+- **MUST** use Makefile targets (`make setup`, `make sync`) instead of ad-hoc install commands. These targets ensure both the correct Python version and the `-e` flag.
+- After any install or sync operation, **MUST** verify the editable install is intact:
 
 ```bash
-make tool-reinstall
+oak --python-path -c "import open_agent_kit; print(open_agent_kit.__file__)"
+# Output MUST contain the source tree path (e.g., src/open_agent_kit/__init__.py)
+# Output MUST NOT contain .local/share/uv/tools/
 ```
 
-**Never run raw `uv tool install` commands** — they will use the system default Python (which may be an unspported version) and omit required extras. The Makefile target ensures:
-
-- Python 3.13 is explicitly specified and all required dependencies are installed.
+**Troubleshooting:** If the CI daemon serves stale assets or Python changes are not reflected, the editable install is the first suspect. Run the verification command above.
 
 **Project-scoped commands:** For project-scoped operations (`uv sync`, `uv run`, etc.), the `.python-version` file ensures the correct Python version is used automatically.
 

@@ -27,6 +27,10 @@ Read and follow **`oak/constitution.md`**. It is the authoritative specification
 - Templates shipped by OAK are managed by OAK and overwritten on upgrade (no user overrides).
 - Narrow lanes for deviation; when unclear, ask.
 
+## Editable install (MUST preserve)
+
+**MUST NOT** run `uv tool install` or `uv pip install` without the `-e` flag. Always use `make setup` or `make sync` instead of ad-hoc install commands. See §7.3 of `oak/constitution.md` for the full rule, rationale, and verification command.
+
 ---
 
 ## Top Anchors (shorthand)

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal, FolderCog, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -181,6 +181,18 @@ export default function Team() {
                                     )}
                                 </div>
                             )}
+                            {backupStatus.backup_dir_source !== "default" && (
+                                <div className="mt-2 text-xs text-blue-600 dark:text-blue-400 pl-6 flex items-center gap-1">
+                                    <FolderCog className="h-3 w-3" />
+                                    <span>Custom backup dir: </span>
+                                    <code className="bg-blue-100 dark:bg-blue-900/50 px-1 rounded">
+                                        {backupStatus.backup_dir}
+                                    </code>
+                                    <span className="text-muted-foreground">
+                                        (via {backupStatus.backup_dir_source === "environment variable" ? "OAK_CI_BACKUP_DIR env var" : ".env file"})
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -235,7 +247,21 @@ export default function Team() {
                         Backup & Restore
                     </CardTitle>
                     <CardDescription>
-                        Create and restore backups. Files are saved to <code className="bg-muted px-1 rounded text-xs">oak/data/</code> and can be committed to git.
+                        Create and restore backups. Files are saved to{" "}
+                        <code className="bg-muted px-1 rounded text-xs">
+                            {backupStatus?.backup_dir || "oak/ci/history/"}
+                        </code>
+                        {backupStatus?.backup_dir_source && backupStatus.backup_dir_source !== "default" && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                                (via {backupStatus.backup_dir_source === "environment variable" ? "OAK_CI_BACKUP_DIR" : ".env"})
+                            </span>
+                        )}
+                        {" "}and can be committed to git.
+                        {(!backupStatus?.backup_dir_source || backupStatus.backup_dir_source === "default") && (
+                            <a href="#custom-backup-dir" className="ml-1 text-xs text-blue-500 hover:underline">
+                                Use a custom location?
+                            </a>
+                        )}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -328,6 +354,40 @@ export default function Team() {
                         Duplicates are automatically skipped using content-based hashing.
                         Team members can safely restore their backups without creating duplicate records.
                     </p>
+                </CardContent>
+            </Card>
+
+            {/* Custom Backup Directory Help */}
+            <Card id="custom-backup-dir" className="border-dashed scroll-mt-6">
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <FolderCog className="h-4 w-4" />
+                        Custom Backup Directory
+                    </CardTitle>
+                    <CardDescription>
+                        Store backups in a shared location (network drive, separate repo) instead of the default <code className="bg-muted px-1 rounded text-xs">oak/ci/history/</code>.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="rounded-lg bg-muted/50 p-4 space-y-3">
+                        <div className="flex items-start gap-2">
+                            <Info className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                            <div className="text-sm">
+                                <p className="font-medium">Add to your project's <code className="bg-background px-1 rounded text-xs border">.env</code> file:</p>
+                                <pre className="mt-2 bg-background border rounded-md p-3 text-xs font-mono overflow-x-auto">
+                                    <code>OAK_CI_BACKUP_DIR=/path/to/shared/backups</code>
+                                </pre>
+                                <p className="text-muted-foreground mt-2 text-xs">
+                                    OAK automatically reads this from <code className="bg-background px-0.5 rounded border">.env</code> in your project root.
+                                    Both absolute and relative paths work (relative paths resolve against project root).
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground border-t pt-3 space-y-1">
+                            <p><strong>Priority:</strong> <code className="bg-background px-0.5 rounded border">OAK_CI_BACKUP_DIR</code> shell env var &gt; <code className="bg-background px-0.5 rounded border">.env</code> file &gt; default</p>
+                            <p><strong>Verify:</strong> <code className="bg-background px-0.5 rounded border">oak ci backup --info</code></p>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 

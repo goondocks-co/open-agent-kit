@@ -20,6 +20,8 @@ interface BackupFileInfo {
 interface BackupStatus {
     backup_exists: boolean;
     backup_path: string;
+    backup_dir: string;
+    backup_dir_source: string; // "environment variable" or "default"
     backup_size_bytes?: number;
     last_modified?: string;
     machine_id: string;

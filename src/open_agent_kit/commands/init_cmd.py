@@ -12,7 +12,7 @@ from open_agent_kit.config.messages import (
     PROJECT_URL,
     USAGE_EXAMPLES,
 )
-from open_agent_kit.config.paths import OAK_DIR, TEMPLATES_DIR
+from open_agent_kit.config.paths import CONFIG_FILE, OAK_DIR, TEMPLATES_DIR
 from open_agent_kit.constants import (
     DEFAULT_LANGUAGES,
     LANGUAGE_DISPLAY_NAMES,
@@ -95,12 +95,16 @@ def init_command(
 
     # Detect if already initialized
     is_existing = dir_exists(oak_dir)
+    has_config = (project_root / CONFIG_FILE).is_file()
 
     # Determine flow type
     if force:
         flow_type = FlowType.FORCE_REINIT
-    elif is_existing:
+    elif is_existing and has_config:
         flow_type = FlowType.UPDATE
+    elif is_existing and not has_config:
+        # .oak dir exists but config is missing (corrupted state) — repair via re-init
+        flow_type = FlowType.FORCE_REINIT
     else:
         flow_type = FlowType.FRESH_INIT
 
@@ -137,7 +141,7 @@ def init_command(
     existing_agents: list[str] = []
     existing_languages: list[str] = []
 
-    if is_existing:
+    if is_existing and has_config:
         existing_agents = config_service.get_agents()
         config = config_service.load_config()
         existing_languages = config.languages.installed

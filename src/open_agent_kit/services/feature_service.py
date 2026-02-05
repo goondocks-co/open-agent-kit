@@ -78,19 +78,23 @@ class FeatureService:
 
         return is_uv_tool_install()
 
-    def _get_install_source(self) -> str | None:
+    def _get_install_source(self) -> tuple[str | None, bool]:
         """Get the install source if OAK was installed from a non-PyPI source.
 
         Detects:
         - Local file paths (`uv tool install /path/to/oak`)
-        - Editable installs (`pip install -e .`)
+        - Editable installs (`uv tool install -e /path/to/oak`)
         - Git URLs (`uv tool install git+https://github.com/...`)
 
         This allows feature dependency installation to work without requiring
-        PyPI publication.
+        PyPI publication. The editable flag ensures that editable installs
+        (used during development) are preserved when reinstalling with
+        additional dependencies.
 
         Returns:
-            Install source (local path or git URL) if non-PyPI install, None otherwise
+            Tuple of (install_source, is_editable):
+            - install_source: local path or git URL if non-PyPI, None otherwise
+            - is_editable: True if this is an editable install (dir_info.editable)
         """
         try:
             from importlib.metadata import distribution
@@ -105,19 +109,21 @@ class FeatureService:
                 url_info = json.loads(direct_url)
                 url = url_info.get("url", "")
 
+                # Check if this is an editable install (PEP 610 dir_info)
+                is_editable = bool(url_info.get("dir_info", {}).get("editable", False))
+
                 # Local file path install
                 if url.startswith("file://"):
-                    return str(url[7:])  # Strip file:// prefix, return path string
+                    return str(url[7:]), is_editable  # Strip file:// prefix
 
                 # Git URL install (vcs_info present means it's a VCS install)
                 if url_info.get("vcs_info"):
                     vcs = url_info["vcs_info"].get("vcs", "git")
-                    # Return the full git URL for uv tool install
-                    return f"{vcs}+{url}"
+                    return f"{vcs}+{url}", False  # Git installs are never editable
 
-            return None
+            return None, False
         except Exception:
-            return None
+            return None, False
 
     def _install_pip_packages(self, packages: list[str], feature_name: str) -> bool:
         """Install pip packages for a feature into OAK's Python environment.
@@ -214,7 +220,7 @@ class FeatureService:
             with_args.extend(["--with", pkg])
 
         # Check if this is a non-PyPI install (local path or git URL)
-        install_source = self._get_install_source()
+        install_source, is_editable = self._get_install_source()
 
         # Get current Python version to ensure consistency
         import sys
@@ -224,18 +230,22 @@ class FeatureService:
         try:
             if install_source:
                 # Non-PyPI install: use the original source (local path or git URL)
-                print_info(f"(detected install source: {install_source})")
+                # Preserve editable flag (-e) if the current install is editable
+                editable_flag = ["-e"] if is_editable else []
+                source_label = f"-e {install_source}" if is_editable else install_source
+                print_info(f"(detected install source: {source_label})")
                 cmd = [
                     "uv",
                     "tool",
                     "install",
+                    *editable_flag,
                     install_source,
                     "--upgrade",
                     "--python",
                     python_version,
                 ] + with_args
                 manual_cmd = (
-                    f"uv tool install {install_source} --upgrade "
+                    f"uv tool install {source_label} --upgrade "
                     f"--python {python_version} {' '.join(with_args)}"
                 )
             else:

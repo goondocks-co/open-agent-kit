@@ -8,12 +8,14 @@ from fastapi import APIRouter, Query
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.constants import VERSION
+from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    get_backup_dir,
+)
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
     CI_DATA_DIR,
-    CI_HISTORY_BACKUP_DIR,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.constants import (
     DaemonStatus,
@@ -187,7 +189,7 @@ def _get_backup_summary(project_root: Path | None) -> dict:
     if not project_root:
         return {"exists": False, "last_backup": None, "age_hours": None}
 
-    backup_dir = project_root / CI_HISTORY_BACKUP_DIR
+    backup_dir = get_backup_dir(project_root)
     backup_path = backup_dir / get_backup_filename()
 
     if not backup_path.exists():

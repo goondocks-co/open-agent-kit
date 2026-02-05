@@ -173,15 +173,33 @@ Read and follow **`.constitution.md`** (or `oak/constitution.md`).
 
 ## Adding Rules to Existing Constitution
 
-### Step 1: Read current constitution
+**CRITICAL:** The constitution is the single source of truth. Rules MUST be added to the constitution FIRST, then synced to agent files. Never add a rule only to an agent file (CLAUDE.md, AGENTS.md, etc.) — those files reference the constitution, not the other way around.
+
+### Step 1: Read current constitution and discover agent files
+
+Read the constitution and use OAK's built-in commands to discover all configured agent instruction files:
 
 ```bash
-oak rules get-content
-# or
-cat oak/constitution.md
+# Read the constitution (source of truth)
+cat oak/constitution.md  # or .constitution.md
+
+# Discover all agent instruction files dynamically
+# This reads .oak/config.yaml for configured agents, then checks each
+# agent's manifest (src/open_agent_kit/agents/{name}/manifest.yaml)
+# for its instruction_file path.
+oak rules detect-existing
+oak rules detect-existing --json  # machine-readable output
 ```
 
-### Step 2: Add rule to appropriate section
+**Do NOT hardcode agent file names.** Agents are configured dynamically in `.oak/config.yaml` and each agent's manifest defines its own `installation.instruction_file` path. The list of files can grow or shrink as agents are added or removed.
+
+### Step 2: Add the full rule to the constitution
+
+Find the appropriate section in the constitution and add the complete rule with:
+- The rule statement using RFC 2119 language (MUST, MUST NOT, SHOULD, etc.)
+- Rationale explaining WHY the rule exists
+- Verification steps (how to check compliance)
+- Troubleshooting guidance (what to do when the rule is violated)
 
 Use RFC 2119 language:
 
@@ -201,11 +219,38 @@ Example rules:
 - Teams MAY use dependency injection frameworks
 ```
 
-### Step 3: Sync to agent files
+### Step 3: Sync the rule to ALL agent instruction files
+
+After the constitution is updated, ensure every agent instruction file references the new rule. Use OAK's sync command to discover and update all configured agent files:
 
 ```bash
+# Preview what files will be checked/updated
+oak rules sync-agents --dry-run
+
+# Sync constitution references to all agent files
 oak rules sync-agents
 ```
+
+If `oak rules sync-agents` only handles constitution references (not rule-specific sections), manually add a concise reference to each agent file. Use `oak rules detect-existing` to get the full list of files:
+
+```bash
+oak rules detect-existing --json
+```
+
+For each agent file that exists, add a short section that:
+
+1. States the rule concisely (1-2 sentences)
+2. References the constitution section for full details
+
+Example:
+
+```markdown
+## [Rule Name]
+
+**MUST NOT** [brief prohibition]. See §[section] of `oak/constitution.md` for the full rule, rationale, and verification command.
+```
+
+**Important:** Agent instruction file paths are defined in each agent's manifest (`installation.instruction_file`). Do not assume fixed file names — always discover dynamically via `oak rules detect-existing`.
 
 ## Common Anti-Patterns to Avoid
 
@@ -221,7 +266,9 @@ oak rules sync-agents
 ## Files
 
 - Constitution: `oak/constitution.md` or `.constitution.md`
-- Agent files: `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, etc.
+- Agent files: Dynamically configured per agent manifest (`installation.instruction_file`). Run `oak rules detect-existing` to discover all agent instruction files for the current project.
+- Agent manifests: `src/open_agent_kit/agents/{name}/manifest.yaml`
+- Agent config: `.oak/config.yaml` (lists configured agents)
 - Reference examples: See `references/` subdirectory in this skill
 
 ## Example Workflow

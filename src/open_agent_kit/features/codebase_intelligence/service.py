@@ -174,13 +174,15 @@ class CodebaseIntelligenceService:
         """Export activity history before cleanup.
 
         Exports sessions, prompts, and memory observations to a SQL file
-        in the preserved oak/data/ directory. This allows data to be
+        in the configured backup directory. This allows data to be
         restored when the feature is re-enabled.
         """
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_backup_dir,
+            get_backup_filename,
+        )
         from open_agent_kit.features.codebase_intelligence.constants import (
             CI_ACTIVITIES_DB_FILENAME,
-            CI_HISTORY_BACKUP_DIR,
-            CI_HISTORY_BACKUP_FILE,
         )
 
         db_path = self.ci_data_dir / CI_ACTIVITIES_DB_FILENAME
@@ -188,8 +190,8 @@ class CodebaseIntelligenceService:
             logger.debug("No activities database found, skipping backup export")
             return
 
-        backup_dir = self.project_root / CI_HISTORY_BACKUP_DIR
-        backup_path = backup_dir / CI_HISTORY_BACKUP_FILE
+        backup_dir = get_backup_dir(self.project_root)
+        backup_path = backup_dir / get_backup_filename()
 
         try:
             from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
@@ -209,13 +211,16 @@ class CodebaseIntelligenceService:
         backup file. ChromaDB will be rebuilt automatically from the
         restored observations (they are marked as unembedded).
         """
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_backup_dir,
+            get_backup_filename,
+        )
         from open_agent_kit.features.codebase_intelligence.constants import (
             CI_ACTIVITIES_DB_FILENAME,
-            CI_HISTORY_BACKUP_DIR,
-            CI_HISTORY_BACKUP_FILE,
         )
 
-        backup_path = self.project_root / CI_HISTORY_BACKUP_DIR / CI_HISTORY_BACKUP_FILE
+        backup_dir = get_backup_dir(self.project_root)
+        backup_path = backup_dir / get_backup_filename()
         if not backup_path.exists():
             logger.debug(f"No backup found at {backup_path}")
             return

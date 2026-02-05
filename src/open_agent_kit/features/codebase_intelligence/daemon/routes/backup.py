@@ -20,6 +20,8 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
     _parse_backup_schema_version,
     discover_backup_files,
     extract_machine_id_from_filename,
+    get_backup_dir,
+    get_backup_dir_source,
     get_backup_filename,
     get_machine_identifier,
 )
@@ -29,7 +31,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_BACKUP_HEADER_MAX_LINES,
     CI_BACKUP_PATH_INVALID_ERROR,
     CI_DATA_DIR,
-    CI_HISTORY_BACKUP_DIR,
     CI_HISTORY_BACKUP_FILE,
     CI_LINE_SEPARATOR,
     CI_TEXT_ENCODING,
@@ -106,6 +107,8 @@ class BackupStatusResponse(BaseModel):
 
     backup_exists: bool
     backup_path: str
+    backup_dir: str  # The backup directory path
+    backup_dir_source: str  # "environment variable" or "default"
     backup_size_bytes: int | None = None
     last_modified: str | None = None
     machine_id: str  # Current machine identifier
@@ -186,11 +189,14 @@ async def get_backup_status() -> BackupStatusResponse:
     from datetime import datetime
 
     machine_id = get_machine_identifier()
-    backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+    backup_dir = get_backup_dir(state.project_root)
+    backup_dir_source = get_backup_dir_source(state.project_root)
     backup_filename = get_backup_filename()
     backup_path = backup_dir / backup_filename
 
-    logger.debug(f"Checking backup status: {backup_path} (machine: {machine_id})")
+    logger.debug(
+        f"Checking backup status: {backup_path} (machine: {machine_id}, source: {backup_dir_source})"
+    )
 
     # Get all backup files
     all_backups: list[BackupFileInfo] = []
@@ -240,6 +246,8 @@ async def get_backup_status() -> BackupStatusResponse:
         return BackupStatusResponse(
             backup_exists=True,
             backup_path=str(backup_path),
+            backup_dir=str(backup_dir),
+            backup_dir_source=backup_dir_source,
             backup_size_bytes=stat.st_size,
             last_modified=mtime,
             machine_id=machine_id,
@@ -249,6 +257,8 @@ async def get_backup_status() -> BackupStatusResponse:
     return BackupStatusResponse(
         backup_exists=False,
         backup_path=str(backup_path),
+        backup_dir=str(backup_dir),
+        backup_dir_source=backup_dir_source,
         machine_id=machine_id,
         all_backups=all_backups,
     )
@@ -270,7 +280,7 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to backup")
 
-    backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+    backup_dir = get_backup_dir(state.project_root)
 
     if request.output_path:
         backup_path = _ensure_backup_path_within_dir(
@@ -329,7 +339,7 @@ async def restore_backup(
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to restore into")
 
-    backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+    backup_dir = get_backup_dir(state.project_root)
 
     if request.input_path:
         backup_path = _ensure_backup_path_within_dir(
@@ -424,7 +434,7 @@ async def restore_all_backups_endpoint(
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to restore into")
 
-    backup_dir = state.project_root / CI_HISTORY_BACKUP_DIR
+    backup_dir = get_backup_dir(state.project_root)
     backup_files = discover_backup_files(backup_dir)
 
     if not backup_files:
