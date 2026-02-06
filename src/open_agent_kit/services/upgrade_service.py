@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, TypedDict, cast
 import jinja2
 
 if TYPE_CHECKING:
+    from open_agent_kit.models.agent_manifest import AgentManifest
     from open_agent_kit.services.skill_service import SkillService
 
 from open_agent_kit.config.paths import FEATURES_DIR, OAK_DIR
@@ -905,55 +906,69 @@ class UpgradeService:
     def _get_upgradeable_hooks(self) -> list[UpgradePlanHookItem]:
         """Get feature hooks that need to be upgraded.
 
-        Checks all enabled features for hooks that need updating.
-        Currently supports codebase-intelligence feature hooks.
+        Iterates configured agents, loads their manifest, and delegates the
+        comparison to ``HooksInstaller.needs_upgrade()``.  This mirrors the
+        pattern used by ``_get_upgradeable_notifications()``.
 
         Returns:
             List of UpgradePlanHookItem for hooks that need upgrade
         """
         result: list[UpgradePlanHookItem] = []
 
-        # All features are always enabled
         config = self.config_service.load_config()
-        enabled_features = SUPPORTED_FEATURES
         configured_agents = config.agents
 
-        # Check each enabled feature for hooks
-        for feature_name in enabled_features:
-            feature_hooks_dir = (
-                self.package_features_dir / _feature_name_to_dir(feature_name) / "hooks"
-            )
-            if not feature_hooks_dir.exists():
-                continue
-
-            # Check each configured agent for hook updates
-            for agent in configured_agents:
-                agent_hook_template = feature_hooks_dir / agent / "hooks.json"
-                if not agent_hook_template.exists():
+        for agent in configured_agents:
+            try:
+                manifest = self.agent_service.get_agent_manifest(agent)
+                if not manifest or not manifest.hooks:
                     continue
 
-                # Check if hook needs upgrade
-                if self._hook_needs_upgrade(feature_name, agent, agent_hook_template):
-                    # Determine target description based on agent
-                    if agent == "claude":
-                        target_desc = ".claude/settings.json"
-                    elif agent == "cursor":
-                        target_desc = ".cursor/hooks.json"
-                    elif agent == "gemini":
-                        target_desc = ".gemini/settings.json"
-                    else:
-                        target_desc = f".{agent}/hooks"
+                from open_agent_kit.features.codebase_intelligence.hooks.installer import (
+                    HOOKS_TEMPLATE_DIR,
+                    HooksInstaller,
+                )
 
-                    result.append(
-                        {
-                            "feature": feature_name,
-                            "agent": agent,
-                            "source_path": agent_hook_template,
-                            "target_description": target_desc,
-                        }
-                    )
+                installer = HooksInstaller(self.project_root, agent)
+                if not installer.needs_upgrade():
+                    continue
+
+                result.append(
+                    {
+                        "feature": "codebase-intelligence",
+                        "agent": agent,
+                        "source_path": HOOKS_TEMPLATE_DIR / agent / manifest.hooks.template_file,
+                        "target_description": self._get_hook_target_description(manifest),
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to plan hook upgrades for {agent}: {e}")
 
         return result
+
+    @staticmethod
+    def _get_hook_target_description(manifest: AgentManifest) -> str:
+        """Derive a human-readable target path from the agent manifest.
+
+        Args:
+            manifest: AgentManifest with hooks configuration.
+
+        Returns:
+            Display string like ``.opencode/plugins/oak-ci.ts`` or
+            ``.claude/settings.json``.
+        """
+        hooks = manifest.hooks
+        folder = manifest.installation.folder.rstrip("/")
+
+        if hooks.type == "plugin" and hooks.plugin_dir and hooks.plugin_file:
+            return f"{folder}/{hooks.plugin_dir}/{hooks.plugin_file}"
+        elif hooks.type == "otel":
+            config_file = hooks.config_file or "config.toml"
+            return f"{folder}/{config_file}"
+        elif hooks.config_file:
+            return f"{folder}/{hooks.config_file}"
+        else:
+            return f"{folder}/hooks"
 
     def _get_upgradeable_notifications(self) -> list[UpgradePlanNotificationItem]:
         """Get agent notification handlers that need to be upgraded.
@@ -1004,157 +1019,6 @@ class UpgradeService:
                 logger.warning(f"Failed to plan notification upgrades for {agent}: {e}")
 
         return result
-
-    def _hook_needs_upgrade(self, feature_name: str, agent: str, source_template: Path) -> bool:
-        """Check if a feature's agent hook needs to be upgraded.
-
-        Compares the package hook template (with placeholders substituted) with
-        what's currently installed. This uses the same processing as the actual
-        update to ensure consistent comparison.
-
-        Args:
-            feature_name: Name of the feature
-            agent: Agent name (claude, cursor, gemini)
-            source_template: Path to the package hook template
-
-        Returns:
-            True if hook content differs from installed version
-        """
-        import json
-        import re
-
-        try:
-            from open_agent_kit.features.codebase_intelligence.daemon.manager import (
-                get_project_port,
-            )
-
-            # Get the port used for this project (same as what update uses)
-            ci_data_dir = self.project_root / ".oak" / "ci"
-            port = get_project_port(self.project_root, ci_data_dir)
-        except ImportError:
-            # Codebase intelligence feature not available
-            return False
-
-        # Load and process source template (same as _load_hook_template in service.py)
-        try:
-            source_content = source_template.read_text()
-            # Substitute placeholders with actual values (same as update does)
-            # Note: {{PROJECT_ROOT}} is no longer used - hooks now use `oak ci hook` command
-            processed = re.sub(r"\{\{PORT\}\}", str(port), source_content)
-            source_hooks = json.loads(processed).get("hooks", {})
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to load source template {source_template}: {e}")
-            return False
-
-        # Get installed hooks based on agent type
-        if agent == "claude":
-            settings_file = self.project_root / ".claude" / "settings.json"
-            if not settings_file.exists():
-                return True  # Not installed yet
-
-            try:
-                with open(settings_file) as f:
-                    settings = json.load(f)
-                installed_hooks = settings.get("hooks", {})
-            except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to read settings file {settings_file}: {e}")
-                return True
-        elif agent == "cursor":
-            hooks_file = self.project_root / ".cursor" / "hooks.json"
-            if not hooks_file.exists():
-                return True
-
-            try:
-                with open(hooks_file) as f:
-                    installed_hooks = json.load(f).get("hooks", {})
-            except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to read hooks file {hooks_file}: {e}")
-                return True
-        elif agent == "gemini":
-            settings_file = self.project_root / ".gemini" / "settings.json"
-            if not settings_file.exists():
-                return True
-
-            try:
-                with open(settings_file) as f:
-                    settings = json.load(f)
-                installed_hooks = settings.get("hooks", {})
-            except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to read settings file {settings_file}: {e}")
-                return True
-        elif agent == "copilot":
-            # Copilot hooks are stored in oak-ci-hooks.json (not hooks.json)
-            hooks_file = self.project_root / ".github" / "hooks" / "oak-ci-hooks.json"
-            if not hooks_file.exists():
-                return True
-
-            try:
-                with open(hooks_file) as f:
-                    installed_hooks = json.load(f).get("hooks", {})
-            except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to read hooks file {hooks_file}: {e}")
-                return True
-        else:
-            return False
-
-        # Compare processed source hooks with installed hooks
-        # Extract only OAK-managed hooks from installed for comparison
-        # This allows other hooks (user-defined) to coexist without triggering upgrades
-        try:
-            # For each event in source, check if the OAK hooks match
-            for event, source_event_hooks in source_hooks.items():
-                installed_event_hooks = installed_hooks.get(event, [])
-
-                # Extract OAK-managed hooks from installed
-                # Patterns: oak ci hook (current), /api/oak/ci/ (legacy inline), oak-ci-hook.sh (legacy script)
-                oak_installed = []
-                for hook in installed_event_hooks:
-                    # Get command based on agent structure
-                    if agent == "cursor":
-                        command = hook.get("command", "")
-                    elif agent == "copilot":
-                        command = hook.get("bash", "") or hook.get("powershell", "")
-                    else:
-                        command = hook.get("hooks", [{}])[0].get("command", "")
-                    if (
-                        "oak ci hook" in command
-                        or "/api/oak/ci/" in command
-                        or "oak-ci-hook.sh" in command
-                    ):
-                        oak_installed.append(hook)
-
-                # Compare counts - if different number of OAK hooks, needs upgrade
-                if len(source_event_hooks) != len(oak_installed):
-                    return True
-
-                # Compare each hook's content
-                source_json = json.dumps(source_event_hooks, sort_keys=True)
-                installed_json = json.dumps(oak_installed, sort_keys=True)
-                if source_json != installed_json:
-                    return True
-
-            # Check if installed has events that source doesn't (orphaned OAK hooks)
-            for event in installed_hooks:
-                if event not in source_hooks:
-                    # Check if there are any OAK-managed hooks in this event
-                    for hook in installed_hooks[event]:
-                        if agent == "cursor":
-                            command = hook.get("command", "")
-                        elif agent == "copilot":
-                            command = hook.get("bash", "") or hook.get("powershell", "")
-                        else:
-                            command = hook.get("hooks", [{}])[0].get("command", "")
-                        if (
-                            "oak ci hook" in command
-                            or "/api/oak/ci/" in command
-                            or "oak-ci-hook.sh" in command
-                        ):
-                            return True  # Orphaned OAK hook found
-
-            return False
-        except (TypeError, KeyError) as e:
-            logger.warning(f"Failed to compare hooks content: {e}")
-            return True
 
     def _get_mcp_servers_to_install(self) -> list[UpgradePlanMcpItem]:
         """Get MCP servers that need to be installed.

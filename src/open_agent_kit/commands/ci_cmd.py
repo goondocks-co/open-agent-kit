@@ -11,6 +11,7 @@ Commands are organized into submodules:
 - ci.data: Backup and restore
 - ci.sync: Code sync after upgrades
 - ci.hooks: Hook event handling (hidden)
+- ci.tunnel: Tunnel sharing (tunnel-start, tunnel-stop, tunnel-status, tunnel-url)
 """
 
 from open_agent_kit.commands.ci import (
@@ -26,6 +27,7 @@ from open_agent_kit.commands.ci import (
     query,
     search,
     sync,
+    tunnel,
 )
 
 # Re-export for backwards compatibility and explicit reference
@@ -42,4 +44,5 @@ __all__ = [
     "sync",
     "hooks",
     "notify",
+    "tunnel",
 ]

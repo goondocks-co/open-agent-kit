@@ -50,6 +50,8 @@ async def favicon() -> FileResponse:
 @router.get("/activity/{rest:path}", response_class=HTMLResponse)
 # Catch-all for agents sub-routes (e.g., /agents/runs)
 @router.get("/agents/{rest:path}", response_class=HTMLResponse)
+# Catch-all for team sub-routes (e.g., /team/sharing, /team/backups)
+@router.get("/team/{rest:path}", response_class=HTMLResponse)
 async def dashboard(rest: str | None = None) -> HTMLResponse:
     """Serve the web dashboard with cache-busted assets."""
     # static/index.html is sibling to routes/ directory's parent (daemon/)

@@ -18,6 +18,13 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_CONFIG_KEY_TUNNEL,
+    CI_CONFIG_TUNNEL_KEY_AUTO_START,
+    CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
+    CI_CONFIG_TUNNEL_KEY_NGROK_PATH,
+    CI_CONFIG_TUNNEL_KEY_PROVIDER,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingError
@@ -389,6 +396,12 @@ async def get_config() -> dict:
         },
         "index_on_startup": config.index_on_startup,
         "watch_files": config.watch_files,
+        CI_CONFIG_KEY_TUNNEL: {
+            CI_CONFIG_TUNNEL_KEY_PROVIDER: config.tunnel.provider,
+            CI_CONFIG_TUNNEL_KEY_AUTO_START: config.tunnel.auto_start,
+            CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
+            CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
+        },
         "log_level": config.log_level,
     }
 
@@ -506,7 +519,21 @@ async def update_config(request: Request) -> dict:
             config.session_quality.stale_timeout_seconds = sq["stale_timeout_seconds"]
             session_quality_changed = True
 
+    # Update tunnel settings (nested object: { tunnel: { provider, auto_start, ... } })
+    if CI_CONFIG_KEY_TUNNEL in data and isinstance(data[CI_CONFIG_KEY_TUNNEL], dict):
+        tun = data[CI_CONFIG_KEY_TUNNEL]
+        if CI_CONFIG_TUNNEL_KEY_PROVIDER in tun:
+            config.tunnel.provider = tun[CI_CONFIG_TUNNEL_KEY_PROVIDER]
+        if CI_CONFIG_TUNNEL_KEY_AUTO_START in tun:
+            config.tunnel.auto_start = bool(tun[CI_CONFIG_TUNNEL_KEY_AUTO_START])
+        if CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH in tun:
+            config.tunnel.cloudflared_path = tun[CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH] or None
+        if CI_CONFIG_TUNNEL_KEY_NGROK_PATH in tun:
+            config.tunnel.ngrok_path = tun[CI_CONFIG_TUNNEL_KEY_NGROK_PATH] or None
+
     save_ci_config(state.project_root, config)
+    # Keep in-memory config in sync so other routes (e.g. tunnel start) see updates
+    state.ci_config = config
     logger.info(
         f"Config saved. summarization.context_tokens = {config.summarization.context_tokens}"
     )
@@ -539,6 +566,12 @@ async def update_config(request: Request) -> dict:
                 "enabled": config.log_rotation.enabled,
                 "max_size_mb": config.log_rotation.max_size_mb,
                 "backup_count": config.log_rotation.backup_count,
+            },
+            CI_CONFIG_KEY_TUNNEL: {
+                CI_CONFIG_TUNNEL_KEY_PROVIDER: config.tunnel.provider,
+                CI_CONFIG_TUNNEL_KEY_AUTO_START: config.tunnel.auto_start,
+                CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
+                CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
             },
             "log_level": config.log_level,
             "embedding_changed": embedding_changed,
@@ -585,6 +618,12 @@ async def update_config(request: Request) -> dict:
             "enabled": config.log_rotation.enabled,
             "max_size_mb": config.log_rotation.max_size_mb,
             "backup_count": config.log_rotation.backup_count,
+        },
+        CI_CONFIG_KEY_TUNNEL: {
+            CI_CONFIG_TUNNEL_KEY_PROVIDER: config.tunnel.provider,
+            CI_CONFIG_TUNNEL_KEY_AUTO_START: config.tunnel.auto_start,
+            CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
+            CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
         },
         "log_level": config.log_level,
         "embedding_changed": embedding_changed,

@@ -7,6 +7,10 @@ import logging
 import sqlite3
 from pathlib import Path
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_SESSION_COLUMN_TRANSCRIPT_PATH,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,6 +65,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         migrate_v23_to_v24(conn)
     if from_version < 25:
         migrate_v24_to_v25(conn)
+    if from_version < 26:
+        migrate_v25_to_v26(conn)
 
 
 def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
@@ -1300,3 +1306,59 @@ def migrate_v24_to_v25(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE agent_runs ADD COLUMN warnings TEXT")
 
     logger.info("Migration v24->v25 complete: added warnings column to agent_runs")
+
+
+def migrate_v25_to_v26(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v25 to v26: Add transcript_path to sessions.
+
+    Adds transcript_path column to store the path to the session's JSONL
+    transcript file. This enables:
+    - Recovery of lost data by re-parsing the transcript
+    - Session reconstruction without filesystem scanning
+    - Audit trail linking database records to their source transcript
+
+    Backfills existing sessions using the TranscriptResolver where possible.
+    """
+    logger.info("Migrating activity store schema v25 -> v26: Adding transcript_path to sessions")
+
+    # Check if column already exists (idempotent migration)
+    cursor = conn.execute("PRAGMA table_info(sessions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if CI_SESSION_COLUMN_TRANSCRIPT_PATH in columns:
+        logger.info("transcript_path column already exists, skipping column creation")
+    else:
+        conn.execute(f"ALTER TABLE sessions ADD COLUMN {CI_SESSION_COLUMN_TRANSCRIPT_PATH} TEXT")
+        logger.debug("Added transcript_path column to sessions")
+
+    # Backfill existing sessions using TranscriptResolver
+    backfill_count = 0
+    try:
+        from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
+            resolve_transcript_path,
+        )
+
+        cursor = conn.execute(
+            f"SELECT id, agent, project_root FROM sessions "
+            f"WHERE {CI_SESSION_COLUMN_TRANSCRIPT_PATH} IS NULL"
+        )
+        rows = cursor.fetchall()
+
+        for session_id, agent, project_root in rows:
+            try:
+                path = resolve_transcript_path(session_id, agent, project_root)
+                if path and path.exists():
+                    conn.execute(
+                        f"UPDATE sessions SET {CI_SESSION_COLUMN_TRANSCRIPT_PATH} = ? WHERE id = ?",
+                        (str(path), session_id),
+                    )
+                    backfill_count += 1
+            except (OSError, ValueError, RuntimeError) as e:
+                logger.debug(f"Could not resolve transcript for session {session_id}: {e}")
+    except Exception as e:
+        logger.warning(f"Transcript backfill during migration failed (non-fatal): {e}")
+
+    logger.info(
+        f"Migration v25->v26 complete: added transcript_path column, "
+        f"backfilled {backfill_count} sessions"
+    )

@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.indexing.watcher import FileWatcher
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
+    from open_agent_kit.features.codebase_intelligence.tunnel.base import TunnelProvider
 
 
 @dataclass
@@ -171,6 +172,10 @@ class DaemonState:
     agent_registry: "AgentRegistry | None" = None
     agent_executor: "AgentExecutor | None" = None
     agent_scheduler: "AgentScheduler | None" = None
+    # Tunnel sharing
+    tunnel_provider: "TunnelProvider | None" = None
+    _dynamic_cors_origins: set[str] = field(default_factory=set, init=False, repr=False)
+    _cors_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -253,6 +258,33 @@ class DaemonState:
             while len(self.hook_event_cache) > max_entries:
                 self.hook_event_cache.popitem(last=False)
         return False
+
+    def add_cors_origin(self, origin: str) -> None:
+        """Add a dynamic CORS origin (e.g. tunnel URL).
+
+        Args:
+            origin: Origin URL to allow (e.g. "https://xxx.trycloudflare.com").
+        """
+        with self._cors_lock:
+            self._dynamic_cors_origins.add(origin)
+
+    def remove_cors_origin(self, origin: str) -> None:
+        """Remove a dynamic CORS origin.
+
+        Args:
+            origin: Origin URL to remove.
+        """
+        with self._cors_lock:
+            self._dynamic_cors_origins.discard(origin)
+
+    def get_dynamic_cors_origins(self) -> set[str]:
+        """Get current dynamic CORS origins (thread-safe copy).
+
+        Returns:
+            Copy of the dynamic CORS origins set.
+        """
+        with self._cors_lock:
+            return set(self._dynamic_cors_origins)
 
     def run_index_build(
         self,
@@ -358,6 +390,8 @@ class DaemonState:
         self.agent_registry = None
         self.agent_executor = None
         self.agent_scheduler = None
+        self.tunnel_provider = None
+        self._dynamic_cors_origins = set()
 
 
 # Global daemon state instance

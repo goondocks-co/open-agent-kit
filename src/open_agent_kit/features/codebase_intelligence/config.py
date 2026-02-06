@@ -19,6 +19,13 @@ import yaml
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_CONFIG_KEY_TUNNEL,
+    CI_CONFIG_TUNNEL_KEY_AUTO_START,
+    CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
+    CI_CONFIG_TUNNEL_KEY_NGROK_PATH,
+    CI_CONFIG_TUNNEL_KEY_PROVIDER,
+    CI_TUNNEL_ERROR_INVALID_PROVIDER,
+    CI_TUNNEL_ERROR_INVALID_PROVIDER_EXPECTED,
     DEFAULT_AGENT_MAX_TURNS,
     DEFAULT_AGENT_TIMEOUT_SECONDS,
     DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
@@ -34,6 +41,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_SUMMARIZATION_MODEL,
     DEFAULT_SUMMARIZATION_PROVIDER,
     DEFAULT_SUMMARIZATION_TIMEOUT,
+    DEFAULT_TUNNEL_PROVIDER,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
     MAX_AGENT_MAX_TURNS,
@@ -53,6 +61,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     VALID_LOG_LEVELS,
     VALID_PROVIDERS,
     VALID_SUMMARIZATION_PROVIDERS,
+    VALID_TUNNEL_PROVIDERS,
 )
 from open_agent_kit.features.codebase_intelligence.exceptions import (
     ValidationError,
@@ -870,6 +879,60 @@ class LogRotationConfig:
 
 
 @dataclass
+class TunnelConfig:
+    """Configuration for tunnel-based session sharing.
+
+    Allows sharing the daemon UI via a public URL through cloudflared or ngrok.
+
+    Attributes:
+        provider: Tunnel provider (cloudflared, ngrok).
+        auto_start: Whether to start tunnel automatically on daemon startup.
+        cloudflared_path: Custom path to cloudflared binary (None = use PATH).
+        ngrok_path: Custom path to ngrok binary (None = use PATH).
+    """
+
+    provider: str = DEFAULT_TUNNEL_PROVIDER
+    auto_start: bool = False
+    cloudflared_path: str | None = None
+    ngrok_path: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate configuration values."""
+        if self.provider not in VALID_TUNNEL_PROVIDERS:
+            raise ValidationError(
+                CI_TUNNEL_ERROR_INVALID_PROVIDER.format(provider=self.provider),
+                field="provider",
+                value=self.provider,
+                expected=CI_TUNNEL_ERROR_INVALID_PROVIDER_EXPECTED.format(
+                    providers=VALID_TUNNEL_PROVIDERS
+                ),
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TunnelConfig":
+        """Create config from dictionary."""
+        return cls(
+            provider=data.get(CI_CONFIG_TUNNEL_KEY_PROVIDER, DEFAULT_TUNNEL_PROVIDER),
+            auto_start=data.get(CI_CONFIG_TUNNEL_KEY_AUTO_START, False),
+            cloudflared_path=data.get(CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH),
+            ngrok_path=data.get(CI_CONFIG_TUNNEL_KEY_NGROK_PATH),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            CI_CONFIG_TUNNEL_KEY_PROVIDER: self.provider,
+            CI_CONFIG_TUNNEL_KEY_AUTO_START: self.auto_start,
+            CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: self.cloudflared_path,
+            CI_CONFIG_TUNNEL_KEY_NGROK_PATH: self.ngrok_path,
+        }
+
+
+@dataclass
 class CIConfig:
     """Codebase Intelligence configuration.
 
@@ -878,6 +941,7 @@ class CIConfig:
         summarization: LLM summarization configuration.
         agents: Agent subsystem configuration.
         session_quality: Session quality threshold configuration.
+        tunnel: Tunnel sharing configuration.
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
@@ -889,6 +953,7 @@ class CIConfig:
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
     session_quality: SessionQualityConfig = field(default_factory=SessionQualityConfig)
+    tunnel: TunnelConfig = field(default_factory=TunnelConfig)
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
@@ -931,12 +996,14 @@ class CIConfig:
         summarization_data = data.get("summarization", {})
         agents_data = data.get("agents", {})
         session_quality_data = data.get("session_quality", {})
+        tunnel_data = data.get(CI_CONFIG_KEY_TUNNEL, {})
         log_rotation_data = data.get("log_rotation", {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
             summarization=SummarizationConfig.from_dict(summarization_data),
             agents=AgentConfig.from_dict(agents_data),
             session_quality=SessionQualityConfig.from_dict(session_quality_data),
+            tunnel=TunnelConfig.from_dict(tunnel_data),
             index_on_startup=data.get("index_on_startup", True),
             watch_files=data.get("watch_files", True),
             exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
@@ -951,6 +1018,7 @@ class CIConfig:
             "summarization": self.summarization.to_dict(),
             "agents": self.agents.to_dict(),
             "session_quality": self.session_quality.to_dict(),
+            CI_CONFIG_KEY_TUNNEL: self.tunnel.to_dict(),
             "index_on_startup": self.index_on_startup,
             "watch_files": self.watch_files,
             "exclude_patterns": self.exclude_patterns,

@@ -573,6 +573,22 @@ class UnlinkSessionResponse(BaseModel):
 
 
 # ============================================================================
+# Session Completion Models
+# ============================================================================
+
+
+class CompleteSessionResponse(BaseModel):
+    """Response after manually completing a session."""
+
+    success: bool = True
+    session_id: str
+    previous_status: str = ""
+    summary: str | None = None
+    title: str | None = None
+    message: str = ""
+
+
+# ============================================================================
 # Summary Regeneration Models
 # ============================================================================
 

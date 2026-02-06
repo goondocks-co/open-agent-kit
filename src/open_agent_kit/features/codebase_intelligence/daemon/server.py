@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from open_agent_kit.config.paths import OAK_DIR
@@ -28,6 +27,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_DATA_DIR,
     CI_HOOKS_LOG_FILE,
     CI_LOG_FILE,
+    CI_TUNNEL_ERROR_START_UNKNOWN,
+    CI_TUNNEL_LOG_ACTIVE,
+    CI_TUNNEL_LOG_AUTO_START,
+    CI_TUNNEL_LOG_AUTO_START_FAILED,
+    CI_TUNNEL_LOG_AUTO_START_UNAVAILABLE,
     DEFAULT_INDEXING_TIMEOUT_SECONDS,
     SHUTDOWN_TASK_TIMEOUT_SECONDS,
 )
@@ -402,6 +406,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if effective_log_level == "DEBUG":
         logger.debug("Debug logging enabled - verbose output active")
 
+    # Auto-start tunnel if configured
+    if ci_config.tunnel.auto_start:
+        from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+            get_project_port,
+        )
+        from open_agent_kit.features.codebase_intelligence.tunnel.factory import (
+            create_tunnel_provider,
+        )
+
+        logger.info(CI_TUNNEL_LOG_AUTO_START)
+        try:
+            provider = create_tunnel_provider(
+                provider=ci_config.tunnel.provider,
+                cloudflared_path=ci_config.tunnel.cloudflared_path,
+                ngrok_path=ci_config.tunnel.ngrok_path,
+            )
+            if not provider.is_available:
+                logger.warning(CI_TUNNEL_LOG_AUTO_START_UNAVAILABLE.format(provider=provider.name))
+            else:
+                ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+                port = get_project_port(project_root, ci_data_dir)
+                status = provider.start(port)
+                if status.active and status.public_url:
+                    state.tunnel_provider = provider
+                    state.add_cors_origin(status.public_url)
+                    logger.info(CI_TUNNEL_LOG_ACTIVE.format(public_url=status.public_url))
+                else:
+                    error_detail = status.error or CI_TUNNEL_ERROR_START_UNKNOWN
+                    logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=error_detail))
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=e))
+
     # Create embedding provider from config
     # Note: We require Ollama or OpenAI-compatible provider - no built-in fallback
     provider_available = False
@@ -643,8 +679,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pass
             except TimeoutError:
                 logger.warning(
-                    f"Task {task.get_name()} did not cancel within "
-                    f"{SHUTDOWN_TASK_TIMEOUT_SECONDS}s"
+                    f"Task {task.get_name()} did not cancel within {SHUTDOWN_TASK_TIMEOUT_SECONDS}s"
                 )
             except (RuntimeError, OSError) as e:
                 logger.warning(f"Error cancelling task {task.get_name()}: {e}")
@@ -665,7 +700,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         finally:
             state.agent_scheduler = None
 
-    # 4. Stop file watcher and wait for thread cleanup
+    # 4. Stop tunnel if active
+    if state.tunnel_provider:
+        logger.info("Stopping tunnel...")
+        try:
+            status = state.tunnel_provider.get_status()
+            if status.public_url:
+                state.remove_cors_origin(status.public_url)
+            state.tunnel_provider.stop()
+        except (RuntimeError, OSError) as e:
+            logger.warning(f"Error stopping tunnel: {e}")
+        finally:
+            state.tunnel_provider = None
+
+    # 5. Stop file watcher and wait for thread cleanup
     if state.file_watcher:
         logger.info("Stopping file watcher...")
         try:
@@ -714,9 +762,13 @@ def create_app(
         lifespan=lifespan,
     )
 
-    # Add CORS middleware - restrict to localhost only for security
+    # Add dynamic CORS middleware - localhost origins are static,
+    # tunnel URLs are added/removed at runtime
     from open_agent_kit.features.codebase_intelligence.daemon.manager import (
         get_project_port,
+    )
+    from open_agent_kit.features.codebase_intelligence.daemon.middleware import (
+        DynamicCORSMiddleware,
     )
 
     ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
@@ -734,9 +786,9 @@ def create_app(
         ),
     ]
     app.add_middleware(
-        CORSMiddleware,
+        DynamicCORSMiddleware,
         allow_origins=allowed_origins,
-        allow_credentials=False,  # Disabled unless specifically needed
+        allow_credentials=False,
         allow_methods=list(CI_CORS_ALLOWED_METHODS),
         allow_headers=list(CI_CORS_ALLOWED_HEADERS),
     )
@@ -755,6 +807,7 @@ def create_app(
         otel,
         schedules,
         search,
+        tunnel,
         ui,
     )
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
@@ -776,6 +829,7 @@ def create_app(
     app.include_router(schedules.router)
     app.include_router(devtools.router)
     app.include_router(backup.router)
+    app.include_router(tunnel.router)
 
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)

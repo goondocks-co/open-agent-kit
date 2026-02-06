@@ -244,16 +244,23 @@ async def hook_session_start(request: Request) -> dict:
     logger.debug(f"[SESSION-START] Raw request body: {body}")
 
     # Create or resume session in activity store (SQLite) - idempotent
-    # For source="clear", find the session that just ended and link as parent
-    parent_session_id = None
+    # Parent linking: prefer explicit parent_session_id from body, fall back to heuristic
+    parent_session_id = body.get("parent_session_id") or None
     parent_session_reason = None
 
+    if parent_session_id:
+        parent_session_reason = source  # e.g., "resume", "clear"
+        hooks_logger.info(
+            f"[SESSION-LINK] session={session_id} parent={parent_session_id[:8]}... "
+            f"reason={parent_session_reason} (explicit)"
+        )
+
     if state.activity_store and state.project_root:
-        # When source="clear", find a session to link as parent using tiered approach:
+        # When source="clear" and no explicit parent, find one heuristically:
         # 1. Session that just ended (within SESSION_LINK_IMMEDIATE_GAP_SECONDS) - normal flow
         # 2. Active session (race condition - SessionEnd not processed yet)
         # 3. Most recent completed session within SESSION_LINK_FALLBACK_MAX_HOURS (stale/next-day)
-        if source == "clear":
+        if source == "clear" and not parent_session_id:
             try:
                 from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
                     find_linkable_parent_session,
@@ -272,7 +279,7 @@ async def hook_session_start(request: Request) -> dict:
                     parent_session_id, parent_session_reason = link_result
                     hooks_logger.info(
                         f"[SESSION-LINK] session={session_id} parent={parent_session_id[:8]}... "
-                        f"reason={parent_session_reason}"
+                        f"reason={parent_session_reason} (heuristic)"
                     )
             except (OSError, ValueError, RuntimeError) as e:
                 logger.debug(f"Failed to find parent session for linking: {e}")
@@ -1169,8 +1176,27 @@ async def hook_stop(request: Request) -> dict:
                     len(response_summary) if response_summary else 0,
                     response_summary[:80] if response_summary else "(none)",
                 )
-            else:
-                logger.debug("[STOP] No transcript_path provided, skipping summary extraction")
+
+            # Fallback: accept response_summary directly from body
+            # (for agents that provide the summary inline instead of via transcript)
+            if not response_summary:
+                body_summary = body.get("response_summary", "")
+                if body_summary:
+                    response_summary = body_summary[:5000]
+                    logger.debug(
+                        "[STOP] Using body response_summary (%d chars)",
+                        len(response_summary),
+                    )
+
+            if not response_summary:
+                logger.debug("[STOP] No response_summary available")
+
+            # Persist transcript_path to sessions table for future recovery
+            if transcript_path and state.activity_store:
+                try:
+                    state.activity_store.update_session_transcript_path(session_id, transcript_path)
+                except (OSError, ValueError, RuntimeError) as e:
+                    logger.debug(f"[STOP] Failed to store transcript_path: {e}")
 
             from open_agent_kit.features.codebase_intelligence.activity import (
                 finalize_prompt_batch,
@@ -1292,6 +1318,22 @@ async def hook_session_end(request: Request) -> dict:
         except (OSError, ValueError, RuntimeError) as e:
             logger.debug(f"Failed to end final prompt batch: {e}")
 
+    # Ensure transcript_path is stored (fallback if Stop hook didn't provide it)
+    if state.activity_store and session_id:
+        try:
+            db_session = state.activity_store.get_session(session_id)
+            if db_session and not getattr(db_session, "transcript_path", None):
+                from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
+                    resolve_transcript_path,
+                )
+
+                resolved = resolve_transcript_path(session_id, agent, db_session.project_root)
+                if resolved and resolved.exists():
+                    state.activity_store.update_session_transcript_path(session_id, str(resolved))
+                    logger.debug(f"[SESSION-END] Resolved transcript_path fallback: {resolved}")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"[SESSION-END] Transcript resolution fallback failed: {e}")
+
     # End session in activity store
     if state.activity_store and session_id:
         try:
@@ -1306,24 +1348,28 @@ async def hook_session_end(request: Request) -> dict:
                 f"{sum(stats.get('tool_counts', {}).values())} tool calls"
             )
 
-            # Generate session summary in background
+            # Generate session summary and title in background
             if state.activity_processor:
                 processor = state.activity_processor
                 sid = session_id
 
-                async def _generate_session_summary() -> None:
+                async def _generate_session_summary_and_title() -> None:
                     try:
-                        # Run in executor since it's synchronous
                         loop = asyncio.get_event_loop()
-                        summary = await loop.run_in_executor(
-                            None, processor.process_session_summary, sid
+                        summary, title = await loop.run_in_executor(
+                            None,
+                            processor.process_session_summary_with_title,
+                            sid,
+                            True,  # regenerate_title from summary for better accuracy
                         )
                         if summary:
                             logger.info(f"Session summary generated: {summary[:80]}...")
+                        if title:
+                            logger.info(f"Session title generated: {title}")
                     except (RuntimeError, OSError, ValueError) as e:
-                        logger.warning(f"Session summary generation error: {e}")
+                        logger.warning(f"Session summary/title generation error: {e}")
 
-                asyncio.create_task(_generate_session_summary())
+                asyncio.create_task(_generate_session_summary_and_title())
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to end activity session: {e}")

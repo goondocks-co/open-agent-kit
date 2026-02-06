@@ -11,6 +11,8 @@ import SessionDetail from "@/pages/SessionDetail";
 import Config from "@/pages/Config";
 import DevTools from "@/pages/DevTools";
 import Team from "@/pages/Team";
+import TeamBackups from "@/components/team/TeamBackups";
+import TeamSharing from "@/components/team/TeamSharing";
 import Help from "@/pages/Help";
 import AgentsLayout from "@/pages/AgentsLayout";
 import AgentsList from "@/components/agents/AgentsList";
@@ -48,7 +50,15 @@ export const router = createBrowserRouter([
                     { path: "settings", element: <AgentSettings /> },
                 ]
             },
-            { path: "team", element: <Team /> },
+            {
+                path: "team",
+                element: <Team />,
+                children: [
+                    { index: true, element: <Navigate to="backups" replace /> },
+                    { path: "backups", element: <TeamBackups /> },
+                    { path: "sharing", element: <TeamSharing /> },
+                ]
+            },
             { path: "config", element: <Config /> },
             { path: "help", element: <Help /> },
             { path: "devtools", element: <DevTools /> },

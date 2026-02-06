@@ -70,6 +70,7 @@ AGENT_SETTINGS_TEMPLATES = {
 # Git Integration
 # =============================================================================
 
+GIT_DIR = ".git"
 GIT_COMMIT_MESSAGE_TEMPLATE = "docs: Add {rfc_number} - {title}"
 
 # =============================================================================

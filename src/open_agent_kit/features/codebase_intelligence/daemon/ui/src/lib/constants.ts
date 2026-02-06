@@ -287,6 +287,11 @@ export const API_ENDPOINTS = {
     BACKUP_CREATE: "/api/backup/create",
     BACKUP_RESTORE: "/api/backup/restore",
     BACKUP_RESTORE_ALL: "/api/backup/restore-all",
+
+    // Tunnel endpoints
+    TUNNEL_START: "/api/tunnel/start",
+    TUNNEL_STOP: "/api/tunnel/stop",
+    TUNNEL_STATUS: "/api/tunnel/status",
 } as const;
 
 /** Build session detail endpoint */
@@ -347,6 +352,11 @@ export function getSessionLineageEndpoint(sessionId: string): string {
 /** Build link session endpoint */
 export function getLinkSessionEndpoint(sessionId: string): string {
     return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/link`;
+}
+
+/** Build complete session endpoint */
+export function getCompleteSessionEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/complete`;
 }
 
 /** Build regenerate summary endpoint */

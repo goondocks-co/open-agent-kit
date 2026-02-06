@@ -3,6 +3,7 @@ import { API_BASE, fetchJson } from "@/lib/api";
 import {
     getSessionLineageEndpoint,
     getLinkSessionEndpoint,
+    getCompleteSessionEndpoint,
     getRegenerateSummaryEndpoint,
     getSuggestedParentEndpoint,
     getDismissSuggestionEndpoint,
@@ -175,6 +176,44 @@ export function useRegenerateSummary() {
         onSuccess: (_data, sessionId) => {
             // Invalidate session detail to show new summary
             queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+            // Invalidate memories (summary creates a memory)
+            queryClient.invalidateQueries({ queryKey: ["memories"] });
+        },
+    });
+}
+
+// =============================================================================
+// Session Completion
+// =============================================================================
+
+export interface CompleteSessionResponse {
+    success: boolean;
+    session_id: string;
+    previous_status: string;
+    summary: string | null;
+    title: string | null;
+    message: string;
+}
+
+/**
+ * Hook to manually complete an active session.
+ * Triggers the same processing chain as background auto-completion:
+ * mark completed, generate summary, generate title.
+ */
+export function useCompleteSession() {
+    const queryClient = useQueryClient();
+
+    return useMutation<CompleteSessionResponse, Error, string>({
+        mutationFn: (sessionId: string) =>
+            postJson<object, CompleteSessionResponse>(
+                getCompleteSessionEndpoint(sessionId),
+                {}
+            ),
+        onSuccess: (_data, sessionId) => {
+            // Invalidate session detail (status, summary, title all changed)
+            queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+            // Invalidate sessions list (status changed)
+            queryClient.invalidateQueries({ queryKey: ["sessions"] });
             // Invalidate memories (summary creates a memory)
             queryClient.invalidateQueries({ queryKey: ["memories"] });
         },

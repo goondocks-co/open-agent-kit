@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_SESSION_COLUMN_TRANSCRIPT_PATH,
     LINK_EVENT_AUTO_LINKED,
     LINK_EVENT_MANUAL_LINKED,
     LINK_EVENT_SUGGESTION_ACCEPTED,
@@ -201,6 +202,24 @@ def update_session_summary(store: ActivityStore, session_id: str, summary: str) 
             (summary, session_id),
         )
     logger.debug(f"Updated session {session_id} summary: {summary[:50]}...")
+
+
+def update_session_transcript_path(
+    store: ActivityStore, session_id: str, transcript_path: str
+) -> None:
+    """Store the transcript file path for a session.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to update.
+        transcript_path: Absolute path to the session's JSONL transcript file.
+    """
+    with store._transaction() as conn:
+        conn.execute(
+            f"UPDATE sessions SET {CI_SESSION_COLUMN_TRANSCRIPT_PATH} = ? WHERE id = ?",
+            (transcript_path, session_id),
+        )
+    logger.debug(f"Updated session {session_id} transcript_path: {transcript_path}")
 
 
 def reactivate_session_if_needed(store: ActivityStore, session_id: str) -> bool:

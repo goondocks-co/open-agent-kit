@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_SESSION_COLUMN_TRANSCRIPT_PATH,
+)
+
 
 @dataclass
 class Activity:
@@ -244,6 +248,7 @@ class Session:
     parent_session_id: str | None = None  # Session this was derived from (v12)
     parent_session_reason: str | None = None  # Why linked: 'clear', 'compact', 'inferred' (v12)
     source_machine_id: str | None = None  # Machine that originated this record (v13)
+    transcript_path: str | None = None  # Path to session transcript file (v26)
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
@@ -263,6 +268,7 @@ class Session:
             "parent_session_id": self.parent_session_id,
             "parent_session_reason": self.parent_session_reason,
             "source_machine_id": self.source_machine_id,
+            CI_SESSION_COLUMN_TRANSCRIPT_PATH: self.transcript_path,
         }
 
     @classmethod
@@ -276,6 +282,11 @@ class Session:
             row["parent_session_reason"] if "parent_session_reason" in row_keys else None
         )
         source_machine_id = row["source_machine_id"] if "source_machine_id" in row_keys else None
+        transcript_path = (
+            row[CI_SESSION_COLUMN_TRANSCRIPT_PATH]
+            if CI_SESSION_COLUMN_TRANSCRIPT_PATH in row_keys
+            else None
+        )
         return cls(
             id=row["id"],
             agent=row["agent"],
@@ -291,6 +302,7 @@ class Session:
             parent_session_id=parent_session_id,
             parent_session_reason=parent_session_reason,
             source_machine_id=source_machine_id,
+            transcript_path=transcript_path,
         )
 
 

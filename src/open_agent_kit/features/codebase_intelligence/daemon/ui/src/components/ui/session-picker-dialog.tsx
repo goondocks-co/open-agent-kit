@@ -18,8 +18,10 @@ interface SessionPickerDialogProps {
     title: string;
     description: string;
     excludeSessionId?: string;
-    onSelect: (sessionId: string, reason: SessionLinkReason) => void | Promise<void>;
+    onSelect: (sessionId: string, reason?: SessionLinkReason) => void | Promise<void>;
     isLoading?: boolean;
+    /** Whether to show the link reason selector. Defaults to true. */
+    showReasonSelector?: boolean;
 }
 
 /**
@@ -34,10 +36,12 @@ export function SessionPickerDialog({
     excludeSessionId,
     onSelect,
     isLoading = false,
+    showReasonSelector = true,
 }: SessionPickerDialogProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [selectedReason, setSelectedReason] = useState<SessionLinkReason>("manual");
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const { data, isLoading: isLoadingSessions } = useSessions(PAGINATION.MAX_LIMIT_MEDIUM, 0);
 
@@ -58,15 +62,20 @@ export function SessionPickerDialog({
     });
 
     const handleSelect = async () => {
-        if (!selectedSessionId) return;
-        await onSelect(selectedSessionId, selectedReason);
-        // Reset state on success
-        setSelectedSessionId(null);
-        setSearchQuery("");
+        if (!selectedSessionId || isProcessing) return;
+        setIsProcessing(true);
+        try {
+            await onSelect(selectedSessionId, showReasonSelector ? selectedReason : undefined);
+            // Reset state on success
+            setSelectedSessionId(null);
+            setSearchQuery("");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleClose = () => {
-        if (isLoading) return;
+        if (isLoading || isProcessing) return;
         setSelectedSessionId(null);
         setSearchQuery("");
         onOpenChange(false);
@@ -143,7 +152,7 @@ export function SessionPickerDialog({
                 </div>
 
                 {/* Reason selector */}
-                {selectedSessionId && (
+                {showReasonSelector && selectedSessionId && (
                     <div className="p-4 border-t bg-muted/30">
                         <label className="text-sm font-medium mb-2 block">Link reason</label>
                         <div className="flex gap-2">
@@ -176,9 +185,9 @@ export function SessionPickerDialog({
                     </Button>
                     <Button
                         onClick={handleSelect}
-                        disabled={isLoading || !selectedSessionId}
+                        disabled={isLoading || isProcessing || !selectedSessionId}
                     >
-                        {isLoading ? (
+                        {isLoading || isProcessing ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 Linking...

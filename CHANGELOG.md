@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Pluggable tunnel sharing for CI daemon with Cloudflare and ngrok providers — [Implement pluggable tunnel abstraction for Oak CI sharing](http://localhost:38283/activity/sessions/b9ea2c92-def1-4e29-894b-25096c2a872c)
+- Tunnel configuration UI and sharing help documentation on the Team page — [Add tunnel configuration UI and help docs](http://localhost:38283/activity/sessions/e23391f6-976e-4316-bd16-1ecafb7e26c9)
+- Configurable CI backup directory via `OAK_CI_BACKUP_DIR` environment variable — [Configure CI backup directory via environment variable](http://localhost:38283/activity/sessions/13eb1949-dc1a-4105-82ae-f45e69449808)
+- `transcript_path` column on sessions for transcript recovery and orphan detection — [Add transcript_file_id column to sessions for recovery](http://localhost:38283/activity/sessions/9ea4399f-779d-41c1-8f5a-ea5914b1dbb2)
+- "Complete Session" button on session detail page for manual session completion — [Fix related session links and modal double‑click bug](http://localhost:38283/activity/sessions/cec09d81-d81b-4d79-981f-2d24ecdd2034)
 - Database-backed agent schedules with UI management — [Implement database-backed schedules and UI](http://localhost:38283/activity/sessions/a60436e4-9674-4eda-b428-eb3fb6f5da5d)
 - Quick-access panel in daemon UI for CLI agent commands — [Configure daemon UI quick‑access panel for CLI agents](http://localhost:38283/activity/sessions/25db97fd-e4a0-41a8-b30a-0fc858699bed)
 - Generic agent summary hook with Markdown rendering support — [Implement generic agent summary hook and Markdown rendering](http://localhost:38283/activity/sessions/3a594cc8-1f9a-475a-8062-d1640bbffe50)
@@ -47,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upgrade detection rewritten to manifest-driven hook checks supporting plugin, OTEL, and JSON hook types — [Refactor upgrade detection to manifest‑driven hook checks](http://localhost:38283/activity/sessions/18b1a6ca-4996-41aa-83e2-b827749b3123)
+- Tunnel code refactored to eliminate magic literals — [Audit tunnel code for magic literals](http://localhost:38283/activity/sessions/ses_3ceaa4ad5ffeX8YFHfrA9obTc1)
 - Refactored terminology from "Instance" to "Task" across codebase for clarity — [Refactor terminology from Instance to Task across codebase](http://localhost:38283/activity/sessions/d7dff207-6683-4fa3-8b27-7b8ff5ef6b18)
 - Agent schedules now persisted to database instead of in-memory storage — [Update agent schedules to database persistence](http://localhost:38283/activity/sessions/5b1131f2-d55b-487c-8f8d-b6b5fb83915c)
 - Makefile refactored to remove `.venv` dependency for cleaner builds — [Refactor Makefile to remove .venv dependency](http://localhost:38283/activity/sessions/217e9395-812c-4d66-9229-4842ac7dff1b)
@@ -67,6 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed related session links not navigating in daemon UI and link-session modal requiring double-click — [Fix related session links and modal double‑click bug](http://localhost:38283/activity/sessions/cec09d81-d81b-4d79-981f-2d24ecdd2034)
+- Fixed sharing configuration placed on wrong page and stabilized flaky async tests — [Fix sharing configuration placement and stabilize test suite](http://localhost:38283/activity/sessions/6ea3f1e3-ec78-4739-a803-00500f8b4e3d)
+- Fixed `uv tool install` silently destroying editable installs by detecting PEP 610 `direct_url.json` and conditionally passing `-e` — [Configure CI backup directory via environment variable](http://localhost:38283/activity/sessions/13eb1949-dc1a-4105-82ae-f45e69449808)
+- Fixed missing `.oak/agents/` directory after `oak init` causing downstream failures — [Fix missing agents directory after oak init](http://localhost:38283/activity/sessions/f1573859-be5a-4016-8bb9-37005f3cca11)
+- Fixed `hooks.py` using `Path.cwd()` instead of project root, causing silent data loss when Claude Code changes working directory — see [`hooks.py`](src/open_agent_kit/commands/ci/hooks.py)
+- Fixed `get_backup_dir` resolving relative to cwd instead of project root, causing misplaced backups in tests — see [`backup.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/backup.py)
+- Fixed session schema drift: SQL queries referencing renamed `sessions.session_id` and removed `started_at_epoch` columns — see [`sessions.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/sessions.py)
+- Fixed `SessionLineage` query running when `sessionId` is undefined after refactor removed `enabled` guard — see [`SessionLineage`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/)
 - Renamed agent tasks now correctly installed during upgrade (name-based lookup replaced with stable identifiers) — [Implement upgrade logic for built‑in task templates](http://localhost:38167/activity/sessions/73094f41-9caa-4c8b-b2ad-5594e21f49b3)
 - Fixed Vite configuration causing UI build failure — [Configure minimal Vite config to fix UI build](http://localhost:38167/activity/sessions/c0457435-38b1-4d48-bd53-af22a6ac08ae)
 - Fixed UI build error related to dependency injection setup — [Fix UI build error and outline DI plan](http://localhost:38167/activity/sessions/461a8c4d-b772-4f41-8075-f4dd993ea874)
@@ -140,3 +155,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session URLs in changelog now link directly to daemon UI for better traceability
 - Executor now uses runtime lookup of daemon port for greater deployment flexibility
 - Hook timeout increased to reduce flaky failures during heavy local LLM workloads
+- Session end hook now auto-generates pending titles from session summary for better discoverability
+- Codex VS Code extension OTel configuration validated — project-local `.codex/config.toml` is syntactically correct but extension only reads global config — [Configure OTel settings for Codex VS Code extension](http://localhost:38283/activity/sessions/019c3130-4d28-7772-ab84-cbac66f0947a)
+- Quality gate (`make check`) cleaned up: removed blocker comments and verified full test suite passes — [Refactor blocker comments and run full quality gate check](http://localhost:38283/activity/sessions/ses_3ceae69a3ffeODOsYvxQrkMLj4)
+
+### Notes
+
+> **Gotcha**: The Codex VS Code extension only reads the global `codex.toml` for OTel settings — project-local `.codex/config.toml` is ignored by the extension. Place OTel configuration in the global file if targeting the extension.
+
+> **Gotcha**: Backup directory paths configured via `OAK_CI_BACKUP_DIR` must be absolute. Relative paths silently resolve to cwd, which can produce unexpected file locations if the process changes directories.
+
+> **Gotcha**: The `uv tool install` commands in `feature_service.py` and `language_service.py` previously destroyed editable installs. If you experience stale daemon assets or `Path(__file__)` resolving to `site-packages`, verify with `oak --python-path -c "import open_agent_kit; print(open_agent_kit.__file__)"` — the path must contain your source tree.

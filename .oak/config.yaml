@@ -1,4 +1,4 @@
-version: 0.5.2.dev33+gda42d06d5.d20260205
+version: 0.5.2.dev34+g325c7d1e5.d20260206
 agents:
 - gemini
 - cursor
@@ -94,6 +94,11 @@ codebase_intelligence:
   session_quality:
     min_activities: 3
     stale_timeout_seconds: 3600
+  tunnel:
+    provider: cloudflared
+    auto_start: false
+    cloudflared_path: null
+    ngrok_path: null
   index_on_startup: true
   watch_files: true
   exclude_patterns:

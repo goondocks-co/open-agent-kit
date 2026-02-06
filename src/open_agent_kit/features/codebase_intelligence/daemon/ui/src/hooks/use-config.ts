@@ -32,6 +32,12 @@ export interface Config {
         base_url: string;
         context_tokens: number | null;
     };
+    tunnel: {
+        provider: string;
+        auto_start: boolean;
+        cloudflared_path: string;
+        ngrok_path: string;
+    };
     log_rotation: LogRotationConfig;
     session_quality: SessionQualityConfig;
     log_level: string;

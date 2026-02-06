@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, ExternalLink, Terminal, BookOpen, Wrench, RefreshCw } from "lucide-react";
+import { Copy, Check, ExternalLink, Terminal, BookOpen, Wrench, RefreshCw, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // =============================================================================
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const HELP_TABS = {
     SETUP: "setup",
     TEAM_SYNC: "team-sync",
+    SHARING: "sharing",
     TROUBLESHOOTING: "troubleshooting",
 } as const;
 
@@ -504,6 +505,160 @@ function TroubleshootingContent() {
 }
 
 // =============================================================================
+// Sharing Guide Tab Content
+// =============================================================================
+
+function SharingContent() {
+    return (
+        <div className="space-y-6">
+            {/* Getting Started */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        Getting Started with Sharing
+                    </CardTitle>
+                    <CardDescription>
+                        Share your daemon dashboard with teammates via a secure public URL.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <p className="text-sm text-muted-foreground">
+                        Sharing creates a secure tunnel from your local daemon to a public URL.
+                        Anyone with the link can view sessions, memories, and search your codebase
+                        through the full daemon UI.
+                    </p>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Prerequisites</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Install one of the supported tunnel providers:
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="rounded-lg border p-4 space-y-3">
+                            <h4 className="font-semibold text-sm flex items-center gap-2">
+                                Cloudflared
+                                <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full font-normal">
+                                    Recommended
+                                </span>
+                            </h4>
+                            <p className="text-xs text-muted-foreground">
+                                Free, no account required. Generates a random trycloudflare.com URL each time.
+                            </p>
+                            <CommandBlock label="macOS (Homebrew)" command="brew install cloudflared" />
+                            <CommandBlock label="Linux" command="curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared" />
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                            <h4 className="font-semibold text-sm">ngrok</h4>
+                            <p className="text-xs text-muted-foreground">
+                                Requires a free account. Provides stable URLs on paid plans.
+                            </p>
+                            <CommandBlock label="macOS (Homebrew)" command="brew install ngrok" />
+                            <CommandBlock label="Other" command="https://ngrok.com/download" />
+                        </div>
+                    </div>
+
+                    <p className="text-sm text-muted-foreground">
+                        After installing, configure your provider and optional settings on the{" "}
+                        <Link to="/team/sharing" className="text-primary hover:underline">Team &gt; Sharing</Link> page.
+                    </p>
+                </CardContent>
+            </Card>
+
+            {/* Using the Share Feature */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Using the Share Feature</CardTitle>
+                    <CardDescription>
+                        Start sharing from the UI or the command line.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">From the UI</h3>
+                        <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
+                            <li>Go to <Link to="/team" className="text-primary hover:underline">Team</Link> &gt; <strong>Sharing</strong> tab</li>
+                            <li>Click <strong>Start Sharing</strong></li>
+                            <li>Copy the public URL and send it to your teammates</li>
+                        </ol>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">From the CLI</h3>
+                        <div className="space-y-2">
+                            <CommandBlock label="Start tunnel" command="oak ci tunnel-start" />
+                            <CommandBlock label="Get public URL" command="oak ci tunnel-url" />
+                            <CommandBlock label="Check status" command="oak ci tunnel-status" />
+                            <CommandBlock label="Stop tunnel" command="oak ci tunnel-stop" />
+                        </div>
+                    </div>
+
+                    <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                            <strong>Note:</strong> With cloudflared, the public URL changes each time the tunnel restarts.
+                            With ngrok (free tier), the URL also changes on restart. Paid ngrok plans support stable subdomains.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Troubleshooting Sharing */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Troubleshooting Sharing</CardTitle>
+                    <CardDescription>
+                        Solutions for common sharing issues.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-sm">"cloudflared not found"</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Install cloudflared using the commands above. If installed to a custom location,
+                            set the path in <Link to="/config" className="text-primary hover:underline">Configuration</Link> &gt; Sharing &gt; Cloudflared Path.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">"ngrok auth token required"</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Sign up at{" "}
+                            <a href="https://ngrok.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                                ngrok.com <ExternalLink className="h-3 w-3" />
+                            </a>
+                            {" "}and configure your auth token via the CLI:
+                            <code className="bg-muted px-1 rounded ml-1">ngrok config add-authtoken YOUR_TOKEN</code>
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">CORS errors in browser console</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            The tunnel URL should be automatically added to allowed origins. Try stopping and restarting the tunnel.
+                            If the issue persists, restart the daemon.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Tunnel stopped unexpectedly</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Check the <Link to="/logs" className="text-primary hover:underline">daemon logs</Link> for error details.
+                            Re-start sharing from the <Link to="/team" className="text-primary hover:underline">Team &gt; Sharing</Link> tab.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Can't access shared URL</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Verify the tunnel is still active (check the Sharing tab or run <code className="bg-muted px-1 rounded">oak ci tunnel-status</code>).
+                            Check that no firewall or proxy is blocking the connection.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// =============================================================================
 // Help Page Component
 // =============================================================================
 
@@ -516,6 +671,8 @@ export default function Help() {
         const state = location.state as { tab?: string } | null;
         if (state?.tab === "team-sync") {
             setActiveTab(HELP_TABS.TEAM_SYNC);
+        } else if (state?.tab === "sharing") {
+            setActiveTab(HELP_TABS.SHARING);
         }
     }, [location.state]);
 
@@ -544,6 +701,12 @@ export default function Help() {
                     label="Team Sync"
                 />
                 <TabButton
+                    active={activeTab === HELP_TABS.SHARING}
+                    onClick={() => setActiveTab(HELP_TABS.SHARING)}
+                    icon={<Share2 className="h-4 w-4" />}
+                    label="Sharing"
+                />
+                <TabButton
                     active={activeTab === HELP_TABS.TROUBLESHOOTING}
                     onClick={() => setActiveTab(HELP_TABS.TROUBLESHOOTING)}
                     icon={<Wrench className="h-4 w-4" />}
@@ -554,6 +717,7 @@ export default function Help() {
             {/* Tab Content */}
             {activeTab === HELP_TABS.SETUP && <SetupGuideContent />}
             {activeTab === HELP_TABS.TEAM_SYNC && <SyncGuideContent />}
+            {activeTab === HELP_TABS.SHARING && <SharingContent />}
             {activeTab === HELP_TABS.TROUBLESHOOTING && <TroubleshootingContent />}
         </div>
     );

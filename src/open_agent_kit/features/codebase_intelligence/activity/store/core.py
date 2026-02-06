@@ -215,6 +215,10 @@ class ActivityStore:
         """Update the session summary."""
         sessions.update_session_summary(self, session_id, summary)
 
+    def update_session_transcript_path(self, session_id: str, transcript_path: str) -> None:
+        """Store the transcript file path for a session."""
+        sessions.update_session_transcript_path(self, session_id, transcript_path)
+
     def reactivate_session_if_needed(self, session_id: str) -> bool:
         """Reactivate a session if it's currently completed."""
         return sessions.reactivate_session_if_needed(self, session_id)

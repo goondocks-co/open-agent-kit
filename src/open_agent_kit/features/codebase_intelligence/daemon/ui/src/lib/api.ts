@@ -15,7 +15,17 @@ export async function fetchJson<T>(endpoint: string, options?: RequestInit): Pro
     });
 
     if (!response.ok) {
-        throw new Error(`API Error ${response.status}: ${response.statusText}`);
+        // Try to extract detail from FastAPI error responses
+        let detail = response.statusText;
+        try {
+            const errorBody = await response.json();
+            if (errorBody.detail) {
+                detail = errorBody.detail;
+            }
+        } catch {
+            // If response isn't JSON, fall back to statusText
+        }
+        throw new Error(detail);
     }
 
     return response.json();

@@ -5,7 +5,7 @@ configuration objects, temporary directories, and mock instances.
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -407,6 +407,51 @@ def mock_file_watcher() -> MagicMock:
     mock.stop.return_value = None
     mock.is_running = False
     return mock
+
+
+# =============================================================================
+# Dotenv Isolation Fixture
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _isolate_dotenv(monkeypatch):
+    """Prevent the real .env file from leaking into tests.
+
+    Two pollution vectors exist:
+    1. ``cli.py`` calls ``load_dotenv()`` at import time, which injects
+       OAK_CI_BACKUP_DIR from the repo's ``.env`` into ``os.environ``.
+       Any test that imports the CLI (directly or transitively) leaves
+       the env var set for all subsequent tests in the same process.
+    2. ``get_backup_dir()`` reads ``.env`` via ``_read_dotenv_value``.
+
+    This fixture clears the env var and wraps the dotenv reader so that
+    only reads from test tmp directories (not the real project root) are
+    allowed through.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        _read_dotenv_value as _real_read_dotenv_value,
+    )
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        OAK_CI_BACKUP_DIR_ENV,
+    )
+
+    # Vector 1: clear env var that load_dotenv may have injected
+    monkeypatch.delenv(OAK_CI_BACKUP_DIR_ENV, raising=False)
+
+    # Vector 2: block _read_dotenv_value from reading the real .env
+    real_cwd_dotenv = Path.cwd() / ".env"
+
+    def _filtered_read(dotenv_path: Path, key: str):
+        if dotenv_path.resolve() == real_cwd_dotenv.resolve():
+            return None
+        return _real_read_dotenv_value(dotenv_path, key)
+
+    with patch(
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup._read_dotenv_value",
+        side_effect=_filtered_read,
+    ):
+        yield
 
 
 # =============================================================================

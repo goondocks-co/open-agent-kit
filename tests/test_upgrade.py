@@ -329,3 +329,31 @@ def test_upgrade_only_checks_known_template_categories(initialized_project: Path
     assert not any("notes" in t for t in plan["templates"])
     # Should only include RFC and constitution templates
     assert all(t.startswith(("rfc/", "constitution/")) for t in plan["templates"])
+
+
+def test_plan_upgrade_detects_modified_plugin_hook(initialized_project: Path) -> None:
+    """Test that plan_upgrade detects when a plugin hook file has been modified.
+
+    Initializes with opencode agent, modifies the installed plugin, and
+    verifies that plan["hooks"] detects the change.
+    """
+    from open_agent_kit.commands.init_cmd import init_command
+
+    init_command(force=False, agent=["opencode"], no_interactive=True)
+
+    # Verify the plugin was installed
+    plugin_path = initialized_project / ".opencode" / "plugins" / "oak-ci.ts"
+    assert plugin_path.exists(), "Plugin should be installed by init"
+
+    # Modify the installed plugin
+    original = plugin_path.read_text(encoding="utf-8")
+    plugin_path.write_text(original + "\n// modified by test\n", encoding="utf-8")
+
+    service = UpgradeService(initialized_project)
+    plan = service.plan_upgrade()
+
+    # Should detect the modified hook
+    hook_agents = [h["agent"] for h in plan["hooks"]]
+    assert "opencode" in hook_agents, (
+        f"Expected opencode in hooks plan, got agents: {hook_agents}"
+    )

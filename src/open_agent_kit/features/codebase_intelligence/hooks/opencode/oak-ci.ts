@@ -6,8 +6,9 @@
  *
  * Events handled:
  * - session.created: Initialize CI session, inject context
+ * - chat.message: Capture user prompts, create prompt batches
  * - tool.execute.after: Capture tool usage, inject relevant memories
- * - session.idle: End prompt batch, trigger background processing
+ * - session.idle: End prompt batch, fetch response summary, trigger processing
  * - session.deleted: Finalize session, generate summary
  * - file.edited: Capture file modifications
  * - todo.updated: Capture agent planning/task list updates
@@ -64,41 +65,73 @@ export const OakCIPlugin: Plugin = async ({ project, client, $, directory, workt
      * Session created - initialize CI tracking
      */
     event: async ({ event }) => {
+      // session.created: properties.info is a Session object with { id, parentID?, ... }
       if (event.type === "session.created") {
-        const sessionData = event.properties || {};
+        const info = (event.properties as any)?.info || {};
         await callOakHook($, "sessionStart", {
-          session_id: sessionData.id || sessionData.sessionId,
+          session_id: info.id,
+          parent_session_id: info.parentID || undefined,
           agent: "opencode",
-          source: "startup",
+          source: info.parentID ? "resume" : "startup",
         });
       }
 
-      // Session deleted - finalize and cleanup
+      // Session deleted: properties.info is a Session object
       if (event.type === "session.deleted") {
-        const sessionData = event.properties || {};
+        const info = (event.properties as any)?.info || {};
         await callOakHook($, "sessionEnd", {
-          session_id: sessionData.id || sessionData.sessionId,
+          session_id: info.id,
           agent: "opencode",
         });
       }
 
-      // Session idle - agent finished responding
+      // Session idle: agent finished responding
+      // Fetch the last assistant message to capture response summary
       if (event.type === "session.idle") {
-        const sessionData = event.properties || {};
+        const props = event.properties as any;
+        const sessionId = props?.sessionID;
+        if (!sessionId) return;
+
+        // Fetch recent messages to get the assistant's response
+        let responseSummary = "";
+        try {
+          const result = await client.session.messages({
+            path: { id: sessionId },
+            query: { directory },
+          });
+          const messages = (result as any)?.data || [];
+          // Find the last assistant message
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg?.info?.role === "assistant") {
+              // Extract text parts from the assistant message
+              const textParts = (msg.parts || [])
+                .filter((p: any) => p.type === "text" && p.text)
+                .map((p: any) => p.text);
+              responseSummary = textParts.join("\n");
+              break;
+            }
+          }
+        } catch (err) {
+          // Non-fatal: summary is optional
+          console.error("[oak-ci] Failed to fetch messages for summary:", err);
+        }
+
         await callOakHook($, "stop", {
-          session_id: sessionData.id || sessionData.sessionId,
+          session_id: sessionId,
+          response_summary: responseSummary || undefined,
           agent: "opencode",
         });
       }
 
       // Todo updated - capture planning information
       if (event.type === "todo.updated") {
-        const todoData = event.properties || {};
-        const todos = todoData.todos || [];
+        const props = event.properties as any;
+        const todos = props?.todos || [];
         const todoSummary = formatTodos(todos);
 
         await callOakHook($, "postToolUse", {
-          session_id: todoData.sessionId,
+          session_id: props?.sessionID,
           tool_name: "TodoUpdate",
           tool_input: { todos, count: todos.length },
           tool_output: todoSummary,
@@ -107,16 +140,42 @@ export const OakCIPlugin: Plugin = async ({ project, client, $, directory, workt
       }
 
       // File edited - capture file modifications
+      // Note: file.edited only has { file: string }, no sessionID.
+      // This will be a no-op (daemon drops missing session_id).
+      // tool.execute.after captures file ops with correct session ID.
       if (event.type === "file.edited") {
-        const fileData = event.properties || {};
+        const props = event.properties as any;
         await callOakHook($, "postToolUse", {
-          session_id: fileData.sessionId,
+          session_id: props?.sessionID,
           tool_name: "Write",
-          tool_input: { file_path: fileData.path },
-          tool_output: `Modified ${fileData.path}`,
+          tool_input: { file_path: props?.file },
+          tool_output: `Modified ${props?.file}`,
           agent: "opencode",
         });
       }
+    },
+
+    /**
+     * Chat message - capture user prompts and create prompt batches
+     * Fires when the user sends a message to the agent.
+     * Parts contain TextPart objects with the actual prompt text.
+     */
+    "chat.message": async (input, output) => {
+      const sessionId = input.sessionID;
+      if (!sessionId) return;
+
+      // Extract prompt text from parts (TextPart has type: "text" and text: string)
+      const textParts = (output.parts || [])
+        .filter((p: any) => p.type === "text" && p.text)
+        .map((p: any) => p.text);
+      const prompt = textParts.join("\n");
+      if (!prompt) return;
+
+      await callOakHook($, "UserPromptSubmit", {
+        session_id: sessionId,
+        prompt,
+        agent: "opencode",
+      });
     },
 
     /**
@@ -124,36 +183,25 @@ export const OakCIPlugin: Plugin = async ({ project, client, $, directory, workt
      */
     "tool.execute.after": async (input, output) => {
       const toolName = input.tool || "unknown";
-      const sessionId = input.session?.id;
+      const sessionId = (input as any).sessionID;
 
       // Skip if no session context
       if (!sessionId) return;
 
-      // Build tool input summary (sanitize large content)
-      const toolInput: Record<string, unknown> = {};
-      if (input.args) {
-        for (const [key, value] of Object.entries(input.args)) {
-          if (typeof value === "string" && value.length > 500) {
-            toolInput[key] = `<${value.length} chars>`;
-          } else {
-            toolInput[key] = value;
-          }
-        }
+      // Build output summary from output.output (SDK type)
+      let outputSummary = "";
+      if (output.output) {
+        outputSummary = output.output.length > 500 ? output.output.slice(0, 500) + "..." : output.output;
       }
 
-      // Build output summary
-      let outputSummary = "";
-      if (output.result) {
-        const resultStr = String(output.result);
-        outputSummary = resultStr.length > 500 ? resultStr.slice(0, 500) + "..." : resultStr;
-      }
+      // Extract metadata if available (may contain tool args)
+      const metadata = output.metadata || {};
 
       await callOakHook($, "postToolUse", {
         session_id: sessionId,
         tool_name: toolName,
-        tool_input: toolInput,
+        tool_input: metadata,
         tool_output: outputSummary,
-        file_path: input.args?.filePath || input.args?.file_path,
         agent: "opencode",
       });
     },

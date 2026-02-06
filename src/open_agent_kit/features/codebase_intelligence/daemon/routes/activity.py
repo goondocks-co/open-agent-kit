@@ -25,6 +25,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     ActivitySearchResponse,
     AddRelatedRequest,
     AddRelatedResponse,
+    CompleteSessionResponse,
     DeleteActivityResponse,
     DeleteBatchResponse,
     DeleteSessionResponse,
@@ -1760,6 +1761,70 @@ async def reembed_sessions(
         sessions_embedded=0,  # Will be updated when complete
         message=f"Re-embedding {total_sessions} session summaries in background",
     )
+
+
+# =============================================================================
+# Session Completion Endpoint
+# =============================================================================
+
+
+@router.post(
+    "/api/activity/sessions/{session_id}/complete",
+    response_model=CompleteSessionResponse,
+)
+async def complete_session(session_id: str) -> CompleteSessionResponse:
+    """Manually complete an active session.
+
+    Triggers the same processing chain as the background auto-completion:
+    1. Mark session as 'completed'
+    2. Generate summary (if summarizer configured)
+    3. Generate title (if missing)
+
+    The session must be 'active' to be completed.
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ErrorMessages.ACTIVITY_STORE_NOT_INITIALIZED)
+
+    if not state.activity_processor:
+        raise HTTPException(
+            status_code=503,
+            detail="Activity processor not initialized",
+        )
+
+    logger.info(f"Manually completing session: {session_id}")
+
+    try:
+        session = state.activity_store.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
+
+        previous_status = session.status
+
+        summary, title = state.activity_processor.complete_session(session_id)
+
+        return CompleteSessionResponse(
+            success=True,
+            session_id=session_id,
+            previous_status=previous_status,
+            summary=summary,
+            title=title,
+            message="Session completed successfully",
+        )
+
+    except ValueError as e:
+        return CompleteSessionResponse(
+            success=False,
+            session_id=session_id,
+            previous_status=session.status if session else "",
+            message=str(e),
+        )
+    except HTTPException:
+        raise
+    except (OSError, RuntimeError, AttributeError) as e:
+        logger.error(f"Failed to complete session: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # =============================================================================

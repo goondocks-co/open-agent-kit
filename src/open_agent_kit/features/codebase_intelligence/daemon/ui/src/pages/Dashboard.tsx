@@ -4,7 +4,7 @@ import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-compone
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { usePlans } from "@/hooks/use-plans";
-import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save } from "lucide-react";
+import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     formatRelativeTime,
@@ -274,6 +274,26 @@ export default function Dashboard() {
                                     {status?.backup?.exists
                                         ? `${formatBackupAge(status.backup.age_hours)} · ${((status.backup.size_bytes || 0) / (1024 * 1024)).toFixed(1)} MB`
                                         : "Not created"
+                                    }
+                                </span>
+                            </div>
+
+                            {/* Tunnel Sharing */}
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <Share2 className="w-3 h-3" />
+                                    <Link to="/team/sharing" className="hover:underline">Sharing</Link>
+                                </span>
+                                <span className={cn(
+                                    "font-medium text-sm",
+                                    status?.tunnel?.active ? "text-green-500" : "text-muted-foreground"
+                                )}>
+                                    {status?.tunnel?.active
+                                        ? <span className="flex items-center gap-1" title={status.tunnel.public_url || undefined}>
+                                            <Check className="w-3 h-3" />
+                                            Active
+                                          </span>
+                                        : <Link to="/team/sharing" className="hover:underline">Off</Link>
                                     }
                                 </span>
                             </div>

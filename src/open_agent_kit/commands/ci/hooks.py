@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import typer
 
-from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.config.paths import GIT_DIR, OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_DATA_DIR,
     DAEMON_START_TIMEOUT_SECONDS,
@@ -22,6 +22,30 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 )
 
 from . import ci_app
+
+
+def _find_project_root() -> Path:
+    """Find the true project root by walking up from cwd.
+
+    When AI agents change their working directory (e.g., ``cd daemon/ui &&
+    npm run build``), ``Path.cwd()`` no longer points at the repo root.
+    This causes hooks to write to an orphaned ``.oak/ci/`` directory and
+    fail to reach the daemon.
+
+    Resolution order:
+      1. Walk up from cwd looking for ``.oak/`` (OAK project marker).
+      2. Fall back to ``.git/`` (git repo root).
+      3. Fall back to cwd itself (original behavior).
+    """
+    cwd = Path.cwd()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / OAK_DIR).is_dir():
+            return candidate
+    # No .oak found — try .git as a fallback repo root marker
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / GIT_DIR).exists():
+            return candidate
+    return cwd
 
 
 @ci_app.command("hook", hidden=True)
@@ -49,7 +73,11 @@ def ci_hook(
     """
     from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
 
-    project_root = Path.cwd()
+    # Find true project root by walking up from cwd.
+    # Claude Code may change cwd (e.g., `cd daemon/ui && npm run build`),
+    # causing hooks to target the wrong .oak/ci directory. Walking up to
+    # find the .oak/ or .git/ marker ensures we always reach the real root.
+    project_root = _find_project_root()
 
     # Get daemon port (same priority as shell scripts)
     ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
@@ -160,6 +188,7 @@ def ci_hook(
         if event_lower == "sessionstart":
             _ensure_daemon_running()
             source = input_json.get("source", "startup")
+            parent_session_id = input_json.get("parent_session_id", "")
             response = _call_api(
                 "session-start",
                 {
@@ -167,6 +196,7 @@ def ci_hook(
                     "session_id": session_id,
                     "conversation_id": conversation_id,
                     "source": source,
+                    "parent_session_id": parent_session_id,
                     "hook_origin": hook_origin,
                     "hook_event_name": event,
                     "generation_id": generation_id,
@@ -245,11 +275,13 @@ def ci_hook(
         elif event_lower == "stop":
             transcript_path = input_json.get("transcript_path", "")
             stop_hook_active = input_json.get("stop_hook_active", False)
-            # Log what we receive from Claude Code for debugging
+            response_summary = input_json.get("response_summary", "")
+            # Log what we receive for debugging
             try:
                 with open(hooks_log, "a") as f:
                     f.write(
                         f"  [Stop:debug] transcript_path={transcript_path[:80] if transcript_path else '(empty)'} "
+                        f"response_summary={'yes' if response_summary else 'no'} "
                         f"input_keys={list(input_json.keys())}\n"
                     )
             except Exception:
@@ -261,6 +293,7 @@ def ci_hook(
                     "session_id": session_id,
                     "conversation_id": conversation_id,
                     "transcript_path": transcript_path,
+                    "response_summary": response_summary,
                     "stop_hook_active": stop_hook_active,
                     "hook_origin": hook_origin,
                     "hook_event_name": event,

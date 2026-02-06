@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useSession } from "@/hooks/use-activity";
 import { useDeleteSession, useDeletePromptBatch, usePromoteBatch } from "@/hooks/use-delete";
-import { useLinkSession, useUnlinkSession, useRegenerateSummary } from "@/hooks/use-session-link";
+import { useLinkSession, useUnlinkSession, useRegenerateSummary, useCompleteSession, useSessionRelated } from "@/hooks/use-session-link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PromptBatchActivities } from "@/components/data/PromptBatchActivities";
 import { SessionLineage, SessionLineageBadge } from "@/components/data/SessionLineage";
@@ -11,10 +11,11 @@ import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog"
 import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
-import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check } from "lucide-react";
+import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check, Share2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DELETE_CONFIRMATIONS, type SessionLinkReason } from "@/lib/constants";
+import { useTunnelStatus } from "@/hooks/use-tunnel";
 
 // Source type configuration for badges and icons
 const SOURCE_TYPE_CONFIG: Record<string, { badge: string; label: string; icon: React.ElementType; muted?: boolean }> = {
@@ -49,15 +50,21 @@ export default function SessionDetail() {
     const linkSession = useLinkSession();
     const unlinkSession = useUnlinkSession();
     const regenerateSummary = useRegenerateSummary();
+    const completeSession = useCompleteSession();
+    const { data: relatedData } = useSessionRelated(id);
 
     // Track which batch is being promoted (for loading state)
     const [promotingBatchId, setPromotingBatchId] = useState<string | null>(null);
     // Track summary regeneration message
     const [summaryMessage, setSummaryMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-    // Track if lineage card is expanded (collapsed by default when no links)
-    const [lineageExpanded, setLineageExpanded] = useState(false);
+    // Track if lineage card is expanded (null = user hasn't toggled, use auto behavior)
+    const [lineageExpanded, setLineageExpanded] = useState<boolean | null>(null);
     // Track copy feedback for resume command
     const [copiedResume, setCopiedResume] = useState(false);
+    // Track copy feedback for share URL
+    const [copiedShare, setCopiedShare] = useState(false);
+    // Tunnel status for share button
+    const { data: tunnelStatus } = useTunnelStatus();
 
     // Session delete dialog
     const sessionDialog = useConfirmDialog();
@@ -137,13 +144,13 @@ export default function SessionDetail() {
         );
     };
 
-    const handleLinkSession = async (parentSessionId: string, reason: SessionLinkReason) => {
+    const handleLinkSession = async (parentSessionId: string, reason?: SessionLinkReason) => {
         if (!id) return;
         try {
             await linkSession.mutateAsync({
                 sessionId: id,
                 parentSessionId,
-                reason,
+                reason: reason ?? "manual",
             });
             sessionPickerDialog.closeDialog();
         } catch (error) {
@@ -179,6 +186,18 @@ export default function SessionDetail() {
                 text: error instanceof Error ? error.message : "Failed to regenerate summary",
             });
             setTimeout(() => setSummaryMessage(null), 5000);
+        }
+    };
+
+    const handleShareSession = async () => {
+        if (!tunnelStatus?.active || !tunnelStatus.public_url || !id) return;
+        const shareUrl = `${tunnelStatus.public_url}/activity/sessions/${id}`;
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            setCopiedShare(true);
+            setTimeout(() => setCopiedShare(false), 2000);
+        } catch (error) {
+            console.error("Failed to copy share URL:", error);
         }
     };
 
@@ -225,15 +244,56 @@ export default function SessionDetail() {
                     </Link>
                     <h1 className="text-2xl font-bold tracking-tight">{sessionTitle}</h1>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30"
-                    onClick={() => sessionDialog.openDialog(session.id)}
-                >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Session
-                </Button>
+                <div className="flex items-center gap-2">
+                    {tunnelStatus?.active && tunnelStatus.public_url && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleShareSession}
+                        >
+                            {copiedShare ? (
+                                <>
+                                    <Check className="w-4 h-4 mr-2 text-green-500" />
+                                    Copied!
+                                </>
+                            ) : (
+                                <>
+                                    <Share2 className="w-4 h-4 mr-2" />
+                                    Share
+                                </>
+                            )}
+                        </Button>
+                    )}
+                    {session.status === "active" && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => id && completeSession.mutate(id)}
+                            disabled={completeSession.isPending}
+                        >
+                            {completeSession.isPending ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Completing...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                                    Complete Session
+                                </>
+                            )}
+                        </Button>
+                    )}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30"
+                        onClick={() => sessionDialog.openDialog(session.id)}
+                    >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Session
+                    </Button>
+                </div>
             </div>
 
             {/* Resume Command */}
@@ -284,8 +344,14 @@ export default function SessionDetail() {
 
             {/* Session Lineage Card - collapsible when no linked sessions */}
             {(() => {
-                const hasLineage = !!(session.parent_session_id || session.child_session_count > 0);
-                const isExpanded = hasLineage || lineageExpanded;
+                const hasParentChild = !!(session.parent_session_id || session.child_session_count > 0);
+                const hasRelated = relatedData && relatedData.related.length > 0;
+                const hasAnyLinks = hasParentChild || hasRelated;
+                // Parent/child: always expanded. Related-only or empty: user toggle wins if set,
+                // otherwise auto-expand when related sessions exist.
+                const isCollapsible = !hasParentChild;
+                const isExpanded = hasParentChild
+                    || (lineageExpanded !== null ? lineageExpanded : hasRelated);
 
                 return (
                     <Card>
@@ -293,17 +359,17 @@ export default function SessionDetail() {
                             <div className="flex items-center justify-between">
                                 <button
                                     className="flex items-center gap-2 text-lg font-semibold hover:text-foreground/80 transition-colors"
-                                    onClick={() => !hasLineage && setLineageExpanded(!lineageExpanded)}
-                                    disabled={hasLineage}
+                                    onClick={() => isCollapsible && setLineageExpanded(!isExpanded)}
+                                    disabled={!isCollapsible}
                                 >
                                     <GitBranch className="w-5 h-5 text-blue-500" />
                                     Session Lineage
-                                    {!hasLineage && (
+                                    {isCollapsible && (
                                         isExpanded
                                             ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
                                             : <ChevronRight className="w-4 h-4 text-muted-foreground" />
                                     )}
-                                    {!hasLineage && !isExpanded && (
+                                    {!hasAnyLinks && !isExpanded && (
                                         <span className="text-xs font-normal text-muted-foreground ml-2">No linked sessions</span>
                                     )}
                                 </button>
@@ -332,7 +398,7 @@ export default function SessionDetail() {
                                 </div>
                             </div>
                             {/* Show current lineage badge inline */}
-                            {hasLineage && (
+                            {hasParentChild && (
                                 <div className="mt-2">
                                     <SessionLineageBadge
                                         parentSessionId={session.parent_session_id}

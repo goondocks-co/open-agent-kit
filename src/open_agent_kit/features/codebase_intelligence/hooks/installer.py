@@ -134,6 +134,147 @@ class HooksInstaller:
         else:
             return self._remove_json_hooks()
 
+    # ------------------------------------------------------------------
+    # Upgrade detection (mirrors NotificationsInstaller.needs_upgrade)
+    # ------------------------------------------------------------------
+
+    def needs_upgrade(self) -> bool:
+        """Check if installed hooks differ from the package template.
+
+        Routes to a type-specific comparison based on ``hooks_config.type``.
+
+        Returns:
+            True if the installed hooks need to be upgraded, False otherwise.
+        """
+        if not self.hooks_config:
+            return False
+
+        hook_type = self.hooks_config.type
+
+        if hook_type == "plugin":
+            return self._plugin_needs_upgrade()
+        elif hook_type == "otel":
+            return self._otel_needs_upgrade()
+        else:
+            return self._json_needs_upgrade()
+
+    def _plugin_needs_upgrade(self) -> bool:
+        """Check if a plugin file differs from the package template.
+
+        Compares the raw file content of the template against the installed
+        plugin file.
+        """
+        if not self.hooks_config or not self.hooks_config.plugin_dir or not self.hooks_config.plugin_file:
+            return False
+
+        template_file = HOOKS_TEMPLATE_DIR / self.agent / self.hooks_config.template_file
+        if not template_file.exists():
+            return False
+
+        installed_path = self.agent_folder / self.hooks_config.plugin_dir / self.hooks_config.plugin_file
+        if not installed_path.exists():
+            return True  # Not installed yet
+
+        try:
+            return template_file.read_text() != installed_path.read_text()
+        except OSError:
+            return True
+
+    def _otel_needs_upgrade(self) -> bool:
+        """Check if the OTEL config section differs from the rendered template.
+
+        Renders the Jinja2 template with the current daemon port and compares
+        the resulting TOML section against the installed config file.
+        """
+        if not self.hooks_config or not self.hooks_config.otel:
+            return False
+
+        otel_config = self.hooks_config.otel
+        if not otel_config.enabled or not otel_config.config_template:
+            return False
+
+        template_path = HOOKS_TEMPLATE_DIR / self.agent / otel_config.config_template
+        if not template_path.exists():
+            return False
+
+        config_file = self.hooks_config.config_file or "config.toml"
+        config_path = self.agent_folder / config_file
+        if not config_path.exists():
+            return True  # Not installed yet
+
+        try:
+            import tomllib
+
+            from jinja2 import Template
+
+            daemon_port = self._get_daemon_port()
+            rendered = Template(template_path.read_text()).render(daemon_port=daemon_port)
+            expected_section = tomllib.loads(rendered)
+
+            installed_config = tomllib.loads(config_path.read_text())
+            section_key = otel_config.config_section or "otel"
+
+            if section_key not in installed_config:
+                return True
+
+            # Compare only the managed section (other config keys are user-owned)
+            expected_value = expected_section.get(section_key, expected_section)
+            return installed_config[section_key] != expected_value
+        except (ImportError, OSError, ValueError):
+            return True
+
+    def _json_needs_upgrade(self) -> bool:
+        """Check if JSON-based hooks differ from the package template.
+
+        Loads the template hooks, then compares each event's OAK-managed
+        hooks against what is currently installed in the agent's config file.
+        Uses ``_is_oak_managed_hook`` for identification so the logic stays
+        manifest-aware (flat / nested / copilot formats).
+        """
+        if not self.hooks_config or not self.hooks_config.config_file:
+            return False
+
+        template = self._load_hook_template()
+        if not template:
+            return False
+
+        hooks_key = self.hooks_config.hooks_key
+        source_hooks = template.get(hooks_key, {})
+
+        config_path = self.agent_folder / self.hooks_config.config_file
+        if not config_path.exists():
+            # Not installed yet — needs upgrade only if template has hooks
+            return bool(source_hooks)
+
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+            installed_hooks = config.get(hooks_key, {})
+        except (OSError, json.JSONDecodeError):
+            return True
+
+        # For each event in the template, compare OAK-managed hooks
+        for event, source_event_hooks in source_hooks.items():
+            installed_event_hooks = installed_hooks.get(event, [])
+
+            oak_installed = [h for h in installed_event_hooks if self._is_oak_managed_hook(h)]
+
+            if len(source_event_hooks) != len(oak_installed):
+                return True
+
+            if json.dumps(source_event_hooks, sort_keys=True) != json.dumps(
+                oak_installed, sort_keys=True
+            ):
+                return True
+
+        # Check for orphaned OAK hooks in events the template doesn't define
+        for event, installed_event_hooks in installed_hooks.items():
+            if event not in source_hooks:
+                if any(self._is_oak_managed_hook(h) for h in installed_event_hooks):
+                    return True
+
+        return False
+
     def _load_hook_template(self) -> dict[str, Any] | None:
         """Load hook template for this agent.
 

@@ -24,7 +24,14 @@ Contains schema version and SQL for creating the database schema.
 # v21: Added response_summary to prompt_batches for capturing agent responses
 # v22: Added input_tokens, output_tokens to agent_runs for SDK token tracking
 # v23: Moved schedule definitions to database (cron_expression, description, trigger_type, source_machine_id)
-SCHEMA_VERSION = 25
+# v24: Renamed instance_name to task_name in agent_schedules
+# v25: Added warnings column to agent_runs
+# v26: Added transcript_path to sessions for recovery/reconstruction
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_ACTIVITY_SCHEMA_VERSION,
+)
+
+SCHEMA_VERSION = CI_ACTIVITY_SCHEMA_VERSION
 
 SCHEMA_SQL = """
 -- Schema version tracking
@@ -102,7 +109,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at_epoch INTEGER NOT NULL,
     parent_session_id TEXT,  -- Session this was derived from (v12)
     parent_session_reason TEXT,  -- Why linked: 'clear', 'compact', 'inferred' (v12)
-    source_machine_id TEXT  -- Machine that originated this record (v13)
+    source_machine_id TEXT,  -- Machine that originated this record (v13)
+    transcript_path TEXT  -- Path to session transcript file for recovery (v26)
 );
 
 -- Prompt batches table (activities between user prompts - the unit of processing)

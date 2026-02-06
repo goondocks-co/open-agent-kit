@@ -689,6 +689,54 @@ class ActivityProcessor:
             generate_title_from_summary=_generate_title_from_summary,
         )
 
+    def complete_session(
+        self, session_id: str
+    ) -> tuple[str | None, str | None]:
+        """Mark an active session as completed and run post-completion processing.
+
+        This is the same chain the background job runs for stale sessions:
+        1. Mark session status as 'completed' (via end_session)
+        2. Generate summary (if summarizer configured)
+        3. Generate title (if missing)
+
+        Args:
+            session_id: Session to complete.
+
+        Returns:
+            Tuple of (summary text, title text) if generated.
+
+        Raises:
+            ValueError: If session not found or not active.
+        """
+        session = self.activity_store.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+        if session.status != "active":
+            raise ValueError(
+                f"Session {session_id} is already '{session.status}', only active sessions can be completed"
+            )
+
+        # Step 1: Mark as completed — same SQL path as recover_stale_sessions
+        self.activity_store.end_session(session_id)
+        logger.info(f"Manually completed session {session_id[:8]}")
+
+        # Step 2: Generate summary — same path as background job
+        summary, title = self.process_session_summary_with_title(
+            session_id, regenerate_title=True
+        )
+
+        # Step 3: Generate title if summary didn't produce one
+        if not title:
+            count = self.generate_pending_titles()
+            if count > 0:
+                logger.info(f"Generated {count} pending titles after completing session")
+            # Re-fetch to get the title that was generated
+            updated = self.activity_store.get_session(session_id)
+            if updated and updated.title:
+                title = updated.title
+
+        return summary, title
+
     def process_pending(self, max_sessions: int = 5) -> list[ProcessingResult]:
         """Process all pending sessions.
 

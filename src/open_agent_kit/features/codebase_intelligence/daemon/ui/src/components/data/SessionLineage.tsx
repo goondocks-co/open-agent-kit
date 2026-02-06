@@ -30,6 +30,7 @@ import {
     ListPlus,
     Link2,
     Trash2,
+    Plus,
 } from "lucide-react";
 import {
     SESSION_LINK_REASON_LABELS,
@@ -44,6 +45,7 @@ import {
     type RelationshipCreatedBy,
 } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
+import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
 
 interface SessionLineageProps {
     sessionId: string;
@@ -464,9 +466,24 @@ interface RelatedSessionsSectionProps {
 function RelatedSessionsSection({ sessionId, className }: RelatedSessionsSectionProps) {
     const { data: relatedData, isLoading: relatedLoading } = useSessionRelated(sessionId);
     const { data: suggestedData, isLoading: suggestedLoading } = useSuggestedRelated(sessionId);
+    const addRelated = useAddRelated();
+    const pickerDialog = useSessionPickerDialog();
 
     const hasRelated = relatedData && relatedData.related.length > 0;
     const hasSuggestions = suggestedData && suggestedData.suggestions.length > 0;
+
+    // Collect IDs to exclude from the picker (current session + already linked)
+    const excludeIds = new Set<string>([sessionId]);
+    if (relatedData) {
+        for (const r of relatedData.related) {
+            excludeIds.add(r.id);
+        }
+    }
+
+    const handleAddRelated = async (relatedSessionId: string) => {
+        await addRelated.mutateAsync({ sessionId, relatedSessionId });
+        pickerDialog.closeDialog();
+    };
 
     if (relatedLoading) {
         return (
@@ -488,6 +505,15 @@ function RelatedSessionsSection({ sessionId, className }: RelatedSessionsSection
                         <Link2 className="h-3 w-3" />
                         Related Sessions {hasRelated && `(${relatedData.related.length})`}
                     </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => pickerDialog.openDialog()}
+                    >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Link Related
+                    </Button>
                 </div>
 
                 {hasRelated ? (
@@ -515,6 +541,18 @@ function RelatedSessionsSection({ sessionId, className }: RelatedSessionsSection
                     isLoading={suggestedLoading}
                 />
             )}
+
+            {/* Session Picker Dialog for manually linking related sessions */}
+            <SessionPickerDialog
+                open={pickerDialog.isOpen}
+                onOpenChange={pickerDialog.setIsOpen}
+                title="Link Related Session"
+                description="Select a session to link as related to this session"
+                excludeSessionId={sessionId}
+                onSelect={handleAddRelated}
+                isLoading={addRelated.isPending}
+                showReasonSelector={false}
+            />
         </div>
     );
 }
