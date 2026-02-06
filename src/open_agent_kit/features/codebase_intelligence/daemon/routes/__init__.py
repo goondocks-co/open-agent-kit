@@ -9,13 +9,25 @@ This package contains the FastAPI routers split by domain:
 - notifications: Agent notify handlers for response summaries
 - mcp: MCP tool endpoints
 - config: Configuration management endpoints
-- activity: SQLite activity browsing endpoints
+- activity: Core SQLite activity browsing endpoints (plans, sessions, search, stats)
+- activity_sessions: Session lifecycle (lineage, linking, completion, summary)
+- activity_relationships: Many-to-many session relationships
+- activity_management: Delete endpoints for sessions, batches, activities
 - backup: Database backup and restore endpoints
 - ui: Web dashboard
 """
 
 from open_agent_kit.features.codebase_intelligence.daemon.routes.activity import (
     router as activity_router,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.routes.activity_management import (
+    router as activity_management_router,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.routes.activity_relationships import (
+    router as activity_relationships_router,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.routes.activity_sessions import (
+    router as activity_sessions_router,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.backup import (
     router as backup_router,
@@ -40,6 +52,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.ui import route
 
 __all__ = [
     "activity_router",
+    "activity_management_router",
+    "activity_relationships_router",
+    "activity_sessions_router",
     "backup_router",
     "health_router",
     "search_router",

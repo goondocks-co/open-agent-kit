@@ -461,6 +461,65 @@ def get_plans(
     return plans, total
 
 
+def queue_batches_for_reprocessing(
+    store: ActivityStore,
+    batch_ids: list[int] | None = None,
+    recover_stuck: bool = True,
+) -> tuple[int, int]:
+    """Recover stuck batches and reset processed flag for reprocessing.
+
+    This is a two-step operation:
+    1. Optionally mark stuck 'active' batches as 'completed'
+    2. Reset the 'processed' flag on completed batches so the background
+       processor will re-extract memories from them.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_ids: Optional list of specific batch IDs to reprocess.
+            If not provided, all batches are eligible.
+        recover_stuck: If True, also marks stuck 'active' batches as 'completed'.
+
+    Returns:
+        Tuple of (batches_recovered, batches_queued).
+    """
+    batches_recovered = 0
+    batches_queued = 0
+
+    with store._transaction() as conn:
+        # Step 1: Recover stuck batches
+        if recover_stuck:
+            if batch_ids:
+                placeholders = ",".join("?" * len(batch_ids))
+                cursor = conn.execute(
+                    f"UPDATE prompt_batches SET status = 'completed' WHERE id IN ({placeholders}) AND status = 'active'",
+                    batch_ids,
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE prompt_batches SET status = 'completed' WHERE status = 'active'"
+                )
+            batches_recovered = cursor.rowcount
+
+        # Step 2: Reset processed flag on completed batches
+        if batch_ids:
+            placeholders = ",".join("?" * len(batch_ids))
+            cursor = conn.execute(
+                f"UPDATE prompt_batches SET processed = 0 WHERE id IN ({placeholders}) AND status = 'completed'",
+                batch_ids,
+            )
+        else:
+            cursor = conn.execute(
+                "UPDATE prompt_batches SET processed = 0 WHERE status = 'completed'"
+            )
+        batches_queued = cursor.rowcount
+
+    if batches_recovered > 0:
+        logger.info(f"Recovered {batches_recovered} stuck batches")
+    logger.info(f"Queued {batches_queued} prompt batches for memory reprocessing")
+
+    return batches_recovered, batches_queued
+
+
 def recover_stuck_batches(
     store: ActivityStore,
     timeout_seconds: int = 1800,
@@ -531,7 +590,7 @@ def recover_stuck_batches(
                         logger.debug(
                             f"[RECOVERY] Captured response_summary for stuck batch {batch_id}"
                         )
-            except (OSError, ValueError, RuntimeError, ImportError) as e:
+            except (OSError, ValueError, RuntimeError, ImportError, AttributeError) as e:
                 logger.debug(f"Failed to capture response for stuck batch {batch_id}: {e}")
 
         # Update batch: mark as completed and optionally set response_summary

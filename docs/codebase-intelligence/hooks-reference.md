@@ -53,10 +53,80 @@ Codex notify handlers are configured to invoke `oak ci notify` for cross-platfor
 | `SessionEnd` | `/api/oak/ci/session-end` | Clean exit (Ctrl+D, /exit) | End session, generate summary |
 | `SubagentStart` | `/api/oak/ci/subagent-start` | Subagent spawned | Track subagent lifecycle |
 | `SubagentStop` | `/api/oak/ci/subagent-stop` | Subagent completes | Track subagent completion |
+| `PreCompact` | `/api/oak/ci/pre-compact` | Context compaction | Track context pressure |
+
+## Gemini CLI Hook Mapping
+
+Gemini CLI uses different event names from Claude Code. The `oak ci hook` command
+accepts both native event names and normalizes them to the OAK hook model:
+
+| Gemini CLI Event | OAK Event | `oak ci hook` Argument | Notes |
+|------------------|-----------|------------------------|-------|
+| `SessionStart` | `SessionStart` | `SessionStart` | Same name |
+| `BeforeAgent` | `UserPromptSubmit` | `BeforeAgent` | Fires after user sends prompt, before agent planning. Provides `prompt` |
+| `AfterTool` | `PostToolUse` | `PostToolUse` | Provides `tool_name`, `tool_input`, `tool_response` |
+| `AfterAgent` | `Stop` | `AfterAgent` | Fires once per turn after final response. Provides `prompt_response` |
+| `PreCompress` | `PreCompact` | `PreCompress` | Before history summarization |
+| `SessionEnd` | `SessionEnd` | `SessionEnd` | Same name |
+
+**Gemini-specific data fields:**
+- `BeforeAgent` provides `prompt` (user's text) — equivalent to Claude's `UserPromptSubmit`
+- `AfterAgent` provides `prompt_response` (agent's final answer) — maps to `response_summary` in the Stop handler
+- All Gemini hooks include `session_id`, `transcript_path`, `cwd`, `timestamp` in their stdin JSON
+
+**Gemini events NOT used by OAK** (available but not needed for session capture):
+- `BeforeTool` — pre-tool validation (OAK captures post-tool only)
+- `BeforeToolSelection` — tool filtering (not relevant to capture)
+- `BeforeModel` / `AfterModel` — LLM request/response interception (too low-level)
+- `Notification` — system alerts (could be added if needed)
+
+## Cursor Hook Mapping
+
+Cursor uses its own hook event names configured in `.cursor/hooks.json` with a flat
+structure (no matcher/nested hooks). The `oak ci hook` command normalizes these to
+the OAK hook model:
+
+| Cursor Event | OAK Event | `oak ci hook` Argument | Notes |
+|--------------|-----------|------------------------|-------|
+| `sessionStart` | `SessionStart` | `sessionStart` | Lowercase convention |
+| `beforeSubmitPrompt` | `UserPromptSubmit` | `beforeSubmitPrompt` | Fires before prompt is sent to agent |
+| `afterFileEdit` | `PostToolUse` | `afterFileEdit` | File edit specific; maps to tool_name="Edit" |
+| `afterAgentResponse` | `PostToolUse` | `afterAgentResponse` | Agent response text; maps to tool_name="agent_response" |
+| `afterAgentThought` | `AgentThought` | `afterAgentThought` | Agent thinking/reasoning block |
+| `postToolUse` | `PostToolUse` | `postToolUse` | General tool use (Read, Shell, Grep, etc.) |
+| `preCompact` | `PreCompact` | `preCompact` | Context window compaction |
+| `stop` | `Stop` | `stop` | Agent finishes responding |
+| `sessionEnd` | `SessionEnd` | `sessionEnd` | Session exits |
+| `postToolUseFailure` | `PostToolUseFailure` | `postToolUseFailure` | Tool execution failure |
+| `subagentStart` | `SubagentStart` | `subagentStart` | Task/subagent spawned |
+| `subagentStop` | `SubagentStop` | `subagentStop` | Task/subagent completed |
+
+### Cursor Dual-Hook Behavior
+
+**Important**: Cursor reads hooks from both `.cursor/hooks.json` AND `.claude/settings.json`.
+This means every hook event fires **twice** for the same session — once from the Claude
+config (with `--agent claude`) and once from the Cursor config (with `--agent cursor`).
+
+This is handled at the daemon API level:
+
+1. **Deduplication**: Most hook events (prompt-submit, post-tool-use, stop, session-end,
+   etc.) are deduplicated by content-based keys (prompt hash, tool_use_id, batch ID).
+   The second call is silently dropped.
+
+2. **Session agent label**: `SessionStart` is the one exception — its dedupe key includes
+   the agent name, so both calls pass through. The first call (from Claude config) creates
+   the session with `agent=claude`. The second call (from Cursor config) updates the agent
+   label to `cursor` via `get_or_create_session`, which always applies the latest agent
+   label when it differs. This ensures sessions are correctly attributed to Cursor.
+
+3. **Response formatting**: The `oak ci hook` CLI formats output differently per `--agent`
+   flag. Cursor ignores the Claude-formatted response (wrong key structure) and properly
+   consumes the Cursor-formatted response. Context injection works correctly.
 
 ## Hook Configuration
 
-Hooks are configured in `.claude/settings.json` (Claude Code) or `.cursor/hooks.json` (Cursor). Example for Claude Code:
+Hooks are configured in `.claude/settings.json` (Claude Code), `.cursor/hooks.json` (Cursor),
+or `.gemini/settings.json` (Gemini CLI). Example for Claude Code:
 
 ```json
 {
@@ -98,7 +168,9 @@ The hook shell script reads JSON from stdin and forwards it to the daemon's HTTP
 | `source` | string | Start type: `startup`, `resume`, `clear`, `compact` |
 
 **What We Capture**:
-- Create session record in SQLite (idempotent)
+- Create session record in SQLite (idempotent via `get_or_create_session`)
+- Update agent label if it differs from the existing session (handles Cursor dual-hook scenario)
+- Reactivate session if previously completed (e.g., on resume)
 - Create in-memory session tracking
 - Track session start time
 
@@ -443,17 +515,35 @@ Language is auto-detected from file extension using `LANG_MAP`:
 
 ## Deduplication
 
-Hooks are deduplicated to prevent duplicate processing from multiple hook invocations:
+Hooks are deduplicated to prevent duplicate processing from multiple hook invocations.
+This is especially important for Cursor, which fires every hook twice (see
+[Cursor Dual-Hook Behavior](#cursor-dual-hook-behavior)).
+
+**Mechanism**:
 
 1. **Build dedupe key**: `event_name|session_id|unique_parts`
 2. **Check cache**: LRU cache of recent keys (max 1000 entries)
-3. **Skip if seen**: Return early if already processed
+3. **Skip if seen**: Return early with cached response if already processed
 
-Deduplication uses:
-- `tool_use_id` for PostToolUse
-- `generation_id + prompt_hash` for UserPromptSubmit
-- `agent_id` for SubagentStart/Stop
-- `session_id + source` for SessionStart
+**Dedupe keys by event type**:
+
+| Event | Unique Parts in Key | Notes |
+|-------|---------------------|-------|
+| `session-start` | `agent` + `source` | Agent name included — allows both claude and cursor calls through for label correction |
+| `prompt-submit` | `generation_id` + `prompt_hash` | Second call with identical prompt is dropped |
+| `post-tool-use` | `tool_use_id` | Exact tool invocation match |
+| `post-tool-use-failure` | `tool_use_id` | Same as post-tool-use |
+| `stop` | `batch_id` (from active batch) | Prevents double-ending the same batch |
+| `session-end` | (session_id only) | Only one end per session |
+| `subagent-start` | `agent_id` | Subagent lifecycle tracking |
+| `subagent-stop` | `agent_id` | Subagent lifecycle tracking |
+| `pre-compact` | (session_id only) | One compaction event at a time |
+
+**Session-start special case**: Unlike other events, session-start intentionally does
+NOT deduplicate across different agent names for the same session. This allows the
+`get_or_create_session` function to update the agent label from `claude` to `cursor`
+when Cursor's dual-hook scenario fires both. The second call is idempotent for session
+creation (the session already exists) but applies the correct agent label.
 
 ---
 

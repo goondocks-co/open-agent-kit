@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from open_agent_kit.features.codebase_intelligence.memory.store.constants import (
     CODE_COLLECTION,
     MEMORY_COLLECTION,
+    default_hnsw_config,
 )
 
 if TYPE_CHECKING:
@@ -354,15 +355,9 @@ def clear_memory_collection(store: VectorStore) -> int:
     # Delete and recreate only the memory collection
     store._client.delete_collection(MEMORY_COLLECTION)
 
-    hnsw_config = {
-        "hnsw:space": "cosine",
-        "hnsw:construction_ef": 200,
-        "hnsw:M": 16,
-    }
-
     store._memory_collection = store._client.create_collection(
         name=MEMORY_COLLECTION,
-        metadata=hnsw_config,
+        metadata=default_hnsw_config(),
     )
 
     logger.info(f"Cleared memory collection ({count} items, code index preserved)")
@@ -383,15 +378,9 @@ def clear_code_index(store: VectorStore) -> None:
     # Delete and recreate only the code collection
     store._client.delete_collection(CODE_COLLECTION)
 
-    hnsw_config = {
-        "hnsw:space": "cosine",
-        "hnsw:construction_ef": 200,
-        "hnsw:M": 16,
-    }
-
     store._code_collection = store._client.create_collection(
         name=CODE_COLLECTION,
-        metadata=hnsw_config,
+        metadata=default_hnsw_config(),
     )
 
     logger.info("Cleared code index (memories preserved)")
@@ -477,20 +466,14 @@ def clear_all(store: VectorStore) -> None:
     store._client.delete_collection(MEMORY_COLLECTION)
 
     # Recreate
-    hnsw_config = {
-        "hnsw:space": "cosine",
-        "hnsw:construction_ef": 200,
-        "hnsw:M": 16,
-    }
-
     store._code_collection = store._client.create_collection(
         name=CODE_COLLECTION,
-        metadata=hnsw_config,
+        metadata=default_hnsw_config(),
     )
 
     store._memory_collection = store._client.create_collection(
         name=MEMORY_COLLECTION,
-        metadata=hnsw_config,
+        metadata=default_hnsw_config(),
     )
 
     logger.info("Cleared all vector store data (including memories)")

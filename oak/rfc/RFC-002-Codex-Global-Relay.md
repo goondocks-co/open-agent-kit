@@ -1,8 +1,8 @@
 # RFC-002: Global Codex Relay for Project-Aware CI Routing
 
-**Author:** Chris Kirby + AI Draft  
-**Date:** 2026-02-06  
-**Status:** Draft  
+**Author:** Chris Kirby + AI Refinements
+**Date:** 2026-02-06
+**Status:** Draft
 **Tags:** codex, otel, notify, daemon, routing, proxy
 
 ---
@@ -11,7 +11,7 @@
 
 Codex can emit OpenTelemetry (OTEL) events and `notify` callbacks. OAK currently routes both to a project-specific daemon port, which is inconvenient when Codex configuration is global and per-project ports differ.
 
-This RFC proposes a **global OAK relay** on a fixed local port (example: `38100`) that receives Codex OTEL + notify traffic and forwards each event to the correct project daemon.
+This RFC proposes a **global OAK relay** on a fixed local port (`38100`) that receives Codex OTEL + notify traffic and forwards each event to the correct project daemon.
 
 Core idea:
 
@@ -49,32 +49,23 @@ Codex core serializes this payload:
 Source:
 
 - `codex-rs/core/src/hooks/user_notification.rs` (`AgentTurnComplete` includes `cwd`)
+- Verified in OAK: `AGENT_NOTIFY_FIELD_CWD` is defined in constants.
 
 ### 2. Codex OTEL does **not** include `cwd`/project path
 
-Current Codex OTEL events include identifiers like:
-
-- `event.name`
-- `conversation.id`
-- `model`
-- `slug`
-- `approval_policy`
-- `sandbox_policy`
-- `mcp_servers`
-
-No project path/cwd attribute is emitted in the traced event payloads.
+Current Codex OTEL events include identifiers like `conversation.id` (mapped to `session_id` in OAK) but no project path/cwd attribute is emitted in the traced event payloads.
 
 Source:
 
 - `codex-rs/otel/src/traces/otel_manager.rs`
 
-### 3. HTTP request origin is not enough
+### 3. Port Conflict Potential
 
-From relay HTTP request metadata, we can reliably get only network-level sender info (typically loopback IP + ephemeral source port). This is not a stable project identity. Headers are not guaranteed to include project/workspace identity.
+The current CI daemon port range is `37800-38799`. The proposed relay port `38100` falls within this range. To prevent a project from being assigned the relay port, OAK's port resolution logic must explicitly reserve/exclude it.
 
-### 4. OAK already has project-port resolution logic
+### 4. Lack of Global State Directory
 
-OAK already resolves project daemon ports deterministically via project files and derivation rules. This can be reused by relay routing.
+OAK is currently project-centric. Implementing a persistent mapping cache requires establishing a standard global directory (e.g., `~/.oak/`).
 
 ---
 
@@ -98,23 +89,29 @@ OAK already resolves project daemon ports deterministically via project files an
 ### Components
 
 1. **Relay Listener (global)**
-   - Fixed localhost port (default candidate: `38100`).
+   - Fixed localhost port: `38100` (Reserved in `manager.py`).
    - Endpoints:
      - `POST /v1/logs` (OTEL)
      - `POST /api/oak/ci/notify` (notify)
+     - `GET /api/relay/status` (Diagnostics)
 
 2. **Thread Router**
    - Maintains mapping: `thread_id -> project_root`.
    - Populated from notify payload (`cwd`, `thread-id`).
+   - Persistent store: `~/.oak/ci/relay/mappings.db` (SQLite).
 
 3. **Event Buffer**
    - Stores OTEL events keyed by `thread_id` until mapping exists.
-   - TTL + max-size bounded.
-   - Flushes buffered OTEL events when mapping is learned.
+   - TTL (default 5 min) + max-size (1000 events) bounded.
+   - Replays buffered OTEL events *immediately before* forwarding the `notify` callback.
 
 4. **Project Daemon Resolver**
    - Reuses OAK `get_project_port(...)` behavior.
-   - Ensures daemon is running before forward.
+   - Uses `DaemonManager.ensure_running()` to start target daemon if needed.
+
+5. **Lifecycle Manager**
+   - New command group: `oak ci relay [start|stop|status]`.
+   - PID and logs stored in `~/.oak/ci/relay/`.
 
 ### Data Flow
 
@@ -123,7 +120,7 @@ OAK already resolves project daemon ports deterministically via project files an
 3. If thread mapped: forward immediately to project daemon.
 4. If thread unmapped: buffer OTEL event.
 5. Codex sends notify with `cwd` and `thread-id` at turn end.
-6. Relay records mapping, flushes buffered OTEL events for that thread, forwards notify.
+6. Relay records mapping, flushes buffered OTEL events for that thread (in order), then forwards the notify callback.
 
 ---
 
@@ -138,9 +135,9 @@ Instead:
 - Wait for authoritative mapping from notify (`cwd` + `thread-id`).
 - Then resolve and start target daemon using project-root-based port rules.
 
-### Optional Enhancement: Local mapping cache
+### Local mapping cache
 
-Persist recent `thread_id -> project_root` mappings in a small local cache to survive relay restarts and reduce warm-up drops.
+Persist recent `thread_id -> project_root` mappings in `~/.oak/ci/relay/mappings.db` to survive relay restarts and reduce warm-up drops. Entries should have a TTL (e.g., 24 hours).
 
 ---
 
@@ -150,37 +147,35 @@ Policy:
 
 - Buffer OTEL events for unknown thread IDs.
 - Bound with:
-  - max events
-  - max bytes
-  - max age (TTL)
-- On overflow/expiry, drop oldest and increment metrics/counters.
-
-This preserves most of the turn while preventing unbounded memory growth.
+  - max events: 1000
+  - max bytes: 10MB
+  - max age (TTL): 5 minutes
+- On overflow/expiry, drop oldest and increment metrics/counters visible in `/api/relay/status`.
 
 ---
 
 ## Failure Modes and Mitigations
 
 1. **Notify never arrives**
-   - Keep buffered OTEL until TTL, then drop with explicit log counters.
+   - Keep buffered OTEL until TTL (5 min), then drop with explicit log counters.
 
 2. **Daemon not running for mapped project**
-   - Start daemon on demand (same as existing notify path behavior).
+   - Start daemon on demand using `DaemonManager`.
 
 3. **Project moved/renamed**
    - If `cwd` no longer exists, reject mapping and log clear diagnostic.
 
 4. **Thread ID collision across long time windows**
-   - Use TTL-limited mapping entries and periodic cleanup.
+   - Use TTL-limited mapping entries and periodic cleanup in the persistent store.
 
 ---
 
 ## Security Considerations
 
-- Bind relay to loopback only.
+- Bind relay to loopback only (`127.0.0.1`).
 - Reject non-localhost callers by default.
-- Validate `cwd` path normalization before use.
-- Avoid forwarding to arbitrary hosts; only local project daemons.
+- Validate `cwd` path normalization and ensure it is a valid directory before use.
+- Restricted forwarding: only to local ports resolved via OAK's internal logic.
 
 ---
 
@@ -188,25 +183,27 @@ This preserves most of the turn while preventing unbounded memory growth.
 
 1. **Phase 1 (MVP)**
    - Global relay process + mapping + bounded OTEL buffer.
-   - Manual opt-in in OAK config.
+   - `oak ci relay` command group.
+   - Reserve port `38100` in OAK core.
 2. **Phase 2**
-   - Persistent mapping cache.
+   - Persistent mapping cache in `~/.oak/`.
    - Relay health/status endpoint and diagnostics.
 3. **Phase 3**
-   - Tooling command to configure Codex global OTEL+notify target to relay automatically.
+   - Tooling command (`oak ci relay setup`) to automatically update global `~/.codex/config.toml` to point to the relay.
 
 ---
 
-## Open Questions
+## Open Questions (Answered)
 
-1. Should relay run as part of each `oak ci start`, or as a separate singleton command (`oak ci relay start`)?
-2. Should relay accept both `38100` fixed default and configurable override?
-3. Should buffered OTEL be replayed in strict order with notify, or OTEL-first then notify passthrough?
+1. **Should relay run as part of each `oak ci start`, or as a separate singleton?**
+   - It should be a singleton managed by `oak ci relay [start|stop]`. `oak ci start` can optionally ensure it is running if configured.
+2. **Should relay accept both `38100` fixed default and configurable override?**
+   - Start with `38100` fixed but allow environment variable override (`OAK_RELAY_PORT`).
+3. **Should buffered OTEL be replayed in strict order with notify?**
+   - Yes, OTEL events must be replayed first, then notify passthrough, to ensure context is available before turn completion logic.
 
 ---
 
 ## Recommendation
 
-Proceed with a relay MVP using `notify` as authoritative project identity and OTEL buffering for early events.  
-This is the most reliable path with current Codex signal availability and avoids fragile inference from HTTP source metadata.
-
+Proceed with a relay MVP using `notify` as authoritative project identity and OTEL buffering for early events. This is the most reliable path with current Codex signal availability and avoids fragile inference from HTTP source metadata. Establishing a global OAK home directory for this purpose also paves the way for future global features.

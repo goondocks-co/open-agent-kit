@@ -132,6 +132,21 @@ def get_or_create_session(
             existing.status = "active"
             existing.ended_at = None
             logger.debug(f"Reactivated session {session_id}")
+
+        # Update agent label if it differs.
+        # Cursor reads both .claude/settings.json and .cursor/hooks.json,
+        # causing two SessionStart hooks to fire for the same session_id:
+        # first with agent=claude, then with agent=cursor.  The more
+        # specific label (the later call) should win.
+        if existing.agent != agent:
+            with store._transaction() as conn:
+                conn.execute(
+                    "UPDATE sessions SET agent = ? WHERE id = ?",
+                    (agent, session_id),
+                )
+            logger.debug(f"Updated session {session_id} agent label: {existing.agent} -> {agent}")
+            existing.agent = agent
+
         return existing, False
 
     # Create new session - handle race condition if another hook created it concurrently
@@ -1135,3 +1150,46 @@ def cleanup_low_quality_sessions(
         )
 
     return deleted_ids
+
+
+def is_suggestion_dismissed(store: ActivityStore, session_id: str) -> bool:
+    """Check whether the suggested-parent suggestion was dismissed for a session.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to check.
+
+    Returns:
+        True if the suggestion was dismissed by the user.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT suggested_parent_dismissed FROM sessions WHERE id = ?",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    return bool(row and row[0]) if row else False
+
+
+def count_sessions_with_summaries(store: ActivityStore) -> int:
+    """Count distinct sessions that have a session_summary observation.
+
+    Used to report how many sessions will be re-embedded.
+
+    Args:
+        store: The ActivityStore instance.
+
+    Returns:
+        Number of sessions with at least one session_summary observation.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT COUNT(DISTINCT s.id)
+        FROM sessions s
+        INNER JOIN memory_observations m ON m.session_id = s.id
+        WHERE m.memory_type = 'session_summary'
+        """
+    )
+    result = cursor.fetchone()
+    return result[0] or 0 if result else 0

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,12 @@ logger = logging.getLogger(__name__)
 hooks_logger = logging.getLogger("oak.ci.hooks")
 
 router = APIRouter(tags=["hooks"])
+
+# Standard exception tuple for hook store operations.
+# Hooks are fire-and-forget — they must return {"status": "ok"} even on
+# internal errors to avoid blocking the calling agent.  This differs from
+# ROUTE_EXCEPTION_TYPES (which converts errors to HTTPException(500)).
+_HOOK_STORE_EXCEPTIONS = (OSError, ValueError, RuntimeError, sqlite3.Error)
 
 
 # =============================================================================
@@ -281,7 +288,7 @@ async def hook_session_start(request: Request) -> dict:
                         f"[SESSION-LINK] session={session_id} parent={parent_session_id[:8]}... "
                         f"reason={parent_session_reason} (heuristic)"
                     )
-            except (OSError, ValueError, RuntimeError) as e:
+            except _HOOK_STORE_EXCEPTIONS as e:
                 logger.debug(f"Failed to find parent session for linking: {e}")
 
         try:
@@ -306,7 +313,7 @@ async def hook_session_start(request: Request) -> dict:
                             parent_session_id=parent_session_id,
                             reason=parent_session_reason or "clear",
                         )
-                    except (OSError, ValueError, RuntimeError) as e:
+                    except _HOOK_STORE_EXCEPTIONS as e:
                         logger.debug(f"Failed to update session parent: {e}")
 
                 # For continuation sources, create a batch immediately
@@ -331,7 +338,7 @@ async def hook_session_start(request: Request) -> dict:
                         logger.warning(f"Failed to create continuation batch: {e}")
             else:
                 logger.debug(f"Resumed activity session: {session_id}")
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.warning(f"Failed to create/resume activity session: {e}")
 
     # Build context response with injected_context for Claude
@@ -456,7 +463,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                                     logger.debug(
                                         f"[FALLBACK] Resolved transcript_path via {transcript_result.agent_type}: {transcript_path}"
                                     )
-                        except (OSError, ValueError, RuntimeError) as e:
+                        except _HOOK_STORE_EXCEPTIONS as e:
                             logger.debug(f"Failed to resolve transcript_path: {e}")
 
                     if transcript_path:
@@ -474,7 +481,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                                     f"[FALLBACK] Captured response_summary for batch {previous_batch_id} "
                                     f"(Stop hook didn't fire)"
                                 )
-                        except (OSError, ValueError, RuntimeError) as e:
+                        except _HOOK_STORE_EXCEPTIONS as e:
                             logger.debug(f"Failed to capture fallback response_summary: {e}")
 
                 state.activity_store.end_prompt_batch(previous_batch_id)
@@ -558,7 +565,7 @@ async def hook_prompt_submit(request: Request) -> dict:
 
             # Note: batch ID is tracked in SQLite, no in-memory state needed
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.warning(f"Failed to create prompt batch: {e}")
 
     context: dict[str, Any] = {}
@@ -1009,7 +1016,7 @@ async def hook_post_tool_use(request: Request) -> dict:
                             f"{file_path} (may signal plan execution)"
                         )
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to store activity: {e}")
 
     # NOTE: Observation extraction is now handled by the background ActivityProcessor
@@ -1142,7 +1149,7 @@ async def hook_stop(request: Request) -> dict:
         flushed_ids = state.activity_store.flush_activity_buffer()
         if flushed_ids:
             logger.debug(f"Flushed {len(flushed_ids)} buffered activities before batch end")
-    except (OSError, ValueError, RuntimeError) as e:
+    except _HOOK_STORE_EXCEPTIONS as e:
         logger.debug(f"Failed to flush activity buffer: {e}")
 
     # End current prompt batch and queue for processing (get batch from SQLite)
@@ -1195,7 +1202,7 @@ async def hook_stop(request: Request) -> dict:
             if transcript_path and state.activity_store:
                 try:
                     state.activity_store.update_session_transcript_path(session_id, transcript_path)
-                except (OSError, ValueError, RuntimeError) as e:
+                except _HOOK_STORE_EXCEPTIONS as e:
                     logger.debug(f"[STOP] Failed to store transcript_path: {e}")
 
             from open_agent_kit.features.codebase_intelligence.activity import (
@@ -1217,7 +1224,7 @@ async def hook_stop(request: Request) -> dict:
 
             # Note: batch status is tracked in SQLite, no in-memory cleanup needed
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.warning(f"Failed to end prompt batch: {e}")
 
     return result
@@ -1257,7 +1264,7 @@ async def hook_session_end(request: Request) -> dict:
             flushed_ids = state.activity_store.flush_activity_buffer()
             if flushed_ids:
                 logger.debug(f"Flushed {len(flushed_ids)} buffered activities on session end")
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to flush activity buffer on session end: {e}")
 
     result: dict[str, Any] = {"status": "ok"}
@@ -1315,7 +1322,7 @@ async def hook_session_end(request: Request) -> dict:
                 logger.debug(f"[REALTIME] Scheduling async task for final batch {batch_id}")
                 asyncio.create_task(_process_final_batch())
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to end final prompt batch: {e}")
 
     # Ensure transcript_path is stored (fallback if Stop hook didn't provide it)
@@ -1331,7 +1338,7 @@ async def hook_session_end(request: Request) -> dict:
                 if resolved and resolved.exists():
                     state.activity_store.update_session_transcript_path(session_id, str(resolved))
                     logger.debug(f"[SESSION-END] Resolved transcript_path fallback: {resolved}")
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"[SESSION-END] Transcript resolution fallback failed: {e}")
 
     # End session in activity store
@@ -1371,7 +1378,7 @@ async def hook_session_end(request: Request) -> dict:
 
                 asyncio.create_task(_generate_session_summary_and_title())
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.warning(f"Failed to end activity session: {e}")
 
     # Session stats come from activity_stats (SQLite) - no in-memory tracking
@@ -1524,7 +1531,7 @@ async def hook_post_tool_use_failure(request: Request) -> dict:
             state.activity_store.add_activity_buffered(activity)
             logger.debug(f"Stored failed activity: {tool_name} (batch={prompt_batch_id})")
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to store failed activity: {e}")
 
     return {"status": "ok", "tool_name": tool_name, "recorded": True}
@@ -1595,7 +1602,7 @@ async def hook_subagent_start(request: Request) -> dict:
             state.activity_store.add_activity_buffered(activity)
             logger.debug(f"Stored subagent-start: {agent_type} (batch={prompt_batch_id})")
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to store subagent-start: {e}")
 
     return {"status": "ok", "agent_id": agent_id, "agent_type": agent_type}
@@ -1687,7 +1694,7 @@ async def hook_subagent_stop(request: Request) -> dict:
                     )
                     logger.debug(f"Captured subagent response for batch {prompt_batch_id}")
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to store subagent-stop: {e}")
 
     return {
@@ -1772,7 +1779,7 @@ async def hook_agent_thought(request: Request) -> dict:
                 f"Stored agent-thought: {len(thought_text)} chars (batch={prompt_batch_id})"
             )
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to store agent-thought: {e}")
 
     return {"status": "ok", "thought_length": len(thought_text), "duration_ms": duration_ms}
@@ -1860,7 +1867,7 @@ async def hook_pre_compact(request: Request) -> dict:
                 f"Stored pre-compact: {context_usage_percent}% usage (batch={prompt_batch_id})"
             )
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except _HOOK_STORE_EXCEPTIONS as e:
             logger.debug(f"Failed to store pre-compact: {e}")
 
     return {

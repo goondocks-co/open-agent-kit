@@ -44,6 +44,8 @@ def parse_transcript_response(
                 continue
             try:
                 msg = json.loads(line)
+                if not isinstance(msg, dict):
+                    continue
 
                 # Handle Claude Code transcript format: {"type": "assistant", "message": {...}}
                 # The message object contains role, content, etc.

@@ -3,8 +3,8 @@
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITY_SCHEMA_VERSION,
     CI_SESSION_COLUMN_TRANSCRIPT_PATH,
+    SESSION_STATUS_COMPLETED,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.constants import SessionStatus
 
 # Schema
 TEST_SCHEMA_VERSION = CI_ACTIVITY_SCHEMA_VERSION
@@ -32,7 +32,7 @@ TEST_CREATED_AT_EPOCH = 1735689600
 SQLITE_MEMORY_URI = ":memory:"
 
 # Session status
-TEST_SESSION_STATUS_COMPLETED = SessionStatus.COMPLETED
+TEST_SESSION_STATUS_COMPLETED = SESSION_STATUS_COMPLETED
 
 # Session columns
 TEST_SESSION_COLUMN_TRANSCRIPT_PATH = CI_SESSION_COLUMN_TRANSCRIPT_PATH

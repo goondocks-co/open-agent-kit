@@ -265,6 +265,14 @@ class ActivityStore:
         """Auto-end or delete sessions that have been inactive for too long."""
         return sessions.recover_stale_sessions(self, timeout_seconds, min_activities)
 
+    def is_suggestion_dismissed(self, session_id: str) -> bool:
+        """Check whether the suggested-parent suggestion was dismissed."""
+        return sessions.is_suggestion_dismissed(self, session_id)
+
+    def count_sessions_with_summaries(self) -> int:
+        """Count sessions that have a session_summary observation."""
+        return sessions.count_sessions_with_summaries(self)
+
     # ==========================================================================
     # Prompt batch operations - delegate to batches module
     # ==========================================================================
@@ -349,6 +357,14 @@ class ActivityStore:
     def recover_orphaned_activities(self) -> int:
         """Associate orphaned activities with appropriate batches."""
         return batches.recover_orphaned_activities(self)
+
+    def queue_batches_for_reprocessing(
+        self,
+        batch_ids: list[int] | None = None,
+        recover_stuck: bool = True,
+    ) -> tuple[int, int]:
+        """Recover stuck batches and reset processed flag for reprocessing."""
+        return batches.queue_batches_for_reprocessing(self, batch_ids, recover_stuck)
 
     def get_prompt_batch_activities(
         self, batch_id: int, limit: int | None = None

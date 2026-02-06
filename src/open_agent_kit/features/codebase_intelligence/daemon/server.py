@@ -42,8 +42,12 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.processor.core import (
         ActivityProcessor,
     )
-    from open_agent_kit.features.codebase_intelligence.config import LogRotationConfig
+    from open_agent_kit.features.codebase_intelligence.config import (
+        CIConfig,
+        LogRotationConfig,
+    )
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
+    from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 
@@ -373,300 +377,290 @@ def _configure_logging(
         ci_logger.addHandler(stream_handler)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage daemon lifecycle."""
-    state = get_state()
+def _init_tunnel(state: "DaemonState", project_root: Path) -> None:
+    """Auto-start tunnel if configured.
 
-    # Get project root from state (set by create_app)
-    project_root = state.project_root or Path.cwd()
-    state.initialize(project_root)
+    Non-critical: failures are logged but do not prevent startup.
+    """
+    ci_config = state.ci_config
+    if not ci_config or not ci_config.tunnel.auto_start:
+        return
 
-    # Load configuration from project
-    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
+    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+        get_project_port,
+    )
+    from open_agent_kit.features.codebase_intelligence.tunnel.factory import (
+        create_tunnel_provider,
+    )
+
+    logger.info(CI_TUNNEL_LOG_AUTO_START)
+    try:
+        provider = create_tunnel_provider(
+            provider=ci_config.tunnel.provider,
+            cloudflared_path=ci_config.tunnel.cloudflared_path,
+            ngrok_path=ci_config.tunnel.ngrok_path,
+        )
+        if not provider.is_available:
+            logger.warning(CI_TUNNEL_LOG_AUTO_START_UNAVAILABLE.format(provider=provider.name))
+            return
+
+        ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+        port = get_project_port(project_root, ci_data_dir)
+        status = provider.start(port)
+        if status.active and status.public_url:
+            state.tunnel_provider = provider
+            state.add_cors_origin(status.public_url)
+            logger.info(CI_TUNNEL_LOG_ACTIVE.format(public_url=status.public_url))
+        else:
+            error_detail = status.error or CI_TUNNEL_ERROR_START_UNKNOWN
+            logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=error_detail))
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=e))
+
+
+def _init_embedding(state: "DaemonState", project_root: Path) -> bool:
+    """Create and verify the embedding provider.
+
+    Returns True if the provider is available for immediate use.
+    """
     from open_agent_kit.features.codebase_intelligence.embeddings.provider_chain import (
         create_provider_from_config,
     )
 
-    ci_config = load_ci_config(project_root)
-    state.ci_config = ci_config
-    state.config = ci_config.to_dict()
+    ci_config = state.ci_config
+    if ci_config is None:
+        state.embedding_chain = None
+        return False
 
-    # Configure logging based on config and environment
-    effective_log_level = ci_config.get_effective_log_level()
-    log_file = project_root / OAK_DIR / CI_DATA_DIR / CI_LOG_FILE
-    _configure_logging(
-        effective_log_level,
-        log_file=log_file,
-        log_rotation=ci_config.log_rotation,
-    )
-    state.log_level = effective_log_level
-
-    logger.info(f"Codebase Intelligence daemon starting up (log_level={effective_log_level})")
-    if effective_log_level == "DEBUG":
-        logger.debug("Debug logging enabled - verbose output active")
-
-    # Auto-start tunnel if configured
-    if ci_config.tunnel.auto_start:
-        from open_agent_kit.features.codebase_intelligence.daemon.manager import (
-            get_project_port,
-        )
-        from open_agent_kit.features.codebase_intelligence.tunnel.factory import (
-            create_tunnel_provider,
-        )
-
-        logger.info(CI_TUNNEL_LOG_AUTO_START)
-        try:
-            provider = create_tunnel_provider(
-                provider=ci_config.tunnel.provider,
-                cloudflared_path=ci_config.tunnel.cloudflared_path,
-                ngrok_path=ci_config.tunnel.ngrok_path,
-            )
-            if not provider.is_available:
-                logger.warning(CI_TUNNEL_LOG_AUTO_START_UNAVAILABLE.format(provider=provider.name))
-            else:
-                ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
-                port = get_project_port(project_root, ci_data_dir)
-                status = provider.start(port)
-                if status.active and status.public_url:
-                    state.tunnel_provider = provider
-                    state.add_cors_origin(status.public_url)
-                    logger.info(CI_TUNNEL_LOG_ACTIVE.format(public_url=status.public_url))
-                else:
-                    error_detail = status.error or CI_TUNNEL_ERROR_START_UNKNOWN
-                    logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=error_detail))
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=e))
-
-    # Create embedding provider from config
-    # Note: We require Ollama or OpenAI-compatible provider - no built-in fallback
-    provider_available = False
     try:
         primary_provider = create_provider_from_config(ci_config.embedding)
-        if primary_provider.is_available:
-            state.embedding_chain = EmbeddingProviderChain(providers=[primary_provider])
-            provider_available = True
-
-            # Verify dimensions on startup - detect actual model output dimensions
-            # and update config if not set, or warn if there's a mismatch
-            config_dims = ci_config.embedding.dimensions
-            try:
-                # Do a test embedding to detect actual model dimensions
-                test_result = primary_provider.embed(["dimension test"])
-                if test_result.embeddings and len(test_result.embeddings) > 0:
-                    detected_dims = len(test_result.embeddings[0])
-
-                    if config_dims is None:
-                        # Auto-detect and save if not configured
-                        from open_agent_kit.features.codebase_intelligence.config import (
-                            save_ci_config,
-                        )
-
-                        ci_config.embedding.dimensions = detected_dims
-                        save_ci_config(project_root, ci_config)
-                        logger.info(
-                            f"Auto-detected and saved embedding dimensions: {detected_dims}"
-                        )
-                    elif config_dims != detected_dims:
-                        # Config has explicit dimensions that don't match model output
-                        # Update config to match reality - the model outputs what it outputs
-                        from open_agent_kit.features.codebase_intelligence.config import (
-                            save_ci_config,
-                        )
-
-                        logger.warning(
-                            f"Config dimensions ({config_dims}) don't match actual model "
-                            f"output ({detected_dims}). This model doesn't support dimension "
-                            f"truncation - updating config to {detected_dims}."
-                        )
-                        ci_config.embedding.dimensions = detected_dims
-                        save_ci_config(project_root, ci_config)
-            except (OSError, RuntimeError, ValueError) as e:
-                logger.warning(f"Could not verify dimensions: {e}")
-
-            logger.info(
-                f"Created embedding provider: {primary_provider.name} "
-                f"(dims={ci_config.embedding.get_dimensions()}, "
-                f"max_chunk={ci_config.embedding.get_max_chunk_chars()})"
-            )
-        else:
-            # Provider created but not available (e.g., Ollama not running)
-            logger.warning(
-                f"Embedding provider {primary_provider.name} not available. "
-                "Make sure Ollama is running or configure an OpenAI-compatible provider."
-            )
-            logger.info("Configure your provider in the Settings tab to start indexing.")
-            # Still create the chain - it will be checked on first use
-            state.embedding_chain = EmbeddingProviderChain(providers=[primary_provider])
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Failed to create embedding provider: {e}")
         logger.info("Configure your provider in the Settings tab to start indexing.")
         state.embedding_chain = None
+        return False
 
-    # Initialize vector store (requires embedding provider)
-    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR / CI_CHROMA_DIR
+    if not primary_provider.is_available:
+        logger.warning(
+            f"Embedding provider {primary_provider.name} not available. "
+            "Make sure Ollama is running or configure an OpenAI-compatible provider."
+        )
+        logger.info("Configure your provider in the Settings tab to start indexing.")
+        state.embedding_chain = EmbeddingProviderChain(providers=[primary_provider])
+        return False
 
+    state.embedding_chain = EmbeddingProviderChain(providers=[primary_provider])
+
+    # Verify dimensions on startup - detect actual model output dimensions
+    _verify_embedding_dimensions(primary_provider, ci_config, project_root)
+
+    logger.info(
+        f"Created embedding provider: {primary_provider.name} "
+        f"(dims={ci_config.embedding.get_dimensions()}, "
+        f"max_chunk={ci_config.embedding.get_max_chunk_chars()})"
+    )
+    return True
+
+
+def _verify_embedding_dimensions(
+    primary_provider: "EmbeddingProvider", ci_config: "CIConfig", project_root: Path
+) -> None:
+    """Detect actual model dimensions and update config if needed."""
+    try:
+        test_result = primary_provider.embed(["dimension test"])
+        if not (test_result.embeddings and len(test_result.embeddings) > 0):
+            return
+
+        detected_dims = len(test_result.embeddings[0])
+        config_dims = ci_config.embedding.dimensions
+
+        if config_dims is None:
+            from open_agent_kit.features.codebase_intelligence.config import save_ci_config
+
+            ci_config.embedding.dimensions = detected_dims
+            save_ci_config(project_root, ci_config)
+            logger.info(f"Auto-detected and saved embedding dimensions: {detected_dims}")
+        elif config_dims != detected_dims:
+            from open_agent_kit.features.codebase_intelligence.config import save_ci_config
+
+            logger.warning(
+                f"Config dimensions ({config_dims}) don't match actual model "
+                f"output ({detected_dims}). This model doesn't support dimension "
+                f"truncation - updating config to {detected_dims}."
+            )
+            ci_config.embedding.dimensions = detected_dims
+            save_ci_config(project_root, ci_config)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning(f"Could not verify dimensions: {e}")
+
+
+def _init_vector_store_and_indexer(
+    state: "DaemonState", project_root: Path, provider_available: bool
+) -> None:
+    """Initialize vector store and code indexer.
+
+    Requires ``state.embedding_chain`` to be set. If the embedding chain is
+    ``None`` the vector store and indexer are left as ``None``.
+    """
     if state.embedding_chain is None:
         logger.warning("Skipping vector store initialization - no embedding provider")
         state.vector_store = None
         state.indexer = None
+        return
+
+    ci_config = state.ci_config
+    if ci_config is None:
+        return
+
+    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR / CI_CHROMA_DIR
+
+    from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
+
+    state.vector_store = VectorStore(
+        persist_directory=ci_data_dir,
+        embedding_provider=state.embedding_chain,
+    )
+    logger.info(f"Vector store initialized at {ci_data_dir}")
+
+    # Initialize indexer with configured chunk size
+    from open_agent_kit.features.codebase_intelligence.indexing.chunker import ChunkerConfig
+    from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
+        CodebaseIndexer,
+        IndexerConfig,
+    )
+
+    chunker_config = ChunkerConfig(
+        max_chunk_chars=ci_config.embedding.get_max_chunk_chars(),
+    )
+
+    # Get combined exclusion patterns from config (defaults + user patterns)
+    combined_patterns = ci_config.get_combined_exclude_patterns()
+    user_patterns = ci_config.get_user_exclude_patterns()
+    if user_patterns:
+        logger.debug(f"User exclude patterns: {user_patterns}")
+
+    indexer_config = IndexerConfig(ignore_patterns=combined_patterns)
+
+    state.indexer = CodebaseIndexer(
+        project_root=project_root,
+        vector_store=state.vector_store,
+        config=indexer_config,
+        chunker_config=chunker_config,
+    )
+
+    # Start background indexing only if provider is available
+    if provider_available:
+        task = asyncio.create_task(_background_index(), name="background_index")
+        state.background_tasks.append(task)
     else:
-        try:
-            from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
+        logger.info(
+            "Skipping auto-index - provider not available. Save settings to start indexing."
+        )
 
-            state.vector_store = VectorStore(
-                persist_directory=ci_data_dir,
-                embedding_provider=state.embedding_chain,
-            )
-            logger.info(f"Vector store initialized at {ci_data_dir}")
 
-            # Initialize indexer with configured chunk size
-            from open_agent_kit.features.codebase_intelligence.indexing.chunker import (
-                ChunkerConfig,
-            )
-            from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
-                CodebaseIndexer,
-                IndexerConfig,
-            )
+async def _init_activity(state: "DaemonState", project_root: Path) -> None:
+    """Initialize the activity store and processor.
 
-            chunker_config = ChunkerConfig(
-                max_chunk_chars=ci_config.embedding.get_max_chunk_chars(),
-            )
+    Requires ``state.vector_store`` to be set for full processor init.
+    """
+    ci_config = state.ci_config
+    if ci_config is None:
+        return
 
-            # Get combined exclusion patterns from config (defaults + user patterns)
-            combined_patterns = ci_config.get_combined_exclude_patterns()
-            user_patterns = ci_config.get_user_exclude_patterns()
-            if user_patterns:
-                logger.debug(f"User exclude patterns: {user_patterns}")
+    from open_agent_kit.features.codebase_intelligence.activity import (
+        ActivityProcessor,
+        ActivityStore,
+    )
+    from open_agent_kit.features.codebase_intelligence.summarization import (
+        create_summarizer_from_config,
+    )
 
-            indexer_config = IndexerConfig(ignore_patterns=combined_patterns)
+    activity_db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
+    state.activity_store = ActivityStore(activity_db_path)
+    logger.info(f"Activity store initialized at {activity_db_path}")
 
-            state.indexer = CodebaseIndexer(
-                project_root=project_root,
-                vector_store=state.vector_store,
-                config=indexer_config,
-                chunker_config=chunker_config,
-            )
+    # Create processor with summarizer if configured
+    summarizer = None
+    if ci_config.summarization.enabled:
+        summarizer = create_summarizer_from_config(ci_config.summarization)
 
-            # Start background indexing only if provider is available
-            if provider_available:
-                task = asyncio.create_task(_background_index(), name="background_index")
-                state.background_tasks.append(task)
-            else:
-                logger.info(
-                    "Skipping auto-index - provider not available. Save settings to start indexing."
-                )
+    if state.vector_store:
+        state.activity_processor = ActivityProcessor(
+            activity_store=state.activity_store,
+            vector_store=state.vector_store,
+            summarizer=summarizer,
+            project_root=str(project_root),
+            context_tokens=ci_config.summarization.get_context_tokens(),
+            session_quality_config=ci_config.session_quality,
+        )
 
-            # Initialize activity store and processor
-            try:
-                from open_agent_kit.features.codebase_intelligence.activity import (
-                    ActivityProcessor,
-                    ActivityStore,
-                )
-                from open_agent_kit.features.codebase_intelligence.summarization import (
-                    create_summarizer_from_config,
-                )
+        # Check for SQLite/ChromaDB mismatch on startup
+        await _check_and_rebuild_chromadb(state)
 
-                activity_db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
-                state.activity_store = ActivityStore(activity_db_path)
-                logger.info(f"Activity store initialized at {activity_db_path}")
+        # Schedule background processing using config interval
+        bg_interval = ci_config.agents.background_processing_interval_seconds
+        state.activity_processor.schedule_background_processing(interval_seconds=bg_interval)
+        logger.info(
+            f"Activity processor initialized with background scheduling "
+            f"(interval={bg_interval}s)"
+        )
 
-                # Create processor with summarizer if configured
-                summarizer = None
-                if ci_config.summarization.enabled:
-                    summarizer = create_summarizer_from_config(ci_config.summarization)
 
-                if state.vector_store:
-                    state.activity_processor = ActivityProcessor(
-                        activity_store=state.activity_store,
-                        vector_store=state.vector_store,
-                        summarizer=summarizer,
-                        project_root=str(project_root),
-                        context_tokens=ci_config.summarization.get_context_tokens(),
-                        session_quality_config=ci_config.session_quality,
-                    )
+def _init_agents(state: "DaemonState", project_root: Path) -> None:
+    """Initialize the agent subsystem (registry, executor, scheduler).
 
-                    # Check for SQLite/ChromaDB mismatch on startup
-                    # SQLite is source of truth - if it has data but ChromaDB doesn't,
-                    # we need to rebuild ChromaDB from SQLite
-                    await _check_and_rebuild_chromadb(state)
+    Non-critical: failures are logged but do not prevent startup.
+    """
+    ci_config = state.ci_config
+    if ci_config is None:
+        return
 
-                    # Schedule background processing using config interval
-                    bg_interval = ci_config.agents.background_processing_interval_seconds
-                    state.activity_processor.schedule_background_processing(
-                        interval_seconds=bg_interval
-                    )
-                    logger.info(
-                        f"Activity processor initialized with background scheduling "
-                        f"(interval={bg_interval}s)"
-                    )
+    if not ci_config.agents.enabled:
+        logger.info("Agent subsystem disabled in config")
+        return
 
-            except (OSError, ValueError, RuntimeError) as e:
-                logger.warning(f"Failed to initialize activity store: {e}")
-                state.activity_store = None
-                state.activity_processor = None
+    from open_agent_kit.features.codebase_intelligence.agents import (
+        AgentExecutor,
+        AgentRegistry,
+    )
 
-            # Initialize agent subsystem if enabled
-            try:
-                if ci_config.agents.enabled:
-                    from open_agent_kit.features.codebase_intelligence.agents import (
-                        AgentExecutor,
-                        AgentRegistry,
-                    )
+    state.agent_registry = AgentRegistry(project_root=project_root)
+    agent_count = state.agent_registry.load_all()
+    logger.info(f"Agent registry loaded {agent_count} agents")
 
-                    state.agent_registry = AgentRegistry(project_root=project_root)
-                    agent_count = state.agent_registry.load_all()
-                    logger.info(f"Agent registry loaded {agent_count} agents")
+    state.agent_executor = AgentExecutor(
+        project_root=project_root,
+        agent_config=ci_config.agents,
+        retrieval_engine=state.retrieval_engine,
+        activity_store=state.activity_store,
+        vector_store=state.vector_store,
+    )
+    logger.info(f"Agent executor initialized (cache_size={ci_config.agents.executor_cache_size})")
 
-                    state.agent_executor = AgentExecutor(
-                        project_root=project_root,
-                        agent_config=ci_config.agents,
-                        retrieval_engine=state.retrieval_engine,
-                        activity_store=state.activity_store,
-                        vector_store=state.vector_store,
-                    )
-                    logger.info(
-                        f"Agent executor initialized (cache_size={ci_config.agents.executor_cache_size})"
-                    )
+    # Initialize scheduler if activity_store is available
+    if state.activity_store:
+        from open_agent_kit.features.codebase_intelligence.agents.scheduler import (
+            AgentScheduler,
+        )
 
-                    # Initialize scheduler if activity_store is available
-                    if state.activity_store:
-                        from open_agent_kit.features.codebase_intelligence.agents.scheduler import (
-                            AgentScheduler,
-                        )
+        state.agent_scheduler = AgentScheduler(
+            activity_store=state.activity_store,
+            agent_registry=state.agent_registry,
+            agent_executor=state.agent_executor,
+            agent_config=ci_config.agents,
+        )
+        # Sync schedules from YAML definitions to database
+        sync_result = state.agent_scheduler.sync_schedules()
+        logger.info(
+            f"Agent scheduler initialized: {sync_result['total']} schedules "
+            f"({sync_result['created']} created, {sync_result['updated']} updated)"
+        )
+        # Start the background scheduling loop (uses config interval)
+        state.agent_scheduler.start()
 
-                        state.agent_scheduler = AgentScheduler(
-                            activity_store=state.activity_store,
-                            agent_registry=state.agent_registry,
-                            agent_executor=state.agent_executor,
-                            agent_config=ci_config.agents,
-                        )
-                        # Sync schedules from YAML definitions to database
-                        sync_result = state.agent_scheduler.sync_schedules()
-                        logger.info(
-                            f"Agent scheduler initialized: {sync_result['total']} schedules "
-                            f"({sync_result['created']} created, {sync_result['updated']} updated)"
-                        )
-                        # Start the background scheduling loop (uses config interval)
-                        state.agent_scheduler.start()
-                else:
-                    logger.info("Agent subsystem disabled in config")
-            except ImportError as e:
-                logger.warning(f"Agent subsystem unavailable (SDK not installed): {e}")
-            except (OSError, ValueError, RuntimeError) as e:
-                logger.warning(f"Failed to initialize agent subsystem: {e}")
-                state.agent_registry = None
-                state.agent_executor = None
-                state.agent_scheduler = None
 
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(f"Failed to initialize: {e}")
-            state.vector_store = None
-            state.indexer = None
-
-    yield
-
-    # Graceful shutdown sequence
+async def _shutdown(state: "DaemonState") -> None:
+    """Graceful shutdown sequence for all subsystems."""
     logger.info("Initiating graceful shutdown...")
 
     # 1. Cancel background tasks and wait for them with timeout
@@ -726,6 +720,72 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             state.file_watcher = None
 
     logger.info("Codebase Intelligence daemon shutdown complete")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Manage daemon lifecycle.
+
+    Initialization order matters: embedding → vector store → activity → agents.
+    Each helper is self-contained and logs its own errors so failures in one
+    subsystem do not block the rest of startup.
+    """
+    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
+
+    state = get_state()
+
+    # Get project root from state (set by create_app)
+    project_root = state.project_root or Path.cwd()
+    state.initialize(project_root)
+
+    # Load configuration
+    ci_config = load_ci_config(project_root)
+    state.ci_config = ci_config
+    state.config = ci_config.to_dict()
+
+    # Configure logging
+    effective_log_level = ci_config.get_effective_log_level()
+    log_file = project_root / OAK_DIR / CI_DATA_DIR / CI_LOG_FILE
+    _configure_logging(effective_log_level, log_file=log_file, log_rotation=ci_config.log_rotation)
+    state.log_level = effective_log_level
+
+    logger.info(f"Codebase Intelligence daemon starting up (log_level={effective_log_level})")
+    if effective_log_level == "DEBUG":
+        logger.debug("Debug logging enabled - verbose output active")
+
+    # --- Subsystem init (order matters: embedding → vector store → activity → agents) ---
+    _init_tunnel(state, project_root)
+
+    provider_available = _init_embedding(state, project_root)
+
+    try:
+        _init_vector_store_and_indexer(state, project_root, provider_available)
+
+        try:
+            await _init_activity(state, project_root)
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to initialize activity store: {e}")
+            state.activity_store = None
+            state.activity_processor = None
+
+        try:
+            _init_agents(state, project_root)
+        except ImportError as e:
+            logger.warning(f"Agent subsystem unavailable (SDK not installed): {e}")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to initialize agent subsystem: {e}")
+            state.agent_registry = None
+            state.agent_executor = None
+            state.agent_scheduler = None
+
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(f"Failed to initialize: {e}")
+        state.vector_store = None
+        state.indexer = None
+
+    yield
+
+    await _shutdown(state)
 
 
 def create_app(
@@ -796,6 +856,9 @@ def create_app(
     # Include routers
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
         activity,
+        activity_management,
+        activity_relationships,
+        activity_sessions,
         agents,
         backup,
         devtools,
@@ -821,6 +884,9 @@ def create_app(
     app.include_router(index.router)
     app.include_router(search.router)
     app.include_router(activity.router)
+    app.include_router(activity_sessions.router)
+    app.include_router(activity_relationships.router)
+    app.include_router(activity_management.router)
     app.include_router(notifications.router)
     app.include_router(hooks.router)
     app.include_router(otel.router)

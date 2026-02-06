@@ -6,6 +6,7 @@ Functions for adding, retrieving, and searching activities.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Activity
@@ -158,45 +159,17 @@ def add_activities(store: ActivityStore, activities: list[Activity]) -> list[int
 
     logger.debug(f"Bulk inserting {count} activities in single transaction")
 
-    with store._transaction() as conn:
-        for activity in activities:
-            row = activity.to_row()
-            cursor = conn.execute(
-                """
-                INSERT INTO activities (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
-                                       file_path, files_affected, duration_ms, success,
-                                       error_message, timestamp, timestamp_epoch, processed, observation_id,
-                                       source_machine_id, content_hash)
-                VALUES (:session_id, :prompt_batch_id, :tool_name, :tool_input, :tool_output_summary,
-                        :file_path, :files_affected, :duration_ms, :success,
-                        :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id,
-                        :source_machine_id, :content_hash)
-                """,
-                row,
-            )
-            ids.append(cursor.lastrowid or 0)
-
-            # Track updates needed
-            session_updates[activity.session_id] = session_updates.get(activity.session_id, 0) + 1
-            affected_sessions.add(activity.session_id)
-            if activity.prompt_batch_id:
-                batch_updates[activity.prompt_batch_id] = (
-                    batch_updates.get(activity.prompt_batch_id, 0) + 1
-                )
-
-        # Bulk update session counts
-        for session_id, delta in session_updates.items():
-            conn.execute(
-                "UPDATE sessions SET tool_count = tool_count + ? WHERE id = ?",
-                (delta, session_id),
-            )
-
-        # Bulk update batch counts
-        for batch_id, delta in batch_updates.items():
-            conn.execute(
-                "UPDATE prompt_batches SET activity_count = activity_count + ? WHERE id = ?",
-                (delta, batch_id),
-            )
+    try:
+        ids, session_updates, batch_updates, affected_sessions = _bulk_insert_transaction(
+            store, activities
+        )
+    except sqlite3.IntegrityError:
+        # FK constraint failure in batch mode — fall back to individual inserts
+        # so one bad activity doesn't block the whole buffer.
+        logger.debug("Bulk insert hit IntegrityError, falling back to individual inserts")
+        ids, session_updates, batch_updates, affected_sessions = _individual_insert_fallback(
+            store, activities
+        )
 
     # Invalidate cache for all affected sessions
     for session_id in affected_sessions:
@@ -206,6 +179,122 @@ def add_activities(store: ActivityStore, activities: list[Activity]) -> list[int
         f"Bulk insert complete: {len(ids)} activities inserted for {len(affected_sessions)} sessions"
     )
     return ids
+
+
+_INSERT_SQL = """
+    INSERT INTO activities (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
+                           file_path, files_affected, duration_ms, success,
+                           error_message, timestamp, timestamp_epoch, processed, observation_id,
+                           source_machine_id, content_hash)
+    VALUES (:session_id, :prompt_batch_id, :tool_name, :tool_input, :tool_output_summary,
+            :file_path, :files_affected, :duration_ms, :success,
+            :error_message, :timestamp, :timestamp_epoch, :processed, :observation_id,
+            :source_machine_id, :content_hash)
+"""
+
+
+def _track_activity(
+    activity: Activity,
+    cursor_lastrowid: int,
+    ids: list[int],
+    session_updates: dict[str, int],
+    batch_updates: dict[int, int],
+    affected_sessions: set[str],
+) -> None:
+    """Accumulate bookkeeping for a successfully inserted activity."""
+    ids.append(cursor_lastrowid or 0)
+    session_updates[activity.session_id] = session_updates.get(activity.session_id, 0) + 1
+    affected_sessions.add(activity.session_id)
+    if activity.prompt_batch_id:
+        batch_updates[activity.prompt_batch_id] = batch_updates.get(activity.prompt_batch_id, 0) + 1
+
+
+def _apply_count_updates(
+    conn: sqlite3.Connection,
+    session_updates: dict[str, int],
+    batch_updates: dict[int, int],
+) -> None:
+    """Bulk-update session and batch counts inside an open transaction."""
+    for session_id, delta in session_updates.items():
+        conn.execute(
+            "UPDATE sessions SET tool_count = tool_count + ? WHERE id = ?",
+            (delta, session_id),
+        )
+    for batch_id, delta in batch_updates.items():
+        conn.execute(
+            "UPDATE prompt_batches SET activity_count = activity_count + ? WHERE id = ?",
+            (delta, batch_id),
+        )
+
+
+def _bulk_insert_transaction(
+    store: ActivityStore,
+    activities: list[Activity],
+) -> tuple[list[int], dict[str, int], dict[int, int], set[str]]:
+    """Insert all activities in one transaction (fast path)."""
+    ids: list[int] = []
+    session_updates: dict[str, int] = {}
+    batch_updates: dict[int, int] = {}
+    affected_sessions: set[str] = set()
+
+    with store._transaction() as conn:
+        for activity in activities:
+            row = activity.to_row()
+            cursor = conn.execute(_INSERT_SQL, row)
+            _track_activity(
+                activity,
+                cursor.lastrowid or 0,
+                ids,
+                session_updates,
+                batch_updates,
+                affected_sessions,
+            )
+        _apply_count_updates(conn, session_updates, batch_updates)
+
+    return ids, session_updates, batch_updates, affected_sessions
+
+
+def _individual_insert_fallback(
+    store: ActivityStore,
+    activities: list[Activity],
+) -> tuple[list[int], dict[str, int], dict[int, int], set[str]]:
+    """Insert activities one-by-one, skipping any that violate FK constraints."""
+    ids: list[int] = []
+    session_updates: dict[str, int] = {}
+    batch_updates: dict[int, int] = {}
+    affected_sessions: set[str] = set()
+    skipped = 0
+
+    for activity in activities:
+        try:
+            with store._transaction() as conn:
+                row = activity.to_row()
+                cursor = conn.execute(_INSERT_SQL, row)
+                _track_activity(
+                    activity,
+                    cursor.lastrowid or 0,
+                    ids,
+                    session_updates,
+                    batch_updates,
+                    affected_sessions,
+                )
+        except sqlite3.IntegrityError:
+            skipped += 1
+            logger.debug(
+                f"Skipped activity with FK violation: "
+                f"session={activity.session_id} batch={activity.prompt_batch_id} "
+                f"tool={activity.tool_name}"
+            )
+
+    # Apply count updates for successfully inserted activities
+    if session_updates or batch_updates:
+        with store._transaction() as conn:
+            _apply_count_updates(conn, session_updates, batch_updates)
+
+    if skipped:
+        logger.warning(f"Skipped {skipped}/{len(activities)} activities due to FK violations")
+
+    return ids, session_updates, batch_updates, affected_sessions
 
 
 def get_session_activities(

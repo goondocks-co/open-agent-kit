@@ -24,6 +24,7 @@ from open_agent_kit.features.codebase_intelligence.memory.store.constants import
     CODE_COLLECTION,
     MEMORY_COLLECTION,
     SESSION_SUMMARIES_COLLECTION,
+    default_hnsw_config,
 )
 from open_agent_kit.features.codebase_intelligence.memory.store.models import (
     CodeChunk,
@@ -84,11 +85,7 @@ class VectorStore:
             embedding_dims = self.embedding_provider.dimensions
 
             # Create or get collections with HNSW configuration
-            hnsw_config = {
-                "hnsw:space": "cosine",
-                "hnsw:construction_ef": 200,
-                "hnsw:M": 16,
-            }
+            hnsw_config = default_hnsw_config()
 
             # Check if existing collections have mismatched dimensions
             self._code_collection = self._get_or_recreate_collection(
@@ -207,11 +204,7 @@ class VectorStore:
             collection_name: Name of the collection to recreate.
             dims: Expected embedding dimensions.
         """
-        hnsw_config = {
-            "hnsw:space": "cosine",
-            "hnsw:construction_ef": 200,
-            "hnsw:M": 16,
-        }
+        hnsw_config = default_hnsw_config()
 
         self._client.delete_collection(collection_name)
         new_collection = self._client.create_collection(name=collection_name, metadata=hnsw_config)

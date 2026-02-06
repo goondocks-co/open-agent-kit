@@ -85,6 +85,23 @@ This single async context manager initializes and shuts down the entire daemon: 
 - **Consistent `typing.Final` usage**: All 1074 constants use `Final[type]` annotations.
 - **Well-structured OakConfig**: `Field` descriptions, YAML serialization with custom inline list dumper, migration logic.
 
+### 1.5 Resolution Status
+
+**Section 1 is complete.** All high-severity and actionable medium-severity findings have been resolved (2026-02-06). Implementation was done in 5 phases:
+
+| Phase | Finding(s) | Resolution |
+|-------|-----------|------------|
+| 1A | M-PY8 | Extracted duplicated HNSW config to shared constants and helper |
+| 1B | M-PY12 | Replaced magic number `3` with `MIN_SESSION_ACTIVITIES` constant |
+| 1C | M-PY7 | Moved raw SQL from route handlers into store layer methods |
+| 2 | H-PY4 | Extracted `_apply_doc_type_weights()` helper in RetrievalEngine |
+| 3A | H-PY3 (partial) | Created `handle_route_errors` decorator, eliminating 24 duplicated try/except blocks |
+| 3B | H-PY3 (complete) | Split `activity.py` (1868 lines) into 4 domain files: `activity.py` (757), `activity_sessions.py` (557), `activity_relationships.py` (294), `activity_management.py` (174) |
+| 4 | H-PY2 | Decomposed 353-line `lifespan()` into 7 focused helpers (~65-line orchestrator) |
+| 5 | H-PY1, M-PY3 | Eliminated `daemon/constants.py` (245 lines); migrated to main `constants.py` using `Final[str]` pattern |
+
+Medium-severity items M-PY1, M-PY2, M-PY4, M-PY5, M-PY6, M-PY9, M-PY10, M-PY11, M-PY13 were evaluated and determined to be already resolved, intentionally designed, or acceptable as-is (see implementation plan for disposition details).
+
 ---
 
 ## 2. Frontend / TypeScript Code Quality

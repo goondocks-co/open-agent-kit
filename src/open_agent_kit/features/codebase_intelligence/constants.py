@@ -132,6 +132,52 @@ DEFAULT_RELATED_CHUNKS_LIMIT: Final[int] = 5
 CHARS_PER_TOKEN_ESTIMATE: Final[int] = 4
 
 # =============================================================================
+# Pagination Defaults (Daemon API)
+# =============================================================================
+
+PAGINATION_DEFAULT_LIMIT: Final[int] = 20
+PAGINATION_DEFAULT_OFFSET: Final[int] = 0
+PAGINATION_MIN_LIMIT: Final[int] = 1
+PAGINATION_SESSIONS_MAX: Final[int] = 100
+PAGINATION_ACTIVITIES_MAX: Final[int] = 200
+PAGINATION_SEARCH_MAX: Final[int] = 200
+PAGINATION_STATS_SESSION_LIMIT: Final[int] = 100
+PAGINATION_STATS_DETAIL_LIMIT: Final[int] = 20
+
+# =============================================================================
+# Session & Batch Status Values
+# =============================================================================
+
+SESSION_STATUS_ACTIVE: Final[str] = "active"
+SESSION_STATUS_COMPLETED: Final[str] = "completed"
+
+# =============================================================================
+# Error Messages (Daemon API)
+# =============================================================================
+
+ERROR_MSG_ACTIVITY_STORE_NOT_INITIALIZED: Final[str] = "Activity store not initialized"
+ERROR_MSG_PROJECT_ROOT_NOT_SET: Final[str] = "Project root not set"
+ERROR_MSG_SESSION_NOT_FOUND: Final[str] = "Session not found"
+ERROR_MSG_INVALID_JSON: Final[str] = "Invalid JSON"
+ERROR_MSG_LOCALHOST_ONLY: Final[str] = "Only localhost URLs are allowed for security reasons"
+
+# =============================================================================
+# Log Configuration (Daemon API)
+# =============================================================================
+
+LOG_LINES_DEFAULT: Final[int] = 50
+LOG_LINES_MIN: Final[int] = 1
+LOG_LINES_MAX: Final[int] = 500
+
+LOG_FILE_DAEMON: Final[str] = "daemon"
+LOG_FILE_HOOKS: Final[str] = "hooks"
+VALID_LOG_FILES: Final[tuple[str, ...]] = (LOG_FILE_DAEMON, LOG_FILE_HOOKS)
+LOG_FILE_DISPLAY_NAMES: Final[dict[str, str]] = {
+    LOG_FILE_DAEMON: "Daemon Log",
+    LOG_FILE_HOOKS: "Hook Events",
+}
+
+# =============================================================================
 # CORS (Daemon API)
 # =============================================================================
 

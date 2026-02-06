@@ -381,6 +381,35 @@ class RetrievalEngine:
         return kept
 
     # =========================================================================
+    # Document Type Weighting
+    # =========================================================================
+
+    @staticmethod
+    def _apply_doc_type_weights(
+        code_results: list[dict],
+        apply_weights: bool = True,
+    ) -> None:
+        """Apply doc_type weighting to code search results (in-place).
+
+        When enabled, multiplies each result's relevance score by a
+        doc-type-specific weight and re-sorts by weighted relevance.
+        When disabled, copies raw relevance to weighted_relevance.
+
+        Args:
+            code_results: List of code search result dicts (must have 'relevance' key).
+            apply_weights: Whether to apply weighting (False = use raw relevance).
+        """
+        if apply_weights:
+            for r in code_results:
+                doc_type = r.get("doc_type", DOC_TYPE_CODE)
+                weight = DOC_TYPE_WEIGHTS.get(doc_type, 1.0)
+                r["weighted_relevance"] = r["relevance"] * weight
+            code_results.sort(key=lambda x: x["weighted_relevance"], reverse=True)
+        else:
+            for r in code_results:
+                r["weighted_relevance"] = r["relevance"]
+
+    # =========================================================================
     # Primary Search Methods (used by daemon routes)
     # =========================================================================
 
@@ -419,18 +448,7 @@ class RetrievalEngine:
             )
 
             # Apply doc_type weighting to scores (if enabled)
-            if apply_doc_type_weights:
-                for r in code_results:
-                    doc_type = r.get("doc_type", DOC_TYPE_CODE)
-                    weight = DOC_TYPE_WEIGHTS.get(doc_type, 1.0)
-                    r["weighted_relevance"] = r["relevance"] * weight
-
-                # Re-sort by weighted relevance
-                code_results.sort(key=lambda x: x["weighted_relevance"], reverse=True)
-            else:
-                # No weighting - use raw relevance
-                for r in code_results:
-                    r["weighted_relevance"] = r["relevance"]
+            self._apply_doc_type_weights(code_results, apply_doc_type_weights)
 
             # Calculate confidence based on (potentially weighted) scores
             code_scores = [r["weighted_relevance"] for r in code_results]
@@ -639,15 +657,7 @@ class RetrievalEngine:
         )
 
         # Apply doc_type weighting if enabled
-        if apply_doc_type_weights:
-            for r in code_results:
-                doc_type = r.get("doc_type", DOC_TYPE_CODE)
-                weight = DOC_TYPE_WEIGHTS.get(doc_type, 1.0)
-                r["weighted_relevance"] = r["relevance"] * weight
-            code_results.sort(key=lambda x: x["weighted_relevance"], reverse=True)
-        else:
-            for r in code_results:
-                r["weighted_relevance"] = r["relevance"]
+        self._apply_doc_type_weights(code_results, apply_doc_type_weights)
 
         for r in code_results:
             tokens = r.get("token_estimate", 0)

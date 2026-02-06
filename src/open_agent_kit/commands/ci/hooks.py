@@ -207,7 +207,12 @@ def ci_hook(
             elif agent == "cursor":
                 output = _format_cursor_response(response)
 
-        elif event_lower in ("userpromptsubmit", "beforesubmitprompt", "userpromptsubmitted"):
+        elif event_lower in (
+            "userpromptsubmit",
+            "beforesubmitprompt",
+            "userpromptsubmitted",
+            "beforeagent",
+        ):
             prompt_text = input_json.get("prompt", "")
             response = _call_api(
                 "prompt-submit",
@@ -272,15 +277,19 @@ def ci_hook(
             if agent == "claude":
                 output = _format_claude_response(response, "PostToolUse")
 
-        elif event_lower == "stop":
+        elif event_lower in ("stop", "afteragent"):
             transcript_path = input_json.get("transcript_path", "")
             stop_hook_active = input_json.get("stop_hook_active", False)
-            response_summary = input_json.get("response_summary", "")
+            # Gemini CLI sends prompt_response (the agent's final answer);
+            # Claude sends response_summary.  Accept both field names.
+            response_summary = input_json.get("response_summary", "") or input_json.get(
+                "prompt_response", ""
+            )
             # Log what we receive for debugging
             try:
                 with open(hooks_log, "a") as f:
                     f.write(
-                        f"  [Stop:debug] transcript_path={transcript_path[:80] if transcript_path else '(empty)'} "
+                        f"  [{event}:debug] transcript_path={transcript_path[:80] if transcript_path else '(empty)'} "
                         f"response_summary={'yes' if response_summary else 'no'} "
                         f"input_keys={list(input_json.keys())}\n"
                     )
@@ -388,7 +397,7 @@ def ci_hook(
                 },
             )
 
-        elif event_lower == "precompact":
+        elif event_lower in ("precompact", "precompress"):
             # Context window compaction event
             _call_api(
                 "pre-compact",

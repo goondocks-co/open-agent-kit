@@ -16,17 +16,22 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
     CI_DATA_DIR,
+    CI_HOOKS_LOG_FILE,
+    CI_LOG_FILE,
     CI_STATUS_KEY_TUNNEL,
+    DAEMON_STATUS_HEALTHY,
+    DAEMON_STATUS_RUNNING,
+    LOG_FILE_DAEMON,
+    LOG_FILE_DISPLAY_NAMES,
+    LOG_FILE_HOOKS,
+    LOG_LINES_DEFAULT,
+    LOG_LINES_MAX,
+    LOG_LINES_MIN,
     TUNNEL_RESPONSE_KEY_ACTIVE,
     TUNNEL_RESPONSE_KEY_PROVIDER,
     TUNNEL_RESPONSE_KEY_PUBLIC_URL,
     TUNNEL_RESPONSE_KEY_STARTED_AT,
-)
-from open_agent_kit.features.codebase_intelligence.daemon.constants import (
-    DaemonStatus,
-    LogFiles,
-    LogLimits,
-    Paths,
+    VALID_LOG_FILES,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models import HealthResponse
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
@@ -62,7 +67,7 @@ async def health_check() -> HealthResponse:
     state = get_state()
     uptime = state.uptime_seconds
     return HealthResponse(
-        status=DaemonStatus.HEALTHY,
+        status=DAEMON_STATUS_HEALTHY,
         oak_version=VERSION,
         schema_version=SCHEMA_VERSION,
         uptime_seconds=uptime,
@@ -128,7 +133,7 @@ async def get_status() -> dict:
         state.index_status.file_count = files_indexed
 
     return {
-        "status": DaemonStatus.RUNNING,
+        "status": DAEMON_STATUS_RUNNING,
         "indexing": state.index_status.is_indexing,
         "embedding_provider": embedding_provider,
         "embedding_stats": embedding_stats,
@@ -244,12 +249,12 @@ def _get_tunnel_status(state: object) -> dict:
 @router.get("/api/logs")
 async def get_logs(
     lines: int = Query(
-        default=LogLimits.DEFAULT_LINES,
-        ge=LogLimits.MIN_LINES,
-        le=LogLimits.MAX_LINES,
+        default=LOG_LINES_DEFAULT,
+        ge=LOG_LINES_MIN,
+        le=LOG_LINES_MAX,
     ),
     file: str = Query(
-        default=LogFiles.DAEMON,
+        default=LOG_FILE_DAEMON,
         description="Log file to retrieve: 'daemon' or 'hooks'",
     ),
 ) -> dict:
@@ -262,16 +267,17 @@ async def get_logs(
     state = get_state()
 
     # Validate file parameter
-    if file not in LogFiles.VALID_FILES:
-        file = LogFiles.DAEMON
+    if file not in VALID_LOG_FILES:
+        file = LOG_FILE_DAEMON
 
     # Get the appropriate log file path
     log_file = None
     if state.project_root:
-        if file == LogFiles.HOOKS:
-            log_file = Paths.get_hooks_log_path(state.project_root)
+        ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
+        if file == LOG_FILE_HOOKS:
+            log_file = ci_data_dir / CI_HOOKS_LOG_FILE
         else:
-            log_file = Paths.get_log_path(state.project_root)
+            log_file = ci_data_dir / CI_LOG_FILE
 
     log_content = ""
     if log_file and log_file.exists():
@@ -282,7 +288,7 @@ async def get_logs(
         except (OSError, UnicodeDecodeError) as e:
             log_content = f"Error reading log file: {e}"
     else:
-        if file == LogFiles.HOOKS:
+        if file == LOG_FILE_HOOKS:
             log_content = "No hook events logged yet. Hook events will appear here when SessionStart, SessionEnd, etc. fire."
         else:
             log_content = "No log file found"
@@ -290,11 +296,10 @@ async def get_logs(
     return {
         "log_file": str(log_file) if log_file else None,
         "log_type": file,
-        "log_type_display": LogFiles.DISPLAY_NAMES.get(file, file),
+        "log_type_display": LOG_FILE_DISPLAY_NAMES.get(file, file),
         "lines": lines,
         "content": log_content,
         "available_logs": [
-            {"id": log_id, "name": LogFiles.DISPLAY_NAMES[log_id]}
-            for log_id in LogFiles.VALID_FILES
+            {"id": log_id, "name": LOG_FILE_DISPLAY_NAMES[log_id]} for log_id in VALID_LOG_FILES
         ],
     }
