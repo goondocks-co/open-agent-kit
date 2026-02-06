@@ -75,7 +75,7 @@ export interface ProviderModelsResponse {
 export function useAgentSettings() {
     return useQuery<AgentSettingsResponse>({
         queryKey: ["agent-settings"],
-        queryFn: () => fetchJson(API_ENDPOINTS.AGENT_SETTINGS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.AGENT_SETTINGS, { signal }),
     });
 }
 

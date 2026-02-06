@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,9 @@ export default function TeamSharing() {
     const startTunnel = useTunnelStart();
     const stopTunnel = useTunnelStop();
     const [copied, setCopied] = useState(false);
+    const copyTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+    useEffect(() => () => clearTimeout(copyTimerRef.current), []);
 
     // Config state for tunnel settings
     const { data: config, isLoading: isConfigLoading } = useConfig();
@@ -65,7 +68,8 @@ export default function TeamSharing() {
         try {
             await navigator.clipboard.writeText(publicUrl);
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            clearTimeout(copyTimerRef.current);
+            copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
         } catch (err) {
             console.error("Failed to copy URL:", err);
         }

@@ -19,7 +19,7 @@ interface BatchActivitiesResponse {
 export function PromptBatchActivities({ batchId }: PromptBatchActivitiesProps) {
     const { data: response, isLoading, error } = useQuery<BatchActivitiesResponse>({
         queryKey: ["batch_activities", batchId],
-        queryFn: () => fetchJson(`/api/activity/prompt-batches/${batchId}/activities?limit=50`),
+        queryFn: ({ signal }) => fetchJson(`/api/activity/prompt-batches/${batchId}/activities?limit=50`, { signal }),
     });
 
     const deleteActivity = useDeleteActivity();

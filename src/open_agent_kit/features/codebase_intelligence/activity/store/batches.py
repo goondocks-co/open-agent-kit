@@ -125,31 +125,56 @@ def get_prompt_batch(store: ActivityStore, batch_id: int) -> PromptBatch | None:
     return PromptBatch.from_row(row) if row else None
 
 
-def get_session_plan_batch(store: ActivityStore, session_id: str) -> PromptBatch | None:
+def get_session_plan_batch(
+    store: ActivityStore,
+    session_id: str,
+    plan_file_path: str | None = None,
+) -> PromptBatch | None:
     """Get the most recent plan batch in the CURRENT session (not parents).
 
     Used when ExitPlanMode is detected to find the plan batch to update
-    with the final approved content from disk.
+    with the final approved content from disk, and when the Write hook
+    checks for an existing plan batch to update in place (avoiding
+    duplicate entries for iterative plan refinements).
 
     Args:
         store: The ActivityStore instance.
         session_id: Session to query (current session only, not parent chain).
+        plan_file_path: Optional file path to filter by. When provided,
+            only returns a plan batch matching this exact file path.
+            Used by the Write hook to consolidate iterations of the
+            same plan file into a single batch.
 
     Returns:
         Most recent plan PromptBatch if one exists, None otherwise.
     """
     conn = store._get_connection()
-    cursor = conn.execute(
-        """
-        SELECT * FROM prompt_batches
-        WHERE session_id = ?
-          AND source_type = 'plan'
-          AND plan_file_path IS NOT NULL
-        ORDER BY created_at_epoch DESC
-        LIMIT 1
-        """,
-        (session_id,),
-    )
+
+    if plan_file_path:
+        cursor = conn.execute(
+            """
+            SELECT * FROM prompt_batches
+            WHERE session_id = ?
+              AND source_type = 'plan'
+              AND plan_file_path = ?
+            ORDER BY created_at_epoch DESC, id DESC
+            LIMIT 1
+            """,
+            (session_id, plan_file_path),
+        )
+    else:
+        cursor = conn.execute(
+            """
+            SELECT * FROM prompt_batches
+            WHERE session_id = ?
+              AND source_type = 'plan'
+              AND plan_file_path IS NOT NULL
+            ORDER BY created_at_epoch DESC, id DESC
+            LIMIT 1
+            """,
+            (session_id,),
+        )
+
     row = cursor.fetchone()
     return PromptBatch.from_row(row) if row else None
 
@@ -381,9 +406,11 @@ def get_plans(
         limit: Maximum plans to return.
         offset: Number of plans to skip.
         session_id: Optional session ID to filter by.
-        deduplicate: If True, deduplicate plans by content (keeps earliest).
-            The same plan content may appear in multiple sessions when a plan
-            is created in one session and later implemented in another.
+        deduplicate: If True, deduplicate plans by file path (keeps latest).
+            The same plan file may appear across sessions when a plan is
+            created in one session and refined in another. Within a single
+            session, plan iterations are consolidated at detection time
+            (update-in-place), so dedup here handles the cross-session case.
         sort: Sort order - 'created' (newest first, default) or 'created_asc' (oldest first).
 
     Returns:
@@ -401,33 +428,36 @@ def get_plans(
 
     where_clause = " AND ".join(where_parts)
 
-    # Use first 500 characters as a fingerprint for deduplication.
-    # This handles cases where the same plan has minor variations
-    # (e.g., slightly different whitespace, updated sections at the end).
-    content_fingerprint = "SUBSTR(plan_content, 1, 500)"
-
     # Determine sort direction
     sort_order = "ASC" if sort == "created_asc" else "DESC"
 
     if deduplicate:
-        # Use window function to deduplicate by content fingerprint.
-        # The same plan may appear in multiple sessions (created in one,
-        # implemented in another). We keep only the first occurrence.
+        # Deduplicate by plan_file_path, keeping the most recent version.
+        # Within a session, plan iterations are already consolidated at
+        # detection time (update-in-place). This handles the cross-session
+        # case where the same file appears in parent/child sessions.
+        # Plans without a file path (e.g., derived plans) are never deduped.
         count_query = f"""
-            SELECT COUNT(DISTINCT {content_fingerprint})
-            FROM prompt_batches
-            WHERE {where_clause}
+            SELECT COUNT(*) FROM (
+                SELECT id FROM prompt_batches
+                WHERE {where_clause} AND plan_file_path IS NULL
+                UNION ALL
+                SELECT MAX(id) FROM prompt_batches
+                WHERE {where_clause} AND plan_file_path IS NOT NULL
+                GROUP BY plan_file_path
+            )
         """
-        cursor = conn.execute(count_query, base_params)
+        cursor = conn.execute(count_query, base_params + base_params)
         total = cursor.fetchone()[0]
 
-        # Use CTE with ROW_NUMBER to get first occurrence of each unique plan
+        # Use CTE with ROW_NUMBER to keep the latest per file path.
+        # Plans without a file path pass through without dedup.
         query = f"""
             WITH unique_plans AS (
                 SELECT *,
                        ROW_NUMBER() OVER (
-                           PARTITION BY {content_fingerprint}
-                           ORDER BY created_at_epoch ASC
+                           PARTITION BY COALESCE(plan_file_path, 'null-' || id)
+                           ORDER BY created_at_epoch DESC, id DESC
                        ) as rn
                 FROM prompt_batches
                 WHERE {where_clause}

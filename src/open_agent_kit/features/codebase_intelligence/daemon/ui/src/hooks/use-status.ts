@@ -72,7 +72,7 @@ export interface DaemonStatus {
 export function useStatus() {
     return useQuery<DaemonStatus>({
         queryKey: ["status"],
-        queryFn: () => fetchJson(API_ENDPOINTS.STATUS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.STATUS, { signal }),
         refetchInterval: STATUS_POLL_INTERVAL_MS,
     });
 }

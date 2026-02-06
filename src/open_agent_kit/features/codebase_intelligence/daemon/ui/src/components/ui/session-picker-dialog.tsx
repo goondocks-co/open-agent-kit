@@ -1,13 +1,13 @@
 import * as React from "react";
 import { useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Link2, Loader2, Search, X, Calendar, Activity } from "lucide-react";
 import { Button } from "./button";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getSessionTitle } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
     PAGINATION,
-    SESSION_TITLE_MAX_LENGTH,
     SESSION_LINK_REASON_OPTIONS,
     type SessionLinkReason,
 } from "@/lib/constants";
@@ -74,134 +74,135 @@ export function SessionPickerDialog({
         }
     };
 
-    const handleClose = () => {
+    // Prevent closing while loading/processing
+    const handleOpenChange = (nextOpen: boolean) => {
         if (isLoading || isProcessing) return;
-        setSelectedSessionId(null);
-        setSearchQuery("");
-        onOpenChange(false);
+        if (!nextOpen) {
+            setSelectedSessionId(null);
+            setSearchQuery("");
+        }
+        onOpenChange(nextOpen);
     };
 
-    if (!open) return null;
-
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
-            <div
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-                onClick={handleClose}
-            />
-
-            {/* Dialog */}
-            <div className="relative z-50 w-full max-w-lg rounded-lg border bg-background shadow-lg animate-in fade-in-0 zoom-in-95 max-h-[80vh] flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b">
-                    <div className="flex items-center gap-3">
-                        <div className="rounded-full p-2 bg-blue-500/10">
-                            <Link2 className="h-5 w-5 text-blue-500" />
+        <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
+            <DialogPrimitive.Portal>
+                <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+                <DialogPrimitive.Content className="fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%] w-full max-w-lg rounded-lg border bg-background shadow-lg data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 max-h-[80vh] flex flex-col">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b">
+                        <div className="flex items-center gap-3">
+                            <div className="rounded-full p-2 bg-blue-500/10">
+                                <Link2 className="h-5 w-5 text-blue-500" />
+                            </div>
+                            <div>
+                                <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
+                                <DialogPrimitive.Description className="text-sm text-muted-foreground">{description}</DialogPrimitive.Description>
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="text-lg font-semibold">{title}</h2>
-                            <p className="text-sm text-muted-foreground">{description}</p>
+                        <DialogPrimitive.Close asChild>
+                            <button
+                                className="p-1 rounded hover:bg-muted"
+                                disabled={isLoading}
+                                aria-label="Close"
+                            >
+                                <X className="h-5 w-5 text-muted-foreground" />
+                            </button>
+                        </DialogPrimitive.Close>
+                    </div>
+
+                    {/* Search */}
+                    <div className="p-4 border-b">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <input
+                                type="text"
+                                placeholder="Search sessions..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                                aria-label="Search sessions"
+                            />
                         </div>
                     </div>
-                    <button
-                        onClick={handleClose}
-                        className="p-1 rounded hover:bg-muted"
-                        disabled={isLoading}
-                    >
-                        <X className="h-5 w-5 text-muted-foreground" />
-                    </button>
-                </div>
 
-                {/* Search */}
-                <div className="p-4 border-b">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <input
-                            type="text"
-                            placeholder="Search sessions..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                        />
+                    {/* Session list */}
+                    <div className="flex-1 overflow-y-auto p-2 min-h-[200px] max-h-[300px]">
+                        {isLoadingSessions ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : filteredSessions.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                {searchQuery ? "No sessions match your search" : "No other sessions available"}
+                            </div>
+                        ) : (
+                            <div className="space-y-1">
+                                {filteredSessions.map((session) => (
+                                    <SessionPickerItem
+                                        key={session.id}
+                                        session={session}
+                                        isSelected={selectedSessionId === session.id}
+                                        onClick={() => setSelectedSessionId(session.id)}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
-                </div>
 
-                {/* Session list */}
-                <div className="flex-1 overflow-y-auto p-2 min-h-[200px] max-h-[300px]">
-                    {isLoadingSessions ? (
-                        <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : filteredSessions.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            {searchQuery ? "No sessions match your search" : "No other sessions available"}
-                        </div>
-                    ) : (
-                        <div className="space-y-1">
-                            {filteredSessions.map((session) => (
-                                <SessionPickerItem
-                                    key={session.id}
-                                    session={session}
-                                    isSelected={selectedSessionId === session.id}
-                                    onClick={() => setSelectedSessionId(session.id)}
-                                />
-                            ))}
+                    {/* Reason selector */}
+                    {showReasonSelector && selectedSessionId && (
+                        <div className="p-4 border-t bg-muted/30">
+                            <label className="text-sm font-medium mb-2 block">Link reason</label>
+                            <div className="flex gap-2">
+                                {SESSION_LINK_REASON_OPTIONS.map((option) => (
+                                    <button
+                                        key={option.value}
+                                        onClick={() => setSelectedReason(option.value as SessionLinkReason)}
+                                        className={cn(
+                                            "px-3 py-1.5 text-sm rounded-md border transition-colors",
+                                            selectedReason === option.value
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background hover:bg-muted"
+                                        )}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
-                </div>
 
-                {/* Reason selector */}
-                {showReasonSelector && selectedSessionId && (
-                    <div className="p-4 border-t bg-muted/30">
-                        <label className="text-sm font-medium mb-2 block">Link reason</label>
-                        <div className="flex gap-2">
-                            {SESSION_LINK_REASON_OPTIONS.map((option) => (
-                                <button
-                                    key={option.value}
-                                    onClick={() => setSelectedReason(option.value as SessionLinkReason)}
-                                    className={cn(
-                                        "px-3 py-1.5 text-sm rounded-md border transition-colors",
-                                        selectedReason === option.value
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-background hover:bg-muted"
-                                    )}
-                                >
-                                    {option.label}
-                                </button>
-                            ))}
-                        </div>
+                    {/* Actions */}
+                    <div className="flex justify-end gap-3 p-4 border-t">
+                        <DialogPrimitive.Close asChild>
+                            <Button
+                                variant="outline"
+                                disabled={isLoading}
+                            >
+                                Cancel
+                            </Button>
+                        </DialogPrimitive.Close>
+                        <Button
+                            onClick={handleSelect}
+                            disabled={isLoading || isProcessing || !selectedSessionId}
+                        >
+                            {isLoading || isProcessing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Linking...
+                                </>
+                            ) : (
+                                <>
+                                    <Link2 className="mr-2 h-4 w-4" />
+                                    Link Session
+                                </>
+                            )}
+                        </Button>
                     </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex justify-end gap-3 p-4 border-t">
-                    <Button
-                        variant="outline"
-                        onClick={handleClose}
-                        disabled={isLoading}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleSelect}
-                        disabled={isLoading || isProcessing || !selectedSessionId}
-                    >
-                        {isLoading || isProcessing ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Linking...
-                            </>
-                        ) : (
-                            <>
-                                <Link2 className="mr-2 h-4 w-4" />
-                                Link Session
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </div>
-        </div>
+                </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
     );
 }
 
@@ -212,12 +213,7 @@ interface SessionPickerItemProps {
 }
 
 function SessionPickerItem({ session, isSelected, onClick }: SessionPickerItemProps) {
-    const sessionTitle = session.title
-        || (session.first_prompt_preview
-            ? (session.first_prompt_preview.length > SESSION_TITLE_MAX_LENGTH
-                ? session.first_prompt_preview.slice(0, SESSION_TITLE_MAX_LENGTH) + "..."
-                : session.first_prompt_preview)
-            : `Session ${session.id.slice(0, 8)}...`);
+    const sessionTitle = getSessionTitle(session);
 
     return (
         <button

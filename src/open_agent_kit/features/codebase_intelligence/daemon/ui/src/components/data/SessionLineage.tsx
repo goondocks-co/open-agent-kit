@@ -13,7 +13,7 @@ import {
     type RelatedSessionItem,
     type SuggestedRelatedItem,
 } from "@/hooks/use-session-link";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getSessionTitle } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
     ArrowUp,
@@ -35,7 +35,6 @@ import {
 import {
     SESSION_LINK_REASON_LABELS,
     SESSION_LINK_REASON_BADGE_CLASSES,
-    SESSION_TITLE_MAX_LENGTH,
     SUGGESTION_CONFIDENCE_LABELS,
     SUGGESTION_CONFIDENCE_BADGE_CLASSES,
     RELATIONSHIP_CREATED_BY_LABELS,
@@ -173,12 +172,7 @@ interface LineageItemProps {
 }
 
 function LineageItem({ session, direction, depth = 0 }: LineageItemProps) {
-    const sessionTitle = session.title
-        || (session.first_prompt_preview
-            ? (session.first_prompt_preview.length > SESSION_TITLE_MAX_LENGTH
-                ? session.first_prompt_preview.slice(0, SESSION_TITLE_MAX_LENGTH) + "..."
-                : session.first_prompt_preview)
-            : `Session ${session.id.slice(0, 8)}...`);
+    const sessionTitle = getSessionTitle(session);
 
     const reason = session.parent_session_reason as SessionLinkReason | null;
     const reasonLabel = reason ? SESSION_LINK_REASON_LABELS[reason] : null;
@@ -314,12 +308,7 @@ export function SuggestedParentBanner({
     const confidenceLabel = confidence ? SUGGESTION_CONFIDENCE_LABELS[confidence] : null;
     const confidenceClass = confidence ? SUGGESTION_CONFIDENCE_BADGE_CLASSES[confidence] : null;
 
-    const sessionTitle = suggestion.title
-        || (suggestion.first_prompt_preview
-            ? (suggestion.first_prompt_preview.length > SESSION_TITLE_MAX_LENGTH
-                ? suggestion.first_prompt_preview.slice(0, SESSION_TITLE_MAX_LENGTH) + "..."
-                : suggestion.first_prompt_preview)
-            : `Session ${suggestion.id.slice(0, 8)}...`);
+    const sessionTitle = getSessionTitle(suggestion);
 
     const handleAccept = () => {
         acceptMutation.mutate({
@@ -569,12 +558,7 @@ interface RelatedSessionItemProps {
 function RelatedSessionItem({ sessionId, related }: RelatedSessionItemProps) {
     const removeMutation = useRemoveRelated();
 
-    const sessionTitle = related.title
-        || (related.first_prompt_preview
-            ? (related.first_prompt_preview.length > SESSION_TITLE_MAX_LENGTH
-                ? related.first_prompt_preview.slice(0, SESSION_TITLE_MAX_LENGTH) + "..."
-                : related.first_prompt_preview)
-            : `Session ${related.id.slice(0, 8)}...`);
+    const sessionTitle = getSessionTitle(related);
 
     const createdBy = related.created_by as RelationshipCreatedBy;
     const createdByLabel = RELATIONSHIP_CREATED_BY_LABELS[createdBy];
@@ -714,12 +698,7 @@ function SuggestedRelatedItem({
     onAdd,
     isAdding,
 }: SuggestedRelatedItemProps) {
-    const sessionTitle = suggestion.title
-        || (suggestion.first_prompt_preview
-            ? (suggestion.first_prompt_preview.length > SESSION_TITLE_MAX_LENGTH
-                ? suggestion.first_prompt_preview.slice(0, SESSION_TITLE_MAX_LENGTH) + "..."
-                : suggestion.first_prompt_preview)
-            : `Session ${suggestion.id.slice(0, 8)}...`);
+    const sessionTitle = getSessionTitle(suggestion);
 
     const confidence = suggestion.confidence as SuggestionConfidence;
     const confidenceLabel = SUGGESTION_CONFIDENCE_LABELS[confidence];

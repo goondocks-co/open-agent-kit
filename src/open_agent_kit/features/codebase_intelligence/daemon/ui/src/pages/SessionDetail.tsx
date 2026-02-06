@@ -10,7 +10,7 @@ import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
 import { Markdown } from "@/components/ui/markdown";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getSessionTitle } from "@/lib/utils";
 import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check, Share2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -217,10 +217,7 @@ export default function SessionDetail() {
 
     const { session, prompt_batches } = data;
 
-    // Generate session title with fallback chain: title → first_prompt_preview → partial ID
-    const sessionTitle = session.title
-        || session.first_prompt_preview
-        || `Session ${session.id.slice(0, 8)}`;
+    const sessionTitle = getSessionTitle(session);
 
     // Filter batches based on toggle (hide system prompts only, keep agent_notification visible)
     const filteredBatches = showAgentBatches
@@ -239,7 +236,7 @@ export default function SessionDetail() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Link to="/activity/sessions" className="p-2 hover:bg-accent rounded-full">
+                    <Link to="/activity/sessions" className="p-2 hover:bg-accent rounded-full" aria-label="Back to sessions">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <h1 className="text-2xl font-bold tracking-tight">{sessionTitle}</h1>
@@ -308,6 +305,7 @@ export default function SessionDetail() {
                         className="h-9 px-3"
                         onClick={handleCopyResumeCommand}
                         title="Copy resume command"
+                        aria-label="Copy resume command"
                     >
                         {copiedResume ? (
                             <Check className="w-4 h-4 text-green-500" />
@@ -654,6 +652,7 @@ export default function SessionDetail() {
                                         onClick={() => batchDialog.openDialog(parseInt(batch.id))}
                                         className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
                                         title="Delete batch"
+                                        aria-label="Delete batch"
                                     >
                                         <Trash2 className="w-3 h-3" />
                                     </button>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { usePlans } from "@/hooks/use-plans";
 import { useDeleteMemory } from "@/hooks/use-delete";
+import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -23,8 +24,7 @@ const DELETE_PLAN_CONFIRMATION = {
 };
 
 export default function PlansList() {
-    const [loadedPlans, setLoadedPlans] = useState<PlanListItem[]>([]);
-    const [offset, setOffset] = useState(0);
+    const { offset, loadedItems: loadedPlans, handleLoadMore, reset } = usePaginatedList<PlanListItem>(PLANS_PAGE_SIZE);
     const [sortBy, setSortBy] = useState<PlanSortOption>(DEFAULT_PLAN_SORT);
 
     const { data, isLoading, isFetching, refetch } = usePlans({
@@ -35,18 +35,11 @@ export default function PlansList() {
 
     const handleSortChange = (newSort: PlanSortOption) => {
         setSortBy(newSort);
-        // Reset pagination when sort changes
-        setOffset(0);
-        setLoadedPlans([]);
+        reset();
     };
     const deleteMemory = useDeleteMemory();
     const { isOpen, setIsOpen, itemToDelete, openDialog, closeDialog } = useConfirmDialog();
     const { isOpen: isContentOpen, setIsOpen: setContentOpen, dialogContent, openDialog: openContentDialog } = useContentDialog();
-
-    const handleLoadMore = () => {
-        setLoadedPlans(prev => [...prev, ...(data?.plans || [])]);
-        setOffset(prev => prev + PLANS_PAGE_SIZE);
-    };
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
@@ -54,9 +47,7 @@ export default function PlansList() {
             // Delete from ChromaDB using the plan-{id} format
             await deleteMemory.mutateAsync(`plan-${itemToDelete}`);
             closeDialog();
-            // Reset pagination after deletion
-            setOffset(0);
-            setLoadedPlans([]);
+            reset();
             refetch();
         } catch (error) {
             console.error("Failed to delete plan:", error);
@@ -114,8 +105,7 @@ export default function PlansList() {
                 { method: "POST" }
             );
             // Refresh the list to show updated content
-            setOffset(0);
-            setLoadedPlans([]);
+            reset();
             refetch();
         } catch (error) {
             console.error("Failed to refresh plan:", error);
@@ -196,6 +186,7 @@ export default function PlansList() {
                                         onClick={(e) => handleDeleteClick(e, plan.id)}
                                         className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
                                         title="Delete plan from index"
+                                        aria-label="Delete plan from index"
                                     >
                                         <Trash2 className="w-3 h-3" />
                                     </button>
@@ -252,7 +243,7 @@ export default function PlansList() {
 
             {hasMore && (
                 <button
-                    onClick={handleLoadMore}
+                    onClick={() => handleLoadMore(data?.plans || [])}
                     disabled={isFetching}
                     className="w-full py-3 text-sm text-muted-foreground hover:text-foreground border border-dashed rounded-lg hover:border-muted-foreground/50 transition-colors disabled:opacity-50"
                 >

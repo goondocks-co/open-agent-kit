@@ -39,7 +39,7 @@ export function useMemories(options: UseMemoriesOptions = {}) {
 
     return useQuery<MemoriesListResponse>({
         queryKey: ["memories", limit, offset, memoryType, tag, startDate, endDate, includeArchived],
-        queryFn: () => {
+        queryFn: ({ signal }) => {
             const params = new URLSearchParams({
                 limit: String(limit),
                 offset: String(offset),
@@ -59,7 +59,7 @@ export function useMemories(options: UseMemoriesOptions = {}) {
             if (includeArchived) {
                 params.set("include_archived", "true");
             }
-            return fetchJson(`${API_ENDPOINTS.MEMORIES}?${params.toString()}`);
+            return fetchJson(`${API_ENDPOINTS.MEMORIES}?${params.toString()}`, { signal });
         },
     });
 }
@@ -67,7 +67,7 @@ export function useMemories(options: UseMemoriesOptions = {}) {
 export function useMemoryTags() {
     return useQuery<MemoryTagsResponse>({
         queryKey: ["memory-tags"],
-        queryFn: () => fetchJson(API_ENDPOINTS.MEMORIES_TAGS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.MEMORIES_TAGS, { signal }),
         staleTime: 60000, // Cache for 1 minute
     });
 }

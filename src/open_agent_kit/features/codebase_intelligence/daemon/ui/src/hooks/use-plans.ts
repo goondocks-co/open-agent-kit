@@ -35,7 +35,7 @@ export function usePlans(options: UsePlansOptions = {}) {
 
     return useQuery<PlansListResponse>({
         queryKey: ["plans", limit, offset, sessionId, sort],
-        queryFn: () => {
+        queryFn: ({ signal }) => {
             const params = new URLSearchParams({
                 limit: String(limit),
                 offset: String(offset),
@@ -44,7 +44,7 @@ export function usePlans(options: UsePlansOptions = {}) {
             if (sessionId) {
                 params.set("session_id", sessionId);
             }
-            return fetchJson(`${API_ENDPOINTS.ACTIVITY_PLANS}?${params.toString()}`);
+            return fetchJson(`${API_ENDPOINTS.ACTIVITY_PLANS}?${params.toString()}`, { signal });
         },
         refetchInterval: PLANS_REFETCH_INTERVAL_MS,
     });

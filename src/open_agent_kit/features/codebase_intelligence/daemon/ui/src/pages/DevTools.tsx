@@ -72,7 +72,7 @@ export default function DevTools() {
     // Fetch memory stats
     const { data: memoryStats } = useQuery<MemoryStats>({
         queryKey: ["memory-stats"],
-        queryFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_MEMORY_STATS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.DEVTOOLS_MEMORY_STATS, { signal }),
         refetchInterval: MEMORY_STATS_REFETCH_INTERVAL_MS,
     });
 

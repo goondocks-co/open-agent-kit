@@ -220,9 +220,6 @@ export default function Config() {
     useEffect(() => {
         // Don't overwrite user's pending changes if they have unsaved edits
         if (config && !isDirty) {
-            // Debug: log what we received from API
-            console.log("[Config Load] API returned summarization.context_tokens:", config.summarization.context_tokens);
-
             // Map API response keys to UI state keys
             const mappedData = JSON.parse(JSON.stringify(config));
 
@@ -247,7 +244,6 @@ export default function Config() {
                 stale_timeout_seconds: SESSION_QUALITY_DEFAULTS.STALE_TIMEOUT_SECONDS,
             };
 
-            console.log("[Config Load] Mapped to summarization.max_tokens:", mappedData.summarization.max_tokens);
             setFormData(mappedData);
         }
     }, [config, isDirty]);

@@ -100,6 +100,7 @@ export function Layout() {
                         <button
                             onClick={() => setTheme("light")}
                             title="Light theme"
+                            aria-label="Light theme"
                             className={cn("p-1.5 rounded-sm transition-all", theme === "light" && "bg-background shadow-sm")}
                         >
                             <Sun className="w-4 h-4" />
@@ -107,6 +108,7 @@ export function Layout() {
                         <button
                             onClick={() => setTheme("system")}
                             title="System theme"
+                            aria-label="System theme"
                             className={cn("p-1.5 rounded-sm transition-all", theme === "system" && "bg-background shadow-sm")}
                         >
                             <Laptop className="w-4 h-4" />
@@ -114,6 +116,7 @@ export function Layout() {
                         <button
                             onClick={() => setTheme("dark")}
                             title="Dark theme"
+                            aria-label="Dark theme"
                             className={cn("p-1.5 rounded-sm transition-all", theme === "dark" && "bg-background shadow-sm")}
                         >
                             <Moon className="w-4 h-4" />
@@ -124,6 +127,7 @@ export function Layout() {
                     <button
                         onClick={toggleCollapse}
                         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                         className={cn(
                             "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
                             collapsed && "justify-center px-2"

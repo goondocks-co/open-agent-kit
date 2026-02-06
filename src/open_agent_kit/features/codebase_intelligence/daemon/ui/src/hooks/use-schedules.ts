@@ -88,16 +88,16 @@ const scheduleKeys = {
 // API Functions
 // =============================================================================
 
-async function fetchSchedules(): Promise<ScheduleListResponse> {
-    const response = await fetch(API_ENDPOINTS.SCHEDULES);
+async function fetchSchedules(signal?: AbortSignal): Promise<ScheduleListResponse> {
+    const response = await fetch(API_ENDPOINTS.SCHEDULES, { signal });
     if (!response.ok) {
         throw new Error(`Failed to fetch schedules: ${response.statusText}`);
     }
     return response.json();
 }
 
-async function fetchScheduleDetail(taskName: string): Promise<ScheduleStatus> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`);
+async function fetchScheduleDetail(taskName: string, signal?: AbortSignal): Promise<ScheduleStatus> {
+    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, { signal });
     if (!response.ok) {
         throw new Error(`Failed to fetch schedule: ${response.statusText}`);
     }
@@ -174,7 +174,7 @@ async function syncSchedules(): Promise<ScheduleSyncResponse> {
 export function useSchedules() {
     return useQuery({
         queryKey: scheduleKeys.list(),
-        queryFn: fetchSchedules,
+        queryFn: ({ signal }) => fetchSchedules(signal),
         refetchInterval: 30000, // Refresh every 30 seconds
     });
 }
@@ -185,7 +185,7 @@ export function useSchedules() {
 export function useScheduleDetail(taskName: string) {
     return useQuery({
         queryKey: scheduleKeys.detail(taskName),
-        queryFn: () => fetchScheduleDetail(taskName),
+        queryFn: ({ signal }) => fetchScheduleDetail(taskName, signal),
         enabled: !!taskName,
     });
 }

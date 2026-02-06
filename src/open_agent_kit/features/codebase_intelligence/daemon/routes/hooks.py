@@ -943,19 +943,53 @@ async def hook_post_tool_use(request: Request) -> dict:
                                 else ""
                             )
 
-                        state.activity_store.update_prompt_batch_source_type(
-                            prompt_batch_id,
-                            PROMPT_SOURCE_PLAN,
-                            plan_file_path=file_path,
-                            plan_content=plan_content,
+                        # Consolidate plan iterations: if this session already has
+                        # a plan batch for the same file, update that batch's content
+                        # instead of tagging a new one. This prevents duplicate plan
+                        # entries when Claude iterates on a plan (same file, multiple
+                        # writes). The activity/prompt batches for iteration turns
+                        # still exist — they just aren't tagged as plans.
+                        existing_plan = (
+                            state.activity_store.get_session_plan_batch(
+                                session_id, plan_file_path=file_path
+                            )
+                            if session_id
+                            else None
                         )
-                        location = "global" if detection.is_global else "project"
-                        content_len = len(plan_content) if plan_content else 0
-                        logger.info(
-                            f"Detected {location} plan mode for {detection.agent_type}, "
-                            f"batch {prompt_batch_id} marked as plan with file {file_path} "
-                            f"({content_len} chars stored)"
-                        )
+
+                        if existing_plan and existing_plan.id:
+                            # Update existing plan batch with latest content
+                            target_batch_id = existing_plan.id
+                            state.activity_store.update_prompt_batch_source_type(
+                                target_batch_id,
+                                PROMPT_SOURCE_PLAN,
+                                plan_file_path=file_path,
+                                plan_content=plan_content,
+                            )
+                            # Re-embed with updated content
+                            state.activity_store.mark_plan_unembedded(target_batch_id)
+                            location = "global" if detection.is_global else "project"
+                            content_len = len(plan_content) if plan_content else 0
+                            logger.info(
+                                f"Updated existing plan batch {target_batch_id} "
+                                f"(iteration of {file_path}, {content_len} chars)"
+                            )
+                        else:
+                            # First plan write in this session for this file
+                            target_batch_id = prompt_batch_id
+                            state.activity_store.update_prompt_batch_source_type(
+                                target_batch_id,
+                                PROMPT_SOURCE_PLAN,
+                                plan_file_path=file_path,
+                                plan_content=plan_content,
+                            )
+                            location = "global" if detection.is_global else "project"
+                            content_len = len(plan_content) if plan_content else 0
+                            logger.info(
+                                f"Detected {location} plan mode for {detection.agent_type}, "
+                                f"batch {target_batch_id} marked as plan with file {file_path} "
+                                f"({content_len} chars stored)"
+                            )
 
             # Detect ExitPlanMode: re-read plan file and update stored content
             # Plans iterate during development - the final approved version (when user

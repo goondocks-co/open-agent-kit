@@ -71,7 +71,7 @@ export interface RegenerateSummaryResponse {
 export function useSessionLineage(sessionId: string | undefined) {
     return useQuery<SessionLineageResponse>({
         queryKey: ["session_lineage", sessionId],
-        queryFn: () => fetchJson(getSessionLineageEndpoint(sessionId!)),
+        queryFn: ({ signal }) => fetchJson(getSessionLineageEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
     });
 }
@@ -251,7 +251,7 @@ export interface DismissSuggestionResponse {
 export function useSuggestedParent(sessionId: string | undefined) {
     return useQuery<SuggestedParentResponse>({
         queryKey: ["suggested_parent", sessionId],
-        queryFn: () => fetchJson(getSuggestedParentEndpoint(sessionId!)),
+        queryFn: ({ signal }) => fetchJson(getSuggestedParentEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
         // Don't refetch too aggressively as this involves vector search
         staleTime: 30000, // 30 seconds
@@ -384,7 +384,7 @@ export interface SuggestedRelatedResponse {
 export function useSessionRelated(sessionId: string | undefined) {
     return useQuery<RelatedSessionsResponse>({
         queryKey: ["session_related", sessionId],
-        queryFn: () => fetchJson(getRelatedSessionsEndpoint(sessionId!)),
+        queryFn: ({ signal }) => fetchJson(getRelatedSessionsEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
     });
 }
@@ -396,7 +396,7 @@ export function useSessionRelated(sessionId: string | undefined) {
 export function useSuggestedRelated(sessionId: string | undefined) {
     return useQuery<SuggestedRelatedResponse>({
         queryKey: ["suggested_related", sessionId],
-        queryFn: () => fetchJson(getSuggestedRelatedEndpoint(sessionId!)),
+        queryFn: ({ signal }) => fetchJson(getSuggestedRelatedEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
         // Don't refetch too aggressively as this involves vector search
         staleTime: 30000, // 30 seconds

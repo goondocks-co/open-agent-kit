@@ -149,7 +149,7 @@ export interface AgentRunResponse {
 export function useAgents() {
     return useQuery({
         queryKey: ["agents"],
-        queryFn: () => fetchJson<AgentListResponse>(API_ENDPOINTS.AGENTS),
+        queryFn: ({ signal }) => fetchJson<AgentListResponse>(API_ENDPOINTS.AGENTS, { signal }),
         staleTime: 60000, // Consider data fresh for 60 seconds (agents rarely change)
         gcTime: 300000, // Keep in cache for 5 minutes
     });
@@ -159,7 +159,7 @@ export function useAgents() {
 export function useAgentDetail(agentName: string | null) {
     return useQuery({
         queryKey: ["agents", agentName],
-        queryFn: () => fetchJson<AgentDetail>(`${API_ENDPOINTS.AGENTS}/${agentName}`),
+        queryFn: ({ signal }) => fetchJson<AgentDetail>(`${API_ENDPOINTS.AGENTS}/${agentName}`, { signal }),
         enabled: !!agentName,
         staleTime: 10000, // Consider data fresh for 10 seconds
     });
@@ -175,7 +175,7 @@ export function useAgentRuns(limit = 20, offset = 0, agentName?: string, status?
 
     const query = useQuery({
         queryKey: ["agent-runs", limit, offset, agentName, status],
-        queryFn: () => fetchJson<AgentRunListResponse>(`${API_ENDPOINTS.AGENT_RUNS}?${params}`),
+        queryFn: ({ signal }) => fetchJson<AgentRunListResponse>(`${API_ENDPOINTS.AGENT_RUNS}?${params}`, { signal }),
         staleTime: 5000, // Consider data fresh for 5 seconds
         placeholderData: (previousData) => previousData, // Keep showing previous data while loading
         // Smart polling: only poll when there are active runs
@@ -196,7 +196,7 @@ export function useAgentRuns(limit = 20, offset = 0, agentName?: string, status?
 export function useAgentRun(runId: string | null) {
     return useQuery({
         queryKey: ["agent-runs", runId],
-        queryFn: () => fetchJson<{ run: AgentRun }>(`${API_ENDPOINTS.AGENT_RUNS}/${runId}`),
+        queryFn: ({ signal }) => fetchJson<{ run: AgentRun }>(`${API_ENDPOINTS.AGENT_RUNS}/${runId}`, { signal }),
         enabled: !!runId,
         staleTime: 2000,
         // Smart polling: only poll when run is active

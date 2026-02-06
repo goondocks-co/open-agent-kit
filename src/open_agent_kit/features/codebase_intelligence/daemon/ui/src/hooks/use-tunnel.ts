@@ -39,7 +39,7 @@ const TUNNEL_STATUS_REFETCH_INTERVAL_MS = 5000;
 export function useTunnelStatus() {
     return useQuery<TunnelStatus>({
         queryKey: ["tunnel-status"],
-        queryFn: () => fetchJson(API_ENDPOINTS.TUNNEL_STATUS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.TUNNEL_STATUS, { signal }),
         refetchInterval: TUNNEL_STATUS_REFETCH_INTERVAL_MS,
     });
 }

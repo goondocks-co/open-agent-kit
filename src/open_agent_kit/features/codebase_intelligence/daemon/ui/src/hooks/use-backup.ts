@@ -91,7 +91,7 @@ const BACKUP_STATUS_REFETCH_INTERVAL_MS = 5000;
 export function useBackupStatus() {
     return useQuery<BackupStatus>({
         queryKey: ["backup-status"],
-        queryFn: () => fetchJson(API_ENDPOINTS.BACKUP_STATUS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.BACKUP_STATUS, { signal }),
         refetchInterval: BACKUP_STATUS_REFETCH_INTERVAL_MS,
     });
 }

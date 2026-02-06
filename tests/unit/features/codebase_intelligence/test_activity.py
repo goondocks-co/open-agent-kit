@@ -477,6 +477,201 @@ class TestActivityStorePromptBatchOperations:
 
 
 # =============================================================================
+# Plan Iteration Consolidation Tests
+# =============================================================================
+
+
+class TestPlanIterationConsolidation:
+    """Test that plan iterations (same file, same session) are consolidated.
+
+    When Claude iterates on a plan (writing to the same file multiple times),
+    only one plan batch should exist per file per session. Subsequent writes
+    update the existing batch's content rather than creating duplicates.
+    """
+
+    def test_get_session_plan_batch_with_file_path(self, activity_store: ActivityStore):
+        """Test filtering plan batch by file path."""
+        activity_store.create_session(
+            session_id="test-plan-fp1", agent="claude", project_root="/path"
+        )
+
+        # Create two plan batches with different file paths
+        batch1 = activity_store.create_prompt_batch(
+            session_id="test-plan-fp1", user_prompt="Plan feature A"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch1.id,
+            "plan",
+            plan_file_path="/plans/plan-a.md",
+            plan_content="Plan A content",
+        )
+
+        batch2 = activity_store.create_prompt_batch(
+            session_id="test-plan-fp1", user_prompt="Plan feature B"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch2.id,
+            "plan",
+            plan_file_path="/plans/plan-b.md",
+            plan_content="Plan B content",
+        )
+
+        # Filter by specific file path
+        result_a = activity_store.get_session_plan_batch(
+            "test-plan-fp1", plan_file_path="/plans/plan-a.md"
+        )
+        assert result_a is not None
+        assert result_a.id == batch1.id
+
+        result_b = activity_store.get_session_plan_batch(
+            "test-plan-fp1", plan_file_path="/plans/plan-b.md"
+        )
+        assert result_b is not None
+        assert result_b.id == batch2.id
+
+    def test_get_session_plan_batch_without_file_path_returns_latest(
+        self, activity_store: ActivityStore
+    ):
+        """Test that omitting file path returns most recent plan (backward compat)."""
+        activity_store.create_session(
+            session_id="test-plan-fp2", agent="claude", project_root="/path"
+        )
+
+        batch1 = activity_store.create_prompt_batch(
+            session_id="test-plan-fp2", user_prompt="Plan v1"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch1.id,
+            "plan",
+            plan_file_path="/plans/plan-a.md",
+            plan_content="Plan A",
+        )
+
+        batch2 = activity_store.create_prompt_batch(
+            session_id="test-plan-fp2", user_prompt="Plan v2"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch2.id,
+            "plan",
+            plan_file_path="/plans/plan-b.md",
+            plan_content="Plan B",
+        )
+
+        # No file path filter — returns most recent
+        result = activity_store.get_session_plan_batch("test-plan-fp2")
+        assert result is not None
+        assert result.id == batch2.id
+
+    def test_get_session_plan_batch_no_match_returns_none(self, activity_store: ActivityStore):
+        """Test that a non-existent file path returns None."""
+        activity_store.create_session(
+            session_id="test-plan-fp3", agent="claude", project_root="/path"
+        )
+
+        batch = activity_store.create_prompt_batch(session_id="test-plan-fp3", user_prompt="Plan")
+        activity_store.update_prompt_batch_source_type(
+            batch.id,
+            "plan",
+            plan_file_path="/plans/plan-a.md",
+            plan_content="Content",
+        )
+
+        result = activity_store.get_session_plan_batch(
+            "test-plan-fp3", plan_file_path="/plans/nonexistent.md"
+        )
+        assert result is None
+
+    def test_get_plans_dedup_by_file_path_keeps_latest(self, activity_store: ActivityStore):
+        """Test that get_plans deduplicates by file path, keeping latest."""
+        activity_store.create_session(
+            session_id="test-plan-dedup1", agent="claude", project_root="/path"
+        )
+
+        # Simulate: same plan file in two sessions (parent + child)
+        batch1 = activity_store.create_prompt_batch(
+            session_id="test-plan-dedup1", user_prompt="Plan v1"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch1.id,
+            "plan",
+            plan_file_path="/plans/shared-plan.md",
+            plan_content="Version 1 content",
+        )
+
+        activity_store.create_session(
+            session_id="test-plan-dedup2", agent="claude", project_root="/path"
+        )
+        batch2 = activity_store.create_prompt_batch(
+            session_id="test-plan-dedup2", user_prompt="Plan v2"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch2.id,
+            "plan",
+            plan_file_path="/plans/shared-plan.md",
+            plan_content="Version 2 content (refined)",
+        )
+
+        plans, total = activity_store.get_plans(deduplicate=True)
+        assert total == 1
+        assert len(plans) == 1
+        # Should keep the latest (v2)
+        assert plans[0].id == batch2.id
+        assert "Version 2" in plans[0].plan_content
+
+    def test_get_plans_different_files_not_deduped(self, activity_store: ActivityStore):
+        """Test that different file paths are not deduplicated."""
+        activity_store.create_session(
+            session_id="test-plan-dedup3", agent="claude", project_root="/path"
+        )
+
+        batch1 = activity_store.create_prompt_batch(
+            session_id="test-plan-dedup3", user_prompt="Plan A"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch1.id,
+            "plan",
+            plan_file_path="/plans/plan-a.md",
+            plan_content="Plan A content",
+        )
+
+        batch2 = activity_store.create_prompt_batch(
+            session_id="test-plan-dedup3", user_prompt="Plan B"
+        )
+        activity_store.update_prompt_batch_source_type(
+            batch2.id,
+            "plan",
+            plan_file_path="/plans/plan-b.md",
+            plan_content="Plan B content",
+        )
+
+        plans, total = activity_store.get_plans(deduplicate=True)
+        assert total == 2
+        assert len(plans) == 2
+
+    def test_get_plans_no_dedup_returns_all(self, activity_store: ActivityStore):
+        """Test that deduplicate=False returns all plan batches."""
+        activity_store.create_session(
+            session_id="test-plan-dedup4", agent="claude", project_root="/path"
+        )
+
+        # Same file path, two batches (simulating old data before consolidation)
+        for i in range(2):
+            batch = activity_store.create_prompt_batch(
+                session_id="test-plan-dedup4", user_prompt=f"Plan v{i + 1}"
+            )
+            activity_store.update_prompt_batch_source_type(
+                batch.id,
+                "plan",
+                plan_file_path="/plans/same-plan.md",
+                plan_content=f"Version {i + 1}",
+            )
+
+        plans, total = activity_store.get_plans(deduplicate=False)
+        assert total == 2
+        assert len(plans) == 2
+
+
+# =============================================================================
 # ActivityStore Tests: Activity Logging
 # =============================================================================
 

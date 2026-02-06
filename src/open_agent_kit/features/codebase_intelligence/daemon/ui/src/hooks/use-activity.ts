@@ -90,7 +90,7 @@ export function useSessions(
 ) {
     return useQuery<SessionListResponse>({
         queryKey: ["sessions", limit, offset, sort],
-        queryFn: () => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?limit=${limit}&offset=${offset}&sort=${sort}`),
+        queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?limit=${limit}&offset=${offset}&sort=${sort}`, { signal }),
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
     });
 }
@@ -98,7 +98,7 @@ export function useSessions(
 export function useSession(sessionId: string | undefined) {
     return useQuery<SessionDetailResponse>({
         queryKey: ["session", sessionId],
-        queryFn: () => fetchJson(getSessionDetailEndpoint(sessionId!)),
+        queryFn: ({ signal }) => fetchJson(getSessionDetailEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
     });
@@ -114,7 +114,7 @@ export interface ActivityStats {
 export function useActivityStats() {
     return useQuery<ActivityStats>({
         queryKey: ["activity_stats"],
-        queryFn: () => fetchJson(API_ENDPOINTS.ACTIVITY_STATS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.ACTIVITY_STATS, { signal }),
         refetchInterval: STATS_REFETCH_INTERVAL_MS,
     });
 }

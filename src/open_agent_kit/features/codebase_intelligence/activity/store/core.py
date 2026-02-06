@@ -299,9 +299,11 @@ class ActivityStore:
         """Get the current active prompt batch for a session."""
         return batches.get_active_prompt_batch(self, session_id)
 
-    def get_session_plan_batch(self, session_id: str) -> PromptBatch | None:
+    def get_session_plan_batch(
+        self, session_id: str, plan_file_path: str | None = None
+    ) -> PromptBatch | None:
         """Get the most recent plan batch in the current session."""
-        return batches.get_session_plan_batch(self, session_id)
+        return batches.get_session_plan_batch(self, session_id, plan_file_path)
 
     def end_prompt_batch(self, batch_id: int) -> None:
         """Mark a prompt batch as completed."""

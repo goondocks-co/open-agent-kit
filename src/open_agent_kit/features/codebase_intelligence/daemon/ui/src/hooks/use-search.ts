@@ -100,8 +100,9 @@ export function useSearch(
 ) {
     const queryResult = useQuery<SearchResponse>({
         queryKey: ["search", query, applyDocTypeWeights, searchType],
-        queryFn: () => fetchJson(
-            `${API_ENDPOINTS.SEARCH}?query=${encodeURIComponent(query)}&apply_doc_type_weights=${applyDocTypeWeights}&search_type=${searchType}`
+        queryFn: ({ signal }) => fetchJson(
+            `${API_ENDPOINTS.SEARCH}?query=${encodeURIComponent(query)}&apply_doc_type_weights=${applyDocTypeWeights}&search_type=${searchType}`,
+            { signal }
         ),
         enabled: query.length > MIN_SEARCH_QUERY_LENGTH,
         staleTime: SEARCH_STALE_TIME_MS,

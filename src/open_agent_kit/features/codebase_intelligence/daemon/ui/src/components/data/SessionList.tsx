@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { useSessions } from "@/hooks/use-activity";
 import { useDeleteSession } from "@/hooks/use-delete";
+import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getSessionTitle } from "@/lib/utils";
 import { Terminal, Activity, Calendar, ArrowRight, Trash2, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     DELETE_CONFIRMATIONS,
     PAGINATION,
     DEFAULT_AGENT_NAME,
-    SESSION_TITLE_MAX_LENGTH,
     SESSION_SORT_DROPDOWN_OPTIONS,
     DEFAULT_SESSION_SORT,
 } from "@/lib/constants";
@@ -20,8 +20,7 @@ import type { SessionSortOption } from "@/lib/constants";
 import type { SessionItem } from "@/hooks/use-activity";
 
 export default function SessionList() {
-    const [offset, setOffset] = useState(0);
-    const [allSessions, setAllSessions] = useState<SessionItem[]>([]);
+    const { offset, loadedItems: allSessions, handleLoadMore, reset } = usePaginatedList<SessionItem>(PAGINATION.DEFAULT_LIMIT);
     const [sortBy, setSortBy] = useState<SessionSortOption>(DEFAULT_SESSION_SORT);
     const limit = PAGINATION.DEFAULT_LIMIT;
 
@@ -31,18 +30,7 @@ export default function SessionList() {
 
     const handleSortChange = (newSort: SessionSortOption) => {
         setSortBy(newSort);
-        // Reset pagination when sort changes
-        setOffset(0);
-        setAllSessions([]);
-    };
-
-    // Merge new sessions with existing ones when offset changes
-    const sessions = offset === 0 ? (data?.sessions || []) : allSessions;
-
-    const handleLoadMore = () => {
-        // Save current sessions before loading more
-        setAllSessions([...sessions, ...(data?.sessions || [])]);
-        setOffset(prev => prev + limit);
+        reset();
     };
 
     const handleDelete = async () => {
@@ -50,9 +38,7 @@ export default function SessionList() {
         try {
             await deleteSession.mutateAsync(itemToDelete as string);
             closeDialog();
-            // Reset to first page after deletion
-            setOffset(0);
-            setAllSessions([]);
+            reset();
         } catch (error) {
             console.error("Failed to delete session:", error);
         }
@@ -68,8 +54,9 @@ export default function SessionList() {
         return <div>Loading sessions...</div>;
     }
 
-    const displaySessions = offset === 0 ? (data?.sessions || []) : [...allSessions.slice(0, offset), ...(data?.sessions || [])];
-    const hasMore = data?.sessions.length === limit;
+    const currentPageSessions = data?.sessions || [];
+    const displaySessions = offset === 0 ? currentPageSessions : [...allSessions, ...currentPageSessions];
+    const hasMore = currentPageSessions.length === limit;
 
     return (
         <div className="space-y-4">
@@ -96,13 +83,7 @@ export default function SessionList() {
             </div>
 
             {displaySessions.map((session) => {
-                // Generate a session title: prefer title (LLM-generated), then first_prompt_preview, fallback to truncated ID
-                const sessionTitle = session.title
-                    || (session.first_prompt_preview
-                        ? (session.first_prompt_preview.length > SESSION_TITLE_MAX_LENGTH
-                            ? session.first_prompt_preview.slice(0, SESSION_TITLE_MAX_LENGTH) + "..."
-                            : session.first_prompt_preview)
-                        : `Session ${session.id.slice(0, 8)}...`);
+                const sessionTitle = getSessionTitle(session);
 
                 return (
                     <Link key={session.id} to={`/activity/sessions/${session.id}`}>
@@ -134,6 +115,7 @@ export default function SessionList() {
                                             onClick={(e) => handleDeleteClick(e, session.id)}
                                             className="p-2 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
                                             title="Delete session"
+                                            aria-label="Delete session"
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>
@@ -154,7 +136,7 @@ export default function SessionList() {
 
             {hasMore && displaySessions.length > 0 && (
                 <button
-                    onClick={handleLoadMore}
+                    onClick={() => handleLoadMore(currentPageSessions)}
                     disabled={isFetching}
                     className="w-full py-3 text-sm text-muted-foreground hover:text-foreground border border-dashed rounded-lg hover:border-muted-foreground/50 transition-colors disabled:opacity-50"
                 >

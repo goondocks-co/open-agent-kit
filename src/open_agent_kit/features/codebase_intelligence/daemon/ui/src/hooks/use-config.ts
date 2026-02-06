@@ -46,7 +46,7 @@ export interface Config {
 export function useConfig() {
     return useQuery<Config>({
         queryKey: ["config"],
-        queryFn: () => fetchJson(API_ENDPOINTS.CONFIG),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.CONFIG, { signal }),
     });
 }
 
@@ -150,7 +150,7 @@ export interface ExclusionsResponse {
 export function useExclusions() {
     return useQuery<ExclusionsResponse>({
         queryKey: ["exclusions"],
-        queryFn: () => fetchJson(API_ENDPOINTS.CONFIG_EXCLUSIONS),
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.CONFIG_EXCLUSIONS, { signal }),
     });
 }
 

@@ -245,13 +245,14 @@ function RunRow({
                                         contentDialog.openDialog("Task", run.task, run.agent_name, true);
                                     }}
                                     className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                    aria-label="Show full task"
                                 >
                                     <Maximize2 className="w-3 h-3" />
                                     Show more
                                 </button>
                             )}
                         </div>
-                        <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">
+                        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">
                             <Markdown content={getTruncatedContent(run.task, RUN_TASK_TRUNCATION_LIMIT)} />
                         </div>
                     </div>
@@ -305,13 +306,14 @@ function RunRow({
                                             contentDialog.openDialog("Result", run.result || "", run.agent_name, true);
                                         }}
                                         className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                        aria-label="Show full result"
                                     >
                                         <Maximize2 className="w-3 h-3" />
                                         Show more
                                     </button>
                                 )}
                             </div>
-                            <div className="p-2 rounded bg-background max-h-48 overflow-y-auto prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 prose-headings:text-sm">
+                            <div className="p-2 rounded bg-background max-h-48 overflow-y-auto prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 prose-headings:text-sm">
                                 <Markdown content={getTruncatedContent(run.result, RUN_RESULT_TRUNCATION_LIMIT)} />
                             </div>
                         </div>
@@ -655,6 +657,7 @@ export default function RunHistory() {
                                 size="sm"
                                 onClick={handlePrevPage}
                                 disabled={offset === 0}
+                                aria-label="Previous page"
                             >
                                 <ChevronLeft className="w-4 h-4" />
                             </Button>
@@ -666,6 +669,7 @@ export default function RunHistory() {
                                 size="sm"
                                 onClick={handleNextPage}
                                 disabled={offset + PAGE_SIZE >= total}
+                                aria-label="Next page"
                             >
                                 <ChevronRight className="w-4 h-4" />
                             </Button>

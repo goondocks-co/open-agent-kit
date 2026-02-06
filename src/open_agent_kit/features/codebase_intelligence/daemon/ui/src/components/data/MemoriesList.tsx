@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMemories, useMemoryTags, useArchiveMemory, useUnarchiveMemory, useBulkMemories } from "@/hooks/use-memories";
 import { useDeleteMemory } from "@/hooks/use-delete";
+import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -26,8 +27,7 @@ import type { MemoryListItem } from "@/hooks/use-memories";
 const MEMORIES_PAGE_SIZE = 20;
 
 export default function MemoriesList() {
-    const [loadedMemories, setLoadedMemories] = useState<MemoryListItem[]>([]);
-    const [offset, setOffset] = useState(0);
+    const { offset, loadedItems: loadedMemories, handleLoadMore, reset } = usePaginatedList<MemoryListItem>(MEMORIES_PAGE_SIZE);
     const [memoryType, setMemoryType] = useState<MemoryTypeFilter>("all");
     const [selectedTag, setSelectedTag] = useState<string>("");
     const [dateRange, setDateRange] = useState<DateRangePreset>("all");
@@ -73,53 +73,38 @@ export default function MemoriesList() {
         return MEMORY_TYPE_LABELS[type as MemoryType] || type.replace(/_/g, " ");
     };
 
-    const handleLoadMore = () => {
-        // Add current page memories to loaded memories
-        setLoadedMemories(prev => [...prev, ...(data?.memories || [])]);
-        setOffset(prev => prev + MEMORIES_PAGE_SIZE);
-    };
-
     const handleFilterChange = (newFilter: MemoryTypeFilter) => {
         setMemoryType(newFilter);
-        // Reset pagination when filter changes
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const handleTagFilterChange = (newTag: string) => {
         setSelectedTag(newTag);
-        // Reset pagination when filter changes
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const handleDateRangeChange = (newRange: DateRangePreset) => {
         setDateRange(newRange);
-        // Reset pagination when filter changes
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const handleArchiveToggle = () => {
         setIncludeArchived(prev => !prev);
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const handleArchiveClick = async (e: React.MouseEvent, memoryId: string) => {
         e.preventDefault();
         e.stopPropagation();
         await archiveMemory.mutateAsync(memoryId);
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const handleUnarchiveClick = async (e: React.MouseEvent, memoryId: string) => {
         e.preventDefault();
         e.stopPropagation();
         await unarchiveMemory.mutateAsync(memoryId);
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const clearAllFilters = () => {
@@ -127,8 +112,7 @@ export default function MemoriesList() {
         setSelectedTag("");
         setDateRange("all");
         setIncludeArchived(false);
-        setOffset(0);
-        setLoadedMemories([]);
+        reset();
     };
 
     const hasActiveFilters = memoryType !== "all" || selectedTag !== "" || dateRange !== "all" || includeArchived;
@@ -138,9 +122,7 @@ export default function MemoriesList() {
         try {
             await deleteMemory.mutateAsync(itemToDelete as string);
             closeDialog();
-            // Reset pagination after deletion
-            setOffset(0);
-            setLoadedMemories([]);
+            reset();
         } catch (error) {
             console.error("Failed to delete memory:", error);
         }
@@ -192,8 +174,7 @@ export default function MemoriesList() {
             setSelectedIds(new Set());
             setBulkTagInput("");
             setShowTagInput(null);
-            setOffset(0);
-            setLoadedMemories([]);
+            reset();
         } catch (error) {
             console.error("Bulk operation failed:", error);
         }
@@ -366,6 +347,7 @@ export default function MemoriesList() {
                             onClick={deselectAll}
                             className="p-1 rounded hover:bg-background"
                             title="Clear selection"
+                            aria-label="Clear selection"
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -494,6 +476,7 @@ export default function MemoriesList() {
                                         onClick={() => toggleSelection(mem.id)}
                                         className="p-0.5 rounded hover:bg-muted"
                                         title={selectedIds.has(mem.id) ? "Deselect" : "Select"}
+                                        aria-label={selectedIds.has(mem.id) ? "Deselect" : "Select"}
                                     >
                                         {selectedIds.has(mem.id) ? (
                                             <CheckSquare className="w-4 h-4 text-primary" />
@@ -518,6 +501,7 @@ export default function MemoriesList() {
                                             onClick={(e) => handleUnarchiveClick(e, mem.id)}
                                             className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-all"
                                             title="Unarchive memory"
+                                            aria-label="Unarchive memory"
                                             disabled={unarchiveMemory.isPending}
                                         >
                                             <ArchiveRestore className="w-3 h-3" />
@@ -527,6 +511,7 @@ export default function MemoriesList() {
                                             onClick={(e) => handleArchiveClick(e, mem.id)}
                                             className="p-1 rounded text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 opacity-0 group-hover:opacity-100 transition-all"
                                             title="Archive memory"
+                                            aria-label="Archive memory"
                                             disabled={archiveMemory.isPending}
                                         >
                                             <Archive className="w-3 h-3" />
@@ -536,6 +521,7 @@ export default function MemoriesList() {
                                         onClick={(e) => handleDeleteClick(e, mem.id)}
                                         className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
                                         title="Delete memory"
+                                        aria-label="Delete memory"
                                     >
                                         <Trash2 className="w-3 h-3" />
                                     </button>
@@ -589,7 +575,7 @@ export default function MemoriesList() {
 
             {hasMore && (
                 <button
-                    onClick={handleLoadMore}
+                    onClick={() => handleLoadMore(data?.memories || [])}
                     disabled={isFetching}
                     className="w-full py-3 text-sm text-muted-foreground hover:text-foreground border border-dashed rounded-lg hover:border-muted-foreground/50 transition-colors disabled:opacity-50"
                 >
