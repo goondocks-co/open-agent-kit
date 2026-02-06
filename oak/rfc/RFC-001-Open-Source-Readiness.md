@@ -22,8 +22,9 @@ This RFC captures a comprehensive pre-launch review of Open Agent Kit (OAK) acro
 3. [Security Audit](#3-security-audit)
 4. [Distribution Strategy](#4-distribution-strategy)
 5. [Documentation & Website](#5-documentation--website)
-6. [Pre-Open-Source Chores](#6-pre-open-source-chores)
-7. [Launch Phases & Prioritized Action Items](#7-launch-phases--prioritized-action-items)
+6. [Configuration Architecture](#6-configuration-architecture-project-config-vs-user-config)
+7. [Pre-Open-Source Chores](#7-pre-open-source-chores)
+8. [Launch Phases & Prioritized Action Items](#8-launch-phases--prioritized-action-items)
 
 ---
 
@@ -157,7 +158,7 @@ Commands are constructed via `.format()` with values from agent manifest YAML fi
 
 | ID | Finding | Location |
 |----|---------|----------|
-| L-SEC1 | `.oak/config.yaml` with `api_key: null` tracked in git | `.gitignore` missing `.oak/config.yaml` |
+| L-SEC1 | `api_key` fields and `log_level: DEBUG` in tracked config | Resolved by user config overlay (Section 6) |
 | L-SEC2 | SQL queries use f-string formatting (safe but fragile) | Multiple store files |
 | L-SEC3 | CORS allows wildcard methods/headers | `server.py:788-794` |
 | L-SEC4 | Search queries logged at INFO level | `routes/search.py:98` |
@@ -313,33 +314,159 @@ Everything else (full command reference, config details, troubleshooting) moves 
 
 ---
 
-## 6. Pre-Open-Source Chores
+## 6. Configuration Architecture: Project Config vs. User Config
 
-### 6.1 Git History
+### 6.1 Problem Statement
+
+`.oak/config.yaml` is tracked in git and serves dual purposes today:
+- **Project-level settings** that the team agrees on (agents, skills, languages, RFC config, exclude patterns, session quality thresholds)
+- **Machine-local settings** that vary per developer (embedding provider/model/URL, summarization provider/model/URL, API keys, tunnel provider/paths, log level, daemon port)
+
+Currently, `.env` support exists (`python-dotenv` loaded at CLI startup, plus `${ENV_VAR}` syntax for API keys), and the documented priority hierarchy is: env vars > config.yaml > manifest defaults > hardcoded defaults. But this is cumbersome for everyday use -- developers don't want to manage a growing list of `OAK_CI_*` env vars for routine preferences like switching their embedding model.
+
+### 6.2 Decision: Machine-ID-Based User Config (NOT .gitignore)
+
+**The original RFC recommended adding `.oak/config.yaml` to `.gitignore`. This is rejected** -- the project config should remain in source control so teams share a common baseline.
+
+Instead, introduce a **user config overlay** that:
+- Uses the existing `source_machine_id` (`{github_user}_{6_char_hash}`) as the identifier
+- Is stored at `.oak/config.{machine_id}.yaml` (e.g., `.oak/config.octocat_a7b3c2.yaml`)
+- Is gitignored by pattern (`.oak/config.*.yaml`)
+- Merges on top of the project config at load time (user values win)
+- Participates in the backup/restore system (exported/imported alongside the machine's SQL backup)
+
+### 6.3 Classification: Project vs. User Settings
+
+| Setting Path | Classification | Rationale |
+|-------------|---------------|-----------|
+| `agents` | **Project** | Team agrees on which agents are supported |
+| `agent_capabilities` | **Project** | Shared understanding of agent features |
+| `rfc.*` | **Project** | Shared RFC workflow |
+| `constitution.*` | **Project** | Shared standards |
+| `languages.installed` | **Project** | Parsers needed for the repo's languages |
+| `skills.*` | **Project** | Skills the whole team uses |
+| `codebase_intelligence.embedding.provider` | **User** | Dev A uses Ollama, Dev B uses LM Studio |
+| `codebase_intelligence.embedding.model` | **User** | Model availability varies by machine |
+| `codebase_intelligence.embedding.base_url` | **User** | Local server URLs vary |
+| `codebase_intelligence.embedding.api_key` | **User** | Personal API keys |
+| `codebase_intelligence.embedding.dimensions` | **Project** | Must match for shared vector DB compatibility |
+| `codebase_intelligence.embedding.context_tokens` | **Project** | Affects chunking strategy for shared index |
+| `codebase_intelligence.summarization.*` | **User** | Provider, model, URL, key are all machine-local |
+| `codebase_intelligence.agents.provider_type` | **User** | Cloud vs. local varies per dev |
+| `codebase_intelligence.agents.provider_base_url` | **User** | Local server URLs vary |
+| `codebase_intelligence.agents.provider_model` | **User** | Model availability varies |
+| `codebase_intelligence.agents.max_turns` | **Project** | Team-wide guard on agent run length |
+| `codebase_intelligence.agents.timeout_seconds` | **Project** | Team-wide timeout |
+| `codebase_intelligence.agents.scheduler_interval_seconds` | **Project** | Team-wide scheduling |
+| `codebase_intelligence.session_quality.*` | **Project** | Team-wide quality thresholds |
+| `codebase_intelligence.tunnel.provider` | **User** | Dev's tunnel preference |
+| `codebase_intelligence.tunnel.auto_start` | **User** | Personal preference |
+| `codebase_intelligence.tunnel.*_path` | **User** | Binary locations vary |
+| `codebase_intelligence.index_on_startup` | **Project** | Team-wide behavior |
+| `codebase_intelligence.watch_files` | **Project** | Team-wide behavior |
+| `codebase_intelligence.exclude_patterns` | **Project** | Team-wide ignore list |
+| `codebase_intelligence.log_level` | **User** | Personal debugging preference |
+| `codebase_intelligence.log_rotation.*` | **User** | Machine-local log management |
+
+### 6.4 Priority Hierarchy (Updated)
+
+```
+1. Environment variables (OAK_CI_*, .env file)      ← Highest: escape hatch / CI override
+2. User config (.oak/config.{machine_id}.yaml)       ← Machine-local preferences
+3. Project config (.oak/config.yaml)                  ← Team baseline (git-tracked)
+4. Feature manifest defaults                          ← Sensible out-of-box
+5. Hardcoded defaults                                 ← Lowest: last resort
+```
+
+### 6.5 Merge Semantics
+
+The user config file contains **only the keys the user wants to override** -- it is a sparse overlay, not a full copy. Merge rules:
+
+| Type | Behavior |
+|------|----------|
+| Scalar (string, int, bool) | User value replaces project value |
+| Dict (object) | Deep merge -- user keys override, project keys preserved |
+| List | User value **replaces** project value (no list merge -- too unpredictable) |
+
+Example: If the project config has `embedding.provider: ollama` and `embedding.model: bge-m3`, and the user config has `embedding.provider: lmstudio`, the merged result is `embedding.provider: lmstudio, embedding.model: bge-m3`.
+
+### 6.6 User Config Lifecycle
+
+**Creation:**
+- `oak ci config --user` opens the user config in `$EDITOR` (creates from template if missing)
+- Dashboard Settings page gets a "User Overrides" panel (writes to user config file)
+- First-time init could prompt: "Your team uses Ollama for embeddings. Configure your local settings?"
+
+**Discovery:**
+- Config loading (`load_ci_config`, `OakConfig.load`) gains a merge step
+- Machine ID is already cached at `.oak/ci/machine_id` and resolved via `get_machine_identifier()`
+- If `.oak/config.{machine_id}.yaml` exists, deep-merge it on top of the project config
+
+**Backup/Restore:**
+- User config is **included** in the machine's backup export (alongside the SQL dump)
+- On restore, the user config is placed at the correct machine-ID filename
+- This means when a developer moves to a new machine with the same GitHub user, `oak ci restore` reconstitutes both their data and their preferences
+
+### 6.7 .gitignore Changes
+
+```gitignore
+# OAK: user/machine-local config overlays (project config stays tracked)
+.oak/config.*.yaml
+```
+
+This pattern ignores all machine-specific overlays while keeping `.oak/config.yaml` tracked. The `api_key: null` fields in the project config are safe since actual keys live in the user overlay or `.env`.
+
+### 6.8 Implementation Phases
+
+**Phase 1 (Launch):**
+- Add `.oak/config.*.yaml` to `.gitignore`
+- Implement merge logic in `load_ci_config()` and `OakConfig.load()`
+- Add `oak ci config --user` CLI command
+- Move the existing project config's `api_key: null` fields, `log_level: DEBUG`, and provider URLs to a user config template
+- Reset the tracked `.oak/config.yaml` to sensible project-level defaults
+
+**Phase 2 (Post-Launch):**
+- Dashboard "User Overrides" panel
+- Include user config in backup/restore
+- First-time init user config wizard
+- `oak ci config --diff` to show effective merged config with origin annotations
+
+### 6.9 Security Implications
+
+- API keys in user config are gitignored -- eliminates the L-SEC1 finding
+- Project config stays clean (no nulled secrets, no debug log levels)
+- `.env` remains the escape hatch for CI/CD where you need env-var-based config
+- The `${ENV_VAR}` syntax for API keys still works in both project and user config
+
+---
+
+## 7. Pre-Open-Source Chores
+
+### 7.1 Git History
 
 - 50 commits on the current branch
 - Plan to flatten history is sound -- use `git checkout --orphan` on the new public repo
 - Deleted files in history include old feature structures, hook scripts, research docs -- confirms the need for a clean squash
 
-### 6.2 Files to Fix Before Public
+### 7.2 Files to Fix Before Public
 
 | File | Issue | Action |
 |------|-------|--------|
 | `SECURITY.md:24` | Placeholder `opensource@example.com` | Replace with real email |
-| `.oak/config.yaml:175` | `log_level: DEBUG` | Change to `INFO` |
-| `.oak/config.yaml:72,81` | `api_key: null` tracked in git | Add to `.gitignore` or add pre-commit check |
+| `.oak/config.yaml:175` | `log_level: DEBUG` is a user pref, not project | Move to user config; set project default to `INFO` |
+| `.oak/config.yaml:72,81` | `api_key: null` fields in tracked config | Move to user config template; remove from project config |
 | `oak/ci/daemon.port` | Runtime port tracked in git | Add to `.gitignore` |
 | `CHANGELOG.md` | Contains `localhost:38283` links | Replace with plain text descriptions |
 | `pyproject.toml:103` | GitHub URL points to `sirkirby/open-agent-kit` | Verify this is the intended public repo name |
 
-### 6.3 Licensing
+### 7.3 Licensing
 
 - MIT License is in place and properly referenced in `pyproject.toml`
 - All Python dependencies are MIT/BSD/Apache 2.0 compatible
 - Frontend dependencies (React, Radix, Tailwind, Vite) are all MIT compatible
 - **No copyleft conflicts detected.**
 
-### 6.4 CI/CD for the Public Repo
+### 7.4 CI/CD for the Public Repo
 
 - PR check workflow is solid (lint, format, typecheck, tests, integration tests, version check)
 - Release workflow needs: (a) `npm ci && npm run build` before Python build, (b) PyPI publish step
@@ -347,7 +474,7 @@ Everything else (full command reference, config details, troubleshooting) moves 
 
 ---
 
-## 7. Launch Phases & Prioritized Action Items
+## 8. Launch Phases & Prioritized Action Items
 
 ### Phase 0: Blockers (Must Complete Before Public)
 
@@ -356,37 +483,37 @@ Everything else (full command reference, config details, troubleshooting) moves 
 | 1 | Replace `opensource@example.com` in SECURITY.md | Chore | 5 min |
 | 2 | Fix `shell=True` in `mcp/installer.py` (H-SEC1) | Security | 1-2 hrs |
 | 3 | Remove env var value logging in `executor.py:202` (M-SEC4) | Security | 15 min |
-| 4 | Change `log_level` from DEBUG to INFO in tracked config | Security | 5 min |
+| 4 | Implement user config overlay (Section 6, Phase 1) | Config | 1-2 days |
 | 5 | Remove debug `console.log` from `Config.tsx` | Frontend | 15 min |
-| 6 | Add `.oak/config.yaml` to `.gitignore` (provide `.example`) | Security | 30 min |
-| 7 | Add `oak/ci/daemon.port` to `.gitignore` | Chore | 5 min |
-| 8 | Create `docs/architecture.md` (consolidate research docs) | Docs | 2-4 hrs |
-| 9 | Create `docs/README.md` (documentation index) | Docs | 1 hr |
-| 10 | Flatten git history onto new public repo | Chore | 1 hr |
+| 6 | Add `oak/ci/daemon.port` to `.gitignore` | Chore | 5 min |
+| 7 | Create `docs/architecture.md` (consolidate research docs) | Docs | 2-4 hrs |
+| 8 | Create `docs/README.md` (documentation index) | Docs | 1 hr |
+| 9 | Flatten git history onto new public repo | Chore | 1 hr |
 
 ### Phase 1: Launch Week
 
 | # | Item | Category | Effort |
 |---|------|----------|--------|
-| 11 | Add PyPI publish to release workflow | Distribution | 2-4 hrs |
-| 12 | Add `npm ci && npm run build` to release workflow | Distribution | 1 hr |
-| 13 | Restructure README (200 lines, link to docs) | Docs | 3-4 hrs |
-| 14 | Create terminal recording GIF for README + website | Docs | 2-3 hrs |
-| 15 | Scaffold Astro Starlight docs site on GitHub Pages | Docs | 4-8 hrs |
-| 16 | Migrate 8 CI docs + QUICKSTART + CLI ref to website | Docs | 4-6 hrs |
+| 10 | Add PyPI publish to release workflow | Distribution | 2-4 hrs |
+| 11 | Add `npm ci && npm run build` to release workflow | Distribution | 1 hr |
+| 12 | Restructure README (200 lines, link to docs) | Docs | 3-4 hrs |
+| 13 | Create terminal recording GIF for README + website | Docs | 2-3 hrs |
+| 14 | Scaffold Astro Starlight docs site on GitHub Pages | Docs | 4-8 hrs |
+| 15 | Migrate 8 CI docs + QUICKSTART + CLI ref to website | Docs | 4-6 hrs |
 
 ### Phase 2: First Month
 
 | # | Item | Category | Effort |
 |---|------|----------|--------|
-| 17 | Relax Python requirement to `>=3.12` | Distribution | 1-2 days |
-| 18 | Split CI constants file into domain modules (H-PY1) | Code Quality | 4-6 hrs |
-| 19 | Decompose `lifespan` function (H-PY2) | Code Quality | 3-4 hrs |
-| 20 | Split activity routes file (H-PY3) | Code Quality | 4-6 hrs |
-| 21 | Migrate custom dialogs to `@radix-ui/react-dialog` | Frontend | 3-4 hrs |
-| 22 | Extract duplicated pagination hook (`usePaginatedList`) | Frontend | 2-3 hrs |
-| 23 | Add daemon API authentication (M-SEC1, M-SEC2) | Security | 1-2 days |
-| 24 | Gate devtools behind config flag (M-SEC3) | Security | 2-4 hrs |
+| 16 | Relax Python requirement to `>=3.12` | Distribution | 1-2 days |
+| 17 | Split CI constants file into domain modules (H-PY1) | Code Quality | 4-6 hrs |
+| 18 | Decompose `lifespan` function (H-PY2) | Code Quality | 3-4 hrs |
+| 19 | Split activity routes file (H-PY3) | Code Quality | 4-6 hrs |
+| 20 | Migrate custom dialogs to `@radix-ui/react-dialog` | Frontend | 3-4 hrs |
+| 21 | Extract duplicated pagination hook (`usePaginatedList`) | Frontend | 2-3 hrs |
+| 22 | Add daemon API authentication (M-SEC1, M-SEC2) | Security | 1-2 days |
+| 23 | Gate devtools behind config flag (M-SEC3) | Security | 2-4 hrs |
+| 24 | Dashboard "User Overrides" panel (Section 6, Phase 2) | Config | 1-2 days |
 | 25 | Create per-agent setup guide pages (6 agents) | Docs | 3-4 hrs |
 | 26 | Create MCP tools reference docs | Docs | 2-3 hrs |
 | 27 | Create feature development guide | Docs | 3-4 hrs |
@@ -401,11 +528,12 @@ Everything else (full command reference, config details, troubleshooting) moves 
 | 31 | Convert namespace classes to `StrEnum` | Code Quality | 2-3 hrs |
 | 32 | Add runtime API validation (zod/valibot) to frontend | Frontend | 4-6 hrs |
 | 33 | A11y audit: skip-nav, icon labels, focus management | Frontend | 1-2 days |
-| 34 | Docker image for evaluation/CI | Distribution | 4-6 hrs |
-| 35 | Install script (`curl \| bash`) | Distribution | 2-3 hrs |
-| 36 | Comparison pages (OAK vs. Greptile, Continue.dev, etc.) | Docs | 4-6 hrs |
-| 37 | Video demo / tutorial | Docs | 1-2 days |
-| 38 | Optional encryption at rest for activity DB | Security | 2-3 days |
+| 34 | `oak ci config --diff` (show merged config with origins) | Config | 4-6 hrs |
+| 35 | Docker image for evaluation/CI | Distribution | 4-6 hrs |
+| 36 | Install script (`curl \| bash`) | Distribution | 2-3 hrs |
+| 37 | Comparison pages (OAK vs. Greptile, Continue.dev, etc.) | Docs | 4-6 hrs |
+| 38 | Video demo / tutorial | Docs | 1-2 days |
+| 39 | Optional encryption at rest for activity DB | Security | 2-3 days |
 
 ---
 
@@ -433,3 +561,4 @@ Everything else (full command reference, config details, troubleshooting) moves 
 | Date | Version | Changes | Author |
 |------|---------|---------|--------|
 | 2026-02-06 | 0.1 | Initial draft -- comprehensive pre-launch review | AI Review (Claude) |
+| 2026-02-06 | 0.2 | Added Section 6: machine-ID-based user config overlay design; replaced `.gitignore` config recommendation with proper project/user split | AI Review (Claude) |
