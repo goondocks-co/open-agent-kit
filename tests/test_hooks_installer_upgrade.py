@@ -15,10 +15,10 @@ from open_agent_kit.features.codebase_intelligence.hooks.installer import (
     HooksInstaller,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_installer(
     tmp_path: Path,
@@ -182,7 +182,11 @@ class TestJsonNeedsUpgrade:
         old_hooks = {
             "hooks": {
                 "SessionStart": [
-                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude", "timeout": 30}]}
+                    {
+                        "hooks": [
+                            {"command": "oak ci hook SessionStart --agent claude", "timeout": 30}
+                        ]
+                    }
                 ]
             }
         }
@@ -194,7 +198,11 @@ class TestJsonNeedsUpgrade:
         new_template = {
             "hooks": {
                 "SessionStart": [
-                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude", "timeout": 60}]}
+                    {
+                        "hooks": [
+                            {"command": "oak ci hook SessionStart --agent claude", "timeout": 60}
+                        ]
+                    }
                 ]
             }
         }
@@ -209,7 +217,11 @@ class TestJsonNeedsUpgrade:
         hooks_data = {
             "hooks": {
                 "SessionStart": [
-                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude", "timeout": 60}]}
+                    {
+                        "hooks": [
+                            {"command": "oak ci hook SessionStart --agent claude", "timeout": 60}
+                        ]
+                    }
                 ]
             }
         }
@@ -231,7 +243,11 @@ class TestJsonNeedsUpgrade:
         template = {
             "hooks": {
                 "SessionStart": [
-                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude", "timeout": 60}]}
+                    {
+                        "hooks": [
+                            {"command": "oak ci hook SessionStart --agent claude", "timeout": 60}
+                        ]
+                    }
                 ]
             }
         }
@@ -240,7 +256,11 @@ class TestJsonNeedsUpgrade:
         installed = {
             "hooks": {
                 "SessionStart": [
-                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude", "timeout": 60}]},
+                    {
+                        "hooks": [
+                            {"command": "oak ci hook SessionStart --agent claude", "timeout": 60}
+                        ]
+                    },
                     {"hooks": [{"command": "echo user hook"}]},
                 ]
             }
@@ -262,11 +282,7 @@ class TestJsonNeedsUpgrade:
 
         # Installed has an orphaned OAK hook
         installed = {
-            "hooks": {
-                "Stop": [
-                    {"hooks": [{"command": "oak ci hook Stop --agent claude"}]}
-                ]
-            }
+            "hooks": {"Stop": [{"hooks": [{"command": "oak ci hook Stop --agent claude"}]}]}
         }
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(parents=True)

@@ -960,6 +960,9 @@ class UpgradeService:
         hooks = manifest.hooks
         folder = manifest.installation.folder.rstrip("/")
 
+        if not hooks:
+            return f"{folder}/hooks"
+
         if hooks.type == "plugin" and hooks.plugin_dir and hooks.plugin_file:
             return f"{folder}/{hooks.plugin_dir}/{hooks.plugin_file}"
         elif hooks.type == "otel":

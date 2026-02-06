@@ -689,9 +689,7 @@ class ActivityProcessor:
             generate_title_from_summary=_generate_title_from_summary,
         )
 
-    def complete_session(
-        self, session_id: str
-    ) -> tuple[str | None, str | None]:
+    def complete_session(self, session_id: str) -> tuple[str | None, str | None]:
         """Mark an active session as completed and run post-completion processing.
 
         This is the same chain the background job runs for stale sessions:
@@ -721,9 +719,7 @@ class ActivityProcessor:
         logger.info(f"Manually completed session {session_id[:8]}")
 
         # Step 2: Generate summary — same path as background job
-        summary, title = self.process_session_summary_with_title(
-            session_id, regenerate_title=True
-        )
+        summary, title = self.process_session_summary_with_title(session_id, regenerate_title=True)
 
         # Step 3: Generate title if summary didn't produce one
         if not title:

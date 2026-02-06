@@ -354,6 +354,4 @@ def test_plan_upgrade_detects_modified_plugin_hook(initialized_project: Path) ->
 
     # Should detect the modified hook
     hook_agents = [h["agent"] for h in plan["hooks"]]
-    assert "opencode" in hook_agents, (
-        f"Expected opencode in hooks plan, got agents: {hook_agents}"
-    )
+    assert "opencode" in hook_agents, f"Expected opencode in hooks plan, got agents: {hook_agents}"

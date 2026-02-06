@@ -164,14 +164,20 @@ class HooksInstaller:
         Compares the raw file content of the template against the installed
         plugin file.
         """
-        if not self.hooks_config or not self.hooks_config.plugin_dir or not self.hooks_config.plugin_file:
+        if (
+            not self.hooks_config
+            or not self.hooks_config.plugin_dir
+            or not self.hooks_config.plugin_file
+        ):
             return False
 
         template_file = HOOKS_TEMPLATE_DIR / self.agent / self.hooks_config.template_file
         if not template_file.exists():
             return False
 
-        installed_path = self.agent_folder / self.hooks_config.plugin_dir / self.hooks_config.plugin_file
+        installed_path = (
+            self.agent_folder / self.hooks_config.plugin_dir / self.hooks_config.plugin_file
+        )
         if not installed_path.exists():
             return True  # Not installed yet
 
@@ -219,7 +225,8 @@ class HooksInstaller:
 
             # Compare only the managed section (other config keys are user-owned)
             expected_value = expected_section.get(section_key, expected_section)
-            return installed_config[section_key] != expected_value
+            installed_value = installed_config[section_key]
+            return bool(installed_value != expected_value)
         except (ImportError, OSError, ValueError):
             return True
 
