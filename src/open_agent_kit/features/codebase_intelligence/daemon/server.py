@@ -753,6 +753,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if effective_log_level == "DEBUG":
         logger.debug("Debug logging enabled - verbose output active")
 
+    # Initialize secrets redaction patterns (before any activity storage)
+    from open_agent_kit.features.codebase_intelligence.utils.redact import (
+        initialize as initialize_redaction,
+    )
+
+    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+    initialize_redaction(ci_data_dir)
+
     # --- Subsystem init (order matters: embedding → vector store → activity → agents) ---
     _init_tunnel(state, project_root)
 

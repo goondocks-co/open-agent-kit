@@ -199,7 +199,7 @@ class AgentExecutor:
         for key, value in provider.env_vars.items():
             original_values[key] = os.environ.get(key)
             os.environ[key] = value
-            logger.debug(f"Set {key}={value[:20]}... for provider {provider.type}")
+            logger.debug(f"Set {key} for provider {provider.type}")
 
         return original_values
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -18,6 +20,27 @@ if TYPE_CHECKING:
     from open_agent_kit.models.agent_manifest import AgentManifest, AgentMcpConfig
 
 logger = logging.getLogger(__name__)
+
+# Conservative allowlist for CLI argument values (server names, commands).
+# Rejects shell metacharacters that could enable command injection.
+_SAFE_VALUE_RE = re.compile(r"^[a-zA-Z0-9._\- ]+$")
+
+
+def _validate_cli_value(value: str, label: str) -> None:
+    """Validate a CLI argument value against the safe-character allowlist.
+
+    Args:
+        value: The value to validate (e.g., server name or command string).
+        label: Human-readable label for error messages (e.g., "server_name").
+
+    Raises:
+        ValueError: If the value contains disallowed characters.
+    """
+    if not value or not _SAFE_VALUE_RE.match(value):
+        raise ValueError(
+            f"Unsafe characters in {label}: {value!r}. "
+            f"Only alphanumerics, dots, hyphens, underscores, and spaces are allowed."
+        )
 
 
 @dataclass
@@ -184,20 +207,22 @@ class MCPInstaller:
         )
 
         try:
+            # Defense-in-depth: validate BEFORE shell expansion
+            _validate_cli_value(self.server_name, "server_name")
+            _validate_cli_value(self.command, "command")
+
             # For some agents, we need to remove first to make it idempotent
             if self.mcp_config.cli.remove:
                 remove_cmd = self.mcp_config.cli.remove.format(name=self.server_name)
                 subprocess.run(
-                    remove_cmd,
-                    shell=True,
+                    shlex.split(remove_cmd),
                     cwd=str(self.project_root),
                     capture_output=True,
                     timeout=30,
                 )
 
             result = subprocess.run(
-                cmd,
-                shell=True,
+                shlex.split(cmd),
                 cwd=str(self.project_root),
                 capture_output=True,
                 text=True,
@@ -217,6 +242,12 @@ class MCPInstaller:
                     method="cli",
                 )
 
+        except ValueError as e:
+            return InstallResult(
+                success=False,
+                message=f"CLI validation error: {e}",
+                method="cli",
+            )
         except subprocess.TimeoutExpired:
             return InstallResult(
                 success=False,
@@ -249,9 +280,11 @@ class MCPInstaller:
         cmd = cmd_template.format(name=self.server_name)
 
         try:
+            # Defense-in-depth: validate BEFORE shell expansion
+            _validate_cli_value(self.server_name, "server_name")
+
             result = subprocess.run(
-                cmd,
-                shell=True,
+                shlex.split(cmd),
                 cwd=str(self.project_root),
                 capture_output=True,
                 text=True,
@@ -272,6 +305,12 @@ class MCPInstaller:
                     method="cli",
                 )
 
+        except ValueError as e:
+            return InstallResult(
+                success=False,
+                message=f"CLI validation error: {e}",
+                method="cli",
+            )
         except subprocess.TimeoutExpired:
             return InstallResult(
                 success=False,

@@ -1,10 +1,14 @@
 """Tests for the AgentExecutor."""
 
+import logging
 from pathlib import Path
+
+import pytest
 
 from open_agent_kit.features.codebase_intelligence.agents.executor import AgentExecutor
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
+    AgentProvider,
     AgentTask,
     MaintainedFile,
 )
@@ -83,3 +87,34 @@ class TestAgentExecutorTaskPrompt:
         assert task in prompt
         assert "## Task Configuration" in prompt
         assert "daemon_url:" in prompt
+
+
+class TestApplyProviderEnv:
+    """Tests for _apply_provider_env security (M-SEC4)."""
+
+    def test_api_key_value_absent_from_logs(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Verify _apply_provider_env does not log API key values."""
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
+        secret_key = "sk-supersecretkey1234567890abcdef"
+        provider = AgentProvider(
+            type="openrouter",
+            api_key=secret_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+
+        with caplog.at_level(
+            logging.DEBUG, logger="open_agent_kit.features.codebase_intelligence.agents.executor"
+        ):
+            original = executor._apply_provider_env(provider)
+            executor._restore_provider_env(original)
+
+        # The key VALUE must not appear in any log message
+        for record in caplog.records:
+            assert (
+                secret_key[:20] not in record.getMessage()
+            ), f"API key value leaked in log: {record.getMessage()}"
+            assert (
+                secret_key not in record.getMessage()
+            ), f"Full API key leaked in log: {record.getMessage()}"

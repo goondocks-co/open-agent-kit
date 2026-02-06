@@ -140,36 +140,52 @@ The project already depends on `@radix-ui/react-checkbox` and `@radix-ui/react-l
 - **Missing `useEffect` cleanup**: `setTimeout` in `ContentDialog` and `TeamSharing` has no cleanup on unmount.
 - **Unused animations**: Tailwind config defines `accordion-down`/`accordion-up` keyframes but no accordion component exists.
 
+### 2.4 Resolution Status
+
+**Section 2 is complete.** All critical issues have been resolved (2026-02-06). Implementation was done in 2 phases:
+| Phase | Finding(s) | Resolution |
+|-------|-----------|------------|
+| 1 | A11y | Migrated custom dialogs to `@radix-ui/react-dialog` |
+| 2 | Debug `console.log` | Removed `console.log` from `Config.tsx` |
+| 3 | Duplicated session title derivation | Extracted `get_session_title()` helper |
+| 4 | Duplicated "load more" pagination | Extracted `usePaginatedList` hook |
+
 ---
 
 ## 3. Security Audit
 
 ### 3.1 Findings Summary
 
-| Severity | Count |
-|----------|-------|
-| Critical | 0     |
-| High     | 1     |
-| Medium   | 4     |
-| Low      | 7     |
+| Severity | Count | Resolved |
+|----------|-------|----------|
+| Critical | 0     | --       |
+| High     | 1     | 1        |
+| Medium   | 5     | 2        |
+| Low      | 7     | 0        |
 
 **No leaked secrets, no hardcoded credentials, no critical vulnerabilities found.**
 
 ### 3.2 High-Severity Finding
 
-**H-SEC1. `shell=True` subprocess calls with template-derived commands.**
-`src/open_agent_kit/features/codebase_intelligence/mcp/installer.py` lines 190-196, 198-205, 252-259.
-Commands are constructed via `.format()` with values from agent manifest YAML files (server name, command strings). No sanitization or allowlist validation. A malicious manifest could inject arbitrary shell commands.
-- **Fix:** Refactor to `shell=False` with explicit argument lists, or add strict alphanumeric-plus-hyphens validation on all interpolated values.
+**H-SEC1. `shell=True` subprocess calls with template-derived commands.** **RESOLVED**
+`src/open_agent_kit/features/codebase_intelligence/mcp/installer.py`.
+Commands are constructed via `.format()` with values from agent manifest YAML files (server name, command strings).
+- **Fix applied:** Refactored all 3 `subprocess.run()` calls from `shell=True` to `shell=False` with `shlex.split()`. Added defense-in-depth `_validate_cli_value()` with conservative alphanumeric allowlist that runs BEFORE `.format()`. Malicious inputs are rejected with `ValueError` before any subprocess is spawned.
+- **Tests:** `tests/unit/features/codebase_intelligence/mcp/test_installer.py` (17 tests: validation allowlist, shell=False verification, shlex.split correctness, injection blocking)
 
 ### 3.3 Medium-Severity Findings
 
-| ID | Finding | Location | Impact |
-|----|---------|----------|--------|
-| M-SEC1 | No authentication on daemon API | `daemon/server.py`, all routes | Any local process has full access |
-| M-SEC2 | Tunnel exposes entire API without auth | `routes/tunnel.py:76-149` | Remote data access/deletion |
-| M-SEC3 | Unrestricted DevTools endpoints | `routes/devtools.py` | Data loss operations unprotected |
-| M-SEC4 | API key values partially logged | `agents/executor.py:202` | First 20 chars of secrets in daemon.log |
+| ID | Finding | Location | Impact | Status |
+|----|---------|----------|--------|--------|
+| M-SEC1 | No authentication on daemon API | `daemon/server.py`, all routes | Any local process has full access | Open |
+| M-SEC2 | Tunnel exposes entire API without auth | `routes/tunnel.py:76-149` | Remote data access/deletion | Open |
+| M-SEC3 | Unrestricted DevTools endpoints | `routes/devtools.py` | Data loss operations unprotected | Open |
+| M-SEC4 | API key values partially logged | `agents/executor.py:202` | First 20 chars of secrets in daemon.log | **RESOLVED** |
+| M-SEC5 | No secrets redaction on prompt/activity storage | `activity/store/models.py`, `batches.py` | Raw API keys, tokens in SQLite/ChromaDB | **RESOLVED** |
+
+**M-SEC4 resolution:** Removed `value[:20]` from debug log — key name alone is sufficient for debugging. Test in `test_executor.py::TestApplyProviderEnv`.
+
+**M-SEC5 resolution:** Created `utils/redact.py` — a reusable secrets redaction utility that loads high-confidence patterns from [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db) (MIT, cached locally for 7 days) with 10 hardcoded fallback patterns. Integrated at the storage layer: 3 `to_row()` methods in `models.py` + 3 direct UPDATE paths in `batches.py`. Initialized at daemon startup in `server.py:lifespan()`. Tests in `test_redact.py` (16 tests: pattern coverage, dict recursion, fallback loading).
 
 ### 3.4 Low-Severity Findings
 
@@ -189,7 +205,7 @@ Commands are constructed via `.format()` with values from agent manifest YAML fi
 - SSRF protection on provider URLs (validates localhost-only for outbound HTTP)
 - Path traversal protection on backups (`resolve()` + `is_relative_to()`)
 - No `eval()`, `exec()`, `pickle.load()`, `yaml.unsafe_load()` anywhere
-- Most subprocess calls use `shell=False` with explicit args
+- All subprocess calls use `shell=False` with explicit args (H-SEC1 resolved remaining cases)
 - Timeouts on all subprocess calls
 - Runtime data (`.oak/ci/`) excluded from git
 - Pydantic validation on all API request bodies

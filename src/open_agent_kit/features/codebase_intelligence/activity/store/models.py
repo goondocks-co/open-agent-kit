@@ -12,6 +12,7 @@ from typing import Any
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_SESSION_COLUMN_TRANSCRIPT_PATH,
 )
+from open_agent_kit.features.codebase_intelligence.utils.redact import redact_secrets
 
 
 @dataclass
@@ -46,7 +47,7 @@ class Activity:
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
-        return {
+        row = {
             "session_id": self.session_id,
             "prompt_batch_id": self.prompt_batch_id,
             "tool_name": self.tool_name,
@@ -66,6 +67,12 @@ class Activity:
             "source_machine_id": self.source_machine_id,
             "content_hash": self._compute_content_hash(),
         }
+        # Redact secrets from free-text fields before persistence
+        for key in ("tool_input", "tool_output_summary", "error_message"):
+            val = row.get(key)
+            if isinstance(val, str):
+                row[key] = redact_secrets(val)
+        return row
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Activity":
@@ -140,7 +147,7 @@ class PromptBatch:
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
-        return {
+        row = {
             "session_id": self.session_id,
             "prompt_number": self.prompt_number,
             "user_prompt": self.user_prompt[: self.MAX_PROMPT_LENGTH] if self.user_prompt else None,
@@ -165,6 +172,12 @@ class PromptBatch:
                 else None
             ),
         }
+        # Redact secrets from free-text fields before persistence
+        for key in ("user_prompt", "plan_content", "response_summary"):
+            val = row.get(key)
+            if isinstance(val, str):
+                row[key] = redact_secrets(val)
+        return row
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "PromptBatch":
@@ -337,7 +350,7 @@ class StoredObservation:
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
-        return {
+        row = {
             "id": self.id,
             "session_id": self.session_id,
             "prompt_batch_id": self.prompt_batch_id,
@@ -353,6 +366,12 @@ class StoredObservation:
             "source_machine_id": self.source_machine_id,
             "content_hash": self._compute_content_hash(),
         }
+        # Redact secrets from free-text fields before persistence
+        for key in ("observation", "context"):
+            val = row.get(key)
+            if isinstance(val, str):
+                row[key] = redact_secrets(val)
+        return row
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "StoredObservation":

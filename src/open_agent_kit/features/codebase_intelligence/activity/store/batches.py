@@ -15,6 +15,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store.models import 
     PromptBatch,
 )
 from open_agent_kit.features.codebase_intelligence.constants import RECOVERY_BATCH_PROMPT
+from open_agent_kit.features.codebase_intelligence.utils.redact import redact_secrets
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -259,6 +260,8 @@ def update_prompt_batch_response(
         max_length: Maximum length to store (default 5000 chars).
     """
     truncated = response_summary[:max_length] if response_summary else None
+    if truncated:
+        truncated = redact_secrets(truncated)
     with store._transaction() as conn:
         conn.execute(
             "UPDATE prompt_batches SET response_summary = ? WHERE id = ?",
@@ -334,6 +337,8 @@ def update_prompt_batch_source_type(
     # Truncate plan content to max length
     if plan_content and len(plan_content) > PromptBatch.MAX_PLAN_CONTENT_LENGTH:
         plan_content = plan_content[: PromptBatch.MAX_PLAN_CONTENT_LENGTH]
+    if plan_content:
+        plan_content = redact_secrets(plan_content)
 
     with store._transaction() as conn:
         if plan_file_path or plan_content:
@@ -622,6 +627,10 @@ def recover_stuck_batches(
                         )
             except (OSError, ValueError, RuntimeError, ImportError, AttributeError) as e:
                 logger.debug(f"Failed to capture response for stuck batch {batch_id}: {e}")
+
+        # Redact secrets from response_summary before persistence
+        if response_summary:
+            response_summary = redact_secrets(response_summary)
 
         # Update batch: mark as completed and optionally set response_summary
         # Set ended_at to NOW for consistency with normal batch ending
