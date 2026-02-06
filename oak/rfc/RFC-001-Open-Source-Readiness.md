@@ -410,8 +410,17 @@ A new `--project` flag is added for the team-lead case: `oak ci config --project
 
 A new `--show` flag is added: `oak ci config --show` prints the effective merged config with origin annotations (e.g., `[project]`, `[user]`, `[env]`, `[default]`). Useful for debugging.
 
-**New `oak.ci-config` skill:**
-A config skill does not exist yet. Create `src/open_agent_kit/features/codebase_intelligence/skills/ci-config/` with a skill template that teaches agents how to use `oak ci config` to adjust settings. This lets agents say "I notice your embedding provider is unreachable, would you like me to switch to a different one?" and then invoke the command.
+**New `modifying-oak-configuration` skill:**
+A config skill does not exist yet. Following the project's gerund naming convention (cf. `finding-related-code`, `analyzing-code-change-impacts`):
+
+- **Name:** `modifying-oak-configuration`
+- **Location:** `src/open_agent_kit/features/codebase_intelligence/skills/modifying-oak-configuration/SKILL.md`
+- **Manifest entry:** Add to `features/codebase_intelligence/manifest.yaml` under `skills:` (alongside `finding-related-code` and `analyzing-code-change-impacts`)
+- **`user-invocable: true`** — agents and users can invoke it explicitly
+
+The SKILL.md teaches agents how to use `oak ci config` to adjust settings — e.g., "I notice your embedding provider is unreachable, would you like me to switch to a different one?" It should document the classification table (which settings are user vs. project), the `--project` flag for team-wide overrides, and the `--show` flag for diagnostics.
+
+**Installation for existing projects:** The `ReconcileSkillsStage` runs on every `oak init` and `oak upgrade`, calling `refresh_skills()` which is idempotent — it installs any skills present in feature manifests but missing from agent skill directories. So adding this skill to the CI manifest is sufficient; the next `oak init` or `oak upgrade` run auto-installs it. No separate skill migration is needed.
 
 ### 6.7 Migration via `oak upgrade`
 
@@ -564,7 +573,7 @@ User config is **included** in the machine's backup export (alongside the SQL du
 
 **Phase 2 (Post-Launch):**
 - Dashboard UI: add origin badge indicators showing `[project]` / `[user]` / `[env]` next to each setting
-- Create `oak.ci-config` skill for agent-assisted configuration
+- Create `modifying-oak-configuration` skill + add to CI feature manifest
 - Include user config in backup/restore exports
 - `oak ci config --diff` to show effective merged config with origin annotations
 
@@ -651,7 +660,7 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | 21 | Extract duplicated pagination hook (`usePaginatedList`) | Frontend | 2-3 hrs |
 | 22 | Add daemon API authentication (M-SEC1, M-SEC2) | Security | 1-2 days |
 | 23 | Gate devtools behind config flag (M-SEC3) | Security | 2-4 hrs |
-| 24 | Dashboard origin badge indicators + `oak.ci-config` skill (Section 6, Phase 2) | Config | 1-2 days |
+| 24 | Dashboard origin badge indicators + `modifying-oak-configuration` skill (Section 6, Phase 2) | Config | 1-2 days |
 | 25 | Create per-agent setup guide pages (6 agents) | Docs | 3-4 hrs |
 | 26 | Create MCP tools reference docs | Docs | 2-3 hrs |
 | 27 | Create feature development guide | Docs | 3-4 hrs |
@@ -700,4 +709,5 @@ User config is **included** in the machine's backup export (alongside the SQL du
 |------|---------|---------|--------|
 | 2026-02-06 | 0.1 | Initial draft -- comprehensive pre-launch review | AI Review (Claude) |
 | 2026-02-06 | 0.2 | Added Section 6: machine-ID-based user config overlay design; replaced `.gitignore` config recommendation with proper project/user split | AI Review (Claude) |
-| 2026-02-06 | 0.3 | Rewrote Section 6.6-6.12: Dashboard as primary config UI, `oak ci config` as agent-facing utility, migration via `oak upgrade`, new `oak.ci-config` skill, scope routing in `save_ci_config()`, backup/restore integration | AI Review (Claude) |
+| 2026-02-06 | 0.3 | Rewrote Section 6.6-6.12: Dashboard as primary config UI, `oak ci config` as agent-facing utility, migration via `oak upgrade`, scope routing in `save_ci_config()`, backup/restore integration | AI Review (Claude) |
+| 2026-02-06 | 0.4 | Renamed config skill to `modifying-oak-configuration` per naming conventions; added skill location, manifest entry, and auto-install details via ReconcileSkillsStage | AI Review (Claude) |
