@@ -188,7 +188,21 @@ def ci_start(
 
     if manager.is_running():
         if not quiet:
-            print_info("Daemon is already running.")
+            print_info(f"Daemon is already running at http://localhost:{manager.port}")
+
+        # Still open browser if requested
+        if open_browser or settings:
+            import webbrowser
+
+            url = f"http://localhost:{manager.port}/ui"
+            if settings:
+                url += "?tab=settings"
+            try:
+                webbrowser.open(url)
+            except OSError as e:
+                logger.warning(f"Failed to open browser: {e}")
+                if not quiet:
+                    print_info(f"Could not open browser. Visit: {url}")
         return
 
     # Check for missing parsers (skip in quiet mode)

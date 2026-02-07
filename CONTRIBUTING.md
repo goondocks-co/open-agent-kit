@@ -94,10 +94,10 @@ Provide:
 
 | Topic | Documentation |
 |-------|---------------|
-| Architecture & patterns | [docs/architecture.md](docs/architecture.md) |
-| Coding standards | [.constitution.md](oak/constitution.md) |
-| Release process | [docs/development/releasing.md](docs/development/releasing.md) |
-| Feature development | [docs/development/features.md](docs/development/features.md) |
+| Architecture & patterns | [Architecture](https://goondocks-co.github.io/open-agent-kit/architecture/) |
+| Coding standards | [Constitution](oak/constitution.md) |
+| Release process | [Releasing](https://goondocks-co.github.io/open-agent-kit/development/releasing/) |
+| Feature development | [Feature Development](https://goondocks-co.github.io/open-agent-kit/development/features/) |
 
 ## Questions?
 

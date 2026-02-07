@@ -1,0 +1,76 @@
+---
+title: Getting Started
+description: Add persistent memory and semantic search to your AI coding agents.
+template: splash
+hero:
+  tagline: The Intelligence Layer for AI Agents. Give Claude, Copilot, Cursor, and other AI coding assistants sight and memory.
+  image:
+    file: ../../assets/images/dashboard-home.png
+  actions:
+    - text: Quick Start
+      link: "#quick-start"
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/goondocks-co/open-agent-kit
+      icon: external
+---
+
+import { Steps, Card, CardGrid } from "@astrojs/starlight/components";
+
+## Why OAK?
+
+AI agents typically "forget" everything when you start a new session. OAK solves this:
+
+<CardGrid>
+  <Card title="Persistent Memory" icon="pencil">
+    OAK remembers gotchas, architectural decisions, and bug fixes across sessions — preventing regressive bugs and circular conversations.
+  </Card>
+  <Card title="Semantic Search" icon="magnifier">
+    Agents find code by *concept* ("where is auth?") rather than just regex, using AST-aware indexing and vector embeddings.
+  </Card>
+  <Card title="Live Auto-Capture" icon="rocket">
+    OAK watches your agent's actions and automatically records new learnings — no manual tagging required.
+  </Card>
+  <Card title="Universal Compatibility" icon="laptop">
+    Works with Claude Code, Cursor, Copilot, Windsurf, Gemini, Codex, and any MCP-compatible agent.
+  </Card>
+</CardGrid>
+
+## Quick Start
+
+<Steps>
+
+1. **Install OAK**
+
+   ```bash
+   # macOS / Linux
+   curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+
+   # Or via pipx (recommended)
+   pipx install oak-ci
+
+   # Or via uv
+   uv tool install oak-ci
+   ```
+
+2. **Initialize your project**
+
+   ```bash
+   cd your-project
+   oak init              # Interactive mode — pick your agent(s) and languages
+   ```
+
+3. **Start the daemon and open the dashboard**
+
+   ```bash
+   oak ci start --open
+   ```
+
+   The dashboard opens in your browser. From here, you can configure embedding models, browse sessions, search your codebase, and manage memories — all from the UI.
+
+</Steps>
+
+That's it! OAK is now running. **The dashboard is your primary interface** — use it to configure settings, explore agent activity, search code, and manage project memory. The CLI is only needed for [setup and maintenance tasks](/open-agent-kit/cli/).
+
+![The OAK Dashboard showing project stats, recent sessions, and system health](../../assets/images/dashboard-home.png)

@@ -140,7 +140,7 @@ The AI agent will create a comprehensive RFC at `oak/rfc/RFC-001-*.md` with all 
 /oak.rfc-validate RFC-001
 ```
 
-For the complete RFC workflow including lifecycle states and best practices, see [docs/rfc-workflow.md](docs/rfc-workflow.md).
+For the complete RFC workflow including lifecycle states and best practices, see the [Strategic Planning](https://goondocks-co.github.io/open-agent-kit/features/strategic-planning/) docs.
 
 ## Upgrading
 
@@ -187,9 +187,9 @@ Agent commands are installed in their native directories (`.claude/commands/`, `
 
 ## Next Steps
 
-- Read the [full documentation](README.md)
-- Review the [RFC workflow](docs/rfc-workflow.md)
-- Review the [issue workflow](docs/issue-workflow.md)
+- Read the [full documentation](https://goondocks-co.github.io/open-agent-kit/)
+- Review the [RFC workflow](https://goondocks-co.github.io/open-agent-kit/features/strategic-planning/)
+- Review the [CLI reference](https://goondocks-co.github.io/open-agent-kit/cli/)
 
 ## Getting Help
 

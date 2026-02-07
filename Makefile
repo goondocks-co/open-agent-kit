@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart dogfood-reset
+.PHONY: help setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart docs-dev docs-build docs-preview dogfood-reset
 
 # Default target
 help:
@@ -52,6 +52,11 @@ help:
 	@echo "    make ui-lint       Run ESLint on UI code"
 	@echo "    make ui-dev        Run UI development server with hot reload"
 	@echo "    make ui-restart    Build UI and restart daemon"
+	@echo ""
+	@echo "  Documentation:"
+	@echo "    make docs-dev      Run docs site with hot reload (development)"
+	@echo "    make docs-build    Build docs site for production"
+	@echo "    make docs-preview  Preview built docs site locally"
 	@echo ""
 	@echo "  Dogfooding:"
 	@echo "    make dogfood-reset Reset oak environment (reinstall with all features)"
@@ -186,6 +191,16 @@ ui-dev:
 # Combo target: build UI and restart daemon (for UI development workflow)
 ui-restart: ui-build ci-restart
 	@echo "UI rebuilt and daemon restarted."
+
+# Documentation site targets
+docs-dev:
+	cd docs && npm run dev
+
+docs-build:
+	cd docs && npm ci && npm run build
+
+docs-preview:
+	cd docs && npm run preview
 
 # Dogfooding target - reset oak environment (preserves oak/ user content)
 dogfood-reset:

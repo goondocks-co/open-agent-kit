@@ -63,6 +63,9 @@ dmypy.json
 
 # Documentation
 docs/_build/
+docs/node_modules/
+docs/dist/
+docs/.astro/
 site/
 
 # OS files

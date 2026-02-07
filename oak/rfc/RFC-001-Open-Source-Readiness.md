@@ -366,6 +366,32 @@ Everything else (full command reference, config details, troubleshooting) moves 
 | Team knowledge sharing via git | "When one developer's AI learns a gotcha, the whole team benefits" |
 | Constitution-driven development | "Formalize your engineering standards for consistent AI behavior" |
 
+### 5.5 Resolution Status
+
+**Section 5 is complete.** The Astro Starlight docs site and README restructure have been fully implemented (2026-02-06).
+
+| Item | Resolution |
+|------|------------|
+| README restructure (5.1) | Reduced from 548 → ~120 lines. CLI reference, config details, troubleshooting, and multi-agent workflows moved to docs site. |
+| Starlight docs site (5.2) | Scaffolded in `docs/` with Astro Starlight. 21 pages built. Pagefind search, dark mode, Mermaid rendering via `starlight-client-mermaid`. GitHub Actions workflow at `.github/workflows/docs.yml`. |
+| `docs/architecture.md` (5.3 #1) | Written — consolidates research docs, constitution, and CI overview into system layers, vertical slices, CI components, and project layout. |
+| Documentation index (5.3 #2) | Replaced by Starlight site landing page (`docs/src/content/docs/index.mdx`). |
+| MCP Tools Reference (5.3 #3) | Written at `docs/src/content/docs/api/mcp-tools.md` — covers `oak_search`, `oak_remember`, `oak_context` with params, response format, examples. |
+| `development/features.md` (5.3 #4) | Written — vertical slice structure, adding features/agents/commands/templates, quality gates. |
+| `development/releasing.md` (5.3 #5) | Written — version management, release workflow, pre-release testing, frontend asset safety. |
+| Security contact (5.3 #6) | `opensource@example.com` replaced with `security@goondocks.co` in SECURITY.md and CODE_OF_CONDUCT.md. |
+| CI docs migration | All 9 existing CI docs migrated into `docs/src/content/docs/features/codebase-intelligence/` with Starlight frontmatter. |
+| Dashboard screenshots | 4 screenshots added: `dashboard-home.png`, `dashboard-search.png`, `dashboard-activity.png`, `dashboard-config.png`. |
+| UI-first framing | All docs rewritten to position the Dashboard as the primary interface after `oak init`. CLI framed as setup/maintenance tool. |
+| Agent tables | All 7 agents documented (Claude Code, Codex CLI, Cursor, Gemini CLI, OpenCode, Windsurf, GitHub Copilot) across 3 compatibility tables. |
+| `oak ci start --open` fix | Fixed early-return path in `daemon.py` to open browser even when daemon is already running, matching documented behavior. |
+| Makefile + .gitignore | `docs-dev`, `docs-build`, `docs-preview` targets added. `docs/node_modules/`, `docs/dist/`, `docs/.astro/` gitignored. |
+| Reference updates | CONTRIBUTING.md and QUICKSTART.md updated to point to docs site. |
+
+**Remaining:**
+- Terminal/dashboard recording GIF for README + website (Phase 1 #13) — deferred to project lead for recording from a populated instance
+- Per-agent setup guide pages (Phase 2 #25) — not needed; `oak init` handles all per-agent setup automatically, and the agents overview page covers the compatibility matrix
+
 ---
 
 ## 6. Configuration Architecture: Project Config vs. User Config
@@ -679,17 +705,17 @@ User config is **included** in the machine's backup export (alongside the SQL du
 
 ### Phase 0: Blockers (Must Complete Before Public)
 
-| # | Item | Category | Effort |
-|---|------|----------|--------|
-| 1 | Replace `opensource@example.com` in SECURITY.md | Chore | 5 min |
-| 2 | Fix `shell=True` in `mcp/installer.py` (H-SEC1) | Security | 1-2 hrs |
-| 3 | Remove env var value logging in `executor.py:202` (M-SEC4) | Security | 15 min |
-| 4 | Implement user config overlay + `oak upgrade` migration (Section 6, Phase 1) | Config | 1-2 days |
-| 5 | Remove debug `console.log` from `Config.tsx` | Frontend | 15 min |
-| 6 | Add `oak/ci/daemon.port` to `.gitignore` | Chore | 5 min |
-| 7 | Create `docs/architecture.md` (consolidate research docs) | Docs | 2-4 hrs |
-| 8 | Create `docs/README.md` (documentation index) | Docs | 1 hr |
-| 9 | Flatten git history onto new public repo | Chore | 1 hr |
+| # | Item | Category | Effort | Status |
+|---|------|----------|--------|--------|
+| 1 | Replace `opensource@example.com` in SECURITY.md | Chore | 5 min | **RESOLVED** (Section 5.5) |
+| 2 | Fix `shell=True` in `mcp/installer.py` (H-SEC1) | Security | 1-2 hrs | **RESOLVED** (Section 3.2) |
+| 3 | Remove env var value logging in `executor.py:202` (M-SEC4) | Security | 15 min | **RESOLVED** (Section 3.3) |
+| 4 | Implement user config overlay + `oak upgrade` migration (Section 6, Phase 1) | Config | 1-2 days | |
+| 5 | Remove debug `console.log` from `Config.tsx` | Frontend | 15 min | **RESOLVED** (Section 2.4) |
+| 6 | Add `oak/ci/daemon.port` to `.gitignore` | Chore | 5 min | |
+| 7 | Create `docs/architecture.md` (consolidate research docs) | Docs | 2-4 hrs | **RESOLVED** (Section 5.5) |
+| 8 | Create `docs/README.md` (documentation index) | Docs | 1 hr | **RESOLVED** (Section 5.5 — replaced by Starlight landing page) |
+| 9 | Flatten git history onto new public repo | Chore | 1 hr | |
 
 ### Phase 1: Launch Week
 
@@ -697,28 +723,28 @@ User config is **included** in the machine's backup export (alongside the SQL du
 |---|------|----------|--------|--------|
 | 10 | Add PyPI publish to release workflow | Distribution | 2-4 hrs | **RESOLVED** (Section 4.7) |
 | 11 | Add `npm ci && npm run build` to release workflow | Distribution | 1 hr | **RESOLVED** (Section 4.7) |
-| 12 | Restructure README (200 lines, link to docs) | Docs | 3-4 hrs | |
-| 13 | Create terminal recording GIF for README + website | Docs | 2-3 hrs |
-| 14 | Scaffold Astro Starlight docs site on GitHub Pages | Docs | 4-8 hrs |
-| 15 | Migrate 8 CI docs + QUICKSTART + CLI ref to website | Docs | 4-6 hrs |
+| 12 | Restructure README (200 lines, link to docs) | Docs | 3-4 hrs | **RESOLVED** (Section 5.5) |
+| 13 | Create terminal recording GIF for README + website | Docs | 2-3 hrs | |
+| 14 | Scaffold Astro Starlight docs site on GitHub Pages | Docs | 4-8 hrs | **RESOLVED** (Section 5.5) |
+| 15 | Migrate 8 CI docs + QUICKSTART + CLI ref to website | Docs | 4-6 hrs | **RESOLVED** (Section 5.5) |
 
 ### Phase 2: First Month
 
-| # | Item | Category | Effort |
-|---|------|----------|--------|
+| # | Item | Category | Effort | Status |
+|---|------|----------|--------|--------|
 | 16 | Relax Python requirement to `>=3.12` | Distribution | 1-2 days | **RESOLVED** (Section 4.7) |
-| 17 | Split CI constants file into domain modules (H-PY1) | Code Quality | 4-6 hrs |
-| 18 | Decompose `lifespan` function (H-PY2) | Code Quality | 3-4 hrs |
-| 19 | Split activity routes file (H-PY3) | Code Quality | 4-6 hrs |
-| 20 | Migrate custom dialogs to `@radix-ui/react-dialog` | Frontend | 3-4 hrs |
-| 21 | Extract duplicated pagination hook (`usePaginatedList`) | Frontend | 2-3 hrs |
-| 22 | Add daemon API authentication (M-SEC1, M-SEC2) | Security | 1-2 days |
-| 23 | Gate devtools behind config flag (M-SEC3) | Security | 2-4 hrs |
-| 24 | Dashboard origin badge indicators + `modifying-oak-configuration` skill (Section 6, Phase 2) | Config | 1-2 days |
-| 25 | Create per-agent setup guide pages (6 agents) | Docs | 3-4 hrs |
-| 26 | Create MCP tools reference docs | Docs | 2-3 hrs |
-| 27 | Create feature development guide | Docs | 3-4 hrs |
-| 28 | Homebrew tap formula | Distribution | 4-6 hrs |
+| 17 | Split CI constants file into domain modules (H-PY1) | Code Quality | 4-6 hrs | **RESOLVED** (Section 1.5) |
+| 18 | Decompose `lifespan` function (H-PY2) | Code Quality | 3-4 hrs | **RESOLVED** (Section 1.5) |
+| 19 | Split activity routes file (H-PY3) | Code Quality | 4-6 hrs | **RESOLVED** (Section 1.5) |
+| 20 | Migrate custom dialogs to `@radix-ui/react-dialog` | Frontend | 3-4 hrs | **RESOLVED** (Section 2.4) |
+| 21 | Extract duplicated pagination hook (`usePaginatedList`) | Frontend | 2-3 hrs | **RESOLVED** (Section 2.4) |
+| 22 | Add daemon API authentication (M-SEC1, M-SEC2) | Security | 1-2 days | |
+| 23 | Gate devtools behind config flag (M-SEC3) | Security | 2-4 hrs | |
+| 24 | Dashboard origin badge indicators + `modifying-oak-configuration` skill (Section 6, Phase 2) | Config | 1-2 days | |
+| 25 | Create per-agent setup guide pages (6 agents) | Docs | 3-4 hrs | |
+| 26 | Create MCP tools reference docs | Docs | 2-3 hrs | **RESOLVED** (Section 5.5) |
+| 27 | Create feature development guide | Docs | 3-4 hrs | **RESOLVED** (Section 5.5) |
+| 28 | Homebrew tap formula | Distribution | 4-6 hrs | |
 
 ### Phase 3: Growth
 
@@ -767,4 +793,5 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | 2026-02-06 | 0.4 | Renamed config skill to `modifying-oak-configuration` per naming conventions; added skill location, manifest entry, and auto-install details via ReconcileSkillsStage | AI Review (Claude) |
 | 2026-02-06 | 0.5 | Added Section 4.7 (Distribution Implementation Status): Phase 1 complete -- PyPI Trusted Publishing, frontend asset safety, metadata improvements, install docs updated. Marked Section 4.3 gaps as resolved. Updated Phase 1 table in Section 8 with resolution status. | AI Review (Claude) |
 | 2026-02-06 | 0.6 | Phase 2 complete -- Python version relaxed to `>=3.12`, CI matrix expanded to 3.12+3.13, tool targets updated. Marked Section 4.4 and Phase 2 #16 as resolved. | AI Review (Claude) |
-| 2026-02-06 | 0.7 | Phase 3A complete -- `install.sh` POSIX install script added (detects pipx/uv/pip, Python >=3.12 check, colored output). Marked Phase 3 #36 as resolved. Homebrew tap deferred. | AI Review (Claude) |
+| 2026-02-06 | 0.7 | Phase 3A complete -- `install.sh` POSIX install script added (detects pipx/uv/pip, Python >=3.12 check, colored output). Marked Phase 3 #36 as resolved. Homebrew tap deferred. |
+| 2026-02-06 | 0.8 | Section 5 complete -- Astro Starlight docs site (21 pages), README restructured (548→~120 lines), all missing docs written (architecture, MCP tools, features, releasing), 9 CI docs migrated, 4 dashboard screenshots, UI-first framing, placeholder emails fixed, `oak ci start --open` behavior fixed. Marked Phase 0 #1/#7/#8, Phase 1 #12/#14/#15, Phase 2 #26/#27 as resolved. | AI Review (Claude) | AI Review (Claude) |

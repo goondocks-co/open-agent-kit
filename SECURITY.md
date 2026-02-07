@@ -19,7 +19,7 @@ We take the security of open-agent-kit seriously. If you discover a security vul
 
 Instead, please report security vulnerabilities via email to:
 
-**opensource@example.com**
+**security@goondocks.co**
 
 Include the following information in your report:
 
@@ -102,6 +102,6 @@ We recommend keeping open-agent-kit updated to the latest patch version of your 
 For security-related questions that are not vulnerability reports, you can:
 
 * Open a discussion on GitHub Discussions
-* Contact the maintainers at opensource@example.com
+* Contact the maintainers at security@goondocks.co
 
 For vulnerability reports, always use the email reporting process described above.
