@@ -18,6 +18,7 @@ jobs:
     outputs:
       version: ${{ steps.extract.outputs.version }}
       is_prerelease: ${{ steps.extract.outputs.is_prerelease }}
+      is_testpypi: ${{ steps.extract.outputs.is_testpypi }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -32,10 +33,17 @@ jobs:
           VERSION="${TAG_NAME#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+          # Detect testpypi tags (e.g., v0.1.0-testpypi.1) — publish to TestPyPI only
+          if [[ "$VERSION" =~ -testpypi ]]; then
+            echo "is_testpypi=true" >> $GITHUB_OUTPUT
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "This is a TestPyPI test release: $VERSION"
+          elif [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            echo "is_testpypi=false" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
             echo "This is a pre-release: $VERSION"
           else
+            echo "is_testpypi=false" >> $GITHUB_OUTPUT
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
             echo "This is a stable release: $VERSION"
           fi
@@ -208,7 +216,7 @@ jobs:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     needs: [validate-tag, create-release]
-    if: needs.validate-tag.outputs.is_prerelease == 'false'
+    if: needs.validate-tag.outputs.is_testpypi == 'false'
     environment: pypi
     steps:
       - name: Download Python packages
@@ -224,7 +232,7 @@ jobs:
     name: Publish to TestPyPI
     runs-on: ubuntu-latest
     needs: [validate-tag, create-release]
-    if: needs.validate-tag.outputs.is_prerelease == 'true'
+    if: needs.validate-tag.outputs.is_testpypi == 'true'
     environment: testpypi
     steps:
       - name: Download Python packages
