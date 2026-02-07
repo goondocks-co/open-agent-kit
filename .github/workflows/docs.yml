@@ -45,6 +45,7 @@ jobs:
           path: docs/dist
 
   deploy:
+    if: false # Enable when GitHub Pages is configured for the repo
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
