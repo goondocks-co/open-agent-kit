@@ -1,8 +1,9 @@
 # Open Agent Kit
 
-[![PR Check](https://github.com/sirkirby/open-agent-kit/actions/workflows/pr-check.yml/badge.svg)](https://github.com/sirkirby/open-agent-kit/actions/workflows/pr-check.yml)
-[![Release](https://github.com/sirkirby/open-agent-kit/actions/workflows/release.yml/badge.svg)](https://github.com/sirkirby/open-agent-kit/actions/workflows/release.yml)
-![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/sirkirby/open-agent-kit?sort=semver)
+[![PR Check](https://github.com/goondocks-co/open-agent-kit/actions/workflows/pr-check.yml/badge.svg)](https://github.com/goondocks-co/open-agent-kit/actions/workflows/pr-check.yml)
+[![Release](https://github.com/goondocks-co/open-agent-kit/actions/workflows/release.yml/badge.svg)](https://github.com/goondocks-co/open-agent-kit/actions/workflows/release.yml)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/goondocks-co/open-agent-kit?sort=semver)
+[![PyPI](https://img.shields.io/pypi/v/oak-ci?style=flat-square)](https://pypi.org/project/oak-ci/)
 
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue?style=flat-square)](https://www.python.org/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff)
@@ -48,27 +49,22 @@ oak ci start
 
 ## Installation
 
-### Using uv (Recommended)
-
-> **Note:** Python 3.13 is required. The `--python 3.13` flag is necessary because
-> [uv ignores upper bounds](https://github.com/astral-sh/uv/issues/14110) in `requires-python`.
+### Using pipx (Recommended)
 
 ```bash
-# Install via SSH (requires SSH key configured with GitHub)
-uv tool install --python 3.13 git+ssh://git@github.com/sirkirby/open-agent-kit.git
+pipx install oak-ci
+```
 
-# Or via HTTPS
-uv tool install --python 3.13 git+https://github.com/sirkirby/open-agent-kit.git
+### Using uv
+
+```bash
+uv tool install oak-ci
 ```
 
 ### Using pip
 
 ```bash
-# Via SSH
-pip install git+ssh://git@github.com/sirkirby/open-agent-kit.git
-
-# Or via HTTPS
-pip install git+https://github.com/sirkirby/open-agent-kit.git
+pip install oak-ci
 ```
 
 ## Quick Start
@@ -341,18 +337,22 @@ oak init --agent claude --agent copilot --agent cursor
 
 ## Uninstallation
 
+### Using pipx
+
+```bash
+pipx uninstall oak-ci
+```
+
 ### Using uv
 
 ```bash
-# Remove open-agent-kit
-uv tool uninstall open-agent-kit
+uv tool uninstall oak-ci
 ```
 
 ### Using pip
 
 ```bash
-# Remove open-agent-kit
-pip uninstall open-agent-kit
+pip uninstall oak-ci
 ```
 
 **Note**: This removes the CLI tool but does not delete project files created by `oak init` (`.oak/`, agent command directories, etc.). To clean up a project, run `oak remove` or manually delete:
@@ -391,8 +391,11 @@ It will **not** remove:
 If you see `ModuleNotFoundError` for packages like `httpx` after upgrading:
 
 ```bash
-# Reinstall with force flag to update all dependencies
-uv tool install --python 3.13 --force --editable .
+# Reinstall to update all dependencies
+pipx reinstall oak-ci
+
+# Or with uv
+uv tool install --force oak-ci
 ```
 
 This can happen when new dependencies are added to the package but the global installation wasn't updated.
@@ -416,7 +419,7 @@ source ~/.bashrc  # or ~/.zshrc
 
 ```bash
 # Check if pip's script directory is in PATH
-python3 -m pip show open-agent-kit
+python3 -m pip show oak-ci
 
 # If installed with --user flag, add to PATH:
 export PATH="$HOME/.local/bin:$PATH"
@@ -431,7 +434,7 @@ If you're developing Open Agent Kit and changes aren't reflected:
 **For dependency or entry point changes:** Reinstall with force:
 
 ```bash
-uv tool install --python 3.13 --force --editable .
+make setup
 ```
 
 ### Permission denied errors
@@ -443,7 +446,7 @@ If you get permission errors during installation:
 **Using pip:** Don't use sudo with pip, use the `--user` flag:
 
 ```bash
-pip install --user git+ssh://git@github.com/sirkirby/open-agent-kit.git
+pip install --user oak-ci
 ```
 
 ## Development
@@ -457,7 +460,7 @@ pip install --user git+ssh://git@github.com/sirkirby/open-agent-kit.git
 
 ```bash
 # Clone the repository
-git clone https://github.com/sirkirby/open-agent-kit.git
+git clone https://github.com/goondocks-co/open-agent-kit.git
 cd open-agent-kit
 
 # Install all dependencies
@@ -526,6 +529,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Links
 
-- [GitHub Repository](https://github.com/sirkirby/open-agent-kit)
-- [Issue Tracker](https://github.com/sirkirby/open-agent-kit/issues)
+- [GitHub Repository](https://github.com/goondocks-co/open-agent-kit)
+- [Issue Tracker](https://github.com/goondocks-co/open-agent-kit/issues)
+- [PyPI Package](https://pypi.org/project/oak-ci/)
 

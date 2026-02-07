@@ -4,24 +4,25 @@ Get started with open-agent-kit in under 5 minutes.
 
 ## Installation
 
-### Using uv (Recommended)
-
-> **Note:** Python 3.13 is required. The `--python 3.13` flag is necessary because
-> [uv ignores upper bounds](https://github.com/astral-sh/uv/issues/14110) in `requires-python`.
+### Using pipx (Recommended)
 
 ```bash
-# Install via HTTPS
-uv tool install --python 3.13 git+https://github.com/sirkirby/open-agent-kit.git
+pipx install oak-ci
 
 # Verify installation
 oak --version
 ```
 
+### Alternative: Using uv
+
+```bash
+uv tool install oak-ci
+```
+
 ### Alternative: Using pip
 
 ```bash
-# Or via HTTPS with GitHub token
-pip install git+https://${GITHUB_TOKEN}@github.com/sirkirby/open-agent-kit.git
+pip install oak-ci
 ```
 
 ## Step 1: Initialize Your Project
@@ -155,8 +156,8 @@ oak upgrade --templates --force
 # Check if installed
 which oak
 
-# Reinstall if needed (Python 3.13 required)
-uv tool install --python 3.13 git+ssh://git@github.com/sirkirby/open-agent-kit.git
+# Reinstall if needed
+pipx install oak-ci
 ```
 
 ### .oak directory not found
@@ -182,4 +183,4 @@ Agent commands are installed in their native directories (`.claude/commands/`, `
 
 - Run `oak --help` for available CLI commands
 - Use agent commands: `/oak.rfc-create`, `/oak.constitution-create`, etc.
-- Check the [issue tracker](https://github.com/sirkirby/open-agent-kit/issues)
+- Check the [issue tracker](https://github.com/goondocks-co/open-agent-kit/issues)

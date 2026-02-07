@@ -238,12 +238,12 @@ The only install path is `uv tool install --python 3.13 git+...`, which requires
 
 ### 4.3 PyPI Readiness Gaps
 
-The `pyproject.toml` is ~80% ready. Missing items:
-- **No PyPI publish step in CI** (biggest blocker) -- need `pypa/gh-action-pypi-publish@release/v1`
-- Incomplete classifiers (only 4; add `Topic::Software Development`, `Environment::Console`, etc.)
-- No `license-files` field (PEP 639)
-- No `Changelog` URL in `[project.urls]`
-- No `npm ci && npm run build` step in release workflow before `python -m build`
+The `pyproject.toml` is ~80% ready. Missing items (all **RESOLVED** in Phase 1):
+- ~~**No PyPI publish step in CI** (biggest blocker)~~ -- **RESOLVED**: Added `publish-pypi` and `publish-testpypi` jobs to `release.yml` using `pypa/gh-action-pypi-publish@release/v1` with Trusted Publishing (no API tokens)
+- ~~Incomplete classifiers (only 4)~~ -- **RESOLVED**: Expanded to 10 classifiers including `Topic :: Software Development`, `Environment :: Console`, `Typing :: Typed`, etc.
+- ~~No `license-files` field (PEP 639)~~ -- **RESOLVED**: Added `license-files = ["LICENSE"]` to `pyproject.toml`
+- ~~No `Changelog` URL in `[project.urls]`~~ -- **RESOLVED**: Added `Changelog` URL pointing to GitHub Releases
+- ~~No `npm ci && npm run build` step in release workflow~~ -- **RESOLVED**: Added Node.js setup + `npm ci && npm run build` + asset verification steps before `python -m build`
 
 ### 4.4 Python Version Constraint
 
@@ -262,6 +262,28 @@ Pre-built static assets are committed to git (content-hashed filenames like `ind
 The project has strong MCP infrastructure (`mcp_server.py` with `oak_search`, `oak_remember`, `oak_context`). `oak init --agent claude` already writes the MCP config to `.claude/settings.json`. Until a formal Claude Code marketplace exists, the current approach is correct. If a marketplace emerges, OAK could publish a thin MCP descriptor listing `oak` as a prerequisite.
 
 **Key blocker:** The MCP server requires the full daemon (ChromaDB, SQLite, file watchers). A lightweight "MCP-only" package isn't feasible without refactoring.
+
+### 4.7 Distribution Implementation Status
+
+**Phase 1 (PyPI Publishing) is complete.** All Section 4 blockers for PyPI distribution have been resolved (2026-02-06).
+
+| Phase | Item | Resolution |
+|-------|------|------------|
+| 1 | PyPI publish (4.2 Rank 1) | Trusted Publishing via `release.yml`; `publish-pypi` job for stable releases, `publish-testpypi` for pre-releases. No API tokens needed. |
+| 1 | Frontend asset safety (4.5) | `npm ci && npm run build` in release workflow before `python -m build`; asset verification step confirms `index.html` exists |
+| 1 | PyPI metadata gaps (4.3) | Package renamed to `oak-ci`; 10 classifiers; `license-files` (PEP 639); `Changelog` URL added |
+| 1 | Release notes | Updated to show `pipx install oak-ci` / `uv tool install oak-ci` / `pip install oak-ci` |
+| 1 | Install docs | README.md and QUICKSTART.md updated with PyPI install commands; `git+` URLs removed |
+| 1 | GitHub URLs | All `[project.urls]`, badges, and docs updated from `sirkirby/` to `goondocks-co/` |
+| 2 | Python version (4.4) | Planned: `>=3.12` (no upper bound), CI matrix expanded to 3.12+3.13 |
+| 3 | Install script (4.2 Rank 4) | Planned: `install.sh` in repo root, POSIX shell, detects pipx/uv/pip |
+| 3 | Homebrew tap (4.2 Rank 5) | Planned: `goondocks-co/homebrew-tap` with automated formula updates |
+
+**Manual setup required before first release (repo owner):**
+1. Register `oak-ci` on PyPI (check name availability)
+2. Configure Trusted Publishing on PyPI: Owner=`goondocks-co`, Repo=`open-agent-kit`, Workflow=`release.yml`, Environment=`pypi`
+3. Same for TestPyPI with environment `testpypi`
+4. Create GitHub Environments `pypi` and `testpypi` in repo Settings > Environments
 
 ---
 
@@ -672,11 +694,11 @@ User config is **included** in the machine's backup export (alongside the SQL du
 
 ### Phase 1: Launch Week
 
-| # | Item | Category | Effort |
-|---|------|----------|--------|
-| 10 | Add PyPI publish to release workflow | Distribution | 2-4 hrs |
-| 11 | Add `npm ci && npm run build` to release workflow | Distribution | 1 hr |
-| 12 | Restructure README (200 lines, link to docs) | Docs | 3-4 hrs |
+| # | Item | Category | Effort | Status |
+|---|------|----------|--------|--------|
+| 10 | Add PyPI publish to release workflow | Distribution | 2-4 hrs | **RESOLVED** (Section 4.7) |
+| 11 | Add `npm ci && npm run build` to release workflow | Distribution | 1 hr | **RESOLVED** (Section 4.7) |
+| 12 | Restructure README (200 lines, link to docs) | Docs | 3-4 hrs | |
 | 13 | Create terminal recording GIF for README + website | Docs | 2-3 hrs |
 | 14 | Scaffold Astro Starlight docs site on GitHub Pages | Docs | 4-8 hrs |
 | 15 | Migrate 8 CI docs + QUICKSTART + CLI ref to website | Docs | 4-6 hrs |
@@ -744,3 +766,4 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | 2026-02-06 | 0.2 | Added Section 6: machine-ID-based user config overlay design; replaced `.gitignore` config recommendation with proper project/user split | AI Review (Claude) |
 | 2026-02-06 | 0.3 | Rewrote Section 6.6-6.12: Dashboard as primary config UI, `oak ci config` as agent-facing utility, migration via `oak upgrade`, scope routing in `save_ci_config()`, backup/restore integration | AI Review (Claude) |
 | 2026-02-06 | 0.4 | Renamed config skill to `modifying-oak-configuration` per naming conventions; added skill location, manifest entry, and auto-install details via ReconcileSkillsStage | AI Review (Claude) |
+| 2026-02-06 | 0.5 | Added Section 4.7 (Distribution Implementation Status): Phase 1 complete -- PyPI Trusted Publishing, frontend asset safety, metadata improvements, install docs updated. Marked Section 4.3 gaps as resolved. Updated Phase 1 table in Section 8 with resolution status. | AI Review (Claude) |
