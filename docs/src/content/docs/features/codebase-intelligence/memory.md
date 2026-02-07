@@ -38,7 +38,7 @@ OAK CI **automatically installs** hooks into supported agents during `oak init`.
 | **Gemini CLI** | Full (Input/Output Analysis) | `settings.json` hook scripts (auto-synced) |
 | **OpenCode** | Full (Input/Output Analysis) | TypeScript plugin (auto-installed) |
 | **Copilot** | Limited | `.github/hooks/hooks.json` |
-| **Windsurf** | Context Injection | Context injection |
+| **Windsurf** | Full (Input/Output Analysis) | `.windsurf/hooks.json` (auto-synced) |
 | **MCP Agents** | Tools + Context | Auto-registered MCP Server |
 
 ### Post-Tool Analysis

@@ -77,5 +77,5 @@ graph TD
 | **Cursor** | Full (Auto-capture, Hooks) | `.cursor/hooks.json` |
 | **Gemini CLI** | Full (Auto-capture, Hooks, Summarization) | `settings.json` hook scripts |
 | **OpenCode** | Full (Auto-capture, Hooks) | TypeScript plugin (`oak-ci.ts`) |
-| **Windsurf** | Context Injection | Context injection |
+| **Windsurf** | Full (Auto-capture, Hooks) | `.windsurf/hooks.json` hook scripts |
 | **GitHub Copilot** | Limited (Cloud-only) | `.github/hooks/hooks.json` |

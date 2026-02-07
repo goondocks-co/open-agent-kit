@@ -54,6 +54,10 @@ Cursor reads hooks from both `.cursor/hooks.json` AND `.claude/settings.json`, s
 
 ### Codex CLI (OpenTelemetry)
 
+:::note[Codex CLI only]
+Hooks are fully supported when using the Codex CLI directly. However, extensions that wrap the CLI — such as the Codex VS Code extension and the Codex desktop app — ignore project-level configuration in favor of global settings, so hooks will not work through those interfaces.
+:::
+
 | Codex OTel Event | Hook Action |
 |-----------------|-------------|
 | `codex.conversation_starts` | `session-start` |

@@ -2,6 +2,7 @@
 
 import base64
 import json as json_module
+import os
 import select
 import sys
 import urllib.error
@@ -55,7 +56,7 @@ def ci_hook(
         "claude",
         "--agent",
         "-a",
-        help="Agent name (claude, cursor, copilot, gemini)",
+        help="Agent name (claude, cursor, copilot, gemini, windsurf)",
     ),
 ) -> None:
     """Handle hook events from AI coding assistants.
@@ -89,10 +90,15 @@ def ci_hook(
     try:
         # Wait up to 2 seconds for stdin to be readable
         if select.select([sys.stdin], [], [], HOOK_STDIN_TIMEOUT_SECONDS)[0]:
-            # Use readline() since Claude sends JSON as a single line
-            # read() would block waiting for EOF which Claude may not send
-            input_data = sys.stdin.readline()
-            if input_data.strip():
+            # Use os.read() on the raw fd instead of readline().
+            # readline() blocks until it sees '\n' or EOF — if an agent sends
+            # JSON without a trailing newline and keeps stdin open (as Windsurf
+            # does), readline() hangs indefinitely, freezing the agent's UI.
+            # os.read() returns immediately with available bytes after select()
+            # confirms readability.
+            raw_bytes = os.read(sys.stdin.fileno(), 65536)
+            input_data = raw_bytes.decode("utf-8", errors="replace").strip()
+            if input_data:
                 input_json = cast(dict[str, Any], json_module.loads(input_data))
             else:
                 input_json = {}
@@ -102,10 +108,19 @@ def ci_hook(
     except Exception:
         input_json = {}
 
-    # Extract common fields
-    session_id = input_json.get("session_id") or input_json.get("conversation_id") or ""
+    # Extract common fields (universal: accept alternative field names from any agent)
+    session_id = (
+        input_json.get("session_id")
+        or input_json.get("conversation_id")
+        or input_json.get("trajectory_id")
+        or ""
+    )
     conversation_id = input_json.get("conversation_id") or ""
-    generation_id = input_json.get("generation_id") or ""
+    generation_id = input_json.get("generation_id") or input_json.get("execution_id") or ""
+
+    # Flatten nested tool_info (Windsurf nests tool data under tool_info)
+    if "tool_info" in input_json:
+        input_json.update(input_json.pop("tool_info"))
     tool_use_id = input_json.get("tool_use_id") or ""
     hook_origin = f"{agent}_config"
 
@@ -138,8 +153,16 @@ def ci_hook(
         except Exception:
             return {}
 
-    def _ensure_daemon_running() -> None:
-        """Ensure daemon is running, start if not."""
+    def _ensure_daemon_running(*, blocking: bool = True) -> None:
+        """Ensure daemon is running, start if not.
+
+        Args:
+            blocking: If True (default), wait for daemon to start before returning.
+                Used by sessionStart which needs the daemon ready for context injection.
+                If False, start daemon in background and return immediately.
+                Used by prompt-submit hooks for agents without sessionStart (e.g., Windsurf)
+                where blocking would freeze the agent's UI.
+        """
         health_url = f"http://localhost:{port}/api/health"
         try:
             with urllib.request.urlopen(health_url, timeout=HTTP_TIMEOUT_HEALTH_CHECK):
@@ -147,15 +170,25 @@ def ci_hook(
         except Exception:
             pass
 
-        # Try to start daemon quietly
+        # Try to start daemon
         try:
             import subprocess
 
-            subprocess.run(
-                ["oak", "ci", "start", "--quiet"],
-                capture_output=True,
-                timeout=DAEMON_START_TIMEOUT_SECONDS,
-            )
+            if blocking:
+                subprocess.run(
+                    ["oak", "ci", "start", "--quiet"],
+                    capture_output=True,
+                    timeout=DAEMON_START_TIMEOUT_SECONDS,
+                )
+            else:
+                # Fire-and-forget: start daemon in background without blocking.
+                # The current API call may fail, but the daemon will be ready
+                # for subsequent hooks.
+                subprocess.Popen(
+                    ["oak", "ci", "start", "--quiet"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
         except Exception:
             pass
 
@@ -212,8 +245,14 @@ def ci_hook(
             "beforesubmitprompt",
             "userpromptsubmitted",
             "beforeagent",
+            "pre_user_prompt",
         ):
-            prompt_text = input_json.get("prompt", "")
+            # Ensure daemon is running for agents without a dedicated sessionStart hook.
+            # Non-blocking: start daemon in background so it's ready for subsequent hooks.
+            # The current API call may fail fast (connection refused), which is acceptable —
+            # the daemon will be ready by the next prompt.
+            _ensure_daemon_running(blocking=False)
+            prompt_text = input_json.get("prompt", "") or input_json.get("user_prompt", "")
             response = _call_api(
                 "prompt-submit",
                 {
@@ -232,7 +271,15 @@ def ci_hook(
                 # Cursor expects continue: true for beforeSubmitPrompt
                 output = {"continue": True}
 
-        elif event_lower in ("posttooluse", "afterfileedit", "afteragentresponse"):
+        elif event_lower in (
+            "posttooluse",
+            "afterfileedit",
+            "afteragentresponse",
+            "post_write_code",
+            "post_read_code",
+            "post_run_command",
+            "post_mcp_tool_use",
+        ):
             tool_name = input_json.get("tool_name", "")
             tool_input = input_json.get("tool_input", {})
             tool_response = input_json.get("tool_response", {})
@@ -247,6 +294,26 @@ def ci_hook(
             elif event_lower == "afteragentresponse":
                 tool_name = "agent_response"
                 tool_response = input_json.get("text", "")
+            # Handle Windsurf-specific events
+            elif event_lower == "post_write_code":
+                tool_name = "Write"
+                tool_input = {
+                    "file_path": input_json.get("file_path"),
+                    "edits": input_json.get("edits", []),
+                }
+            elif event_lower == "post_read_code":
+                tool_name = "Read"
+                tool_input = {"file_path": input_json.get("file_path")}
+            elif event_lower == "post_run_command":
+                tool_name = "Bash"
+                tool_input = {
+                    "command": input_json.get("command_line"),
+                    "cwd": input_json.get("cwd"),
+                }
+            elif event_lower == "post_mcp_tool_use":
+                tool_name = input_json.get("mcp_tool_name", "MCP")
+                tool_input = input_json.get("mcp_tool_arguments", {})
+                tool_response = input_json.get("mcp_result", "")
 
             # Base64 encode tool output
             try:
@@ -277,13 +344,16 @@ def ci_hook(
             if agent == "claude":
                 output = _format_claude_response(response, "PostToolUse")
 
-        elif event_lower in ("stop", "afteragent"):
+        elif event_lower in ("stop", "afteragent", "post_cascade_response"):
             transcript_path = input_json.get("transcript_path", "")
             stop_hook_active = input_json.get("stop_hook_active", False)
             # Gemini CLI sends prompt_response (the agent's final answer);
-            # Claude sends response_summary.  Accept both field names.
-            response_summary = input_json.get("response_summary", "") or input_json.get(
-                "prompt_response", ""
+            # Claude sends response_summary; Windsurf sends response.
+            # Accept all field names.
+            response_summary = (
+                input_json.get("response_summary", "")
+                or input_json.get("prompt_response", "")
+                or input_json.get("response", "")
             )
             # Log what we receive for debugging
             try:

@@ -24,6 +24,9 @@ class StageOrder:
     VALIDATE_ENVIRONMENT = 10
     CREATE_OAK_DIR = 20
 
+    # Pre-plan phase (30-49) — runs before upgrade planning
+    REFRESH_AGENT_CAPABILITIES = 30
+
     # Configuration phase (100-199)
     LOAD_EXISTING_CONFIG = 100
     CREATE_CONFIG = 110

@@ -114,6 +114,57 @@ class MarkMigrationsCompleteStage(BaseStage):
         return StageOutcome.success(f"Marked {len(all_migration_ids)} migrations complete")
 
 
+class RefreshAgentCapabilitiesStage(BaseStage):
+    """Refresh agent capabilities from manifests during upgrades.
+
+    When OAK is upgraded, manifest capabilities may have changed (e.g. an
+    agent dropping MCP support).  This stage syncs agent_capabilities in
+    config.yaml with the current manifest defaults so that downstream
+    planning (MCP install, command rendering) uses accurate values.
+
+    Runs before PlanUpgradeStage so the plan reflects current manifests.
+    """
+
+    name = "refresh_agent_capabilities"
+    display_name = "Refreshing agent capabilities"
+    order = StageOrder.REFRESH_AGENT_CAPABILITIES
+    applicable_flows = {FlowType.UPGRADE}
+    is_critical = False
+
+    def _should_run(self, context: PipelineContext) -> bool:
+        """Always run during upgrades."""
+        config_service = self._get_config_service(context)
+        return config_service.config_exists()
+
+    def _execute(self, context: PipelineContext) -> StageOutcome:
+        """Refresh all agent capabilities from their manifests."""
+        config_service = self._get_config_service(context)
+        agent_service = self._get_agent_service(context)
+
+        config = config_service.load_config()
+        updated: list[str] = []
+
+        for agent_type in config.agents:
+            try:
+                caps_dict = agent_service.get_capabilities_config(agent_type)
+                new_caps = AgentCapabilitiesConfig(**caps_dict)
+            except (ValueError, AttributeError):
+                continue
+
+            old_caps = config.agent_capabilities.get(agent_type)
+            if old_caps != new_caps:
+                config.agent_capabilities[agent_type] = new_caps
+                updated.append(agent_type)
+
+        if updated:
+            config_service.save_config(config)
+            return StageOutcome.success(
+                f"Refreshed capabilities for {len(updated)} agent(s): {', '.join(updated)}"
+            )
+
+        return StageOutcome.success("Agent capabilities up to date")
+
+
 class UpdateAgentConfigStage(BaseStage):
     """Update agent configuration for update flows."""
 
@@ -165,5 +216,6 @@ def get_config_stages() -> list[BaseStage]:
         LoadExistingConfigStage(),
         CreateConfigStage(),
         MarkMigrationsCompleteStage(),
+        RefreshAgentCapabilitiesStage(),
         UpdateAgentConfigStage(),
     ]

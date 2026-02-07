@@ -14,7 +14,7 @@ Open Agent Kit integrates with AI coding assistants by installing command prompt
 | **Cursor** | `.cursor/commands/` | `oak.rfc-create.md` | Full | Yes |
 | **Gemini CLI** | `.gemini/commands/` | `oak.rfc-create.md` | Full | Yes |
 | **OpenCode** | `.opencode/commands/` | `oak.rfc-create.md` | Full (Plugin) | Yes |
-| **Windsurf** | `.windsurf/commands/` | `oak.rfc-create.md` | No | No |
+| **Windsurf** | `.windsurf/commands/` | `oak.rfc-create.md` | Full | No |
 | **GitHub Copilot** | `.github/agents/` | `oak.rfc-create.prompt.md` | Limited | No |
 
 ## Available Commands

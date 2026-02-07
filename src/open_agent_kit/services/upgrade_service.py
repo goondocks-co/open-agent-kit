@@ -1070,19 +1070,24 @@ class UpgradeService:
         return result
 
     def _agent_has_mcp(self, agent: str) -> bool:
-        """Check if an agent has MCP capability.
+        """Check if an agent has a project-scoped MCP configuration.
+
+        Uses the manifest's ``mcp`` config section (structural check) rather
+        than the user-overridable ``has_mcp`` capability flag.  This prevents
+        stale config values from causing spurious MCP installation proposals
+        after a manifest change (e.g. Windsurf dropping project-scoped MCP).
 
         Args:
             agent: Agent name (e.g., "claude", "cursor")
 
         Returns:
-            True if agent manifest has has_mcp=True
+            True if the agent manifest declares an mcp configuration section
         """
         try:
-            context = self.agent_service.get_agent_context(agent)
-            return bool(context.get("has_mcp", False))
+            manifest = self.agent_service.get_agent_manifest(agent)
+            return manifest.mcp is not None
         except (ValueError, KeyError) as e:
-            logger.warning(f"Failed to get agent context for {agent}: {e}")
+            logger.warning(f"Failed to get agent manifest for {agent}: {e}")
             return False
 
     def _mcp_is_configured(self, agent: str, feature_name: str) -> bool:

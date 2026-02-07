@@ -426,6 +426,17 @@ async def hook_prompt_submit(request: Request) -> dict:
 
     logger.debug(f"Prompt submit: {prompt[:50]}...")
 
+    # Ensure session exists for agents without a dedicated sessionStart hook
+    # (e.g., Windsurf infers session lifecycle from prompt/response hooks).
+    # This is idempotent — a no-op if the session already exists.
+    if state.activity_store and state.project_root and session_id:
+        try:
+            state.activity_store.get_or_create_session(
+                session_id=session_id, agent=agent, project_root=str(state.project_root)
+            )
+        except _HOOK_STORE_EXCEPTIONS as e:
+            logger.debug(f"Failed to ensure session in prompt-submit: {e}")
+
     # Create new prompt batch in activity store (SQLite handles all session/batch tracking)
     prompt_batch_id = None
     if state.activity_store and session_id:

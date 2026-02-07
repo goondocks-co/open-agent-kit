@@ -1,11 +1,12 @@
-version: 0.5.2.dev43+g18f0ff562.d20260206
+version: 0.5.2.dev46+ga700b75bb.d20260207
 agents:
-- gemini
-- cursor
-- claude
+- copilot
 - opencode
 - codex
-- copilot
+- gemini
+- windsurf
+- cursor
+- claude
 agent_capabilities:
   claude:
     has_background_agents: true
@@ -44,6 +45,12 @@ agent_capabilities:
     has_mcp: true
     research_strategy: Use MCP servers for extended capabilities; degrade gracefully
       to general knowledge
+    custom: {}
+  windsurf:
+    has_background_agents: true
+    has_native_web: false
+    has_mcp: true
+    research_strategy: Deep research via MCP web-search stack
     custom: {}
 rfc:
   directory: oak/rfc

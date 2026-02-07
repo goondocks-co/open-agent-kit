@@ -594,20 +594,24 @@ class CodebaseIntelligenceService:
             return None
 
     def _get_agent_has_mcp(self, agent: str) -> bool:
-        """Check if an agent has MCP capability.
+        """Check if an agent has a project-scoped MCP configuration.
+
+        Uses the manifest's ``mcp`` config section (structural check) rather
+        than the user-overridable ``has_mcp`` capability flag, to avoid stale
+        config values after a manifest change.
 
         Args:
             agent: Agent name (claude, cursor, codex, etc.)
 
         Returns:
-            True if agent supports MCP, False otherwise.
+            True if the agent manifest declares an mcp configuration section.
         """
         try:
             from open_agent_kit.services.agent_service import AgentService
 
             agent_service = AgentService(self.project_root)
-            context = agent_service.get_agent_context(agent)
-            return bool(context.get("has_mcp", False))
+            manifest = agent_service.get_agent_manifest(agent)
+            return manifest.mcp is not None
         except Exception as e:
             logger.warning(f"Failed to check MCP capability for {agent}: {e}")
             return False

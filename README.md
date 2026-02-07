@@ -53,7 +53,7 @@ oak ci start
 | Cursor | Full | Yes | Yes |
 | Codex CLI | Full (OTel) | Yes | Yes |
 | GitHub Copilot | — | — | Yes |
-| Windsurf | — | — | Yes |
+| Windsurf | Full | — | Yes |
 
 ## Installation
 
