@@ -6,7 +6,6 @@ from .agent_manifest import (
     AgentManifest,
     AgentRequirements,
 )
-from .config import AgentCapabilitiesConfig
 from .constitution import (
     Amendment,
     AmendmentType,
@@ -55,7 +54,6 @@ __all__ = [
     # Agent manifests
     "AgentManifest",
     "AgentCapabilities",
-    "AgentCapabilitiesConfig",
     "AgentInstallation",
     "AgentRequirements",
     # Features

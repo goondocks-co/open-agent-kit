@@ -7,36 +7,6 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-class AgentCapabilitiesConfig(BaseModel):
-    """User-configurable agent capabilities.
-
-    These override the defaults from the agent's manifest.yaml.
-    Users can enable new capabilities or adjust existing ones.
-    """
-
-    has_background_agents: bool | None = Field(
-        default=None,
-        description="Whether agent supports background/parallel agent execution",
-    )
-    has_native_web: bool | None = Field(
-        default=None,
-        description="Whether agent has built-in web search capabilities",
-    )
-    has_mcp: bool | None = Field(
-        default=None,
-        description="Whether agent supports MCP (Model Context Protocol) servers",
-    )
-    research_strategy: str | None = Field(
-        default=None,
-        description="Agent-specific guidance for research tasks",
-    )
-    # Extensible: users can add custom capabilities
-    custom: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Custom capabilities for future features",
-    )
-
-
 class RFCConfig(BaseModel):
     """RFC-specific configuration."""
 
@@ -82,10 +52,6 @@ class OakConfig(BaseModel):
     agents: list[str] = Field(
         default_factory=list,
         description="Configured AI agents (source of truth for installed agents)",
-    )
-    agent_capabilities: dict[str, AgentCapabilitiesConfig] = Field(
-        default_factory=dict,
-        description="Per-agent capability overrides (merged with manifest defaults)",
     )
     rfc: RFCConfig = Field(default_factory=RFCConfig, description="RFC configuration")
     constitution: ConstitutionConfig = Field(
@@ -133,12 +99,8 @@ class OakConfig(BaseModel):
                 else:
                     data["agents"] = []
 
-            # Convert agent_capabilities dict entries to AgentCapabilitiesConfig
-            if "agent_capabilities" in data and isinstance(data["agent_capabilities"], dict):
-                data["agent_capabilities"] = {
-                    agent: AgentCapabilitiesConfig(**caps) if isinstance(caps, dict) else caps
-                    for agent, caps in data["agent_capabilities"].items()
-                }
+            # Migration: Remove deprecated agent_capabilities section
+            data.pop("agent_capabilities", None)
 
             # Migration: Convert old features config to languages config
             # Remove old features section if present

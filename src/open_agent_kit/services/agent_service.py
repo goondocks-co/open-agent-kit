@@ -246,9 +246,8 @@ class AgentService:
         agent-specific sections based on each agent's capabilities (web search,
         background agents, MCP tools, etc.).
 
-        Capabilities are resolved in order of precedence:
-        1. User config overrides (from .oak/config.yaml agent_capabilities)
-        2. Manifest defaults (from agents/{agent}/manifest.yaml)
+        Capabilities come directly from the agent's manifest.yaml — the single
+        source of truth.
 
         Args:
             agent_type: Agent type name (e.g., "claude", "copilot")
@@ -266,73 +265,7 @@ class AgentService:
             False
         """
         manifest = self.get_agent_manifest(agent_type)
-        context = manifest.get_template_context()
-
-        # Apply config overrides if present
-        config = self.config_service.load_config()
-        agent_key = agent_type.lower()
-
-        if agent_key in config.agent_capabilities:
-            overrides = config.agent_capabilities[agent_key]
-            # Only override non-None values
-            if overrides.has_background_agents is not None:
-                context["has_background_agents"] = overrides.has_background_agents
-            if overrides.has_native_web is not None:
-                context["has_native_web"] = overrides.has_native_web
-            if overrides.has_mcp is not None:
-                context["has_mcp"] = overrides.has_mcp
-            if overrides.research_strategy is not None:
-                context["research_strategy"] = overrides.research_strategy
-            # Check for background_agent_instructions override
-            if (
-                hasattr(overrides, "background_agent_instructions")
-                and overrides.background_agent_instructions is not None
-            ):
-                context["background_agent_instructions"] = overrides.background_agent_instructions
-            # Check for capability tier overrides
-            if hasattr(overrides, "reasoning_tier") and overrides.reasoning_tier is not None:
-                context["reasoning_tier"] = overrides.reasoning_tier
-            if hasattr(overrides, "context_handling") and overrides.context_handling is not None:
-                context["context_handling"] = overrides.context_handling
-            if hasattr(overrides, "model_consistency") and overrides.model_consistency is not None:
-                context["model_consistency"] = overrides.model_consistency
-            # Add any custom capabilities
-            if overrides.custom:
-                context.update(overrides.custom)
-
-        # Recalculate convenience booleans after any overrides
-        reasoning_tier = context.get("reasoning_tier", "medium")
-        context["is_high_reasoning"] = reasoning_tier == "high"
-        context["is_basic_reasoning"] = reasoning_tier == "basic"
-        context["is_variable_reasoning"] = reasoning_tier == "variable"
-
-        return context
-
-    def get_capabilities_config(self, agent_type: str) -> dict:
-        """Get capabilities from manifest as config-ready dict.
-
-        Used by oak init to populate agent_capabilities in config.yaml with
-        manifest defaults, making them visible and editable by users.
-
-        Args:
-            agent_type: Agent type name (e.g., "claude", "copilot")
-
-        Returns:
-            Dictionary with capability values suitable for config.yaml
-        """
-        manifest = self.get_agent_manifest(agent_type)
-        caps = manifest.capabilities
-        return {
-            "has_background_agents": caps.has_background_agents,
-            "background_agent_instructions": caps.background_agent_instructions,
-            "has_native_web": caps.has_native_web,
-            "has_mcp": caps.has_mcp,
-            "research_strategy": caps.research_strategy,
-            # Capability tiers for adaptive prompts
-            "reasoning_tier": caps.reasoning_tier,
-            "context_handling": caps.context_handling,
-            "model_consistency": caps.model_consistency,
-        }
+        return manifest.get_template_context()
 
     def get_command_filename(self, agent_type: str, command_name: str) -> str:
         """Get the full command filename for an agent.

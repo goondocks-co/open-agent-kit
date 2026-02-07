@@ -1,4 +1,4 @@
-version: 0.5.2.dev46+ga700b75bb.d20260207
+version: 0.1.0rc2.dev3+ga88341cdd.d20260207
 agents:
 - copilot
 - opencode
@@ -7,51 +7,6 @@ agents:
 - windsurf
 - cursor
 - claude
-agent_capabilities:
-  claude:
-    has_background_agents: true
-    has_native_web: true
-    has_mcp: true
-    research_strategy: Use Claude's web tools or keyless MCP web-search (DuckDuckGo/fetch)
-    custom: {}
-  gemini:
-    has_background_agents: false
-    has_native_web: true
-    has_mcp: true
-    research_strategy: Use built-in search + fetch as primary; MCP for extras
-    custom: {}
-  cursor:
-    has_background_agents: true
-    has_native_web: false
-    has_mcp: true
-    research_strategy: Deep research via MCP web-search + background agents
-    custom: {}
-  copilot:
-    has_background_agents: true
-    has_native_web: true
-    has_mcp: true
-    research_strategy: Use Copilot's built-in web tools + keyless MCP
-    custom: {}
-  opencode:
-    has_background_agents: true
-    has_native_web: true
-    has_mcp: true
-    research_strategy: Use built-in web tools or configure MCP servers in opencode.json
-      under the 'mcp' key
-    custom: {}
-  codex:
-    has_background_agents: false
-    has_native_web: true
-    has_mcp: true
-    research_strategy: Use MCP servers for extended capabilities; degrade gracefully
-      to general knowledge
-    custom: {}
-  windsurf:
-    has_background_agents: true
-    has_native_web: false
-    has_mcp: true
-    research_strategy: Deep research via MCP web-search stack
-    custom: {}
 rfc:
   directory: oak/rfc
   template: engineering

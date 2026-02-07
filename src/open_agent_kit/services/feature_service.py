@@ -805,9 +805,8 @@ class FeatureService:
     def refresh_features(self) -> dict[str, Any]:
         """Refresh all installed features by re-rendering with current config.
 
-        This re-renders command templates using current agent_capabilities,
-        allowing users to update capabilities in config.yaml and apply changes
-        without a package upgrade.
+        This re-renders command templates using current agent manifest
+        capabilities, applying any changes without a package upgrade.
 
         Returns:
             Dictionary with refresh results:

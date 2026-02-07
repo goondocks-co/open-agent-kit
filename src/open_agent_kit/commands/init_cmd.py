@@ -18,7 +18,6 @@ from open_agent_kit.constants import (
     LANGUAGE_DISPLAY_NAMES,
     SUPPORTED_LANGUAGES,
 )
-from open_agent_kit.models.config import AgentCapabilitiesConfig
 from open_agent_kit.pipeline.context import FlowType, PipelineContext, SelectionState
 from open_agent_kit.pipeline.executor import build_init_pipeline
 from open_agent_kit.services.agent_service import AgentService
@@ -33,31 +32,6 @@ from open_agent_kit.utils import (
     print_info,
     print_panel,
 )
-
-
-def _build_agent_capabilities(
-    agents: list[str], agent_service: AgentService
-) -> dict[str, AgentCapabilitiesConfig]:
-    """Build agent_capabilities config from agent manifests.
-
-    Populates config with manifest defaults so users can see and override them.
-
-    Args:
-        agents: List of agent type names
-        agent_service: AgentService instance for loading manifests
-
-    Returns:
-        Dictionary mapping agent names to AgentCapabilitiesConfig
-    """
-    capabilities: dict[str, AgentCapabilitiesConfig] = {}
-    for agent_type in agents:
-        try:
-            caps_dict = agent_service.get_capabilities_config(agent_type)
-            capabilities[agent_type] = AgentCapabilitiesConfig(**caps_dict)
-        except ValueError:
-            # Unknown agent, skip
-            pass
-    return capabilities
 
 
 def init_command(

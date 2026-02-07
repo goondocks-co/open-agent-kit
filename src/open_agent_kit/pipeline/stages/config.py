@@ -1,7 +1,6 @@
 """Configuration stages for init pipeline."""
 
 from open_agent_kit.constants import VERSION
-from open_agent_kit.models.config import AgentCapabilitiesConfig
 from open_agent_kit.pipeline.context import FlowType, PipelineContext
 from open_agent_kit.pipeline.models import StageResultRegistry
 from open_agent_kit.pipeline.ordering import StageOrder
@@ -63,7 +62,6 @@ class CreateConfigStage(BaseStage):
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Create default configuration."""
         config_service = self._get_config_service(context)
-        agent_service = self._get_agent_service(context)
 
         # Create config with selections
         # Features are always enabled (not user-selectable)
@@ -72,17 +70,6 @@ class CreateConfigStage(BaseStage):
             agents=context.selections.agents,
             languages=context.selections.languages,
         )
-
-        # Build agent capabilities from manifests
-        capabilities: dict[str, AgentCapabilitiesConfig] = {}
-        for agent_type in context.selections.agents:
-            try:
-                caps_dict = agent_service.get_capabilities_config(agent_type)
-                capabilities[agent_type] = AgentCapabilitiesConfig(**caps_dict)
-            except (ValueError, AttributeError):
-                pass
-
-        config.agent_capabilities = capabilities
         config_service.save_config(config)
 
         return StageOutcome.success("Created configuration")
@@ -114,57 +101,6 @@ class MarkMigrationsCompleteStage(BaseStage):
         return StageOutcome.success(f"Marked {len(all_migration_ids)} migrations complete")
 
 
-class RefreshAgentCapabilitiesStage(BaseStage):
-    """Refresh agent capabilities from manifests during upgrades.
-
-    When OAK is upgraded, manifest capabilities may have changed (e.g. an
-    agent dropping MCP support).  This stage syncs agent_capabilities in
-    config.yaml with the current manifest defaults so that downstream
-    planning (MCP install, command rendering) uses accurate values.
-
-    Runs before PlanUpgradeStage so the plan reflects current manifests.
-    """
-
-    name = "refresh_agent_capabilities"
-    display_name = "Refreshing agent capabilities"
-    order = StageOrder.REFRESH_AGENT_CAPABILITIES
-    applicable_flows = {FlowType.UPGRADE}
-    is_critical = False
-
-    def _should_run(self, context: PipelineContext) -> bool:
-        """Always run during upgrades."""
-        config_service = self._get_config_service(context)
-        return config_service.config_exists()
-
-    def _execute(self, context: PipelineContext) -> StageOutcome:
-        """Refresh all agent capabilities from their manifests."""
-        config_service = self._get_config_service(context)
-        agent_service = self._get_agent_service(context)
-
-        config = config_service.load_config()
-        updated: list[str] = []
-
-        for agent_type in config.agents:
-            try:
-                caps_dict = agent_service.get_capabilities_config(agent_type)
-                new_caps = AgentCapabilitiesConfig(**caps_dict)
-            except (ValueError, AttributeError):
-                continue
-
-            old_caps = config.agent_capabilities.get(agent_type)
-            if old_caps != new_caps:
-                config.agent_capabilities[agent_type] = new_caps
-                updated.append(agent_type)
-
-        if updated:
-            config_service.save_config(config)
-            return StageOutcome.success(
-                f"Refreshed capabilities for {len(updated)} agent(s): {', '.join(updated)}"
-            )
-
-        return StageOutcome.success("Agent capabilities up to date")
-
-
 class UpdateAgentConfigStage(BaseStage):
     """Update agent configuration for update flows."""
 
@@ -181,29 +117,10 @@ class UpdateAgentConfigStage(BaseStage):
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Update agent list in config."""
         config_service = self._get_config_service(context)
-        agent_service = self._get_agent_service(context)
 
         # Update agents list
         config_service.update_agents(context.selections.agents)
         config_service.update_config(version=VERSION)
-
-        # Update agent capabilities
-        config = config_service.load_config()
-
-        # Remove capabilities for removed agents
-        for agent_type in context.selections.agents_removed:
-            config.agent_capabilities.pop(agent_type, None)
-
-        # Add capabilities for new agents
-        for agent_type in context.selections.agents_added:
-            if agent_type not in config.agent_capabilities:
-                try:
-                    caps_dict = agent_service.get_capabilities_config(agent_type)
-                    config.agent_capabilities[agent_type] = AgentCapabilitiesConfig(**caps_dict)
-                except (ValueError, AttributeError):
-                    pass
-
-        config_service.save_config(config)
 
         return StageOutcome.success(
             f"Updated agent configuration ({len(context.selections.agents)} agents)"
@@ -216,6 +133,5 @@ def get_config_stages() -> list[BaseStage]:
         LoadExistingConfigStage(),
         CreateConfigStage(),
         MarkMigrationsCompleteStage(),
-        RefreshAgentCapabilitiesStage(),
         UpdateAgentConfigStage(),
     ]
