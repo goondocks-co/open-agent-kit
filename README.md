@@ -5,7 +5,7 @@
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/goondocks-co/open-agent-kit?sort=semver)
 [![PyPI](https://img.shields.io/pypi/v/oak-ci?style=flat-square)](https://pypi.org/project/oak-ci/)
 
-[![Python](https://img.shields.io/badge/python-3.13%2B-blue?style=flat-square)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue?style=flat-square)](https://www.python.org/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff)
 
 **The Intelligence Layer for AI Agents**
@@ -48,6 +48,18 @@ oak ci start
 
 
 ## Installation
+
+### Quick Install (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+```
+
+### Quick Install (Windows PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.ps1 | iex
+```
 
 ### Using pipx (Recommended)
 
@@ -453,7 +465,7 @@ pip install --user oak-ci
 
 ### Prerequisites
 
-- Python 3.13+
+- Python 3.12+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
 ### Setup

@@ -4,6 +4,18 @@ Get started with open-agent-kit in under 5 minutes.
 
 ## Installation
 
+### Quick Install (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+```
+
+### Quick Install (Windows PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.ps1 | iex
+```
+
 ### Using pipx (Recommended)
 
 ```bash

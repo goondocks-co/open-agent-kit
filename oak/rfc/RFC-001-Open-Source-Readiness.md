@@ -247,10 +247,9 @@ The `pyproject.toml` is ~80% ready. Missing items (all **RESOLVED** in Phase 1):
 
 ### 4.4 Python Version Constraint
 
-`requires-python = ">=3.13,<3.14"` is extremely narrow. No 3.13-specific features (`type` statement aliases, 3.13-specific stdlib) were observed in the codebase. The pin appears conservative rather than necessary.
-- Relaxing to `>=3.12` roughly doubles the addressable user base.
-- Relaxing to `>=3.11` covers ~80-85% of active Python developers.
-- **Recommendation:** At minimum remove the `<3.14` upper bound. Ideally relax to `>=3.12`.
+`requires-python = ">=3.13,<3.14"` was extremely narrow. No 3.13-specific features (`type` statement aliases, 3.13-specific stdlib) were observed in the codebase. The pin was conservative rather than necessary.
+
+**RESOLVED:** Relaxed to `requires-python = ">=3.12"` (no upper bound). CI test matrix expanded to `["3.12", "3.13"]`. Integration test runs on floor version (3.12). Tool targets (mypy, ruff, black) updated to `py312`. `uv.lock` regenerated.
 
 ### 4.5 Frontend Asset Bundling Issue
 
@@ -275,8 +274,8 @@ The project has strong MCP infrastructure (`mcp_server.py` with `oak_search`, `o
 | 1 | Release notes | Updated to show `pipx install oak-ci` / `uv tool install oak-ci` / `pip install oak-ci` |
 | 1 | Install docs | README.md and QUICKSTART.md updated with PyPI install commands; `git+` URLs removed |
 | 1 | GitHub URLs | All `[project.urls]`, badges, and docs updated from `sirkirby/` to `goondocks-co/` |
-| 2 | Python version (4.4) | Planned: `>=3.12` (no upper bound), CI matrix expanded to 3.12+3.13 |
-| 3 | Install script (4.2 Rank 4) | Planned: `install.sh` in repo root, POSIX shell, detects pipx/uv/pip |
+| 2 | Python version (4.4) | **RESOLVED**: `>=3.12` (no upper bound), CI matrix `["3.12", "3.13"]`, integration test on floor version, tool targets updated |
+| 3 | Install script (4.2 Rank 4) | **RESOLVED**: `install.sh` (POSIX) + `install.ps1` (Windows PowerShell), detects pipx > uv > pip, Python >=3.12 check, colored output, `OAK_VERSION`/`OAK_INSTALL_METHOD` env vars |
 | 3 | Homebrew tap (4.2 Rank 5) | Planned: `goondocks-co/homebrew-tap` with automated formula updates |
 
 **Manual setup required before first release (repo owner):**
@@ -707,7 +706,7 @@ User config is **included** in the machine's backup export (alongside the SQL du
 
 | # | Item | Category | Effort |
 |---|------|----------|--------|
-| 16 | Relax Python requirement to `>=3.12` | Distribution | 1-2 days |
+| 16 | Relax Python requirement to `>=3.12` | Distribution | 1-2 days | **RESOLVED** (Section 4.7) |
 | 17 | Split CI constants file into domain modules (H-PY1) | Code Quality | 4-6 hrs |
 | 18 | Decompose `lifespan` function (H-PY2) | Code Quality | 3-4 hrs |
 | 19 | Split activity routes file (H-PY3) | Code Quality | 4-6 hrs |
@@ -732,7 +731,7 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | 33 | A11y audit: skip-nav, icon labels, focus management | Frontend | 1-2 days |
 | 34 | `oak ci config --diff` (show merged config with origins) | Config | 4-6 hrs |
 | 35 | Docker image for evaluation/CI | Distribution | 4-6 hrs |
-| 36 | Install script (`curl \| bash`) | Distribution | 2-3 hrs |
+| 36 | Install script (`curl \| bash`) | Distribution | 2-3 hrs | **RESOLVED** (Section 4.7) |
 | 37 | Comparison pages (OAK vs. Greptile, Continue.dev, etc.) | Docs | 4-6 hrs |
 | 38 | Video demo / tutorial | Docs | 1-2 days |
 | 39 | Optional encryption at rest for activity DB | Security | 2-3 days |
@@ -767,3 +766,5 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | 2026-02-06 | 0.3 | Rewrote Section 6.6-6.12: Dashboard as primary config UI, `oak ci config` as agent-facing utility, migration via `oak upgrade`, scope routing in `save_ci_config()`, backup/restore integration | AI Review (Claude) |
 | 2026-02-06 | 0.4 | Renamed config skill to `modifying-oak-configuration` per naming conventions; added skill location, manifest entry, and auto-install details via ReconcileSkillsStage | AI Review (Claude) |
 | 2026-02-06 | 0.5 | Added Section 4.7 (Distribution Implementation Status): Phase 1 complete -- PyPI Trusted Publishing, frontend asset safety, metadata improvements, install docs updated. Marked Section 4.3 gaps as resolved. Updated Phase 1 table in Section 8 with resolution status. | AI Review (Claude) |
+| 2026-02-06 | 0.6 | Phase 2 complete -- Python version relaxed to `>=3.12`, CI matrix expanded to 3.12+3.13, tool targets updated. Marked Section 4.4 and Phase 2 #16 as resolved. | AI Review (Claude) |
+| 2026-02-06 | 0.7 | Phase 3A complete -- `install.sh` POSIX install script added (detects pipx/uv/pip, Python >=3.12 check, colored output). Marked Phase 3 #36 as resolved. Homebrew tap deferred. | AI Review (Claude) |

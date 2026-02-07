@@ -1,0 +1,205 @@
+#!/bin/sh
+# Open Agent Kit (OAK) installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+#
+# Detects available Python package managers and installs oak-ci from PyPI.
+# Prefers: pipx > uv > pip (--user)
+# Requires: Python >= 3.12
+#
+# Environment variables:
+#   OAK_INSTALL_METHOD  - Force a specific method: pipx, uv, or pip
+#   OAK_VERSION         - Install a specific version (e.g., "0.2.0")
+
+set -e
+
+PACKAGE="oak-ci"
+MIN_PYTHON_MAJOR=3
+MIN_PYTHON_MINOR=12
+
+# --- Colors (disabled for non-TTY) ---
+
+if [ -t 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    BOLD='\033[1m'
+    RESET='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    BOLD=''
+    RESET=''
+fi
+
+info()  { printf "${BLUE}==>${RESET} %s\n" "$1"; }
+ok()    { printf "${GREEN}==>${RESET} %s\n" "$1"; }
+warn()  { printf "${YELLOW}warning:${RESET} %s\n" "$1"; }
+error() { printf "${RED}error:${RESET} %s\n" "$1" >&2; }
+bold()  { printf "${BOLD}%s${RESET}" "$1"; }
+
+# --- Python detection ---
+
+find_python() {
+    for cmd in python3 python; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            echo "$cmd"
+            return 0
+        fi
+    done
+    return 1
+}
+
+check_python_version() {
+    python_cmd="$1"
+    version_output=$("$python_cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || return 1
+    major=$(echo "$version_output" | cut -d. -f1)
+    minor=$(echo "$version_output" | cut -d. -f2)
+
+    if [ "$major" -lt "$MIN_PYTHON_MAJOR" ] || { [ "$major" -eq "$MIN_PYTHON_MAJOR" ] && [ "$minor" -lt "$MIN_PYTHON_MINOR" ]; }; then
+        return 1
+    fi
+    echo "$version_output"
+    return 0
+}
+
+# --- Installer methods ---
+
+install_with_pipx() {
+    version_spec="$1"
+    info "Installing with pipx..."
+    if [ -n "$version_spec" ]; then
+        pipx install "${PACKAGE}==${version_spec}"
+    else
+        pipx install "$PACKAGE"
+    fi
+}
+
+install_with_uv() {
+    version_spec="$1"
+    info "Installing with uv..."
+    if [ -n "$version_spec" ]; then
+        uv tool install "${PACKAGE}==${version_spec}"
+    else
+        uv tool install "$PACKAGE"
+    fi
+}
+
+install_with_pip() {
+    python_cmd="$1"
+    version_spec="$2"
+    info "Installing with pip (--user)..."
+    if [ -n "$version_spec" ]; then
+        "$python_cmd" -m pip install --user "${PACKAGE}==${version_spec}"
+    else
+        "$python_cmd" -m pip install --user "$PACKAGE"
+    fi
+    warn "You may need to add ~/.local/bin to your PATH"
+    warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+}
+
+# --- Main ---
+
+main() {
+    printf "\n"
+    printf "${BOLD}  Open Agent Kit (OAK) Installer${RESET}\n"
+    printf "  The Intelligence Layer for AI Agents\n"
+    printf "\n"
+
+    # Detect OS
+    os="$(uname -s)"
+    case "$os" in
+        Linux*)  os_name="Linux" ;;
+        Darwin*) os_name="macOS" ;;
+        *)
+            error "This script requires macOS or Linux."
+            printf "\n"
+            info "On Windows, use PowerShell instead:"
+            printf "  irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.ps1 | iex\n"
+            printf "\n"
+            info "Or install directly:"
+            printf "  pip install %s\n" "$PACKAGE"
+            exit 1
+            ;;
+    esac
+    info "Detected OS: $os_name"
+
+    # Find Python
+    python_cmd=$(find_python) || {
+        error "Python not found. Please install Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ first."
+        printf "\n"
+        case "$os_name" in
+            macOS)  info "Install via: brew install python@3.13" ;;
+            Linux)  info "Install via: sudo apt install python3  (or your distro's package manager)" ;;
+        esac
+        exit 1
+    }
+
+    # Check Python version
+    python_version=$(check_python_version "$python_cmd") || {
+        actual=$("$python_cmd" --version 2>&1)
+        error "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ required, found: $actual"
+        exit 1
+    }
+    info "Found Python $python_version ($python_cmd)"
+
+    # Determine version spec
+    version_spec="${OAK_VERSION:-}"
+    if [ -n "$version_spec" ]; then
+        info "Installing version: $version_spec"
+    fi
+
+    # Choose install method
+    method="${OAK_INSTALL_METHOD:-}"
+
+    if [ -n "$method" ]; then
+        info "Using requested method: $method"
+        case "$method" in
+            pipx)
+                command -v pipx >/dev/null 2>&1 || { error "pipx not found"; exit 1; }
+                install_with_pipx "$version_spec"
+                ;;
+            uv)
+                command -v uv >/dev/null 2>&1 || { error "uv not found"; exit 1; }
+                install_with_uv "$version_spec"
+                ;;
+            pip)
+                install_with_pip "$python_cmd" "$version_spec"
+                ;;
+            *)
+                error "Unknown method: $method (use: pipx, uv, or pip)"
+                exit 1
+                ;;
+        esac
+    elif command -v pipx >/dev/null 2>&1; then
+        install_with_pipx "$version_spec"
+    elif command -v uv >/dev/null 2>&1; then
+        install_with_uv "$version_spec"
+    else
+        warn "Neither pipx nor uv found, falling back to pip --user"
+        install_with_pip "$python_cmd" "$version_spec"
+    fi
+
+    # Verify installation
+    printf "\n"
+    if command -v oak >/dev/null 2>&1; then
+        installed_version=$(oak --version 2>/dev/null || echo "unknown")
+        ok "OAK installed successfully! (${installed_version})"
+        printf "\n"
+        info "Get started:"
+        printf "  cd /path/to/your/project\n"
+        printf "  oak init\n"
+        printf "  oak ci start\n"
+        printf "\n"
+    else
+        warn "oak command not found in PATH"
+        info "You may need to restart your shell or add ~/.local/bin to PATH:"
+        printf "  export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+        printf "\n"
+        info "Then verify with: oak --version"
+    fi
+}
+
+main
