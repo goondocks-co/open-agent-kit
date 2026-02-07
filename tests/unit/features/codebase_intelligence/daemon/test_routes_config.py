@@ -43,8 +43,7 @@ def tmp_project_with_config(tmp_path: Path):
     oak_dir.mkdir(parents=True)
 
     config_file = oak_dir.parent / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 codebase_intelligence:
   embedding:
     provider: ollama
@@ -53,8 +52,7 @@ codebase_intelligence:
   index_on_startup: true
   watch_files: true
   log_level: INFO
-"""
-    )
+""")
 
     return tmp_path
 

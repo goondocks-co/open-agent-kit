@@ -677,14 +677,12 @@ def recover_orphaned_activities(store: ActivityStore) -> int:
     conn = store._get_connection()
 
     # Find sessions with orphaned activities
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT DISTINCT session_id, COUNT(*) as orphan_count
         FROM activities
         WHERE prompt_batch_id IS NULL
         GROUP BY session_id
-        """
-    )
+        """)
     orphan_sessions = cursor.fetchall()
 
     if not orphan_sessions:
@@ -992,15 +990,13 @@ def count_unembedded_plans(store: ActivityStore) -> int:
         Unembedded plan count.
     """
     conn = store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT COUNT(*) FROM prompt_batches
         WHERE source_type = 'plan'
           AND plan_content IS NOT NULL
           AND plan_content != ''
           AND (plan_embedded IS NULL OR plan_embedded = 0)
-        """
-    )
+        """)
     result = cursor.fetchone()
     return int(result[0]) if result else 0
 
@@ -1015,15 +1011,13 @@ def count_embedded_plans(store: ActivityStore) -> int:
         Embedded plan count.
     """
     conn = store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT COUNT(*) FROM prompt_batches
         WHERE source_type = 'plan'
           AND plan_content IS NOT NULL
           AND plan_content != ''
           AND plan_embedded = 1
-        """
-    )
+        """)
     result = cursor.fetchone()
     return int(result[0]) if result else 0
 

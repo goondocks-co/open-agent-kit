@@ -1178,13 +1178,11 @@ def count_sessions_with_summaries(store: ActivityStore) -> int:
         Number of sessions with at least one session_summary observation.
     """
     conn = store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT COUNT(DISTINCT s.id)
         FROM sessions s
         INNER JOIN memory_observations m ON m.session_id = s.id
         WHERE m.memory_type = 'session_summary'
-        """
-    )
+        """)
     result = cursor.fetchone()
     return result[0] or 0 if result else 0

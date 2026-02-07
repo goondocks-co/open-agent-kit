@@ -226,8 +226,7 @@ def project_with_oak_config(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 codebase_intelligence:
   embedding:
     provider: ollama
@@ -236,8 +235,7 @@ codebase_intelligence:
   index_on_startup: true
   watch_files: true
   log_level: INFO
-"""
-    )
+""")
 
     return tmp_path
 
@@ -256,8 +254,7 @@ def project_with_custom_config(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 codebase_intelligence:
   embedding:
     provider: openai
@@ -271,8 +268,7 @@ codebase_intelligence:
     - "**/*.pyc"
     - "**/venv/**"
   log_level: DEBUG
-"""
-    )
+""")
 
     return tmp_path
 
@@ -291,15 +287,13 @@ def project_with_invalid_config(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 codebase_intelligence:
   embedding:
     provider: invalid_provider
     model: bge-m3
     base_url: http://localhost:11434
-"""
-    )
+""")
 
     return tmp_path
 
@@ -318,15 +312,13 @@ def project_with_malformed_yaml(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 codebase_intelligence:
   embedding:
     - invalid yaml structure
       - bad indentation
     model: bge-m3
-"""
-    )
+""")
 
     return tmp_path
 

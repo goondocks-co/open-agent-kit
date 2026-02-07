@@ -125,16 +125,14 @@ def reembed_session_summaries(
     # Get all completed sessions with summaries
     # We need to query sessions that have summary observations
     conn = activity_store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT s.id, s.title, s.agent, s.project_root, s.created_at_epoch,
                m.observation as summary
         FROM sessions s
         INNER JOIN memory_observations m ON m.session_id = s.id
         WHERE m.memory_type = 'session_summary'
         ORDER BY s.created_at_epoch DESC
-        """
-    )
+        """)
 
     sessions_processed = 0
     sessions_embedded = 0
@@ -188,16 +186,14 @@ def backfill_session_summaries(
 
     # Get all sessions with summaries from SQLite
     conn = activity_store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT s.id, s.title, s.agent, s.project_root, s.created_at_epoch,
                m.observation as summary
         FROM sessions s
         INNER JOIN memory_observations m ON m.session_id = s.id
         WHERE m.memory_type = 'session_summary'
         ORDER BY s.created_at_epoch DESC
-        """
-    )
+        """)
 
     sessions_checked = 0
     sessions_embedded = 0

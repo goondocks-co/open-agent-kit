@@ -91,13 +91,11 @@ def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE prompt_batches ADD COLUMN source_type TEXT DEFAULT 'user'")
 
     # Backfill agent_notification batches based on user_prompt content
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         UPDATE prompt_batches
         SET source_type = 'agent_notification'
         WHERE user_prompt LIKE '<task-notification>%'
-    """
-    )
+    """)
     agent_count = cursor.rowcount
 
     # Backfill plan batches using PlanDetector for dynamic pattern matching
@@ -108,13 +106,11 @@ def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
         detector = PlanDetector()
 
         # Get all activities with Write to potential plan paths
-        cursor = conn.execute(
-            """
+        cursor = conn.execute("""
             SELECT DISTINCT prompt_batch_id, file_path
             FROM activities
             WHERE tool_name = 'Write' AND file_path IS NOT NULL AND prompt_batch_id IS NOT NULL
-        """
-        )
+        """)
 
         plan_batch_ids: set[int] = set()
         for row in cursor.fetchall():
@@ -172,12 +168,10 @@ def migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
         classifier = PromptClassifier()
 
         # Get all batches that might be plan execution (not yet marked as plan)
-        cursor = conn.execute(
-            """
+        cursor = conn.execute("""
             SELECT id, user_prompt FROM prompt_batches
             WHERE source_type != 'plan' AND user_prompt IS NOT NULL
-            """
-        )
+            """)
         rows = cursor.fetchall()
 
         for batch_id, user_prompt in rows:
@@ -261,14 +255,12 @@ def migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
     content_count = 0
     try:
         # Get all plan batches with file paths but no content
-        cursor = conn.execute(
-            """
+        cursor = conn.execute("""
             SELECT id, plan_file_path FROM prompt_batches
             WHERE source_type = 'plan'
               AND plan_file_path IS NOT NULL
               AND (plan_content IS NULL OR plan_content = '')
-            """
-        )
+            """)
         rows = cursor.fetchall()
 
         for batch_id, plan_file_path in rows:
@@ -399,16 +391,14 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
 
     # Create FTS5 virtual table for memory search
     try:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
                 observation,
                 context,
                 content='memory_observations',
                 content_rowid='rowid'
             )
-        """
-        )
+        """)
         logger.debug("Created memories_fts virtual table")
     except sqlite3.Error as e:
         logger.warning(f"FTS5 table creation warning (may already exist): {e}")
@@ -435,12 +425,10 @@ def migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
 
     # Populate FTS with existing memories
     try:
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO memories_fts(rowid, observation, context)
             SELECT rowid, observation, context FROM memory_observations
-        """
-        )
+        """)
         count = conn.execute("SELECT COUNT(*) FROM memory_observations").fetchone()[0]
         logger.info(f"Migration v9->v10 complete: added indexes + FTS5, populated {count} memories")
     except sqlite3.Error as e:
@@ -622,14 +610,12 @@ def migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
     max_gap_seconds = 5
 
     # Get all sessions without parent_session_id, ordered by start time
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT id, agent, project_root, started_at, created_at_epoch
         FROM sessions
         WHERE parent_session_id IS NULL
         ORDER BY created_at_epoch ASC
-        """
-    )
+        """)
     sessions_to_link = cursor.fetchall()
 
     linked_count = 0
@@ -778,8 +764,7 @@ def migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
         logger.info("agent_runs table already exists, skipping table creation")
     else:
         # Create the agent_runs table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS agent_runs (
                 id TEXT PRIMARY KEY,
                 agent_name TEXT NOT NULL,
@@ -812,8 +797,7 @@ def migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
                 -- Machine tracking
                 source_machine_id TEXT
             )
-            """
-        )
+            """)
         logger.debug("Created agent_runs table")
 
     # Create indexes for efficient queries (idempotent)
@@ -853,8 +837,7 @@ def migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
         logger.info("saved_tasks table already exists, skipping table creation")
     else:
         # Create the saved_tasks table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS saved_tasks (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -878,8 +861,7 @@ def migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
                 -- Track runs triggered by this template
                 total_runs INTEGER DEFAULT 0
             )
-            """
-        )
+            """)
         logger.debug("Created saved_tasks table")
 
     # Create indexes for efficient queries (idempotent)
@@ -972,8 +954,7 @@ def migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
     )
     if not cursor.fetchone():
         # Create the session_link_events table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS session_link_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL,
@@ -986,8 +967,7 @@ def migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
                 created_at TEXT NOT NULL,
                 created_at_epoch INTEGER NOT NULL
             )
-            """
-        )
+            """)
         logger.debug("Created session_link_events table")
 
     # Create indexes for efficient queries (idempotent)
@@ -1029,8 +1009,7 @@ def migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
         logger.info("session_relationships table already exists, skipping table creation")
     else:
         # Create the session_relationships table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS session_relationships (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_a_id TEXT NOT NULL,
@@ -1045,8 +1024,7 @@ def migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
                 FOREIGN KEY (session_b_id) REFERENCES sessions(id),
                 UNIQUE(session_a_id, session_b_id)
             )
-            """
-        )
+            """)
         logger.debug("Created session_relationships table")
 
     # Create indexes for efficient queries (idempotent)
@@ -1082,8 +1060,7 @@ def migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
         logger.info("agent_schedules table already exists, skipping table creation")
     else:
         # Create the agent_schedules table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS agent_schedules (
                 instance_name TEXT PRIMARY KEY,
                 enabled INTEGER DEFAULT 1,
@@ -1097,8 +1074,7 @@ def migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
                 updated_at TEXT NOT NULL,
                 updated_at_epoch INTEGER NOT NULL
             )
-            """
-        )
+            """)
         logger.debug("Created agent_schedules table")
 
     # Create index for efficient due schedule queries (idempotent)

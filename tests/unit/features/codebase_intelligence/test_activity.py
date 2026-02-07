@@ -2473,14 +2473,12 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
 
         # Verify the relationship is preserved (IDs may differ but link exists)
         target_conn = target_store._get_connection()
-        cursor = target_conn.execute(
-            """
+        cursor = target_conn.execute("""
             SELECT pb1.prompt_number, pb2.prompt_number
             FROM prompt_batches pb1
             JOIN prompt_batches pb2 ON pb1.source_plan_batch_id = pb2.id
             WHERE pb1.session_id = 'plan-session'
-            """
-        )
+            """)
         result = cursor.fetchone()
         # Implementation batch (prompt_number=2) should link to plan batch (prompt_number=1)
         assert result is not None
