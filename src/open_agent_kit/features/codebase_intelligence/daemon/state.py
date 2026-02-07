@@ -141,6 +141,7 @@ class DaemonState:
         ci_config: Full CI configuration object.
         log_level: Effective log level.
         index_status: Current indexing status.
+        machine_id: Deterministic machine identifier (computed once at startup).
         activity_store: SQLite store for activity logging and session tracking.
         activity_processor: Background processor for observation extraction.
         background_tasks: Tracked asyncio tasks for proper cleanup.
@@ -157,6 +158,7 @@ class DaemonState:
     ci_config: "CIConfig | None" = None
     log_level: str = "INFO"
     index_status: IndexStatus = field(default_factory=IndexStatus)
+    machine_id: str | None = None
     activity_store: "ActivityStore | None" = None
     activity_processor: "ActivityProcessor | None" = None
     # Background task tracking for proper shutdown
@@ -381,6 +383,7 @@ class DaemonState:
         self.ci_config = None
         self.log_level = "INFO"
         self.index_status = IndexStatus()
+        self.machine_id = None
         self.activity_store = None
         self.activity_processor = None
         self.background_tasks = []

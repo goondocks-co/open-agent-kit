@@ -76,8 +76,11 @@ class SyncService:
     def _get_activity_store(self) -> ActivityStore:
         """Get activity store instance."""
         from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_machine_identifier,
+        )
 
-        return ActivityStore(self.db_path)
+        return ActivityStore(self.db_path, machine_id=get_machine_identifier(self.project_root))
 
     def detect_changes(
         self,
@@ -144,7 +147,12 @@ class SyncService:
 
         # Check for team backups
         if include_team:
-            own_backup = get_backup_filename()
+            from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+                get_machine_identifier,
+            )
+
+            machine_id = get_machine_identifier(self.project_root)
+            own_backup = get_backup_filename(machine_id)
             backup_files = discover_backup_files(self.backup_dir)
 
             # Filter to team backups (not our own)
@@ -282,10 +290,13 @@ class SyncService:
             logger.info("Creating fresh backup...")
             try:
                 store = self._get_activity_store()
-                backup_filename = get_backup_filename()
+                backup_filename = get_backup_filename(store.machine_id)
                 backup_path = self.backup_dir / backup_filename
                 backup_path.parent.mkdir(parents=True, exist_ok=True)
-                count = store.export_to_sql(backup_path, include_activities=include_activities)
+                count = store.export_to_sql(
+                    backup_path,
+                    include_activities=include_activities,
+                )
                 store.close()
                 activities_note = " (with activities)" if include_activities else ""
                 result.operations_completed.append(

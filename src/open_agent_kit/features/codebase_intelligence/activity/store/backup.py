@@ -96,7 +96,9 @@ def get_machine_identifier(project_root: Path | None = None) -> str:
     to regenerate.
 
     Args:
-        project_root: Project root directory (for cache location). If None, uses cwd.
+        project_root: Project root directory (for cache location).
+            If None, auto-resolves by searching for .oak/ directory upward
+            from cwd. Falls back to cwd if .oak/ is not found.
 
     Returns:
         Sanitized machine identifier string (e.g., "octocat_a7b3c2").
@@ -108,9 +110,11 @@ def get_machine_identifier(project_root: Path | None = None) -> str:
         MACHINE_ID_SEPARATOR,
     )
 
-    # Try to read from cache first
+    # Auto-resolve project root by searching for .oak/ directory
     if project_root is None:
-        project_root = Path.cwd()
+        from open_agent_kit.utils.file_utils import get_project_root
+
+        project_root = get_project_root() or Path.cwd()
 
     cache_path = project_root / OAK_DIR / CI_DATA_DIR / MACHINE_ID_CACHE_FILENAME
 
@@ -217,13 +221,15 @@ def _compute_legacy_machine_identifier() -> str:
     return sanitize_identifier(raw_id)
 
 
-def get_backup_filename() -> str:
-    """Get backup filename for this machine.
+def get_backup_filename(machine_id: str) -> str:
+    """Get backup filename for the given machine identifier.
+
+    Args:
+        machine_id: Pre-resolved machine identifier string.
 
     Returns:
         Backup filename with machine identifier (e.g., "octocat_a7b3c2.sql").
     """
-    machine_id = get_machine_identifier()
     return f"{machine_id}.sql"
 
 
@@ -489,7 +495,11 @@ class ImportResult:
         )
 
 
-def export_to_sql(store: ActivityStore, output_path: Path, include_activities: bool = False) -> int:
+def export_to_sql(
+    store: ActivityStore,
+    output_path: Path,
+    include_activities: bool = False,
+) -> int:
     """Export valuable tables to SQL dump file with content hashes.
 
     Exports sessions, prompt_batches, and memory_observations to a SQL file
@@ -509,14 +519,14 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
     are skipped to ensure the backup can be cleanly restored.
 
     Args:
-        store: The ActivityStore instance.
+        store: The ActivityStore instance (provides machine_id via store.machine_id).
         output_path: Path to write SQL dump file.
         include_activities: If True, include activities table (can be large).
 
     Returns:
         Number of records exported.
     """
-    machine_id = get_machine_identifier()
+    machine_id = store.machine_id
     logger.info(
         f"Exporting database: include_activities={include_activities}, "
         f"machine={machine_id}, path={output_path}"
@@ -659,6 +669,15 @@ def export_to_sql(store: ActivityStore, output_path: Path, include_activities: b
                 )
 
         logger.debug(f"Exported {len(rows)} records from {table}")
+
+    # Skip writing if no records to export (avoids header-only files)
+    if total_count == 0:
+        logger.info(
+            f"Export skipped: no records for machine {machine_id} "
+            f"(skipped: {skipped_foreign} from other machines, "
+            f"{skipped_orphans} orphaned)"
+        )
+        return 0
 
     # Write to file
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -804,7 +823,7 @@ def import_from_sql_with_dedup(
     existing_schedule_names = store.get_all_schedule_task_names()
 
     # Get current machine ID for schedule filtering
-    current_machine_id = get_machine_identifier()
+    current_machine_id = store.machine_id
 
     logger.debug(
         f"Existing records: {len(existing_session_ids)} sessions, "

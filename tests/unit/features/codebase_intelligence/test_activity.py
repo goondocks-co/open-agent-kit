@@ -27,6 +27,8 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     StoredObservation,
 )
 
+TEST_MACHINE_ID = "test_machine_abc123"
+
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -43,7 +45,7 @@ def temp_db():
 @pytest.fixture
 def activity_store(temp_db):
     """Create an ActivityStore instance with temporary database."""
-    return ActivityStore(temp_db)
+    return ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
 
 
 @pytest.fixture
@@ -2125,7 +2127,7 @@ class TestActivityStoreBackup:
         import uuid
 
         # Create source store with data
-        source_store = ActivityStore(temp_db)
+        source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         source_store.create_session(
             session_id="import-test-1",
             agent="claude",
@@ -2150,7 +2152,7 @@ class TestActivityStoreBackup:
 
         # Create fresh target store
         target_db = temp_db.parent / "target.db"
-        target_store = ActivityStore(target_db)
+        target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
 
         # Import
         count = target_store.import_from_sql(backup_path)
@@ -2173,7 +2175,7 @@ class TestActivityStoreBackup:
         import uuid
 
         # Create source store with embedded observation
-        source_store = ActivityStore(temp_db)
+        source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         source_store.create_session(
             session_id="embed-test-1",
             agent="claude",
@@ -2200,7 +2202,7 @@ class TestActivityStoreBackup:
 
         # Create fresh target and import
         target_db = temp_db.parent / "target.db"
-        target_store = ActivityStore(target_db)
+        target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
         target_store.import_from_sql(backup_path)
 
         # Verify observations are unembedded after import (for ChromaDB rebuild)
@@ -2261,7 +2263,7 @@ class TestActivityStoreBackup:
         import uuid
 
         # Create source with comprehensive data
-        source_store = ActivityStore(temp_db)
+        source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         source_store.create_session(
             session_id="roundtrip-test-1",
             agent="claude",
@@ -2294,7 +2296,7 @@ class TestActivityStoreBackup:
 
         # Import to fresh database
         target_db = temp_db.parent / "roundtrip_target.db"
-        target_store = ActivityStore(target_db)
+        target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
         target_store.import_from_sql(backup_path)
 
         # Verify counts match
@@ -2329,7 +2331,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         backup_path.write_text(backup_content)
 
         # Import to a fresh database - should NOT fail due to unknown column
-        target_store = ActivityStore(temp_db)
+        target_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         count = target_store.import_from_sql(backup_path)
 
         # Session should be imported (unknown column stripped)
@@ -2346,7 +2348,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         )
 
         # Create source with parent-child session relationship
-        source_store = ActivityStore(temp_db)
+        source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
 
         # Create parent session
         source_store.create_session(
@@ -2375,7 +2377,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
 
         # Import to fresh database
         target_db = temp_db.parent / "target_parent_child.db"
-        target_store = ActivityStore(target_db)
+        target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
         target_store.import_from_sql(backup_path)
 
         # Verify parent-child link preserved
@@ -2405,7 +2407,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         backup_path.write_text(backup_content)
 
         # Import to a fresh database
-        target_store = ActivityStore(temp_db)
+        target_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         target_store.import_from_sql(backup_path)
 
         # Session should be imported with parent_session_id set to NULL
@@ -2422,7 +2424,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         source_plan_batch_id references must be remapped to the new IDs.
         """
         # Create source store with plan -> implementation batch relationship
-        source_store = ActivityStore(temp_db)
+        source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         source_store.create_session(
             session_id="plan-session",
             agent="claude",
@@ -2466,7 +2468,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
 
         # Import to fresh database
         target_db = temp_db.parent / "target_plan_link.db"
-        target_store = ActivityStore(target_db)
+        target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
         target_store.import_from_sql(backup_path)
 
         # Verify the relationship is preserved (IDs may differ but link exists)
@@ -2496,13 +2498,9 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         """
         import uuid
 
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-            get_machine_identifier,
-        )
-
         # Create a store and add local data
-        store = ActivityStore(temp_db)
-        current_machine = get_machine_identifier()
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+        current_machine = store.machine_id
 
         # Create a local session (will have current machine's source_machine_id)
         store.create_session(
@@ -2594,10 +2592,6 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         preserved so that future exports from this machine won't re-export
         the imported data.
         """
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-            get_machine_identifier,
-        )
-
         # Create a backup file that looks like it came from another machine
         foreign_machine = "other_machine_bob"
         backup_content = f"""-- OAK Codebase Intelligence History Backup
@@ -2618,7 +2612,7 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
         backup_path.write_text(backup_content)
 
         # Import the backup
-        store = ActivityStore(temp_db)
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
         store.import_from_sql(backup_path)
 
         # Verify the data was imported
@@ -2627,19 +2621,20 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
         assert session.source_machine_id == foreign_machine
 
         # Now export from this machine
-        current_machine = get_machine_identifier()
+        current_machine = store.machine_id
         assert current_machine != foreign_machine, "Test requires different machine IDs"
 
         export_path = temp_db.parent / "re_export.sql"
-        store.export_to_sql(export_path)
+        count = store.export_to_sql(export_path)
 
-        # The exported backup should NOT contain the imported data
-        export_content = export_path.read_text()
-        assert "imported-session" not in export_content
-        assert "Bobs observation" not in export_content
+        # No records should be exported (all data is from the foreign machine)
+        assert count == 0
 
-        # Verify it says it's from the current machine
-        assert f"-- Machine: {current_machine}" in export_content
+        # The file should not be created when there are zero records
+        # (the zero-record guard prevents writing header-only files)
+        assert (
+            not export_path.exists()
+        ), "Export file should not be created when no records match the current machine"
 
         store.close()
 

@@ -51,11 +51,6 @@ def create_session(
     Returns:
         Created Session object.
     """
-    # Import here to avoid circular imports
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        get_machine_identifier,
-    )
-
     session = Session(
         id=session_id,
         agent=agent,
@@ -63,7 +58,7 @@ def create_session(
         started_at=datetime.now(),
         parent_session_id=parent_session_id,
         parent_session_reason=parent_session_reason,
-        source_machine_id=get_machine_identifier(),
+        source_machine_id=store.machine_id,
     )
 
     with store._transaction() as conn:

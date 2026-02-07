@@ -571,12 +571,16 @@ async def _init_activity(state: "DaemonState", project_root: Path) -> None:
         ActivityProcessor,
         ActivityStore,
     )
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
     from open_agent_kit.features.codebase_intelligence.summarization import (
         create_summarizer_from_config,
     )
 
     activity_db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
-    state.activity_store = ActivityStore(activity_db_path)
+    state.machine_id = get_machine_identifier(project_root)
+    state.activity_store = ActivityStore(activity_db_path, machine_id=state.machine_id)
     logger.info(f"Activity store initialized at {activity_db_path}")
 
     # Create processor with summarizer if configured

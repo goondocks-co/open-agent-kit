@@ -36,14 +36,10 @@ def create_run(
         project_config: Snapshot of project configuration.
         system_prompt_hash: Hash of the system prompt used.
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        get_machine_identifier,
-    )
-
     now = datetime.now()
     now_iso = now.isoformat()
     now_epoch = int(now.timestamp())
-    machine_id = get_machine_identifier()
+    machine_id = store.machine_id
 
     config_json = json.dumps(project_config) if project_config else None
 

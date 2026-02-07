@@ -40,16 +40,12 @@ def create_schedule(
         trigger_type: Type of trigger ('cron' or 'manual').
         next_run_at: Next scheduled run time.
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        get_machine_identifier,
-    )
-
     now = datetime.now()
     now_epoch = int(time.time())
 
     next_run_at_str = next_run_at.isoformat() if next_run_at else None
     next_run_at_epoch = int(next_run_at.timestamp()) if next_run_at else None
-    machine_id = get_machine_identifier()
+    machine_id = store.machine_id
 
     with store._transaction() as conn:
         conn.execute(

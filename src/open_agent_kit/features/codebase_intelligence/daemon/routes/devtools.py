@@ -10,9 +10,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.activity.store import sessions
-from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-    get_machine_identifier,
-)
 from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_SUMMARIZATION_MODEL,
     MIN_SESSION_ACTIVITIES,
@@ -916,7 +913,7 @@ async def reprocess_observations(
         raise HTTPException(status_code=503, detail="Activity processor not initialized")
 
     store = state.activity_store
-    machine_id = get_machine_identifier()
+    machine_id = state.machine_id or ""
 
     # Build query to get batch IDs based on mode
     # Always filter by source_machine_id to only touch our own data

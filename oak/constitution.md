@@ -253,6 +253,19 @@ When adding functionality:
 - Prefer **new service + registration** or **new strategy** rather than modifying unrelated code paths.
 - Avoid growing god-services and mega-constants files. Refactor early.
 
+### 3.4 Prefer Dependency Injection Over Service Location
+
+When a component depends on a shared value or service (e.g., machine identity, configuration):
+
+- **Inject via constructor parameters** rather than having each call site independently resolve.
+- **Compute once, pass everywhere:** resolve at the composition root (daemon startup, CLI entry point) and thread through constructors.
+- **No silent fallbacks.** If a dependency is required, make the parameter required. Optional parameters with auto-resolve fallbacks perpetuate the service-locator pattern.
+- **Do not use late imports to resolve global state** in hot-path functions — this is a service-locator anti-pattern that creates implicit coupling and harms testability.
+
+Rationale: service-locator patterns cause data mismatches (different resolution context per call site), redundant I/O, and test fragility requiring monkeypatch at multiple references.
+
+Canonical example: `ActivityStore(db_path, machine_id)` — `machine_id` is a required parameter resolved once at the composition root, exposed as `store.machine_id` for all operations.
+
 ---
 
 ## 4. No-Magic-Literals (Zero Tolerance)

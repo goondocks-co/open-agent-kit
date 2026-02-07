@@ -24,7 +24,7 @@ from . import (
 )
 
 
-def _show_backup_info(project_root: Path) -> None:
+def _show_backup_info(project_root: Path, machine_id: str) -> None:
     """Display backup directory configuration information."""
     from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
         discover_backup_files,
@@ -63,7 +63,7 @@ def _show_backup_info(project_root: Path) -> None:
     console.print(f"  Backup files: {len(backup_files)}")
 
     # Show own backup file info
-    backup_filename = get_backup_filename()
+    backup_filename = get_backup_filename(machine_id)
     own_backup = backup_dir / backup_filename
     if own_backup.exists():
         size_kb = own_backup.stat().st_size / 1024
@@ -135,9 +135,11 @@ def ci_backup(
     check_oak_initialized(project_root)
     check_ci_enabled(project_root)
 
+    machine_id = get_machine_identifier(project_root)
+
     # Handle --info flag
     if info:
-        _show_backup_info(project_root)
+        _show_backup_info(project_root, machine_id)
         return
 
     db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
@@ -150,18 +152,17 @@ def ci_backup(
     else:
         # Use machine-specific filename in configured backup directory
         backup_dir = get_backup_dir(project_root)
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(machine_id)
         backup_path = backup_dir / backup_filename
 
     backup_path.parent.mkdir(parents=True, exist_ok=True)
 
-    machine_id = get_machine_identifier()
     print_info(f"Exporting CI database (machine: {machine_id})...")
     print_info(f"  Output: {backup_path}")
     if include_activities:
         print_info("  Including activities table (may be large)")
 
-    store = ActivityStore(db_path)
+    store = ActivityStore(db_path, machine_id=machine_id)
     count = store.export_to_sql(backup_path, include_activities=include_activities)
     store.close()
 
@@ -213,6 +214,7 @@ def ci_restore(
         extract_machine_id_from_filename,
         get_backup_dir,
         get_backup_filename,
+        get_machine_identifier,
     )
 
     project_root = Path.cwd()
@@ -224,8 +226,9 @@ def ci_restore(
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)
 
+    machine_id = get_machine_identifier(project_root)
     backup_dir = get_backup_dir(project_root)
-    store = ActivityStore(db_path)
+    store = ActivityStore(db_path, machine_id=machine_id)
 
     if all_backups:
         # Restore from all backup files
@@ -288,7 +291,7 @@ def ci_restore(
             backup_path = Path(input_path)
         else:
             # Default to this machine's backup file
-            backup_filename = get_backup_filename()
+            backup_filename = get_backup_filename(machine_id)
             backup_path = backup_dir / backup_filename
 
             # Fall back to legacy filename if machine-specific doesn't exist

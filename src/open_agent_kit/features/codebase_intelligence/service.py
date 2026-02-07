@@ -190,14 +190,18 @@ class CodebaseIntelligenceService:
             logger.debug("No activities database found, skipping backup export")
             return
 
-        backup_dir = get_backup_dir(self.project_root)
-        backup_path = backup_dir / get_backup_filename()
-
         try:
             from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+            from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+                get_machine_identifier,
+            )
+
+            machine_id = get_machine_identifier(self.project_root)
+            backup_dir = get_backup_dir(self.project_root)
+            backup_path = backup_dir / get_backup_filename(machine_id)
 
             logger.info("Exporting CI history before cleanup...")
-            store = ActivityStore(db_path)
+            store = ActivityStore(db_path, machine_id=machine_id)
             count = store.export_to_sql(backup_path, include_activities=False)
             store.close()
             logger.info(f"CI history exported to {backup_path} ({count} records)")
@@ -219,19 +223,23 @@ class CodebaseIntelligenceService:
             CI_ACTIVITIES_DB_FILENAME,
         )
 
-        backup_dir = get_backup_dir(self.project_root)
-        backup_path = backup_dir / get_backup_filename()
-        if not backup_path.exists():
-            logger.debug(f"No backup found at {backup_path}")
-            return
-
         db_path = self.ci_data_dir / CI_ACTIVITIES_DB_FILENAME
 
         try:
             from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+            from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+                get_machine_identifier,
+            )
+
+            machine_id = get_machine_identifier(self.project_root)
+            backup_dir = get_backup_dir(self.project_root)
+            backup_path = backup_dir / get_backup_filename(machine_id)
+            if not backup_path.exists():
+                logger.debug(f"No backup found at {backup_path}")
+                return
 
             logger.info(f"Restoring CI history from {backup_path}")
-            store = ActivityStore(db_path)
+            store = ActivityStore(db_path, machine_id=machine_id)
             count = store.import_from_sql(backup_path)
             store.close()
             logger.info(f"CI history restored: {count} records")

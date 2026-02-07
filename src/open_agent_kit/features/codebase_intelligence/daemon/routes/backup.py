@@ -23,7 +23,6 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
     get_backup_dir,
     get_backup_dir_source,
     get_backup_filename,
-    get_machine_identifier,
 )
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
@@ -188,10 +187,10 @@ async def get_backup_status() -> BackupStatusResponse:
 
     from datetime import datetime
 
-    machine_id = get_machine_identifier()
+    machine_id = state.machine_id or ""
     backup_dir = get_backup_dir(state.project_root)
     backup_dir_source = get_backup_dir_source(state.project_root)
-    backup_filename = get_backup_filename()
+    backup_filename = get_backup_filename(machine_id)
     backup_path = backup_dir / backup_filename
 
     logger.debug(
@@ -282,6 +281,8 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
 
     backup_dir = get_backup_dir(state.project_root)
 
+    machine_id = state.machine_id or ""
+
     if request.output_path:
         backup_path = _ensure_backup_path_within_dir(
             backup_dir,
@@ -289,10 +290,9 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
         )
     else:
         # Use machine-specific filename
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(machine_id)
         backup_path = backup_dir / backup_filename
 
-    machine_id = get_machine_identifier()
     logger.info(
         f"Creating backup: include_activities={request.include_activities}, "
         f"machine={machine_id}, path={backup_path}"
@@ -302,7 +302,7 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
 
-    store = ActivityStore(db_path)
+    store = ActivityStore(db_path, machine_id=machine_id)
     count = store.export_to_sql(backup_path, include_activities=request.include_activities)
     store.close()
 
@@ -341,6 +341,8 @@ async def restore_backup(
 
     backup_dir = get_backup_dir(state.project_root)
 
+    machine_id = state.machine_id or ""
+
     if request.input_path:
         backup_path = _ensure_backup_path_within_dir(
             backup_dir,
@@ -348,7 +350,7 @@ async def restore_backup(
         )
     else:
         # Default to this machine's backup file
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(machine_id)
         backup_path = backup_dir / backup_filename
 
         # Fall back to legacy filename if machine-specific doesn't exist
@@ -364,7 +366,7 @@ async def restore_backup(
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
 
-    store = ActivityStore(db_path)
+    store = ActivityStore(db_path, machine_id=machine_id)
     result = store.import_from_sql_with_dedup(backup_path, dry_run=request.dry_run)
     store.close()
 
@@ -440,11 +442,12 @@ async def restore_all_backups_endpoint(
     if not backup_files:
         raise HTTPException(status_code=404, detail=f"No backup files found in {backup_dir}")
 
+    machine_id = state.machine_id or ""
     logger.info(f"Restoring from {len(backup_files)} backup files (dry_run={request.dry_run})")
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
 
-    store = ActivityStore(db_path)
+    store = ActivityStore(db_path, machine_id=machine_id)
     results = store.restore_all_backups(backup_dir, dry_run=request.dry_run)
     store.close()
 

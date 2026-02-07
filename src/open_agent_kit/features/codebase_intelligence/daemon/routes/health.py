@@ -200,8 +200,9 @@ def _get_backup_summary(project_root: Path | None) -> dict:
     if not project_root:
         return {"exists": False, "last_backup": None, "age_hours": None}
 
+    state = get_state()
     backup_dir = get_backup_dir(project_root)
-    backup_path = backup_dir / get_backup_filename()
+    backup_path = backup_dir / get_backup_filename(state.machine_id or "")
 
     if not backup_path.exists():
         return {"exists": False, "last_backup": None, "age_hours": None}

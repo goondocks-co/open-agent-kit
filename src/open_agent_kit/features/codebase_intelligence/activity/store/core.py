@@ -47,13 +47,16 @@ class ActivityStore:
     Designed for high-volume append operations during sessions.
     """
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, machine_id: str):
         """Initialize the activity store.
 
         Args:
             db_path: Path to SQLite database file.
+            machine_id: Deterministic machine identifier for this instance.
+                Resolved once at the composition root and injected here.
         """
         self.db_path = db_path
+        self.machine_id = machine_id
         self._local = threading.local()
         # Cache for stats queries (low TTL for near real-time debugging)
         # Format: {cache_key: (data, timestamp)}

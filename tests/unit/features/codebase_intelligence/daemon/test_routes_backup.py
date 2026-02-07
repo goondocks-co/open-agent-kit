@@ -18,6 +18,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     ActivityStore,
     StoredObservation,
 )
+from open_agent_kit.features.codebase_intelligence.activity.store import backup as backup_module
 from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
     get_backup_filename,
 )
@@ -38,6 +39,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import (
 TEST_BACKUP_FILENAME_PREFIX = "test_backup"
 TEST_BACKUP_FILENAME = f"{TEST_BACKUP_FILENAME_PREFIX}{CI_HISTORY_BACKUP_FILE_SUFFIX}"
 TEST_OUTSIDE_DIR_NAME = "outside"
+TEST_MACHINE_ID = "test_machine_abc123"
 
 
 @pytest.fixture(autouse=True)
@@ -48,11 +50,38 @@ def reset_daemon_state():
     reset_state()
 
 
+@pytest.fixture(autouse=True)
+def _stable_machine_id(monkeypatch):
+    """Ensure all machine ID lookups return a consistent test value.
+
+    Without this, get_machine_identifier auto-resolves project_root via
+    get_project_root() which may find the real repo's cached ID, while
+    route handlers pass temp_project and compute a different ID.
+    """
+    monkeypatch.setattr(
+        backup_module, "get_machine_identifier", lambda project_root=None: TEST_MACHINE_ID
+    )
+    # Also set machine_id on DaemonState so route handlers using state.machine_id
+    # get the same consistent value
+    state = get_state()
+    state.machine_id = TEST_MACHINE_ID
+
+
 @pytest.fixture
-def client():
-    """FastAPI test client."""
+def client(_stable_machine_id):
+    """FastAPI test client.
+
+    Depends on _stable_machine_id so get_machine_identifier is monkeypatched
+    before the lifespan runs. We re-assert machine_id after TestClient creation
+    because the lifespan may skip _init_activity (e.g. vector store init fails)
+    leaving state.machine_id unset.
+    """
     app = create_app()
-    return TestClient(app)
+    tc = TestClient(app)
+    # Re-set after lifespan startup in case _init_activity was skipped
+    state = get_state()
+    state.machine_id = TEST_MACHINE_ID
+    return tc
 
 
 @pytest.fixture
@@ -82,7 +111,7 @@ def setup_state_with_activity_store(temp_project: Path):
 
     # Create a real activity store
     db_path = temp_project / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
-    state.activity_store = ActivityStore(db_path)
+    state.activity_store = ActivityStore(db_path, machine_id=TEST_MACHINE_ID)
 
     # Add some test data
     state.activity_store.create_session(
@@ -134,7 +163,7 @@ class TestBackupStatus:
         state.activity_store = MagicMock()
 
         # Create a backup file with machine-specific filename
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(TEST_MACHINE_ID)
         backup_path = temp_project / CI_HISTORY_BACKUP_DIR / backup_filename
         backup_path.write_text("-- Test backup\nINSERT INTO sessions VALUES (1);")
 
@@ -154,7 +183,7 @@ class TestBackupStatus:
         state.project_root = temp_project
         state.activity_store = MagicMock()
 
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(TEST_MACHINE_ID)
         backup_path = temp_project / CI_HISTORY_BACKUP_DIR / backup_filename
         backup_path.write_text("-- Test backup")
 
@@ -205,7 +234,7 @@ class TestBackupCreate:
 
         # Verify file was created
         state = get_state()
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(TEST_MACHINE_ID)
         backup_path = state.project_root / CI_HISTORY_BACKUP_DIR / backup_filename
         assert backup_path.exists()
 
@@ -236,7 +265,7 @@ class TestBackupCreate:
         assert data["status"] == "completed"
 
         # Verify activities are in the backup
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(TEST_MACHINE_ID)
         backup_path = state.project_root / CI_HISTORY_BACKUP_DIR / backup_filename
         content = backup_path.read_text()
         assert "INSERT INTO activities" in content
@@ -348,7 +377,7 @@ class TestBackupRestore:
         # Create backup file but no database
         backup_dir = temp_project / CI_HISTORY_BACKUP_DIR
         backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_filename = get_backup_filename()
+        backup_filename = get_backup_filename(TEST_MACHINE_ID)
         backup_path = backup_dir / backup_filename
         backup_path.write_text("-- Test backup")
 
@@ -385,7 +414,7 @@ class TestBackupIntegration:
 
         # Create activity store with test data
         db_path = temp_project / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
-        state.activity_store = ActivityStore(db_path)
+        state.activity_store = ActivityStore(db_path, machine_id=TEST_MACHINE_ID)
 
         # Add comprehensive test data
         state.activity_store.create_session(
@@ -419,7 +448,7 @@ class TestBackupIntegration:
         os.remove(db_path)
 
         # Create a fresh database at the same path
-        state.activity_store = ActivityStore(db_path)
+        state.activity_store = ActivityStore(db_path, machine_id=TEST_MACHINE_ID)
 
         # Verify it's empty
         assert state.activity_store.count_observations() == 0

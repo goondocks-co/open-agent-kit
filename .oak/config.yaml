@@ -1,4 +1,4 @@
-version: 0.5.2.dev34+g325c7d1e5.d20260206
+version: 0.5.2.dev43+g18f0ff562.d20260206
 agents:
 - gemini
 - cursor

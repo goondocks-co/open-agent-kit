@@ -46,10 +46,6 @@ def create_prompt_batch(
     Returns:
         Created PromptBatch with assigned ID.
     """
-    # Import here to avoid circular imports
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        get_machine_identifier,
-    )
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
         ensure_session_exists,
         reactivate_session_if_needed,
@@ -83,7 +79,7 @@ def create_prompt_batch(
         source_type=source_type,
         plan_file_path=plan_file_path,
         plan_content=plan_content,
-        source_machine_id=get_machine_identifier(),
+        source_machine_id=store.machine_id,
     )
 
     with store._transaction() as conn:

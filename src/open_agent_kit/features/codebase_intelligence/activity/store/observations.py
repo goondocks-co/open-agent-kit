@@ -31,11 +31,7 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
     """
     # Set source_machine_id if not already set (imported observations preserve original)
     if observation.source_machine_id is None:
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-            get_machine_identifier,
-        )
-
-        observation.source_machine_id = get_machine_identifier()
+        observation.source_machine_id = store.machine_id
 
     with store._transaction() as conn:
         row = observation.to_row()

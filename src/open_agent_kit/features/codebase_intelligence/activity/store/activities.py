@@ -29,11 +29,7 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
     """
     # Set source_machine_id if not already set
     if activity.source_machine_id is None:
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-            get_machine_identifier,
-        )
-
-        activity.source_machine_id = get_machine_identifier()
+        activity.source_machine_id = store.machine_id
 
     with store._transaction() as conn:
         row = activity.to_row()
@@ -142,11 +138,7 @@ def add_activities(store: ActivityStore, activities: list[Activity]) -> list[int
         return []
 
     # Set source_machine_id for all activities that don't have it
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        get_machine_identifier,
-    )
-
-    machine_id = get_machine_identifier()
+    machine_id = store.machine_id
     for activity in activities:
         if activity.source_machine_id is None:
             activity.source_machine_id = machine_id

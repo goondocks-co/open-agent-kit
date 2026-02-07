@@ -203,7 +203,7 @@ class TestActivityStoreTranscriptPath:
         )
 
         db_path = tmp_path / "test.db"
-        return ActivityStore(db_path)
+        return ActivityStore(db_path, machine_id="test_machine_abc123")
 
     def test_update_and_read_transcript_path(self, store):
         """Can store and retrieve transcript_path through the store API."""
