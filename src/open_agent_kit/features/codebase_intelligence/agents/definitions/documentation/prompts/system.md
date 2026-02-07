@@ -194,7 +194,7 @@ Follow the specified tone and conventions.
 
 **Link formatting examples:**
 ```markdown
-<!-- Use daemon_url from Instance Configuration for all links -->
+<!-- Use daemon_url from Task Configuration for all links -->
 
 <!-- Session links - use em-dash, session TITLE as link text -->
 - Added user authentication — [Add user authentication]({daemon_url}/activity/sessions/abc12345-full-uuid)
@@ -207,6 +207,16 @@ See [`handler.py:87`](src/handlers/handler.py) for the implementation
 <!-- Memory references - use em-dash -->
 - Email classification can fail silently — [gotcha]({daemon_url}/search?q=email+classification)
 ```
+
+### Stale Link Maintenance
+
+The daemon port can change between runs. When updating an existing file:
+
+1. Get the current `daemon_url` from your Task Configuration
+2. Check if the file contains any `http://localhost:PORT/` links where PORT differs from the current daemon port
+3. If stale links exist, update ALL of them to use the current `daemon_url` before adding new content
+
+This ensures all links in maintained files always point to the running daemon.
 
 ## Output Quality Standards
 
@@ -277,17 +287,17 @@ These examples show what CI-native documentation looks like in practice.
 
 ### Added
 - **Codebase Intelligence search** — Semantic search across code and memories
-  — [Add CI search feature](http://localhost:8765/activity/sessions/abc123-full-uuid)
+  — [Add CI search feature]({daemon_url}/activity/sessions/abc123-full-uuid)
 
 ### Fixed
 - Email classification silent failures when subject contains special characters
-  — [Fix email classification](http://localhost:8765/activity/sessions/def456-full-uuid)
+  — [Fix email classification]({daemon_url}/activity/sessions/def456-full-uuid)
 
 > **Gotcha**: The classifier regex was too greedy. Now validates input length first.
 
 ### Changed
 - Migrated session storage from JSON files to SQLite for better performance
-  — [Migrate session storage](http://localhost:8765/activity/sessions/ghi789-full-uuid)
+  — [Migrate session storage]({daemon_url}/activity/sessions/ghi789-full-uuid)
 
 ### Developer Notes
 - The search index now supports plans/SDDs as a searchable type
@@ -326,7 +336,7 @@ parsing and classification for the brief generation system.
 
 ### How It Works
 
-1. Emails arrive via IMAP sync — [Initial email sync](http://localhost:8765/activity/sessions/sync-session-uuid)
+1. Emails arrive via IMAP sync — [Initial email sync]({daemon_url}/activity/sessions/sync-session-uuid)
 2. The [`classify_email()`](src/services/email_processor.py:87) function
    determines email type based on subject and sender patterns
 3. Classified emails are queued for brief inclusion
@@ -338,7 +348,7 @@ parsing and classification for the brief generation system.
 > passing to the classifier.
 >
 > Fixed in [`processor.py:42`](src/services/processor.py:42)
-> — [Fix silent classification failures](http://localhost:8765/activity/sessions/fix-uuid)
+> — [Fix silent classification failures]({daemon_url}/activity/sessions/fix-uuid)
 
 > **Gotcha**: Gmail labels are case-sensitive but our matcher was not. This
 > caused duplicate processing. Now uses exact case matching.
@@ -352,7 +362,7 @@ parsing and classification for the brief generation system.
 
 - **SQLite over JSON**: Session history moved from JSON files to SQLite after
   performance issues with large history files (>10MB). The migration preserves
-  all existing sessions — [Migrate to SQLite](http://localhost:8765/activity/sessions/migrate-uuid)
+  all existing sessions — [Migrate to SQLite]({daemon_url}/activity/sessions/migrate-uuid)
 ```
 
 **What makes this good:**
