@@ -241,7 +241,7 @@ export default function TeamBackups() {
                     <CardDescription>
                         Create and restore backups. Files are saved to{" "}
                         <code className="bg-muted px-1 rounded text-xs">
-                            {backupStatus?.backup_dir || "oak/ci/history/"}
+                            {backupStatus?.backup_dir || "oak/history/"}
                         </code>
                         {backupStatus?.backup_dir_source && backupStatus.backup_dir_source !== "default" && (
                             <span className="text-xs text-muted-foreground ml-1">
@@ -357,7 +357,7 @@ export default function TeamBackups() {
                         Custom Backup Directory
                     </CardTitle>
                     <CardDescription>
-                        Store backups in a shared location (network drive, separate repo) instead of the default <code className="bg-muted px-1 rounded text-xs">oak/ci/history/</code>.
+                        Store backups in a shared location (network drive, separate repo) instead of the default <code className="bg-muted px-1 rounded text-xs">oak/history/</code>.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">

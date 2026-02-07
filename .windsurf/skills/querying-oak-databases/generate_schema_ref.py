@@ -31,6 +31,12 @@ SKILL_DIR = Path(__file__).parent
 SCHEMA_REF_PATH = SKILL_DIR / "references" / "schema.md"
 SKILL_MD_PATH = SKILL_DIR / "SKILL.md"
 
+# Analysis agent system prompt (also contains generated core tables)
+CI_FEATURE_DIR = Path(__file__).resolve().parents[2]  # up to codebase_intelligence/
+ANALYSIS_SYSTEM_PROMPT_PATH = (
+    CI_FEATURE_DIR / "agents" / "definitions" / "analysis" / "prompts" / "system.md"
+)
+
 
 def extract_tables(schema_sql: str) -> dict[str, dict]:
     """Extract table definitions from schema SQL.
@@ -220,9 +226,9 @@ def generate_schema_md(tables: dict, indexes: dict) -> str:
             "| ChromaDB vector index | `.oak/ci/chroma/` |",
             "| Daemon logs | `.oak/ci/daemon.log` |",
             "| Hook logs | `.oak/ci/hooks.log` |",
-            "| User backups (git-tracked) | `oak/ci/history/*.sql` |",
-            "| Agent configs (git-tracked) | `oak/ci/agents/` |",
-            "| Shared port file (git-tracked) | `oak/ci/daemon.port` |",
+            "| User backups (git-tracked) | `oak/history/*.sql` |",
+            "| Agent configs (git-tracked) | `oak/agents/` |",
+            "| Shared port file (git-tracked) | `oak/daemon.port` |",
             "",
         ]
     )
@@ -271,33 +277,55 @@ def generate_core_tables_section(tables: dict) -> str:
     return "\n".join(lines)
 
 
-def update_skill_md(tables: dict) -> str:
-    """Update SKILL.md's core tables overview section.
+def _replace_between_markers(content: str, new_table: str, source_name: str) -> str:
+    """Replace content between generation markers in a file's text.
 
-    Replaces the content between the markers:
-    <!-- BEGIN GENERATED CORE TABLES -->
-    ... table content ...
-    <!-- END GENERATED CORE TABLES -->
+    Args:
+        content: Full file text.
+        new_table: New table content to insert between markers.
+        source_name: File name for error messages.
+
+    Returns:
+        Updated file text.
+
+    Raises:
+        ValueError: If markers are missing.
     """
-    skill_md = SKILL_MD_PATH.read_text()
-    new_table = generate_core_tables_section(tables)
-
     begin_marker = "<!-- BEGIN GENERATED CORE TABLES -->"
     end_marker = "<!-- END GENERATED CORE TABLES -->"
 
-    if begin_marker in skill_md and end_marker in skill_md:
-        # Replace between markers
+    if begin_marker in content and end_marker in content:
         pattern = re.compile(
             re.escape(begin_marker) + r".*?" + re.escape(end_marker),
             re.DOTALL,
         )
         replacement = f"{begin_marker}\n{new_table}\n{end_marker}"
-        return pattern.sub(replacement, skill_md)
+        return pattern.sub(replacement, content)
     else:
         raise ValueError(
-            f"SKILL.md is missing generation markers. "
+            f"{source_name} is missing generation markers. "
             f"Add '{begin_marker}' and '{end_marker}' around the core tables section."
         )
+
+
+def update_skill_md(tables: dict) -> str:
+    """Update SKILL.md's core tables overview section."""
+    skill_md = SKILL_MD_PATH.read_text()
+    new_table = generate_core_tables_section(tables)
+    return _replace_between_markers(skill_md, new_table, "SKILL.md")
+
+
+def update_analysis_system_prompt(tables: dict) -> str | None:
+    """Update the analysis agent's system.md core tables overview section.
+
+    Returns:
+        Updated file text, or None if the file doesn't exist.
+    """
+    if not ANALYSIS_SYSTEM_PROMPT_PATH.exists():
+        return None
+    content = ANALYSIS_SYSTEM_PROMPT_PATH.read_text()
+    new_table = generate_core_tables_section(tables)
+    return _replace_between_markers(content, new_table, "analysis/prompts/system.md")
 
 
 def main() -> int:
@@ -318,6 +346,9 @@ def main() -> int:
     # Generate updated SKILL.md
     new_skill_md = update_skill_md(tables)
 
+    # Generate updated analysis agent system prompt (if it exists)
+    new_analysis_prompt = update_analysis_system_prompt(tables)
+
     if args.check:
         # Check mode: compare with existing files
         errors = []
@@ -336,6 +367,14 @@ def main() -> int:
                 "Run 'make skill-build' to regenerate."
             )
 
+        if new_analysis_prompt is not None:
+            current_analysis = ANALYSIS_SYSTEM_PROMPT_PATH.read_text()
+            if current_analysis != new_analysis_prompt:
+                errors.append(
+                    "analysis/prompts/system.md core tables section is out of sync "
+                    "with schema.py. Run 'make skill-build' to regenerate."
+                )
+
         if errors:
             for e in errors:
                 print(f"Error: {e}", file=sys.stderr)
@@ -351,6 +390,10 @@ def main() -> int:
 
         SKILL_MD_PATH.write_text(new_skill_md)
         print(f"Updated {SKILL_MD_PATH.relative_to(project_root)}")
+
+        if new_analysis_prompt is not None:
+            ANALYSIS_SYSTEM_PROMPT_PATH.write_text(new_analysis_prompt)
+            print(f"Updated {ANALYSIS_SYSTEM_PROMPT_PATH.relative_to(project_root)}")
 
         return 0
 

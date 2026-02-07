@@ -213,3 +213,17 @@ Check daemon status with `oak ci status`. Start with `oak ci start` if needed.
 For complete schema DDL and advanced query patterns, consult:
 - **`references/schema.md`** — Full CREATE TABLE statements, indexes, FTS5 tables, and triggers
 - **`references/queries.md`** — Advanced query cookbook with joins, aggregations, and debugging queries
+- **`references/analysis-playbooks.md`** — Structured multi-query workflows for usage, productivity, codebase activity, and prompt quality analysis
+
+### Automated Analysis
+
+For automated analysis that runs these queries and produces reports, use the analysis agent:
+
+```bash
+oak ci agent run usage-report              # Cost and token usage trends
+oak ci agent run productivity-report       # Session quality and error rates
+oak ci agent run codebase-activity-report  # File hotspots and tool patterns
+oak ci agent run prompt-analysis           # Prompt quality and recommendations
+```
+
+Reports are written to `oak/insights/` (git-tracked, team-shareable).

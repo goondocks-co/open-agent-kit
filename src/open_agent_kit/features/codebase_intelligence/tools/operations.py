@@ -26,6 +26,7 @@ from open_agent_kit.features.codebase_intelligence.tools.formatting import (
 from open_agent_kit.features.codebase_intelligence.tools.schemas import (
     ContextInput,
     MemoriesInput,
+    QueryInput,
     RememberInput,
     SearchInput,
     SessionsInput,
@@ -241,3 +242,60 @@ class ToolOperations:
             memory_count=memory_count,
             observation_count=observation_count,
         )
+
+    def execute_query(self, args: dict[str, Any]) -> str:
+        """Execute a read-only SQL query against the activities database.
+
+        Args:
+            args: Query arguments (sql, limit).
+
+        Returns:
+            Formatted query results as a markdown table string.
+
+        Raises:
+            ValueError: If activity store is not available or SQL is invalid.
+        """
+        if not self.activity_store:
+            raise ValueError("Activity store not available for SQL queries.")
+
+        input_data = QueryInput(**args)
+
+        columns, rows = self.activity_store.execute_readonly_query(
+            sql=input_data.sql,
+            limit=input_data.limit,
+        )
+
+        if not columns:
+            return "Query returned no results."
+
+        if not rows:
+            return f"Query returned 0 rows.\n\nColumns: {', '.join(columns)}"
+
+        # Format as markdown table
+        lines: list[str] = []
+        lines.append("| " + " | ".join(columns) + " |")
+        lines.append("| " + " | ".join("---" for _ in columns) + " |")
+        for row in rows:
+            formatted_cells = []
+            for cell in row:
+                cell_str = str(cell) if cell is not None else ""
+                # Truncate long cell values for readability
+                if len(cell_str) > 200:
+                    cell_str = cell_str[:197] + "..."
+                # Escape pipe characters in cell content
+                cell_str = cell_str.replace("|", "\\|")
+                formatted_cells.append(cell_str)
+            lines.append("| " + " | ".join(formatted_cells) + " |")
+
+        result = "\n".join(lines)
+        result += f"\n\n({len(rows)} row{'s' if len(rows) != 1 else ''})"
+
+        # Add hint about epoch timestamps
+        epoch_cols = [c for c in columns if "epoch" in c.lower() or "at_epoch" in c.lower()]
+        if epoch_cols:
+            result += (
+                "\n\n**Tip**: Epoch columns can be formatted with "
+                "`datetime(col, 'unixepoch', 'localtime')` in your SQL."
+            )
+
+        return result

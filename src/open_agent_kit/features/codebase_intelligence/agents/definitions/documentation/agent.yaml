@@ -31,7 +31,7 @@ disallowed_tools:
 
 # Path restrictions - agent can only write to documentation files
 allowed_paths:
-  - "docs/**"
+  - "oak/docs/**"
   - "README.md"
   - "CHANGELOG.md"
   - "CONTRIBUTING.md"

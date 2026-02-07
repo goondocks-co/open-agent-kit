@@ -1,46 +1,45 @@
 ---
 title: Codebase Intelligence
-description: Semantic code search, AST-aware indexing, and persistent memory for AI agents.
+description: The complete development record for AI-driven projects — capturing plans, decisions, and context that git can't.
 sidebar:
   order: 0
 ---
 
-**Codebase Intelligence (CI)** is the "sight" and "memory" layer for your AI agents. It transforms your codebase into a semantic knowledge graph that agents like Claude, Codex, and Cursor can query to understand not just *what* code does, but *why* it exists.
+**Codebase Intelligence (CI)** captures the complete development story behind AI-written code. Every plan, decision, gotcha, and trade-off is recorded as your agents work — creating a semantically rich history that goes far beyond what git blame or commit messages could ever tell you.
 
 ## The Problem
 
-Standard context retrieval (RAG) often fails for complex coding tasks because:
-1. **It's Amnesic**: It doesn't remember past decisions, bugs, or architectural constraints.
-2. **It's Shallow**: It treats code as text, missing the structural relationships between symbols.
-3. **It's Passive**: It waits for you to ask, rather than proactively warning you about "gotchas".
+When AI agents build your software, the most valuable part of the process isn't the code — it's the *reasoning*. Why was this approach chosen over alternatives? What gotchas were discovered? What architectural trade-offs were made? All of that context lives in agent sessions that vanish when the conversation ends.
 
-## The OAK Solution
+Git captures *what* changed. OAK captures *why*, *how*, and *what was learned along the way*.
 
-Codebase Intelligence runs as a lightweight local daemon that provides:
+## How CI Works
 
-### 1. Persistent Memory
-CI remembers your project's history. When you or your agents solve a problem, CI records it as a "memory observation".
+Codebase Intelligence runs as a lightweight local daemon that provides four interconnected capabilities:
+
+### 1. The Development Record
+CI automatically captures the full lifecycle of every agent session — prompts, tool executions, plans, AI summaries, and outcomes. In the background, an LLM classifies these activities and extracts observations: gotchas, decisions, discoveries, bug fixes, and trade-offs. These become your project's persistent memory.
+
 - **Gotchas**: "The auth module requires Redis to be running."
 - **Decisions**: "We chose SQLite over Postgres for simplicity."
-- **Patterns**: "Always use the `Result` type for error handling."
+- **Trade-offs**: "Sacrificed write throughput for read latency in the caching layer."
 
-These memories are automatically injected into future agent sessions when relevant, preventing regressive bugs and circular conversations.
+This is the development context that no one writes down but everyone wishes they had six months later.
 
 ### 2. Semantic Code Search
-The daemon maintains a real-time vector index of your codebase using AST-aware chunking (via tree-sitter). This allows agents to find code by *concept* rather than just keyword.
-- *User*: "Where is the authentication middleware?"
-- *Agent*: Finds `src/middleware/auth.ts` even if the file is named differently, based on its semantic function.
+The daemon maintains a real-time vector index of your codebase using AST-aware chunking (via tree-sitter across 13 languages). Agents find code by *concept* rather than keyword — "where is the authentication middleware?" finds the right file even if it's named differently, based on its semantic function.
 
-### 3. Live Agent Hooks
-CI integrates directly with your agent's workflow.
-- **Pre-Prompt**: Injects relevant context and memories before the agent starts working.
-- **Post-Tool**: Analyzes the agent's actions (like `Edit` or `Bash` commands) to auto-capture new learnings.
-- **Session End**: Summarizes the entire coding session to refine the project's long-term memory.
+### 3. Proactive Context Injection
+CI doesn't wait for you to ask. It integrates directly with your agent's workflow through hooks:
+- **Session Start**: Injects project context and relevant memories before the agent begins.
+- **Pre-Prompt**: Surfaces related code and past learnings before each prompt.
+- **Post-Tool**: Analyzes file operations to provide file-specific memories and capture new activities.
+- **Session End**: Summarizes the entire session and extracts observations for long-term memory.
+
+The result: agents that remember what your team has learned, across every session and every engineer.
 
 ### 4. Agent Skills
-OAK actively extends your agent's capabilities through **Skills**.
-- **User-Invocable Skills**: Skills you can ask the agent to perform (e.g., "Create an RFC for this feature").
-- **Background Skills**: Capabilities the agent uses autonomously (e.g., finding related code patterns).
+OAK extends your agent's capabilities through [Skills](/open-agent-kit/agents/skills/) — slash commands that leverage CI's knowledge base for tasks like finding related code, analyzing change impacts, creating RFCs, and establishing project standards.
 
 ## The Dashboard
 

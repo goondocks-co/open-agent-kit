@@ -6,12 +6,13 @@
 # Documents architecture by exploring CODE to understand what exists, then
 # enriching with CI memories to capture WHY it's designed that way.
 #
-# To customize: Copy to oak/ci/agents/architecture-docs.yaml and modify as needed.
+# To customize: Copy to oak/agents/architecture-docs.yaml and modify as needed.
 # =============================================================================
 
 name: architecture-docs
 display_name: "Architecture Documentation"
 agent_type: documentation
+is_builtin: true
 description: >
   Documents architecture by first exploring the codebase structure, then
   enriching with CI memories to capture decisions, trade-offs, and rationale.
@@ -20,7 +21,7 @@ default_task: |
   Create or update architecture documentation for this project.
 
   ## 0. Check Existing Documentation First
-  - Use Glob to find existing: docs/architecture/*.md, ARCHITECTURE.md
+  - Use Glob to find existing: oak/docs/architecture/*.md, ARCHITECTURE.md
   - Read existing ADRs and overview documents
   - Note: which decisions are already documented, what's missing
   - This task ADDS new documentation, doesn't rewrite existing ADRs
@@ -62,7 +63,7 @@ default_task: |
   - KEEP existing ADRs unchanged (they're historical records)
   - Only DEPRECATE an ADR if the decision was reversed
 
-  **Overview document (ARCHITECTURE.md or docs/architecture/README.md):**
+  **Overview document (ARCHITECTURE.md or oak/docs/architecture/README.md):**
   - Update if structure changed, otherwise leave alone
   - Directory/module structure with explanations
   - Key patterns and conventions used
@@ -105,12 +106,12 @@ execution:
 
 # Files this task maintains
 maintained_files:
-  - path: "{project_root}/docs/architecture/*.md"
+  - path: "{project_root}/oak/docs/architecture/*.md"
     purpose: "Architecture Decision Records (ADRs)"
-    naming: "docs/architecture/{number}-{decision-name}.md"
+    naming: "oak/docs/architecture/{number}-{decision-name}.md"
     auto_create: true
 
-  - path: "{project_root}/docs/architecture/README.md"
+  - path: "{project_root}/oak/docs/architecture/README.md"
     purpose: "Architecture overview and index"
     auto_create: true
 

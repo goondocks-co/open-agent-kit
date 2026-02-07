@@ -406,7 +406,7 @@ export default function AgentsList() {
 
     const templates = agentsData?.templates || [];
     const tasks = agentsData?.tasks || [];
-    const tasksDir = agentsData?.tasks_dir || "oak/ci/agents";
+    const tasksDir = agentsData?.tasks_dir || "oak/agents";
 
     const handleRunTask = async (taskName: string) => {
         setMessage(null);

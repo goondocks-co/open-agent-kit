@@ -607,7 +607,7 @@ class HooksInstaller:
     def _get_daemon_port(self) -> int:
         """Get the daemon port from the shared port file or return default.
 
-        Reads from the shared port file (oak/ci/daemon.port) which is
+        Reads from the shared port file (oak/daemon.port) which is
         git-tracked and represents the assigned port for this project.
         The daemon will always use this port (killing any hanging process
         if necessary), so this is the stable source of truth.

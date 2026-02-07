@@ -101,7 +101,7 @@ graph TD
 |-------|---------|----------|
 | SQLite | Sessions, prompts, observations, activities (source of truth) | `.oak/ci/activities.db` |
 | ChromaDB | Vector embeddings for semantic search | `.oak/ci/chroma/` |
-| Backup files | Portable SQL dumps for team sharing (git-tracked) | `oak/ci/history/` |
+| Backup files | Portable SQL dumps for team sharing (git-tracked) | `oak/history/` |
 
 ## Project Layout
 
@@ -122,7 +122,11 @@ open-agent-kit/
   oak/                        # User content (git-tracked)
     constitution.md           # Project constitution
     rfc/                      # RFC documents
-    ci/                       # CI backups and agent configs
+    agents/                   # Custom agent task definitions
+    history/                  # CI backups for team sharing
+    insights/                 # Analysis agent reports
+    docs/                     # Documentation agent output
+    daemon.port               # Shared daemon port
   .oak/                       # Local state (not git-tracked)
     config.yaml               # Project configuration
     ci/                       # SQLite DB, ChromaDB, logs

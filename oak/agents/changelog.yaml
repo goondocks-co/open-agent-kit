@@ -12,6 +12,7 @@
 name: changelog
 display_name: "Changelog Generator"
 agent_type: documentation
+is_builtin: true
 description: >
   Generates changelog entries from session history. Uses CI data to accurately
   document what changed, why, and any important notes for each period.

@@ -1,0 +1,51 @@
+# Analysis Agent
+#
+# This agent analyzes CI data to produce insights about coding productivity,
+# agent costs, codebase activity patterns, and session quality.
+# It uses direct SQL queries against the activities database.
+
+name: analysis
+display_name: "Analysis Agent"
+description: >
+  Analyzes CI data to produce insights about coding productivity,
+  agent costs, codebase activity patterns, and session quality.
+  Uses direct SQL queries against the activities database to generate
+  actionable reports written to oak/insights/.
+
+execution:
+  max_turns: 75
+  timeout_seconds: 300
+  permission_mode: acceptEdits
+
+# Tools the agent can use
+allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+
+# Never allow shell access
+disallowed_tools:
+  - Bash
+  - Task
+
+# Path restrictions - agent can only write to insights directory
+allowed_paths:
+  - "oak/insights/**"
+  - "oak/insights/*.md"
+
+# Security: never touch sensitive files
+disallowed_paths:
+  - ".env"
+  - ".env.*"
+  - "*.pem"
+  - "*.key"
+
+# CI data access - analysis-focused (sql_query enabled, code_search disabled)
+ci_access:
+  code_search: false
+  memory_search: true
+  session_history: true
+  project_stats: true
+  sql_query: true

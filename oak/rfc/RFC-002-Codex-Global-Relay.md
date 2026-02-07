@@ -17,7 +17,7 @@ Core idea:
 
 1. Use `notify` payload `cwd` + `thread-id` as the authoritative thread-to-project mapping.
 2. Buffer early OTEL events until mapping is known.
-3. Resolve destination daemon port from OAK project port rules (`.oak/ci/daemon.port` > `oak/ci/daemon.port` > derived).
+3. Resolve destination daemon port from OAK project port rules (`.oak/ci/daemon.port` > `oak/daemon.port` > derived).
 
 ---
 

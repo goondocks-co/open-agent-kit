@@ -1,0 +1,75 @@
+# =============================================================================
+# Built-in Task: Usage & Cost Report
+# =============================================================================
+# Task for: analysis agent
+#
+# Aggregates agent run costs, token usage, and session counts into a
+# periodic usage report. Useful for tracking CI spend and activity volume.
+# =============================================================================
+
+name: usage-report
+display_name: "Usage & Cost Report"
+agent_type: analysis
+is_builtin: true
+description: >
+  Analyzes agent run costs, token usage trends, and session activity
+  to produce a usage report for tracking CI spend and activity volume.
+
+default_task: |
+  Generate a usage and cost report for the CI system.
+
+  Use ci_query for all data gathering. Refer to the database schema in
+  your system prompt for column names and types — do not assume column
+  names from these instructions.
+
+  ## 1. Agent Run Costs
+
+  Use ci_query against agent_runs to analyze costs:
+  - Total cost by agent name (all time and last 30 days)
+  - Weekly cost trend (last 8 weeks)
+  - Average cost per run by agent
+  - Most expensive individual runs (top 5)
+
+  ## 2. Token Usage Trends
+
+  Use ci_query against agent_runs to analyze token consumption:
+  - Total input and output tokens by week
+  - Input/output ratio trends
+  - Token usage broken down by agent
+
+  ## 3. Session Activity
+
+  Use ci_query against sessions to analyze activity volume:
+  - Sessions per week (last 8 weeks)
+  - Sessions by agent type (claude, cursor, etc.)
+  - Average session duration (derive from start/end timestamps)
+  - Average tools per session
+
+  ## 4. Write Report
+
+  Write the report to the maintained file with:
+  - Key findings summary at the top
+  - Data tables for each section
+  - Week-over-week comparisons where possible
+  - Recommendations for cost optimization if applicable
+
+execution:
+  timeout_seconds: 180
+  max_turns: 50
+  permission_mode: acceptEdits
+
+maintained_files:
+  - path: "{project_root}/oak/insights/usage-report.md"
+    purpose: "Usage and cost analysis report"
+    auto_create: true
+
+ci_queries:
+  discovery:
+    - tool: ci_project_stats
+      purpose: "Get baseline codebase metrics"
+
+style:
+  tone: "analytical"
+  include_examples: false
+
+schema_version: 1

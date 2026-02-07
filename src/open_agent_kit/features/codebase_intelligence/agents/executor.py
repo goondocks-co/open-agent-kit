@@ -35,6 +35,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_RETRY_BASE_DELAY,
     AGENT_RETRY_MAX_ATTEMPTS,
     CI_MCP_SERVER_NAME,
+    CI_TOOL_MEMORIES,
+    CI_TOOL_PROJECT_STATS,
+    CI_TOOL_QUERY,
+    CI_TOOL_SEARCH,
+    CI_TOOL_SESSIONS,
 )
 
 if TYPE_CHECKING:
@@ -93,8 +98,8 @@ class AgentExecutor:
         self._active_clients: dict[str, Any] = {}
         self._clients_lock = RLock()
 
-        # MCP server for CI tools (lazy initialization)
-        self._ci_mcp_server: McpSdkServerConfig | None = None
+        # MCP server cache keyed by frozenset of enabled tools
+        self._ci_mcp_servers: dict[frozenset[str], McpSdkServerConfig | None] = {}
 
     @property
     def project_root(self) -> Path:
@@ -112,25 +117,37 @@ class AgentExecutor:
         """Get the maximum in-memory cache size from config."""
         return self._agent_config.executor_cache_size
 
-    def _get_ci_mcp_server(self) -> "McpSdkServerConfig | None":
-        """Get or create the CI MCP server.
+    def _get_ci_mcp_server(
+        self, enabled_tools: set[str] | None = None
+    ) -> "McpSdkServerConfig | None":
+        """Get or create a CI MCP server for the given tool set.
+
+        Caches servers by the set of enabled tools so agents with
+        different ci_access flags get different tool sets.
+
+        Args:
+            enabled_tools: Set of tool names to include.
 
         Returns:
             SDKMCPServer instance, or None if unavailable.
         """
-        if self._ci_mcp_server is not None:
-            return self._ci_mcp_server
+        cache_key = frozenset(enabled_tools) if enabled_tools else frozenset()
+
+        if cache_key in self._ci_mcp_servers:
+            return self._ci_mcp_servers[cache_key]
 
         if self._retrieval_engine is None:
             logger.warning("Cannot create CI MCP server - no retrieval engine")
             return None
 
-        self._ci_mcp_server = create_ci_mcp_server(
+        server = create_ci_mcp_server(
             retrieval_engine=self._retrieval_engine,
             activity_store=self._activity_store,
             vector_store=self._vector_store,
+            enabled_tools=enabled_tools,
         )
-        return self._ci_mcp_server
+        self._ci_mcp_servers[cache_key] = server
+        return server
 
     def _cleanup_old_runs(self) -> None:
         """Remove old runs from in-memory cache when it exceeds threshold.
@@ -242,23 +259,36 @@ class AgentExecutor:
         # Build allowed tools list, filtering forbidden tools
         allowed_tools = [t for t in agent.get_effective_tools() if t not in AGENT_FORBIDDEN_TOOLS]
 
-        # Add CI MCP tools if agent has CI access
+        # Build enabled CI tools set from ci_access flags
         mcp_servers: dict[str, Any] = {}
-        if agent.ci_access.code_search or agent.ci_access.memory_search:
-            ci_server = self._get_ci_mcp_server()
+        ci_access = agent.ci_access
+        has_any_ci_access = (
+            ci_access.code_search
+            or ci_access.memory_search
+            or ci_access.session_history
+            or ci_access.project_stats
+            or ci_access.sql_query
+        )
+        if has_any_ci_access:
+            enabled_ci_tools: set[str] = set()
+            if ci_access.code_search:
+                enabled_ci_tools.add(CI_TOOL_SEARCH)
+            if ci_access.memory_search:
+                enabled_ci_tools.add(CI_TOOL_MEMORIES)
+            if ci_access.session_history:
+                enabled_ci_tools.add(CI_TOOL_SESSIONS)
+            if ci_access.project_stats:
+                enabled_ci_tools.add(CI_TOOL_PROJECT_STATS)
+            if ci_access.sql_query:
+                enabled_ci_tools.add(CI_TOOL_QUERY)
+
+            ci_server = self._get_ci_mcp_server(enabled_ci_tools)
             if ci_server:
                 mcp_servers[CI_MCP_SERVER_NAME] = ci_server
                 # Add CI tool names to allowed list
-                if agent.ci_access.code_search:
-                    allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_search")
-                if agent.ci_access.memory_search:
-                    allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_memories")
-                if agent.ci_access.session_history:
-                    allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_sessions")
-                if agent.ci_access.project_stats:
-                    allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__ci_project_stats")
+                for tool_name in enabled_ci_tools:
+                    allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__{tool_name}")
             else:
-                # Log warning if CI tools were requested but server unavailable
                 logger.warning(
                     f"CI MCP server unavailable for agent '{agent.name}' - CI tools will not work"
                 )

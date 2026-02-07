@@ -379,7 +379,7 @@ class AgentRegistry:
             style=data.get("style", {}),
             extra=data.get("extra", {}),
             task_path=str(yaml_file),
-            is_builtin=is_builtin,
+            is_builtin=data.get("is_builtin", is_builtin),
             schema_version=data.get("schema_version", AGENT_TASK_SCHEMA_VERSION),
         )
 
@@ -458,6 +458,7 @@ class AgentRegistry:
             memory_search=ci_access_data.get("memory_search", True),
             session_history=ci_access_data.get("session_history", True),
             project_stats=ci_access_data.get("project_stats", True),
+            sql_query=ci_access_data.get("sql_query", False),
         )
 
         # Get agent name for project config lookup
@@ -724,6 +725,15 @@ class AgentRegistry:
                     flags=re.MULTILINE,
                 )
 
+            # Strip is_builtin flag — user copies are never built-in
+            content = re.sub(
+                r"^is_builtin:\s*(true|false)\s*\n",
+                "",
+                content,
+                count=1,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+
             with open(target_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
@@ -740,7 +750,7 @@ class AgentRegistry:
     def install_builtin_tasks(self, force: bool = False) -> dict[str, str]:
         """Install built-in tasks to the project's agents directory.
 
-        Copies built-in task YAML files to oak/ci/agents/ so users can
+        Copies built-in task YAML files to oak/agents/ so users can
         customize them. By default, only installs tasks that don't already
         exist (won't overwrite user customizations).
 

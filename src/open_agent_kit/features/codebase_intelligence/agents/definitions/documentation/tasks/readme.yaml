@@ -12,6 +12,7 @@
 name: readme
 display_name: "README & Overview"
 agent_type: documentation
+is_builtin: true
 description: >
   Maintains README.md by exploring the actual codebase, then enriching with
   CI memories and insights. Code is truth; CI provides context and polish.

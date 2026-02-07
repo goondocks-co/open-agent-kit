@@ -148,6 +148,7 @@ class AgentCIAccess(BaseModel):
     memory_search: bool = Field(default=True, description="Allow searching memories")
     session_history: bool = Field(default=True, description="Allow accessing session history")
     project_stats: bool = Field(default=True, description="Allow accessing project stats")
+    sql_query: bool = Field(default=False, description="Allow direct read-only SQL queries")
 
 
 class AgentProvider(BaseModel):
@@ -511,7 +512,7 @@ class AgentListResponse(BaseModel):
     # Path information for UI display
     tasks_dir: str = Field(
         default="",
-        description="Directory where task YAML files are stored (e.g., 'oak/ci/agents')",
+        description="Directory where task YAML files are stored (e.g., 'oak/agents')",
     )
 
     # Legacy fields for backwards compatibility

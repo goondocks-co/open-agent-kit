@@ -101,9 +101,9 @@ CI_HOOKS_LOG_FILE: Final[str] = "hooks.log"
 CI_PID_FILE: Final[str] = "daemon.pid"
 CI_PORT_FILE: Final[str] = "daemon.port"
 
-# Team-shared port configuration (git-tracked, in oak/ci/)
-# Priority: 1) .oak/ci/daemon.port (local override), 2) oak/ci/daemon.port (team-shared)
-CI_SHARED_PORT_DIR: Final[str] = "oak/ci"
+# Team-shared port configuration (git-tracked, in oak/)
+# Priority: 1) .oak/ci/daemon.port (local override), 2) oak/daemon.port (team-shared)
+CI_SHARED_PORT_DIR: Final[str] = "oak"
 CI_SHARED_PORT_FILE: Final[str] = "daemon.port"
 
 # =============================================================================
@@ -287,12 +287,12 @@ SESSION_INACTIVE_TIMEOUT_SECONDS: Final[int] = 3600
 # Backup Configuration
 # =============================================================================
 
-# Backup file location (in preserved oak/ci/ directory, committed to git)
-CI_HISTORY_BACKUP_DIR: Final[str] = "oak/ci/history"
+# Backup file location (in preserved oak/ directory, committed to git)
+CI_HISTORY_BACKUP_DIR: Final[str] = "oak/history"
 CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"  # Legacy single-file backup
 
 # Multi-machine backup file pattern
-# Format: {github_username}_{machine_hash}.sql (in oak/ci/history/)
+# Format: {github_username}_{machine_hash}.sql (in oak/history/)
 CI_HISTORY_BACKUP_FILE_PATTERN: Final[str] = "*.sql"
 CI_HISTORY_BACKUP_FILE_PREFIX: Final[str] = ""  # No prefix - directory provides context
 CI_HISTORY_BACKUP_FILE_SUFFIX: Final[str] = ".sql"
@@ -1056,12 +1056,37 @@ CI_TOOL_SEARCH: Final[str] = "ci_search"
 CI_TOOL_MEMORIES: Final[str] = "ci_memories"
 CI_TOOL_SESSIONS: Final[str] = "ci_sessions"
 CI_TOOL_PROJECT_STATS: Final[str] = "ci_project_stats"
+CI_TOOL_QUERY: Final[str] = "ci_query"
 CI_MCP_SERVER_NAME: Final[str] = "oak-ci"
 CI_MCP_SERVER_VERSION: Final[str] = "1.0.0"
 
+# CI query tool configuration (read-only SQL execution)
+CI_QUERY_MAX_ROWS: Final[int] = 500
+CI_QUERY_DEFAULT_LIMIT: Final[int] = 100
+CI_QUERY_FORBIDDEN_KEYWORDS: Final[tuple[str, ...]] = (
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "DROP",
+    "ALTER",
+    "CREATE",
+    "ATTACH",
+    "DETACH",
+    "REPLACE",
+    "PRAGMA",
+    "VACUUM",
+    "REINDEX",
+)
+
+# Agent insights output directory (git-tracked, team-shareable)
+AGENT_INSIGHTS_DIR: Final[str] = "oak/insights"
+
+# Agent-generated documentation directory (git-tracked, team-shareable)
+AGENT_DOCS_DIR: Final[str] = "oak/docs"
+
 # Project-level agent configuration
-# Config files are stored in oak/ci/agents/{agent_name}.yaml (git-tracked, project-specific)
-AGENT_PROJECT_CONFIG_DIR: Final[str] = "oak/ci/agents"
+# Config files are stored in oak/agents/{agent_name}.yaml (git-tracked, project-specific)
+AGENT_PROJECT_CONFIG_DIR: Final[str] = "oak/agents"
 AGENT_PROJECT_CONFIG_EXTENSION: Final[str] = ".yaml"
 
 # =============================================================================

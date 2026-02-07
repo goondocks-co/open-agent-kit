@@ -18,5 +18,5 @@ environment = "dev"
 log_user_prompt = true
 
 [otel.exporter.otlp-http]
-endpoint = "http://127.0.0.1:38283/v1/logs"
+endpoint = "http://127.0.0.1:38388/v1/logs"
 protocol = "json"

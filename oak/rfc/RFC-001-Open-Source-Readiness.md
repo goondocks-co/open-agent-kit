@@ -636,7 +636,7 @@ This pattern ignores all machine-specific overlays while keeping `.oak/config.ya
 ### 6.10 Backup/Restore Integration
 
 User config is **included** in the machine's backup export (alongside the SQL dump):
-- `BackupManager.export()` copies `.oak/config.{machine_id}.yaml` into `oak/ci/history/` alongside `{machine_id}.sql`
+- `BackupManager.export()` copies `.oak/config.{machine_id}.yaml` into `oak/history/` alongside `{machine_id}.sql`
 - `BackupManager.restore()` places the user config at `.oak/config.{machine_id}.yaml`
 - On a new machine with the same GitHub user, `oak ci restore` reconstitutes both data and preferences
 
@@ -682,7 +682,7 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | `SECURITY.md:24` | Placeholder `opensource@example.com` | Replace with real email |
 | `.oak/config.yaml:175` | `log_level: DEBUG` is a user pref, not project | Move to user config; set project default to `INFO` |
 | `.oak/config.yaml:72,81` | `api_key: null` fields in tracked config | Move to user config template; remove from project config |
-| `oak/ci/daemon.port` | Runtime port tracked in git | Add to `.gitignore` |
+| `oak/daemon.port` | Runtime port tracked in git | Add to `.gitignore` |
 | `CHANGELOG.md` | Contains `localhost:38283` links | Replace with plain text descriptions |
 | `pyproject.toml:103` | GitHub URL points to `sirkirby/open-agent-kit` | Verify this is the intended public repo name |
 
@@ -712,7 +712,7 @@ User config is **included** in the machine's backup export (alongside the SQL du
 | 3 | Remove env var value logging in `executor.py:202` (M-SEC4) | Security | 15 min | **RESOLVED** (Section 3.3) |
 | 4 | Implement user config overlay + `oak upgrade` migration (Section 6, Phase 1) | Config | 1-2 days | |
 | 5 | Remove debug `console.log` from `Config.tsx` | Frontend | 15 min | **RESOLVED** (Section 2.4) |
-| 6 | Add `oak/ci/daemon.port` to `.gitignore` | Chore | 5 min | |
+| 6 | Add `oak/daemon.port` to `.gitignore` | Chore | 5 min | |
 | 7 | Create `docs/architecture.md` (consolidate research docs) | Docs | 2-4 hrs | **RESOLVED** (Section 5.5) |
 | 8 | Create `docs/README.md` (documentation index) | Docs | 1 hr | **RESOLVED** (Section 5.5 — replaced by Starlight landing page) |
 | 9 | Flatten git history onto new public repo | Chore | 1 hr | |

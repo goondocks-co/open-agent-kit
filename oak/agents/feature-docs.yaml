@@ -6,12 +6,13 @@
 # Documents features by exploring CODE for implementation details, then
 # enriching with CI memories for design rationale, gotchas, and context.
 #
-# To customize: Copy to oak/ci/agents/feature-docs.yaml and modify as needed.
+# To customize: Copy to oak/agents/feature-docs.yaml and modify as needed.
 # =============================================================================
 
 name: feature-docs
 display_name: "Feature Documentation"
 agent_type: documentation
+is_builtin: true
 description: >
   Discovers and documents all features in the codebase. Automatically finds
   undocumented features, checks for outdated docs, and creates/updates
@@ -35,7 +36,7 @@ default_task: |
   ## 2. Check Existing Documentation
 
   **Find existing feature docs:**
-  - Use Glob: "docs/features/*.md", "docs/*.md"
+  - Use Glob: "oak/docs/features/*.md", "oak/docs/*.md"
   - Read each doc file found
 
   **Categorize features:**
@@ -111,12 +112,12 @@ execution:
 
 # Files this task maintains
 maintained_files:
-  - path: "{project_root}/docs/features/*.md"
+  - path: "{project_root}/oak/docs/features/*.md"
     purpose: "Feature documentation files"
-    naming: "docs/features/{feature_name}.md"
+    naming: "oak/docs/features/{feature_name}.md"
     auto_create: true
 
-  - path: "{project_root}/docs/*.md"
+  - path: "{project_root}/oak/docs/*.md"
     purpose: "General documentation"
     auto_create: false
 

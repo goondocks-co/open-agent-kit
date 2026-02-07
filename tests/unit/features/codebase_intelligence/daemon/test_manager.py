@@ -461,10 +461,16 @@ class TestDaemonManagerStatus:
     @patch(
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._health_check"
     )
-    def test_is_running_true(self, mock_health, mock_running, mock_read_pid, tmp_path: Path):
-        """Test is_running returns True when daemon is healthy.
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._check_daemon_project_root"
+    )
+    def test_is_running_true(
+        self, mock_project_root, mock_health, mock_running, mock_read_pid, tmp_path: Path
+    ):
+        """Test is_running returns True when daemon is healthy and owns this project.
 
         Args:
+            mock_project_root: Mocked _check_daemon_project_root method.
             mock_health: Mocked _health_check method.
             mock_running: Mocked _is_process_running method.
             mock_read_pid: Mocked _read_pid method.
@@ -474,10 +480,43 @@ class TestDaemonManagerStatus:
         mock_read_pid.return_value = 1234
         mock_running.return_value = True
         mock_health.return_value = True
+        mock_project_root.return_value = True
 
         result = manager.is_running()
 
         assert result is True
+
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
+    )
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._health_check"
+    )
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._check_daemon_project_root"
+    )
+    def test_is_running_false_when_rogue_daemon(
+        self, mock_project_root, mock_health, mock_running, mock_read_pid, tmp_path: Path
+    ):
+        """Test is_running returns False when daemon belongs to a different project.
+
+        Args:
+            mock_project_root: Mocked _check_daemon_project_root method.
+            mock_health: Mocked _health_check method.
+            mock_running: Mocked _is_process_running method.
+            mock_read_pid: Mocked _read_pid method.
+            tmp_path: Temporary directory from pytest.
+        """
+        manager = DaemonManager(tmp_path)
+        mock_read_pid.return_value = 1234
+        mock_running.return_value = True
+        mock_health.return_value = True
+        mock_project_root.return_value = False
+
+        result = manager.is_running()
+
+        assert result is False
 
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
     @patch(

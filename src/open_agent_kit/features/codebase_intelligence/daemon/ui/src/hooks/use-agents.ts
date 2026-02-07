@@ -91,7 +91,7 @@ export interface AgentDetail {
             session_history: boolean;
             project_stats: boolean;
         };
-        /** Project-specific config from oak/ci/agents/{name}.yaml */
+        /** Project-specific config from oak/agents/{name}.yaml */
         project_config?: Record<string, unknown>;
     };
     recent_runs: AgentRun[];

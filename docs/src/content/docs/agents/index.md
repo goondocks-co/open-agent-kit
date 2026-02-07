@@ -1,12 +1,12 @@
 ---
 title: Coding Agents
-description: External AI coding agents and their integration with OAK.
+description: AI coding agents that OAK captures, enriches, and extends.
 ---
 
-These are external AI coding agents that OAK integrates with via hooks, skills, and MCP tools. OAK deploys skills and commands into each agent's native directories so they work seamlessly across tools.
+These are the AI coding agents your team uses to build software — Claude Code, Cursor, Gemini, and others. OAK integrates with each of them through hooks (to capture activity and inject context), MCP tools (for semantic search and memory), and skills (to extend what agents can do). No matter which agent your engineers prefer, OAK ensures every session contributes to and benefits from your project's shared intelligence.
 
 :::note[Looking for OAK's built-in agents?]
-OAK also has its own agents that run within the daemon for automated tasks like documentation generation. See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/).
+OAK also runs its own autonomous agents that turn captured intelligence into action — documentation, analysis, and insights. See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/).
 :::
 
 ## Supported Agents

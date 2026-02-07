@@ -53,7 +53,7 @@ class TestSyncServiceInit:
 
         assert service.project_root == tmp_path
         assert service.ci_data_dir == tmp_path / ".oak" / "ci"
-        assert service.backup_dir == tmp_path / "oak" / "ci" / "history"
+        assert service.backup_dir == tmp_path / "oak" / "history"
         assert service.chroma_dir == tmp_path / ".oak" / "ci" / "chroma"
         assert service.db_path == tmp_path / ".oak" / "ci" / "activities.db"
 

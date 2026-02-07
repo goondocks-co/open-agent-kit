@@ -9,7 +9,7 @@ The **Teams** page manages how you preserve and share Codebase Intelligence data
 
 ## Team Backups
 
-Each machine produces its own backup file named `{github_user}_{hash}.sql`, stored in `oak/ci/history/` (git-tracked by default). This means every developer on the team has their own backup alongside the source code.
+Each machine produces its own backup file named `{github_user}_{hash}.sql`, stored in `oak/history/` (git-tracked by default). This means every developer on the team has their own backup alongside the source code.
 
 ![Team backup status and controls](../../../../assets/images/team-backup.png)
 
@@ -24,7 +24,7 @@ Each machine produces its own backup file named `{github_user}_{hash}.sql`, stor
 
 ### Backup Location
 
-The default backup directory is `oak/ci/history/` inside your project. This is designed to be committed to git so backups travel with the codebase.
+The default backup directory is `oak/history/` inside your project. This is designed to be committed to git so backups travel with the codebase.
 
 To use an alternative location (e.g., a secure network share):
 - Set the `OAK_CI_BACKUP_DIR` environment variable, or
@@ -61,7 +61,7 @@ Restore your own backup or any team member's backup:
 
 ```bash
 oak ci restore                                        # Restore your own backup
-oak ci restore --file oak/ci/history/teammate_a7b3c2.sql   # Restore a teammate's backup
+oak ci restore --file oak/history/teammate_a7b3c2.sql   # Restore a teammate's backup
 ```
 
 After restore, ChromaDB is automatically rebuilt in the background to re-embed all memories with the current embedding model.
@@ -95,7 +95,7 @@ oak ci sync --dry-run    # Preview without applying changes
 | Flag | Description |
 |------|-------------|
 | `--full` | Rebuild the entire code index from scratch |
-| `--team` | Also merge all team member backups from `oak/ci/history/` |
+| `--team` | Also merge all team member backups from `oak/history/` |
 | `--include-activities` | Include the activities table in backup (larger file) |
 | `--dry-run` | Preview what would happen without applying changes |
 

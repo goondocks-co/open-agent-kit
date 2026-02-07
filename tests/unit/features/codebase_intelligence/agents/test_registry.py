@@ -109,7 +109,7 @@ class TestAgentDefinition:
         assert agent.ci_access.session_history is True
 
         # Check path restrictions
-        assert "docs/**" in agent.allowed_paths
+        assert "oak/docs/**" in agent.allowed_paths
         assert "README.md" in agent.allowed_paths
         assert ".env" in agent.disallowed_paths
 

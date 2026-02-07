@@ -96,7 +96,7 @@ def ci_backup(
         None,
         "--output",
         "-o",
-        help="Output path (default: oak/ci/history/{machine}.sql)",
+        help="Output path (default: oak/history/{machine}.sql)",
     ),
     info: bool = typer.Option(
         False,
@@ -110,7 +110,7 @@ def ci_backup(
     to also include the activities table (warning: can be large).
 
     Each machine creates its own backup file ({github_user}_{hash}.sql)
-    in oak/ci/history/ to prevent git conflicts when multiple developers commit backups.
+    in oak/history/ to prevent git conflicts when multiple developers commit backups.
 
     The backup file is text-based, can be committed to git, and will be
     automatically restored when the feature is re-enabled.

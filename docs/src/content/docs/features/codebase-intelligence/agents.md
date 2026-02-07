@@ -1,88 +1,34 @@
 ---
 title: OAK Agents
-description: Built-in agents that run within OAK's daemon for automated tasks.
-sidebar:
-  order: 4
+description: Autonomous agents that turn your captured development intelligence into action.
 ---
 
-OAK Agents are AI agents that run within OAK's daemon, powered by the Claude Agent SDK. They are distinct from external coding agents (Claude Code, Cursor, Codex, etc.) — those are documented in [Coding Agents](/open-agent-kit/agents/).
+OAK doesn't just capture your development story — it acts on it. **OAK Agents** are autonomous AI agents that use everything CI has learned about your project to perform real work: generating documentation enriched with actual decisions and gotchas, surfacing insights from session history, and keeping your project artifacts in sync with how your codebase actually evolved.
 
-## What are OAK Agents?
+They are distinct from external coding agents (Claude Code, Cursor, Codex, etc.) — those are documented in [Coding Agents](/open-agent-kit/agents/).
 
-OAK Agents use CI's semantic search for code context to perform automated tasks. They run locally on your machine, using whatever LLM provider you've configured. Each agent has:
+## Why OAK Agents Matter
 
-- **A set of built-in tasks** — Pre-configured work items that ship with OAK
-- **Custom task support** — You can create your own tasks that agents will pick up automatically
-- **Run history** — Every agent run is logged with status, output, and timing
+Traditional documentation and analysis tools work from code alone. OAK Agents work from the *full development record* — plans, decisions, trade-offs, gotchas, session history, and semantic code search. The result is documentation that explains *why*, not just *what*, and insights grounded in how your team actually builds software.
 
-## Documentation Agent
+Each agent has:
 
-The first built-in OAK Agent is the **Documentation Agent**. It uses CI's semantic search to understand your codebase and create accurate, context-aware documentation.
-
-### Built-in Tasks
-
-OAK ships built-in task templates for each agent. You can run them directly or use them as starting points for custom tasks.
+- **Built-in tasks** — Pre-configured work items that ship with OAK
+- **Custom task support** — Create your own tasks in `oak/agents/` (git-tracked, shareable with your team)
+- **Scheduling** — Run tasks automatically on a cron schedule
+- **Run history** — Every run is logged with status, output, files modified, and token usage
 
 ![Agents page showing templates and task list](../../../../assets/images/agents-page.png)
 
-## Running Tasks
+## Available Agents
 
-1. Navigate to the **Agents** page in the dashboard
-2. Select a task from the task list
-3. Click **Run** to start the agent
-4. Watch progress in real time — output streams as the agent works
-5. View completed runs in the **Run History** section
-
-### Run History
-
-Every agent run is recorded with:
-- **Status** — Running, completed, failed, or cancelled
-- **Output** — Full agent output including any generated files
-- **Timing** — Start time, duration, and token usage
-- **Cancellation** — Cancel a running agent at any time
-
-## Custom Tasks
-
-You can create custom tasks that OAK Agents will automatically pick up.
-
-### Task Directory
-
-Custom tasks are stored in `oak/ci/agents/` (git-tracked). Each task is a markdown file:
-
-```
-oak/ci/agents/
-  documentation/          # Agent name
-    my-custom-task.md     # Task file
-    another-task.md
-```
-
-### Task Format
-
-Task files are markdown with YAML frontmatter:
-
-```markdown
----
-name: Generate API docs
-description: Create API documentation for all public endpoints
-agent: documentation
----
-
-Generate comprehensive API documentation for all public endpoints
-in this project. Include request/response examples and error codes.
-```
-
-### Creating Tasks from Templates
-
-The dashboard provides a **Create Task** button that lets you create a new task from an existing template. This copies the template to `oak/ci/agents/` where you can customize it.
-
-You can also copy an existing task and modify it for a different purpose.
-
-## Scheduling
-
-Tasks can be scheduled to run automatically at configured intervals. Manage schedules from the Agents page in the dashboard — enable/disable individual task schedules and configure run frequency.
+| Agent | Purpose | Built-in Tasks |
+|-------|---------|---------------|
+| **[Documentation Agent](/open-agent-kit/features/codebase-intelligence/documentation-agent/)** | Maintains project documentation using the full CI knowledge base | README & Overview, Feature Docs, Changelog, Architecture Docs |
+| **[Analysis Agent](/open-agent-kit/features/codebase-intelligence/analysis-agent/)** | Turns CI data into actionable insights about productivity, costs, and codebase health | Usage & Cost Report, Productivity Analysis, Codebase Activity, Prompt Quality |
 
 ## Provider Configuration
 
-OAK Agents use the LLM provider configured in the **Agents** section of the Configuration page. This is separate from the summarization model — you may want a more capable model for agent tasks.
+OAK Agents use the LLM provider configured in the **Agents** section of the [Configuration](/open-agent-kit/features/codebase-intelligence/configuration/) page. This is separate from the summarization model — you may want a more capable model for agent tasks.
 
 Test the connection from the Configuration page before running agents.

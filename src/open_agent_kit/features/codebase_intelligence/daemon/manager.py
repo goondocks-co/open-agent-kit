@@ -160,8 +160,8 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
 
     Port resolution priority:
     1. .oak/ci/daemon.port (local override for conflicts, not git-tracked)
-    2. oak/ci/daemon.port (team-shared, git-tracked)
-    3. Auto-derive from git remote URL -> write to oak/ci/daemon.port
+    2. oak/daemon.port (team-shared, git-tracked)
+    3. Auto-derive from git remote URL -> write to oak/daemon.port
     4. Fall back to path-based derivation (non-git projects)
 
     Args:
@@ -185,7 +185,7 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
         except (ValueError, OSError):
             pass
 
-    # Priority 2: Team-shared port (oak/ci/daemon.port)
+    # Priority 2: Team-shared port (oak/daemon.port)
     if shared_port_file.exists():
         try:
             stored_port = int(shared_port_file.read_text().strip())
@@ -263,7 +263,7 @@ class DaemonManager:
 
         This is called when the daemon port changes due to conflict resolution.
         Writes to .oak/ci/daemon.port (local override) rather than the team-shared
-        oak/ci/daemon.port, so conflict resolution is machine-specific and doesn't
+        oak/daemon.port, so conflict resolution is machine-specific and doesn't
         affect other team members.
         """
         self._ensure_data_dir()
@@ -357,11 +357,51 @@ class DaemonManager:
             logger.debug(f"Health check failed: {e}")
             return False
 
+    def _check_daemon_project_root(self) -> bool:
+        """Verify the running daemon belongs to this project.
+
+        Queries the daemon's health endpoint and compares its reported
+        project_root against the expected one. Returns False if a rogue
+        daemon (wrong project or test directory) is occupying our port.
+
+        Returns:
+            True if the daemon's project_root matches, or if the check
+            cannot be performed (gives benefit of the doubt).
+        """
+        try:
+            import httpx
+
+            with httpx.Client(timeout=2.0) as client:
+                response = client.get(f"{self.base_url}/api/health")
+                if response.status_code != 200:
+                    return True  # Can't verify — give benefit of the doubt
+
+                data = response.json()
+                daemon_root = data.get("project_root")
+                if not daemon_root:
+                    return True  # Old daemon without project_root reporting
+
+                expected = str(self.project_root.resolve())
+                if daemon_root != expected:
+                    logger.warning(
+                        f"Rogue daemon on port {self.port}: "
+                        f"running from '{daemon_root}', "
+                        f"expected '{expected}'"
+                    )
+                    return False
+        except ImportError:
+            pass  # httpx not installed — can't verify
+        except Exception as e:
+            logger.debug(f"Project root check failed: {e}")
+
+        return True
+
     def is_running(self) -> bool:
         """Check if the daemon is running and healthy.
 
         Returns:
-            True if daemon is running and responding to health checks.
+            True if daemon is running, responding to health checks,
+            and serving the correct project.
         """
         # Check PID file first
         pid = self._read_pid()
@@ -371,7 +411,11 @@ class DaemonManager:
             return False
 
         # Check health endpoint
-        return self._health_check()
+        if not self._health_check():
+            return False
+
+        # Verify the daemon is for this project (detect rogue daemons)
+        return self._check_daemon_project_root()
 
     def get_status(self) -> dict:
         """Get daemon status.
@@ -447,9 +491,19 @@ class DaemonManager:
             if self.pid_file.exists():
                 self._remove_pid()
 
-            # Check if port is already in use - likely a hanging daemon
+            # Check if port is already in use — could be a rogue daemon
+            # from another project or a hanging process
             if self._is_port_in_use():
-                logger.info(f"Port {self.port} is in use, attempting to kill hanging process...")
+                is_rogue = not self._check_daemon_project_root()
+                if is_rogue:
+                    logger.warning(
+                        f"Rogue daemon detected on port {self.port} — "
+                        f"replacing with daemon for '{self.project_root}'"
+                    )
+                else:
+                    logger.info(
+                        f"Port {self.port} is in use, attempting to kill hanging process..."
+                    )
                 hanging_pid = self._find_pid_by_port()
                 if hanging_pid:
                     logger.info(f"Found process {hanging_pid} on port {self.port}, terminating...")

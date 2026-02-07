@@ -79,14 +79,14 @@ maintained_files:
 #   - path: "CHANGELOG.md"
 #     purpose: "Version history and release notes"
 #
-#   - path: "docs/features/*.md"
+#   - path: "oak/docs/features/*.md"
 #     purpose: "Feature documentation files"
-#     naming: "docs/features/{feature_name}.md"
+#     naming: "oak/docs/features/{feature_name}.md"
 #     auto_create: true
 #
-#   - path: "docs/architecture/*.md"
+#   - path: "oak/docs/architecture/*.md"
 #     purpose: "Architecture decision records"
-#     naming: "docs/architecture/{decision_name}.md"
+#     naming: "oak/docs/architecture/{decision_name}.md"
 #     auto_create: true
 
 # =============================================================================

@@ -9,6 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_QUERY_DEFAULT_LIMIT,
     DEFAULT_SEARCH_LIMIT,
     SEARCH_TYPE_ALL,
 )
@@ -99,3 +100,15 @@ class StatsInput(BaseModel):
 
     # No required inputs - returns all available stats
     pass
+
+
+class QueryInput(BaseModel):
+    """Input for SQL query tool (ci_query)."""
+
+    sql: str = Field(..., description="SQL query (SELECT/WITH/EXPLAIN only)")
+    limit: int = Field(
+        default=CI_QUERY_DEFAULT_LIMIT,
+        description="Maximum rows to return",
+        ge=1,
+        le=500,
+    )

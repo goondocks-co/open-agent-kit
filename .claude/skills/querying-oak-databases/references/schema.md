@@ -300,6 +300,6 @@ WHERE activities_fts MATCH 'file_path:auth.py'
 | ChromaDB vector index | `.oak/ci/chroma/` |
 | Daemon logs | `.oak/ci/daemon.log` |
 | Hook logs | `.oak/ci/hooks.log` |
-| User backups (git-tracked) | `oak/ci/history/*.sql` |
-| Agent configs (git-tracked) | `oak/ci/agents/` |
-| Shared port file (git-tracked) | `oak/ci/daemon.port` |
+| User backups (git-tracked) | `oak/history/*.sql` |
+| Agent configs (git-tracked) | `oak/agents/` |
+| Shared port file (git-tracked) | `oak/daemon.port` |

@@ -286,7 +286,7 @@ function SyncGuideContent() {
                         <h3 className="font-semibold">When to Use</h3>
                         <ul className="list-disc list-inside text-sm text-muted-foreground space-y-2">
                             <li><strong>After pulling OAK code changes</strong> - Restarts daemon with new code and runs any pending schema migrations</li>
-                            <li><strong>After pulling project changes with team backups</strong> - Imports team knowledge from <code className="bg-muted px-1 rounded">oak/ci/history/</code></li>
+                            <li><strong>After pulling project changes with team backups</strong> - Imports team knowledge from <code className="bg-muted px-1 rounded">oak/history/</code></li>
                             <li><strong>When search results seem stale</strong> - Full rebuild recreates the vector index from scratch</li>
                         </ul>
                     </div>
@@ -314,7 +314,7 @@ function SyncGuideContent() {
                         <h3 className="font-semibold">Team Sync (Merge Team Knowledge)</h3>
                         <CommandBlock command="oak ci sync --team" />
                         <p className="text-sm text-muted-foreground">
-                            Imports all team backup files from <code className="bg-muted px-1 rounded">oak/ci/history/</code>. Duplicates are automatically skipped using content-based hashing.
+                            Imports all team backup files from <code className="bg-muted px-1 rounded">oak/history/</code>. Duplicates are automatically skipped using content-based hashing.
                         </p>
                     </div>
 
