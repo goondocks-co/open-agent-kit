@@ -54,6 +54,7 @@ coverage.xml
 COVERAGE_STATUS.txt
 *.cover
 .hypothesis/
+.playwright-mcp/
 
 # Type checking
 .mypy_cache/
