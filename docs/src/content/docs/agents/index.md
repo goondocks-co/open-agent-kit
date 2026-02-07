@@ -1,34 +1,46 @@
 ---
-title: Agent Overview
-description: Supported AI agents and their integration capabilities.
+title: Coding Agents
+description: External AI coding agents and their integration with OAK.
 ---
 
-Open Agent Kit integrates with AI coding assistants by installing command prompts in their native directories.
+These are external AI coding agents that OAK integrates with via hooks, skills, and MCP tools. OAK deploys skills and commands into each agent's native directories so they work seamlessly across tools.
+
+:::note[Looking for OAK's built-in agents?]
+OAK also has its own agents that run within the daemon for automated tasks like documentation generation. See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/).
+:::
 
 ## Supported Agents
 
-| Agent | Commands Directory | Command Format | Hooks | MCP |
-|-------|-------------------|----------------|-------|-----|
-| **Claude Code** | `.claude/commands/` | `oak.rfc-create.md` | Full | Yes |
-| **Codex CLI** | `.codex/prompts/` | `oak.rfc-create.md` | Full (OTel) | Yes |
-| **Cursor** | `.cursor/commands/` | `oak.rfc-create.md` | Full | Yes |
-| **Gemini CLI** | `.gemini/commands/` | `oak.rfc-create.md` | Full | Yes |
-| **OpenCode** | `.opencode/commands/` | `oak.rfc-create.md` | Full (Plugin) | Yes |
-| **Windsurf** | `.windsurf/commands/` | `oak.rfc-create.md` | Full | No |
-| **GitHub Copilot** | `.github/agents/` | `oak.rfc-create.prompt.md` | Limited | No |
+| Agent | Directory | Hooks | MCP | Skills |
+|-------|-----------|-------|-----|--------|
+| **Claude Code** | `.claude/` | Yes | Yes | Yes |
+| **Codex CLI** | `.codex/` | Yes (OTel) | Yes | Yes |
+| **Cursor** | `.cursor/` | Yes | Yes | Yes |
+| **Gemini CLI** | `.gemini/` | Yes | Yes | Yes |
+| **OpenCode** | `.opencode/` | Yes (Plugin) | Yes | Yes |
+| **Windsurf** | `.windsurf/` | Yes | No | Yes |
+| **GitHub Copilot** | `.github/` | Limited | No | Yes |
 
-## Available Commands
+For details on what each agent's hooks actually provide (context injection, activity capture, summarization), see the [Codebase Intelligence overview](/open-agent-kit/features/codebase-intelligence/).
 
-After running `oak init --agent <agent-name>`, you can use:
+## Skills & Commands
 
-- `/oak.constitution-create` — Create engineering constitutions from codebase analysis
-- `/oak.constitution-validate` — Validate constitution structure
-- `/oak.constitution-amend` — Add amendments to constitutions
-- `/oak.rfc-create` — Create RFC documents for technical decisions
-- `/oak.rfc-list` — List existing RFCs
-- `/oak.rfc-validate` — Validate RFC structure
+OAK deploys **[skills](/open-agent-kit/agents/skills/)** and commands into each agent's native directories. Skills are the primary way OAK extends your agent — invoke them with slash commands like `/project-rules` or `/creating-rfcs`.
 
-**No API keys required!** Commands are invoked through your agent's interface, which handles authentication.
+After `oak init`, **6 skills** are available across three areas:
+- **Codebase Intelligence** — `/finding-related-code`, `/analyzing-code-change-impacts`, `/querying-oak-databases`
+- **Rules Management** — `/project-rules`
+- **Strategic Planning** — `/creating-rfcs`, `/reviewing-rfcs`
+
+See the **[Skills](/open-agent-kit/agents/skills/)** page for full details on each skill.
+
+## Commands
+
+OAK also deploys expert commands into each agent's commands directory. These act as specialized sub-agents with deep domain knowledge:
+
+- **`/oak.backend-python-expert`** — A senior Python backend expert covering modern Python 3.12+ patterns, type hints, async programming, FastAPI, Pydantic V2, SQLAlchemy 2.0, and testing with pytest.
+
+More expert commands may be added in future releases.
 
 ## Agent Instruction Files
 
@@ -49,18 +61,9 @@ If your team already has these files with established conventions:
 
 ## Multi-Agent Workflows
 
-OAK supports multiple agents in the same project — ideal for teams where engineers use different tools:
-
-```bash
-# Initialize with multiple agents
-oak init --agent claude --agent copilot --agent cursor
-
-# Or add agents incrementally
-oak init --agent claude
-oak init --agent copilot   # Adds to existing setup
-```
+OAK supports multiple agents in the same project — ideal for teams where engineers use different tools. Select agents during `oak init` or add them incrementally by re-running `oak init`.
 
 **Benefits:**
 - **Team flexibility**: Engineers can use their preferred AI tool
-- **Consistent workflow**: Same commands (`/oak.rfc-create`, etc.) across all agents
-- **Zero conflicts**: Each agent's commands live in separate directories
+- **Consistent skills**: Same skills and commands across all agents
+- **Zero conflicts**: Each agent's files live in separate directories

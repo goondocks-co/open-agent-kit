@@ -1,7 +1,7 @@
----
-title: Architecture
-description: System design, layers, and design principles of Open Agent Kit.
----
+# Architecture
+
+> System design, layers, and design principles of Open Agent Kit.
+> This is contributor documentation — for user-facing docs see the [documentation site](https://goondocks-co.github.io/open-agent-kit/).
 
 ## Overview
 
@@ -29,30 +29,41 @@ graph TD
 | **Pipeline** | AST chunking, vector embeddings, LLM classification | `src/open_agent_kit/features/codebase_intelligence/` |
 | **Storage** | SQLite (transactional), ChromaDB (vector search), filesystem | `.oak/ci/` |
 
-## Vertical Slice Features
+## Core Capabilities
 
-Each feature is a self-contained vertical slice with its own manifest, commands, templates, and optional daemon support:
+OAK's value comes from five interconnected capabilities:
 
+```mermaid
+graph TD
+    Agent[AI Coding Agent] -->|Hooks| Capture[Session & Activity<br/>Preservation]
+    Capture -->|Raw data| Summarize[Summarization]
+    Summarize -->|Observations| Memory[Persistent Memory]
+    Agent -->|MCP tools| Search[Semantic Code Search]
+    Memory -->|Embeddings| Search
+    Search -->|Context| Agent
+
+    subgraph "Integration Layer"
+        Skills[Skills & Commands]
+        MCP[MCP Server]
+        Hooks[Agent Hooks]
+    end
+
+    Skills --> Agent
+    MCP --> Agent
+    Hooks --> Capture
 ```
-src/open_agent_kit/features/<feature_name>/
-  manifest.yaml          # Feature metadata, dependencies, agent support
-  commands/              # CLI commands specific to this feature
-  templates/             # Jinja2 templates (owned by OAK, overwritten on upgrade)
-  skills/                # Agent skills (slash commands)
-  daemon/                # Optional: HTTP server, UI, background jobs
-```
 
-**Core features:**
-
-| Feature | Purpose |
-|---------|---------|
-| **Codebase Intelligence** | Semantic code search, AST-aware indexing, persistent memory, MCP tools |
-| **Rules Management** | Project constitution and coding standards for AI agents |
-| **Strategic Planning** | RFC workflow for documenting technical decisions |
+| Capability | What it does |
+|-----------|-------------|
+| **Session & Activity Preservation** | Captures every prompt, tool execution, and agent output. Records session lineage (parent-child relationships) and tracks session state across compact/resume cycles. |
+| **Summarization** | LLM-powered processing of sessions and plans. Generates titles, summaries, and extracts observations (gotchas, decisions, discoveries) from raw session data. |
+| **Persistent Memory** | Observations, decisions, and gotchas preserved across sessions as vector embeddings. Agents retrieve relevant memories automatically via context injection. |
+| **Semantic Code Search** | AST-aware indexing using tree-sitter for 13 languages. Code is chunked at function/class boundaries and stored as vector embeddings for natural language search. |
+| **Skills, Commands, MCP** | The integration layer that connects OAK to coding agents. Hooks capture activity, MCP tools expose search/remember/context, and skills provide slash commands. |
 
 ## Codebase Intelligence
 
-The CI daemon runs locally and provides the "sight and memory" layer:
+The CI daemon runs locally and provides the core runtime:
 
 ```mermaid
 graph TD
@@ -82,6 +93,7 @@ graph TD
 | **Agent Hooks** | Auto-capture agent activity and inject relevant context |
 | **MCP Server** | Exposes `oak_search`, `oak_remember`, `oak_context` tools |
 | **Web Dashboard** | Visual interface for search, memory management, and debugging |
+| **OAK Agents** | Agent SDK-powered agents for automated tasks (documentation, etc.) |
 
 **Storage:**
 
@@ -103,7 +115,7 @@ open-agent-kit/
     models/                   # Pydantic models
     agents/                   # Agent definitions (claude, copilot, cursor, etc.)
       <agent>/manifest.yaml   # Agent capabilities and config
-    features/                 # Vertical slice features
+    features/                 # Feature modules
       codebase_intelligence/  # CI daemon, indexer, memory, hooks
       rules_management/       # Constitution management
       strategic_planning/     # RFC workflow

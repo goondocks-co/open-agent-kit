@@ -38,6 +38,30 @@ export default defineConfig({
                   slug: "features/codebase-intelligence/dashboard",
                 },
                 {
+                  label: "Activities",
+                  slug: "features/codebase-intelligence/activities",
+                },
+                {
+                  label: "OAK Agents",
+                  slug: "features/codebase-intelligence/agents",
+                },
+                {
+                  label: "Logs",
+                  slug: "features/codebase-intelligence/logs",
+                },
+                {
+                  label: "Teams",
+                  slug: "features/codebase-intelligence/teams",
+                },
+                {
+                  label: "Configuration",
+                  slug: "features/codebase-intelligence/configuration",
+                },
+                {
+                  label: "DevTools",
+                  slug: "features/codebase-intelligence/devtools",
+                },
+                {
                   label: "Memory",
                   slug: "features/codebase-intelligence/memory",
                 },
@@ -50,33 +74,18 @@ export default defineConfig({
                   slug: "features/codebase-intelligence/hooks-reference",
                 },
                 {
-                  label: "Developer API",
+                  label: "API Reference",
                   slug: "features/codebase-intelligence/developer-api",
                 },
-                {
-                  label: "DevTools",
-                  slug: "features/codebase-intelligence/devtools",
-                },
-                {
-                  label: "Backup & Restore",
-                  slug: "features/codebase-intelligence/backup",
-                },
               ],
-            },
-            {
-              label: "Rules Management",
-              slug: "features/rules-management",
-            },
-            {
-              label: "Strategic Planning",
-              slug: "features/strategic-planning",
             },
           ],
         },
         {
-          label: "Agents",
+          label: "Coding Agents",
           items: [
             { label: "Agent Overview", slug: "agents" },
+            { label: "Skills", slug: "agents/skills" },
           ],
         },
         {
@@ -85,14 +94,6 @@ export default defineConfig({
             { label: "CLI Commands", slug: "cli" },
             { label: "Configuration", slug: "configuration" },
             { label: "MCP Tools", slug: "api/mcp-tools" },
-          ],
-        },
-        { label: "Architecture", slug: "architecture" },
-        {
-          label: "Development",
-          items: [
-            { label: "Feature Development", slug: "development/features" },
-            { label: "Releasing", slug: "development/releasing" },
           ],
         },
         { label: "Troubleshooting", slug: "troubleshooting" },

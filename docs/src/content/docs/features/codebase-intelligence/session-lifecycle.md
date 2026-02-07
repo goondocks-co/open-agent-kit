@@ -7,70 +7,113 @@ sidebar:
 
 Sessions track all activity within an agent invocation. While the diagrams reference Claude Code, the same lifecycle applies to Cursor and Gemini via equivalent hook events.
 
-## Lifecycle Diagram
+## Lifecycle Overview
+
+A session flows through three layers: the **agent** fires hook events, the **daemon API** processes them, and **background jobs** handle recovery when things don't exit cleanly.
+
+### Hook Flow
+
+Hooks are **bidirectional** — the agent sends events to the daemon, and for key events the daemon sends context back that gets injected into the agent's working context. This is how CI proactively surfaces relevant memories and code.
 
 ```mermaid
-flowchart TB
-    subgraph "Claude Code Process"
-        CC_START[User launches Claude Code]
-        CC_PROMPT[User sends prompt]
-        CC_TOOL[Tool execution]
-        CC_STOP[Agent stops responding]
-        CC_EXIT_CLEAN[User types /exit or Ctrl+D]
-        CC_EXIT_UNCLEAN[User closes terminal / Ctrl+C / crash]
+sequenceDiagram
+    participant Agent
+    participant Daemon
+
+    Agent->>Daemon: SessionStart
+    Daemon-->>Agent: Memories + CI status
+
+    loop Each user prompt
+        Agent->>Daemon: UserPromptSubmit
+        Daemon-->>Agent: Related code + memories
+
+        loop Tool executions
+            Agent->>Daemon: PostToolUse
+            Daemon-->>Agent: File-specific memories
+        end
+
+        Agent->>Daemon: Stop
+        Note right of Daemon: Batch queued for processing
     end
 
-    subgraph "Hooks Layer"
-        H_START[SessionStart Hook]
-        H_PROMPT[UserPromptSubmit Hook]
-        H_TOOL[PostToolUse Hook]
-        H_STOP[Stop Hook]
-        H_END[SessionEnd Hook]
+    alt Clean exit
+        Agent->>Daemon: SessionEnd
+        Note right of Daemon: Summary generated
+    else Crash / Ctrl+C
+        Note over Agent,Daemon: No hook fires — background recovery handles it
+    end
+```
+
+Dashed arrows show context flowing **back** to the agent. Not all agents support this — see [Supported Agents](/open-agent-kit/features/codebase-intelligence/#supported-agents) for which agents get context injection.
+
+### Data Flow
+
+What the daemon persists at each stage. The core unit is the **prompt batch** — each user prompt creates a batch that collects all tool activity and the AI's response until the agent stops.
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant DB as SQLite
+    participant LLM as Background LLM
+
+    Note over DB: SessionStart
+    DB->>DB: Create session record
+
+    rect rgb(240, 248, 255)
+        Note over Agent,DB: Prompt Batch Lifecycle (repeats per prompt)
+        Agent->>DB: UserPromptSubmit → Create batch, store user prompt
+        Agent->>DB: PostToolUse → Record tool activities into batch
+        Agent->>DB: PostToolUse → Record tool activities into batch
+        Agent->>DB: Stop → Capture AI response summary, close batch
+        DB->>LLM: Batch queued for processing
+        Note right of LLM: LLM classifies tool calls,<br/>extracts observations<br/>(gotchas, decisions, bugs)
+        LLM->>DB: Store observations as memories
     end
 
-    subgraph "Daemon API"
-        API_START[POST /session-start]
-        API_PROMPT[POST /prompt-submit]
-        API_TOOL[POST /post-tool-use]
-        API_STOP[POST /stop]
-        API_END[POST /session-end]
+    rect rgb(255, 248, 240)
+        Note over Agent,DB: Plan Capture (detected automatically)
+        Agent->>DB: PostToolUse (Write) → Detect plan file, capture content
+        Agent->>DB: PostToolUse (ExitPlanMode) → Re-read final plan version
+        Agent->>DB: UserPromptSubmit → Detect plan execution prompt
     end
 
-    subgraph "State Management"
-        MEM[In-Memory State<br/>SessionInfo dict]
-        DB[(SQLite Database<br/>sessions table)]
-    end
+    Note over DB: SessionEnd
+    DB->>DB: Mark session completed
+    DB->>LLM: Generate session summary
+    LLM->>DB: Store summary + generate title
+```
 
-    subgraph "Background Jobs<br/>(every 60 seconds)"
-        JOB_STUCK[Recover stuck batches<br/>5 min timeout]
-        JOB_STALE[Recover stale sessions<br/>1 hour timeout]
-        JOB_ORPHAN[Recover orphaned activities]
-        JOB_PROCESS[Process pending batches]
-    end
+**What gets stored in each prompt batch:**
+- **User prompt** — the text the user typed
+- **Tool activities** — every Read, Edit, Write, Bash, etc. with inputs and outputs
+- **AI response summary** — captured from the agent's transcript when `Stop` fires
 
-    CC_START --> H_START --> API_START
-    API_START --> |"Create session"| MEM
-    API_START --> |"Create session"| DB
+**Background observation extraction** is the key to CI's persistent memory. While the coding session is still running, completed prompt batches are sent to a local LLM that:
+1. **Classifies** each tool call — was this a routine file read, or something worth remembering?
+2. **Extracts observations** — gotchas, decisions, bug fixes, trade-offs, discoveries
+3. **Stores them as memories** in SQLite and ChromaDB for injection into future sessions
 
-    CC_PROMPT --> H_PROMPT --> API_PROMPT
-    API_PROMPT --> |"End prev batch<br/>Create new batch"| DB
-    API_PROMPT --> |"Update batch ID"| MEM
+This happens asynchronously so it never blocks the agent. By the time the session ends, most observations are already extracted.
 
-    CC_TOOL --> H_TOOL --> API_TOOL
-    API_TOOL --> |"Record activity"| DB
-    API_TOOL --> |"Update counters"| MEM
+:::note[SQLite is the source of truth]
+All data — sessions, batches, activities, observations — is written to SQLite first. Observations and summaries are then embedded into ChromaDB for fast semantic search. If ChromaDB is ever lost or the embedding model changes, everything can be rebuilt from SQLite via DevTools.
+:::
 
-    CC_STOP --> H_STOP --> API_STOP
-    API_STOP --> |"End prompt batch"| DB
-    API_STOP --> |"Queue for processing"| JOB_PROCESS
+**Plan capture** happens within the normal hook flow — no separate event needed:
+- When a **Write** to a plan directory is detected (`.claude/plans/`, `.cursor/plans/`, etc.), the batch is marked as a plan and the content is captured
+- When **ExitPlanMode** fires, the plan file is re-read to capture the final approved version (which may differ from the initial write after iteration)
+- If the same session writes to the same plan file multiple times, the existing plan batch is updated rather than creating duplicates
 
-    CC_EXIT_CLEAN --> H_END --> API_END
-    API_END --> |"End session<br/>status=completed"| DB
-    API_END --> |"Remove session"| MEM
+### Background Recovery
 
-    CC_EXIT_UNCLEAN -.-> |"NO HOOK FIRES"| MEM
+Every 60 seconds, background jobs clean up sessions that didn't exit cleanly:
 
-    JOB_STALE --> |"Mark completed<br/>after 1 hour inactive"| DB
+```mermaid
+flowchart LR
+    J1["Stuck batches\n(5 min inactive)"] --> R1[Mark batch completed]
+    J2["Stale sessions\n(1 hr inactive)"] --> R2[Mark session completed]
+    J3["Orphaned activities\n(no batch)"] --> R3[Associate with nearest batch]
+    J4["Pending batches\n(not yet processed)"] --> R4[Send to LLM for extraction]
 ```
 
 ## Session States
@@ -86,13 +129,13 @@ stateDiagram-v2
 
 ## Hook Events
 
-| Hook | When Fired | What We Do | Notes |
-|------|------------|------------|-------|
-| `SessionStart` | Agent launches | Create session in memory + DB, inject context | Includes `source`: startup, resume, clear, compact |
-| `UserPromptSubmit` | User sends a prompt | End previous batch, create new batch, search context | Creates prompt batches for grouping activities |
-| `PostToolUse` | After each tool runs | Record activity to DB, update counters | Liberal capture for LLM processing |
-| `Stop` | Agent finishes responding | End current prompt batch, queue for processing | Triggers async observation extraction |
-| `SessionEnd` | Clean exit (/exit, Ctrl+D) | End session, generate summary | May not fire on unclean exits |
+| Hook | When Fired | What We Store | What We Inject Back | Notes |
+|------|------------|---------------|--------------------|----|
+| `SessionStart` | Agent launches | Create session record | Memories + CI status | `source` field: startup, resume, clear, compact |
+| `UserPromptSubmit` | User sends a prompt | Create prompt batch, store user prompt | Related code + memories | Also detects plan execution prompts |
+| `PostToolUse` | After each tool runs | Record activity into current batch | File-specific memories (Read/Edit/Write) | Also detects plan file writes + ExitPlanMode |
+| `Stop` | Agent finishes responding | Capture AI response summary, close batch | — | Batch queued for background LLM observation extraction |
+| `SessionEnd` | Clean exit (/exit, Ctrl+D) | Mark session completed | — | Triggers async session summary + title generation. May not fire on crash. |
 
 ## Background Jobs
 
@@ -141,6 +184,19 @@ BACKGROUND_PROCESSING_INTERVAL = 60      # seconds
 
 ## Debugging
 
+### Using the `/querying-oak-databases` skill
+
+The recommended way to inspect session data is with the `/querying-oak-databases` agent skill. It provides the current database schema and ready-to-use queries, so you don't need to discover table names or column types yourself — especially useful as the schema evolves across releases.
+
+Ask your agent:
+```
+/querying-oak-databases show me recent sessions and their statuses
+```
+
+### Manual queries
+
+If you prefer raw SQL, the database lives at `.oak/ci/activities.db`:
+
 ```bash
 # Check session states
 sqlite3 .oak/ci/activities.db \
@@ -148,8 +204,8 @@ sqlite3 .oak/ci/activities.db \
 
 # Check daemon logs for lifecycle events
 grep -E "Session start|Session end|Recovered" .oak/ci/daemon.log | tail -20
-
-# Force close a session
-sqlite3 .oak/ci/activities.db \
-  "UPDATE sessions SET status='completed', ended_at=datetime('now') WHERE id='SESSION_ID';"
 ```
+
+:::caution[Schema may change]
+The SQLite schema evolves between releases. Prefer the `/querying-oak-databases` skill for accurate, up-to-date queries.
+:::

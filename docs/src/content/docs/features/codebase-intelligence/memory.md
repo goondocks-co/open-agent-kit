@@ -69,11 +69,11 @@ If you change embedding models, rebuild the memory index from the dashboard's **
 If you are building your own tools or agent integrations, you can hit the hook endpoints directly:
 
 ```http
-POST /api/hook/session-start
+POST /api/oak/ci/hooks/session/start
 {
   "agent": "custom-agent",
   "project_path": "/path/to/project"
 }
 ```
 
-See the [Developer API](/open-agent-kit/features/codebase-intelligence/developer-api/) reference for more details.
+See the [API Reference](/open-agent-kit/features/codebase-intelligence/developer-api/) for more details.

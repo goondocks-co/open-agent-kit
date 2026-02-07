@@ -1,5 +1,7 @@
 """Tests for SkillService."""
 
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -627,8 +629,6 @@ class TestManifestSkillsConsistency:
     @pytest.fixture
     def package_features_path(self):
         """Get the real package features directory."""
-        from pathlib import Path
-
         # Navigate from tests/ to src/open_agent_kit/features/
         return Path(__file__).parent.parent / "src" / "open_agent_kit" / "features"
 
@@ -755,3 +755,84 @@ class TestManifestSkillsConsistency:
                 )
 
         assert not errors, "Manifest/directory skill mismatches found:\n" + "\n".join(errors)
+
+
+class TestQueryingOakDatabasesSkillSync:
+    """Verify the querying-oak-databases skill stays in sync with the actual schema.
+
+    When schema.py changes (new tables, version bump), the skill's reference
+    files must be updated too. These tests catch drift at the quality gate.
+    """
+
+    SKILL_DIR = (
+        Path(__file__).parent.parent
+        / "src"
+        / "open_agent_kit"
+        / "features"
+        / "codebase_intelligence"
+        / "skills"
+        / "querying-oak-databases"
+    )
+
+    def test_schema_version_matches(self):
+        """Skill schema reference must mention the current schema version."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
+            SCHEMA_VERSION,
+        )
+
+        schema_ref = (self.SKILL_DIR / "references" / "schema.md").read_text()
+        expected = f"**{SCHEMA_VERSION}**"
+        assert expected in schema_ref, (
+            f"references/schema.md mentions wrong schema version. "
+            f"Expected '{expected}' but not found. "
+            f"Update the skill after changing CI_ACTIVITY_SCHEMA_VERSION."
+        )
+
+    def test_all_tables_documented(self):
+        """Skill schema reference must document every CREATE TABLE in the schema."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
+            SCHEMA_SQL,
+        )
+
+        # Extract table names from the actual schema DDL
+        # Match both regular tables and virtual tables
+        regular_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", SCHEMA_SQL))
+        virtual_tables = set(re.findall(r"CREATE VIRTUAL TABLE IF NOT EXISTS (\w+)", SCHEMA_SQL))
+        all_tables = regular_tables | virtual_tables
+
+        # Exclude internal tables
+        all_tables.discard("schema_version")
+
+        schema_ref = (self.SKILL_DIR / "references" / "schema.md").read_text()
+
+        missing = []
+        for table in sorted(all_tables):
+            if table not in schema_ref:
+                missing.append(table)
+
+        assert not missing, (
+            f"references/schema.md is missing documentation for tables: {missing}. "
+            f"Update the skill after adding new tables to schema.py."
+        )
+
+    def test_skill_md_core_tables_listed(self):
+        """SKILL.md must list the core (non-FTS, non-internal) tables in its overview."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
+            SCHEMA_SQL,
+        )
+
+        # Only check regular tables (not FTS virtual tables or schema_version)
+        regular_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", SCHEMA_SQL))
+        regular_tables.discard("schema_version")
+
+        skill_md = (self.SKILL_DIR / "SKILL.md").read_text()
+
+        missing = []
+        for table in sorted(regular_tables):
+            if table not in skill_md:
+                missing.append(table)
+
+        assert not missing, (
+            f"SKILL.md is missing core tables from its overview: {missing}. "
+            f"Update the skill after adding new tables to schema.py."
+        )

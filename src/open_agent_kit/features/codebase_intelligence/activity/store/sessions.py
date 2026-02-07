@@ -441,16 +441,26 @@ def get_sessions_needing_titles(store: ActivityStore, limit: int = 10) -> list[S
     return [Session.from_row(row) for row in cursor.fetchall()]
 
 
-def get_sessions_missing_summaries(store: ActivityStore, limit: int = 10) -> list[Session]:
+def get_sessions_missing_summaries(
+    store: ActivityStore, limit: int = 10, min_activities: int | None = None
+) -> list[Session]:
     """Get completed sessions missing a session_summary memory.
+
+    Only returns sessions that meet the quality threshold (>= min_activities),
+    since low-quality sessions will never be summarized and would otherwise
+    cause an infinite retry loop every background tick.
 
     Args:
         store: The ActivityStore instance.
         limit: Maximum sessions to return.
+        min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
 
     Returns:
         List of Session objects missing summaries.
     """
+    if min_activities is None:
+        min_activities = MIN_SESSION_ACTIVITIES
+
     conn = store._get_connection()
     cursor = conn.execute(
         """
@@ -460,10 +470,11 @@ def get_sessions_missing_summaries(store: ActivityStore, limit: int = 10) -> lis
             SELECT 1 FROM memory_observations m
             WHERE m.session_id = s.id AND m.memory_type = ?
         )
+        AND (SELECT COUNT(*) FROM activities a WHERE a.session_id = s.id) >= ?
         ORDER BY s.created_at_epoch DESC
         LIMIT ?
         """,
-        (MemoryType.SESSION_SUMMARY.value, limit),
+        (MemoryType.SESSION_SUMMARY.value, min_activities, limit),
     )
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -472,6 +483,7 @@ def recover_stale_sessions(
     store: ActivityStore,
     timeout_seconds: int = 3600,
     min_activities: int | None = None,
+    vector_store: Any | None = None,
 ) -> tuple[list[str], list[str]]:
     """Auto-end or delete sessions that have been inactive for too long.
 
@@ -494,6 +506,7 @@ def recover_stale_sessions(
             Pass session_quality.stale_timeout_seconds if available.
         min_activities: Minimum activities threshold. Defaults to MIN_SESSION_ACTIVITIES.
             Pass session_quality.min_activities if available.
+        vector_store: Optional vector store for ChromaDB cleanup on deletion.
 
     Returns:
         Tuple of (recovered_ids, deleted_ids) for state synchronization.
@@ -547,7 +560,7 @@ def recover_stale_sessions(
         # will never be summarized or embedded, so delete them
         if activity_count < min_activities:
             # Low-quality session - delete it entirely
-            delete_session(store, session_id)
+            delete_session(store, session_id, vector_store=vector_store)
             deleted_ids.append(session_id)
         else:
             # Quality session - mark as completed for summarization
@@ -1093,8 +1106,9 @@ def cleanup_low_quality_sessions(
 ) -> list[str]:
     """Delete completed sessions that don't meet the quality threshold.
 
-    This is a manual cleanup trigger for removing sessions that will never
-    be summarized or embedded (< min_activities tool calls).
+    Removes sessions that will never be summarized or embedded
+    (< min_activities tool calls). Called automatically by the background
+    processing loop and also available via the devtools API.
 
     Only deletes COMPLETED sessions to avoid touching active work.
 

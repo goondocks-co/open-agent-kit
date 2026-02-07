@@ -256,17 +256,32 @@ class ActivityStore:
         """Get sessions that need titles generated."""
         return sessions.get_sessions_needing_titles(self, limit)
 
-    def get_sessions_missing_summaries(self, limit: int = 10) -> list[Session]:
+    def get_sessions_missing_summaries(
+        self, limit: int = 10, min_activities: int | None = None
+    ) -> list[Session]:
         """Get completed sessions missing session summaries."""
-        return sessions.get_sessions_missing_summaries(self, limit)
+        return sessions.get_sessions_missing_summaries(self, limit, min_activities)
 
     def recover_stale_sessions(
         self,
         timeout_seconds: int = 3600,
         min_activities: int | None = None,
+        vector_store: Any | None = None,
     ) -> tuple[list[str], list[str]]:
         """Auto-end or delete sessions that have been inactive for too long."""
-        return sessions.recover_stale_sessions(self, timeout_seconds, min_activities)
+        return sessions.recover_stale_sessions(
+            self, timeout_seconds, min_activities, vector_store=vector_store
+        )
+
+    def cleanup_low_quality_sessions(
+        self,
+        vector_store: Any | None = None,
+        min_activities: int | None = None,
+    ) -> list[str]:
+        """Delete completed sessions that don't meet the quality threshold."""
+        return sessions.cleanup_low_quality_sessions(
+            self, vector_store=vector_store, min_activities=min_activities
+        )
 
     def is_suggestion_dismissed(self, session_id: str) -> bool:
         """Check whether the suggested-parent suggestion was dismissed."""

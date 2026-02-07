@@ -1,6 +1,6 @@
 ---
 title: Dashboard
-description: Your primary interface for search, memory management, activity tracking, and configuration.
+description: Your primary interface for managing Codebase Intelligence.
 sidebar:
   order: 2
 ---
@@ -29,55 +29,24 @@ Test and explore semantic search across your entire codebase, memories, and plan
 - **Confidence levels** — Filter by High, Medium, or Low confidence results
 - **Weighted results** — Toggle type-weighted scoring to prioritize the most relevant category
 
-## Activity
+## Feature Pages
 
-Browse and explore your agent's work history.
+Each major dashboard feature has its own dedicated page in the sidebar. Here's a quick overview of what's available:
 
-![Activity page showing recent agent sessions](../../../../assets/images/dashboard-activity.png)
+| Page | What it does |
+|------|-------------|
+| **[Activities](/open-agent-kit/features/codebase-intelligence/activities/)** | Browse sessions, plans, and memories with filtering and bulk actions |
+| **[OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/)** | View built-in agents, run tasks, create custom tasks |
+| **[Logs](/open-agent-kit/features/codebase-intelligence/logs/)** | Live log viewer for daemon and hooks activity |
+| **[Teams](/open-agent-kit/features/codebase-intelligence/teams/)** | Backup, restore, sync, and share with teammates |
+| **[Configuration](/open-agent-kit/features/codebase-intelligence/configuration/)** | Models, session quality, logging, exclusions |
+| **[DevTools](/open-agent-kit/features/codebase-intelligence/devtools/)** | Stats, maintenance, index rebuilds, cleanup |
 
-- **Sessions** — See every agent session with title, status, timestamp, and activity count. Click into a session to see its full timeline of tool calls, prompts, and outputs.
-- **Plans** — Browse implementation plans created during agent sessions
-- **Memories** — View, search, and manage all stored observations (gotchas, decisions, bug fixes, discoveries)
+## UI Features
 
-## Agents
-
-View and manage connected AI agents, including their hook configurations and status.
-
-## Logs
-
-View daemon logs in real time, with support for multiple log files (daemon log, hooks log).
-
-## Team
-
-Manage backups and sharing:
-- **Backup & Restore** — Create backups of your project's intelligence data. Backups are stored in `oak/ci/history/` and can be committed to git for team sharing.
-- **Sharing** — Share session details with teammates via tunnel URLs.
-
-## Configuration
-
-Manage all settings visually — no need to edit config files or run CLI commands.
-
-![The Configuration page](../../../../assets/images/dashboard-config.png)
-
-- **Embedding Settings** — Choose provider (Ollama, LM Studio, OpenAI-compatible), select model, test connection, and auto-detect dimensions
-- **Summarization** — Enable/disable LLM-powered session summaries, configure provider and model
-- **Session Quality** — Set thresholds for minimum activities and stale timeout
-- **Logging** — Configure log rotation (max file size, backup count)
-- **Directory Exclusions** — Add/remove patterns to skip during indexing
-
-## DevTools
-
-Power-user tools for debugging and maintenance:
-- **Rebuild Index** — Force a complete wipe and rebuild of the code index
-- **Processing Reset** — Clear processed state to force re-summarization
-- **Rebuild Memories** — Re-embed all memories from SQLite to ChromaDB
-
-## Help
-
-The dashboard includes built-in contextual help pages covering common tasks and troubleshooting. These help pages complement this documentation site:
-
-- **Dashboard Help** — Task-oriented guides ("how do I change my embedding model?", "how do I share a session?")
-- **This docs site** — Conceptual deep-dives, architecture, developer API reference, and the full CLI reference
+- **Light/dark mode** — Toggle between themes using the sun/moon icon
+- **Collapsible sidebar** — Collapse the navigation sidebar to maximize content area
+- **Built-in Help** — Click **Help** in the sidebar for task-oriented guides
 
 :::tip
 If you're looking for a quick how-to, check the dashboard's Help page first. For understanding *how things work under the hood*, use this docs site.

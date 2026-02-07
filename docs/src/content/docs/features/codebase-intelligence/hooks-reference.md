@@ -135,4 +135,4 @@ grep "Deduped" .oak/ci/daemon.log
 
 - [Session Lifecycle](/open-agent-kit/features/codebase-intelligence/session-lifecycle/) — Session state management and recovery
 - [Memory](/open-agent-kit/features/codebase-intelligence/memory/) — How memories are stored and retrieved
-- [Developer API](/open-agent-kit/features/codebase-intelligence/developer-api/) — REST endpoints
+- [API Reference](/open-agent-kit/features/codebase-intelligence/developer-api/) — REST endpoints

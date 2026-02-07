@@ -94,10 +94,8 @@ Provide:
 
 | Topic | Documentation |
 |-------|---------------|
-| Architecture & patterns | [Architecture](https://goondocks-co.github.io/open-agent-kit/architecture/) |
+| Architecture & patterns | [Architecture](docs/dev/architecture.md) |
 | Coding standards | [Constitution](oak/constitution.md) |
-| Release process | [Releasing](https://goondocks-co.github.io/open-agent-kit/development/releasing/) |
-| Feature development | [Feature Development](https://goondocks-co.github.io/open-agent-kit/development/features/) |
 
 ## Questions?
 

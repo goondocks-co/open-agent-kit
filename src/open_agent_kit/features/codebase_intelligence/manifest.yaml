@@ -59,6 +59,7 @@ commands:
 skills:
   - finding-related-code            # Find related code and discover component relationships
   - analyzing-code-change-impacts   # Assess change impact semantically
+  - querying-oak-databases          # Query CI SQLite database with ready-to-use schema and queries
 
 # MCP tools are available but optional - CLI commands (oak ci) are preferred
 # The daemon exposes MCP tools for agents that don't support Bash:

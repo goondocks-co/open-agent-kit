@@ -816,6 +816,7 @@ class ActivityProcessor:
                 recovered_ids, deleted_ids = self.activity_store.recover_stale_sessions(
                     timeout_seconds=self.stale_timeout_seconds,
                     min_activities=self.min_session_activities,
+                    vector_store=self.vector_store,
                 )
                 if deleted_ids:
                     logger.info(
@@ -839,10 +840,25 @@ class ActivityProcessor:
                                 f"Failed to summarize recovered session {session_id[:8]}: {e}"
                             )
 
+                # Cleanup: Delete completed sessions below quality threshold
+                # This catches sessions that ended normally via SessionEnd but had
+                # too few activities to be worth summarizing/embedding.
+                # Must run BEFORE summary generation to avoid wasted LLM calls.
+                cleanup_ids = self.activity_store.cleanup_low_quality_sessions(
+                    vector_store=self.vector_store,
+                    min_activities=self.min_session_activities,
+                )
+                if cleanup_ids:
+                    logger.info(
+                        f"Cleaned up {len(cleanup_ids)} low-quality completed sessions: "
+                        f"{[s[:8] for s in cleanup_ids]}"
+                    )
+
                 # Generate summaries for completed sessions missing summaries
                 if self.summarizer:
                     missing = self.activity_store.get_sessions_missing_summaries(
-                        limit=INJECTION_MAX_SESSION_SUMMARIES
+                        limit=INJECTION_MAX_SESSION_SUMMARIES,
+                        min_activities=self.min_session_activities,
                     )
                     for session in missing:
                         try:

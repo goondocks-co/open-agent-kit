@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart docs-dev docs-build docs-preview dogfood-reset
+.PHONY: help setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset
 
 # Default target
 help:
@@ -52,6 +52,10 @@ help:
 	@echo "    make ui-lint       Run ESLint on UI code"
 	@echo "    make ui-dev        Run UI development server with hot reload"
 	@echo "    make ui-restart    Build UI and restart daemon"
+	@echo ""
+	@echo "  Skills:"
+	@echo "    make skill-build   Generate skill reference files from schema"
+	@echo "    make skill-check   Verify skill files are in sync (for CI)"
 	@echo ""
 	@echo "  Documentation:"
 	@echo "    make docs-dev      Run docs site with hot reload (development)"
@@ -191,6 +195,18 @@ ui-dev:
 # Combo target: build UI and restart daemon (for UI development workflow)
 ui-restart: ui-build ci-restart
 	@echo "UI rebuilt and daemon restarted."
+
+# Skill asset generation targets
+#
+# Some skills include generated reference files (e.g., database schema docs).
+# Generators are auto-discovered: features/*/skills/*/generate_*.py
+# Pattern mirrors ui-build/ui-check for frontend assets.
+
+skill-build:
+	uv run python scripts/build_skill_assets.py
+
+skill-check:
+	uv run python scripts/build_skill_assets.py --check
 
 # Documentation site targets
 docs-dev:

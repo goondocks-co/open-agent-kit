@@ -40,6 +40,21 @@ python3 -m pip show oak-ci
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+## Something feels broken
+
+`oak init` is idempotent and safe to re-run. It's the first thing to try when something isn't working:
+
+```bash
+oak init          # Re-run initialization to repair setup
+```
+
+For CI-specific issues after an upgrade, `oak upgrade` followed by `oak ci sync` is the standard healing path:
+
+```bash
+oak upgrade       # Update templates and agent commands
+oak ci sync       # Sync daemon, apply migrations, re-index if needed
+```
+
 ## Changes not taking effect (editable install)
 
 If you're developing OAK and changes aren't reflected:
@@ -69,11 +84,26 @@ Run `oak init` first to initialize the project.
 ## AI agent commands not showing up
 
 ```bash
-# Add an agent to existing installation
+# Re-run init to install agent commands
 oak init --agent claude
 ```
 
 Agent commands are installed in their native directories (`.claude/commands/`, `.github/agents/`, etc.).
+
+## Daemon won't start
+
+Check if the daemon is already running:
+
+```bash
+oak ci status
+```
+
+If the port is in use or the daemon is in a bad state:
+
+```bash
+oak ci stop       # Stop any existing daemon
+oak ci start      # Start fresh
+```
 
 ## Uninstallation
 

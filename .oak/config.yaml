@@ -24,6 +24,7 @@ skills:
   - finding-related-code
   - creating-rfcs
   - reviewing-rfcs
+  - querying-oak-databases
   auto_install: true
 codebase_intelligence:
   embedding:

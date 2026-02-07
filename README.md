@@ -79,7 +79,7 @@ pip install oak-ci     # Alternative
 
 ## How It Works
 
-OAK runs a lightweight local daemon that indexes your codebase using AST-aware chunking (tree-sitter) and stores observations in a local vector database (ChromaDB + SQLite). AI agents connect via MCP tools or agent hooks to search code semantically, recall past decisions, and auto-capture new learnings. See the [Architecture](https://goondocks-co.github.io/open-agent-kit/architecture/) page for details.
+OAK runs a lightweight local daemon that indexes your codebase using AST-aware chunking (tree-sitter) and stores observations in a local vector database (ChromaDB + SQLite). AI agents connect via MCP tools or agent hooks to search code semantically, recall past decisions, and auto-capture new learnings. See the [Architecture](docs/dev/architecture.md) document for details.
 
 ## Documentation
 
@@ -88,9 +88,8 @@ Full documentation is available at **[goondocks-co.github.io/open-agent-kit](htt
 Key pages:
 - [Getting Started](https://goondocks-co.github.io/open-agent-kit/)
 - [CLI Reference](https://goondocks-co.github.io/open-agent-kit/cli/)
-- [Architecture](https://goondocks-co.github.io/open-agent-kit/architecture/)
 - [MCP Tools Reference](https://goondocks-co.github.io/open-agent-kit/api/mcp-tools/)
-- [Feature Development](https://goondocks-co.github.io/open-agent-kit/development/features/)
+- [Architecture](docs/dev/architecture.md) (contributor docs)
 
 ## Development
 

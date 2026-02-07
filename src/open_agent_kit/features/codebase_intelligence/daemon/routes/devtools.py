@@ -278,10 +278,10 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
     def _run_compaction() -> None:
         """Background task to run compaction with fresh VectorStore.
 
-        This creates a NEW VectorStore instance instead of reusing the existing one.
-        This is necessary because ChromaDB's Rust/SQLite backend doesn't properly
-        reinitialize after hard_reset(), causing "attempt to write a readonly database"
-        errors.
+        Detaches the old VectorStore from state before cleanup to prevent
+        concurrent requests (health checks, status polls) from calling
+        _ensure_initialized() on the nulled-out client, which would create
+        a new PersistentClient that races with the directory deletion.
         """
         from open_agent_kit.features.codebase_intelligence.activity.processor.indexing import (
             rebuild_chromadb_from_sqlite,
@@ -308,21 +308,29 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
                         except OSError:
                             pass
 
-            # 3. Close the old VectorStore client
-            if state.vector_store and state.vector_store._client:
+            # 3. Detach old VectorStore from state FIRST to prevent concurrent
+            #    requests (health checks, status polls) from re-initializing
+            #    the client via _ensure_initialized() during cleanup.
+            old_vector_store = state.vector_store
+            state.vector_store = None
+            state.invalidate_retrieval_engine()
+
+            # 4. Close the old VectorStore client
+            if old_vector_store and old_vector_store._client:
                 try:
-                    if hasattr(state.vector_store._client, "reset"):
-                        state.vector_store._client.reset()
+                    if hasattr(old_vector_store._client, "reset"):
+                        old_vector_store._client.reset()
                 except Exception as e:
                     logger.debug(f"Client reset failed (expected): {e}")
 
-                # Clear references
-                state.vector_store._code_collection = None
-                state.vector_store._memory_collection = None
-                state.vector_store._session_summaries_collection = None
-                state.vector_store._client = None
+                old_vector_store._code_collection = None
+                old_vector_store._memory_collection = None
+                old_vector_store._session_summaries_collection = None
+                old_vector_store._client = None
 
-            # 4. Delete ChromaDB directory directly
+            del old_vector_store
+
+            # 5. Delete ChromaDB directory directly
             time.sleep(0.5)  # Brief pause for OS to release handles
             if chroma_path_capture.exists():
                 shutil.rmtree(chroma_path_capture)
@@ -330,7 +338,7 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
                     f"Compaction: deleted ChromaDB directory ({bytes_freed / 1024 / 1024:.1f} MB)"
                 )
 
-            # 5. Create fresh VectorStore instance
+            # 6. Create fresh VectorStore instance
             if not state.embedding_chain:
                 raise RuntimeError("Embedding chain not initialized")
 
@@ -342,16 +350,15 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
             new_vector_store._ensure_initialized()
             logger.info("Compaction: created fresh VectorStore")
 
-            # 6. Update state references
+            # 7. Update state references (re-enables concurrent access)
             state.vector_store = new_vector_store
-            state.invalidate_retrieval_engine()
 
-            # 7. Update indexer to use new VectorStore
+            # 8. Update indexer to use new VectorStore
             if state.indexer:
                 state.indexer.vector_store = new_vector_store
                 logger.info("Compaction: updated indexer with new VectorStore")
 
-            # 8. Re-embed session summaries from SQLite
+            # 9. Re-embed session summaries from SQLite
             sessions_processed, sessions_embedded = reembed_session_summaries(
                 activity_store,
                 new_vector_store,
@@ -360,7 +367,7 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
                 f"Compaction: re-embedded {sessions_embedded}/{sessions_processed} session summaries"
             )
 
-            # 9. Re-embed memories from SQLite
+            # 10. Re-embed memories from SQLite
             memory_stats = rebuild_chromadb_from_sqlite(
                 activity_store=activity_store,
                 vector_store=new_vector_store,
@@ -370,16 +377,16 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
             )
             logger.info(f"Compaction: re-embedded {memory_stats.get('embedded', 0)} memories")
 
-            # 10. Re-index plans
+            # 11. Re-index plans
             plan_stats = rebuild_plan_index(activity_store, new_vector_store, batch_size=50)
             logger.info(f"Compaction: re-indexed {plan_stats.get('indexed', 0)} plans")
 
-            # 11. Restart file watcher with new indexer
+            # 12. Restart file watcher with new indexer
             if state.file_watcher:
                 state.file_watcher.start()
                 logger.info("Compaction: restarted file watcher")
 
-            # 12. Rebuild code index
+            # 13. Rebuild code index
             logger.info("Compaction: starting code index rebuild...")
             state.run_index_build(full_rebuild=True)
             logger.info("Compaction: code index rebuild complete")
@@ -676,24 +683,32 @@ async def database_maintenance(
                             except OSError:
                                 pass
 
-                # 3. Close old client
-                if state.vector_store and state.vector_store._client:
+                # 3. Detach old VectorStore from state FIRST to prevent
+                #    concurrent requests from re-initializing the client.
+                old_vector_store = state.vector_store
+                state.vector_store = None
+                state.invalidate_retrieval_engine()
+
+                # 4. Close old client
+                if old_vector_store and old_vector_store._client:
                     try:
-                        if hasattr(state.vector_store._client, "reset"):
-                            state.vector_store._client.reset()
+                        if hasattr(old_vector_store._client, "reset"):
+                            old_vector_store._client.reset()
                     except Exception:
                         pass
-                    state.vector_store._code_collection = None
-                    state.vector_store._memory_collection = None
-                    state.vector_store._session_summaries_collection = None
-                    state.vector_store._client = None
+                    old_vector_store._code_collection = None
+                    old_vector_store._memory_collection = None
+                    old_vector_store._session_summaries_collection = None
+                    old_vector_store._client = None
 
-                # 4. Delete directory
+                del old_vector_store
+
+                # 5. Delete directory
                 time.sleep(0.5)
                 if chroma_path_for_maintenance.exists():
                     shutil.rmtree(chroma_path_for_maintenance)
 
-                # 5. Create fresh VectorStore
+                # 6. Create fresh VectorStore
                 if not state.embedding_chain:
                     raise RuntimeError("Embedding chain not initialized")
 
@@ -703,21 +718,20 @@ async def database_maintenance(
                 )
                 new_vector_store._ensure_initialized()
 
-                # 6. Update state
+                # 7. Update state (re-enables concurrent access)
                 state.vector_store = new_vector_store
-                state.invalidate_retrieval_engine()
 
-                # 7. Update indexer with new VectorStore
+                # 8. Update indexer with new VectorStore
                 if state.indexer:
                     state.indexer.vector_store = new_vector_store
 
-                # 8. Re-embed session summaries
+                # 9. Re-embed session summaries
                 sessions_processed, sessions_embedded = reembed_session_summaries(
                     activity_store,
                     new_vector_store,
                 )
 
-                # 9. Re-embed memories
+                # 10. Re-embed memories
                 memory_stats = rebuild_chromadb_from_sqlite(
                     activity_store=activity_store,
                     vector_store=new_vector_store,
@@ -726,10 +740,10 @@ async def database_maintenance(
                     clear_chromadb_first=False,
                 )
 
-                # 10. Re-index plans
+                # 11. Re-index plans
                 rebuild_plan_index(activity_store, new_vector_store, batch_size=50)
 
-                # 11. Restart file watcher
+                # 12. Restart file watcher
                 if state.file_watcher:
                     state.file_watcher.start()
 
@@ -738,7 +752,7 @@ async def database_maintenance(
                     f"{memory_stats.get('embedded', 0)} memories re-embedded"
                 )
 
-                # 12. Rebuild code index
+                # 13. Rebuild code index
                 logger.info("Compaction: starting code index rebuild...")
                 state.run_index_build(full_rebuild=True)
                 logger.info("Compaction: code index rebuild complete")

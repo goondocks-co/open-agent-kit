@@ -64,7 +64,7 @@ export default function SessionList() {
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Terminal className="w-4 h-4" />
-                    <span>Sessions from Claude Code</span>
+                    <span>Coding agent sessions</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
