@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { API_BASE } from "@/lib/api";
+import { fetchJson, deleteJson } from "@/lib/api";
 import {
     getDeleteSessionEndpoint,
     getDeleteBatchEndpoint,
@@ -36,22 +36,6 @@ interface DeleteActivityResponse extends DeleteResponse {
 type DeleteMemoryResponse = DeleteResponse;
 
 // =============================================================================
-// Delete Functions
-// =============================================================================
-
-async function deleteResource<T>(endpoint: string): Promise<T> {
-    const url = `${API_BASE}${endpoint}`;
-    const response = await fetch(url, { method: "DELETE" });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Delete failed: ${response.status} - ${error}`);
-    }
-
-    return response.json();
-}
-
-// =============================================================================
 // Delete Hooks
 // =============================================================================
 
@@ -64,7 +48,7 @@ export function useDeleteSession() {
 
     return useMutation<DeleteSessionResponse, Error, string>({
         mutationFn: (sessionId: string) =>
-            deleteResource<DeleteSessionResponse>(getDeleteSessionEndpoint(sessionId)),
+            deleteJson<DeleteSessionResponse>(getDeleteSessionEndpoint(sessionId)),
         onSuccess: () => {
             // Invalidate sessions list
             queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -85,7 +69,7 @@ export function useDeletePromptBatch() {
 
     return useMutation<DeleteBatchResponse, Error, { batchId: number; sessionId: string }>({
         mutationFn: ({ batchId }) =>
-            deleteResource<DeleteBatchResponse>(getDeleteBatchEndpoint(batchId)),
+            deleteJson<DeleteBatchResponse>(getDeleteBatchEndpoint(batchId)),
         onSuccess: (_data, { sessionId }) => {
             // Invalidate session detail
             queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
@@ -104,7 +88,7 @@ export function useDeleteActivity() {
 
     return useMutation<DeleteActivityResponse, Error, { activityId: number; batchId: string }>({
         mutationFn: ({ activityId }) =>
-            deleteResource<DeleteActivityResponse>(getDeleteActivityEndpoint(activityId)),
+            deleteJson<DeleteActivityResponse>(getDeleteActivityEndpoint(activityId)),
         onSuccess: (_data, { batchId }) => {
             // Invalidate batch activities
             queryClient.invalidateQueries({ queryKey: ["batch_activities", batchId] });
@@ -123,7 +107,7 @@ export function useDeleteMemory() {
 
     return useMutation<DeleteMemoryResponse, Error, string>({
         mutationFn: (memoryId: string) =>
-            deleteResource<DeleteMemoryResponse>(getDeleteMemoryEndpoint(memoryId)),
+            deleteJson<DeleteMemoryResponse>(getDeleteMemoryEndpoint(memoryId)),
         onSuccess: () => {
             // Invalidate memories list
             queryClient.invalidateQueries({ queryKey: ["memories"] });
@@ -146,17 +130,6 @@ interface PromoteBatchResponse {
     message: string;
 }
 
-async function postResource<T>(endpoint: string): Promise<T> {
-    const url = `${API_BASE}${endpoint}`;
-    const response = await fetch(url, { method: "POST" });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Promote failed: ${response.status} - ${error}`);
-    }
-
-    return response.json();
-}
 
 /**
  * Hook to promote an agent batch to extract memories.
@@ -168,7 +141,7 @@ export function usePromoteBatch() {
 
     return useMutation<PromoteBatchResponse, Error, { batchId: number; sessionId: string }>({
         mutationFn: ({ batchId }) =>
-            postResource<PromoteBatchResponse>(getPromoteBatchEndpoint(batchId)),
+            fetchJson<PromoteBatchResponse>(getPromoteBatchEndpoint(batchId), { method: "POST" }),
         onSuccess: (_data, { sessionId }) => {
             // Invalidate session detail to refresh batch classification
             queryClient.invalidateQueries({ queryKey: ["session", sessionId] });

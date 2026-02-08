@@ -3,6 +3,8 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, HTMLResponse
 
+from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+
 router = APIRouter(tags=["ui"])
 
 static_path = Path(__file__).parent.parent / "static"
@@ -59,4 +61,13 @@ async def dashboard(rest: str | None = None) -> HTMLResponse:
 
     # Read index content (Vite handles cache busting via hashed filenames)
     content = index_path.read_text()
+
+    # Inject auth token as meta tag so the UI JS can read it
+    state = get_state()
+    if state.auth_token:
+        content = content.replace(
+            "</head>",
+            f'<meta name="oak-auth-token" content="{state.auth_token}" />\n</head>',
+        )
+
     return HTMLResponse(content=content)

@@ -175,6 +175,8 @@ class DaemonState:
     agent_registry: "AgentRegistry | None" = None
     agent_executor: "AgentExecutor | None" = None
     agent_scheduler: "AgentScheduler | None" = None
+    # Authentication token for API security (set from OAK_CI_TOKEN env var)
+    auth_token: str | None = None
     # Tunnel sharing
     tunnel_provider: "TunnelProvider | None" = None
     _dynamic_cors_origins: set[str] = field(default_factory=set, init=False, repr=False)
@@ -464,6 +466,7 @@ class DaemonState:
         self.agent_registry = None
         self.agent_executor = None
         self.agent_scheduler = None
+        self.auth_token = None
         self.tunnel_provider = None
         self._dynamic_cors_origins = set()
 

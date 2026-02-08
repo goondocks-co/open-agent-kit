@@ -23,7 +23,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # These imports must be after logging setup to prevent stdout corruption
 from open_agent_kit.config.paths import OAK_DIR  # noqa: E402
-from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR  # noqa: E402
+from open_agent_kit.features.codebase_intelligence.constants import (  # noqa: E402
+    CI_AUTH_SCHEME_BEARER,
+    CI_DATA_DIR,
+    CI_TOKEN_FILE,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.manager import (  # noqa: E402
     DaemonManager,
     get_project_port,
@@ -44,6 +48,21 @@ def create_mcp_server(project_root: Path) -> FastMCP:
     ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
     port = get_project_port(project_root, ci_data_dir)
     base_url = f"http://localhost:{port}"
+
+    # Auth token state — read lazily and refreshed on 401
+    token_path = ci_data_dir / CI_TOKEN_FILE
+    auth_state: dict[str, str | None] = {"token": None}
+
+    def _read_auth_token() -> str | None:
+        """Read auth token from the daemon token file."""
+        try:
+            if token_path.is_file():
+                return token_path.read_text().strip() or None
+        except Exception:
+            pass
+        return None
+
+    auth_state["token"] = _read_auth_token()
 
     mcp = FastMCP(
         "OAK Codebase Intelligence",
@@ -100,11 +119,14 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         url = f"{base_url}{endpoint}"
 
         def _make_request() -> dict[str, Any]:
+            req_headers: dict[str, str] = {}
+            if auth_state["token"]:
+                req_headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_state['token']}"
             with httpx.Client(timeout=30.0) as client:
                 if data is not None:
-                    response = client.post(url, json=data)
+                    response = client.post(url, json=data, headers=req_headers)
                 else:
-                    response = client.get(url)
+                    response = client.get(url, headers=req_headers)
                 response.raise_for_status()
                 return cast(dict[str, Any], response.json())
 
@@ -113,7 +135,8 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         except httpx.ConnectError:
             # Daemon not running - try to auto-start
             if _ensure_daemon_running():
-                # Retry after successful start
+                # Re-read token after daemon (re)start — new token generated
+                auth_state["token"] = _read_auth_token()
                 try:
                     return _make_request()
                 except httpx.ConnectError:
@@ -125,6 +148,14 @@ def create_mcp_server(project_root: Path) -> FastMCP:
                 f"Check logs: {ci_data_dir / 'daemon.log'}"
             ) from None
         except httpx.HTTPStatusError as e:
+            # 401 = stale token (daemon restarted with new token) — refresh and retry once
+            if e.response.status_code == 401:
+                auth_state["token"] = _read_auth_token()
+                if auth_state["token"]:
+                    try:
+                        return _make_request()
+                    except httpx.HTTPStatusError:
+                        pass  # Fall through to error
             raise Exception(f"Daemon error: {e.response.status_code} - {e.response.text}") from e
 
     @mcp.tool()

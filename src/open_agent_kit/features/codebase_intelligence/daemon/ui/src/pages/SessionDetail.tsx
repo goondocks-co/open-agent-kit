@@ -213,6 +213,15 @@ export default function SessionDetail() {
         }
     };
 
+    // Hooks must be called unconditionally (before any early returns)
+    const allBatches = data?.prompt_batches ?? [];
+    const planBatches = allBatches.filter(batch => batch.source_type === "plan");
+    const refreshablePlans = useMemo(
+        () => planBatches.map((b) => ({ id: parseInt(b.id), file_path: b.plan_file_path })),
+        [planBatches],
+    );
+    useAutoRefreshPlans(refreshablePlans);
+
     if (isLoading) return <div>Loading session details...</div>;
     if (!data) return <div>Session not found</div>;
 
@@ -229,16 +238,6 @@ export default function SessionDetail() {
     const systemBatchCount = prompt_batches.filter(
         batch => batch.source_type === "system"
     ).length;
-
-    // Get plan batches for the Plans section
-    const planBatches = prompt_batches.filter(batch => batch.source_type === "plan");
-
-    // Auto-refresh plans from disk when viewed (graceful — no errors if file missing)
-    const refreshablePlans = useMemo(
-        () => planBatches.map((b) => ({ id: parseInt(b.id), file_path: b.plan_file_path })),
-        [planBatches],
-    );
-    useAutoRefreshPlans(refreshablePlans);
 
     return (
         <div className="space-y-6">

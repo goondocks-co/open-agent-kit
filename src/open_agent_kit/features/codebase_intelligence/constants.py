@@ -802,6 +802,38 @@ NGROK_LOG_KEY_MSG: Final[str] = "msg"
 # because they're based on semantic similarity, not temporal proximity.
 RELATED_SUGGESTION_MAX_AGE_DAYS: Final[int] = 365
 
+# =============================================================================
+# Daemon API Security
+# =============================================================================
+
+# Token file for bearer token authentication (stored in .oak/ci/)
+CI_TOKEN_FILE: Final[str] = "daemon.token"
+
+# Environment variable used to pass the auth token to the daemon subprocess
+CI_AUTH_ENV_VAR: Final[str] = "OAK_CI_TOKEN"
+
+# Bearer authentication scheme and header
+CI_AUTH_SCHEME_BEARER: Final[str] = "Bearer"
+CI_AUTH_HEADER_NAME: Final[str] = "authorization"
+
+# Maximum request body size (10 MB) to prevent memory exhaustion
+CI_MAX_REQUEST_BODY_BYTES: Final[int] = 10 * 1024 * 1024
+
+# Header required for destructive devtools operations
+CI_DEVTOOLS_CONFIRM_HEADER: Final[str] = "x-devtools-confirm"
+
+# File permissions for token file (owner read/write only)
+CI_TOKEN_FILE_PERMISSIONS: Final[int] = 0o600
+
+# Error messages for auth middleware
+CI_AUTH_ERROR_MISSING: Final[str] = "Missing Authorization header"
+CI_AUTH_ERROR_INVALID_SCHEME: Final[str] = "Invalid authentication scheme. Use: Bearer <token>"
+CI_AUTH_ERROR_INVALID_TOKEN: Final[str] = "Invalid authentication token"
+CI_AUTH_ERROR_PAYLOAD_TOO_LARGE: Final[str] = "Request body too large"
+CI_DEVTOOLS_ERROR_CONFIRM_REQUIRED: Final[str] = (
+    "Destructive operation requires X-Devtools-Confirm: true header"
+)
+
 
 # =============================================================================
 # Confidence Levels (model-agnostic)

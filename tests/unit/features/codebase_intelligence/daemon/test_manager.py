@@ -17,9 +17,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_AUTH_ENV_VAR,
     CI_LOG_FILE,
     CI_NULL_DEVICE_POSIX,
     CI_NULL_DEVICE_WINDOWS,
+    CI_TOKEN_FILE,
+    CI_TOKEN_FILE_PERMISSIONS,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.manager import (
     DEFAULT_PORT,
@@ -1039,6 +1042,182 @@ class TestDaemonManagerCleanup:
         manager._cleanup_files()
 
         assert not manager.pid_file.exists()
+
+    def test_cleanup_files_removes_token_file(self, tmp_path: Path):
+        """Test that _cleanup_files removes the token file."""
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        manager._ensure_data_dir()
+        manager.token_file.write_text("test-token")
+
+        assert manager.token_file.exists()
+
+        manager._cleanup_files()
+
+        assert not manager.token_file.exists()
+
+    def test_cleanup_files_handles_missing_token_file(self, tmp_path: Path):
+        """Test that _cleanup_files handles missing token file gracefully."""
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        manager._ensure_data_dir()
+
+        # Should not raise even when token file doesn't exist
+        manager._cleanup_files()
+
+        assert not manager.token_file.exists()
+
+
+# =============================================================================
+# Token Lifecycle Tests
+# =============================================================================
+
+
+class TestDaemonManagerTokenLifecycle:
+    """Test auth token generation, file writing, and permissions."""
+
+    def test_token_file_attribute_set_on_init(self, tmp_path: Path):
+        """Test that token_file path is set during initialization."""
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+
+        assert manager.token_file == tmp_path / ".oak" / "ci" / CI_TOKEN_FILE
+
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
+    )
+    @patch("subprocess.Popen")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._wait_for_startup"
+    )
+    def test_start_creates_token_file(
+        self,
+        mock_wait,
+        mock_popen,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
+    ):
+        """Test that start() creates a token file."""
+        mock_check_deps.return_value = []
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        mock_is_running.return_value = False
+        mock_port_in_use.return_value = False
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        manager.start(wait=False)
+
+        assert manager.token_file.exists()
+
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
+    )
+    @patch("subprocess.Popen")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._wait_for_startup"
+    )
+    def test_start_token_file_has_correct_permissions(
+        self,
+        mock_wait,
+        mock_popen,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
+    ):
+        """Test that token file has 0600 permissions (owner-only)."""
+        mock_check_deps.return_value = []
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        mock_is_running.return_value = False
+        mock_port_in_use.return_value = False
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        manager.start(wait=False)
+
+        file_mode = oct(manager.token_file.stat().st_mode & 0o777)
+        assert file_mode == oct(CI_TOKEN_FILE_PERMISSIONS)
+
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
+    )
+    @patch("subprocess.Popen")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._wait_for_startup"
+    )
+    def test_start_token_is_64_hex_chars(
+        self,
+        mock_wait,
+        mock_popen,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
+    ):
+        """Test that generated token is 64 hex characters (secrets.token_hex(32))."""
+        mock_check_deps.return_value = []
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        mock_is_running.return_value = False
+        mock_port_in_use.return_value = False
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        manager.start(wait=False)
+
+        token = manager.token_file.read_text()
+        assert len(token) == 64
+        # Should be valid hex
+        int(token, 16)
+
+    @patch("open_agent_kit.features.codebase_intelligence.deps.check_ci_dependencies")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager.is_running")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_port_in_use"
+    )
+    @patch("subprocess.Popen")
+    @patch(
+        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._wait_for_startup"
+    )
+    def test_start_passes_token_as_env_var(
+        self,
+        mock_wait,
+        mock_popen,
+        mock_port_in_use,
+        mock_is_running,
+        mock_check_deps,
+        tmp_path: Path,
+    ):
+        """Test that start() passes OAK_CI_TOKEN env var to the subprocess."""
+        mock_check_deps.return_value = []
+        manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
+        mock_is_running.return_value = False
+        mock_port_in_use.return_value = False
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        manager.start(wait=False)
+
+        # Check the env dict passed to Popen
+        popen_call = mock_popen.call_args
+        env = popen_call.kwargs.get("env") or popen_call[1].get("env")
+        assert env is not None
+        assert CI_AUTH_ENV_VAR in env
+        # Token in env should match token in file
+        token = manager.token_file.read_text()
+        assert env[CI_AUTH_ENV_VAR] == token
 
 
 # =============================================================================

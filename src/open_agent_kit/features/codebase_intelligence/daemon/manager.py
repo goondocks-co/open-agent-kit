@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from typing import IO, Any
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_AUTH_ENV_VAR,
     CI_DAEMON_LOG_OPEN_MODE,
     CI_DATA_DIR,
     CI_LOG_FALLBACK_MESSAGE,
@@ -23,6 +25,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_PORT_FILE,
     CI_SHARED_PORT_DIR,
     CI_SHARED_PORT_FILE,
+    CI_TOKEN_FILE,
+    CI_TOKEN_FILE_PERMISSIONS,
 )
 from open_agent_kit.utils.platform import (
     acquire_file_lock,
@@ -235,6 +239,7 @@ class DaemonManager:
         self.port = port
         self.ci_data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
         self.pid_file = self.ci_data_dir / CI_PID_FILE
+        self.token_file = self.ci_data_dir / CI_TOKEN_FILE
         self.log_file = self.ci_data_dir / CI_LOG_FILE
         self.lock_file = self.ci_data_dir / LOCK_FILE
         self.base_url = f"http://localhost:{port}"
@@ -531,6 +536,11 @@ class DaemonManager:
 
             self._ensure_data_dir()
 
+            # Generate auth token and write to file (chmod 600)
+            auth_token = secrets.token_hex(32)
+            self.token_file.write_text(auth_token)
+            os.chmod(self.token_file, CI_TOKEN_FILE_PERMISSIONS)
+
             # Build the command to start the daemon
             # We use uvicorn directly with the app factory
             cmd = [
@@ -551,6 +561,7 @@ class DaemonManager:
             # Set environment variables for the daemon
             env = os.environ.copy()
             env["OAK_CI_PROJECT_ROOT"] = str(self.project_root)
+            env[CI_AUTH_ENV_VAR] = auth_token
 
             # Start the process (platform-aware detachment)
             # Redirect stdout/stderr to daemon.log during bootstrap so startup
@@ -712,13 +723,18 @@ class DaemonManager:
         return None
 
     def _cleanup_files(self) -> None:
-        """Clean up PID file on daemon stop.
+        """Clean up PID and token files on daemon stop.
 
         Note: Port file is intentionally preserved. The port is deterministic
         (derived from project path) and keeping the file provides visibility
         for debugging and avoids unnecessary recalculation.
         """
         self._remove_pid()
+        if self.token_file.exists():
+            try:
+                self.token_file.unlink()
+            except OSError:
+                pass
 
     def restart(self) -> bool:
         """Restart the daemon.

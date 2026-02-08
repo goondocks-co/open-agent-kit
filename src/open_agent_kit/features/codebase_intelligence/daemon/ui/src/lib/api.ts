@@ -1,10 +1,27 @@
 export const API_BASE = import.meta.env.DEV ? 'http://localhost:37800' : '';
 
+/** Read the auth token injected by the server into a meta tag (cached after first read). */
+let cachedAuthToken: string | null | undefined;
+function getAuthToken(): string | null {
+    if (cachedAuthToken === undefined) {
+        cachedAuthToken = document.querySelector('meta[name="oak-auth-token"]')?.getAttribute('content') ?? null;
+    }
+    return cachedAuthToken;
+}
+
+/** Headers required for devtools mutating endpoints. */
+export function devtoolsHeaders(): HeadersInit {
+    return { 'X-Devtools-Confirm': 'true' };
+}
+
 export async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
 
+    const token = getAuthToken();
+
     // Merge headers, ensuring Content-Type is set for JSON bodies
     const headers: HeadersInit = {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
         ...options?.headers,
     };

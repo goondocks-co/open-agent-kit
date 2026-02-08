@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchJson } from "@/lib/api";
+import { fetchJson, devtoolsHeaders } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -82,7 +82,7 @@ export default function DevTools() {
     const compactChromaDBFn = useMutation({
         mutationFn: () => fetchJson<{ message?: string; size_before_mb?: number }>(
             API_ENDPOINTS.DEVTOOLS_COMPACT_CHROMADB,
-            { method: "POST" }
+            { method: "POST", headers: devtoolsHeaders() }
         ),
         onSuccess: (data) => {
             setShowCompactDialog(false);
@@ -106,7 +106,7 @@ export default function DevTools() {
     });
 
     const rebuildIndexFn = useMutation({
-        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", body: JSON.stringify({ full_rebuild: true }) }),
+        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_REBUILD_INDEX, { method: "POST", headers: devtoolsHeaders(), body: JSON.stringify({ full_rebuild: true }) }),
         onSuccess: () => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Code index rebuild started in background." });
             queryClient.invalidateQueries({ queryKey: ["status"] });
@@ -117,7 +117,7 @@ export default function DevTools() {
     const reembedSessionsFn = useMutation({
         mutationFn: () => fetchJson<{ success: boolean; sessions_processed: number; sessions_embedded: number; message: string }>(
             API_ENDPOINTS.DEVTOOLS_REEMBED_SESSIONS,
-            { method: "POST" }
+            { method: "POST", headers: devtoolsHeaders() }
         ),
         onSuccess: (data) => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || `Re-embedded ${data.sessions_embedded} session summaries` });
@@ -127,7 +127,7 @@ export default function DevTools() {
     });
 
     const rebuildMemoriesFn = useMutation({
-        mutationFn: (clearFirst: boolean) => fetchJson<{ message?: string }>(API_ENDPOINTS.DEVTOOLS_REBUILD_MEMORIES, { method: "POST", body: JSON.stringify({ full_rebuild: true, clear_chromadb_first: clearFirst }) }),
+        mutationFn: (clearFirst: boolean) => fetchJson<{ message?: string }>(API_ENDPOINTS.DEVTOOLS_REBUILD_MEMORIES, { method: "POST", headers: devtoolsHeaders(), body: JSON.stringify({ full_rebuild: true, clear_chromadb_first: clearFirst }) }),
         onSuccess: (data) => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message || "Memory re-embedding started." });
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
@@ -137,7 +137,7 @@ export default function DevTools() {
     });
 
     const triggerProcessingFn = useMutation({
-        mutationFn: () => fetchJson<{ processed_batches?: number }>(API_ENDPOINTS.DEVTOOLS_TRIGGER_PROCESSING, { method: "POST" }),
+        mutationFn: () => fetchJson<{ processed_batches?: number }>(API_ENDPOINTS.DEVTOOLS_TRIGGER_PROCESSING, { method: "POST", headers: devtoolsHeaders() }),
         onSuccess: (data) => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: `Triggered successfully. Processed ${data.processed_batches} batches.` });
             queryClient.invalidateQueries({ queryKey: ["status"] });
@@ -146,7 +146,7 @@ export default function DevTools() {
     });
 
     const regenerateSummariesFn = useMutation({
-        mutationFn: () => fetchJson<{ status: string; sessions_queued: number; message?: string }>(API_ENDPOINTS.DEVTOOLS_REGENERATE_SUMMARIES, { method: "POST" }),
+        mutationFn: () => fetchJson<{ status: string; sessions_queued: number; message?: string }>(API_ENDPOINTS.DEVTOOLS_REGENERATE_SUMMARIES, { method: "POST", headers: devtoolsHeaders() }),
         onSuccess: (data) => {
             const msg = data.status === "skipped"
                 ? data.message || "No sessions need summaries"
@@ -158,7 +158,7 @@ export default function DevTools() {
     });
 
     const resetProcessingFn = useMutation({
-        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_RESET_PROCESSING, { method: "POST", body: JSON.stringify({ delete_memories: true }) }),
+        mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_RESET_PROCESSING, { method: "POST", headers: devtoolsHeaders(), body: JSON.stringify({ delete_memories: true }) }),
         onSuccess: () => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: "Processing state reset. Observations deleted. Background job will re-process." });
             queryClient.invalidateQueries({ queryKey: ["status"] });
@@ -170,6 +170,7 @@ export default function DevTools() {
     const reprocessDryRunFn = useMutation({
         mutationFn: () => fetchJson<ReprocessDryRunResult>(API_ENDPOINTS.DEVTOOLS_REPROCESS_OBSERVATIONS, {
             method: "POST",
+            headers: devtoolsHeaders(),
             body: JSON.stringify({ mode: "all", dry_run: true })
         }),
         onSuccess: (data) => {
@@ -182,6 +183,7 @@ export default function DevTools() {
     const reprocessObservationsFn = useMutation({
         mutationFn: () => fetchJson<ReprocessResult>(API_ENDPOINTS.DEVTOOLS_REPROCESS_OBSERVATIONS, {
             method: "POST",
+            headers: devtoolsHeaders(),
             body: JSON.stringify({ mode: "all", delete_existing: true, dry_run: false })
         }),
         onSuccess: (data) => {
@@ -200,6 +202,7 @@ export default function DevTools() {
     const maintenanceFn = useMutation({
         mutationFn: () => fetchJson<MaintenanceResult>(API_ENDPOINTS.DEVTOOLS_DATABASE_MAINTENANCE, {
             method: "POST",
+            headers: devtoolsHeaders(),
             body: JSON.stringify(maintenanceOpts)
         }),
         onSuccess: (data) => {
@@ -218,7 +221,7 @@ export default function DevTools() {
     const backfillHashesFn = useMutation({
         mutationFn: () => fetchJson<{ message: string; batches: number; observations: number; activities: number }>(
             API_ENDPOINTS.DEVTOOLS_BACKFILL_HASHES,
-            { method: "POST" }
+            { method: "POST", headers: devtoolsHeaders() }
         ),
         onSuccess: (data) => {
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
@@ -229,7 +232,7 @@ export default function DevTools() {
     const cleanupMinimalSessionsFn = useMutation({
         mutationFn: () => fetchJson<{ status: string; message: string; deleted_count: number; deleted_ids: string[] }>(
             API_ENDPOINTS.DEVTOOLS_CLEANUP_MINIMAL_SESSIONS,
-            { method: "POST" }
+            { method: "POST", headers: devtoolsHeaders() }
         ),
         onSuccess: (data) => {
             setShowCleanupDialog(false);

@@ -1,7 +1,9 @@
-"""Dynamic CORS middleware for the CI daemon.
+"""Middleware for the CI daemon.
 
-Extends Starlette's CORS handling with runtime-configurable origins
-to support tunnel URLs that are only known after the tunnel starts.
+Includes:
+- DynamicCORSMiddleware: Runtime-configurable CORS for tunnel URLs.
+- TokenAuthMiddleware: Bearer token authentication for /api/* routes.
+- RequestSizeLimitMiddleware: Content-Length enforcement to prevent memory exhaustion.
 """
 
 import logging
@@ -14,6 +16,12 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_AUTH_ERROR_INVALID_SCHEME,
+    CI_AUTH_ERROR_INVALID_TOKEN,
+    CI_AUTH_ERROR_MISSING,
+    CI_AUTH_ERROR_PAYLOAD_TOO_LARGE,
+    CI_AUTH_HEADER_NAME,
+    CI_AUTH_SCHEME_BEARER,
     CI_CORS_EMPTY_BODY,
     CI_CORS_HEADER_ALLOW_HEADERS,
     CI_CORS_HEADER_ALLOW_METHODS,
@@ -28,10 +36,34 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CORS_RESPONSE_START_TYPE,
     CI_CORS_SCOPE_HTTP,
     CI_CORS_WILDCARD,
+    CI_MAX_REQUEST_BODY_BYTES,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 logger = logging.getLogger(__name__)
+
+# Paths that are exempt from token authentication.
+# These are served without auth: static assets, favicon, dashboard HTML routes.
+_AUTH_EXEMPT_PREFIXES: tuple[str, ...] = (
+    "/static/",
+    "/favicon.png",
+    "/logo.png",
+)
+
+# Dashboard HTML routes (exact match or prefix match with /).
+# These serve the SPA shell and must be accessible without auth.
+_DASHBOARD_ROUTES: tuple[str, ...] = (
+    "/",
+    "/ui",
+    "/search",
+    "/logs",
+    "/config",
+    "/help",
+    "/activity",
+    "/devtools",
+    "/team",
+    "/agents",
+)
 
 
 class DynamicCORSMiddleware(CORSMiddleware):
@@ -132,3 +164,153 @@ class DynamicCORSMiddleware(CORSMiddleware):
             await send(message)
 
         await self.app(scope, receive, send_with_cors)
+
+
+def _is_auth_exempt(path: str, method: str) -> bool:
+    """Check if a request path is exempt from token authentication.
+
+    Exempt paths include:
+    - GET /api/health (liveness probe)
+    - Static assets (/static/*, /favicon.png, /logo.png)
+    - Dashboard HTML routes (/, /ui, /search, etc. and their sub-routes)
+    - Any non-/api/ path not covered above (future-proof)
+
+    Args:
+        path: The request URL path.
+        method: The HTTP method (GET, POST, etc.).
+
+    Returns:
+        True if the request should bypass authentication.
+    """
+    # Health endpoint is always accessible (liveness probes, CLI health checks)
+    if path == "/api/health" and method == "GET":
+        return True
+
+    # Non-API paths: static assets, favicon, logo
+    for prefix in _AUTH_EXEMPT_PREFIXES:
+        if path.startswith(prefix):
+            return True
+
+    # Dashboard HTML routes (exact or prefix with /)
+    for route in _DASHBOARD_ROUTES:
+        if path == route or path.startswith(route + "/"):
+            return True
+
+    # Only /api/* paths require auth; anything else passes through
+    if not path.startswith("/api/"):
+        return True
+
+    return False
+
+
+async def _send_json_error(send: Send, status: int, detail: str) -> None:
+    """Send a JSON error response via raw ASGI.
+
+    Args:
+        send: The ASGI send callable.
+        status: HTTP status code.
+        detail: Error detail message.
+    """
+    import json
+
+    body = json.dumps({"detail": detail}).encode()
+    await send(
+        {
+            "type": CI_CORS_RESPONSE_START_TYPE,
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": CI_CORS_RESPONSE_BODY_TYPE, "body": body})
+
+
+class TokenAuthMiddleware:
+    """ASGI middleware that validates Bearer token on /api/* routes.
+
+    If ``auth_token`` is None (env var unset), all requests pass through.
+    This enables graceful degradation for manual ``uvicorn`` dev starts
+    where the manager isn't generating tokens.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != CI_CORS_SCOPE_HTTP:
+            await self.app(scope, receive, send)
+            return
+
+        state = get_state()
+
+        # No token configured — pass all requests through (dev mode)
+        if state.auth_token is None:
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
+        method: str = scope.get("method", "GET")
+
+        # Exempt paths bypass auth
+        if _is_auth_exempt(path, method):
+            await self.app(scope, receive, send)
+            return
+
+        # Extract and validate Authorization header
+        headers = Headers(scope=scope)
+        auth_value = headers.get(CI_AUTH_HEADER_NAME)
+
+        if not auth_value:
+            await _send_json_error(send, HTTPStatus.UNAUTHORIZED, CI_AUTH_ERROR_MISSING)
+            return
+
+        # Expect "Bearer <token>"
+        parts = auth_value.split(None, 1)
+        if len(parts) != 2 or parts[0] != CI_AUTH_SCHEME_BEARER:
+            await _send_json_error(send, HTTPStatus.UNAUTHORIZED, CI_AUTH_ERROR_INVALID_SCHEME)
+            return
+
+        if parts[1] != state.auth_token:
+            await _send_json_error(send, HTTPStatus.UNAUTHORIZED, CI_AUTH_ERROR_INVALID_TOKEN)
+            return
+
+        # Token valid — proceed
+        await self.app(scope, receive, send)
+
+
+class RequestSizeLimitMiddleware:
+    """ASGI middleware that enforces a maximum request body size.
+
+    Checks the ``Content-Length`` header and returns 413 if the declared
+    size exceeds ``CI_MAX_REQUEST_BODY_BYTES``.  Requests without a
+    ``Content-Length`` header pass through (chunked transfers are bounded
+    by uvicorn's own limits).
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int = CI_MAX_REQUEST_BODY_BYTES) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != CI_CORS_SCOPE_HTTP:
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        content_length = headers.get("content-length")
+
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_bytes:
+                    await _send_json_error(
+                        send,
+                        HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                        CI_AUTH_ERROR_PAYLOAD_TOO_LARGE,
+                    )
+                    return
+            except ValueError:
+                pass  # Non-numeric Content-Length — let downstream handle it
+
+        await self.app(scope, receive, send)

@@ -834,15 +834,31 @@ def create_app(
         lifespan=lifespan,
     )
 
-    # Add dynamic CORS middleware - localhost origins are static,
-    # tunnel URLs are added/removed at runtime
+    # Read auth token from environment (set by DaemonManager.start())
+    from open_agent_kit.features.codebase_intelligence.constants import CI_AUTH_ENV_VAR
+
+    state.auth_token = os.environ.get(CI_AUTH_ENV_VAR)
+
+    # --- Middleware stack ---
+    # Add order determines nesting: first added = innermost.
+    # Request flow: CORS -> RequestSizeLimit -> TokenAuth -> app
+    # (CORS outermost handles preflight before any auth checks)
     from open_agent_kit.features.codebase_intelligence.daemon.manager import (
         get_project_port,
     )
     from open_agent_kit.features.codebase_intelligence.daemon.middleware import (
         DynamicCORSMiddleware,
+        RequestSizeLimitMiddleware,
+        TokenAuthMiddleware,
     )
 
+    # 1. TokenAuth (innermost — added first)
+    app.add_middleware(TokenAuthMiddleware)
+
+    # 2. RequestSizeLimit (middle)
+    app.add_middleware(RequestSizeLimitMiddleware)
+
+    # 3. CORS (outermost — added last, runs first on requests)
     ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
     port = get_project_port(state.project_root, ci_data_dir)
     allowed_origins = [

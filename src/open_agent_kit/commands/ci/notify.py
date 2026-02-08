@@ -16,8 +16,10 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_NOTIFY_FIELD_TYPE,
     AGENT_NOTIFY_PAYLOAD_DEFAULT,
     AGENT_NOTIFY_PAYLOAD_JOIN_SEPARATOR,
+    CI_AUTH_SCHEME_BEARER,
     CI_CORS_HOST_LOCALHOST,
     CI_DATA_DIR,
+    CI_TOKEN_FILE,
     DAEMON_START_TIMEOUT_SECONDS,
     ENCODING_UTF8,
     HTTP_HEADER_CONTENT_TYPE,
@@ -106,13 +108,31 @@ def ci_notify(
         except Exception:
             pass
 
+    def _get_auth_token() -> str | None:
+        """Read the daemon auth token from the token file.
+
+        Returns:
+            The token string, or None if the file doesn't exist or can't be read.
+        """
+        try:
+            token_path = ci_data_dir / CI_TOKEN_FILE
+            if token_path.is_file():
+                return token_path.read_text().strip() or None
+        except Exception:
+            pass
+        return None
+
     def _call_api(payload: dict[str, Any]) -> dict[str, Any]:
         url = f"http://{CI_CORS_HOST_LOCALHOST}:{port}{AGENT_NOTIFY_ENDPOINT}"
         data = json_module.dumps(payload).encode(ENCODING_UTF8)
+        headers: dict[str, str] = {HTTP_HEADER_CONTENT_TYPE: OTLP_CONTENT_TYPE_JSON}
+        token = _get_auth_token()
+        if token:
+            headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {token}"
         req = urllib.request.Request(
             url,
             data=data,
-            headers={HTTP_HEADER_CONTENT_TYPE: OTLP_CONTENT_TYPE_JSON},
+            headers=headers,
             method=HTTP_METHOD_POST,
         )
         try:

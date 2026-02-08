@@ -6,19 +6,46 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.activity.store import sessions
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_DEVTOOLS_CONFIRM_HEADER,
+    CI_DEVTOOLS_ERROR_CONFIRM_REQUIRED,
     DEFAULT_SUMMARIZATION_MODEL,
     MIN_SESSION_ACTIVITIES,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
-router = APIRouter(tags=["devtools"])
 logger = logging.getLogger(__name__)
+
+
+def require_devtools_confirm(
+    x_devtools_confirm: str | None = Header(None, alias=CI_DEVTOOLS_CONFIRM_HEADER),
+) -> None:
+    """FastAPI dependency that gates destructive devtools operations.
+
+    Requires the ``X-Devtools-Confirm: true`` header to be present.
+    This prevents accidental triggering of destructive operations
+    from browser navigation or automated crawlers.
+
+    Raises:
+        HTTPException: 403 if the confirmation header is missing or not "true".
+    """
+    if x_devtools_confirm != "true":
+        raise HTTPException(
+            status_code=403,
+            detail=CI_DEVTOOLS_ERROR_CONFIRM_REQUIRED,
+        )
+
+
+router = APIRouter(tags=["devtools"])
+
+# Per-endpoint dependency for destructive operations.
+# Applied to POST routes only; GET routes (e.g. memory-stats) are read-only.
+_devtools_confirm = [Depends(require_devtools_confirm)]
 
 
 class RebuildIndexRequest(BaseModel):
@@ -40,7 +67,7 @@ class DatabaseMaintenanceRequest(BaseModel):
     compact_chromadb: bool = False  # Rebuild ChromaDB to reclaim space (slower)
 
 
-@router.post("/api/devtools/backfill-hashes")
+@router.post("/api/devtools/backfill-hashes", dependencies=_devtools_confirm)
 async def backfill_content_hashes() -> dict[str, Any]:
     """Backfill content_hash for records missing them.
 
@@ -129,7 +156,7 @@ async def backfill_content_hashes() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Database error: {e}") from e
 
 
-@router.post("/api/devtools/rebuild-index")
+@router.post("/api/devtools/rebuild-index", dependencies=_devtools_confirm)
 async def rebuild_index(
     request: RebuildIndexRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
@@ -149,7 +176,7 @@ async def rebuild_index(
     return {"status": "started", "message": "Index rebuild started in background"}
 
 
-@router.post("/api/devtools/reset-processing")
+@router.post("/api/devtools/reset-processing", dependencies=_devtools_confirm)
 async def reset_processing(request: ResetProcessingRequest) -> dict[str, Any]:
     """Reset processing state to allow re-generation of memories."""
     state = get_state()
@@ -198,7 +225,7 @@ async def reset_processing(request: ResetProcessingRequest) -> dict[str, Any]:
     }
 
 
-@router.post("/api/devtools/trigger-processing")
+@router.post("/api/devtools/trigger-processing", dependencies=_devtools_confirm)
 async def trigger_processing() -> dict[str, Any]:
     """Manually trigger the background processing loop immediately."""
     state = get_state()
@@ -225,7 +252,7 @@ class RebuildMemoriesRequest(BaseModel):
     clear_chromadb_first: bool = False
 
 
-@router.post("/api/devtools/compact-chromadb")
+@router.post("/api/devtools/compact-chromadb", dependencies=_devtools_confirm)
 async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
     """Compact all ChromaDB by deleting directory and rebuilding from SQLite.
 
@@ -415,7 +442,7 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
     }
 
 
-@router.post("/api/devtools/rebuild-memories")
+@router.post("/api/devtools/rebuild-memories", dependencies=_devtools_confirm)
 async def rebuild_memories(
     request: RebuildMemoriesRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
@@ -547,7 +574,7 @@ async def get_memory_stats() -> dict[str, Any]:
     }
 
 
-@router.post("/api/devtools/database-maintenance")
+@router.post("/api/devtools/database-maintenance", dependencies=_devtools_confirm)
 async def database_maintenance(
     request: DatabaseMaintenanceRequest,
     background_tasks: BackgroundTasks,
@@ -791,7 +818,7 @@ async def database_maintenance(
     return response
 
 
-@router.post("/api/devtools/regenerate-summaries")
+@router.post("/api/devtools/regenerate-summaries", dependencies=_devtools_confirm)
 async def regenerate_summaries(background_tasks: BackgroundTasks) -> dict[str, Any]:
     """Regenerate missing session summaries for completed sessions.
 
@@ -835,7 +862,7 @@ async def regenerate_summaries(background_tasks: BackgroundTasks) -> dict[str, A
     return {"status": "started", "sessions_queued": len(missing)}
 
 
-@router.post("/api/devtools/cleanup-minimal-sessions")
+@router.post("/api/devtools/cleanup-minimal-sessions", dependencies=_devtools_confirm)
 async def cleanup_minimal_sessions() -> dict[str, Any]:
     """Manually trigger cleanup of low-quality sessions.
 
@@ -896,7 +923,7 @@ class ReprocessObservationsRequest(BaseModel):
     dry_run: bool = False  # Preview what would be reprocessed
 
 
-@router.post("/api/devtools/reprocess-observations")
+@router.post("/api/devtools/reprocess-observations", dependencies=_devtools_confirm)
 async def reprocess_observations(
     request: ReprocessObservationsRequest,
     background_tasks: BackgroundTasks,

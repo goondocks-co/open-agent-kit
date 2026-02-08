@@ -15,7 +15,9 @@ import typer
 
 from open_agent_kit.config.paths import GIT_DIR, OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_AUTH_SCHEME_BEARER,
     CI_DATA_DIR,
+    CI_TOKEN_FILE,
     DAEMON_START_TIMEOUT_SECONDS,
     HOOK_STDIN_TIMEOUT_SECONDS,
     HTTP_TIMEOUT_HEALTH_CHECK,
@@ -135,14 +137,32 @@ def ci_hook(
     except Exception:
         pass  # Logging is best-effort
 
+    def _get_auth_token() -> str | None:
+        """Read the daemon auth token from the token file.
+
+        Returns:
+            The token string, or None if the file doesn't exist or can't be read.
+        """
+        try:
+            token_path = ci_data_dir / CI_TOKEN_FILE
+            if token_path.is_file():
+                return token_path.read_text().strip() or None
+        except Exception:
+            pass
+        return None
+
     def _call_api(endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Make HTTP POST to daemon API."""
         url = f"http://localhost:{port}/api/oak/ci/{endpoint}"
         data = json_module.dumps(payload).encode("utf-8")
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        token = _get_auth_token()
+        if token:
+            headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {token}"
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         try:

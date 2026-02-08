@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { API_BASE, fetchJson } from "@/lib/api";
+import { fetchJson, postJson, deleteJson } from "@/lib/api";
 import {
     getSessionLineageEndpoint,
     getLinkSessionEndpoint,
@@ -80,36 +80,6 @@ export function useSessionLineage(sessionId: string | undefined) {
 // Mutation Hooks
 // =============================================================================
 
-async function postJson<TRequest, TResponse>(
-    endpoint: string,
-    body: TRequest
-): Promise<TResponse> {
-    const url = `${API_BASE}${endpoint}`;
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Request failed: ${response.status} - ${error}`);
-    }
-
-    return response.json();
-}
-
-async function deleteResource<T>(endpoint: string): Promise<T> {
-    const url = `${API_BASE}${endpoint}`;
-    const response = await fetch(url, { method: "DELETE" });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Delete failed: ${response.status} - ${error}`);
-    }
-
-    return response.json();
-}
 
 /**
  * Hook to link a session to a parent session.
@@ -124,7 +94,7 @@ export function useLinkSession() {
         { sessionId: string; parentSessionId: string; reason?: string }
     >({
         mutationFn: ({ sessionId, parentSessionId, reason }) =>
-            postJson<LinkSessionRequest, LinkSessionResponse>(
+            postJson<LinkSessionResponse>(
                 getLinkSessionEndpoint(sessionId),
                 { parent_session_id: parentSessionId, reason: reason || "manual" }
             ),
@@ -148,7 +118,7 @@ export function useUnlinkSession() {
 
     return useMutation<UnlinkSessionResponse, Error, string>({
         mutationFn: (sessionId: string) =>
-            deleteResource<UnlinkSessionResponse>(getLinkSessionEndpoint(sessionId)),
+            deleteJson<UnlinkSessionResponse>(getLinkSessionEndpoint(sessionId)),
         onSuccess: (_data, sessionId) => {
             // Invalidate session detail
             queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
@@ -169,7 +139,7 @@ export function useRegenerateSummary() {
 
     return useMutation<RegenerateSummaryResponse, Error, string>({
         mutationFn: (sessionId: string) =>
-            postJson<object, RegenerateSummaryResponse>(
+            postJson<RegenerateSummaryResponse>(
                 getRegenerateSummaryEndpoint(sessionId),
                 {}
             ),
@@ -205,7 +175,7 @@ export function useCompleteSession() {
 
     return useMutation<CompleteSessionResponse, Error, string>({
         mutationFn: (sessionId: string) =>
-            postJson<object, CompleteSessionResponse>(
+            postJson<CompleteSessionResponse>(
                 getCompleteSessionEndpoint(sessionId),
                 {}
             ),
@@ -269,7 +239,7 @@ export function useDismissSuggestion() {
 
     return useMutation<DismissSuggestionResponse, Error, string>({
         mutationFn: (sessionId: string) =>
-            postJson<object, DismissSuggestionResponse>(
+            postJson<DismissSuggestionResponse>(
                 getDismissSuggestionEndpoint(sessionId),
                 {}
             ),
@@ -293,7 +263,7 @@ export function useAcceptSuggestion() {
         { sessionId: string; parentSessionId: string; confidenceScore?: number }
     >({
         mutationFn: ({ sessionId, parentSessionId }) =>
-            postJson<LinkSessionRequest, LinkSessionResponse>(
+            postJson<LinkSessionResponse>(
                 getLinkSessionEndpoint(sessionId),
                 { parent_session_id: parentSessionId, reason: "suggestion" }
             ),
@@ -416,7 +386,7 @@ export function useAddRelated() {
         { sessionId: string; relatedSessionId: string; similarityScore?: number }
     >({
         mutationFn: ({ sessionId, relatedSessionId, similarityScore }) =>
-            postJson<AddRelatedRequest, AddRelatedResponse>(
+            postJson<AddRelatedResponse>(
                 getAddRelatedEndpoint(sessionId),
                 {
                     related_session_id: relatedSessionId,
@@ -445,7 +415,7 @@ export function useRemoveRelated() {
         { sessionId: string; relatedSessionId: string }
     >({
         mutationFn: ({ sessionId, relatedSessionId }) =>
-            deleteResource<RemoveRelatedResponse>(
+            deleteJson<RemoveRelatedResponse>(
                 getRemoveRelatedEndpoint(sessionId, relatedSessionId)
             ),
         onSuccess: (_data, { sessionId, relatedSessionId }) => {

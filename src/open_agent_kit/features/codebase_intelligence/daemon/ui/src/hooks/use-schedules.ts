@@ -12,6 +12,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 
 // =============================================================================
@@ -89,79 +90,34 @@ const scheduleKeys = {
 // =============================================================================
 
 async function fetchSchedules(signal?: AbortSignal): Promise<ScheduleListResponse> {
-    const response = await fetch(API_ENDPOINTS.SCHEDULES, { signal });
-    if (!response.ok) {
-        throw new Error(`Failed to fetch schedules: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchJson<ScheduleListResponse>(API_ENDPOINTS.SCHEDULES, { signal });
 }
 
 async function fetchScheduleDetail(taskName: string, signal?: AbortSignal): Promise<ScheduleStatus> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, { signal });
-    if (!response.ok) {
-        throw new Error(`Failed to fetch schedule: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchJson<ScheduleStatus>(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, { signal });
 }
 
 async function createSchedule(data: ScheduleCreateRequest): Promise<ScheduleStatus> {
-    const response = await fetch(API_ENDPOINTS.SCHEDULES, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Failed to create schedule: ${response.statusText}`);
-    }
-    return response.json();
+    return postJson<ScheduleStatus>(API_ENDPOINTS.SCHEDULES, data);
 }
 
 async function updateSchedule(
     taskName: string,
     data: ScheduleUpdateRequest
 ): Promise<ScheduleStatus> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Failed to update schedule: ${response.statusText}`);
-    }
-    return response.json();
+    return patchJson<ScheduleStatus>(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, data);
 }
 
 async function deleteSchedule(taskName: string): Promise<ScheduleDeleteResponse> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}`, {
-        method: "DELETE",
-    });
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Failed to delete schedule: ${response.statusText}`);
-    }
-    return response.json();
+    return deleteJson<ScheduleDeleteResponse>(`${API_ENDPOINTS.SCHEDULES}/${taskName}`);
 }
 
 async function runSchedule(taskName: string): Promise<ScheduleRunResponse> {
-    const response = await fetch(`${API_ENDPOINTS.SCHEDULES}/${taskName}/run`, {
-        method: "POST",
-    });
-    if (!response.ok) {
-        throw new Error(`Failed to run schedule: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchJson<ScheduleRunResponse>(`${API_ENDPOINTS.SCHEDULES}/${taskName}/run`, { method: "POST" });
 }
 
 async function syncSchedules(): Promise<ScheduleSyncResponse> {
-    const response = await fetch(API_ENDPOINTS.SCHEDULES_SYNC, {
-        method: "POST",
-    });
-    if (!response.ok) {
-        throw new Error(`Failed to sync schedules: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchJson<ScheduleSyncResponse>(API_ENDPOINTS.SCHEDULES_SYNC, { method: "POST" });
 }
 
 // =============================================================================
