@@ -38,6 +38,7 @@ export const API_ENDPOINTS = {
 
     // Activity endpoints
     ACTIVITY_SESSIONS: "/api/activity/sessions",
+    ACTIVITY_SESSION_AGENTS: "/api/activity/session-agents",
     ACTIVITY_PLANS: "/api/activity/plans",
     ACTIVITY_STATS: "/api/activity/stats",
     ACTIVITY_SEARCH: "/api/activity/search",
@@ -133,6 +134,12 @@ export function getUnarchiveMemoryEndpoint(memoryId: string): string {
 /** Build promote batch endpoint */
 export function getPromoteBatchEndpoint(batchId: number): string {
     return `/api/activity/prompt-batches/${batchId}/promote`;
+}
+
+/** Build plan refresh endpoint */
+export function getPlanRefreshEndpoint(batchId: number, graceful = false): string {
+    const base = `${API_ENDPOINTS.ACTIVITY_PLANS}/${batchId}/refresh`;
+    return graceful ? `${base}?graceful=true` : base;
 }
 
 /** Build session lineage endpoint */

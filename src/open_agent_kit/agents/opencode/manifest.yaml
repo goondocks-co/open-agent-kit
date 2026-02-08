@@ -41,6 +41,7 @@ capabilities:
 
 # Codebase Intelligence configuration
 ci:
+  resume_command: "opencode --session {session_id}"
   # Plan storage - OpenCode Plan mode uses in-memory planning, doesn't persist to disk
   # Plans are created interactively and executed within the same session
   plans_subfolder: null

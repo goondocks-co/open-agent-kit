@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useSessions } from "@/hooks/use-activity";
+import { useMemo, useState } from "react";
+import { useSessionAgents, useSessions } from "@/hooks/use-activity";
 import { useDeleteSession } from "@/hooks/use-delete";
 import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
@@ -14,6 +14,7 @@ import {
     DEFAULT_AGENT_NAME,
     SESSION_SORT_DROPDOWN_OPTIONS,
     DEFAULT_SESSION_SORT,
+    SESSION_AGENT_FILTER,
 } from "@/lib/constants";
 import type { SessionSortOption } from "@/lib/constants";
 
@@ -22,14 +23,27 @@ import type { SessionItem } from "@/hooks/use-activity";
 export default function SessionList() {
     const { offset, loadedItems: allSessions, handleLoadMore, reset } = usePaginatedList<SessionItem>(PAGINATION.DEFAULT_LIMIT);
     const [sortBy, setSortBy] = useState<SessionSortOption>(DEFAULT_SESSION_SORT);
+    const [agentFilter, setAgentFilter] = useState<string>(SESSION_AGENT_FILTER.ALL);
     const limit = PAGINATION.DEFAULT_LIMIT;
+    const { data: sessionAgentsData } = useSessionAgents();
+    const selectedAgent = agentFilter === SESSION_AGENT_FILTER.ALL ? undefined : agentFilter;
 
-    const { data, isLoading, isFetching } = useSessions(limit, offset, sortBy);
+    const { data, isLoading, isFetching } = useSessions(limit, offset, sortBy, selectedAgent);
     const deleteSession = useDeleteSession();
     const { isOpen, setIsOpen, itemToDelete, openDialog, closeDialog } = useConfirmDialog();
 
+    const agentOptions = useMemo(() => {
+        const uniqueNames = Array.from(new Set(sessionAgentsData?.agents ?? [])).sort();
+        return [SESSION_AGENT_FILTER.ALL, ...uniqueNames];
+    }, [sessionAgentsData]);
+
     const handleSortChange = (newSort: SessionSortOption) => {
         setSortBy(newSort);
+        reset();
+    };
+
+    const handleAgentFilterChange = (newAgent: string) => {
+        setAgentFilter(newAgent);
         reset();
     };
 
@@ -67,6 +81,18 @@ export default function SessionList() {
                     <span>Coding agent sessions</span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <select
+                        value={agentFilter}
+                        onChange={(e) => handleAgentFilterChange(e.target.value)}
+                        className="text-sm bg-background border border-input rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring"
+                        aria-label="Filter sessions by agent"
+                    >
+                        {agentOptions.map((option) => (
+                            <option key={option} value={option}>
+                                {option === SESSION_AGENT_FILTER.ALL ? "All Agents" : option}
+                            </option>
+                        ))}
+                    </select>
                     <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
                     <select
                         value={sortBy}

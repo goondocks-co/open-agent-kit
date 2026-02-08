@@ -35,7 +35,21 @@ oak init
 oak ci start --open
 ```
 
-Then use the `/project-governance` skill from any configured agent to establish your project's constitution.
+Then talk to your agent naturally — OAK skills activate automatically:
+
+```
+You:   "We need coding standards for this project"
+Agent: (activates /project-governance) → creates oak/constitution.md
+
+You:   "What did we decide about the caching approach last week?"
+Agent: (activates /codebase-intelligence) → queries session history and memories
+
+You:   "I'm refactoring AuthService — what else might break?"
+Agent: (activates /codebase-intelligence) → runs semantic impact analysis
+
+You:   "Create an RFC for migrating to PostgreSQL"
+Agent: (activates /project-governance) → scaffolds RFC from template
+```
 
 > **[Full documentation](https://goondocks-co.github.io/open-agent-kit/)** | **[Getting Started guide](https://goondocks-co.github.io/open-agent-kit/features/codebase-intelligence/getting-started/)**
 

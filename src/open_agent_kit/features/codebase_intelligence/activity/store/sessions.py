@@ -334,21 +334,38 @@ def mark_session_processed(store: ActivityStore, session_id: str) -> None:
         )
 
 
-def count_sessions(store: ActivityStore, status: str | None = None) -> int:
+def count_sessions(
+    store: ActivityStore, status: str | None = None, agent: str | None = None
+) -> int:
     """Count total sessions with optional status filter.
 
     Args:
         store: The ActivityStore instance.
         status: Optional status filter (e.g., 'active', 'completed').
+        agent: Optional agent filter. Matches exact and model-agent labels
+            containing the agent (e.g., ``gpt-5.3-codex`` matches ``codex``).
 
     Returns:
         Total number of sessions matching the filter.
     """
     conn = store._get_connection()
+    conditions: list[str] = []
+    params: list[Any] = []
+
     if status:
-        cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE status = ?", (status,))
-    else:
-        cursor = conn.execute("SELECT COUNT(*) FROM sessions")
+        conditions.append("status = ?")
+        params.append(status)
+
+    if agent:
+        normalized_agent = agent.strip().lower()
+        conditions.append("(LOWER(agent) = ? OR LOWER(agent) LIKE ?)")
+        params.extend([normalized_agent, f"%{normalized_agent}%"])
+
+    query = "SELECT COUNT(*) FROM sessions"
+    if conditions:
+        query += f" WHERE {' AND '.join(conditions)}"
+
+    cursor = conn.execute(query, params)
     row = cursor.fetchone()
     return row[0] if row else 0
 
@@ -358,6 +375,7 @@ def get_recent_sessions(
     limit: int = 10,
     offset: int = 0,
     status: str | None = None,
+    agent: str | None = None,
     sort: str = "last_activity",
 ) -> list[Session]:
     """Get recent sessions with pagination support.
@@ -367,6 +385,8 @@ def get_recent_sessions(
         limit: Maximum sessions to return.
         offset: Number of sessions to skip (for pagination).
         status: Optional status filter (e.g., 'active', 'completed').
+        agent: Optional agent filter. Matches exact and model-agent labels
+            containing the agent (e.g., ``gpt-5.3-codex`` matches ``codex``).
         sort: Sort order - 'last_activity' (default), 'created', or 'status'.
 
     Returns:
@@ -374,6 +394,14 @@ def get_recent_sessions(
     """
     conn = store._get_connection()
     params: list[Any] = []
+    conditions: list[str] = []
+    if status:
+        conditions.append("s.status = ?")
+        params.append(status)
+    if agent:
+        normalized_agent = agent.strip().lower()
+        conditions.append("(LOWER(s.agent) = ? OR LOWER(s.agent) LIKE ?)")
+        params.extend([normalized_agent, f"%{normalized_agent}%"])
 
     if sort == "last_activity":
         # Sort by most recent activity, falling back to session start time
@@ -383,23 +411,20 @@ def get_recent_sessions(
             FROM sessions s
             LEFT JOIN activities a ON s.id = a.session_id
         """
-        if status:
-            query += " WHERE s.status = ?"
-            params.append(status)
+        if conditions:
+            query += f" WHERE {' AND '.join(conditions)}"
         query += " GROUP BY s.id ORDER BY sort_key DESC LIMIT ? OFFSET ?"
     elif sort == "status":
         # Active sessions first, then by creation time
-        query = "SELECT * FROM sessions"
-        if status:
-            query += " WHERE status = ?"
-            params.append(status)
+        query = "SELECT * FROM sessions s"
+        if conditions:
+            query += f" WHERE {' AND '.join(conditions)}"
         query += " ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at_epoch DESC LIMIT ? OFFSET ?"
     else:
         # Default: sort by created_at_epoch (session start time)
-        query = "SELECT * FROM sessions"
-        if status:
-            query += " WHERE status = ?"
-            params.append(status)
+        query = "SELECT * FROM sessions s"
+        if conditions:
+            query += f" WHERE {' AND '.join(conditions)}"
         query += " ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
 
     params.extend([limit, offset])

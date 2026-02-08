@@ -39,6 +39,8 @@ capabilities:
 
 # Codebase Intelligence configuration
 ci:
+  resume_command: "gemini --resume {session_id}"
+
   # Plan storage - Gemini CLI may store plans in .gemini/plans/ (TBD - needs verification)
   # Set to null until plan storage location is confirmed
   plans_subfolder: null

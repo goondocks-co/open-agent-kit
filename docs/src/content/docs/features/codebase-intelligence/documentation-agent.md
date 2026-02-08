@@ -308,19 +308,9 @@ schema_version: 1
 
 ## Provider Configuration
 
-The Documentation Agent uses the LLM provider configured in the **Agents** section of the [Configuration](/open-agent-kit/features/codebase-intelligence/configuration/) page. This is separate from the summarization model — you may want a more capable model for agent tasks.
+The Documentation Agent uses the shared OAK Agents provider configured in **Agents page → Settings** (`/agents/settings`).
 
-Supported providers:
-
-| Provider | Type | Notes |
-|----------|------|-------|
-| **Anthropic** | Cloud | Default. Requires `ANTHROPIC_API_KEY`. |
-| **Ollama** | Local | Requires v0.14.0+ and 64K+ context model. |
-| **LM Studio** | Local | OpenAI-compatible endpoint. |
-| **AWS Bedrock** | Cloud | Uses AWS credentials. |
-| **OpenRouter** | Cloud | Proxy for multiple providers. |
-
-Test the connection from the Configuration page before running agents.
+See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/#provider-configuration) for supported providers and setup details.
 
 ## Security
 

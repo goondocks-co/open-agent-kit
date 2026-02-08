@@ -323,10 +323,11 @@ class ActivityStore:
         limit: int = 10,
         offset: int = 0,
         status: str | None = None,
+        agent: str | None = None,
         sort: str = "last_activity",
     ) -> list[Session]:
         """Get recent sessions with pagination support."""
-        return sessions.get_recent_sessions(self, limit, offset, status, sort)
+        return sessions.get_recent_sessions(self, limit, offset, status, agent, sort)
 
     def get_sessions_needing_titles(self, limit: int = 10) -> list[Session]:
         """Get sessions that need titles generated."""

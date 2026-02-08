@@ -59,11 +59,15 @@ export const AGENT_PROVIDER_TYPES = {
 
 export type AgentProviderType = typeof AGENT_PROVIDER_TYPES[keyof typeof AGENT_PROVIDER_TYPES];
 
+/** Local provider reliability disclaimer shown in Agent Settings UI */
+export const AGENT_LOCAL_PROVIDER_EXPERIMENTAL_NOTE =
+    "Local provider APIs are experimental and may not work consistently due to upstream changes outside OAK's control.";
+
 /** Human-readable agent provider display names */
 export const AGENT_PROVIDER_DISPLAY_NAMES: Record<AgentProviderType, string> = {
     [AGENT_PROVIDER_TYPES.CLOUD]: "Claude Code (Default)",
-    [AGENT_PROVIDER_TYPES.OLLAMA]: "Ollama (Local)",
-    [AGENT_PROVIDER_TYPES.LMSTUDIO]: "LM Studio (Local)",
+    [AGENT_PROVIDER_TYPES.OLLAMA]: "Ollama (Local, Experimental)",
+    [AGENT_PROVIDER_TYPES.LMSTUDIO]: "LM Studio (Local, Experimental)",
 };
 
 /** Default base URLs for agent providers */

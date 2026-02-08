@@ -64,6 +64,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["activity"])
 
 
+def _resolve_resume_agent(agent: str) -> str:
+    """Resolve captured agent label to manifest key for resume commands."""
+    normalized_agent = agent.strip().lower()
+    try:
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService()
+        known_agents = sorted(agent_service.list_available_agents(), key=len, reverse=True)
+        for known_agent in known_agents:
+            if known_agent in normalized_agent:
+                return known_agent
+    except Exception:
+        logger.debug("Failed to resolve normalized agent label", exc_info=True)
+    return normalized_agent
+
+
 def _get_resume_command(agent: str, session_id: str) -> str | None:
     """Get the resolved resume command for a session.
 
@@ -81,7 +97,7 @@ def _get_resume_command(agent: str, session_id: str) -> str | None:
         from open_agent_kit.services.agent_service import AgentService
 
         agent_service = AgentService()
-        manifest = agent_service.get_agent_manifest(agent)
+        manifest = agent_service.get_agent_manifest(_resolve_resume_agent(agent))
         if manifest and manifest.ci and manifest.ci.resume_command:
             return manifest.ci.resume_command.replace("{session_id}", session_id)
     except Exception as e:
@@ -263,7 +279,10 @@ async def list_plans(
 
 @router.post("/api/activity/plans/{batch_id}/refresh", response_model=RefreshPlanResponse)
 @handle_route_errors("refresh plan")
-async def refresh_plan_from_source(batch_id: int) -> RefreshPlanResponse:
+async def refresh_plan_from_source(
+    batch_id: int,
+    graceful: bool = Query(default=False),
+) -> RefreshPlanResponse:
     """Re-read plan content from source file on disk.
 
     This is useful when a plan file has been edited outside of the normal
@@ -274,12 +293,17 @@ async def refresh_plan_from_source(batch_id: int) -> RefreshPlanResponse:
 
     Args:
         batch_id: The prompt batch ID containing the plan.
+        graceful: When True, return success=False instead of HTTP errors for
+            expected conditions (file not found, no file path). Useful for
+            automatic background refreshes where the plan file may not exist
+            on the current machine.
 
     Returns:
         RefreshPlanResponse with updated content length.
 
     Raises:
-        HTTPException: If batch not found, has no plan file, or file not found.
+        HTTPException: If batch not found, has no plan file, or file not found
+            (only when graceful=False).
     """
     from pathlib import Path
 
@@ -290,21 +314,39 @@ async def refresh_plan_from_source(batch_id: int) -> RefreshPlanResponse:
     if not state.activity_store:
         raise HTTPException(status_code=503, detail=ERROR_MSG_ACTIVITY_STORE_NOT_INITIALIZED)
 
-    logger.info(f"Refreshing plan from disk: batch_id={batch_id}")
+    logger.info(f"Refreshing plan from disk: batch_id={batch_id} graceful={graceful}")
 
     # Get the batch
     batch = state.activity_store.get_prompt_batch(batch_id)
     if not batch:
+        if graceful:
+            return RefreshPlanResponse(
+                success=False,
+                batch_id=batch_id,
+                message="Plan batch not found",
+            )
         raise HTTPException(status_code=404, detail="Plan batch not found")
 
     # Verify it's a plan with a file path
     if batch.source_type != "plan":
+        if graceful:
+            return RefreshPlanResponse(
+                success=False,
+                batch_id=batch_id,
+                message=f"Batch {batch_id} is not a plan (source_type={batch.source_type})",
+            )
         raise HTTPException(
             status_code=400,
             detail=f"Batch {batch_id} is not a plan (source_type={batch.source_type})",
         )
 
     if not batch.plan_file_path:
+        if graceful:
+            return RefreshPlanResponse(
+                success=False,
+                batch_id=batch_id,
+                message="No file path - content may be embedded in prompt",
+            )
         raise HTTPException(
             status_code=400,
             detail=f"Plan batch {batch_id} has no file path - content may be embedded in prompt",
@@ -316,6 +358,13 @@ async def refresh_plan_from_source(batch_id: int) -> RefreshPlanResponse:
         plan_path = state.project_root / plan_path
 
     if not plan_path.exists():
+        if graceful:
+            return RefreshPlanResponse(
+                success=False,
+                batch_id=batch_id,
+                plan_file_path=batch.plan_file_path,
+                message=f"Plan file not found on disk: {batch.plan_file_path}",
+            )
         raise HTTPException(
             status_code=404,
             detail=f"Plan file not found: {batch.plan_file_path}",
@@ -357,6 +406,7 @@ async def list_sessions(
     ),
     offset: int = Query(default=PAGINATION_DEFAULT_OFFSET, ge=0),
     status: str | None = Query(default=None, description="Filter by status (active, completed)"),
+    agent: str | None = Query(default=None, description="Filter by agent (claude, codex, etc.)"),
     sort: str = Query(
         default="last_activity",
         description="Sort order: last_activity (default), created, or status",
@@ -371,11 +421,14 @@ async def list_sessions(
     if not state.activity_store:
         raise HTTPException(status_code=503, detail=ERROR_MSG_ACTIVITY_STORE_NOT_INITIALIZED)
 
-    logger.debug(f"Listing sessions: limit={limit}, offset={offset}, status={status}, sort={sort}")
+    logger.debug(
+        f"Listing sessions: limit={limit}, offset={offset}, status={status}, "
+        f"agent={agent}, sort={sort}"
+    )
 
     # Get sessions from activity store with SQL-level pagination and status filter
     sessions = state.activity_store.get_recent_sessions(
-        limit=limit, offset=offset, status=status, sort=sort
+        limit=limit, offset=offset, status=status, agent=agent, sort=sort
     )
 
     # Get stats in bulk (1 query instead of N queries) - eliminates N+1 pattern
@@ -403,7 +456,7 @@ async def list_sessions(
         count_sessions,
     )
 
-    total = count_sessions(state.activity_store, status=status)
+    total = count_sessions(state.activity_store, status=status, agent=agent)
 
     return SessionListResponse(
         sessions=items,
@@ -411,6 +464,17 @@ async def list_sessions(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/api/activity/session-agents")
+@handle_route_errors("list session agents")
+async def list_session_agents() -> dict[str, list[str]]:
+    """List supported coding agents for session filtering."""
+    from open_agent_kit.services.agent_service import AgentService
+
+    agent_service = AgentService()
+    agents = sorted(agent_service.list_available_agents())
+    return {"agents": agents}
 
 
 @router.get("/api/activity/sessions/{session_id}", response_model=SessionDetailResponse)

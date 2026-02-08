@@ -77,6 +77,10 @@ export interface SessionListResponse {
     offset: number;
 }
 
+export interface SessionAgentsResponse {
+    agents: string[];
+}
+
 /** Refetch interval for session lists (5 seconds) */
 const SESSION_REFETCH_INTERVAL_MS = 5000;
 
@@ -86,11 +90,20 @@ const STATS_REFETCH_INTERVAL_MS = 10000;
 export function useSessions(
     limit: number = PAGINATION.DEFAULT_LIMIT,
     offset: number = PAGINATION.DEFAULT_OFFSET,
-    sort: SessionSortOption = DEFAULT_SESSION_SORT
+    sort: SessionSortOption = DEFAULT_SESSION_SORT,
+    agent?: string
 ) {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    params.set("sort", sort);
+    if (agent) {
+        params.set("agent", agent);
+    }
+
     return useQuery<SessionListResponse>({
-        queryKey: ["sessions", limit, offset, sort],
-        queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?limit=${limit}&offset=${offset}&sort=${sort}`, { signal }),
+        queryKey: ["sessions", limit, offset, sort, agent],
+        queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?${params.toString()}`, { signal }),
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
     });
 }
@@ -101,6 +114,13 @@ export function useSession(sessionId: string | undefined) {
         queryFn: ({ signal }) => fetchJson(getSessionDetailEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
+    });
+}
+
+export function useSessionAgents() {
+    return useQuery<SessionAgentsResponse>({
+        queryKey: ["session-agents"],
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.ACTIVITY_SESSION_AGENTS, { signal }),
     });
 }
 

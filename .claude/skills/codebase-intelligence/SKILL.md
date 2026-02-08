@@ -4,10 +4,11 @@ description: >-
   Search, analyze, and query your codebase using semantic vector search, impact
   analysis, and direct SQL queries against the Oak CI database. Use when finding
   semantically related code, analyzing code change impacts before refactoring,
-  discovering component relationships, querying session history, checking
-  activity logs, browsing memories, running SQL against activities.db, or
-  exploring patterns that grep would miss. Do NOT use for storing memories —
-  use oak_remember or oak ci remember instead.
+  discovering component relationships, recalling what was discussed or decided
+  in previous sessions, looking up past conversations or outcomes, querying
+  session history, checking activity logs, browsing memories, running SQL
+  against activities.db, or exploring patterns that grep would miss. Do NOT use
+  for storing memories — use oak_remember or oak ci remember instead.
 allowed-tools: Bash, Read
 user-invocable: true
 ---
@@ -36,6 +37,20 @@ oak ci search "AuthService token validation" --type code -n 20
 
 # Get impact context for a specific file
 oak ci context "impact of changes" -f src/services/auth.py
+```
+
+### Session and memory lookup
+
+```bash
+# What happened in recent sessions?
+sqlite3 -readonly -header -column .oak/ci/activities.db \
+  "SELECT id, agent, title, status, datetime(created_at_epoch, 'unixepoch', 'localtime') as started FROM sessions ORDER BY created_at_epoch DESC LIMIT 5;"
+
+# Search past decisions and learnings
+oak ci search "authentication refactor decision" --type memory
+
+# Browse memories by type
+oak ci memories --type decision
 ```
 
 ### Database query
@@ -82,6 +97,8 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "YOUR QUERY HERE"
 | Understand component relationships | `oak ci context` | "how auth middleware relates to session handling" |
 | Assess refactoring risk | `oak ci search --type code -n 20` | "PaymentProcessor error handling" |
 | Find past decisions/gotchas | `oak ci search --type memory` | "gotchas with auth changes" |
+| Recall previous discussions | `sqlite3 -readonly` | `SELECT title, summary FROM sessions WHERE ...` |
+| Find what was done before | `oak ci memories` / `sqlite3` | "what did we decide about caching?" |
 | Query session history | `sqlite3 -readonly` | `SELECT * FROM sessions ORDER BY ...` |
 | Aggregate usage stats | `sqlite3 -readonly` | `SELECT agent_name, sum(cost_usd) FROM agent_runs ...` |
 | Run automated analysis | `oak ci agent run` | `oak ci agent run usage-report` |

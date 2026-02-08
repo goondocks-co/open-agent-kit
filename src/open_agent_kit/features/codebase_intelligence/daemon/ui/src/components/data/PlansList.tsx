@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { usePlans } from "@/hooks/use-plans";
+import { useAutoRefreshPlans } from "@/hooks/use-auto-refresh-plans";
 import { useDeleteMemory } from "@/hooks/use-delete";
 import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
@@ -10,7 +11,7 @@ import { formatDate } from "@/lib/utils";
 import { FileText, Trash2, Maximize2, CheckCircle2, Circle, FolderGit2, ArrowUpDown, RefreshCw } from "lucide-react";
 import { fetchJson } from "@/lib/api";
 import { Markdown } from "@/components/ui/markdown";
-import { PLAN_SORT_DROPDOWN_OPTIONS, DEFAULT_PLAN_SORT } from "@/lib/constants";
+import { PLAN_SORT_DROPDOWN_OPTIONS, DEFAULT_PLAN_SORT, getPlanRefreshEndpoint } from "@/lib/constants";
 import type { PlanSortOption } from "@/lib/constants";
 
 import type { PlanListItem } from "@/hooks/use-plans";
@@ -32,6 +33,9 @@ export default function PlansList() {
         offset,
         sort: sortBy,
     });
+
+    // Auto-refresh plans from disk when viewed (graceful — no errors if file missing)
+    useAutoRefreshPlans(data?.plans ?? []);
 
     const handleSortChange = (newSort: PlanSortOption) => {
         setSortBy(newSort);
@@ -101,7 +105,7 @@ export default function PlansList() {
         setRefreshingPlanId(plan.id);
         try {
             await fetchJson<{ success: boolean; message: string }>(
-                `/api/activity/plans/${plan.id}/refresh`,
+                getPlanRefreshEndpoint(plan.id),
                 { method: "POST" }
             );
             // Refresh the list to show updated content

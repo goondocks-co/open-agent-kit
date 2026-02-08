@@ -1140,6 +1140,43 @@ class TestActivityStoreStatistics:
         recent = activity_store.get_recent_sessions(limit=3)
         assert len(recent) == 3
 
+    def test_get_recent_sessions_filters_by_agent(self, activity_store: ActivityStore):
+        """Test retrieving recent sessions filtered by agent."""
+        activity_store.create_session(
+            session_id="test-session-agent-claude",
+            agent="claude",
+            project_root="/path",
+        )
+        activity_store.create_session(
+            session_id="test-session-agent-codex-model",
+            agent="gpt-5.3-codex",
+            project_root="/path",
+        )
+
+        recent = activity_store.get_recent_sessions(limit=10, agent="codex")
+        assert len(recent) == 1
+        assert recent[0].agent == "gpt-5.3-codex"
+
+    def test_count_sessions_filters_by_agent(self, activity_store: ActivityStore):
+        """Test counting sessions filtered by agent."""
+        activity_store.create_session(
+            session_id="test-count-agent-claude",
+            agent="claude",
+            project_root="/path",
+        )
+        activity_store.create_session(
+            session_id="test-count-agent-gemini-model",
+            agent="gemini-2.5-pro-gemini",
+            project_root="/path",
+        )
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
+            count_sessions,
+        )
+
+        total = count_sessions(activity_store, agent="gemini")
+        assert total == 1
+
 
 # =============================================================================
 # ActivityStore Tests: Recovery Operations

@@ -15,6 +15,10 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    PROMPT_SOURCE_PLAN,
+    PROMPT_SOURCE_USER,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     get_state,
@@ -218,6 +222,36 @@ class TestListSessions:
         # Response may be empty or filtered
         assert "sessions" in data
 
+    def test_list_sessions_with_agent_filter(self, client, setup_state_with_activity_store):
+        """Test filtering sessions by agent."""
+        response = client.get(
+            "/api/activity/sessions",
+            params={"agent": "codex"},
+        )
+
+        assert response.status_code == 200
+        setup_state_with_activity_store.activity_store.get_recent_sessions.assert_called_with(
+            limit=20,
+            offset=0,
+            status=None,
+            agent="codex",
+            sort="last_activity",
+        )
+
+
+class TestSessionAgents:
+    """Test GET /api/activity/session-agents endpoint."""
+
+    def test_list_session_agents(self, client):
+        """Should return coding agents from manifest registry."""
+        response = client.get("/api/activity/session-agents")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "agents" in data
+        assert "claude" in data["agents"]
+        assert "codex" in data["agents"]
+
     def test_list_sessions_includes_stats(self, client, setup_state_with_activity_store):
         """Test that session list includes statistics."""
         response = client.get("/api/activity/sessions")
@@ -271,6 +305,11 @@ class TestListSessions:
 
 class TestGetSessionDetail:
     """Test GET /api/activity/sessions/{session_id} endpoint."""
+
+    CODEX_MODEL_AGENT = "gpt-5.3-codex"
+    CODEX_RESUME_PREFIX = "codex resume"
+    GEMINI_MODEL_AGENT = "gemini-2.5-pro-gemini"
+    GEMINI_RESUME_PREFIX = "gemini --resume"
 
     def test_get_session_detail_success(self, client, setup_state_with_activity_store):
         """Test retrieving session detail."""
@@ -358,6 +397,102 @@ class TestGetSessionDetail:
         assert response.status_code == 200
         data = response.json()
         assert data["session"]["status"] == "active"
+
+    def test_get_session_detail_includes_resume_for_codex_model_agent(
+        self, client, setup_state_with_activity_store
+    ):
+        """Codex model-style agent labels should still resolve resume command."""
+        session_id = "codex-model-session"
+        codex_session = MagicMock()
+        codex_session.id = session_id
+        codex_session.agent = self.CODEX_MODEL_AGENT
+        codex_session.project_root = "/tmp/project"
+        codex_session.started_at = datetime.now()
+        codex_session.ended_at = None
+        codex_session.status = "active"
+        codex_session.summary = None
+        codex_session.title = None
+        codex_session.parent_session_id = None
+        codex_session.parent_session_reason = None
+        setup_state_with_activity_store.activity_store.get_session.return_value = codex_session
+
+        response = client.get(f"/api/activity/sessions/{session_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["session"]["resume_command"] == f"{self.CODEX_RESUME_PREFIX} {session_id}"
+
+    def test_get_session_detail_uses_codex_resume_flag(
+        self, client, setup_state_with_activity_store
+    ):
+        """Codex sessions should render resume command with --resume."""
+        session_id = "codex-session"
+        codex_session = MagicMock()
+        codex_session.id = session_id
+        codex_session.agent = "codex"
+        codex_session.project_root = "/tmp/project"
+        codex_session.started_at = datetime.now()
+        codex_session.ended_at = None
+        codex_session.status = "active"
+        codex_session.summary = None
+        codex_session.title = None
+        codex_session.parent_session_id = None
+        codex_session.parent_session_reason = None
+        setup_state_with_activity_store.activity_store.get_session.return_value = codex_session
+
+        response = client.get(f"/api/activity/sessions/{session_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["session"]["resume_command"] == f"{self.CODEX_RESUME_PREFIX} {session_id}"
+
+    def test_get_session_detail_includes_resume_for_gemini_model_agent(
+        self, client, setup_state_with_activity_store
+    ):
+        """Gemini model-style agent labels should still resolve resume command."""
+        session_id = "gemini-model-session"
+        gemini_session = MagicMock()
+        gemini_session.id = session_id
+        gemini_session.agent = self.GEMINI_MODEL_AGENT
+        gemini_session.project_root = "/tmp/project"
+        gemini_session.started_at = datetime.now()
+        gemini_session.ended_at = None
+        gemini_session.status = "active"
+        gemini_session.summary = None
+        gemini_session.title = None
+        gemini_session.parent_session_id = None
+        gemini_session.parent_session_reason = None
+        setup_state_with_activity_store.activity_store.get_session.return_value = gemini_session
+
+        response = client.get(f"/api/activity/sessions/{session_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["session"]["resume_command"] == f"{self.GEMINI_RESUME_PREFIX} {session_id}"
+
+    def test_get_session_detail_uses_gemini_resume_flag(
+        self, client, setup_state_with_activity_store
+    ):
+        """Gemini sessions should render resume command with --resume."""
+        session_id = "gemini-session"
+        gemini_session = MagicMock()
+        gemini_session.id = session_id
+        gemini_session.agent = "gemini"
+        gemini_session.project_root = "/tmp/project"
+        gemini_session.started_at = datetime.now()
+        gemini_session.ended_at = None
+        gemini_session.status = "active"
+        gemini_session.summary = None
+        gemini_session.title = None
+        gemini_session.parent_session_id = None
+        gemini_session.parent_session_reason = None
+        setup_state_with_activity_store.activity_store.get_session.return_value = gemini_session
+
+        response = client.get(f"/api/activity/sessions/{session_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["session"]["resume_command"] == f"{self.GEMINI_RESUME_PREFIX} {session_id}"
 
 
 # =============================================================================
@@ -566,3 +701,125 @@ class TestActivityResponseModels:
             assert "tool_name" in activity
             assert "success" in activity
             assert "created_at" in activity
+
+
+# =============================================================================
+# POST /api/activity/plans/{batch_id}/refresh Tests
+# =============================================================================
+
+
+class TestRefreshPlan:
+    """Test POST /api/activity/plans/{batch_id}/refresh endpoint."""
+
+    REFRESH_ENDPOINT = "/api/activity/plans/{batch_id}/refresh"
+    DEFAULT_BATCH_ID = 1
+    NONEXISTENT_BATCH_ID = 999
+    NONEXISTENT_FILE_PATH = "/nonexistent/plan.md"
+
+    def _refresh_url(self, batch_id=None, graceful=False):
+        """Build the refresh endpoint URL."""
+        bid = batch_id if batch_id is not None else self.DEFAULT_BATCH_ID
+        url = self.REFRESH_ENDPOINT.format(batch_id=bid)
+        if graceful:
+            url += "?graceful=true"
+        return url
+
+    def _make_plan_batch(
+        self, batch_id=None, source_type=PROMPT_SOURCE_PLAN, plan_file_path="/tmp/plan.md"
+    ):
+        """Helper to create a mock plan batch."""
+        batch = MagicMock()
+        batch.id = batch_id if batch_id is not None else self.DEFAULT_BATCH_ID
+        batch.source_type = source_type
+        batch.plan_file_path = plan_file_path
+        return batch
+
+    def test_refresh_graceful_batch_not_found(self, client, setup_state_with_activity_store):
+        """Graceful mode returns success=False when batch doesn't exist."""
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = None
+
+        response = client.post(self._refresh_url(batch_id=self.NONEXISTENT_BATCH_ID, graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "not found" in data["message"]
+
+    def test_refresh_graceful_not_a_plan(self, client, setup_state_with_activity_store):
+        """Graceful mode returns success=False when batch is not a plan."""
+        batch = self._make_plan_batch(source_type=PROMPT_SOURCE_USER)
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        response = client.post(self._refresh_url(graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "not a plan" in data["message"]
+
+    def test_refresh_graceful_no_file_path(self, client, setup_state_with_activity_store):
+        """Graceful mode returns success=False when plan has no file path."""
+        batch = self._make_plan_batch(plan_file_path=None)
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        response = client.post(self._refresh_url(graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "No file path" in data["message"]
+
+    def test_refresh_graceful_file_not_on_disk(self, client, setup_state_with_activity_store):
+        """Graceful mode returns success=False when plan file doesn't exist on disk."""
+        batch = self._make_plan_batch(plan_file_path=self.NONEXISTENT_FILE_PATH)
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        response = client.post(self._refresh_url(graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "not found on disk" in data["message"]
+        assert data["plan_file_path"] == self.NONEXISTENT_FILE_PATH
+
+    def test_refresh_graceful_success(self, client, setup_state_with_activity_store, tmp_path):
+        """Graceful mode reads fresh content and updates the database."""
+        plan_file = tmp_path / "plan.md"
+        plan_file.write_text("# Updated Plan\n\nNew content here.")
+
+        batch = self._make_plan_batch(plan_file_path=str(plan_file))
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        response = client.post(self._refresh_url(graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["content_length"] > 0
+        assert data["plan_file_path"] == str(plan_file)
+
+        # Verify DB was updated and plan was marked for re-embedding
+        setup_state_with_activity_store.activity_store.update_prompt_batch_source_type.assert_called_once()
+        setup_state_with_activity_store.activity_store.mark_plan_unembedded.assert_called_once_with(
+            self.DEFAULT_BATCH_ID
+        )
+
+    def test_refresh_strict_file_not_found_raises_404(
+        self, client, setup_state_with_activity_store
+    ):
+        """Without graceful, missing file raises HTTP 404."""
+        batch = self._make_plan_batch(plan_file_path=self.NONEXISTENT_FILE_PATH)
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        response = client.post(self._refresh_url())
+
+        assert response.status_code == 404
+
+    def test_refresh_strict_no_file_path_raises_400(self, client, setup_state_with_activity_store):
+        """Without graceful, missing file path raises HTTP 400."""
+        batch = self._make_plan_batch(plan_file_path=None)
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        response = client.post(self._refresh_url())
+
+        assert response.status_code == 400

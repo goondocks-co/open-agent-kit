@@ -39,6 +39,7 @@ import {
     AGENT_PROVIDER_TYPES,
     AGENT_PROVIDER_OPTIONS,
     AGENT_PROVIDER_DEFAULT_URLS,
+    AGENT_LOCAL_PROVIDER_EXPERIMENTAL_NOTE,
     AGENT_PROVIDER_RECOMMENDED_MODELS,
     type AgentProviderType,
 } from "@/lib/constants";
@@ -373,6 +374,7 @@ export default function AgentSettings() {
                                 <div className="text-sm">
                                     <p className="font-medium text-amber-600">Important Notes</p>
                                     <ul className="text-muted-foreground mt-1 list-disc list-inside space-y-1">
+                                        <li>{AGENT_LOCAL_PROVIDER_EXPERIMENTAL_NOTE}</li>
                                         <li>Local providers require 64k+ context window models</li>
                                         <li>Ollama requires v0.14.0+ for Anthropic API compatibility</li>
                                         <li>32GB RAM recommended for usable local model experience</li>

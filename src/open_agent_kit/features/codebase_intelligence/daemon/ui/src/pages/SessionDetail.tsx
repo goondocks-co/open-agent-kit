@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useSession } from "@/hooks/use-activity";
+import { useAutoRefreshPlans } from "@/hooks/use-auto-refresh-plans";
 import { useDeleteSession, useDeletePromptBatch, usePromoteBatch } from "@/hooks/use-delete";
 import { useLinkSession, useUnlinkSession, useRegenerateSummary, useCompleteSession, useSessionRelated } from "@/hooks/use-session-link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -231,6 +232,13 @@ export default function SessionDetail() {
 
     // Get plan batches for the Plans section
     const planBatches = prompt_batches.filter(batch => batch.source_type === "plan");
+
+    // Auto-refresh plans from disk when viewed (graceful — no errors if file missing)
+    const refreshablePlans = useMemo(
+        () => planBatches.map((b) => ({ id: parseInt(b.id), file_path: b.plan_file_path })),
+        [planBatches],
+    );
+    useAutoRefreshPlans(refreshablePlans);
 
     return (
         <div className="space-y-6">

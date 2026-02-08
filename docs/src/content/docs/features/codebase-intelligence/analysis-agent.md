@@ -202,19 +202,9 @@ Include example SQL queries in your `default_task` prompt. The agent uses them a
 
 ## Provider Configuration
 
-The Analysis Agent uses the LLM provider configured in the **Agents** section of the [Configuration](/open-agent-kit/features/codebase-intelligence/configuration/) page. This is the same provider used by the Documentation Agent.
+The Analysis Agent uses the shared OAK Agents provider configured in **Agents page → Settings** (`/agents/settings`).
 
-Supported providers:
-
-| Provider | Type | Notes |
-|----------|------|-------|
-| **Anthropic** | Cloud | Default. Requires `ANTHROPIC_API_KEY`. |
-| **Ollama** | Local | Requires v0.14.0+ and 64K+ context model. |
-| **LM Studio** | Local | OpenAI-compatible endpoint. |
-| **AWS Bedrock** | Cloud | Uses AWS credentials. |
-| **OpenRouter** | Cloud | Proxy for multiple providers. |
-
-Test the connection from the Configuration page before running agents.
+See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/#provider-configuration) for supported providers and setup details.
 
 ## Security
 

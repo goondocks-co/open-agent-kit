@@ -107,6 +107,14 @@ export const SESSION_SORT_DROPDOWN_OPTIONS = [
 export const DEFAULT_SESSION_SORT = SESSION_SORT_OPTIONS.LAST_ACTIVITY;
 
 // =============================================================================
+// Session Agent Filters
+// =============================================================================
+
+export const SESSION_AGENT_FILTER = {
+    ALL: "all",
+} as const;
+
+// =============================================================================
 // Plan Sort Options
 // =============================================================================
 

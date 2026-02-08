@@ -29,6 +29,14 @@ Each agent has:
 
 ## Provider Configuration
 
-OAK Agents use the LLM provider configured in the **Agents** section of the [Configuration](/open-agent-kit/features/codebase-intelligence/configuration/) page. This is separate from the summarization model — you may want a more capable model for agent tasks.
+OAK Agents use the LLM provider configured in the **Agents page → Settings** tab (`/agents/settings`). This is separate from the summarization model — you may want a more capable model for agent tasks.
 
-Test the connection from the Configuration page before running agents.
+Supported providers:
+
+| Provider | Type | Notes |
+|----------|------|-------|
+| **Claude Code (Default)** | Cloud | Uses your logged-in Claude Code subscription on this machine (no API key needed). |
+| **Ollama** | Local | Experimental for agent execution. Requires v0.14.0+ and a capable local model. |
+| **LM Studio** | Local | Experimental for agent execution via local OpenAI-compatible endpoint. |
+
+Test the connection from the Agents Settings tab before running agents.
