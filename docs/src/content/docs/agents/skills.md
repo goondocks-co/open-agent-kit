@@ -29,7 +29,8 @@ Create and maintain project constitutions, agent instruction files (`CLAUDE.md`,
 
 **Examples:**
 ```
-/project-governance We need to establish coding standards for this Python project
+/project-governance We need to establish our constitution for this Python project
+/project-governance Add a new rule No-Magic-Literals (Zero Tolerance)
 /project-governance Create an RFC for adding a caching layer to the API
 /project-governance Review oak/rfc/RFC-001-add-caching-layer.md
 ```
