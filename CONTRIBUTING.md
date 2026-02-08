@@ -16,9 +16,11 @@ make check      # Runs all CI checks
 
 ## Prerequisites
 
-- Python 3.13+
+- Python 3.12+ (3.13 recommended for development)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (package manager)
 - Git
+
+> ⚠️ **Note**: The `make setup` command requires `uv` to be installed first. If you see errors, install uv via `pipx install uv` or the [official installer](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Development Workflow
 
@@ -101,5 +103,7 @@ Provide:
 
 - Check existing issues and discussions
 - Open a new issue for questions
+- See [QUICKSTART.md](QUICKSTART.md) for basic setup
+- See [README.md](README.md) for project overview
 
 Thank you for contributing!

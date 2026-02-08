@@ -4,25 +4,26 @@ Get started with open-agent-kit in under 5 minutes.
 
 ## Installation
 
-### Quick Install (macOS / Linux)
+### Install Script (Recommended)
+
+The install script detects your environment and handles everything automatically.
+
+**macOS / Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
 ```
 
-### Quick Install (Windows PowerShell)
+**Windows PowerShell:**
 
 ```powershell
 irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.ps1 | iex
 ```
 
-### Using pipx (Recommended)
+### Alternative: Using pipx
 
 ```bash
 pipx install oak-ci
-
-# Verify installation
-oak --version
 ```
 
 ### Alternative: Using uv
@@ -35,6 +36,12 @@ uv tool install oak-ci
 
 ```bash
 pip install oak-ci
+```
+
+**Verify installation:**
+
+```bash
+oak --version
 ```
 
 ## Step 1: Initialize Your Project
@@ -160,6 +167,20 @@ oak upgrade --commands
 oak upgrade --templates --force
 ```
 
+## Step 4: Start Codebase Intelligence (Optional)
+
+The CI daemon provides semantic code search, session history, and project memories for your AI agents.
+
+```bash
+# Start the daemon with browser UI
+oak ci start --open
+```
+
+This gives your agents access to:
+- **Semantic search** across code and memories
+- **Session history** to recall past decisions
+- **MCP server** for direct tool access
+
 ## Troubleshooting
 
 ### oak command not found
@@ -168,7 +189,10 @@ oak upgrade --templates --force
 # Check if installed
 which oak
 
-# Reinstall if needed
+# Reinstall if needed (macOS / Linux)
+curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
+
+# Or reinstall via pipx
 pipx install oak-ci
 ```
 
@@ -185,14 +209,43 @@ oak init --agent claude
 
 Agent commands are installed in their native directories (`.claude/commands/`, `.github/agents/`, etc.).
 
+### CI Daemon Issues
+
+> ⚠️ **Gotcha**: When the coding agent rebuilds the UI (e.g., during hot-reload), it restarts the MCP server process. The new process may use a stale auth token, causing authentication failures until you reconnect.
+
+**MCP server authentication errors after restart:**
+
+```bash
+# Stop and restart the daemon
+oak ci stop && oak ci start
+```
+
+> ⚠️ **Gotcha**: The port file contents must be purely numeric. If the file contains whitespace or non-numeric characters, the daemon may fail to start with a ValueError.
+
+**Daemon fails to start with port error:**
+
+```bash
+# Clear stale port files
+rm -f ~/.oak/daemon.port .oak/daemon.port
+oak ci start
+```
+
+> ⚠️ **Gotcha**: If the repository is nested inside another git repo, the installer may identify the wrong project root, leading to mis-located hook files.
+
+**Wrong project root detected:**
+
+Ensure you run `oak init` from the actual project root (the directory containing your `.git` folder).
+
 ## Next Steps
 
 - Read the [full documentation](https://goondocks-co.github.io/open-agent-kit/)
 - Review the [RFC workflow](https://goondocks-co.github.io/open-agent-kit/features/strategic-planning/)
 - Review the [CLI reference](https://goondocks-co.github.io/open-agent-kit/cli/)
+- See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute to the project
 
 ## Getting Help
 
 - Run `oak --help` for available CLI commands
 - Use agent commands: `/oak.rfc-create`, `/oak.constitution-create`, etc.
 - Check the [issue tracker](https://github.com/goondocks-co/open-agent-kit/issues)
+- See [README.md](README.md) for project overview

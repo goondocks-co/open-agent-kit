@@ -350,7 +350,8 @@ class TestBackupRestore:
         response = client.post("/api/backup/restore", json={})
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        detail = response.json()["detail"].lower()
+        assert "found" in detail or "not found" in detail
 
     def test_restore_backup_rejects_outside_path(self, client, setup_state_with_activity_store):
         """Test backup restore rejects paths outside backup dir."""

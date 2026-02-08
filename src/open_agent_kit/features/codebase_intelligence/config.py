@@ -19,6 +19,13 @@ import yaml
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    BACKUP_AUTO_ENABLED_DEFAULT,
+    BACKUP_CONFIG_KEY,
+    BACKUP_INCLUDE_ACTIVITIES_DEFAULT,
+    BACKUP_INTERVAL_MINUTES_DEFAULT,
+    BACKUP_INTERVAL_MINUTES_MAX,
+    BACKUP_INTERVAL_MINUTES_MIN,
+    BACKUP_ON_UPGRADE_DEFAULT,
     CI_CONFIG_KEY_TUNNEL,
     CI_CONFIG_TUNNEL_KEY_AUTO_START,
     CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
@@ -879,6 +886,76 @@ class LogRotationConfig:
 
 
 @dataclass
+class BackupConfig:
+    """Configuration for backup behavior.
+
+    Controls automatic backups, activity inclusion, and scheduling.
+
+    Attributes:
+        auto_enabled: Whether automatic periodic backups are enabled.
+        include_activities: Whether to include the activities table in backups.
+        interval_minutes: Minutes between automatic backups.
+        on_upgrade: Whether to create a backup before upgrades.
+    """
+
+    auto_enabled: bool = BACKUP_AUTO_ENABLED_DEFAULT
+    include_activities: bool = BACKUP_INCLUDE_ACTIVITIES_DEFAULT
+    interval_minutes: int = BACKUP_INTERVAL_MINUTES_DEFAULT
+    on_upgrade: bool = BACKUP_ON_UPGRADE_DEFAULT
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate configuration values.
+
+        Raises:
+            ValidationError: If any configuration value is invalid.
+        """
+        if self.interval_minutes < BACKUP_INTERVAL_MINUTES_MIN:
+            raise ValidationError(
+                f"interval_minutes must be at least {BACKUP_INTERVAL_MINUTES_MIN}",
+                field="interval_minutes",
+                value=self.interval_minutes,
+                expected=f">= {BACKUP_INTERVAL_MINUTES_MIN}",
+            )
+        if self.interval_minutes > BACKUP_INTERVAL_MINUTES_MAX:
+            raise ValidationError(
+                f"interval_minutes must be at most {BACKUP_INTERVAL_MINUTES_MAX}",
+                field="interval_minutes",
+                value=self.interval_minutes,
+                expected=f"<= {BACKUP_INTERVAL_MINUTES_MAX}",
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "BackupConfig":
+        """Create config from dictionary.
+
+        Args:
+            data: Configuration dictionary.
+
+        Returns:
+            BackupConfig instance.
+        """
+        return cls(
+            auto_enabled=data.get("auto_enabled", BACKUP_AUTO_ENABLED_DEFAULT),
+            include_activities=data.get("include_activities", BACKUP_INCLUDE_ACTIVITIES_DEFAULT),
+            interval_minutes=data.get("interval_minutes", BACKUP_INTERVAL_MINUTES_DEFAULT),
+            on_upgrade=data.get("on_upgrade", BACKUP_ON_UPGRADE_DEFAULT),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "auto_enabled": self.auto_enabled,
+            "include_activities": self.include_activities,
+            "interval_minutes": self.interval_minutes,
+            "on_upgrade": self.on_upgrade,
+        }
+
+
+@dataclass
 class TunnelConfig:
     """Configuration for tunnel-based session sharing.
 
@@ -942,6 +1019,7 @@ class CIConfig:
         agents: Agent subsystem configuration.
         session_quality: Session quality threshold configuration.
         tunnel: Tunnel sharing configuration.
+        backup: Backup behavior configuration.
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
@@ -954,6 +1032,7 @@ class CIConfig:
     agents: AgentConfig = field(default_factory=AgentConfig)
     session_quality: SessionQualityConfig = field(default_factory=SessionQualityConfig)
     tunnel: TunnelConfig = field(default_factory=TunnelConfig)
+    backup: BackupConfig = field(default_factory=BackupConfig)
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
@@ -997,6 +1076,7 @@ class CIConfig:
         agents_data = data.get("agents", {})
         session_quality_data = data.get("session_quality", {})
         tunnel_data = data.get(CI_CONFIG_KEY_TUNNEL, {})
+        backup_data = data.get(BACKUP_CONFIG_KEY, {})
         log_rotation_data = data.get("log_rotation", {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
@@ -1004,6 +1084,7 @@ class CIConfig:
             agents=AgentConfig.from_dict(agents_data),
             session_quality=SessionQualityConfig.from_dict(session_quality_data),
             tunnel=TunnelConfig.from_dict(tunnel_data),
+            backup=BackupConfig.from_dict(backup_data),
             index_on_startup=data.get("index_on_startup", True),
             watch_files=data.get("watch_files", True),
             exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
@@ -1019,6 +1100,7 @@ class CIConfig:
             "agents": self.agents.to_dict(),
             "session_quality": self.session_quality.to_dict(),
             CI_CONFIG_KEY_TUNNEL: self.tunnel.to_dict(),
+            BACKUP_CONFIG_KEY: self.backup.to_dict(),
             "index_on_startup": self.index_on_startup,
             "watch_files": self.watch_files,
             "exclude_patterns": self.exclude_patterns,
@@ -1090,6 +1172,9 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         "tunnel",  # Tunnel provider/paths are machine-local
         "log_level",  # Personal debugging preference
         "log_rotation",  # Machine-local log management
+        "backup.auto_enabled",  # Personal preference for auto-backup
+        "backup.include_activities",  # Personal preference for backup scope
+        "backup.interval_minutes",  # Personal preference for backup frequency
     }
 )
 
@@ -1388,6 +1473,7 @@ def get_config_origins(project_root: Path) -> dict[str, str]:
         "agents",
         "session_quality",
         "tunnel",
+        "backup",
         "index_on_startup",
         "watch_files",
         "exclude_patterns",

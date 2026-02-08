@@ -20,7 +20,7 @@ Each machine produces its own backup file named `{github_user}_{hash}.sql`, stor
 | Sessions | Always | Full session metadata including parent/child links |
 | Prompt batches | Always | User prompts, classifications, plan content |
 | Memories | Always | All observations (gotchas, decisions, bug fixes, etc.) |
-| Activities | Optional | Raw tool execution logs — can be large. Use `--include-activities` flag |
+| Activities | Configurable | Raw tool execution logs — can be large. Controlled by backup settings or `--include-activities` flag |
 
 ### Backup Location
 
@@ -43,13 +43,53 @@ Backups use content-based hashing for cross-machine deduplication:
 
 Multiple developers' backups can be merged without duplicates.
 
+## Automatic Backups
+
+The daemon can create backups automatically on a configurable schedule. This ensures your CI data is always preserved without manual intervention.
+
+![Backup settings UI](../../../../assets/images/backup-settings.png)
+
+### Enabling Automatic Backups
+
+Automatic backups are **disabled by default**. Enable them from the **Backup Settings** card on the Teams page, or via the configuration file:
+
+```yaml
+# In .oak/config.{machine_id}.yaml
+codebase_intelligence:
+  backup:
+    auto_enabled: true
+    interval_minutes: 30
+```
+
+### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Automatic backups** | Off | Enable periodic automatic backups |
+| **Include activities** | Off | Include the activities table in backups (larger files) |
+| **Backup before upgrade** | On | Automatically create a backup before `oak upgrade` runs |
+| **Backup interval** | 30 min | How often automatic backups run (5 min to 24 hours) |
+
+The backup interval field appears when automatic backups are enabled. Changes take effect on the next backup cycle.
+
+### How It Works
+
+- The daemon runs a background loop that checks the interval and creates backups automatically
+- Each automatic backup replaces the previous one for your machine (one file per machine)
+- The "Include activities" setting applies to both automatic and manual backups when no explicit flag is given
+- The CLI `--include-activities` flag overrides the configured default
+
+### Pre-Upgrade Backups
+
+When **Backup before upgrade** is enabled (the default), running `oak upgrade` automatically creates a backup before applying any changes. This provides a safety net in case an upgrade modifies the database schema.
+
 ## Backup & Restore
 
 ### Creating Backups
 
 ```bash
-oak ci backup                        # Standard backup
-oak ci backup --include-activities   # Include raw activities (larger file)
+oak ci backup                        # Standard backup (uses configured defaults)
+oak ci backup --include-activities   # Include raw activities (overrides config)
 oak ci backup --list                 # List available backups
 ```
 

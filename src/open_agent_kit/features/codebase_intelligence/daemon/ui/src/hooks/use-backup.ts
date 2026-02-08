@@ -26,6 +26,9 @@ interface BackupStatus {
     last_modified?: string;
     machine_id: string;
     all_backups: BackupFileInfo[];
+    auto_backup_enabled: boolean;
+    last_auto_backup: string | null;
+    next_auto_backup_minutes: number | null;
 }
 
 /** Request to create a backup */

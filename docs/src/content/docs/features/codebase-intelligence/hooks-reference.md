@@ -65,6 +65,35 @@ Hooks are fully supported when using the Codex CLI directly. However, extensions
 | `codex.tool_decision` | `prompt-submit` |
 | `codex.tool_result` | `post-tool-use` |
 
+## Feature Lifecycle Hooks
+
+In addition to agent hooks, CI registers feature lifecycle hooks that fire during OAK operations:
+
+| Hook Event | Trigger | Purpose |
+|------------|---------|---------|
+| `on_feature_enabled` | `oak feature enable codebase-intelligence` | Initialize data dir, constitution, hooks, start daemon |
+| `on_feature_disabled` | `oak feature disable codebase-intelligence` | Stop daemon, remove hooks, clean data |
+| `on_pre_remove` | `oak remove` | Cleanup before OAK removal |
+| `on_agents_changed` | `oak init` with different agents | Update agent hook configurations |
+| `on_pre_upgrade` | `oak upgrade` | Create backup before upgrade (if configured) |
+
+### Pre-Upgrade Backup
+
+The `on_pre_upgrade` hook automatically creates a backup before `oak upgrade` applies any changes. This is controlled by the `backup.on_upgrade` configuration setting (enabled by default).
+
+When triggered, the hook:
+1. Checks if `backup.on_upgrade` is enabled in the configuration
+2. If enabled, creates a backup using the configured defaults (including the `include_activities` setting)
+3. Logs success or failure — the upgrade proceeds regardless
+
+To disable pre-upgrade backups:
+```yaml
+# In .oak/config.yaml
+codebase_intelligence:
+  backup:
+    on_upgrade: false
+```
+
 ## Context Injection
 
 Context is injected into the agent's conversation via the `injected_context` field in the hook response.

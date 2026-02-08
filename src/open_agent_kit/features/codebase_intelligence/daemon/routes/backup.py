@@ -8,6 +8,7 @@ Supports multi-machine/multi-user backups with content-based deduplication.
 """
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,20 +25,58 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
     get_backup_dir_source,
     get_backup_filename,
 )
+from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    create_backup as do_create_backup,
+)
+from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    restore_all as do_restore_all,
+)
+from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    restore_backup as do_restore_backup,
+)
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_BACKUP_HEADER_MAX_LINES,
     CI_BACKUP_PATH_INVALID_ERROR,
     CI_DATA_DIR,
-    CI_HISTORY_BACKUP_FILE,
     CI_LINE_SEPARATOR,
     CI_TEXT_ENCODING,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState, get_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["backup"])
+
+
+def get_last_backup_epoch(state: DaemonState, backup_path: Path | None = None) -> float | None:
+    """Resolve last backup time: prefer in-memory timestamp, fall back to file mtime.
+
+    Args:
+        state: Current daemon state.
+        backup_path: Pre-resolved backup file path. If None, resolves from state.
+
+    Returns:
+        Epoch timestamp of the last backup, or None if no backup exists.
+    """
+    if state.last_auto_backup is not None:
+        return state.last_auto_backup
+
+    # Fall back to backup file mtime
+    if backup_path is None and state.project_root:
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_backup_dir,
+            get_backup_filename,
+            get_machine_identifier,
+        )
+
+        machine_id = state.machine_id or get_machine_identifier(state.project_root)
+        backup_path = get_backup_dir(state.project_root) / get_backup_filename(machine_id)
+
+    if backup_path is not None and backup_path.exists():
+        return backup_path.stat().st_mtime
+
+    return None
 
 
 def _ensure_backup_path_within_dir(backup_dir: Path, candidate: Path) -> Path:
@@ -70,7 +109,7 @@ def _read_backup_header_lines(backup_path: Path, max_lines: int) -> list[str]:
 class BackupRequest(BaseModel):
     """Request to create a database backup."""
 
-    include_activities: bool = False
+    include_activities: bool | None = None  # None = use config default
     output_path: str | None = None  # None = use machine-specific default
 
 
@@ -112,6 +151,9 @@ class BackupStatusResponse(BaseModel):
     last_modified: str | None = None
     machine_id: str  # Current machine identifier
     all_backups: list[BackupFileInfo] = []  # All available backup files
+    auto_backup_enabled: bool = False
+    last_auto_backup: str | None = None
+    next_auto_backup_minutes: int | None = None
 
 
 class RestoreResponse(BaseModel):
@@ -177,6 +219,40 @@ class RestoreAllResponse(BaseModel):
     per_file: dict[str, RestoreResponse]
 
 
+def _trigger_chromadb_rebuild(background_tasks: BackgroundTasks) -> bool:
+    """Trigger ChromaDB rebuild and session re-embedding in background.
+
+    Returns True if rebuild was started, False otherwise.
+    """
+    state = get_state()
+    if not state.activity_processor:
+        return False
+
+    logger.info("Starting post-restore ChromaDB rebuild in background")
+    background_tasks.add_task(
+        state.activity_processor.rebuild_chromadb_from_sqlite,
+        batch_size=50,
+        reset_embedded_flags=True,
+        clear_chromadb_first=True,
+    )
+
+    if state.vector_store and state.activity_store:
+        from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+            reembed_session_summaries,
+        )
+
+        store = state.activity_store  # narrowed by guard above
+        background_tasks.add_task(
+            reembed_session_summaries,
+            activity_store=store,
+            vector_store=state.vector_store,
+            clear_first=True,
+        )
+        logger.info("Starting post-restore session summary re-embedding in background")
+
+    return True
+
+
 @router.get("/api/backup/status")
 async def get_backup_status() -> BackupStatusResponse:
     """Get current backup file status including all team backups."""
@@ -184,8 +260,6 @@ async def get_backup_status() -> BackupStatusResponse:
 
     if not state.project_root:
         raise HTTPException(status_code=503, detail="Project root not initialized")
-
-    from datetime import datetime
 
     machine_id = state.machine_id or ""
     backup_dir = get_backup_dir(state.project_root)
@@ -238,19 +312,59 @@ async def get_backup_status() -> BackupStatusResponse:
             )
         )
 
-    # Check this machine's backup
+    # Compute auto-backup status from config
+    auto_backup_enabled = False
+    next_auto_backup_minutes: int | None = None
+    last_auto_backup_iso: str | None = None
+
+    config = state.ci_config
+    if config:
+        auto_backup_enabled = config.backup.auto_enabled
+
+    # Check this machine's backup (also used as fallback for last-backup time)
+    backup_file_mtime: float | None = None
+    backup_file_mtime_iso: str | None = None
+    backup_size_bytes: int = 0
     if backup_path.exists():
         stat = backup_path.stat()
-        mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+        backup_file_mtime = stat.st_mtime
+        backup_file_mtime_iso = datetime.fromtimestamp(stat.st_mtime).isoformat()
+        backup_size_bytes = stat.st_size
+
+    # Resolve last backup display time (file mtime fallback for "last backup" label)
+    # and next backup countdown (based on daemon scheduling, not file age)
+    if auto_backup_enabled and config:
+        import time
+
+        interval = config.backup.interval_minutes
+        last_backup_epoch = get_last_backup_epoch(state, backup_path)
+        if last_backup_epoch is not None:
+            last_auto_backup_iso = datetime.fromtimestamp(last_backup_epoch).isoformat()
+
+        # "Next backup" is based on the daemon's loop schedule:
+        # - If an auto-backup ran this session, next = last_auto_backup + interval
+        # - Otherwise, first backup = daemon_start + interval
+        schedule_ref = state.last_auto_backup or state.start_time
+        if schedule_ref is not None:
+            elapsed_minutes = (time.time() - schedule_ref) / 60
+            remaining = max(0, interval - elapsed_minutes)
+            next_auto_backup_minutes = int(remaining)
+        else:
+            next_auto_backup_minutes = interval
+
+    if backup_file_mtime is not None:
         return BackupStatusResponse(
             backup_exists=True,
             backup_path=str(backup_path),
             backup_dir=str(backup_dir),
             backup_dir_source=backup_dir_source,
-            backup_size_bytes=stat.st_size,
-            last_modified=mtime,
+            backup_size_bytes=backup_size_bytes,
+            last_modified=backup_file_mtime_iso,
             machine_id=machine_id,
             all_backups=all_backups,
+            auto_backup_enabled=auto_backup_enabled,
+            last_auto_backup=last_auto_backup_iso,
+            next_auto_backup_minutes=next_auto_backup_minutes,
         )
 
     return BackupStatusResponse(
@@ -260,6 +374,9 @@ async def get_backup_status() -> BackupStatusResponse:
         backup_dir_source=backup_dir_source,
         machine_id=machine_id,
         all_backups=all_backups,
+        auto_backup_enabled=auto_backup_enabled,
+        last_auto_backup=last_auto_backup_iso,
+        next_auto_backup_minutes=next_auto_backup_minutes,
     )
 
 
@@ -279,41 +396,29 @@ async def create_backup(request: BackupRequest) -> dict[str, Any]:
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to backup")
 
-    backup_dir = get_backup_dir(state.project_root)
-
-    machine_id = state.machine_id or ""
-
+    # Validate output_path stays within backup directory (path traversal protection)
+    output_path: Path | None = None
     if request.output_path:
-        backup_path = _ensure_backup_path_within_dir(
-            backup_dir,
-            Path(request.output_path),
-        )
-    else:
-        # Use machine-specific filename
-        backup_filename = get_backup_filename(machine_id)
-        backup_path = backup_dir / backup_filename
+        backup_dir = get_backup_dir(state.project_root)
+        output_path = _ensure_backup_path_within_dir(backup_dir, Path(request.output_path))
 
-    logger.info(
-        f"Creating backup: include_activities={request.include_activities}, "
-        f"machine={machine_id}, path={backup_path}"
+    result = do_create_backup(
+        project_root=state.project_root,
+        db_path=db_path,
+        include_activities=request.include_activities,
+        output_path=output_path,
     )
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
 
-    backup_path.parent.mkdir(parents=True, exist_ok=True)
-
-    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-
-    store = ActivityStore(db_path, machine_id=machine_id)
-    count = store.export_to_sql(backup_path, include_activities=request.include_activities)
-    store.close()
-
-    logger.info(f"Backup complete: {count} records exported to {backup_path}")
+    logger.info(f"Backup complete: {result.record_count} records exported to {result.backup_path}")
 
     return {
         "status": "completed",
-        "message": f"Exported {count} records",
-        "backup_path": str(backup_path),
-        "record_count": count,
-        "machine_id": machine_id,
+        "message": f"Exported {result.record_count} records",
+        "backup_path": str(result.backup_path),
+        "record_count": result.record_count,
+        "machine_id": result.machine_id,
     }
 
 
@@ -339,75 +444,43 @@ async def restore_backup(
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to restore into")
 
-    backup_dir = get_backup_dir(state.project_root)
-
-    machine_id = state.machine_id or ""
-
+    # Validate input_path stays within backup directory (path traversal protection)
+    input_path: Path | None = None
     if request.input_path:
-        backup_path = _ensure_backup_path_within_dir(
-            backup_dir,
-            Path(request.input_path),
-        )
-    else:
-        # Default to this machine's backup file
-        backup_filename = get_backup_filename(machine_id)
-        backup_path = backup_dir / backup_filename
+        backup_dir = get_backup_dir(state.project_root)
+        input_path = _ensure_backup_path_within_dir(backup_dir, Path(request.input_path))
 
-        # Fall back to legacy filename if machine-specific doesn't exist
-        if not backup_path.exists():
-            legacy_path = backup_dir / CI_HISTORY_BACKUP_FILE
-            if legacy_path.exists():
-                backup_path = legacy_path
+    result = do_restore_backup(
+        project_root=state.project_root,
+        db_path=db_path,
+        input_path=input_path,
+        dry_run=request.dry_run,
+    )
 
-    if not backup_path.exists():
-        raise HTTPException(status_code=404, detail=f"Backup file not found: {backup_path}")
+    if not result.success:
+        error_msg = result.error or "Restore failed"
+        # Unified function returns "No backup file found in ..." or
+        # "Backup file not found: ..." for missing files
+        if "file found" in error_msg or "file not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
-    logger.info(f"Restoring from backup: {backup_path} (dry_run={request.dry_run})")
-
-    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-
-    store = ActivityStore(db_path, machine_id=machine_id)
-    result = store.import_from_sql_with_dedup(backup_path, dry_run=request.dry_run)
-    store.close()
+    import_result = result.import_result
+    if import_result is None:
+        raise HTTPException(status_code=500, detail="Restore returned no import result")
 
     logger.info(
-        f"Restore complete: {result.total_imported} imported, "
-        f"{result.total_skipped} skipped from {backup_path}"
+        f"Restore complete: {import_result.total_imported} imported, "
+        f"{import_result.total_skipped} skipped from {result.backup_path}"
     )
 
     # Trigger ChromaDB rebuild if not dry run and requested
     chromadb_rebuild_started = False
-    if (
-        not request.dry_run
-        and request.auto_rebuild_chromadb
-        and result.total_imported > 0
-        and state.activity_processor
-    ):
-        logger.info("Starting post-restore ChromaDB rebuild in background")
-        background_tasks.add_task(
-            state.activity_processor.rebuild_chromadb_from_sqlite,
-            batch_size=50,
-            reset_embedded_flags=True,
-            clear_chromadb_first=True,  # Remove orphans before rebuilding
-        )
-        chromadb_rebuild_started = True
-
-        # Also re-embed session summaries for the suggestion system
-        if state.vector_store:
-            from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
-                reembed_session_summaries,
-            )
-
-            background_tasks.add_task(
-                reembed_session_summaries,
-                activity_store=state.activity_store,
-                vector_store=state.vector_store,
-                clear_first=True,
-            )
-            logger.info("Starting post-restore session summary re-embedding in background")
+    if not request.dry_run and request.auto_rebuild_chromadb and import_result.total_imported > 0:
+        chromadb_rebuild_started = _trigger_chromadb_rebuild(background_tasks)
 
     return RestoreResponse.from_import_result(
-        result, str(backup_path), chromadb_rebuild_started=chromadb_rebuild_started
+        import_result, str(result.backup_path), chromadb_rebuild_started=chromadb_rebuild_started
     )
 
 
@@ -436,60 +509,28 @@ async def restore_all_backups_endpoint(
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="No database to restore into")
 
-    backup_dir = get_backup_dir(state.project_root)
-    backup_files = discover_backup_files(backup_dir)
+    result = do_restore_all(
+        project_root=state.project_root,
+        db_path=db_path,
+        dry_run=request.dry_run,
+    )
 
-    if not backup_files:
-        raise HTTPException(status_code=404, detail=f"No backup files found in {backup_dir}")
-
-    machine_id = state.machine_id or ""
-    logger.info(f"Restoring from {len(backup_files)} backup files (dry_run={request.dry_run})")
-
-    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-
-    store = ActivityStore(db_path, machine_id=machine_id)
-    results = store.restore_all_backups(backup_dir, dry_run=request.dry_run)
-    store.close()
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
 
     # Build per-file responses
     per_file: dict[str, RestoreResponse] = {}
-    for filename, result in results.items():
-        per_file[filename] = RestoreResponse.from_import_result(result, filename)
+    for filename, import_result in result.per_file.items():
+        per_file[filename] = RestoreResponse.from_import_result(import_result, filename)
 
-    total_imported = sum(r.total_imported for r in results.values())
-    total_skipped = sum(r.total_skipped for r in results.values())
-    total_errors = sum(r.errors for r in results.values())
+    total_imported = result.total_imported
+    total_skipped = result.total_skipped
+    total_errors = sum(r.errors for r in result.per_file.values())
 
     # Trigger ChromaDB rebuild if not dry run and requested
     chromadb_rebuild_started = False
-    if (
-        not request.dry_run
-        and request.auto_rebuild_chromadb
-        and total_imported > 0
-        and state.activity_processor
-    ):
-        logger.info("Starting post-restore ChromaDB rebuild in background")
-        background_tasks.add_task(
-            state.activity_processor.rebuild_chromadb_from_sqlite,
-            batch_size=50,
-            reset_embedded_flags=True,
-            clear_chromadb_first=True,  # Remove orphans before rebuilding
-        )
-        chromadb_rebuild_started = True
-
-        # Also re-embed session summaries for the suggestion system
-        if state.vector_store:
-            from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
-                reembed_session_summaries,
-            )
-
-            background_tasks.add_task(
-                reembed_session_summaries,
-                activity_store=state.activity_store,
-                vector_store=state.vector_store,
-                clear_first=True,
-            )
-            logger.info("Starting post-restore session summary re-embedding in background")
+    if not request.dry_run and request.auto_rebuild_chromadb and total_imported > 0:
+        chromadb_rebuild_started = _trigger_chromadb_rebuild(background_tasks)
 
     logger.info(
         f"Restore all complete: {total_imported} imported, "
@@ -497,7 +538,7 @@ async def restore_all_backups_endpoint(
     )
 
     message = (
-        f"Restored {total_imported} records from {len(backup_files)} files, "
+        f"Restored {total_imported} records from {len(result.per_file)} files, "
         f"skipped {total_skipped} duplicates"
     )
     if chromadb_rebuild_started:
@@ -506,7 +547,7 @@ async def restore_all_backups_endpoint(
     return RestoreAllResponse(
         status="completed",
         message=message,
-        files_processed=len(backup_files),
+        files_processed=len(result.per_file),
         total_imported=total_imported,
         total_skipped=total_skipped,
         total_errors=total_errors,

@@ -1,14 +1,44 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal, FolderCog, Info } from "lucide-react";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal, FolderCog, Info, Settings, Save, Loader2, Clock } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { MESSAGE_TYPES } from "@/lib/constants";
 import { useBackupStatus, useCreateBackup, useRestoreBackup, useRestoreAllBackups, type RestoreResponse } from "@/hooks/use-backup";
+import { useConfig, useUpdateConfig } from "@/hooks/use-config";
+import type { BackupConfig } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+/** Minimum interval in minutes for automatic backups. */
+const BACKUP_INTERVAL_MIN = 5;
+/** Maximum interval in minutes for automatic backups (24 hours). */
+const BACKUP_INTERVAL_MAX = 1440;
+
+const BACKUP_FORM_DEFAULTS: BackupConfig = {
+    auto_enabled: false,
+    include_activities: false,
+    interval_minutes: 60,
+    on_upgrade: true,
+};
+
+/** Format a timestamp as a relative "time ago" string. */
+function formatTimeAgo(isoString: string): string {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+
+    if (diffMinutes < 1) return "just now";
+    if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+}
 
 export default function TeamBackups() {
     const queryClient = useQueryClient();
@@ -21,6 +51,57 @@ export default function TeamBackups() {
     const createBackupFn = useCreateBackup();
     const restoreBackupFn = useRestoreBackup();
     const restoreAllBackupsFn = useRestoreAllBackups();
+
+    // Config hooks for backup settings
+    const { data: config, isLoading: isConfigLoading } = useConfig();
+    const updateConfig = useUpdateConfig();
+    const [backupForm, setBackupForm] = useState<BackupConfig>(BACKUP_FORM_DEFAULTS);
+    const [isDirty, setIsDirty] = useState(false);
+    const [configMessage, setConfigMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+    // Sync backup form with config on load
+    useEffect(() => {
+        if (config && "backup" in config && !isDirty) {
+            const bkp = (config as Record<string, unknown>).backup as Partial<BackupConfig> | undefined;
+            if (bkp) {
+                setBackupForm({
+                    auto_enabled: bkp.auto_enabled ?? BACKUP_FORM_DEFAULTS.auto_enabled,
+                    include_activities: bkp.include_activities ?? BACKUP_FORM_DEFAULTS.include_activities,
+                    interval_minutes: bkp.interval_minutes ?? BACKUP_FORM_DEFAULTS.interval_minutes,
+                    on_upgrade: bkp.on_upgrade ?? BACKUP_FORM_DEFAULTS.on_upgrade,
+                });
+            }
+        }
+    }, [config, isDirty]);
+
+    // Default the manual backup "include activities" checkbox to match config value
+    useEffect(() => {
+        if (config && "backup" in config) {
+            const bkp = (config as Record<string, unknown>).backup as Partial<BackupConfig> | undefined;
+            if (bkp?.include_activities !== undefined) {
+                setIncludeActivities(bkp.include_activities);
+            }
+        }
+    }, [config]);
+
+    const handleSaveBackupConfig = async () => {
+        try {
+            const result = await updateConfig.mutateAsync({
+                backup: {
+                    auto_enabled: backupForm.auto_enabled,
+                    include_activities: backupForm.include_activities,
+                    interval_minutes: backupForm.interval_minutes,
+                    on_upgrade: backupForm.on_upgrade,
+                },
+            } as Record<string, unknown>) as { message?: string };
+            setConfigMessage({ type: "success", text: result.message || "Backup settings saved." });
+            setIsDirty(false);
+            refetchBackupStatus();
+        } catch (err: unknown) {
+            const errMessage = err instanceof Error ? err.message : "Failed to save backup settings.";
+            setConfigMessage({ type: "error", text: errMessage });
+        }
+    };
 
     const handleCreateBackup = () => {
         setRestoreResult(null);
@@ -129,6 +210,152 @@ export default function TeamBackups() {
                     </div>
                 </Alert>
             )}
+
+            {/* Backup Settings Card */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Settings className="h-5 w-5" />
+                        Backup Settings
+                    </CardTitle>
+                    <CardDescription>
+                        Configure automatic backups, scheduling, and retention policies.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {configMessage && (
+                        <div className={cn(
+                            "p-3 rounded-md text-sm flex items-center gap-2",
+                            configMessage.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+                        )}>
+                            {configMessage.type === "error" && <AlertCircle className="h-4 w-4" />}
+                            {configMessage.text}
+                        </div>
+                    )}
+
+                    {/* Toggle switches */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                id="backup_auto_enabled"
+                                checked={backupForm.auto_enabled}
+                                onChange={(e) => {
+                                    setBackupForm((prev) => ({ ...prev, auto_enabled: e.target.checked }));
+                                    setIsDirty(true);
+                                    setConfigMessage(null);
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <label htmlFor="backup_auto_enabled" className="text-sm font-medium">
+                                Automatic backups
+                            </label>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                id="backup_include_activities"
+                                checked={backupForm.include_activities}
+                                onChange={(e) => {
+                                    setBackupForm((prev) => ({ ...prev, include_activities: e.target.checked }));
+                                    setIsDirty(true);
+                                    setConfigMessage(null);
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <label htmlFor="backup_include_activities" className="text-sm font-medium">
+                                Include activities in backups
+                            </label>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                id="backup_on_upgrade"
+                                checked={backupForm.on_upgrade}
+                                onChange={(e) => {
+                                    setBackupForm((prev) => ({ ...prev, on_upgrade: e.target.checked }));
+                                    setIsDirty(true);
+                                    setConfigMessage(null);
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <label htmlFor="backup_on_upgrade" className="text-sm font-medium">
+                                Backup before upgrade
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Interval input - only shown when auto backups are enabled */}
+                    {backupForm.auto_enabled && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label htmlFor="backup_interval" className="text-sm font-medium">
+                                    Backup interval (minutes)
+                                </label>
+                                <input
+                                    id="backup_interval"
+                                    type="number"
+                                    min={BACKUP_INTERVAL_MIN}
+                                    max={BACKUP_INTERVAL_MAX}
+                                    value={backupForm.interval_minutes}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value, 10);
+                                        if (!isNaN(val)) {
+                                            setBackupForm((prev) => ({ ...prev, interval_minutes: val }));
+                                            setIsDirty(true);
+                                            setConfigMessage(null);
+                                        }
+                                    }}
+                                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    {BACKUP_INTERVAL_MIN} min to {BACKUP_INTERVAL_MAX} min (24h)
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Auto-backup status display */}
+                    {backupStatus?.auto_backup_enabled && (
+                        <div className="p-3 rounded-lg bg-muted/50 space-y-1">
+                            <div className="flex items-center gap-2 text-sm">
+                                <Clock className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">Auto-backup status</span>
+                            </div>
+                            {backupStatus.last_auto_backup && (
+                                <p className="text-xs text-muted-foreground pl-6">
+                                    Last auto-backup: {formatTimeAgo(backupStatus.last_auto_backup)}
+                                </p>
+                            )}
+                            {backupStatus.next_auto_backup_minutes != null && (
+                                <p className="text-xs text-muted-foreground pl-6">
+                                    Next auto-backup in ~{backupStatus.next_auto_backup_minutes} minute{backupStatus.next_auto_backup_minutes === 1 ? "" : "s"}
+                                </p>
+                            )}
+                            {!backupStatus.last_auto_backup && (
+                                <p className="text-xs text-muted-foreground pl-6">
+                                    No auto-backup has run yet.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+                <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                        Backup settings take effect on next cycle.
+                    </p>
+                    <Button
+                        onClick={handleSaveBackupConfig}
+                        disabled={!isDirty || updateConfig.isPending || isConfigLoading}
+                        size="sm"
+                    >
+                        {updateConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
+                </CardFooter>
+            </Card>
 
             {/* Team Backup Overview Card */}
             <Card>

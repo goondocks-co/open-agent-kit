@@ -52,6 +52,52 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _periodic_backup_loop(state: "DaemonState") -> None:
+    """Periodically creates backups based on config."""
+    while True:
+        config = state.ci_config
+        if not config or not config.backup.auto_enabled:
+            await asyncio.sleep(60)
+            continue
+        interval = config.backup.interval_minutes * 60
+        await asyncio.sleep(interval)
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _run_auto_backup, state)
+        except Exception:
+            logger.exception("Auto-backup failed")
+
+
+def _run_auto_backup(state: "DaemonState") -> None:
+    """Run a single auto-backup cycle (sync, for use in executor)."""
+    import time
+
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        create_backup,
+    )
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_ACTIVITIES_DB_FILENAME as _DB_FILENAME,
+    )
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_DATA_DIR as _DATA_DIR,
+    )
+
+    if not state.project_root:
+        return
+
+    db_path = state.project_root / OAK_DIR / _DATA_DIR / _DB_FILENAME
+    if not db_path.exists():
+        logger.debug("Auto-backup skipped: database does not exist")
+        return
+
+    result = create_backup(project_root=state.project_root, db_path=db_path)
+    if result.success:
+        state.last_auto_backup = time.time()
+        logger.info(f"Auto-backup: {result.record_count} records -> {result.backup_path}")
+    else:
+        logger.warning(f"Auto-backup failed: {result.error}")
+
+
 async def _background_index() -> None:
     """Run initial indexing in background."""
     state = get_state()
@@ -794,6 +840,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning(f"Failed to initialize: {e}")
         state.vector_store = None
         state.indexer = None
+
+    # Launch periodic auto-backup loop as a background task
+    backup_task = asyncio.create_task(_periodic_backup_loop(state), name="periodic_backup")
+    state.background_tasks.append(backup_task)
 
     yield
 

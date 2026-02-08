@@ -287,6 +287,15 @@ SESSION_INACTIVE_TIMEOUT_SECONDS: Final[int] = 3600
 # Backup Configuration
 # =============================================================================
 
+# Backup behavior defaults (used by BackupConfig dataclass)
+BACKUP_AUTO_ENABLED_DEFAULT: Final[bool] = False
+BACKUP_INCLUDE_ACTIVITIES_DEFAULT: Final[bool] = True
+BACKUP_INTERVAL_MINUTES_DEFAULT: Final[int] = 30
+BACKUP_INTERVAL_MINUTES_MIN: Final[int] = 5
+BACKUP_INTERVAL_MINUTES_MAX: Final[int] = 1440
+BACKUP_ON_UPGRADE_DEFAULT: Final[bool] = True
+BACKUP_CONFIG_KEY: Final[str] = "backup"
+
 # Backup file location (in preserved oak/ directory, committed to git)
 CI_HISTORY_BACKUP_DIR: Final[str] = "oak/history"
 CI_HISTORY_BACKUP_FILE: Final[str] = "ci_history.sql"  # Legacy single-file backup

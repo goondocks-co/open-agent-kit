@@ -67,3 +67,11 @@ export async function deleteJson<T>(endpoint: string): Promise<T> {
         method: 'DELETE',
     });
 }
+
+/** Backup configuration sent/received via the config endpoint under the "backup" key. */
+export interface BackupConfig {
+    auto_enabled: boolean;
+    include_activities: boolean;
+    interval_minutes: number;
+    on_upgrade: boolean;
+}

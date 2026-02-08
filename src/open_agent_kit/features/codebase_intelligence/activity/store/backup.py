@@ -480,6 +480,286 @@ class ImportResult:
         )
 
 
+# =============================================================================
+# Unified Backup/Restore Functions
+# =============================================================================
+
+
+@dataclass
+class BackupResult:
+    """Result from a create_backup() operation."""
+
+    success: bool
+    backup_path: Path | None = None
+    record_count: int = 0
+    machine_id: str = ""
+    include_activities: bool = False
+    error: str | None = None
+
+
+@dataclass
+class RestoreResult:
+    """Result from a restore_backup() operation."""
+
+    success: bool
+    backup_path: Path | None = None
+    import_result: ImportResult | None = None
+    machine_id: str = ""
+    error: str | None = None
+
+
+@dataclass
+class RestoreAllResult:
+    """Result from a restore_all() operation."""
+
+    success: bool
+    per_file: dict[str, ImportResult] = field(default_factory=dict)
+    machine_id: str = ""
+    error: str | None = None
+
+    @property
+    def total_imported(self) -> int:
+        """Total records imported across all files."""
+        return sum(r.total_imported for r in self.per_file.values())
+
+    @property
+    def total_skipped(self) -> int:
+        """Total records skipped across all files."""
+        return sum(r.total_skipped for r in self.per_file.values())
+
+
+def create_backup(
+    project_root: Path,
+    db_path: Path,
+    *,
+    include_activities: bool | None = None,
+    output_path: Path | None = None,
+) -> BackupResult:
+    """Single entry point for all backup operations.
+
+    When include_activities is None, the value is loaded from BackupConfig.
+    Explicit True/False overrides the config value.
+
+    Args:
+        project_root: Project root directory.
+        db_path: Path to the SQLite database.
+        include_activities: Whether to include activities table.
+            None means load from config.
+        output_path: Custom output path. None means use default
+            backup directory with machine-id filename.
+
+    Returns:
+        BackupResult with operation details.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
+
+    # Resolve include_activities from config if not explicitly set
+    if include_activities is None:
+        try:
+            from open_agent_kit.features.codebase_intelligence.config import load_ci_config
+
+            config = load_ci_config(project_root)
+            include_activities = config.backup.include_activities
+        except Exception:
+            from open_agent_kit.features.codebase_intelligence.constants import (
+                BACKUP_INCLUDE_ACTIVITIES_DEFAULT,
+            )
+
+            include_activities = BACKUP_INCLUDE_ACTIVITIES_DEFAULT
+
+    # Check db exists
+    if not db_path.exists():
+        return BackupResult(
+            success=False,
+            include_activities=include_activities,
+            error=f"Database not found: {db_path}",
+        )
+
+    # Resolve machine_id, backup_dir, backup_path
+    machine_id = get_machine_identifier(project_root)
+    if output_path is None:
+        backup_dir = get_backup_dir(project_root)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        output_path = backup_dir / get_backup_filename(machine_id)
+
+    # Create store, export, close
+    store: ActivityStore | None = None
+    try:
+        store = ActivityStore(db_path, machine_id)
+        record_count = export_to_sql(store, output_path, include_activities=include_activities)
+        return BackupResult(
+            success=True,
+            backup_path=output_path,
+            record_count=record_count,
+            machine_id=machine_id,
+            include_activities=include_activities,
+        )
+    except Exception as exc:
+        return BackupResult(
+            success=False,
+            backup_path=output_path,
+            machine_id=machine_id,
+            include_activities=include_activities,
+            error=str(exc),
+        )
+    finally:
+        if store is not None:
+            store.close()
+
+
+def restore_backup(
+    project_root: Path,
+    db_path: Path,
+    *,
+    input_path: Path | None = None,
+    dry_run: bool = False,
+) -> RestoreResult:
+    """Single entry point for single-file restore.
+
+    If input_path is None, resolves the backup file for the current machine.
+    Falls back to the legacy CI_HISTORY_BACKUP_FILE if the machine-specific
+    file does not exist.
+
+    Args:
+        project_root: Project root directory.
+        db_path: Path to the SQLite database.
+        input_path: Explicit backup file to restore. None means auto-resolve.
+        dry_run: If True, preview what would be imported without changes.
+
+    Returns:
+        RestoreResult with operation details.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_HISTORY_BACKUP_FILE,
+    )
+
+    if not db_path.exists():
+        return RestoreResult(
+            success=False,
+            error=f"Database not found: {db_path}",
+        )
+
+    machine_id = get_machine_identifier(project_root)
+
+    # Resolve backup path
+    if input_path is None:
+        backup_dir = get_backup_dir(project_root)
+        machine_backup = backup_dir / get_backup_filename(machine_id)
+        legacy_backup = backup_dir / CI_HISTORY_BACKUP_FILE
+
+        if machine_backup.exists():
+            input_path = machine_backup
+        elif legacy_backup.exists():
+            input_path = legacy_backup
+        else:
+            return RestoreResult(
+                success=False,
+                machine_id=machine_id,
+                error=f"No backup file found in {backup_dir}",
+            )
+
+    if not input_path.exists():
+        return RestoreResult(
+            success=False,
+            backup_path=input_path,
+            machine_id=machine_id,
+            error=f"Backup file not found: {input_path}",
+        )
+
+    store: ActivityStore | None = None
+    try:
+        store = ActivityStore(db_path, machine_id)
+        import_result = import_from_sql_with_dedup(store, input_path, dry_run=dry_run)
+        return RestoreResult(
+            success=True,
+            backup_path=input_path,
+            import_result=import_result,
+            machine_id=machine_id,
+        )
+    except Exception as exc:
+        return RestoreResult(
+            success=False,
+            backup_path=input_path,
+            machine_id=machine_id,
+            error=str(exc),
+        )
+    finally:
+        if store is not None:
+            store.close()
+
+
+def restore_all(
+    project_root: Path,
+    db_path: Path,
+    *,
+    backup_files: list[Path] | None = None,
+    dry_run: bool = False,
+) -> RestoreAllResult:
+    """Single entry point for multi-file restore.
+
+    If backup_files is None, discovers all .sql files in the backup directory
+    via discover_backup_files().
+
+    Args:
+        project_root: Project root directory.
+        db_path: Path to the SQLite database.
+        backup_files: Explicit list of backup files. None means auto-discover.
+        dry_run: If True, preview what would be imported without changes.
+
+    Returns:
+        RestoreAllResult with per-file details.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
+
+    if not db_path.exists():
+        return RestoreAllResult(
+            success=False,
+            error=f"Database not found: {db_path}",
+        )
+
+    machine_id = get_machine_identifier(project_root)
+
+    # Discover backup files if not provided
+    if backup_files is None:
+        backup_dir = get_backup_dir(project_root)
+        backup_files = discover_backup_files(backup_dir)
+
+    if not backup_files:
+        return RestoreAllResult(
+            success=True,
+            machine_id=machine_id,
+        )
+
+    store: ActivityStore | None = None
+    try:
+        store = ActivityStore(db_path, machine_id)
+        per_file: dict[str, ImportResult] = {}
+        for backup_file in backup_files:
+            result = import_from_sql_with_dedup(store, backup_file, dry_run=dry_run)
+            per_file[backup_file.name] = result
+
+        return RestoreAllResult(
+            success=True,
+            per_file=per_file,
+            machine_id=machine_id,
+        )
+    except Exception as exc:
+        return RestoreAllResult(
+            success=False,
+            machine_id=machine_id,
+            error=str(exc),
+        )
+    finally:
+        if store is not None:
+            store.close()
+
+
+# =============================================================================
+# Low-Level Export/Import Functions
+# =============================================================================
+
+
 def export_to_sql(
     store: ActivityStore,
     output_path: Path,

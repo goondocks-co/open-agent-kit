@@ -29,18 +29,26 @@ For every task, the agent follows a consistent workflow:
 
 OAK ships four built-in tasks that cover the most common documentation needs. Run them from the Agents page in the dashboard, or trigger them via the API.
 
-### README & Overview
+### Root Documentation
 
-Maintains your project's `README.md` by exploring the actual codebase and enriching it with CI context.
+Maintains the four root-level files visitors see first: `README.md`, `QUICKSTART.md`, `CONTRIBUTING.md`, and `SECURITY.md`. One task (not four) because these files cross-reference each other — consistent linking requires a single pass.
 
 **What it does:**
-- Reads the existing README completely
+- Reads all four files, then makes targeted updates to each
 - Explores entry points, CLI, API, and features
-- Enriches with gotchas, decisions, and recent discoveries from CI
-- Updates incrementally — keeps what works, updates what changed
-- Verifies code examples and installation commands still work
+- Enriches each file differently based on its role (see below)
+- Verifies cross-links between files and confirms code examples exist
 
-**CI queries:** Project stats, recent sessions, discoveries, and gotchas.
+**Each file has a distinct purpose and length budget:**
+
+| File | Purpose | Lines | CI Enrichment |
+|------|---------|-------|---------------|
+| `README.md` | Landing page — tagline, quick install, one example, links out | 60–100 | Minimal (project stats to validate feature claims) |
+| `QUICKSTART.md` | Hands-on guide — multiple install methods, walkthrough, config, troubleshooting | 150–250 | Heavy (gotcha memories → troubleshooting section) |
+| `CONTRIBUTING.md` | Contributor onboarding — dev setup, quality gate, PR workflow | 80–120 | Light (gotchas about dev environment) |
+| `SECURITY.md` | Security policy — vulnerability reporting, supported versions | 40–80 | None (stable policy document) |
+
+**CI queries:** Project stats, recent sessions, gotchas (×15), discoveries (×10), bug fixes (×5).
 
 ### Feature Documentation
 
@@ -86,7 +94,7 @@ Generated documentation is written to `oak/docs/` (git-tracked), with two except
 
 | Task | Output |
 |------|--------|
-| README & Overview | `README.md` (project root) |
+| Root Documentation | `README.md`, `QUICKSTART.md`, `CONTRIBUTING.md`, `SECURITY.md` (project root) |
 | Changelog Generator | `CHANGELOG.md` (project root) |
 | Feature Documentation | `oak/docs/` |
 | Architecture Documentation | `oak/docs/` |
@@ -259,31 +267,39 @@ You can also create tasks from the dashboard. Click **Create Task** on the Agent
 
 To customize a built-in task, create a file in `oak/agents/` with the same `name` as the built-in task. Your custom version takes precedence.
 
-For example, to customize the README task:
+For example, to customize the root documentation task:
 
 ```yaml
-# oak/agents/readme.yaml
-name: readme                            # Same name = overrides built-in
-display_name: "Custom README Update"
+# oak/agents/root-docs.yaml
+name: root-docs                         # Same name = overrides built-in
+display_name: "Custom Root Docs"
 agent_type: documentation
-description: "README updater with project-specific instructions"
+description: "Root docs with project-specific instructions"
 
 default_task: |
-  Update README.md with focus on:
-  1. Verify the installation section matches current dependencies
-  2. Update the Quick Start with a working example
-  3. Add an FAQ section based on recent gotchas
-
-  Keep the existing badges and license section unchanged.
+  Update root documentation with focus on:
+  1. README.md — keep under 80 lines, update install example
+  2. QUICKSTART.md — add troubleshooting for Docker setup
+  3. CONTRIBUTING.md — add section about database migrations
+  4. SECURITY.md — no changes needed
 
 execution:
-  timeout_seconds: 300
-  max_turns: 50
+  timeout_seconds: 480
+  max_turns: 80
   permission_mode: acceptEdits
 
 maintained_files:
   - path: "{project_root}/README.md"
-    purpose: "Project overview"
+    purpose: "Landing page"
+  - path: "{project_root}/QUICKSTART.md"
+    purpose: "Getting started guide"
+    auto_create: true
+  - path: "{project_root}/CONTRIBUTING.md"
+    purpose: "Contributor onboarding"
+    auto_create: true
+  - path: "{project_root}/SECURITY.md"
+    purpose: "Security policy"
+    auto_create: true
 
 ci_queries:
   discovery:
@@ -296,8 +312,8 @@ ci_queries:
   context:
     - tool: ci_memories
       filter: gotcha
-      limit: 5
-      purpose: "Recent gotchas for FAQ"
+      limit: 15
+      purpose: "Troubleshooting for QUICKSTART"
 
 schedule:
   cron: "0 9 * * MON"

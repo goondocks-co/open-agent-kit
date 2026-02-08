@@ -19,6 +19,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    BACKUP_CONFIG_KEY,
     CI_CONFIG_KEY_TUNNEL,
     CI_CONFIG_TUNNEL_KEY_AUTO_START,
     CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
@@ -407,6 +408,12 @@ async def get_config() -> dict:
             CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
             CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
         },
+        BACKUP_CONFIG_KEY: {
+            "auto_enabled": config.backup.auto_enabled,
+            "include_activities": config.backup.include_activities,
+            "interval_minutes": config.backup.interval_minutes,
+            "on_upgrade": config.backup.on_upgrade,
+        },
         "log_level": config.log_level,
         "origins": origins,
     }
@@ -524,6 +531,25 @@ async def update_config(request: Request) -> dict:
             config.session_quality.stale_timeout_seconds = sq["stale_timeout_seconds"]
             session_quality_changed = True
 
+    # Handle backup config updates (takes effect immediately via periodic loop)
+    backup_changed = False
+    if BACKUP_CONFIG_KEY in data and isinstance(data[BACKUP_CONFIG_KEY], dict):
+        bkp = data[BACKUP_CONFIG_KEY]
+        if "auto_enabled" in bkp and bkp["auto_enabled"] != config.backup.auto_enabled:
+            config.backup.auto_enabled = bool(bkp["auto_enabled"])
+            backup_changed = True
+        if (
+            "include_activities" in bkp
+            and bkp["include_activities"] != config.backup.include_activities
+        ):
+            config.backup.include_activities = bool(bkp["include_activities"])
+            backup_changed = True
+        if "interval_minutes" in bkp and bkp["interval_minutes"] != config.backup.interval_minutes:
+            config.backup.interval_minutes = int(bkp["interval_minutes"])
+            backup_changed = True
+        if "on_upgrade" in bkp and bkp["on_upgrade"] != config.backup.on_upgrade:
+            config.backup.on_upgrade = bool(bkp["on_upgrade"])
+            backup_changed = True
     # Update tunnel settings (nested object: { tunnel: { provider, auto_start, ... } })
     if CI_CONFIG_KEY_TUNNEL in data and isinstance(data[CI_CONFIG_KEY_TUNNEL], dict):
         tun = data[CI_CONFIG_KEY_TUNNEL]
@@ -578,18 +604,22 @@ async def update_config(request: Request) -> dict:
                 CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
                 CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
             },
+            BACKUP_CONFIG_KEY: config.backup.to_dict(),
             "log_level": config.log_level,
             "embedding_changed": embedding_changed,
             "summarization_changed": summarization_changed,
             "session_quality_changed": session_quality_changed,
             "log_level_changed": log_level_changed,
             "log_rotation_changed": log_rotation_changed,
+            "backup_changed": backup_changed,
             "auto_applied": True,
             "indexing_started": restart_result.get("indexing_started", False),
             "message": restart_result.get("message", "Configuration saved and applied."),
         }
 
     message = "Configuration saved."
+    if backup_changed:
+        message += " Backup settings take effect on next cycle."
     if summarization_changed or session_quality_changed:
         message += " Changes take effect immediately."
     elif log_level_changed or log_rotation_changed:
@@ -630,12 +660,14 @@ async def update_config(request: Request) -> dict:
             CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
             CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
         },
+        BACKUP_CONFIG_KEY: config.backup.to_dict(),
         "log_level": config.log_level,
         "embedding_changed": embedding_changed,
         "summarization_changed": summarization_changed,
         "session_quality_changed": session_quality_changed,
         "log_level_changed": log_level_changed,
         "log_rotation_changed": log_rotation_changed,
+        "backup_changed": backup_changed,
         "auto_applied": False,
         "message": message,
     }
@@ -1599,6 +1631,46 @@ async def discover_context_tokens(request: Request) -> dict:
             "error": f"Discovery failed: {e}",
             "suggestion": "Check provider connectivity or enter manually",
         }
+
+
+# =============================================================================
+# Backup Configuration Convenience Endpoint
+# =============================================================================
+
+
+@router.get("/api/backup/config")
+async def get_backup_config() -> dict:
+    """Get backup configuration and last auto-backup timestamp.
+
+    Convenience endpoint combining backup config with runtime state.
+    """
+    from datetime import datetime
+
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=500, detail="Project root not set")
+
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
+
+    from open_agent_kit.features.codebase_intelligence.daemon.routes.backup import (
+        get_last_backup_epoch,
+    )
+
+    last_backup_epoch = get_last_backup_epoch(state)
+    last_auto_backup_iso: str | None = None
+    if last_backup_epoch is not None:
+        last_auto_backup_iso = datetime.fromtimestamp(last_backup_epoch).isoformat()
+
+    return {
+        "auto_enabled": config.backup.auto_enabled,
+        "include_activities": config.backup.include_activities,
+        "interval_minutes": config.backup.interval_minutes,
+        "on_upgrade": config.backup.on_upgrade,
+        "last_auto_backup": last_auto_backup_iso,
+    }
 
 
 # =============================================================================

@@ -109,6 +109,35 @@ oak ci config --sum-context show    # Show current setting
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) — High-performance C++ inference engine; use its OpenAI-compatible server as a custom provider
 - [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard) — Benchmark for comparing embedding model quality
 
+## Backup Settings
+
+Configure automatic backups and related policies from the Teams page or via the configuration file. See [Teams — Automatic Backups](/open-agent-kit/features/codebase-intelligence/teams/#automatic-backups) for the full guide.
+
+| Setting | Config Key | Default | Description |
+|---------|-----------|---------|-------------|
+| Automatic backups | `backup.auto_enabled` | `false` | Enable periodic automatic backups |
+| Include activities | `backup.include_activities` | `false` | Include the activities table in backups |
+| Backup interval | `backup.interval_minutes` | `30` | Minutes between automatic backups (5–1440) |
+| Backup before upgrade | `backup.on_upgrade` | `true` | Create a backup before `oak upgrade` |
+
+Backup settings are per-machine (stored in `.oak/config.{machine_id}.yaml`), except `on_upgrade` which is project-level (stored in `.oak/config.yaml`).
+
+```yaml
+# Per-machine backup settings
+codebase_intelligence:
+  backup:
+    auto_enabled: true
+    include_activities: false
+    interval_minutes: 30
+```
+
+```yaml
+# Project-level backup settings (in .oak/config.yaml)
+codebase_intelligence:
+  backup:
+    on_upgrade: true
+```
+
 ## Session Quality
 
 Control when background jobs process sessions:

@@ -265,9 +265,11 @@ class TestExecuteSync:
 
     def test_execute_with_include_activities(self, sync_service: SyncService, mock_daemon_manager):
         """Test that include_activities parameter is passed to backup."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            BackupResult,
+        )
+
         mock_daemon_manager.is_running.return_value = False
-        mock_activity_store = MagicMock()
-        mock_activity_store.export_to_sql.return_value = 100
 
         plan = SyncPlan(
             needs_sync=True,
@@ -277,16 +279,25 @@ class TestExecuteSync:
             start_daemon=True,
         )
 
+        mock_backup_result = BackupResult(
+            success=True,
+            backup_path=sync_service.backup_dir / "test.sql",
+            record_count=100,
+        )
+
         with (
             patch.object(sync_service, "_get_daemon_manager", return_value=mock_daemon_manager),
-            patch.object(sync_service, "_get_activity_store", return_value=mock_activity_store),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.create_backup",
+                return_value=mock_backup_result,
+            ) as mock_create_backup,
         ):
             result = sync_service.execute_sync(plan, include_activities=True)
 
-        # Verify export_to_sql was called with include_activities=True
-        mock_activity_store.export_to_sql.assert_called_once()
-        call_args = mock_activity_store.export_to_sql.call_args
-        assert call_args[1]["include_activities"] is True
+        # Verify create_backup was called with include_activities=True
+        mock_create_backup.assert_called_once()
+        call_kwargs = mock_create_backup.call_args[1]
+        assert call_kwargs["include_activities"] is True
         assert "(with activities)" in str(result.operations_completed)
 
 

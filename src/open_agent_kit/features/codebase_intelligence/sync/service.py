@@ -244,18 +244,19 @@ class SyncService:
         if plan.restore_team_backups and plan.team_backup_files:
             logger.info(f"Restoring {len(plan.team_backup_files)} team backups...")
             try:
-                store = self._get_activity_store()
-                for filename in plan.team_backup_files:
-                    backup_path = self.backup_dir / filename
-                    if backup_path.exists():
-                        import_result = store.import_from_sql_with_dedup(backup_path)
-                        result.records_imported += import_result.total_imported
-                        result.records_skipped += import_result.total_skipped
-                        logger.info(
-                            f"Restored {filename}: {import_result.total_imported} imported, "
-                            f"{import_result.total_skipped} skipped"
-                        )
-                store.close()
+                from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+                    restore_all,
+                )
+
+                team_paths = [self.backup_dir / f for f in plan.team_backup_files]
+                restore_result = restore_all(
+                    project_root=self.project_root,
+                    db_path=self.db_path,
+                    backup_files=team_paths,
+                )
+                if restore_result.success:
+                    result.records_imported += restore_result.total_imported
+                    result.records_skipped += restore_result.total_skipped
                 result.operations_completed.append(
                     f"First restore pass: {len(plan.team_backup_files)} files"
                 )
@@ -292,19 +293,20 @@ class SyncService:
         if plan.restore_team_backups:
             logger.info("Creating fresh backup...")
             try:
-                store = self._get_activity_store()
-                backup_filename = get_backup_filename(store.machine_id)
-                backup_path = self.backup_dir / backup_filename
-                backup_path.parent.mkdir(parents=True, exist_ok=True)
-                count = store.export_to_sql(
-                    backup_path,
+                from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+                    create_backup,
+                )
+
+                backup_result = create_backup(
+                    project_root=self.project_root,
+                    db_path=self.db_path,
                     include_activities=include_activities,
                 )
-                store.close()
-                activities_note = " (with activities)" if include_activities else ""
-                result.operations_completed.append(
-                    f"Backup created: {count} records{activities_note}"
-                )
+                if backup_result.success:
+                    activities_note = " (with activities)" if include_activities else ""
+                    result.operations_completed.append(
+                        f"Backup created: {backup_result.record_count} records{activities_note}"
+                    )
             except Exception as e:
                 result.warnings.append(f"Backup creation error: {e}")
                 logger.warning(f"Backup creation error: {e}")
@@ -313,18 +315,19 @@ class SyncService:
         if plan.restore_team_backups and plan.team_backup_files:
             logger.info(f"Second restore pass: {len(plan.team_backup_files)} files...")
             try:
-                store = self._get_activity_store()
-                for filename in plan.team_backup_files:
-                    backup_path = self.backup_dir / filename
-                    if backup_path.exists():
-                        import_result = store.import_from_sql_with_dedup(backup_path)
-                        result.records_imported += import_result.total_imported
-                        result.records_skipped += import_result.total_skipped
-                        logger.info(
-                            f"Restored {filename}: {import_result.total_imported} imported, "
-                            f"{import_result.total_skipped} skipped"
-                        )
-                store.close()
+                from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+                    restore_all,
+                )
+
+                team_paths = [self.backup_dir / f for f in plan.team_backup_files]
+                restore_result = restore_all(
+                    project_root=self.project_root,
+                    db_path=self.db_path,
+                    backup_files=team_paths,
+                )
+                if restore_result.success:
+                    result.records_imported += restore_result.total_imported
+                    result.records_skipped += restore_result.total_skipped
                 result.operations_completed.append(
                     f"Second restore pass: {len(plan.team_backup_files)} files"
                 )

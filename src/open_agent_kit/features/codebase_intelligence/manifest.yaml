@@ -78,6 +78,8 @@ hooks:
   on_pre_remove: codebase-intelligence:on_pre_remove
   # Update agent hook configurations when agents change (oak init with different agents)
   on_agents_changed: codebase-intelligence:update_agent_hooks
+  # Create backup before upgrade if configured
+  on_pre_upgrade: codebase-intelligence:pre_upgrade_backup
   # Note: on_init_complete not needed - initialize() handles daemon startup
   # Note: Hook upgrades are handled by UpgradeHooksStage in the upgrade pipeline
 
@@ -117,3 +119,8 @@ config_defaults:
       - decision
       - discovery
     retention_days: 90
+  backup:
+    auto_enabled: false
+    include_activities: true
+    interval_minutes: 30
+    on_upgrade: true

@@ -177,10 +177,6 @@ class CodebaseIntelligenceService:
         in the configured backup directory. This allows data to be
         restored when the feature is re-enabled.
         """
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-            get_backup_dir,
-            get_backup_filename,
-        )
         from open_agent_kit.features.codebase_intelligence.constants import (
             CI_ACTIVITIES_DB_FILENAME,
         )
@@ -190,23 +186,17 @@ class CodebaseIntelligenceService:
             logger.debug("No activities database found, skipping backup export")
             return
 
-        try:
-            from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-            from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-                get_machine_identifier,
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            create_backup,
+        )
+
+        result = create_backup(project_root=self.project_root, db_path=db_path)
+        if result.success:
+            logger.info(
+                f"CI history exported to {result.backup_path} ({result.record_count} records)"
             )
-
-            machine_id = get_machine_identifier(self.project_root)
-            backup_dir = get_backup_dir(self.project_root)
-            backup_path = backup_dir / get_backup_filename(machine_id)
-
-            logger.info("Exporting CI history before cleanup...")
-            store = ActivityStore(db_path, machine_id=machine_id)
-            count = store.export_to_sql(backup_path, include_activities=False)
-            store.close()
-            logger.info(f"CI history exported to {backup_path} ({count} records)")
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(f"Failed to export CI history: {e}")
+        else:
+            logger.warning(f"Failed to export CI history: {result.error}")
 
     def _restore_history_backup(self) -> None:
         """Restore activity history from backup if exists.
@@ -215,36 +205,34 @@ class CodebaseIntelligenceService:
         backup file. ChromaDB will be rebuilt automatically from the
         restored observations (they are marked as unembedded).
         """
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-            get_backup_dir,
-            get_backup_filename,
-        )
         from open_agent_kit.features.codebase_intelligence.constants import (
             CI_ACTIVITIES_DB_FILENAME,
         )
 
         db_path = self.ci_data_dir / CI_ACTIVITIES_DB_FILENAME
 
-        try:
-            from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-            from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-                get_machine_identifier,
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            restore_backup,
+        )
+
+        result = restore_backup(project_root=self.project_root, db_path=db_path)
+        if result.success and result.import_result:
+            ir = result.import_result
+            logger.info(
+                f"CI history restored: "
+                f"{ir.sessions_imported + ir.batches_imported + ir.observations_imported} records"
             )
+        elif result.error and "not found" not in result.error.lower():
+            logger.warning(f"Failed to restore CI history: {result.error}")
 
-            machine_id = get_machine_identifier(self.project_root)
-            backup_dir = get_backup_dir(self.project_root)
-            backup_path = backup_dir / get_backup_filename(machine_id)
-            if not backup_path.exists():
-                logger.debug(f"No backup found at {backup_path}")
-                return
+    def pre_upgrade_backup(self) -> None:
+        """Create a backup before upgrade if configured."""
+        from open_agent_kit.features.codebase_intelligence.config import load_ci_config
 
-            logger.info(f"Restoring CI history from {backup_path}")
-            store = ActivityStore(db_path, machine_id=machine_id)
-            count = store.import_from_sql(backup_path)
-            store.close()
-            logger.info(f"CI history restored: {count} records")
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(f"Failed to restore CI history: {e}")
+        ci_config = load_ci_config(self.project_root)
+        if not ci_config.backup.on_upgrade:
+            return
+        self._export_history_backup()
 
     def cleanup(self, agents: list[str] | None = None) -> dict:
         """Called when feature is disabled (on_feature_disabled hook).
@@ -732,6 +720,11 @@ def execute_hook(hook_action: str, project_root: Path, **kwargs: Any) -> dict[st
         removed: list[str] = kwargs.get("agents_removed", [])
         return removed
 
+    def _run_pre_upgrade_backup() -> dict[str, Any]:
+        """Run pre-upgrade backup and return result dict."""
+        service.pre_upgrade_backup()
+        return {"status": "success", "message": "Pre-upgrade backup complete"}
+
     handlers = {
         "initialize": service.initialize,
         "cleanup": lambda: service.cleanup(agents=_get_agents()),
@@ -748,6 +741,8 @@ def execute_hook(hook_action: str, project_root: Path, **kwargs: Any) -> dict[st
             "status": "success",
             "agents": service._remove_agent_notifications(_get_removed_agents()),
         },
+        # Pre-upgrade backup
+        "pre_upgrade_backup": _run_pre_upgrade_backup,
         # MCP server management (separate from hooks)
         "update_mcp_servers": lambda: service.update_mcp_servers(_get_agents()),
         "remove_mcp_servers": lambda: {

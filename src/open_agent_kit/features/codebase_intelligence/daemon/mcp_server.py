@@ -10,6 +10,7 @@ providing seamless integration with AI agents like Claude Code.
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -49,9 +50,9 @@ def create_mcp_server(project_root: Path) -> FastMCP:
     port = get_project_port(project_root, ci_data_dir)
     base_url = f"http://localhost:{port}"
 
-    # Auth token state — read lazily and refreshed on 401
+    # Auth token — read fresh from disk on every request to survive daemon restarts.
+    # The file is 64 bytes with 0600 perms; the read overhead is negligible.
     token_path = ci_data_dir / CI_TOKEN_FILE
-    auth_state: dict[str, str | None] = {"token": None}
 
     def _read_auth_token() -> str | None:
         """Read auth token from the daemon token file."""
@@ -62,15 +63,18 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             pass
         return None
 
-    auth_state["token"] = _read_auth_token()
-
     mcp = FastMCP(
         "OAK Codebase Intelligence",
         json_response=True,
     )
 
-    # Track if we've already tried to start the daemon this session
-    daemon_start_attempted = {"value": False}
+    # Guard against rapid-fire auto-start attempts.  Reset on every
+    # successful request so the MCP server can recover after a daemon restart.
+    _auto_start_attempted = {"value": False}
+
+    # Retry parameters for transient ConnectErrors (daemon restarting)
+    _CONNECT_RETRY_ATTEMPTS = 3
+    _CONNECT_RETRY_DELAY_S = 1.0
 
     def _ensure_daemon_running() -> bool:
         """Ensure the daemon is running, starting it if necessary.
@@ -83,11 +87,12 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         if manager.is_running():
             return True
 
-        # Only attempt auto-start once per MCP session to avoid loops
-        if daemon_start_attempted["value"]:
+        # Only attempt auto-start once per failure cycle to avoid loops.
+        # Reset happens in _call_daemon on success.
+        if _auto_start_attempted["value"]:
             return False
 
-        daemon_start_attempted["value"] = True
+        _auto_start_attempted["value"] = True
         logger.info("CI daemon not running - attempting auto-start...")
 
         try:
@@ -104,7 +109,10 @@ def create_mcp_server(project_root: Path) -> FastMCP:
     def _call_daemon(endpoint: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         """Call the CI daemon REST API.
 
-        Automatically starts the daemon if it's not running.
+        Resilient to daemon restarts: reads the auth token fresh from disk
+        on every call, retries briefly on ConnectError (daemon may be
+        restarting), and resets the auto-start guard after each success so
+        recovery is always possible.
 
         Args:
             endpoint: API endpoint path (e.g., "/api/search")
@@ -119,9 +127,10 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         url = f"{base_url}{endpoint}"
 
         def _make_request() -> dict[str, Any]:
+            token = _read_auth_token()
             req_headers: dict[str, str] = {}
-            if auth_state["token"]:
-                req_headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_state['token']}"
+            if token:
+                req_headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {token}"
             with httpx.Client(timeout=30.0) as client:
                 if data is not None:
                     response = client.post(url, json=data, headers=req_headers)
@@ -130,33 +139,45 @@ def create_mcp_server(project_root: Path) -> FastMCP:
                 response.raise_for_status()
                 return cast(dict[str, Any], response.json())
 
+        # --- Happy path (daemon is up, token is current) ---
         try:
-            return _make_request()
+            result = _make_request()
+            _auto_start_attempted["value"] = False  # Success → allow future auto-starts
+            return result
         except httpx.ConnectError:
-            # Daemon not running - try to auto-start
-            if _ensure_daemon_running():
-                # Re-read token after daemon (re)start — new token generated
-                auth_state["token"] = _read_auth_token()
-                try:
-                    return _make_request()
-                except httpx.ConnectError:
-                    pass  # Fall through to error
-
-            raise Exception(
-                f"CI daemon not running and auto-start failed.\n"
-                f"Try manually: oak ci start\n"
-                f"Check logs: {ci_data_dir / 'daemon.log'}"
-            ) from None
+            pass  # Fall through to retry / auto-start
         except httpx.HTTPStatusError as e:
-            # 401 = stale token (daemon restarted with new token) — refresh and retry once
-            if e.response.status_code == 401:
-                auth_state["token"] = _read_auth_token()
-                if auth_state["token"]:
-                    try:
-                        return _make_request()
-                    except httpx.HTTPStatusError:
-                        pass  # Fall through to error
-            raise Exception(f"Daemon error: {e.response.status_code} - {e.response.text}") from e
+            if e.response.status_code != 401:
+                raise Exception(
+                    f"Daemon error: {e.response.status_code} - {e.response.text}"
+                ) from e
+            # 401 on first attempt — token was stale but we already read fresh,
+            # so the daemon may still be starting up.  Fall through to retry.
+
+        # --- Retry loop: daemon may be mid-restart (brief ConnectError window) ---
+        for _attempt in range(_CONNECT_RETRY_ATTEMPTS):
+            time.sleep(_CONNECT_RETRY_DELAY_S)
+            try:
+                result = _make_request()
+                _auto_start_attempted["value"] = False
+                return result
+            except (httpx.ConnectError, httpx.HTTPStatusError):
+                continue  # Keep trying
+
+        # --- Auto-start: daemon appears fully down ---
+        if _ensure_daemon_running():
+            try:
+                result = _make_request()
+                _auto_start_attempted["value"] = False
+                return result
+            except (httpx.ConnectError, httpx.HTTPStatusError):
+                pass  # Fall through to error
+
+        raise Exception(
+            f"CI daemon not running and auto-start failed.\n"
+            f"Try manually: oak ci start\n"
+            f"Check logs: {ci_data_dir / 'daemon.log'}"
+        ) from None
 
     @mcp.tool()
     def oak_search(

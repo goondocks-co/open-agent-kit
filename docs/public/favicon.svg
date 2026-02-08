@@ -1,3 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
-  <text x="4" y="28" font-size="28">🌳</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4FC3F7"/>
+      <stop offset="100%" stop-color="#00E5CC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark rounded background -->
+  <rect width="32" height="32" rx="6" fill="#1a1d23"/>
+
+  <!-- Oak leaf — single leaf tilted slightly, with lobed edges -->
+  <g fill="none" stroke="url(#g)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Leaf outline: lobed oak leaf shape -->
+    <path d="M9,25 L13,16
+      C11,16 8,15 7,13 C6,11 8,10 10,11
+      C9,9 8,7 9,5.5 C10,4 12,5 12,6.5
+      C12,5 13,3 15,3 C17,3 18,5 17,7
+      C18,5.5 20,4.5 21,6 C22,7.5 20,9 19,10
+      C21,9.5 23,10 23,12 C23,14 21,15 19,14.5
+      C20,16 19,17 17,17 L13,16"/>
+
+    <!-- Central vein (midrib) — circuit trace -->
+    <path d="M13,16 L15,9"/>
+
+    <!-- Side veins — circuit traces -->
+    <path d="M14.2,12.5 L10.5,11"/>
+    <path d="M14.6,11 L12,6.5"/>
+    <path d="M15,9 L17.5,7"/>
+    <path d="M14.5,12 L19,14"/>
+    <path d="M15,10 L19.5,10.5"/>
+
+    <!-- Circuit nodes at vein endpoints -->
+    <circle cx="10.5" cy="11" r="0.7" fill="url(#g)"/>
+    <circle cx="12" cy="6.5" r="0.7" fill="url(#g)"/>
+    <circle cx="17.5" cy="7" r="0.7" fill="url(#g)"/>
+    <circle cx="19" cy="14" r="0.7" fill="url(#g)"/>
+    <circle cx="19.5" cy="10.5" r="0.7" fill="url(#g)"/>
+    <circle cx="9" cy="25" r="0.8" fill="url(#g)"/>
+  </g>
+
+  <!-- Small book icon — docs indicator -->
+  <g transform="translate(21, 22)">
+    <rect x="-1" y="-1" width="11" height="10" rx="2" fill="#1a1d23"/>
+    <g fill="none" stroke="#4FC3F7" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1,1 C2.5,1.5 3.5,1.5 5,1 L5,7.5 C3.5,7 2.5,7 1,7.5 Z" fill="#4FC3F718"/>
+      <path d="M5,1 C6.5,1.5 7.5,1.5 9,1 L9,7.5 C7.5,7 6.5,7 5,7.5 Z" fill="#4FC3F718"/>
+    </g>
+  </g>
 </svg>

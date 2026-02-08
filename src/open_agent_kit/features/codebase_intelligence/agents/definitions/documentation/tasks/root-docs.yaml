@@ -1,0 +1,210 @@
+# =============================================================================
+# Built-in Task: Root Documentation
+# =============================================================================
+# Task for: documentation agent
+#
+# Maintains the root-level documentation files that visitors see first:
+# README.md, QUICKSTART.md, CONTRIBUTING.md, SECURITY.md.
+#
+# One task (not four) because these files cross-reference each other and
+# share codebase exploration. Consistent cross-linking requires a single
+# pass over the project.
+#
+# To customize: Copy to oak/ci/agents/root-docs.yaml and modify as needed.
+# =============================================================================
+
+name: root-docs
+display_name: "Root Documentation"
+agent_type: documentation
+is_builtin: true
+description: >
+  Maintains the four root-level documentation files (README, QUICKSTART,
+  CONTRIBUTING, SECURITY). Explores the codebase as primary source of truth,
+  then enriches with CI memories and insights. One task ensures consistent
+  cross-linking between files.
+
+default_task: |
+  Maintain the root-level documentation files. Each file has a distinct role
+  and length budget. Read ALL four files first, then make targeted updates.
+
+  ## 1. Read All Four Files (CRITICAL — do this first)
+  - Read README.md, QUICKSTART.md, CONTRIBUTING.md, SECURITY.md
+  - Note what exists, what's accurate, what's outdated
+  - PRESERVE sections that are still correct — don't rewrite what works
+
+  ## 2. Explore the Codebase (Primary Source of Truth)
+  - Use Glob to find entry points: cli.py, main.py, pyproject.toml, Makefile
+  - Use Grep to find commands, features, APIs, exports
+  - Read key files to understand what the project actually does
+
+  ## 3. Enrich with CI Context
+  - ci_memories(type=gotcha) → QUICKSTART troubleshooting section (primary value-add)
+  - ci_memories(type=discovery) → Verify README feature claims
+  - ci_memories(type=decision) → CONTRIBUTING workflow rationale
+  - ci_memories(type=bug_fix) → Check if recent fixes affect setup steps
+
+  ## 4. Update Each File Within Its Boundaries
+
+  ### README.md (60–100 lines) — Landing page / hook
+  **Purpose:** Sell the project in 30 seconds. A visitor should understand
+  what this is, why they'd want it, and how to start — then click through.
+
+  **Must contain:**
+  - Tagline / one-sentence description
+  - Problem statement (why this exists)
+  - Quick install (3–5 lines max) — use the install script (`curl | sh`) as the
+    primary method since it's the most universal. Link to QUICKSTART.md for
+    Windows, pipx, uv, pip, and other alternatives.
+  - One compelling usage example
+  - Links to QUICKSTART.md, CONTRIBUTING.md, SECURITY.md
+
+  **Does NOT belong in README:**
+  - Detailed configuration (→ QUICKSTART.md)
+  - Troubleshooting (→ QUICKSTART.md)
+  - Architecture or internals (→ oak/docs/)
+  - API reference (→ oak/docs/)
+  - Dev setup or testing instructions (→ CONTRIBUTING.md)
+
+  Use CI project_stats only to validate feature claims (e.g., confirming
+  a feature still exists before listing it).
+
+  ### QUICKSTART.md (150–250 lines) — Hands-on getting started guide
+  **Purpose:** Get a new user from zero to working in one document.
+  This is where the detailed intelligence goes.
+
+  **Must contain:**
+  - Prerequisites (OS, runtime versions, dependencies)
+  - Install script as the primary/recommended method, then alternatives (pipx, uv, pip)
+  - Step-by-step first-run walkthrough
+  - Configuration basics (environment variables, config files)
+  - Troubleshooting section (THIS is the CI value-add — populate from gotcha memories)
+  - Links back to README.md and forward to CONTRIBUTING.md
+
+  **CI enrichment (heavy):**
+  - Every gotcha memory that relates to setup, installation, or first-run
+    → add to Troubleshooting as a named problem/solution pair
+  - Discovery memories about features → verify/update the walkthrough
+  - Bug fix memories → check if they affect setup steps
+
+  ### CONTRIBUTING.md (80–120 lines) — Contributor onboarding
+  **Purpose:** Get a developer from "I want to help" to "my first PR"
+  with minimal friction.
+
+  **Must contain:**
+  - Prerequisites for development
+  - Dev environment setup (reference `make setup` and friends)
+  - Quality gate: what commands to run before submitting (`make check`)
+  - Workflow: branch → code → test → PR
+  - Link to oak/constitution.md for detailed coding standards
+  - Link to QUICKSTART.md for basic project setup
+
+  **CI enrichment (light):**
+  - Gotcha memories about dev environment issues
+  - Decision memories about workflow choices
+
+  ### SECURITY.md (40–80 lines) — Security policy
+  **Purpose:** Tell security researchers how to report vulnerabilities.
+  This is a policy document, not a technical guide.
+
+  **Must contain:**
+  - How to report a vulnerability (email, process, response time)
+  - Supported versions table
+  - Brief security practices / commitments
+
+  **CI enrichment: None.** This is a stable policy document. Only update
+  if the project's security posture or reporting process actually changed.
+
+  ## 5. Cross-Link Consistency
+  After updating, verify all cross-references between files:
+  - README → QUICKSTART, CONTRIBUTING, SECURITY
+  - QUICKSTART → README, CONTRIBUTING
+  - CONTRIBUTING → QUICKSTART, constitution
+
+  ## 6. Quality Checks
+  - Verify code examples actually exist in the codebase
+  - Confirm install commands match dependency files
+  - Check that referenced file paths exist
+  - Ensure each file stays within its line budget
+
+  **Periodic run mindset:** This task runs regularly. Make targeted
+  improvements, not wholesale rewrites. The goal is keeping docs
+  accurate and well-linked, not rewriting them every time.
+
+# Execution limits (larger task — 4 files with cross-referencing)
+execution:
+  timeout_seconds: 480
+  max_turns: 80
+  permission_mode: acceptEdits
+
+# Files this task maintains
+maintained_files:
+  - path: "{project_root}/README.md"
+    purpose: "Landing page — project hook and quick overview"
+    auto_create: false
+
+  - path: "{project_root}/QUICKSTART.md"
+    purpose: "Detailed getting started guide with CI-enriched troubleshooting"
+    auto_create: true
+
+  - path: "{project_root}/CONTRIBUTING.md"
+    purpose: "Contributor onboarding and development workflow"
+    auto_create: true
+
+  - path: "{project_root}/SECURITY.md"
+    purpose: "Security vulnerability reporting policy"
+    auto_create: true
+
+# CI queries to gather context
+ci_queries:
+  discovery:
+    - tool: ci_project_stats
+      purpose: "Validate README feature claims against actual codebase"
+
+    - tool: ci_sessions
+      limit: 10
+      include_summary: true
+      purpose: "Recent changes that may affect any of the four files"
+
+  context:
+    - tool: ci_memories
+      filter: gotcha
+      limit: 15
+      purpose: "QUICKSTART troubleshooting — primary CI value-add"
+
+    - tool: ci_memories
+      filter: discovery
+      limit: 10
+      purpose: "Verify feature descriptions and walkthrough accuracy"
+
+  verification:
+    - tool: ci_memories
+      filter: bug_fix
+      limit: 5
+      purpose: "Check if recent fixes affect setup or install steps"
+
+# Output format
+output_requirements:
+  required_sections:
+    - name: "README.md"
+      description: "Tagline, problem, quick install, example, links out"
+    - name: "QUICKSTART.md"
+      description: "Prerequisites, install, walkthrough, config, troubleshooting"
+    - name: "CONTRIBUTING.md"
+      description: "Dev setup, quality gate, workflow, links to standards"
+    - name: "SECURITY.md"
+      description: "Reporting process, supported versions, practices"
+
+# Style preferences
+style:
+  tone: "welcoming"
+  include_examples: true
+  link_code_files: true
+  code_link_format: "relative"
+  conventions:
+    - "Each file stays within its line budget"
+    - "Cross-references between all four files must be consistent"
+    - "README is a hook, not an encyclopedia"
+    - "QUICKSTART gets the heavy CI enrichment, not README"
+    - "SECURITY is a policy doc — minimal updates"
+
+schema_version: 1

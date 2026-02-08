@@ -134,3 +134,5 @@ codebase_intelligence:
   - '*.po'
   - '*.pot'
   - '*.mo'
+  backup:
+    on_upgrade: true

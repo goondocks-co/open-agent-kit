@@ -175,6 +175,8 @@ class DaemonState:
     agent_registry: "AgentRegistry | None" = None
     agent_executor: "AgentExecutor | None" = None
     agent_scheduler: "AgentScheduler | None" = None
+    # Periodic auto-backup tracking
+    last_auto_backup: float | None = None
     # Authentication token for API security (set from OAK_CI_TOKEN env var)
     auth_token: str | None = None
     # Tunnel sharing
@@ -466,6 +468,7 @@ class DaemonState:
         self.agent_registry = None
         self.agent_executor = None
         self.agent_scheduler = None
+        self.last_auto_backup = None
         self.auth_token = None
         self.tunnel_provider = None
         self._dynamic_cors_origins = set()

@@ -86,11 +86,11 @@ def _show_backup_info(project_root: Path, machine_id: str) -> None:
 
 @ci_app.command("backup")
 def ci_backup(
-    include_activities: bool = typer.Option(
-        False,
-        "--include-activities",
+    include_activities: bool | None = typer.Option(
+        None,
+        "--include-activities/--no-include-activities",
         "-a",
-        help="Include activities table (can be large)",
+        help="Include activities table (default: use config setting)",
     ),
     output: str | None = typer.Option(
         None,
@@ -124,10 +124,7 @@ def ci_backup(
         oak ci backup -o custom.sql      # Custom output path
         oak ci backup --info             # Show backup config info
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        get_backup_dir,
-        get_backup_filename,
         get_machine_identifier,
     )
 
@@ -147,26 +144,23 @@ def ci_backup(
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)
 
-    if output:
-        backup_path = Path(output)
-    else:
-        # Use machine-specific filename in configured backup directory
-        backup_dir = get_backup_dir(project_root)
-        backup_filename = get_backup_filename(machine_id)
-        backup_path = backup_dir / backup_filename
-
-    backup_path.parent.mkdir(parents=True, exist_ok=True)
-
     print_info(f"Exporting CI database (machine: {machine_id})...")
-    print_info(f"  Output: {backup_path}")
     if include_activities:
         print_info("  Including activities table (may be large)")
 
-    store = ActivityStore(db_path, machine_id=machine_id)
-    count = store.export_to_sql(backup_path, include_activities=include_activities)
-    store.close()
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import create_backup
 
-    print_success(f"Exported {count} records to {backup_path}")
+    result = create_backup(
+        project_root=project_root,
+        db_path=db_path,
+        include_activities=include_activities,
+        output_path=Path(output) if output else None,
+    )
+    if not result.success:
+        print_error(f"Error: {result.error}")
+        raise typer.Exit(code=1)
+
+    print_success(f"Exported {result.record_count} records to {result.backup_path}")
     print_info("  This file can be committed to git for version control")
     print_info("  Other team members' backups will have different filenames")
 
@@ -208,13 +202,10 @@ def ci_restore(
         oak ci restore --all --dry-run    # Preview what would be imported
         oak ci restore -i backup.sql      # Restore from specific file
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
         discover_backup_files,
         extract_machine_id_from_filename,
         get_backup_dir,
-        get_backup_filename,
-        get_machine_identifier,
     )
 
     project_root = Path.cwd()
@@ -226,30 +217,40 @@ def ci_restore(
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)
 
-    machine_id = get_machine_identifier(project_root)
     backup_dir = get_backup_dir(project_root)
-    store = ActivityStore(db_path, machine_id=machine_id)
 
     if all_backups:
-        # Restore from all backup files
+        # Restore from all backup files — show file listing first
         backup_files = discover_backup_files(backup_dir)
 
         if not backup_files:
             print_warning(f"No backup files found in {backup_dir}")
-            store.close()
             return
 
         print_info(f"Found {len(backup_files)} backup file(s):")
         for bf in backup_files:
-            machine_id = extract_machine_id_from_filename(bf.name)
+            file_machine_id = extract_machine_id_from_filename(bf.name)
             size_kb = bf.stat().st_size / 1024
-            console.print(f"  • {bf.name} ({machine_id}, {size_kb:.1f} KB)")
+            console.print(f"  • {bf.name} ({file_machine_id}, {size_kb:.1f} KB)")
 
         if dry_run:
             print_info("\nDry run - previewing what would be imported...")
 
         console.print()
-        results = store.restore_all_backups(backup_dir, dry_run=dry_run)
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import restore_all
+
+        all_result = restore_all(
+            project_root=project_root,
+            db_path=db_path,
+            dry_run=dry_run,
+        )
+
+        if not all_result.success:
+            print_error(f"Restore failed: {all_result.error}")
+            raise typer.Exit(code=1)
+
+        results = all_result.per_file
 
         # Show summary
         total_imported = sum(r.total_imported for r in results.values())
@@ -287,61 +288,61 @@ def ci_restore(
 
     else:
         # Restore from single file
-        if input_path:
-            backup_path = Path(input_path)
+        if dry_run:
+            if input_path:
+                print_info(f"Dry run - previewing restore from {input_path}...")
+            else:
+                print_info("Dry run - previewing restore...")
         else:
-            # Default to this machine's backup file
-            backup_filename = get_backup_filename(machine_id)
-            backup_path = backup_dir / backup_filename
+            if input_path:
+                print_info(f"Restoring CI database from {input_path}...")
+            else:
+                print_info("Restoring CI database from machine backup...")
 
-            # Fall back to legacy filename if machine-specific doesn't exist
-            if not backup_path.exists():
-                legacy_path = backup_dir / "ci_history.sql"
-                if legacy_path.exists():
-                    backup_path = legacy_path
-                    print_info("Using legacy backup file (ci_history.sql)")
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            restore_backup,
+        )
 
-        if not backup_path.exists():
-            print_error(f"Backup file not found: {backup_path}")
-            print_info("  Available backups:")
-            for bf in discover_backup_files(backup_dir):
-                console.print(f"    • {bf.name}")
-            store.close()
+        result = restore_backup(
+            project_root=project_root,
+            db_path=db_path,
+            input_path=Path(input_path) if input_path else None,
+            dry_run=dry_run,
+        )
+
+        if not result.success:
+            print_error(f"Restore failed: {result.error}")
+            if not input_path:
+                print_info("  Available backups:")
+                for bf in discover_backup_files(backup_dir):
+                    console.print(f"    • {bf.name}")
             raise typer.Exit(code=1)
 
-        if dry_run:
-            print_info(f"Dry run - previewing restore from {backup_path}...")
-        else:
-            print_info(f"Restoring CI database from {backup_path}...")
-
-        result = store.import_from_sql_with_dedup(backup_path, dry_run=dry_run)
-
+        ir = result.import_result
         console.print()
         if dry_run:
             print_info("Dry run summary (no changes made):")
         else:
             print_success("Restore complete!")
 
-        print_info(
-            f"  Sessions: {result.sessions_imported} imported, "
-            f"{result.sessions_skipped} skipped"
-        )
-        print_info(
-            f"  Batches: {result.batches_imported} imported, " f"{result.batches_skipped} skipped"
-        )
-        print_info(
-            f"  Memories: {result.observations_imported} imported, "
-            f"{result.observations_skipped} skipped"
-        )
-        print_info(
-            f"  Activities: {result.activities_imported} imported, "
-            f"{result.activities_skipped} skipped"
-        )
+        if ir:
+            print_info(
+                f"  Sessions: {ir.sessions_imported} imported, " f"{ir.sessions_skipped} skipped"
+            )
+            print_info(
+                f"  Batches: {ir.batches_imported} imported, " f"{ir.batches_skipped} skipped"
+            )
+            print_info(
+                f"  Memories: {ir.observations_imported} imported, "
+                f"{ir.observations_skipped} skipped"
+            )
+            print_info(
+                f"  Activities: {ir.activities_imported} imported, "
+                f"{ir.activities_skipped} skipped"
+            )
 
-        if result.errors > 0:
-            print_warning(f"  Errors: {result.errors}")
-
-    store.close()
+            if ir.errors > 0:
+                print_warning(f"  Errors: {ir.errors}")
 
     if not dry_run:
         console.print()
