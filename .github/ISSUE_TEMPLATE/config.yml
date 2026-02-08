@@ -1,5 +1,8 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/sirkirby/open-agent-kit/blob/main/README.md
-    about: Check the documentation before opening an issue
+    url: https://goondocks-co.github.io/open-agent-kit/
+    about: Read setup, CLI, and feature docs before opening an issue
+  - name: Contributing Guide
+    url: https://github.com/goondocks-co/open-agent-kit/blob/main/CONTRIBUTING.md
+    about: Review contribution expectations and quality gates

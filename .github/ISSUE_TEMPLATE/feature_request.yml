@@ -1,0 +1,91 @@
+name: "Feature Request"
+description: Suggest improvements aligned with current OAK architecture and workflows.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please tie requests to concrete workflows and outcomes.
+        Requests with clear acceptance criteria are prioritized.
+
+  - type: checkboxes
+    id: area
+    attributes:
+      label: Area(s)
+      description: Select all relevant areas.
+      options:
+        - label: Installers and setup flow (install.sh / install.ps1 / pipx / uv / pip)
+        - label: CLI and pipeline commands
+        - label: Codebase Intelligence (daemon, activity, memory, search)
+        - label: Agent integrations (hooks, MCP, skills)
+        - label: Templates and rules management
+        - label: Strategic planning / RFC workflow
+        - label: Release and CI workflows
+        - label: Documentation and developer experience
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user problem are we solving?
+      placeholder: |
+        Today it is hard to...
+        This causes...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed solution
+      description: Describe desired behavior and UX.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include tradeoffs and why alternatives are less suitable.
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define testable success conditions.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking_change
+    attributes:
+      label: Could this be a breaking change?
+      options:
+        - no
+        - maybe
+        - yes
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Expected scope
+      options:
+        - Small (single component)
+        - Medium (cross-component)
+        - Large (architecture-impacting)
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Include examples, references, or mockups if helpful.

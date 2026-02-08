@@ -1,0 +1,65 @@
+name: "Question"
+description: Ask for help with setup, usage, or implementation details.
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to accomplish?
+      description: Describe the end goal, not only the immediate error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you already tried?
+      description: Include commands/docs/examples you already used.
+      placeholder: |
+        - Ran `oak init --no-interactive`
+        - Followed docs page ...
+        - Tried ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: blocker
+    attributes:
+      label: Is this blocking your work?
+      options:
+        - yes, blocking
+        - partially blocking
+        - not blocking
+    validations:
+      required: true
+
+  - type: input
+    id: oak_version
+    attributes:
+      label: OAK version (if relevant)
+      placeholder: oak 0.3.0
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version (if relevant)
+      placeholder: 3.13.2
+
+  - type: input
+    id: os_version
+    attributes:
+      label: OS and version (if relevant)
+      placeholder: macOS 15 / Ubuntu 24.04 / Windows 11
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context

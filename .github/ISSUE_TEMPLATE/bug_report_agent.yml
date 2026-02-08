@@ -1,0 +1,132 @@
+name: "Bug: Agent / Codebase Intelligence"
+description: Report issues in agent integrations, skills, hooks, MCP, or CI daemon behavior.
+title: "[Agent] "
+labels: ["bug", "agent-commands"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues involving AI agent flows, skills, hooks, MCP tools, and CI daemon features.
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Claude Code
+        - Codex CLI
+        - Gemini CLI
+        - Cursor
+        - GitHub Copilot
+        - Windsurf
+        - OpenCode
+        - Multiple agents
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Skills activation / discovery
+        - Hooks ingestion
+        - MCP server / tools
+        - CI daemon API / dashboard
+        - Agent task execution (oak agents)
+        - Prompt/session tracking
+        - Retrieval/search/memory behavior
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: command_or_skill
+    attributes:
+      label: Command / skill / task used
+      description: Include command, skill name, and/or agent task.
+      placeholder: |
+        /codebase-intelligence
+        oak ci start
+        oak agent run docs-site-sync
+    validations:
+      required: true
+
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt/input sent to agent
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_output
+    attributes:
+      label: Relevant output/log excerpts
+      description: Include concise excerpts from terminal output, tool traces, or errors.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: ci_debug
+    attributes:
+      label: CI daemon diagnostics (if applicable)
+      description: Paste output from `oak ci status` and relevant `.oak/ci/daemon.log` lines.
+      render: text
+
+  - type: input
+    id: oak_version
+    attributes:
+      label: OAK version
+      placeholder: oak 0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      placeholder: 3.13.2
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: OS and version
+      placeholder: macOS 15 / Ubuntu 24.04 / Windows 11
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducible_clean
+    attributes:
+      label: Reproducible in a fresh repo initialized with OAK?
+      options:
+        - "yes"
+        - "no"
+        - not tested
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
