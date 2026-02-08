@@ -827,8 +827,9 @@ class TestDaemonManagerStop:
         "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
     )
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.time.sleep")
     def test_stop_force_kills_if_sigterm_fails(
-        self, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
+        self, mock_sleep, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
     ):
         """Test that stop force kills if graceful termination doesn't work."""
         manager = DaemonManager(tmp_path, ci_data_dir=tmp_path / ".oak" / "ci")
