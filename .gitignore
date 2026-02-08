@@ -67,6 +67,10 @@ docs/_build/
 docs/node_modules/
 docs/dist/
 docs/.astro/
+# Stray Astro/Node artifacts if build runs from project root
+/.astro/
+/dist/
+/node_modules/
 site/
 
 # OS files

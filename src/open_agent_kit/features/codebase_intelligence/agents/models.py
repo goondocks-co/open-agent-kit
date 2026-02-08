@@ -100,6 +100,12 @@ class AgentTask(BaseModel):
         default_factory=dict, description="Additional task-specific config"
     )
 
+    # Tool extensions (additive — cannot remove template tools)
+    additional_tools: list[str] = Field(
+        default_factory=list,
+        description="Additional tools beyond the template's allowed_tools (e.g., scoped Bash patterns)",
+    )
+
     # Metadata
     task_path: str | None = Field(default=None, description="Path to task YAML (set by registry)")
     is_builtin: bool = Field(

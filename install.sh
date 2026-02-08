@@ -71,9 +71,9 @@ install_with_pipx() {
     version_spec="$1"
     info "Installing with pipx..."
     if [ -n "$version_spec" ]; then
-        pipx install "${PACKAGE}==${version_spec}"
+        pipx install --force "${PACKAGE}==${version_spec}"
     else
-        pipx install "$PACKAGE"
+        pipx install --force "$PACKAGE"
     fi
 }
 
@@ -81,9 +81,9 @@ install_with_uv() {
     version_spec="$1"
     info "Installing with uv..."
     if [ -n "$version_spec" ]; then
-        uv tool install "${PACKAGE}==${version_spec}"
+        uv tool install --force "${PACKAGE}==${version_spec}"
     else
-        uv tool install "$PACKAGE"
+        uv tool install --force "$PACKAGE"
     fi
 }
 
@@ -92,12 +92,63 @@ install_with_pip() {
     version_spec="$2"
     info "Installing with pip (--user)..."
     if [ -n "$version_spec" ]; then
-        "$python_cmd" -m pip install --user "${PACKAGE}==${version_spec}"
+        "$python_cmd" -m pip install --user --upgrade "${PACKAGE}==${version_spec}"
     else
-        "$python_cmd" -m pip install --user "$PACKAGE"
+        "$python_cmd" -m pip install --user --upgrade "$PACKAGE"
     fi
     warn "You may need to add ~/.local/bin to your PATH"
     warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+}
+
+version_matches() {
+    actual="$1"
+    expected="$2"
+    if [ -z "$expected" ]; then
+        return 0
+    fi
+
+    case "$actual" in
+        *"$expected"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+verify_pipx_install() {
+    version_spec="$1"
+    line=$(pipx list --short 2>/dev/null | awk -v pkg="$PACKAGE" '$1 == pkg {print $0; exit}')
+    [ -n "$line" ] || return 1
+    version_matches "$line" "$version_spec"
+}
+
+verify_uv_install() {
+    version_spec="$1"
+    line=$(uv tool list 2>/dev/null | awk -v pkg="$PACKAGE" '$1 == pkg {print $0; exit}')
+    [ -n "$line" ] || return 1
+    version_matches "$line" "$version_spec"
+}
+
+verify_pip_install() {
+    python_cmd="$1"
+    version_spec="$2"
+    installed_version=$("$python_cmd" -m pip show "$PACKAGE" 2>/dev/null | awk -F': ' '/^Version: / {print $2; exit}')
+    [ -n "$installed_version" ] || return 1
+    if [ -z "$version_spec" ]; then
+        return 0
+    fi
+    [ "$installed_version" = "$version_spec" ]
+}
+
+verify_install() {
+    method="$1"
+    python_cmd="$2"
+    version_spec="$3"
+
+    case "$method" in
+        pipx) verify_pipx_install "$version_spec" ;;
+        uv) verify_uv_install "$version_spec" ;;
+        pip) verify_pip_install "$python_cmd" "$version_spec" ;;
+        *) return 1 ;;
+    esac
 }
 
 # --- Main ---
@@ -153,6 +204,7 @@ main() {
 
     # Choose install method
     method="${OAK_INSTALL_METHOD:-}"
+    actual_method=""
 
     if [ -n "$method" ]; then
         info "Using requested method: $method"
@@ -160,13 +212,16 @@ main() {
             pipx)
                 command -v pipx >/dev/null 2>&1 || { error "pipx not found"; exit 1; }
                 install_with_pipx "$version_spec"
+                actual_method="pipx"
                 ;;
             uv)
                 command -v uv >/dev/null 2>&1 || { error "uv not found"; exit 1; }
                 install_with_uv "$version_spec"
+                actual_method="uv"
                 ;;
             pip)
                 install_with_pip "$python_cmd" "$version_spec"
+                actual_method="pip"
                 ;;
             *)
                 error "Unknown method: $method (use: pipx, uv, or pip)"
@@ -175,17 +230,31 @@ main() {
         esac
     elif command -v pipx >/dev/null 2>&1; then
         install_with_pipx "$version_spec"
+        actual_method="pipx"
     elif command -v uv >/dev/null 2>&1; then
         install_with_uv "$version_spec"
+        actual_method="uv"
     else
         warn "Neither pipx nor uv found, falling back to pip --user"
         install_with_pip "$python_cmd" "$version_spec"
+        actual_method="pip"
+    fi
+
+    if ! verify_install "$actual_method" "$python_cmd" "$version_spec"; then
+        error "Installation verification failed for method: $actual_method"
+        info "Try setting OAK_INSTALL_METHOD=pipx|uv|pip and rerun installer"
+        exit 1
     fi
 
     # Verify installation
     printf "\n"
     if command -v oak >/dev/null 2>&1; then
         installed_version=$(oak --version 2>/dev/null || echo "unknown")
+        if ! version_matches "$installed_version" "$version_spec"; then
+            error "Detected oak command does not match requested version ($version_spec)"
+            info "Run 'hash -r' or restart your shell, then verify with: oak --version"
+            exit 1
+        fi
         ok "OAK installed successfully! (${installed_version})"
         printf "\n"
         info "Get started:"

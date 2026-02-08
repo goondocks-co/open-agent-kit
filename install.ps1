@@ -48,9 +48,9 @@ function Install-WithPipx {
     param($VersionSpec)
     Write-Info "Installing with pipx..."
     if ($VersionSpec) {
-        pipx install "${Package}==${VersionSpec}"
+        pipx install --force "${Package}==${VersionSpec}"
     } else {
-        pipx install $Package
+        pipx install --force $Package
     }
 }
 
@@ -58,19 +58,83 @@ function Install-WithUv {
     param($VersionSpec)
     Write-Info "Installing with uv..."
     if ($VersionSpec) {
-        uv tool install "${Package}==${VersionSpec}"
+        uv tool install --force "${Package}==${VersionSpec}"
     } else {
-        uv tool install $Package
+        uv tool install --force $Package
     }
 }
 
 function Install-WithPip {
     param($PythonCmd, $VersionSpec)
-    Write-Info "Installing with pip..."
+    Write-Info "Installing with pip (--user)..."
     if ($VersionSpec) {
-        & $PythonCmd -m pip install "${Package}==${VersionSpec}"
+        & $PythonCmd -m pip install --user --upgrade "${Package}==${VersionSpec}"
     } else {
-        & $PythonCmd -m pip install $Package
+        & $PythonCmd -m pip install --user --upgrade $Package
+    }
+}
+
+function Test-VersionMatch {
+    param([string]$Actual, [string]$Expected)
+
+    if ([string]::IsNullOrWhiteSpace($Expected)) {
+        return $true
+    }
+
+    return $Actual -match [regex]::Escape($Expected)
+}
+
+function Test-PipxPackageInstalled {
+    param($VersionSpec)
+
+    $line = pipx list --short 2>$null | Where-Object { $_ -match "^$Package\s" } | Select-Object -First 1
+    if (-not $line) {
+        return $false
+    }
+
+    return (Test-VersionMatch -Actual $line -Expected $VersionSpec)
+}
+
+function Test-UvPackageInstalled {
+    param($VersionSpec)
+
+    $line = uv tool list 2>$null | Where-Object { $_ -match "^$Package\s" } | Select-Object -First 1
+    if (-not $line) {
+        return $false
+    }
+
+    return (Test-VersionMatch -Actual $line -Expected $VersionSpec)
+}
+
+function Test-PipPackageInstalled {
+    param($PythonCmd, $VersionSpec)
+
+    $show = & $PythonCmd -m pip show $Package 2>$null
+    if (-not $show) {
+        return $false
+    }
+
+    $versionLine = $show | Where-Object { $_ -match "^Version:\s" } | Select-Object -First 1
+    if (-not $versionLine) {
+        return $false
+    }
+
+    $installedVersion = $versionLine -replace "^Version:\s*", ""
+    if ([string]::IsNullOrWhiteSpace($VersionSpec)) {
+        return $true
+    }
+
+    return $installedVersion -eq $VersionSpec
+}
+
+function Test-InstallVerification {
+    param($Method, $PythonCmd, $VersionSpec)
+
+    switch ($Method) {
+        "pipx" { return Test-PipxPackageInstalled -VersionSpec $VersionSpec }
+        "uv" { return Test-UvPackageInstalled -VersionSpec $VersionSpec }
+        "pip" { return Test-PipPackageInstalled -PythonCmd $PythonCmd -VersionSpec $VersionSpec }
+        default { return $false }
     }
 }
 
@@ -108,6 +172,7 @@ function Main {
 
     # Choose install method
     $method = $env:OAK_INSTALL_METHOD
+    $actualMethod = $null
 
     if ($method) {
         Write-Info "Using requested method: $method"
@@ -115,13 +180,16 @@ function Main {
             "pipx" {
                 if (-not (Get-Command pipx -ErrorAction SilentlyContinue)) { Write-Err "pipx not found"; exit 1 }
                 Install-WithPipx $versionSpec
+                $actualMethod = "pipx"
             }
             "uv" {
                 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Write-Err "uv not found"; exit 1 }
                 Install-WithUv $versionSpec
+                $actualMethod = "uv"
             }
             "pip" {
                 Install-WithPip $pythonCmd $versionSpec
+                $actualMethod = "pip"
             }
             default {
                 Write-Err "Unknown method: $method (use: pipx, uv, or pip)"
@@ -130,11 +198,20 @@ function Main {
         }
     } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
         Install-WithPipx $versionSpec
+        $actualMethod = "pipx"
     } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
         Install-WithUv $versionSpec
+        $actualMethod = "uv"
     } else {
         Write-Warn "Neither pipx nor uv found, falling back to pip"
         Install-WithPip $pythonCmd $versionSpec
+        $actualMethod = "pip"
+    }
+
+    if (-not (Test-InstallVerification -Method $actualMethod -PythonCmd $pythonCmd -VersionSpec $versionSpec)) {
+        Write-Err "Installation verification failed for method: $actualMethod"
+        Write-Info "Try setting OAK_INSTALL_METHOD=pipx|uv|pip and rerun installer"
+        exit 1
     }
 
     # Verify installation
@@ -143,6 +220,11 @@ function Main {
     if ($oakCmd) {
         $installedVersion = & oak --version 2>$null
         if (-not $installedVersion) { $installedVersion = "unknown" }
+        if (-not (Test-VersionMatch -Actual $installedVersion -Expected $versionSpec)) {
+            Write-Err "Detected oak command does not match requested version ($versionSpec)"
+            Write-Info "Restart your terminal and verify with: oak --version"
+            exit 1
+        }
         Write-Ok "OAK installed successfully! ($installedVersion)"
         Write-Host ""
         Write-Info "Get started:"

@@ -1,0 +1,195 @@
+# =============================================================================
+# Project Task: Docs Site Sync
+# =============================================================================
+# Task for: documentation agent
+#
+# Audits the Astro/Starlight docs site (docs/) for staleness against the
+# codebase, fixes content, runs Astro validation/builds, performs
+# accessibility checks via Playwright, and reports what was updated.
+#
+# Uses additional_tools for scoped Bash access (astro build, npm ci, etc.)
+# that the documentation template doesn't allow by default.
+# =============================================================================
+
+name: docs-site-sync
+display_name: "Docs Site Sync"
+agent_type: documentation
+is_builtin: false
+description: >
+  Audits the Astro/Starlight documentation site for staleness against the
+  codebase, fixes content, runs Astro validation and builds, performs
+  accessibility checks via Playwright, and reports what was updated.
+
+additional_tools:
+  - "Bash(cd docs:*)"             # cd docs && npm ci, cd docs && npx astro build, etc.
+  - "Bash(playwright-cli:*)"      # Browser automation via CLI skill
+
+default_task: |
+  Audit and update the documentation site at docs/ to stay in sync with the
+  codebase. Follow these steps in order.
+
+  ## 0. Setup
+
+  Install dependencies so build and check tools are available:
+  ```
+  cd docs && npm ci
+  ```
+
+  ## 1. Discover What Changed
+
+  Use CI tools to find recent codebase changes that may affect documentation:
+  - ci_project_stats: Get overall codebase metrics
+  - ci_sessions(limit=20): Find recent sessions with changes
+  - ci_search("documentation site"): Find docs-related code changes
+  - ci_memories(type=discovery): Recent discoveries about features
+  - ci_memories(type=gotcha): Warnings that should be documented
+  - ci_memories(type=decision): Architecture decisions to document
+
+  Build a list of changes that may affect docs content.
+
+  ## 2. Content Audit
+
+  Read all documentation pages and categorize each as:
+  - **CURRENT**: Content matches codebase — no changes needed
+  - **STALE**: Content exists but is outdated or inaccurate
+  - **MISSING**: Codebase feature/concept has no documentation page
+  - **ORPHANED**: Docs page describes something that no longer exists
+
+  Files to audit:
+  - docs/src/content/docs/**/*.md and **/*.mdx (content pages)
+  - docs/astro.config.mjs (sidebar configuration)
+
+  For each page, compare against the actual codebase:
+  - Read the source code the page describes
+  - Check if CLI commands, API endpoints, and config options still exist
+  - Verify code examples match current implementations
+
+  ## 3. Astro Check (Pre-edit Baseline)
+
+  Run content validation before making changes:
+  ```
+  cd docs && npx astro check
+  ```
+  Note any existing issues to fix alongside content updates.
+
+  ## 4. Update Content
+
+  For each STALE or MISSING page:
+  - Update/create the markdown content to match the codebase
+  - Use CI memories to enrich with gotchas, design decisions, and context
+  - Ensure frontmatter (title, description) is accurate
+  - Add/update code examples from actual codebase
+
+  For each ORPHANED page:
+  - Remove the page file
+  - Remove its entry from the sidebar in docs/astro.config.mjs
+
+  For new pages:
+  - Add a sidebar entry in docs/astro.config.mjs in the appropriate section
+
+  ## 5. Build Verification
+
+  Verify the site builds successfully after changes:
+  ```
+  cd docs && npx astro build
+  ```
+  If the build fails, fix the issues and rebuild until it passes.
+
+  ## 6. Visual and Accessibility Checks
+
+  Use Playwright to verify the built site:
+  - Open the built site and take screenshots of key pages
+  - Use browser_snapshot for accessibility tree analysis
+  - Check for broken links, missing images, layout issues
+  - Verify navigation and sidebar structure
+
+  ## 7. Report
+
+  Summarize what was done:
+  - Pages updated (with brief description of changes)
+  - Pages created (new documentation)
+  - Pages removed (orphaned content)
+  - Build status (pass/fail)
+  - Accessibility findings (if any)
+  - Recommendations for future documentation work
+
+execution:
+  timeout_seconds: 1200
+  max_turns: 200
+  permission_mode: bypassPermissions
+
+maintained_files:
+  - path: "{project_root}/docs/src/content/docs/**/*.md"
+    purpose: "Documentation content pages (Markdown)"
+    auto_create: true
+
+  - path: "{project_root}/docs/src/content/docs/**/*.mdx"
+    purpose: "Documentation content pages (MDX)"
+    auto_create: true
+
+  - path: "{project_root}/docs/astro.config.mjs"
+    purpose: "Astro configuration including sidebar structure"
+    auto_create: false
+
+  - path: "{project_root}/docs/src/assets/**"
+    purpose: "Documentation images and screenshots"
+    auto_create: true
+
+ci_queries:
+  discovery:
+    - tool: ci_project_stats
+      purpose: "Get codebase metrics to validate docs claims"
+
+    - tool: ci_sessions
+      limit: 20
+      include_summary: true
+      purpose: "Find recent sessions with changes that affect docs"
+
+  context:
+    - tool: ci_memories
+      filter: discovery
+      limit: 20
+      purpose: "Recent feature discoveries to document"
+
+    - tool: ci_memories
+      filter: gotcha
+      limit: 15
+      purpose: "Warnings and pitfalls to include in docs"
+
+    - tool: ci_memories
+      filter: decision
+      limit: 15
+      purpose: "Architecture decisions to document"
+
+  verification:
+    - tool: ci_sessions
+      limit: 10
+      include_summary: true
+      purpose: "Verify recent changes are reflected in docs"
+
+output_requirements:
+  required_sections:
+    - name: "Audit Summary"
+      description: "Table of all pages with their status (CURRENT/STALE/MISSING/ORPHANED)"
+    - name: "Changes Made"
+      description: "List of pages updated, created, or removed with brief descriptions"
+    - name: "Build Status"
+      description: "Astro check and build results"
+    - name: "Accessibility"
+      description: "Playwright accessibility findings"
+    - name: "Recommendations"
+      description: "Suggestions for future documentation improvements"
+
+style:
+  tone: "technical"
+  include_examples: true
+  link_code_files: true
+  code_link_format: "line"
+  conventions:
+    - "Match existing Starlight/Astro frontmatter conventions"
+    - "Use relative links between docs pages"
+    - "Include code examples from the actual codebase"
+    - "Add gotcha callouts using Starlight aside syntax"
+    - "Keep sidebar structure organized by feature area"
+
+schema_version: 1

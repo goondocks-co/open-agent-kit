@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Token-based authentication for daemon API and UI with file-backed secrets — [Implement token‑based authentication for API and UI](http://localhost:38388/activity/sessions/b172c7fd-12d6-463b-a540-9b676a173992)
+- Automatic backup fallback with configurable interval and UI countdown timer — [Implement automatic backup fallback and UI timer update](http://localhost:38388/activity/sessions/dc927025-655c-4ee0-88c3-8b56a5a8d7e6)
+- Unified backup system with user-controlled settings and pre-upgrade hooks — [Configure unified backup system with user‑controlled settings](http://localhost:38388/activity/sessions/96b119d1-819c-4ac0-eed6c53ceb8c)
+- Refresh button on Activity plans page with lightweight backend logic — [Add Refresh button to Activity plans page with lightweight backend logic](http://localhost:38388/activity/sessions/5d7633af-e6d5-4e1a-b0b5-adf05d334e29)
+- Security hardening roadmap for CI daemon API — [Configure security hardening roadmap for CI daemon API](http://localhost:38388/activity/sessions/b22106f0-bf39-45ec-be1c-414a6d3e60c9)
+- `docs-site-sync` agent for Astro documentation build and accessibility validation — [Implement docs-site-sync agent for Astro build and accessibility](http://localhost:38388/activity/sessions/3336230c-6da2-46f3-84ed-00a86c6fcaa3)
+- Machine-specific config overlay for Oak CLI with per-host settings — [Implement machine‑specific config overlay for Oak CLI](http://localhost:38388/activity/sessions/f0773bf2-f976-4c75-b306-f3245c90846c)
+- Fresh install cleanup logic in migration framework — [Refactor migration framework for fresh install cleanup](http://localhost:38388/activity/sessions/a228c691-9fbc-4ea9-b3b8-9242941eb271)
 - Debug tooling for analysis agent build vs upgrade generation workflow — [Debug analysis agent build versus upgrade generation process](http://localhost:38388/activity/sessions/c35d4c25-9567-428d-aef6-8c1f3f231f47)
 - Analysis skill for querying Oak CI databases with auto-generated schema references — [Implement analysis skill for Oak CI database queries](http://localhost:38388/activity/sessions/258f9a72-bc62-4c2a-be19-434afcb67492)
 - Scheduled backup agent with UI controls for automated CI data protection — [Implement scheduled backup agent with UI controls](http://localhost:38388/activity/sessions/7c4c1f44-e015-46ce-9f6a-b88e24af5a71)
@@ -58,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Documentation Agent refactored to split root files and handle per-directory documentation separately — [Refactor documentation agent to split root files](http://localhost:38388/activity/sessions/1edaa563-6d6e-449a-8ad4-bc6e11ed106f)
+- Open Agent Kit skills consolidated into two primary skills (oak and oak-ci) for simpler installation — [Refactor Open Agent Kit into Two Consolidated Skills](http://localhost:38388/activity/sessions/482c8fee-8da0-42cc-9fa6-1f10c2d669b9)
+- Backup system redesigned with 3 unified functions (`create_backup()`, `restore_backup()`, `restore_all()`) replacing 4+ code paths — [Add backup/restore feature with new CLI commands](http://localhost:38388/activity/sessions/da0ef20a-b383-4b33-bbe5-4ae08e4b82a0)
 - Oak constants refactored to align with flattened directory structure (`oak/` instead of `oak/ci/`) — [Refactor Oak constants to align with flattened directory structure](http://localhost:38388/activity/sessions/f9a71f9f-6c5c-4346-a373-6b9fc2ee6b4a)
 - Documentation updated: agents guide, CI models reference, and lifecycle diagrams — [Update Oak documentation: agents, CI models, lifecycle diagrams](http://localhost:38388/activity/sessions/bc023bb9-bae5-4724-9848-1a4f0ad8f061)
 - Stale agent capability data removed from configuration — [Refactor config to remove stale agent capability data](http://localhost:38388/activity/sessions/0558da05-c9c6-4014-9322-4ce9468968e6)
@@ -84,6 +95,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed MCP server resilience to daemon restarts with token refresh, guard reset, and 3-attempt retry loop — [Debug CI daemon API hook integration and auth headers](http://localhost:38388/activity/sessions/09493b1b-9ad1-4572-9504-532d28fc6973)
+- Fixed UI agent resume button not appearing for CodeX sessions after model name format change to `GPT-5.3/codex` — [Fix UI agent bug and add Gemini resume CLI command](http://localhost:38388/activity/sessions/019c3e4d-e68d-7861-abca-4488873b55dd)
+- Fixed Gemini CLI not recognizing `resume` command with space-dash-space variant — [Fix UI agent bug and add Gemini resume CLI command](http://localhost:38388/activity/sessions/019c3e4d-e68d-7861-abca-4488873b55dd)
+- Fixed `/backup/last` endpoint returning empty 200 instead of 404 when no backup exists
+- Fixed React error #310 in SessionDetail.tsx caused by hooks called after early returns
+- Fixed MCP server 401 errors by adding daemon token file reading and Bearer header injection
 - Fixed Windsurf agent freeze caused by `show_output` hooks blocking event loop — [Fix Windsurf agent freeze by removing show_output hooks](http://localhost:38388/activity/sessions/ed8ccfe1-46d2-4022-8265-72507c8ac013)
 - Fixed ChromaDB session cleanup leaving orphaned embeddings after SQLite deletion — [Add cleanup logic for embedded ChromaDB sessions](http://localhost:38388/activity/sessions/17f9aef8-9615-4631-ad69-c752d3b210e5)
 - Fixed `/devtools/compact` endpoint raising `NameError` due to undefined variable reference — [Debug daemon devtools failure after corrupted state cleanup](http://localhost:38388/activity/sessions/0e751f02-2f15-461f-bb54-6b80053e0d91)
@@ -189,3 +206,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: The daemon port file is now expected at `oak/` instead of `oak/ci/`. Documentation or tooling referencing the old path will fail to load runtime configuration.
 
 > **Gotcha**: The `UpgradeService` performs a dry-run check first. Running `oak upgrade` compares template files against the latest version and reports "already up to date" if no differences are found. It does **not** trigger the asset build step — run `oak build` explicitly after modifying skills.
+
+> **Gotcha**: The next auto-backup time is calculated as `last_backup + interval`. If no previous backup exists, an immediate backup is scheduled. This approach avoids cron complexity but may drift if backups take longer than expected.
+
+> **Gotcha**: Astro's `output: 'static'` mode triggers prerendering for all routes without dynamic data. Ensure the docs site has no server-only routes before enabling this optimization.

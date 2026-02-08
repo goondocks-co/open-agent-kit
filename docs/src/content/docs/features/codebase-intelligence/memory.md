@@ -22,6 +22,7 @@ The core power of Codebase Intelligence is its ability to learn and remember. Th
 | `decision` | Architectural or design choices | "We use polling instead of websockets for stability." |
 | `bug_fix` | Solutions to specific errors | "Fixed race condition in transaction handler." |
 | `discovery` | Facts learned about the codebase | "The user table is sharded by region." |
+| `trade_off` | Trade-offs made and their rationale | "Sacrificed write throughput for read latency." |
 | `session_summary` | High-level summary of a coding session | "Implemented user login flow." |
 
 ## Auto-Capture Hooks
@@ -54,9 +55,10 @@ When using fully supported agents (Claude/Gemini), the CI daemon analyzes every 
 
 - **Browse** all stored memories by type, date, or content
 - **Search** memories using natural language queries
+- **Archive** memories to hide them from active lists (reversible)
 - **Delete** memories that are outdated or incorrect
 
-<!-- TODO: screenshot of memories tab -->
+![Memories with type and tag filters](../../../../assets/images/activity-memories.png)
 
 Agents can also store memories programmatically using the MCP tools. See [MCP Tools](/open-agent-kit/api/mcp-tools/) for details on `oak_remember`.
 

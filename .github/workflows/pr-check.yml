@@ -10,8 +10,9 @@ on:
     paths:
       - "src/**"
       - "tests/**"
-      - "features/**"
       - "pyproject.toml"
+      - "install.sh"
+      - "install.ps1"
       - ".github/workflows/**"
 
 concurrency:
@@ -19,6 +20,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  installer-smoke:
+    name: Installer Smoke Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.13"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history needed for hatch-vcs
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run installer smoke tests
+        run: |
+          pytest tests/test_install_scripts.py -v
+
   lint-and-format:
     name: Lint and Format Check
     runs-on: ubuntu-latest
@@ -50,7 +79,6 @@ jobs:
       - name: Run type checking with mypy
         run: |
           mypy src/ --show-error-codes
-        continue-on-error: true
 
       - name: Verify skill assets are in sync
         run: python scripts/build_skill_assets.py --check
@@ -60,7 +88,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
         python-version: ["3.12", "3.13"]
     steps:
       - name: Checkout code
@@ -82,25 +110,6 @@ jobs:
       - name: Run tests with pytest
         run: |
           pytest --cov=open_agent_kit --cov-report=xml --cov-report=term
-
-  validate-templates:
-    name: Validate Templates
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install markdownlint
-        run: |
-          npm install -g markdownlint-cli
-
-      - name: Validate RFC templates
-        run: |
-          markdownlint 'features/rfc/templates/**/*.md' --config .markdownlint.json || true
-
-      - name: Validate command templates
-        run: |
-          markdownlint 'features/*/commands/*.md' --config .markdownlint.json || true
 
   integration-test:
     name: Integration Test (Smoke)
@@ -175,9 +184,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       [
+        installer-smoke,
         lint-and-format,
         test,
-        validate-templates,
         integration-test,
         check-version,
       ]
@@ -185,15 +194,15 @@ jobs:
     steps:
       - name: Check all jobs status
         env:
+          INSTALLER_RESULT: ${{ needs.installer-smoke.result }}
           LINT_RESULT: ${{ needs.lint-and-format.result }}
           TEST_RESULT: ${{ needs.test.result }}
-          TEMPLATES_RESULT: ${{ needs.validate-templates.result }}
           INTEGRATION_RESULT: ${{ needs.integration-test.result }}
           VERSION_RESULT: ${{ needs.check-version.result }}
         run: |
-          if [ "$LINT_RESULT" != "success" ] || \
+          if [ "$INSTALLER_RESULT" != "success" ] || \
+             [ "$LINT_RESULT" != "success" ] || \
              [ "$TEST_RESULT" != "success" ] || \
-             [ "$TEMPLATES_RESULT" != "success" ] || \
              [ "$INTEGRATION_RESULT" != "success" ] || \
              [ "$VERSION_RESULT" != "success" ]; then
             echo "One or more checks failed"

@@ -238,12 +238,14 @@ class AgentExecutor:
         self,
         agent: AgentDefinition,
         execution: AgentExecution | None = None,
+        additional_tools: list[str] | None = None,
     ) -> Any:
         """Build ClaudeAgentOptions from agent definition.
 
         Args:
             agent: Agent definition with configuration.
             execution: Optional execution config override (from task).
+            additional_tools: Extra tools from task config (e.g., scoped Bash patterns).
 
         Returns:
             ClaudeAgentOptions instance.
@@ -258,6 +260,13 @@ class AgentExecutor:
 
         # Build allowed tools list, filtering forbidden tools
         allowed_tools = [t for t in agent.get_effective_tools() if t not in AGENT_FORBIDDEN_TOOLS]
+
+        # Merge task-level additional tools (e.g., scoped Bash patterns)
+        # These are additive and still filtered through AGENT_FORBIDDEN_TOOLS
+        if additional_tools:
+            for tool in additional_tools:
+                if tool not in AGENT_FORBIDDEN_TOOLS and tool not in allowed_tools:
+                    allowed_tools.append(tool)
 
         # Build enabled CI tools set from ci_access flags
         mcp_servers: dict[str, Any] = {}
@@ -728,7 +737,11 @@ class AgentExecutor:
 
         try:
             # Build options with effective execution config
-            options = self._build_options(agent, execution)
+            options = self._build_options(
+                agent,
+                execution,
+                additional_tools=agent_task.additional_tools if agent_task else None,
+            )
 
             # Build task prompt with config injection
             task_prompt = self._build_task_prompt(agent, task, agent_task)

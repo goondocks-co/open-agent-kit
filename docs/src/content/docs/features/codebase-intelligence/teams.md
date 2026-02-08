@@ -66,7 +66,7 @@ codebase_intelligence:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Automatic backups** | Off | Enable periodic automatic backups |
-| **Include activities** | Off | Include the activities table in backups (larger files) |
+| **Include activities** | On | Include the activities table in backups (larger files) |
 | **Backup before upgrade** | On | Automatically create a backup before `oak upgrade` runs |
 | **Backup interval** | 30 min | How often automatic backups run (5 min to 24 hours) |
 
