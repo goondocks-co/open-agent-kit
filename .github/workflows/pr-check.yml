@@ -15,10 +15,6 @@ on:
       - "install.ps1"
       - ".github/workflows/**"
 
-concurrency:
-  group: pr-check-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   installer-smoke:
     name: Installer Smoke Tests
@@ -85,21 +81,17 @@ jobs:
 
   test:
     name: Run Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        python-version: ["3.12", "3.13"]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history needed for hatch-vcs
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
           cache: "pip"
 
       - name: Install dependencies
