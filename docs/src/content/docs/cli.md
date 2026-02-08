@@ -68,9 +68,8 @@ oak upgrade --commands   # Upgrade only commands
 
 Skills provide specialized capabilities to your AI agent:
 
-- **project-rules** — Create and maintain project constitutions
-- **creating-rfcs** — Create RFC documents for technical decisions
-- **reviewing-rfcs** — Review and validate RFC documents
+- **project-governance** — Create and maintain project constitutions, agent instruction files, and RFC/ADR documents
+- **codebase-intelligence** — Semantic search, impact analysis, and database queries against the Oak CI database
 
 ```bash
 oak skill list         # List available skills

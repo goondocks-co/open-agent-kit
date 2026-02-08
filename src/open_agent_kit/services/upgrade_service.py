@@ -382,6 +382,13 @@ class UpgradeService:
             except Exception as e:
                 results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
 
+        for obsolete_info in skill_plan["obsolete"]:
+            try:
+                self._remove_obsolete_skill(obsolete_info["skill"])
+                results["obsolete_removed"]["upgraded"].append(obsolete_info["skill"])
+            except Exception as e:
+                results["obsolete_removed"]["failed"].append(f"{obsolete_info['skill']}: {e}")
+
         # Install and upgrade CI agent tasks
         agent_tasks_plan = plan.get("agent_tasks") or {"install": [], "upgrade": []}
         for task_info in agent_tasks_plan.get("install", []):

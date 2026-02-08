@@ -9,11 +9,11 @@ Key Classes:
 
 Constitution Structure:
     - Version-controlled markdown document (typically at .constitution.md or oak/constitution.md)
-    - Created and maintained by agents using the project-rules skill
+    - Created and maintained by agents using the project-governance skill
     - Agent instruction files reference the constitution
 
 Note:
-    Constitution creation and editing is handled by agents using the project-rules skill,
+    Constitution creation and editing is handled by agents using the project-governance skill,
     which provides examples of well-structured constitutions. This service handles:
     - Loading and parsing existing constitutions
     - Project analysis for classification

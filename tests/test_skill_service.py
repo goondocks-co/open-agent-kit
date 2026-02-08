@@ -757,8 +757,8 @@ class TestManifestSkillsConsistency:
         assert not errors, "Manifest/directory skill mismatches found:\n" + "\n".join(errors)
 
 
-class TestQueryingOakDatabasesSkillSync:
-    """Verify the querying-oak-databases skill stays in sync with the actual schema.
+class TestCodebaseIntelligenceSkillSync:
+    """Verify the codebase-intelligence skill stays in sync with the actual schema.
 
     When schema.py changes (new tables, version bump), the skill's reference
     files must be updated too. These tests catch drift at the quality gate.
@@ -771,7 +771,7 @@ class TestQueryingOakDatabasesSkillSync:
         / "features"
         / "codebase_intelligence"
         / "skills"
-        / "querying-oak-databases"
+        / "codebase-intelligence"
     )
 
     def test_schema_version_matches(self):

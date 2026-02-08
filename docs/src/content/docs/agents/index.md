@@ -25,12 +25,11 @@ For details on what each agent's hooks actually provide (context injection, acti
 
 ## Skills & Commands
 
-OAK deploys **[skills](/open-agent-kit/agents/skills/)** and commands into each agent's native directories. Skills are the primary way OAK extends your agent — invoke them with slash commands like `/project-rules` or `/creating-rfcs`.
+OAK deploys **[skills](/open-agent-kit/agents/skills/)** and commands into each agent's native directories. Skills are the primary way OAK extends your agent — invoke them with slash commands like `/project-governance` or `/codebase-intelligence`.
 
-After `oak init`, **6 skills** are available across three areas:
-- **Codebase Intelligence** — `/finding-related-code`, `/analyzing-code-change-impacts`, `/querying-oak-databases`
-- **Rules Management** — `/project-rules`
-- **Strategic Planning** — `/creating-rfcs`, `/reviewing-rfcs`
+After `oak init`, **2 skills** are available across two domains:
+- **Rules Management** — `/project-governance` (constitutions, agent files, RFCs)
+- **Codebase Intelligence** — `/codebase-intelligence` (semantic search, impact analysis, database queries)
 
 See the **[Skills](/open-agent-kit/agents/skills/)** page for full details on each skill.
 

@@ -8,7 +8,7 @@ assignees: ''
 
 ## Command/Skill Used
 
-Which command or skill? (e.g., `oak rfc create`, `/creating-rfcs`, `/project-rules`)
+Which command or skill? (e.g., `oak rfc create`, `/project-governance`, `/codebase-intelligence`)
 
 ## AI Agent
 

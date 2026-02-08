@@ -8,12 +8,9 @@ default_enabled: true
 dependencies:
   - rules-management
 
-# Skills are installed to agents with has_skills capability when feature is enabled
-# Lean, focused skills for RFC/ADR workflows (user-invoked)
-# Note: Generic planning removed - agents have native plan mode
-skills:
-  - creating-rfcs
-  - reviewing-rfcs
+# Skills consolidated into rules-management/project-governance
+# RFC workflows are now reference docs within the project-governance skill
+skills: []
 
 # RFC templates only (plan templates removed)
 templates:

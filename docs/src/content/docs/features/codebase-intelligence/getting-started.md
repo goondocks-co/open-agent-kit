@@ -70,12 +70,12 @@ The dashboard also has a built-in **Help** page with contextual guidance for eac
 
 ## Establish Project Rules
 
-Once OAK and your agents are set up, use the **`/project-rules`** skill to create a project constitution — a living document that codifies your team's engineering standards so AI agents follow them consistently.
+Once OAK and your agents are set up, use the **`/project-governance`** skill to create a project constitution — a living document that codifies your team's engineering standards so AI agents follow them consistently.
 
 From any configured agent, run:
 
 ```
-/project-rules Let's establish our project's constitution
+/project-governance Let's establish our project's constitution
 ```
 
 The agent will:
@@ -93,7 +93,7 @@ A constitution dramatically improves agent consistency. Without one, agents may 
 As your project evolves, use the same skill to amend the constitution when new rules are discovered:
 
 ```
-/project-rules Let's ensure we always follow the vertical slice architectural pattern
+/project-governance Let's ensure we always follow the vertical slice architectural pattern
 ```
 
 After updating the constitution, sync the changes to all agent instruction files:
@@ -102,7 +102,7 @@ After updating the constitution, sync the changes to all agent instruction files
 oak rules sync-agents
 ```
 
-See the [Skills](/open-agent-kit/agents/skills/#project-rules) page for the full `/project-rules` reference.
+See the [Skills](/open-agent-kit/agents/skills/#project-governance) page for the full `/project-governance` reference.
 
 ## Verify Installation
 

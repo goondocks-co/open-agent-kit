@@ -74,8 +74,8 @@ def test_init_with_claude_agent(temp_project_dir: Path) -> None:
     skills_dir = temp_project_dir / ".claude" / "skills"
     assert skills_dir.exists()
     # Check for skills from installed features (rules-management, codebase-intelligence)
-    assert (skills_dir / "project-rules" / "SKILL.md").exists()
-    assert (skills_dir / "finding-related-code" / "SKILL.md").exists()
+    assert (skills_dir / "project-governance" / "SKILL.md").exists()
+    assert (skills_dir / "codebase-intelligence" / "SKILL.md").exists()
 
 
 def test_init_with_multiple_agents(temp_project_dir: Path) -> None:
@@ -89,7 +89,7 @@ def test_init_with_multiple_agents(temp_project_dir: Path) -> None:
     # Claude gets skills (has_skills=True) in .claude/skills/
     skills_dir = temp_project_dir / ".claude" / "skills"
     assert skills_dir.exists()
-    assert (skills_dir / "project-rules" / "SKILL.md").exists()
+    assert (skills_dir / "project-governance" / "SKILL.md").exists()
     # Claude also gets commands (sub-agents) in .claude/commands/
     claude_commands_dir = temp_project_dir / ".claude" / "commands"
     assert claude_commands_dir.exists()

@@ -7,12 +7,12 @@ default_enabled: true
 dependencies: []
 
 # Skills are installed to agents with has_skills capability when feature is enabled
-# Comprehensive skill for creating and maintaining project constitutions
+# Consolidated skill covering constitutions, agent files, and RFCs
 skills:
-  - project-rules
+  - project-governance
 
 # Templates section removed - skill teaches agents to write constitutions directly
-# using examples in skills/project-rules/references/
+# using examples in skills/project-governance/references/
 
 # Feature lifecycle hooks
 hooks:

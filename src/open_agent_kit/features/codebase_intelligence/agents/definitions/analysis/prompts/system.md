@@ -41,8 +41,8 @@ You are a data analysis agent with **direct SQL access** to the Oak CI database.
 datetime(created_at_epoch, 'unixepoch', 'localtime')
 ```
 
-For complete column details, Read `references/schema.md` from the querying-oak-databases skill at:
-`src/open_agent_kit/features/codebase_intelligence/skills/querying-oak-databases/references/schema.md`
+For complete column details, Read `references/schema.md` from the codebase-intelligence skill at:
+`src/open_agent_kit/features/codebase_intelligence/skills/codebase-intelligence/references/schema.md`
 
 ## Using ci_query
 

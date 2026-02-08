@@ -18,13 +18,7 @@ constitution:
 languages:
   installed: [javascript, python, typescript]
 skills:
-  installed:
-  - project-rules
-  - analyzing-code-change-impacts
-  - finding-related-code
-  - creating-rfcs
-  - reviewing-rfcs
-  - querying-oak-databases
+  installed: [project-governance, codebase-intelligence]
   auto_install: true
 codebase_intelligence:
   embedding:

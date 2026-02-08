@@ -184,13 +184,13 @@ BACKGROUND_PROCESSING_INTERVAL = 60      # seconds
 
 ## Debugging
 
-### Using the `/querying-oak-databases` skill
+### Using the `/codebase-intelligence` skill
 
-The recommended way to inspect session data is with the `/querying-oak-databases` agent skill. It provides the current database schema and ready-to-use queries, so you don't need to discover table names or column types yourself — especially useful as the schema evolves across releases.
+The recommended way to inspect session data is with the `/codebase-intelligence` agent skill. It provides the current database schema and ready-to-use queries, so you don't need to discover table names or column types yourself — especially useful as the schema evolves across releases.
 
 Ask your agent:
 ```
-/querying-oak-databases show me recent sessions and their statuses
+/codebase-intelligence show me recent sessions and their statuses
 ```
 
 ### Manual queries
@@ -207,5 +207,5 @@ grep -E "Session start|Session end|Recovered" .oak/ci/daemon.log | tail -20
 ```
 
 :::caution[Schema may change]
-The SQLite schema evolves between releases. Prefer the `/querying-oak-databases` skill for accurate, up-to-date queries.
+The SQLite schema evolves between releases. Prefer the `/codebase-intelligence` skill for accurate, up-to-date queries.
 :::

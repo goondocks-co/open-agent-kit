@@ -2,7 +2,7 @@
 
 This module provides CLI commands for managing AI agent rules files.
 These are lightweight utilities - agents write constitutions and agent files
-directly using the project-rules skill.
+directly using the project-governance skill.
 
 Commands:
 - analyze: Analyze project to classify as greenfield/brownfield/mature
@@ -183,7 +183,7 @@ def sync_agents(
 
     # Check if constitution exists
     if not constitution_service.exists():
-        print_error("No constitution found. Create one first using the project-rules skill.")
+        print_error("No constitution found. Create one first using the project-governance skill.")
         raise typer.Exit(code=1)
 
     if dry_run:

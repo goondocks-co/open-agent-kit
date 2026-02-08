@@ -35,7 +35,7 @@ oak init
 oak ci start --open
 ```
 
-Then use the `/project-rules` skill from any configured agent to establish your project's constitution.
+Then use the `/project-governance` skill from any configured agent to establish your project's constitution.
 
 > **[Full documentation](https://goondocks-co.github.io/open-agent-kit/)** | **[Getting Started guide](https://goondocks-co.github.io/open-agent-kit/features/codebase-intelligence/getting-started/)**
 
