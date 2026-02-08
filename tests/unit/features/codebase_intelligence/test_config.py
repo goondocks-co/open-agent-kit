@@ -8,16 +8,21 @@ Tests cover:
 - Environment variable resolution
 - Config file loading and saving
 - Error handling for invalid configurations
+- User config overlay: deep merge, split, load/save, migration, origins
 """
 
 from pathlib import Path
 
 import pytest
+import yaml
 
 from open_agent_kit.features.codebase_intelligence.config import (
     DEFAULT_EMBEDDING_CONTEXT_TOKENS,
     CIConfig,
     EmbeddingConfig,
+    _deep_merge,
+    _split_by_classification,
+    get_config_origins,
     load_ci_config,
     save_ci_config,
 )
@@ -672,3 +677,609 @@ class TestSaveCIConfig:
         content = config_file.read_text()
         assert "other_feature:" in content
         assert "codebase_intelligence:" in content
+
+
+# =============================================================================
+# Deep Merge Tests
+# =============================================================================
+
+MOCK_MACHINE_ID = "test_user_abc123"
+
+
+class TestDeepMerge:
+    """Test _deep_merge helper function."""
+
+    def test_empty_overlay_returns_base(self):
+        """Empty overlay should return a copy of base."""
+        base = {"a": 1, "b": {"c": 2}}
+        result = _deep_merge(base, {})
+        assert result == base
+        assert result is not base
+
+    def test_empty_base_returns_overlay(self):
+        """Empty base should return overlay values."""
+        overlay = {"a": 1, "b": 2}
+        result = _deep_merge({}, overlay)
+        assert result == overlay
+
+    def test_scalar_override(self):
+        """Overlay scalars should override base scalars."""
+        base = {"a": 1, "b": 2}
+        overlay = {"b": 99}
+        result = _deep_merge(base, overlay)
+        assert result == {"a": 1, "b": 99}
+
+    def test_list_replace(self):
+        """Overlay lists should replace base lists (not merge)."""
+        base = {"patterns": ["a", "b"]}
+        overlay = {"patterns": ["x"]}
+        result = _deep_merge(base, overlay)
+        assert result == {"patterns": ["x"]}
+
+    def test_nested_recurse(self):
+        """Nested dicts should be recursively merged."""
+        base = {"embedding": {"provider": "ollama", "model": "bge-m3"}}
+        overlay = {"embedding": {"model": "nomic-embed-text"}}
+        result = _deep_merge(base, overlay)
+        assert result == {"embedding": {"provider": "ollama", "model": "nomic-embed-text"}}
+
+    def test_no_base_mutation(self):
+        """Base dict should not be mutated."""
+        base = {"a": {"b": 1}}
+        overlay = {"a": {"b": 2}}
+        _deep_merge(base, overlay)
+        assert base == {"a": {"b": 1}}
+
+    def test_new_keys_added(self):
+        """New keys in overlay should be added to result."""
+        base = {"a": 1}
+        overlay = {"b": 2}
+        result = _deep_merge(base, overlay)
+        assert result == {"a": 1, "b": 2}
+
+
+# =============================================================================
+# Split By Classification Tests
+# =============================================================================
+
+
+class TestSplitByClassification:
+    """Test _split_by_classification helper function."""
+
+    def test_full_split(self):
+        """Full config should split correctly into user and project parts."""
+        ci_dict = CIConfig().to_dict()
+        user, project = _split_by_classification(ci_dict)
+
+        # Entire user-classified sections
+        assert "embedding" in user
+        assert "summarization" in user
+        assert "tunnel" in user
+        assert "log_level" in user
+        assert "log_rotation" in user
+
+        # Project-classified sections
+        assert "session_quality" in project
+        assert "exclude_patterns" in project
+        assert "index_on_startup" in project
+        assert "watch_files" in project
+
+    def test_embedding_is_all_user(self):
+        """Embedding section should be entirely user-classified."""
+        ci_dict = {"embedding": {"provider": "ollama", "model": "bge-m3"}}
+        user, project = _split_by_classification(ci_dict)
+        assert "embedding" in user
+        assert "embedding" not in project
+
+    def test_summarization_is_all_user(self):
+        """Summarization section should be entirely user-classified."""
+        ci_dict = {"summarization": {"provider": "ollama", "model": "qwen2.5:3b"}}
+        user, project = _split_by_classification(ci_dict)
+        assert "summarization" in user
+        assert "summarization" not in project
+
+    def test_agents_mixed_section(self):
+        """Agents section should split into user and project parts."""
+        ci_dict = {
+            "agents": {
+                "enabled": True,
+                "max_turns": 10,
+                "provider_type": "ollama",
+                "provider_base_url": "http://localhost:11434",
+                "provider_model": "llama3",
+            }
+        }
+        user, project = _split_by_classification(ci_dict)
+
+        # User-classified agent keys
+        assert "agents" in user
+        assert "provider_type" in user["agents"]
+        assert "provider_base_url" in user["agents"]
+        assert "provider_model" in user["agents"]
+
+        # Project-classified agent keys
+        assert "agents" in project
+        assert "enabled" in project["agents"]
+        assert "max_turns" in project["agents"]
+
+    def test_session_quality_is_project(self):
+        """Session quality section should be entirely project-classified."""
+        ci_dict = {"session_quality": {"min_activities": 3}}
+        user, project = _split_by_classification(ci_dict)
+        assert "session_quality" not in user
+        assert "session_quality" in project
+
+    def test_exclude_patterns_is_project(self):
+        """Exclude patterns should be project-classified."""
+        ci_dict = {"exclude_patterns": ["*.pyc"]}
+        user, project = _split_by_classification(ci_dict)
+        assert "exclude_patterns" not in user
+        assert "exclude_patterns" in project
+
+    def test_roundtrip_split_merge(self):
+        """Splitting then merging should reproduce the original config."""
+        original = CIConfig().to_dict()
+        user, project = _split_by_classification(original)
+        reconstructed = _deep_merge(project, user)
+        assert reconstructed == original
+
+
+# =============================================================================
+# User Config Overlay Tests
+# =============================================================================
+
+
+@pytest.fixture
+def mock_machine_id(monkeypatch):
+    """Monkeypatch get_machine_identifier to return a stable test value."""
+    monkeypatch.setattr(
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.get_machine_identifier",
+        lambda *_args, **_kwargs: MOCK_MACHINE_ID,
+    )
+
+
+class TestUserConfigOverlay:
+    """Test user config overlay load/save behavior."""
+
+    def test_load_without_overlay_is_identical(self, project_with_oak_config, mock_machine_id):
+        """Loading without a user overlay should be identical to current behavior."""
+        config = load_ci_config(project_with_oak_config)
+        assert config.embedding.provider == "ollama"
+        assert config.embedding.model == "bge-m3"
+
+    def test_load_with_overlay_merges(self, project_with_oak_config, mock_machine_id):
+        """User overlay should merge on top of project config."""
+        # Create user overlay that overrides embedding model
+        user_file = project_with_oak_config / ".oak" / f"config.{MOCK_MACHINE_ID}.yaml"
+        user_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {
+                            "model": "nomic-embed-text",
+                        }
+                    }
+                }
+            )
+        )
+
+        config = load_ci_config(project_with_oak_config)
+        # User overlay wins for model
+        assert config.embedding.model == "nomic-embed-text"
+        # Project config still provides provider
+        assert config.embedding.provider == "ollama"
+
+    def test_corrupted_overlay_falls_back(self, project_with_oak_config, mock_machine_id):
+        """Corrupted user overlay should be ignored with a warning."""
+        user_file = project_with_oak_config / ".oak" / f"config.{MOCK_MACHINE_ID}.yaml"
+        user_file.write_text("{{invalid yaml: [")
+
+        # Should still load successfully from project config only
+        config = load_ci_config(project_with_oak_config)
+        assert config.embedding.provider == "ollama"
+        assert config.embedding.model == "bge-m3"
+
+    def test_save_splits_to_two_files(self, tmp_path, mock_machine_id):
+        """Default save should write user keys to overlay, project keys to config."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+
+        config = CIConfig()
+        save_ci_config(tmp_path, config)
+
+        project_file = oak_dir / "config.yaml"
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+
+        assert project_file.exists()
+        assert user_file.exists()
+
+        # Project file has project-classified keys
+        with open(project_file) as f:
+            project_data = yaml.safe_load(f)
+        project_ci = project_data.get("codebase_intelligence", {})
+        assert "session_quality" in project_ci
+
+        # User file has user-classified keys
+        with open(user_file) as f:
+            user_data = yaml.safe_load(f)
+        user_ci = user_data.get("codebase_intelligence", {})
+        assert "embedding" in user_ci
+
+    def test_save_preserves_existing_user_defaults(self, tmp_path, mock_machine_id):
+        """Save should preserve user-classified defaults already in project config."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+
+        # Simulate project config from oak init (has all keys including user-classified)
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "ollama", "model": "team-default"},
+                        "session_quality": {"min_activities": 3},
+                    }
+                }
+            )
+        )
+
+        # User changes embedding model via dashboard
+        config = load_ci_config(tmp_path)
+        config.embedding.model = "bge-m3"
+        save_ci_config(tmp_path, config)
+
+        # Project config should STILL have embedding defaults
+        with open(config_file) as f:
+            project_data = yaml.safe_load(f)
+        project_ci = project_data["codebase_intelligence"]
+        assert "embedding" in project_ci
+        assert project_ci["embedding"]["provider"] == "ollama"
+        # Original default model preserved (not overwritten by user change)
+        assert project_ci["embedding"]["model"] == "team-default"
+
+        # User overlay has the user's change
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        with open(user_file) as f:
+            user_data = yaml.safe_load(f)
+        user_ci = user_data["codebase_intelligence"]
+        assert user_ci["embedding"]["model"] == "bge-m3"
+
+    def test_force_project_writes_all(self, tmp_path, mock_machine_id):
+        """force_project=True should write all keys to project config."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+
+        config = CIConfig()
+        save_ci_config(tmp_path, config, force_project=True)
+
+        project_file = oak_dir / "config.yaml"
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+
+        assert project_file.exists()
+        # User file should NOT be created
+        assert not user_file.exists()
+
+        # Project file should have everything
+        with open(project_file) as f:
+            project_data = yaml.safe_load(f)
+        project_ci = project_data.get("codebase_intelligence", {})
+        assert "embedding" in project_ci
+        assert "session_quality" in project_ci
+
+    def test_force_project_does_not_touch_overlay(self, tmp_path, mock_machine_id):
+        """force_project should leave existing overlay untouched."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+
+        # Create pre-existing user overlay
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        original_content = "codebase_intelligence:\n  embedding:\n    model: custom-model\n"
+        user_file.write_text(original_content)
+
+        config = CIConfig()
+        save_ci_config(tmp_path, config, force_project=True)
+
+        # User file should be unchanged
+        assert user_file.read_text() == original_content
+
+    def test_save_preserves_non_ci_keys(self, tmp_path, mock_machine_id):
+        """Save should preserve non-CI keys in both project and user files."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text("other_feature:\n  key: value\n")
+
+        config = CIConfig()
+        save_ci_config(tmp_path, config)
+
+        with open(config_file) as f:
+            data = yaml.safe_load(f)
+        assert "other_feature" in data
+        assert "codebase_intelligence" in data
+
+
+# =============================================================================
+# Migration Tests
+# =============================================================================
+
+
+class TestMigrationSplitUserConfig:
+    """Test the split_user_config migration."""
+
+    def test_copies_user_keys_to_overlay(self, tmp_path, mock_machine_id):
+        """Migration should copy user keys to overlay without stripping project config."""
+        from open_agent_kit.services.migrations import _migrate_split_user_config
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "ollama", "model": "bge-m3"},
+                        "session_quality": {"min_activities": 3},
+                        "log_level": "DEBUG",
+                    }
+                }
+            )
+        )
+
+        _migrate_split_user_config(tmp_path)
+
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        assert user_file.exists()
+
+        with open(user_file) as f:
+            user_data = yaml.safe_load(f)
+        user_ci = user_data["codebase_intelligence"]
+        assert "embedding" in user_ci
+        assert "log_level" in user_ci
+
+        # Project config should STILL have all keys (defaults preserved)
+        with open(config_file) as f:
+            project_data = yaml.safe_load(f)
+        project_ci = project_data["codebase_intelligence"]
+        assert "session_quality" in project_ci
+        assert "embedding" in project_ci
+        assert "log_level" in project_ci
+
+    def test_idempotent_skips_existing_overlay(self, tmp_path, mock_machine_id):
+        """Migration should skip if user overlay already exists."""
+        from open_agent_kit.services.migrations import _migrate_split_user_config
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "ollama"},
+                    }
+                }
+            )
+        )
+
+        # Pre-create user overlay
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        original_content = "existing: true\n"
+        user_file.write_text(original_content)
+
+        _migrate_split_user_config(tmp_path)
+
+        # User file should be untouched
+        assert user_file.read_text() == original_content
+
+    def test_no_ci_section_is_noop(self, tmp_path, mock_machine_id):
+        """Migration should be a no-op if no CI section exists."""
+        from open_agent_kit.services.migrations import _migrate_split_user_config
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text("other_feature:\n  key: value\n")
+
+        _migrate_split_user_config(tmp_path)
+
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        assert not user_file.exists()
+
+    def test_no_config_file_is_noop(self, tmp_path, mock_machine_id):
+        """Migration should be a no-op if config file doesn't exist."""
+        from open_agent_kit.services.migrations import _migrate_split_user_config
+
+        _migrate_split_user_config(tmp_path)
+        # Should not raise
+
+
+class TestMigrationRestoreUserConfigDefaults:
+    """Test the restore_user_config_defaults migration."""
+
+    def test_restores_missing_keys_from_overlay(self, tmp_path, mock_machine_id):
+        """Should restore user-classified keys stripped by prior migration."""
+        from open_agent_kit.services.migrations import (
+            _migrate_restore_user_config_defaults,
+        )
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+
+        # Simulate state after destructive migration: project config missing user keys
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "session_quality": {"min_activities": 3},
+                    }
+                }
+            )
+        )
+
+        # User overlay has the values that were stripped
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        user_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "ollama", "model": "bge-m3"},
+                        "log_level": "DEBUG",
+                    }
+                }
+            )
+        )
+
+        _migrate_restore_user_config_defaults(tmp_path)
+
+        with open(config_file) as f:
+            project_data = yaml.safe_load(f)
+        project_ci = project_data["codebase_intelligence"]
+        # Restored from overlay
+        assert project_ci["embedding"]["provider"] == "ollama"
+        assert project_ci["log_level"] == "DEBUG"
+        # Existing project keys preserved
+        assert project_ci["session_quality"]["min_activities"] == 3
+
+    def test_does_not_overwrite_existing_project_values(self, tmp_path, mock_machine_id):
+        """Project config values should win over overlay values."""
+        from open_agent_kit.services.migrations import (
+            _migrate_restore_user_config_defaults,
+        )
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+
+        # Project config has its own embedding default
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "lm-studio", "model": "team-model"},
+                    }
+                }
+            )
+        )
+
+        # User overlay has different values
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        user_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "ollama", "model": "bge-m3"},
+                    }
+                }
+            )
+        )
+
+        _migrate_restore_user_config_defaults(tmp_path)
+
+        with open(config_file) as f:
+            project_data = yaml.safe_load(f)
+        project_ci = project_data["codebase_intelligence"]
+        # Project values should win (not overwritten by overlay)
+        assert project_ci["embedding"]["provider"] == "lm-studio"
+        assert project_ci["embedding"]["model"] == "team-model"
+
+    def test_noop_without_overlay(self, tmp_path, mock_machine_id):
+        """Should be a no-op if no user overlay exists."""
+        from open_agent_kit.services.migrations import (
+            _migrate_restore_user_config_defaults,
+        )
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_file = oak_dir / "config.yaml"
+        original = "codebase_intelligence:\n  session_quality:\n    min_activities: 3\n"
+        config_file.write_text(original)
+
+        _migrate_restore_user_config_defaults(tmp_path)
+
+        assert config_file.read_text() == original
+
+
+# =============================================================================
+# Config Origins Tests
+# =============================================================================
+
+
+class TestGetConfigOrigins:
+    """Test get_config_origins function."""
+
+    def test_all_defaults_when_no_config(self, tmp_path, mock_machine_id):
+        """All sections should be 'default' when no config files exist."""
+        origins = get_config_origins(tmp_path)
+        for section in origins:
+            assert origins[section] == "default"
+
+    def test_project_origin_for_project_keys(self, tmp_path, mock_machine_id):
+        """Project-classified keys should show 'project' origin."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_file = oak_dir / "config.yaml"
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "session_quality": {"min_activities": 5},
+                        "exclude_patterns": ["*.pyc"],
+                    }
+                }
+            )
+        )
+
+        origins = get_config_origins(tmp_path)
+        assert origins["session_quality"] == "project"
+        assert origins["exclude_patterns"] == "project"
+
+    def test_user_origin_for_overlay_keys(self, tmp_path, mock_machine_id):
+        """User-classified keys in overlay should show 'user' origin."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        (oak_dir / "config.yaml").write_text(yaml.dump({"codebase_intelligence": {}}))
+
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        user_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "embedding": {"provider": "ollama"},
+                        "log_level": "DEBUG",
+                    }
+                }
+            )
+        )
+
+        origins = get_config_origins(tmp_path)
+        assert origins["embedding"] == "user"
+        assert origins["log_level"] == "user"
+
+    def test_mixed_section_agents_user_override(self, tmp_path, mock_machine_id):
+        """Mixed agents section should show 'user' when overlay has sub-keys."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        (oak_dir / "config.yaml").write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "agents": {"enabled": True, "max_turns": 10},
+                    }
+                }
+            )
+        )
+
+        user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
+        user_file.write_text(
+            yaml.dump(
+                {
+                    "codebase_intelligence": {
+                        "agents": {"provider_type": "ollama"},
+                    }
+                }
+            )
+        )
+
+        origins = get_config_origins(tmp_path)
+        assert origins["agents"] == "user"

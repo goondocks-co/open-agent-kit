@@ -78,8 +78,6 @@ async def health_check() -> HealthResponse:
 @router.get("/api/status")
 async def get_status() -> dict:
     """Get detailed daemon status (UI-compatible format)."""
-    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
-
     state = get_state()
     uptime = state.uptime_seconds
 
@@ -97,12 +95,12 @@ async def get_status() -> dict:
             "total_embeds": chain_status.get("total_embeds", 0),
         }
 
-    # Get summarization config for display
+    # Get summarization config for display (use cached config)
     summarization_provider = None
     summarization_model = None
     summarization_enabled = False
-    if state.project_root:
-        config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if config:
         summarization_enabled = config.summarization.enabled
         if summarization_enabled:
             summarization_provider = config.summarization.provider

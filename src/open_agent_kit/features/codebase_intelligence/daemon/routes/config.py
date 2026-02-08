@@ -358,14 +358,19 @@ def _validate_localhost_url(url: str) -> bool:
 @router.get("/api/config")
 async def get_config() -> dict:
     """Get current configuration."""
-    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
-
     state = get_state()
 
     if not state.project_root:
         raise HTTPException(status_code=500, detail="Project root not set")
 
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
+
+    # Compute origin of each config section (user/project/default)
+    from open_agent_kit.features.codebase_intelligence.config import get_config_origins
+
+    origins = get_config_origins(state.project_root)
 
     return {
         "embedding": {
@@ -403,6 +408,7 @@ async def get_config() -> dict:
             CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
         },
         "log_level": config.log_level,
+        "origins": origins,
     }
 
 
@@ -412,10 +418,7 @@ async def update_config(request: Request) -> dict:
 
     Accepts JSON with optional fields for embedding and summarization settings.
     """
-    from open_agent_kit.features.codebase_intelligence.config import (
-        load_ci_config,
-        save_ci_config,
-    )
+    from open_agent_kit.features.codebase_intelligence.config import save_ci_config
 
     state = get_state()
 
@@ -428,7 +431,9 @@ async def update_config(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
     logger.debug(f"Config update request: {list(data.keys())}")
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
     embedding_changed = False
     summarization_changed = False
 
@@ -1607,17 +1612,16 @@ async def get_exclusions() -> dict:
 
     Returns both user-configured patterns and built-in defaults.
     """
-    from open_agent_kit.features.codebase_intelligence.config import (
-        DEFAULT_EXCLUDE_PATTERNS,
-        load_ci_config,
-    )
+    from open_agent_kit.features.codebase_intelligence.config import DEFAULT_EXCLUDE_PATTERNS
 
     state = get_state()
 
     if not state.project_root:
         raise HTTPException(status_code=500, detail="Project root not set")
 
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
 
     return {
         "user_patterns": config.get_user_exclude_patterns(),
@@ -1636,7 +1640,6 @@ async def update_exclusions(request: Request) -> dict:
     """
     from open_agent_kit.features.codebase_intelligence.config import (
         DEFAULT_EXCLUDE_PATTERNS,
-        load_ci_config,
         save_ci_config,
     )
 
@@ -1650,7 +1653,9 @@ async def update_exclusions(request: Request) -> dict:
     except (ValueError, json.JSONDecodeError):
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
 
     added = []
     removed = []
@@ -1680,6 +1685,7 @@ async def update_exclusions(request: Request) -> dict:
             not_found.append(pattern)
 
     save_ci_config(state.project_root, config)
+    state.ci_config = config
 
     return {
         "status": "updated",
@@ -1701,7 +1707,6 @@ async def reset_exclusions() -> dict:
     """Reset exclusion patterns to defaults."""
     from open_agent_kit.features.codebase_intelligence.config import (
         DEFAULT_EXCLUDE_PATTERNS,
-        load_ci_config,
         save_ci_config,
     )
 
@@ -1710,9 +1715,12 @@ async def reset_exclusions() -> dict:
     if not state.project_root:
         raise HTTPException(status_code=500, detail="Project root not set")
 
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
     config.exclude_patterns = DEFAULT_EXCLUDE_PATTERNS.copy()
     save_ci_config(state.project_root, config)
+    state.ci_config = config
 
     return {
         "status": "reset",

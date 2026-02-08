@@ -39,6 +39,7 @@ import {
     calculateChunkSize,
     toApiNumber,
 } from "@/lib/constants";
+import { ORIGIN_BADGE_CLASSES, ORIGIN_BADGE_LABELS } from "@/lib/constants/ui";
 
 // =============================================================================
 // Type Definitions
@@ -121,6 +122,19 @@ interface ExclusionsUpdateResponse {
     removed?: string[];
     already_exists?: string[];
     message?: string;
+}
+
+/** Config origin type from API */
+type ConfigOrigin = "user" | "project" | "default";
+
+/** Origin badge component for config section headers */
+function OriginBadge({ origin }: { origin?: ConfigOrigin }) {
+    if (!origin) return null;
+    return (
+        <span className={cn("text-xs px-2 py-0.5 rounded-full", ORIGIN_BADGE_CLASSES[origin])}>
+            {ORIGIN_BADGE_LABELS[origin]}
+        </span>
+    );
 }
 
 export default function Config() {
@@ -599,7 +613,10 @@ export default function Config() {
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <div>
-                            <CardTitle>Embedding Settings</CardTitle>
+                            <div className="flex items-center gap-2">
+                                <CardTitle>Embedding Settings</CardTitle>
+                                <OriginBadge origin={config?.origins?.embedding} />
+                            </div>
                             <CardDescription>Configure the model used for semantic search code indexing.</CardDescription>
                         </div>
                         <ReadyBadge show={embeddingValidation.isValid} />
@@ -728,7 +745,10 @@ export default function Config() {
                                 className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                             />
                             <div>
-                                <CardTitle>Summarization</CardTitle>
+                                <div className="flex items-center gap-2">
+                                    <CardTitle>Summarization</CardTitle>
+                                    <OriginBadge origin={config?.origins?.summarization} />
+                                </div>
                                 <CardDescription>Enable LLM-powered activity summarization (optional).</CardDescription>
                             </div>
                         </div>
@@ -865,7 +885,10 @@ export default function Config() {
             {/* Session Quality Section */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Session Quality</CardTitle>
+                    <div className="flex items-center gap-2">
+                        <CardTitle>Session Quality</CardTitle>
+                        <OriginBadge origin={config?.origins?.session_quality} />
+                    </div>
                     <CardDescription>Configure thresholds for session quality and cleanup behavior.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -948,7 +971,10 @@ export default function Config() {
             {/* Logging Section */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Logging</CardTitle>
+                    <div className="flex items-center gap-2">
+                        <CardTitle>Logging</CardTitle>
+                        <OriginBadge origin={config?.origins?.log_rotation} />
+                    </div>
                     <CardDescription>Configure log file rotation to prevent unbounded disk usage.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

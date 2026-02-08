@@ -144,6 +144,7 @@ class TestTunnelStart:
         """Returns error when config not loaded."""
         state = get_state()
         state.ci_config = None
+        state.project_root = None
 
         response = client.post(CI_TUNNEL_API_PATH_START)
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR

@@ -108,6 +108,28 @@ export const PAGINATION = {
 // Fallback Messages
 // =============================================================================
 
+// =============================================================================
+// Config Origin Badges
+// =============================================================================
+
+/** CSS classes for config origin badges (user overlay vs project vs default) */
+export const ORIGIN_BADGE_CLASSES = {
+    user: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+    project: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+    default: "bg-zinc-500/10 text-zinc-500 dark:text-zinc-500",
+} as const;
+
+/** Display labels for config origin badges */
+export const ORIGIN_BADGE_LABELS = {
+    user: "User Override",
+    project: "Project",
+    default: "Default",
+} as const;
+
+// =============================================================================
+// Fallback Messages
+// =============================================================================
+
 /** Fallback messages for empty states */
 export const FALLBACK_MESSAGES = {
     NO_PREVIEW: "No preview available",

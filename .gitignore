@@ -103,3 +103,6 @@ oak/issue/**/context.json
 
 # open-agent-kit: Codebase Intelligence
 .oak/ci/
+
+# open-agent-kit: Codebase Intelligence
+.oak/config.*.yaml

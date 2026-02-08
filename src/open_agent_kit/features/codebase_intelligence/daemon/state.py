@@ -138,7 +138,7 @@ class DaemonState:
         indexer: Code indexer instance.
         file_watcher: File system watcher for incremental updates.
         config: Loaded CI configuration.
-        ci_config: Full CI configuration object.
+        ci_config: Full CI configuration (lazy-loaded property, cached after first access).
         log_level: Effective log level.
         index_status: Current indexing status.
         machine_id: Deterministic machine identifier (computed once at startup).
@@ -155,7 +155,8 @@ class DaemonState:
     indexer: "CodebaseIndexer | None" = None
     file_watcher: "FileWatcher | None" = None
     config: dict[str, Any] = field(default_factory=dict)
-    ci_config: "CIConfig | None" = None
+    _ci_config: "CIConfig | None" = field(default=None, init=False, repr=False)
+    _ci_config_mtime: float = field(default=0.0, init=False, repr=False)
     log_level: str = "INFO"
     index_status: IndexStatus = field(default_factory=IndexStatus)
     machine_id: str | None = None
@@ -234,6 +235,75 @@ class DaemonState:
             vector_store=self.vector_store,
         )
         return self._retrieval_engine
+
+    @property
+    def ci_config(self) -> "CIConfig | None":
+        """Get CI configuration, lazy-loading from disk if needed.
+
+        Returns cached config if available. Automatically reloads when
+        config files change on disk (detected via mtime), so CLI changes
+        like ``oak ci debug`` are picked up without a daemon restart.
+
+        Returns:
+            CIConfig instance, or None if project_root not set.
+        """
+        if self.project_root is None:
+            return None
+
+        # Check if config files changed since last load
+        if self._ci_config is not None:
+            current_mtime = self._get_config_mtime()
+            if current_mtime == self._ci_config_mtime:
+                return self._ci_config
+            # Files changed on disk — invalidate and reload
+
+        from open_agent_kit.features.codebase_intelligence.config import load_ci_config
+
+        self._ci_config = load_ci_config(self.project_root)
+        self._ci_config_mtime = self._get_config_mtime()
+        return self._ci_config
+
+    @ci_config.setter
+    def ci_config(self, value: "CIConfig | None") -> None:
+        """Set or invalidate the cached CI configuration."""
+        self._ci_config = value
+        if value is not None and self.project_root is not None:
+            self._ci_config_mtime = self._get_config_mtime()
+
+    def _get_config_mtime(self) -> float:
+        """Get max mtime of config files (project + user overlay).
+
+        Returns 0.0 if no config files exist. Uses stat() which is
+        a cheap syscall (microseconds), safe to call on every access.
+        """
+        from open_agent_kit.config.paths import OAK_DIR
+
+        if self.project_root is None:
+            return 0.0
+
+        mtime = 0.0
+        config_path = self.project_root / OAK_DIR / "config.yaml"
+        try:
+            if config_path.exists():
+                mtime = config_path.stat().st_mtime
+        except OSError:
+            pass
+
+        # Also check user overlay
+        try:
+            from open_agent_kit.features.codebase_intelligence.config import (
+                _user_config_path,
+            )
+
+            user_path = _user_config_path(self.project_root)
+            if user_path.exists():
+                user_mtime = user_path.stat().st_mtime
+                if user_mtime > mtime:
+                    mtime = user_mtime
+        except OSError:
+            pass
+
+        return mtime
 
     def invalidate_retrieval_engine(self) -> None:
         """Invalidate cached retrieval engine.
@@ -380,7 +450,8 @@ class DaemonState:
         self.indexer = None
         self.file_watcher = None
         self.config = {}
-        self.ci_config = None
+        self._ci_config = None
+        self._ci_config_mtime = 0.0
         self.log_level = "INFO"
         self.index_status = IndexStatus()
         self.machine_id = None

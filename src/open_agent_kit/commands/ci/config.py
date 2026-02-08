@@ -63,6 +63,11 @@ def ci_config(
         "--sum-context",
         help="Context window size: number (e.g., 32768), 'auto' to discover, or 'show' to display current",
     ),
+    project_flag: bool = typer.Option(
+        False,
+        "--project",
+        help="Write all settings to project config (team-shared baseline)",
+    ),
 ) -> None:
     """Configure embedding, summarization, and logging settings.
 
@@ -366,7 +371,7 @@ def ci_config(
             raise typer.Exit(code=1)
 
     if changed:
-        save_ci_config(project_root, config)
+        save_ci_config(project_root, config, force_project=project_flag)
         print_success("Configuration updated.")
 
         if embedding_changed:

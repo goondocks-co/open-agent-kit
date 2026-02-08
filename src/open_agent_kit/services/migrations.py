@@ -73,6 +73,16 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "Convert features config to languages config",
             _migrate_features_to_languages,
         ),
+        (
+            "2026.02.07_split_user_config",
+            "Split machine-local CI settings into user config overlay",
+            _migrate_split_user_config,
+        ),
+        (
+            "2026.02.07_restore_user_config_defaults",
+            "Restore user-classified CI defaults to project config",
+            _migrate_restore_user_config_defaults,
+        ),
     ]
 
 
@@ -398,6 +408,107 @@ def _migrate_features_to_languages(project_root: Path) -> None:
     if modified:
         write_yaml(config_path, data)
         logger.info(f"Migrated config {config_path}: converted features to languages")
+
+
+def _migrate_split_user_config(project_root: Path) -> None:
+    """Split machine-local CI settings into a user config overlay.
+
+    Reads .oak/config.yaml, separates user-classified keys (embedding,
+    summarization, tunnel, log_level, log_rotation, agent provider settings)
+    into .oak/config.{machine_id}.yaml, and rewrites the project config
+    with only project-classified keys.
+
+    Idempotent: skips if user overlay already exists.
+
+    Args:
+        project_root: Project root directory
+    """
+    from open_agent_kit.features.codebase_intelligence.config import (
+        _split_by_classification,
+        _user_config_path,
+        _write_yaml_config,
+    )
+    from open_agent_kit.utils import read_yaml
+
+    config_path = project_root / ".oak" / "config.yaml"
+    if not config_path.exists():
+        return
+
+    # Skip if user overlay already exists (idempotent)
+    user_file = _user_config_path(project_root)
+    if user_file.exists():
+        logger.info(f"User config overlay already exists at {user_file}, skipping migration")
+        return
+
+    data = read_yaml(config_path)
+    if not data:
+        return
+
+    ci_data = data.get("codebase_intelligence")
+    if not ci_data or not isinstance(ci_data, dict):
+        return
+
+    user_keys, project_keys = _split_by_classification(ci_data)
+
+    if not user_keys:
+        # Nothing to split
+        return
+
+    # Copy user keys to overlay (project config keeps them as defaults)
+    _write_yaml_config(user_file, {"codebase_intelligence": user_keys})
+    logger.info(f"Copied user CI settings to {user_file}")
+
+
+def _migrate_restore_user_config_defaults(project_root: Path) -> None:
+    """Restore user-classified CI defaults to project config.
+
+    The original split_user_config migration incorrectly removed
+    user-classified keys from the project config. This migration
+    restores them from the user overlay so other machines still
+    have sensible defaults when they clone.
+
+    Uses deep merge with project config winning, so any values
+    already present in the project config are preserved.
+
+    Args:
+        project_root: Project root directory
+    """
+    from open_agent_kit.features.codebase_intelligence.config import (
+        _deep_merge,
+        _user_config_path,
+        _write_yaml_config,
+    )
+    from open_agent_kit.utils import read_yaml
+
+    config_path = project_root / ".oak" / "config.yaml"
+    if not config_path.exists():
+        return
+
+    user_file = _user_config_path(project_root)
+    if not user_file.exists():
+        return  # No overlay, nothing to restore
+
+    user_data = read_yaml(user_file)
+    if not user_data:
+        return
+
+    user_ci = user_data.get("codebase_intelligence", {})
+    if not user_ci or not isinstance(user_ci, dict):
+        return
+
+    data = read_yaml(config_path)
+    if not data:
+        return
+
+    project_ci = data.get("codebase_intelligence", {})
+    if not isinstance(project_ci, dict):
+        project_ci = {}
+
+    # Merge: project_ci wins for existing keys, user_ci fills in gaps
+    restored = _deep_merge(user_ci, project_ci)
+    data["codebase_intelligence"] = restored
+    _write_yaml_config(config_path, data)
+    logger.info(f"Restored user-classified CI defaults to {config_path}")
 
 
 def run_migrations(

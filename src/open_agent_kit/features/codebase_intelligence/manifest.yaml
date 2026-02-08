@@ -70,6 +70,7 @@ skills:
 # The .oak/ci/ directory contains regenerated data that should not be committed
 gitignore:
   - .oak/ci/
+  - .oak/config.*.yaml
 
 # Feature lifecycle hooks
 hooks:

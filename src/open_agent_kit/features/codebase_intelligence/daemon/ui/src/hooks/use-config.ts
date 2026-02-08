@@ -41,6 +41,7 @@ export interface Config {
     log_rotation: LogRotationConfig;
     session_quality: SessionQualityConfig;
     log_level: string;
+    origins?: Record<string, "user" | "project" | "default">;
 }
 
 export function useConfig() {

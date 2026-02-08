@@ -1072,6 +1072,149 @@ class CIConfig:
         return LOG_LEVEL_INFO
 
 
+# =============================================================================
+# User Config Overlay System (RFC-001 Section 6)
+# =============================================================================
+
+# Dot-path notation for config sections/keys classified as user-local.
+# Bare names = entire section is user-classified.
+# Dotted names = only that leaf key within a mixed section.
+# Everything NOT listed here is project-classified (team-shared) by default.
+USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
+    {
+        "embedding",  # Model choice + dims are machine-dependent; vector DB is local
+        "summarization",  # LLM model availability varies per machine
+        "agents.provider_type",  # Agent LLM backend varies per machine
+        "agents.provider_base_url",  # Agent LLM backend varies per machine
+        "agents.provider_model",  # Agent LLM backend varies per machine
+        "tunnel",  # Tunnel provider/paths are machine-local
+        "log_level",  # Personal debugging preference
+        "log_rotation",  # Machine-local log management
+    }
+)
+
+
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge overlay onto base. Overlay wins for scalars/lists.
+
+    Args:
+        base: Base dictionary (not mutated).
+        overlay: Overlay dictionary whose values take precedence.
+
+    Returns:
+        New merged dictionary.
+    """
+    result = dict(base)
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _split_by_classification(
+    ci_dict: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split a CI config dict into user-classified and project-classified parts.
+
+    Uses USER_CLASSIFIED_PATHS to determine classification. Bare names
+    (e.g. "embedding") classify the entire section. Dotted names
+    (e.g. "agents.provider_type") classify only that leaf key within
+    a mixed section.
+
+    Args:
+        ci_dict: Full codebase_intelligence config dictionary.
+
+    Returns:
+        Tuple of (user_dict, project_dict) -- sparse dicts containing
+        only the keys that belong to each classification.
+    """
+    user_dict: dict[str, Any] = {}
+    project_dict: dict[str, Any] = {}
+
+    for key, value in ci_dict.items():
+        # Check if the entire section is user-classified
+        if key in USER_CLASSIFIED_PATHS:
+            user_dict[key] = value
+            continue
+
+        # Check if this section has mixed classification (dotted paths)
+        dotted_prefix = f"{key}."
+        dotted_keys = {
+            p[len(dotted_prefix) :] for p in USER_CLASSIFIED_PATHS if p.startswith(dotted_prefix)
+        }
+
+        if dotted_keys and isinstance(value, dict):
+            # Split the section: user-classified leaves vs project-classified leaves
+            user_sub: dict[str, Any] = {}
+            project_sub: dict[str, Any] = {}
+            for sub_key, sub_value in value.items():
+                if sub_key in dotted_keys:
+                    user_sub[sub_key] = sub_value
+                else:
+                    project_sub[sub_key] = sub_value
+            if user_sub:
+                user_dict[key] = user_sub
+            if project_sub:
+                project_dict[key] = project_sub
+        else:
+            # Entirely project-classified
+            project_dict[key] = value
+
+    return user_dict, project_dict
+
+
+def _user_config_path(project_root: Path) -> Path:
+    """Get path to user config overlay file.
+
+    Returns .oak/config.{machine_id}.yaml. The machine_id is imported
+    lazily from the backup module.
+
+    Args:
+        project_root: Project root directory.
+
+    Returns:
+        Path to user config overlay file.
+    """
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        get_machine_identifier,
+    )
+
+    machine_id = get_machine_identifier(project_root)
+    return project_root / OAK_DIR / f"config.{machine_id}.yaml"
+
+
+def _write_yaml_config(path: Path, data: dict[str, Any]) -> None:
+    """Write a dictionary to a YAML config file with inline short-list formatting.
+
+    Args:
+        path: File path to write.
+        data: Dictionary to serialize.
+    """
+
+    class InlineListDumper(yaml.SafeDumper):
+        pass
+
+    def represent_list(dumper: yaml.SafeDumper, items: list[Any]) -> yaml.nodes.Node:
+        # Keep short lists (<=3 items) inline, longer ones multi-line
+        if len(items) <= 3:
+            return dumper.represent_sequence("tag:yaml.org,2002:seq", items, flow_style=True)
+        return dumper.represent_sequence("tag:yaml.org,2002:seq", items, flow_style=False)
+
+    InlineListDumper.add_representer(list, represent_list)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(
+            data,
+            f,
+            Dumper=InlineListDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+
+
 def load_ci_config(project_root: Path) -> CIConfig:
     """Load Codebase Intelligence configuration from project.
 
@@ -1098,8 +1241,22 @@ def load_ci_config(project_root: Path) -> CIConfig:
             config_data = yaml.safe_load(f) or {}
 
         ci_data = config_data.get("codebase_intelligence", {})
+
+        # Merge user overlay if it exists (user wins over project)
+        user_file = _user_config_path(project_root)
+        if user_file.exists():
+            try:
+                with open(user_file, encoding="utf-8") as f:
+                    user_data = yaml.safe_load(f) or {}
+                user_ci = user_data.get("codebase_intelligence", {})
+                if user_ci:
+                    ci_data = _deep_merge(ci_data, user_ci)
+                    logger.debug(f"Merged user config overlay from {user_file}")
+            except (yaml.YAMLError, OSError) as e:
+                logger.warning(f"Corrupted user config overlay {user_file}, ignoring: {e}")
+
         config = CIConfig.from_dict(ci_data)
-        logger.info(
+        logger.debug(
             f"Loaded CI config: provider={config.embedding.provider}, "
             f"model={config.embedding.model}"
         )
@@ -1119,18 +1276,27 @@ def load_ci_config(project_root: Path) -> CIConfig:
         return CIConfig()
 
 
-def save_ci_config(project_root: Path, config: CIConfig) -> None:
+def save_ci_config(
+    project_root: Path,
+    config: CIConfig,
+    *,
+    force_project: bool = False,
+) -> None:
     """Save Codebase Intelligence configuration to project.
 
-    Updates the 'codebase_intelligence' key in .oak/config.yaml.
+    By default, splits user-classified keys into a machine-local overlay
+    file (.oak/config.{machine_id}.yaml) and writes project-classified
+    keys to .oak/config.yaml.
 
     Args:
         project_root: Project root directory.
         config: Configuration to save.
+        force_project: If True, write ALL settings to the project config
+            (team-shared baseline). Does not touch user overlay.
     """
     config_file = project_root / OAK_DIR / "config.yaml"
 
-    # Load existing config
+    # Load existing project config (preserves non-CI keys)
     existing_config: dict[str, Any] = {}
     if config_file.exists():
         try:
@@ -1139,31 +1305,131 @@ def save_ci_config(project_root: Path, config: CIConfig) -> None:
         except Exception as e:
             logger.warning(f"Failed to read existing config: {e}")
 
-    # Update codebase_intelligence section
-    existing_config["codebase_intelligence"] = config.to_dict()
+    ci_dict = config.to_dict()
 
-    # Custom representer to keep short lists inline (matches models/config.py)
-    # This preserves formatting like: agents: [cursor, copilot, claude]
-    class InlineListDumper(yaml.SafeDumper):
+    if force_project:
+        # Write everything to project config as team baseline
+        existing_config["codebase_intelligence"] = ci_dict
+        _write_yaml_config(config_file, existing_config)
+        logger.info(f"Saved full CI config to project file {config_file}")
+    else:
+        # Split user/project keys
+        user_keys, project_keys = _split_by_classification(ci_dict)
+
+        # Update project-classified keys in .oak/config.yaml while
+        # preserving existing user-classified defaults for other machines
+        existing_ci = existing_config.get("codebase_intelligence", {})
+        if isinstance(existing_ci, dict):
+            existing_config["codebase_intelligence"] = _deep_merge(existing_ci, project_keys)
+        else:
+            existing_config["codebase_intelligence"] = project_keys
+        _write_yaml_config(config_file, existing_config)
+
+        # Write user keys to .oak/config.{machine_id}.yaml
+        if user_keys:
+            user_file = _user_config_path(project_root)
+            # Preserve other top-level keys in user overlay
+            existing_user: dict[str, Any] = {}
+            if user_file.exists():
+                try:
+                    with open(user_file, encoding="utf-8") as f:
+                        existing_user = yaml.safe_load(f) or {}
+                except Exception as e:
+                    logger.warning(f"Failed to read existing user config: {e}")
+            existing_user["codebase_intelligence"] = user_keys
+            _write_yaml_config(user_file, existing_user)
+            logger.info(f"Saved user CI config to {user_file}")
+
+        logger.info(f"Saved project CI config to {config_file}")
+
+
+def get_config_origins(project_root: Path) -> dict[str, str]:
+    """Compute the origin of each config section for dashboard display.
+
+    For each top-level CI config section, returns whether its current
+    value comes from the user overlay, the project config, or defaults.
+
+    For mixed sections (like ``agents``), returns ``"user"`` if any
+    user-classified sub-key is present in the user overlay.
+
+    Args:
+        project_root: Project root directory.
+
+    Returns:
+        Dict mapping section names to ``"user"``, ``"project"``, or ``"default"``.
+    """
+    config_file = project_root / OAK_DIR / "config.yaml"
+
+    # Load raw project CI data (no merge)
+    project_ci: dict[str, Any] = {}
+    if config_file.exists():
+        try:
+            with open(config_file, encoding="utf-8") as f:
+                project_data = yaml.safe_load(f) or {}
+            project_ci = project_data.get("codebase_intelligence", {})
+        except (yaml.YAMLError, OSError):
+            pass
+
+    # Load raw user overlay CI data
+    user_ci: dict[str, Any] = {}
+    try:
+        user_file = _user_config_path(project_root)
+        if user_file.exists():
+            with open(user_file, encoding="utf-8") as f:
+                user_data = yaml.safe_load(f) or {}
+            user_ci = user_data.get("codebase_intelligence", {})
+    except (yaml.YAMLError, OSError):
         pass
 
-    def represent_list(dumper: yaml.SafeDumper, data: list[Any]) -> yaml.nodes.Node:
-        # Keep short lists (≤3 items) inline, longer ones multi-line
-        if len(data) <= 3:
-            return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
-        return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=False)
+    # All top-level sections in CIConfig
+    all_sections = [
+        "embedding",
+        "summarization",
+        "agents",
+        "session_quality",
+        "tunnel",
+        "index_on_startup",
+        "watch_files",
+        "exclude_patterns",
+        "log_level",
+        "log_rotation",
+    ]
 
-    InlineListDumper.add_representer(list, represent_list)
+    origins: dict[str, str] = {}
+    for section in all_sections:
+        # Check if any user-classified key for this section exists in user overlay
+        if section in USER_CLASSIFIED_PATHS:
+            # Entire section is user-classified
+            if section in user_ci:
+                origins[section] = "user"
+            elif section in project_ci:
+                origins[section] = "project"
+            else:
+                origins[section] = "default"
+        else:
+            # Check for dotted paths (mixed section like agents)
+            dotted_prefix = f"{section}."
+            user_sub_keys = {
+                p[len(dotted_prefix) :]
+                for p in USER_CLASSIFIED_PATHS
+                if p.startswith(dotted_prefix)
+            }
+            if user_sub_keys:
+                # Mixed section: "user" if any user-classified sub-key in overlay
+                section_user_data = user_ci.get(section, {})
+                if isinstance(section_user_data, dict) and any(
+                    k in section_user_data for k in user_sub_keys
+                ):
+                    origins[section] = "user"
+                elif section in project_ci:
+                    origins[section] = "project"
+                else:
+                    origins[section] = "default"
+            else:
+                # Entirely project-classified
+                if section in project_ci:
+                    origins[section] = "project"
+                else:
+                    origins[section] = "default"
 
-    # Write back
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_file, "w", encoding="utf-8") as f:
-        yaml.dump(
-            existing_config,
-            f,
-            Dumper=InlineListDumper,
-            default_flow_style=False,
-            sort_keys=False,
-        )
-
-    logger.info(f"Saved CI config to {config_file}")
+    return origins

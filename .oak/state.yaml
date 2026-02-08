@@ -9,6 +9,8 @@ migrations:
 - 2026.01.31_mcp_remove_project_flag
 - 2026.02.01_features_to_languages
 - 2026.02.01_populate_initialized_features
+- 2026.02.07_restore_user_config_defaults
+- 2026.02.07_split_user_config
 managed_assets:
   directories:
   - .claude/commands

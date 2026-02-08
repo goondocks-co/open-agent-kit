@@ -655,14 +655,15 @@ async def get_agent_settings() -> dict:
     Returns current agent configuration from CI config file.
     """
     from open_agent_kit.features.codebase_intelligence.agents.models import AgentProvider
-    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
 
     state = get_state()
 
     if not state.project_root:
         raise HTTPException(status_code=500, detail="Project root not set")
 
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
     agents_config = config.agents
 
     # Create provider instance to get computed properties
@@ -696,17 +697,16 @@ async def update_agent_settings(request: dict) -> dict:
     - timeout_seconds: int
     - provider: { type, base_url, model }
     """
-    from open_agent_kit.features.codebase_intelligence.config import (
-        load_ci_config,
-        save_ci_config,
-    )
+    from open_agent_kit.features.codebase_intelligence.config import save_ci_config
 
     state = get_state()
 
     if not state.project_root:
         raise HTTPException(status_code=500, detail="Project root not set")
 
-    config = load_ci_config(state.project_root)
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
     changed = False
 
     # Update basic settings
@@ -735,6 +735,7 @@ async def update_agent_settings(request: dict) -> dict:
 
     if changed:
         save_ci_config(state.project_root, config)
+        state.ci_config = config
 
     return {
         "success": True,
