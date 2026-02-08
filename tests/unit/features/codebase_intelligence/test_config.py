@@ -22,6 +22,8 @@ from open_agent_kit.features.codebase_intelligence.config import (
     EmbeddingConfig,
     _deep_merge,
     _split_by_classification,
+    _user_config_path,
+    _write_yaml_config,
     get_config_origins,
     load_ci_config,
     save_ci_config,
@@ -1003,13 +1005,33 @@ class TestUserConfigOverlay:
 # =============================================================================
 
 
-class TestMigrationSplitUserConfig:
-    """Test the split_user_config migration."""
+class TestSplitUserConfig:
+    """Test the user config split logic (formerly tested via migration)."""
+
+    @staticmethod
+    def _split_user_config(project_root: Path) -> None:
+        """Replicate the split_user_config logic using config utilities."""
+        from open_agent_kit.utils import read_yaml
+
+        config_path = project_root / ".oak" / "config.yaml"
+        if not config_path.exists():
+            return
+        user_file = _user_config_path(project_root)
+        if user_file.exists():
+            return
+        data = read_yaml(config_path)
+        if not data:
+            return
+        ci_data = data.get("codebase_intelligence")
+        if not ci_data or not isinstance(ci_data, dict):
+            return
+        user_keys, _project_keys = _split_by_classification(ci_data)
+        if not user_keys:
+            return
+        _write_yaml_config(user_file, {"codebase_intelligence": user_keys})
 
     def test_copies_user_keys_to_overlay(self, tmp_path, mock_machine_id):
-        """Migration should copy user keys to overlay without stripping project config."""
-        from open_agent_kit.services.migrations import _migrate_split_user_config
-
+        """Split should copy user keys to overlay without stripping project config."""
         oak_dir = tmp_path / ".oak"
         oak_dir.mkdir()
         config_file = oak_dir / "config.yaml"
@@ -1025,7 +1047,7 @@ class TestMigrationSplitUserConfig:
             )
         )
 
-        _migrate_split_user_config(tmp_path)
+        self._split_user_config(tmp_path)
 
         user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
         assert user_file.exists()
@@ -1045,9 +1067,7 @@ class TestMigrationSplitUserConfig:
         assert "log_level" in project_ci
 
     def test_idempotent_skips_existing_overlay(self, tmp_path, mock_machine_id):
-        """Migration should skip if user overlay already exists."""
-        from open_agent_kit.services.migrations import _migrate_split_user_config
-
+        """Split should skip if user overlay already exists."""
         oak_dir = tmp_path / ".oak"
         oak_dir.mkdir()
         config_file = oak_dir / "config.yaml"
@@ -1066,46 +1086,65 @@ class TestMigrationSplitUserConfig:
         original_content = "existing: true\n"
         user_file.write_text(original_content)
 
-        _migrate_split_user_config(tmp_path)
+        self._split_user_config(tmp_path)
 
         # User file should be untouched
         assert user_file.read_text() == original_content
 
     def test_no_ci_section_is_noop(self, tmp_path, mock_machine_id):
-        """Migration should be a no-op if no CI section exists."""
-        from open_agent_kit.services.migrations import _migrate_split_user_config
-
+        """Split should be a no-op if no CI section exists."""
         oak_dir = tmp_path / ".oak"
         oak_dir.mkdir()
         config_file = oak_dir / "config.yaml"
         config_file.write_text("other_feature:\n  key: value\n")
 
-        _migrate_split_user_config(tmp_path)
+        self._split_user_config(tmp_path)
 
         user_file = oak_dir / f"config.{MOCK_MACHINE_ID}.yaml"
         assert not user_file.exists()
 
     def test_no_config_file_is_noop(self, tmp_path, mock_machine_id):
-        """Migration should be a no-op if config file doesn't exist."""
-        from open_agent_kit.services.migrations import _migrate_split_user_config
-
-        _migrate_split_user_config(tmp_path)
+        """Split should be a no-op if config file doesn't exist."""
+        self._split_user_config(tmp_path)
         # Should not raise
 
 
-class TestMigrationRestoreUserConfigDefaults:
-    """Test the restore_user_config_defaults migration."""
+class TestRestoreUserConfigDefaults:
+    """Test the user config restore logic (formerly tested via migration)."""
+
+    @staticmethod
+    def _restore_user_config_defaults(project_root: Path) -> None:
+        """Replicate the restore_user_config_defaults logic using config utilities."""
+        from open_agent_kit.utils import read_yaml
+
+        config_path = project_root / ".oak" / "config.yaml"
+        if not config_path.exists():
+            return
+        user_file = _user_config_path(project_root)
+        if not user_file.exists():
+            return
+        user_data = read_yaml(user_file)
+        if not user_data:
+            return
+        user_ci = user_data.get("codebase_intelligence", {})
+        if not user_ci or not isinstance(user_ci, dict):
+            return
+        data = read_yaml(config_path)
+        if not data:
+            return
+        project_ci = data.get("codebase_intelligence", {})
+        if not isinstance(project_ci, dict):
+            project_ci = {}
+        restored = _deep_merge(user_ci, project_ci)
+        data["codebase_intelligence"] = restored
+        _write_yaml_config(config_path, data)
 
     def test_restores_missing_keys_from_overlay(self, tmp_path, mock_machine_id):
-        """Should restore user-classified keys stripped by prior migration."""
-        from open_agent_kit.services.migrations import (
-            _migrate_restore_user_config_defaults,
-        )
-
+        """Should restore user-classified keys from overlay."""
         oak_dir = tmp_path / ".oak"
         oak_dir.mkdir()
 
-        # Simulate state after destructive migration: project config missing user keys
+        # Simulate state after destructive split: project config missing user keys
         config_file = oak_dir / "config.yaml"
         config_file.write_text(
             yaml.dump(
@@ -1130,7 +1169,7 @@ class TestMigrationRestoreUserConfigDefaults:
             )
         )
 
-        _migrate_restore_user_config_defaults(tmp_path)
+        self._restore_user_config_defaults(tmp_path)
 
         with open(config_file) as f:
             project_data = yaml.safe_load(f)
@@ -1143,10 +1182,6 @@ class TestMigrationRestoreUserConfigDefaults:
 
     def test_does_not_overwrite_existing_project_values(self, tmp_path, mock_machine_id):
         """Project config values should win over overlay values."""
-        from open_agent_kit.services.migrations import (
-            _migrate_restore_user_config_defaults,
-        )
-
         oak_dir = tmp_path / ".oak"
         oak_dir.mkdir()
 
@@ -1174,7 +1209,7 @@ class TestMigrationRestoreUserConfigDefaults:
             )
         )
 
-        _migrate_restore_user_config_defaults(tmp_path)
+        self._restore_user_config_defaults(tmp_path)
 
         with open(config_file) as f:
             project_data = yaml.safe_load(f)
@@ -1185,17 +1220,13 @@ class TestMigrationRestoreUserConfigDefaults:
 
     def test_noop_without_overlay(self, tmp_path, mock_machine_id):
         """Should be a no-op if no user overlay exists."""
-        from open_agent_kit.services.migrations import (
-            _migrate_restore_user_config_defaults,
-        )
-
         oak_dir = tmp_path / ".oak"
         oak_dir.mkdir()
         config_file = oak_dir / "config.yaml"
         original = "codebase_intelligence:\n  session_quality:\n    min_activities: 3\n"
         config_file.write_text(original)
 
-        _migrate_restore_user_config_defaults(tmp_path)
+        self._restore_user_config_defaults(tmp_path)
 
         assert config_file.read_text() == original
 

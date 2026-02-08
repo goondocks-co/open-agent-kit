@@ -206,21 +206,6 @@ def _get_machine_hash() -> str:
     return hashlib.sha256(raw_machine.encode()).hexdigest()[:MACHINE_ID_HASH_LENGTH]
 
 
-def _compute_legacy_machine_identifier() -> str:
-    """Compute the old-format machine identifier for migration purposes.
-
-    This is the original algorithm that exposed PII (hostname_username).
-    Used only during migration to identify which records to update.
-
-    Returns:
-        Legacy sanitized machine identifier string (e.g., "macbook_chris").
-    """
-    hostname = platform.node().split(".")[0]  # Short hostname
-    username = getpass.getuser()
-    raw_id = f"{hostname}_{username}"
-    return sanitize_identifier(raw_id)
-
-
 def get_backup_filename(machine_id: str) -> str:
     """Get backup filename for the given machine identifier.
 

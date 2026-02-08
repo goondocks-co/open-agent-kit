@@ -2,7 +2,7 @@
 
 Complete DDL for the Oak CI SQLite database at `.oak/ci/activities.db`.
 
-Current schema version: **26**
+Current schema version: **1**
 
 ## memory_observations
 
@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL,
     embedded BOOLEAN DEFAULT FALSE,  -- Has this been added to ChromaDB?
-    content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
-    source_machine_id TEXT,  -- Machine that originated this record (v13)
+    content_hash TEXT,  -- Hash for cross-machine deduplication
+    source_machine_id TEXT,  -- Machine that originated this record
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -49,10 +49,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     summary TEXT,  -- LLM-generated session summary
     title TEXT,  -- LLM-generated short session title (10-20 words)
     created_at_epoch INTEGER NOT NULL,
-    parent_session_id TEXT,  -- Session this was derived from (v12)
-    parent_session_reason TEXT,  -- Why linked: 'clear', 'compact', 'inferred' (v12)
-    source_machine_id TEXT,  -- Machine that originated this record (v13)
-    transcript_path TEXT  -- Path to session transcript file for recovery (v26)
+    parent_session_id TEXT,  -- Session this was derived from
+    parent_session_reason TEXT,  -- Why linked: 'clear', 'compact', 'inferred'
+    source_machine_id TEXT,  -- Machine that originated this record
+    transcript_path TEXT  -- Path to session transcript file for recovery
 );
 ```
 
@@ -77,12 +77,12 @@ CREATE TABLE IF NOT EXISTS prompt_batches (
     source_type TEXT DEFAULT 'user',  -- user, agent_notification, plan, system, derived_plan
     plan_file_path TEXT,  -- Path to plan file (for source_type='plan')
     plan_content TEXT,  -- Full plan content (stored for self-contained CI)
-    plan_embedded INTEGER DEFAULT 0,  -- Has plan been indexed in ChromaDB? (v7)
+    plan_embedded INTEGER DEFAULT 0,  -- Has plan been indexed in ChromaDB?
     created_at_epoch INTEGER NOT NULL,
-    content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
-    source_plan_batch_id INTEGER,  -- Link to plan batch being implemented (v12)
-    source_machine_id TEXT,  -- Machine that originated this record (v13)
-    response_summary TEXT,  -- Agent's final response/summary (v21)
+    content_hash TEXT,  -- Hash for cross-machine deduplication
+    source_plan_batch_id INTEGER,  -- Link to plan batch being implemented
+    source_machine_id TEXT,  -- Machine that originated this record
+    response_summary TEXT,  -- Agent's final response/summary
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (source_plan_batch_id) REFERENCES prompt_batches(id)
 );
@@ -111,8 +111,8 @@ CREATE TABLE IF NOT EXISTS activities (
     timestamp_epoch INTEGER NOT NULL,
     processed BOOLEAN DEFAULT FALSE,  -- Has this activity been processed?
     observation_id TEXT,  -- Link to extracted observation (if any)
-    content_hash TEXT,  -- Hash for cross-machine deduplication (v11)
-    source_machine_id TEXT,  -- Machine that originated this record (v13)
+    content_hash TEXT,  -- Hash for cross-machine deduplication
+    source_machine_id TEXT,  -- Machine that originated this record
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     files_modified TEXT,  -- JSON array of file paths
     files_deleted TEXT,  -- JSON array of file paths
 
-    -- Warnings (v25) - non-fatal issues during execution
+    -- Warnings - non-fatal issues during execution
     warnings TEXT,  -- JSON array of warning messages
 
     -- Configuration snapshot (for reproducibility)
@@ -219,7 +219,7 @@ CREATE TABLE IF NOT EXISTS agent_schedules (
     task_name TEXT PRIMARY KEY,
     enabled INTEGER DEFAULT 1,
 
-    -- Schedule definition (v23 - moved from YAML to database)
+    -- Schedule definition
     cron_expression TEXT,           -- Cron expression (e.g., '0 0 * * MON')
     description TEXT,               -- Human-readable schedule description
     trigger_type TEXT DEFAULT 'cron', -- 'cron' or 'manual' (future: 'git_commit', 'file_change')
@@ -237,7 +237,7 @@ CREATE TABLE IF NOT EXISTS agent_schedules (
     updated_at TEXT NOT NULL,
     updated_at_epoch INTEGER NOT NULL,
 
-    -- Machine tracking (v23 - for backup/restore filtering)
+    -- Machine tracking (for backup/restore filtering)
     source_machine_id TEXT
 );
 ```

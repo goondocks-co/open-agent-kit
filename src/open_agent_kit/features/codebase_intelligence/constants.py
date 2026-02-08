@@ -624,7 +624,7 @@ TUNNEL_URL_PARSE_TIMEOUT_SECONDS: Final[float] = 15.0
 TUNNEL_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Activity store schema version
-CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 26
+CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 1
 
 # Activity store columns
 CI_SESSION_COLUMN_TRANSCRIPT_PATH: Final[str] = "transcript_path"

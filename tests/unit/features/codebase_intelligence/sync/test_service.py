@@ -39,7 +39,7 @@ def mock_daemon_manager():
 def mock_activity_store():
     """Mock activity store."""
     mock = MagicMock()
-    mock.get_schema_version.return_value = 18
+    mock.get_schema_version.return_value = 1
     mock.close.return_value = None
     return mock
 
@@ -75,7 +75,7 @@ class TestDetectChanges:
         """Test detecting OAK version mismatch."""
         mock_daemon_manager.get_daemon_version.return_value = {
             "oak_version": "0.9.0",
-            "schema_version": 18,
+            "schema_version": 1,
         }
 
         with (
@@ -98,7 +98,7 @@ class TestDetectChanges:
         """Test detecting schema version mismatch."""
         mock_daemon_manager.get_daemon_version.return_value = {
             "oak_version": "0.10.0",
-            "schema_version": 17,
+            "schema_version": 0,
         }
 
         with (
@@ -109,7 +109,7 @@ class TestDetectChanges:
             ),
             patch(
                 "open_agent_kit.features.codebase_intelligence.sync.service.SCHEMA_VERSION",
-                18,
+                1,
             ),
         ):
             plan = sync_service.detect_changes()

@@ -1,7 +1,7 @@
-"""Tests for session transcript_path storage (schema v26).
+"""Tests for session transcript_path storage.
 
-Verifies that the transcript_path column is correctly added to the sessions
-table and that the update/read cycle works through the ActivityStore API.
+Verifies that the transcript_path column exists in the sessions table
+and that the update/read cycle works through the ActivityStore API.
 """
 
 import sqlite3
@@ -9,9 +9,6 @@ from datetime import datetime
 
 import pytest
 
-from open_agent_kit.features.codebase_intelligence.activity.store.migrations import (
-    migrate_v25_to_v26,
-)
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
     SCHEMA_VERSION,
@@ -21,14 +18,12 @@ from .fixtures import (
     SQL_INSERT_SESSION_NO_TRANSCRIPT,
     SQL_INSERT_SESSION_WITH_TRANSCRIPT,
     SQL_SELECT_SESSION_BY_ID,
-    SQL_SELECT_TRANSCRIPT_PATH_BY_ID,
     SQL_SESSIONS_TABLE_NO_TRANSCRIPT,
     SQL_SESSIONS_TABLE_WITH_TRANSCRIPT,
     SQLITE_MEMORY_URI,
     TEST_AGENT_CLAUDE,
     TEST_CREATED_AT_EPOCH,
     TEST_PROJECT_ROOT,
-    TEST_PROJECT_ROOT_MISSING,
     TEST_PROJECT_ROOT_SHORT,
     TEST_SCHEMA_VERSION,
     TEST_SESSION_COLUMN_TRANSCRIPT_PATH,
@@ -47,9 +42,9 @@ from .fixtures import (
 
 
 class TestSchemaVersion:
-    """Verify schema version was bumped."""
+    """Verify schema version matches constants."""
 
-    def test_schema_version_is_26(self):
+    def test_schema_version_matches_constant(self):
         assert SCHEMA_VERSION == TEST_SCHEMA_VERSION
 
 
@@ -141,55 +136,6 @@ class TestSessionModel:
         ).fetchone()
         session = Session.from_row(row)
         assert session.transcript_path is None
-
-
-class TestMigrationV25ToV26:
-    """Tests for the v25→v26 migration."""
-
-    def _create_v25_db(self) -> sqlite3.Connection:
-        """Create a minimal v25 sessions table."""
-        conn = sqlite3.connect(SQLITE_MEMORY_URI)
-        conn.execute(SQL_SESSIONS_TABLE_NO_TRANSCRIPT)
-        return conn
-
-    def test_adds_transcript_path_column(self):
-        """Migration adds transcript_path column to sessions."""
-        conn = self._create_v25_db()
-        migrate_v25_to_v26(conn)
-
-        cursor = conn.execute("PRAGMA table_info(sessions)")
-        columns = {row[1] for row in cursor.fetchall()}
-        assert "transcript_path" in columns
-
-    def test_idempotent(self):
-        """Running migration twice doesn't error."""
-        conn = self._create_v25_db()
-        migrate_v25_to_v26(conn)
-        migrate_v25_to_v26(conn)  # Should not raise
-
-        cursor = conn.execute("PRAGMA table_info(sessions)")
-        columns = {row[1] for row in cursor.fetchall()}
-        assert "transcript_path" in columns
-
-    def test_existing_sessions_get_null_transcript_path(self):
-        """Existing sessions without transcript resolver get NULL."""
-        conn = self._create_v25_db()
-        conn.execute(
-            SQL_INSERT_SESSION_NO_TRANSCRIPT.format(
-                session_id=TEST_SESSION_ID_S1,
-                agent=TEST_AGENT_CLAUDE,
-                project_root=TEST_PROJECT_ROOT_MISSING,
-                started_at=TEST_STARTED_AT,
-                created_at_epoch=TEST_CREATED_AT_EPOCH,
-            )
-        )
-        migrate_v25_to_v26(conn)
-
-        row = conn.execute(
-            SQL_SELECT_TRANSCRIPT_PATH_BY_ID.format(session_id=TEST_SESSION_ID_S1)
-        ).fetchone()
-        # Transcript resolver won't find a file for a nonexistent project
-        assert row[0] is None
 
 
 class TestActivityStoreTranscriptPath:

@@ -135,7 +135,10 @@ class SyncService:
             logger.info("Daemon running with old code (no version reported), restart needed")
 
         # Check for schema version mismatch (daemon vs code)
-        if plan.running_schema_version and plan.running_schema_version != SCHEMA_VERSION:
+        if (
+            plan.running_schema_version is not None
+            and plan.running_schema_version != SCHEMA_VERSION
+        ):
             plan.needs_sync = True
             plan.reasons.append(SyncReason.SCHEMA_VERSION_CHANGED)
             plan.run_migrations = True
