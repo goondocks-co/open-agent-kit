@@ -96,8 +96,6 @@ install_with_pip() {
     else
         "$python_cmd" -m pip install --user --upgrade "$PACKAGE"
     fi
-    warn "You may need to add ~/.local/bin to your PATH"
-    warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
 version_matches() {
@@ -178,7 +176,10 @@ main() {
     info "Detected OS: $os_name"
 
     # Find Python
-    python_cmd=$(find_python) || {
+    # Use if-statement (not cmd || handler) to avoid set -e + command substitution
+    # portability issues — macOS /bin/sh (zsh POSIX mode) exits silently otherwise.
+    python_cmd=""
+    if ! python_cmd=$(find_python); then
         error "Python not found. Please install Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ first."
         printf "\n"
         case "$os_name" in
@@ -186,14 +187,15 @@ main() {
             Linux)  info "Install via: sudo apt install python3  (or your distro's package manager)" ;;
         esac
         exit 1
-    }
+    fi
 
     # Check Python version
-    python_version=$(check_python_version "$python_cmd") || {
-        actual=$("$python_cmd" --version 2>&1)
+    python_version=""
+    if ! python_version=$(check_python_version "$python_cmd"); then
+        actual=$("$python_cmd" --version 2>&1 || echo "unknown")
         error "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ required, found: $actual"
         exit 1
-    }
+    fi
     info "Found Python $python_version ($python_cmd)"
 
     # Determine version spec
@@ -264,8 +266,28 @@ main() {
         printf "\n"
     else
         warn "oak command not found in PATH"
-        info "You may need to restart your shell or add ~/.local/bin to PATH:"
-        printf "  export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+
+        # Detect the scripts directory where oak was installed
+        scripts_dir=""
+        if [ "$actual_method" = "pip" ]; then
+            scripts_dir=$("$python_cmd" -c "import sysconfig; print(sysconfig.get_path('scripts', 'posix_user'))" 2>/dev/null || true)
+        fi
+
+        if [ -n "$scripts_dir" ] && [ -d "$scripts_dir" ]; then
+            printf "\n"
+            info "oak was installed to: $scripts_dir"
+            printf "\n"
+            info "Add it to your PATH (this session):"
+            printf "  ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n" "$scripts_dir"
+            printf "\n"
+            info "Add it permanently (add to ~/.bashrc or ~/.zshrc):"
+            printf "  ${BOLD}echo 'export PATH=\"%s:\$PATH\"' >> ~/.%src${RESET}\n" "$scripts_dir" "$(basename "${SHELL:-bash}")"
+        else
+            printf "\n"
+            info "Restart your shell or add the Python scripts directory to PATH:"
+            printf "  export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+        fi
+
         printf "\n"
         info "Then verify with: oak --version"
     fi

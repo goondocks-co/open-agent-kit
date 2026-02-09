@@ -234,7 +234,29 @@ function Main {
         Write-Host ""
     } else {
         Write-Warn "oak command not found in PATH"
-        Write-Info "You may need to restart your terminal or add Python Scripts to PATH"
+
+        # Detect the scripts directory where oak was installed
+        $scriptsDir = $null
+        if ($actualMethod -eq "pip") {
+            try {
+                $scriptsDir = & $pythonCmd -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))" 2>$null
+            } catch {}
+        }
+
+        if ($scriptsDir -and (Test-Path $scriptsDir)) {
+            Write-Host ""
+            Write-Info "oak was installed to: $scriptsDir"
+            Write-Host ""
+            Write-Info "Add it to your PATH (this session):"
+            Write-Host "  `$env:PATH += `";$scriptsDir`"" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Info "Add it permanently (run once):"
+            Write-Host "  [Environment]::SetEnvironmentVariable(`"PATH`", [Environment]::GetEnvironmentVariable(`"PATH`", `"User`") + `";$scriptsDir`", `"User`")" -ForegroundColor Cyan
+        } else {
+            Write-Host ""
+            Write-Info "Restart your terminal or add the Python Scripts directory to PATH"
+        }
+
         Write-Host ""
         Write-Info "Then verify with: oak --version"
     }
