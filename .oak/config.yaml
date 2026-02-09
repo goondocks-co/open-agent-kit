@@ -1,4 +1,4 @@
-version: 0.1.0rc2.dev7+g94eed463f.d20260207
+version: 1.0.4.dev0+gdae04f6e3.d20260209
 agents:
 - copilot
 - opencode
@@ -136,3 +136,4 @@ codebase_intelligence:
   - '*.mo'
   backup:
     on_upgrade: true
+  cli_command: oak-dev

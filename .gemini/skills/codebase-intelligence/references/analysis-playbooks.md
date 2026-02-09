@@ -2,7 +2,7 @@
 
 Structured multi-query workflows for analyzing CI data. Each playbook is a sequence of queries that build on each other to answer a specific question.
 
-These playbooks can be used manually via the `codebase-intelligence` skill, or automated via the analysis agent (`oak ci agent run <task-name>`).
+These playbooks can be used manually via the `codebase-intelligence` skill, or automated via the analysis agent (`oak-dev ci agent run <task-name>`).
 
 ## Playbook 1: Usage & Cost Analysis
 
@@ -223,10 +223,10 @@ LIMIT 10;
 These playbooks can be run automatically via the analysis agent:
 
 ```bash
-oak ci agent run usage-report          # Playbook 1
-oak ci agent run productivity-report   # Playbook 2
-oak ci agent run codebase-activity-report  # Playbook 3
-oak ci agent run prompt-analysis       # Playbook 4
+oak-dev ci agent run usage-report          # Playbook 1
+oak-dev ci agent run productivity-report   # Playbook 2
+oak-dev ci agent run codebase-activity-report  # Playbook 3
+oak-dev ci agent run prompt-analysis       # Playbook 4
 ```
 
 Reports are written to `oak/insights/` and can be committed to git for team visibility.

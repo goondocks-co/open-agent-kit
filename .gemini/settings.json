@@ -1,6 +1,7 @@
 {
   "coreTools": [
-    "ShellTool(oak *)"
+    "ShellTool(oak *)",
+    "ShellTool(oak-dev *)"
   ],
   "hooks": {
     "SessionStart": [
@@ -10,7 +11,7 @@
           {
             "name": "oak-ci-context",
             "type": "command",
-            "command": "oak ci hook SessionStart --agent gemini",
+            "command": "oak-dev ci hook SessionStart --agent gemini",
             "timeout": 60000
           }
         ]
@@ -23,7 +24,7 @@
           {
             "name": "oak-ci-prompt",
             "type": "command",
-            "command": "oak ci hook BeforeAgent --agent gemini",
+            "command": "oak-dev ci hook BeforeAgent --agent gemini",
             "timeout": 15000
           }
         ]
@@ -36,7 +37,7 @@
           {
             "name": "oak-ci-observe",
             "type": "command",
-            "command": "oak ci hook PostToolUse --agent gemini",
+            "command": "oak-dev ci hook PostToolUse --agent gemini",
             "timeout": 15000
           }
         ]
@@ -49,7 +50,7 @@
           {
             "name": "oak-ci-stop",
             "type": "command",
-            "command": "oak ci hook AfterAgent --agent gemini",
+            "command": "oak-dev ci hook AfterAgent --agent gemini",
             "timeout": 15000
           }
         ]
@@ -62,7 +63,7 @@
           {
             "name": "oak-ci-pre-compact",
             "type": "command",
-            "command": "oak ci hook PreCompress --agent gemini",
+            "command": "oak-dev ci hook PreCompress --agent gemini",
             "timeout": 15000
           }
         ]
@@ -75,7 +76,7 @@
           {
             "name": "oak-ci-session-end",
             "type": "command",
-            "command": "oak ci hook SessionEnd --agent gemini",
+            "command": "oak-dev ci hook SessionEnd --agent gemini",
             "timeout": 15000
           }
         ]
@@ -84,7 +85,7 @@
   },
   "mcpServers": {
     "oak-ci": {
-      "command": "oak",
+      "command": "oak-dev",
       "args": [
         "ci",
         "mcp"

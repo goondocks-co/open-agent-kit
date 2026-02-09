@@ -19,7 +19,7 @@
 import type { Plugin } from "@opencode-ai/plugin";
 
 /**
- * Helper to call oak ci hook command with JSON payload
+ * Helper to call oak-dev ci hook command with JSON payload
  */
 async function callOakHook(
   $: any,
@@ -29,7 +29,7 @@ async function callOakHook(
   try {
     const jsonPayload = JSON.stringify(payload);
     const result =
-      await $`echo ${jsonPayload} | oak ci hook ${hookName} --agent opencode`;
+      await $`echo ${jsonPayload} | oak-dev ci hook ${hookName} --agent opencode`;
     return { success: true, result };
   } catch (error) {
     // Don't let hook failures break OpenCode - log and continue

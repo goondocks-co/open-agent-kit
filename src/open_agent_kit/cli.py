@@ -15,7 +15,7 @@ from open_agent_kit.commands.rfc_cmd import rfc_app
 from open_agent_kit.commands.rules_cmd import rules_app
 from open_agent_kit.commands.skill_cmd import skill_app
 from open_agent_kit.commands.upgrade_cmd import upgrade_command
-from open_agent_kit.config.messages import HELP_TEXT
+from open_agent_kit.config.messages import HELP_TEXT, PROJECT_TAGLINE, PROJECT_URL
 from open_agent_kit.constants import VERSION
 from open_agent_kit.utils import print_banner, print_error, print_panel
 
@@ -25,7 +25,7 @@ load_dotenv(Path.cwd() / ".env", verbose=False)
 # Create main Typer app
 app = typer.Typer(
     name="oak",
-    help="AI-assisted engineering productivity tools",
+    help=PROJECT_TAGLINE,
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode="rich",
@@ -139,8 +139,8 @@ def version() -> None:
     """Show version information."""
     print_panel(
         f"[bold cyan]open-agent-kit[/bold cyan] version [green]{VERSION}[/green]\n\n"
-        "AI-assisted engineering productivity tools\n\n"
-        "[dim]https://github.com/sirkirby/open-agent-kit[/dim]",
+        f"{PROJECT_TAGLINE}\n\n"
+        f"[dim]{PROJECT_URL}[/dim]",
         title="Version",
         style="cyan",
     )
@@ -164,7 +164,7 @@ def main(
         is_eager=True,
     ),
 ) -> None:
-    """open-agent-kit - AI-assisted engineering productivity tools.
+    """open-agent-kit - AI-powered development workflows.
 
     A CLI tool for managing RFCs, project workflows, and team conventions
     with AI assistance from Claude, Copilot, Codex, or Cursor.
@@ -174,7 +174,7 @@ def main(
         oak rfc create "..."  # Create an RFC
         oak rfc list          # List all RFCs
 
-    For more information, visit: https://github.com/sirkirby/open-agent-kit
+    For more information, visit: https://oak.goondocks.co
     """
     # Handle version flag
     if version_flag:

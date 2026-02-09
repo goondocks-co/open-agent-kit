@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    resolve_ci_cli_command,
+)
 from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
 from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
 
@@ -17,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Path to the feature's MCP configuration directory
 MCP_TEMPLATE_DIR = Path(__file__).parent / "mcp"
+MCP_CLI_COMMAND_PLACEHOLDER = "{oak-cli-command}"
 
 
 class CodebaseIntelligenceService:
@@ -625,7 +629,11 @@ class CodebaseIntelligenceService:
 
         server_name = mcp_config.get("name", "oak-ci")
         # Build command (no longer uses --project flag, relies on cwd)
-        command = mcp_config.get("command", "oak ci mcp")
+        command = mcp_config.get("command", f"{MCP_CLI_COMMAND_PLACEHOLDER} ci mcp")
+        command = command.replace(
+            MCP_CLI_COMMAND_PLACEHOLDER,
+            resolve_ci_cli_command(self.project_root),
+        )
         # Remove any {{PROJECT_ROOT}} placeholder if present (legacy configs)
         command = command.replace("--project {{PROJECT_ROOT}}", "").strip()
         command = command.replace("{{PROJECT_ROOT}}", "").strip()

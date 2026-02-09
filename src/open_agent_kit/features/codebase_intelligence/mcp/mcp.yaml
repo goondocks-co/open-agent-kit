@@ -13,8 +13,8 @@ description: "OAK Codebase Intelligence - semantic code search and persistent me
 
 # The command to run the MCP server
 # The MCP server uses the current working directory to find the project.
-# Uses 'oak' directly, expecting it to be on PATH (installed via pipx, uv tool install, etc.)
-command: "oak ci mcp"
+# Uses a CLI command placeholder rendered from CI config (cli_command).
+command: "{oak-cli-command} ci mcp"
 
 # Server capabilities (for documentation/validation)
 capabilities:

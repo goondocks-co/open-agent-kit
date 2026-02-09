@@ -98,6 +98,17 @@ class TestHooksInstallerOakDetection:
             hook = {"command": "oak ci hook sessionStart --agent cursor"}
             assert installer._is_oak_managed_hook(hook) is True
 
+    def test_detects_configured_cli_hook_command(self, tmp_path: Path):
+        """Test detection of configured CLI command hook invocations."""
+        with patch.object(HooksInstaller, "manifest") as mock_manifest:
+            mock_manifest.hooks.format = "flat"
+            installer = HooksInstaller(tmp_path, "cursor")
+            installer._hooks_config = MagicMock(format="flat")
+            installer.cli_command = "oak-dev"
+
+            hook = {"command": "oak-dev ci hook sessionStart --agent cursor"}
+            assert installer._is_oak_managed_hook(hook) is True
+
     def test_detects_oak_ci_hook_command_copilot(self, tmp_path: Path):
         """Test detection of oak ci hook command in copilot format (bash/powershell)."""
         with patch.object(HooksInstaller, "manifest") as mock_manifest:
@@ -242,6 +253,43 @@ class TestServiceNotificationUpdates:
 
         assert result["status"] == "success"
         assert "error: Test error" in result["agents"]["claude"]
+
+
+class TestServiceMcpInstall:
+    """Test service MCP install behavior."""
+
+    def test_install_mcp_server_uses_configured_cli_command(self, tmp_path: Path):
+        """MCP command should use configured CLI command for registrations."""
+        service = CodebaseIntelligenceService(tmp_path)
+
+        with (
+            patch.object(
+                service,
+                "_load_mcp_config",
+                return_value={"name": "oak-ci", "command": "{oak-cli-command} ci mcp"},
+            ),
+            patch.object(service, "_get_agent_has_mcp", return_value=True),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.service.resolve_ci_cli_command",
+                return_value="oak-dev",
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.mcp.install_mcp_server"
+            ) as mock_install,
+        ):
+            mock_install.return_value = MagicMock(success=True, method="cli")
+            result = service.install_mcp_server(["claude"])
+
+        assert result["claude"] == "installed"
+        assert mock_install.call_count == 1
+        assert mock_install.call_args.kwargs["command"] == "oak-dev ci mcp"
+
+    def test_mcp_template_uses_cli_command_placeholder(self, tmp_path: Path):
+        """MCP template command should use placeholder, not hardcoded oak command."""
+        service = CodebaseIntelligenceService(tmp_path)
+        config = service._load_mcp_config()
+        assert config is not None
+        assert config.get("command") == "{oak-cli-command} ci mcp"
 
 
 # =============================================================================

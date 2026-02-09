@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from open_agent_kit.models.agent_manifest import AgentHooksConfig, AgentManifest
+
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    resolve_ci_cli_command,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,10 @@ HOOKS_TEMPLATE_DIR = Path(__file__).parent
 
 # Patterns that identify OAK-managed hooks (for safe replacement)
 OAK_HOOK_PATTERNS = ("oak ci hook", "/api/oak/ci/", "/api/hook/", "oak-ci-hook.sh")
+HOOK_COMMAND_KEYS = ("command", "bash", "powershell")
+HOOK_CI_COMMAND_TOKEN = " ci hook "
+HOOK_AGENT_FLAG_PREFIX = "--agent "
+HOOK_CLI_COMMAND_PLACEHOLDER = "{oak-cli-command}"
 
 
 @dataclass
@@ -66,6 +73,7 @@ class HooksInstaller:
         """
         self.project_root = project_root
         self.agent = agent
+        self.cli_command = resolve_ci_cli_command(project_root)
         self._manifest: AgentManifest | None = None
         self._hooks_config: AgentHooksConfig | None = None
 
@@ -182,7 +190,8 @@ class HooksInstaller:
             return True  # Not installed yet
 
         try:
-            return template_file.read_text() != installed_path.read_text()
+            expected_content = self._rewrite_plugin_content(template_file.read_text())
+            return expected_content != installed_path.read_text()
         except OSError:
             return True
 
@@ -299,10 +308,33 @@ class HooksInstaller:
         try:
             with open(template_file) as f:
                 result: dict[str, Any] = json.load(f)
-                return result
+                return self._render_hook_template_commands(result)
         except Exception as e:
             logger.error(f"Failed to load hook template for {self.agent}: {e}")
             return None
+
+    def _render_hook_template_commands(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Render hook command placeholders in hook template payloads."""
+
+        def _render_node(node: Any) -> Any:
+            if isinstance(node, dict):
+                rendered: dict[str, Any] = {}
+                for key, value in node.items():
+                    if key in HOOK_COMMAND_KEYS and isinstance(value, str):
+                        rendered[key] = value.replace(
+                            HOOK_CLI_COMMAND_PLACEHOLDER, self.cli_command
+                        )
+                    else:
+                        rendered[key] = _render_node(value)
+                return rendered
+            if isinstance(node, list):
+                return [_render_node(item) for item in node]
+            return node
+
+        rendered = _render_node(data)
+        if isinstance(rendered, dict):
+            return rendered
+        return data
 
     def _is_oak_managed_hook(self, hook: dict) -> bool:
         """Check if a hook is managed by OAK.
@@ -335,7 +367,20 @@ class HooksInstaller:
             else:
                 command = ""
 
-        return any(pattern in command for pattern in OAK_HOOK_PATTERNS)
+        patterns = list(OAK_HOOK_PATTERNS)
+        configured_hook_pattern = f"{self.cli_command} ci hook"
+        if configured_hook_pattern not in patterns:
+            patterns.append(configured_hook_pattern)
+        if any(pattern in command for pattern in patterns):
+            return True
+
+        command_lower = command.lower()
+        agent_flag = f"{HOOK_AGENT_FLAG_PREFIX}{self.agent}".lower()
+        return HOOK_CI_COMMAND_TOKEN in command_lower and agent_flag in command_lower
+
+    def _rewrite_plugin_content(self, content: str) -> str:
+        """Render plugin source command placeholder to the configured CLI."""
+        return content.replace(HOOK_CLI_COMMAND_PLACEHOLDER, self.cli_command)
 
     def _install_json_hooks(self) -> HooksInstallResult:
         """Install hooks by merging into a JSON config file.
@@ -543,7 +588,8 @@ class HooksInstaller:
 
         try:
             plugins_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(template_file, plugin_path)
+            rendered_plugin = self._rewrite_plugin_content(template_file.read_text())
+            plugin_path.write_text(rendered_plugin)
 
             return HooksInstallResult(
                 success=True,

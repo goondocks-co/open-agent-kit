@@ -52,7 +52,9 @@ default_task: |
   **Must contain:**
   - Tagline / one-sentence description
   - Problem statement (why this exists)
-  - Quick install (3–5 lines max, just the happy path)
+  - Quick install (3–5 lines max) — use the install script (`curl | sh`) as the
+    primary method since it's the most universal. Link to QUICKSTART.md for
+    Windows, pipx, uv, pip, and other alternatives.
   - One compelling usage example
   - Links to QUICKSTART.md, CONTRIBUTING.md, SECURITY.md
 
@@ -72,7 +74,7 @@ default_task: |
 
   **Must contain:**
   - Prerequisites (OS, runtime versions, dependencies)
-  - Multiple install methods if applicable (pip, make, source)
+  - Install script as the primary/recommended method, then alternatives (pipx, uv, pip)
   - Step-by-step first-run walkthrough
   - Configuration basics (environment variables, config files)
   - Troubleshooting section (THIS is the CI value-add — populate from gotcha memories)

@@ -26,16 +26,16 @@ Create, modify, and maintain project constitutions, agent instruction files, and
 ### Create an RFC
 
 ```bash
-oak rfc create --title "Add caching layer" --template feature
-oak rfc list
-oak rfc validate oak/rfc/RFC-001-add-caching-layer.md
+oak-dev rfc create --title "Add caching layer" --template feature
+oak-dev rfc list
+oak-dev rfc validate oak/rfc/RFC-001-add-caching-layer.md
 ```
 
 ### Sync agent instruction files
 
 ```bash
-oak rules sync-agents          # Sync constitution references to all agent files
-oak rules detect-existing      # Discover all configured agent instruction files
+oak-dev rules sync-agents          # Sync constitution references to all agent files
+oak-dev rules detect-existing      # Discover all configured agent instruction files
 ```
 
 ## Commands Reference
@@ -44,21 +44,21 @@ oak rules detect-existing      # Discover all configured agent instruction files
 
 | Command | Purpose |
 |---------|---------|
-| `oak rules sync-agents` | Sync constitution references to all agent instruction files |
-| `oak rules sync-agents --dry-run` | Preview what files will be checked/updated |
-| `oak rules detect-existing` | Discover all configured agent instruction files |
-| `oak rules detect-existing --json` | Machine-readable output of agent files |
+| `oak-dev rules sync-agents` | Sync constitution references to all agent instruction files |
+| `oak-dev rules sync-agents --dry-run` | Preview what files will be checked/updated |
+| `oak-dev rules detect-existing` | Discover all configured agent instruction files |
+| `oak-dev rules detect-existing --json` | Machine-readable output of agent files |
 
 ### RFC commands
 
 | Command | Purpose |
 |---------|---------|
-| `oak rfc create --title "..." --template <type>` | Create a new RFC |
-| `oak rfc list` | List all RFCs |
-| `oak rfc validate <path>` | Validate RFC structure and content |
-| `oak rfc show <path>` | Show RFC details |
-| `oak rfc adopt <path>` | Mark RFC as adopted |
-| `oak rfc abandon <path> --reason "..."` | Mark RFC as abandoned |
+| `oak-dev rfc create --title "..." --template <type>` | Create a new RFC |
+| `oak-dev rfc list` | List all RFCs |
+| `oak-dev rfc validate <path>` | Validate RFC structure and content |
+| `oak-dev rfc show <path>` | Show RFC details |
+| `oak-dev rfc adopt <path>` | Mark RFC as adopted |
+| `oak-dev rfc abandon <path> --reason "..."` | Mark RFC as abandoned |
 
 ## When to Use
 
@@ -98,16 +98,16 @@ Required sections: Metadata, Scope and Non-Goals, Golden Paths with Anchor Index
 
 1. **Read** the current constitution (`oak/constitution.md`)
 2. **Add** the full rule to the appropriate section using RFC 2119 language (MUST, SHOULD, MAY)
-3. **Sync** to all agent files: `oak rules sync-agents`
+3. **Sync** to all agent files: `oak-dev rules sync-agents`
 
 **CRITICAL:** Rules MUST be added to the constitution FIRST, then synced to agent files. Never add a rule only to an agent file.
 
 ### RFC lifecycle
 
-1. **Create**: `oak rfc create --title "..." --template feature --author "Name"`
+1. **Create**: `oak-dev rfc create --title "..." --template feature --author "Name"`
 2. **Fill in**: Problem context, proposed solution, trade-offs, alternatives
 3. **Review**: Use the review checklist (see `references/reviewing-rfcs.md`)
-4. **Adopt or abandon**: `oak rfc adopt <path>` or `oak rfc abandon <path> --reason "..."`
+4. **Adopt or abandon**: `oak-dev rfc adopt <path>` or `oak-dev rfc abandon <path> --reason "..."`
 
 ### RFC review checklist (summary)
 
@@ -131,7 +131,7 @@ Required sections: Metadata, Scope and Non-Goals, Golden Paths with Anchor Index
 ## Files
 
 - Constitution: `oak/constitution.md` or `.constitution.md`
-- Agent files: Run `oak rules detect-existing` to discover all agent instruction files
+- Agent files: Run `oak-dev rules detect-existing` to discover all agent instruction files
 - RFCs: `oak/rfc/RFC-XXX-short-title.md`
 
 ## Deep Dives

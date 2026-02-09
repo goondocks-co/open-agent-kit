@@ -21,13 +21,13 @@ Use this workflow when:
 
 ```bash
 # List all RFCs
-oak rfc list
+oak-dev rfc list
 
 # Validate a specific RFC
-oak rfc validate oak/rfc/RFC-001-your-rfc.md
+oak-dev rfc validate oak/rfc/RFC-001-your-rfc.md
 
 # Show RFC details
-oak rfc show oak/rfc/RFC-001-your-rfc.md
+oak-dev rfc show oak/rfc/RFC-001-your-rfc.md
 ```
 
 ## Review Checklist
@@ -88,7 +88,7 @@ When providing feedback, structure it as:
 Run automated validation:
 
 ```bash
-oak rfc validate oak/rfc/RFC-XXX-title.md
+oak-dev rfc validate oak/rfc/RFC-XXX-title.md
 ```
 
 This checks:
@@ -111,5 +111,5 @@ This checks:
 RFCs are in `oak/rfc/` directory. List all with:
 
 ```bash
-oak rfc list
+oak-dev rfc list
 ```

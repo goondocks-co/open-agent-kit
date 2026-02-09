@@ -2,7 +2,7 @@
   "mcpServers": {
     "oak-ci": {
       "type": "stdio",
-      "command": "oak",
+      "command": "oak-dev",
       "args": [
         "ci",
         "mcp"

@@ -14,10 +14,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from open_agent_kit.models.agent_manifest import AgentManifest, AgentNotificationsConfig
 
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    render_cli_command_placeholder,
+    resolve_ci_cli_command,
+)
+
 logger = logging.getLogger(__name__)
 
 # Path to notification templates directory (sibling directories: codex/)
 NOTIFICATIONS_TEMPLATE_DIR = Path(__file__).parent
+NOTIFY_CLI_COMMAND_PLACEHOLDER = "{oak-cli-command}"
 
 
 @dataclass
@@ -35,6 +41,7 @@ class NotificationsInstaller:
     def __init__(self, project_root: Path, agent: str):
         self.project_root = project_root
         self.agent = agent
+        self.cli_command = resolve_ci_cli_command(project_root)
         self._manifest: AgentManifest | None = None
         self._notifications_config: AgentNotificationsConfig | None = None
 
@@ -105,23 +112,19 @@ class NotificationsInstaller:
 
         from open_agent_kit.features.codebase_intelligence.constants import (
             AGENT_NOTIFY_DEFAULT_ARGS,
-            AGENT_NOTIFY_DEFAULT_COMMAND,
         )
 
         notify_config = self.notifications_config.notify if self.notifications_config else None
-        notify_command = (
-            notify_config.command if notify_config else None
-        ) or AGENT_NOTIFY_DEFAULT_COMMAND
         notify_args = list(notify_config.args or AGENT_NOTIFY_DEFAULT_ARGS) if notify_config else []
         script_value = str(script_path.resolve()) if script_path else None
 
         template_content = template_path.read_text()
         template = Template(template_content)
         rendered_config = template.render(
-            notify_command=notify_command,
             notify_args=notify_args,
             notify_script_path=script_value,
         )
+        rendered_config = render_cli_command_placeholder(rendered_config, self.cli_command)
 
         import tomllib
 

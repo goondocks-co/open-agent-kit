@@ -29,6 +29,7 @@ from open_agent_kit.features.codebase_intelligence.config import (
     save_ci_config,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_CLI_COMMAND_DEFAULT,
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
@@ -385,6 +386,7 @@ class TestCIConfigInit:
         assert isinstance(default_ci_config.embedding, EmbeddingConfig)
         assert default_ci_config.index_on_startup is True
         assert default_ci_config.watch_files is True
+        assert default_ci_config.cli_command == CI_CLI_COMMAND_DEFAULT
         assert default_ci_config.log_level == LOG_LEVEL_INFO
 
     def test_init_with_custom_values(self, custom_ci_config: CIConfig):
@@ -422,6 +424,12 @@ class TestCIConfigValidation:
         with pytest.raises(ValidationError) as exc_info:
             CIConfig(log_level="INVALID_LEVEL")
         assert "Invalid log level" in str(exc_info.value)
+
+    def test_invalid_cli_command_raises_error(self):
+        """Test that invalid CLI executable names are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            CIConfig(cli_command="oak dev")
+        assert "Invalid CLI command" in str(exc_info.value)
 
     @pytest.mark.parametrize(
         "valid_level",
@@ -502,6 +510,7 @@ class TestCIConfigFromDict:
         config = CIConfig.from_dict({})
         assert config.index_on_startup is True
         assert config.watch_files is True
+        assert config.cli_command == CI_CLI_COMMAND_DEFAULT
         assert config.log_level == LOG_LEVEL_INFO
 
     def test_from_dict_with_custom_values(self):
@@ -541,6 +550,7 @@ class TestCIConfigToDict:
         recreated = CIConfig.from_dict(dict_repr)
         assert recreated.index_on_startup == custom_ci_config.index_on_startup
         assert recreated.watch_files == custom_ci_config.watch_files
+        assert recreated.cli_command == custom_ci_config.cli_command
         assert recreated.log_level == custom_ci_config.log_level
 
 

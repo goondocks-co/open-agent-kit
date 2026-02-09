@@ -29,39 +29,39 @@ Use this workflow when:
 
 ```bash
 # Find code related to a concept
-oak ci search "form validation logic" --type code
+{oak-cli-command} ci search "form validation logic" --type code
 
 # Find similar patterns
-oak ci search "retry with exponential backoff" --type code
+{oak-cli-command} ci search "retry with exponential backoff" --type code
 
 # More results for broader exploration
-oak ci search "error handling and logging" --type code -n 20
+{oak-cli-command} ci search "error handling and logging" --type code -n 20
 ```
 
 ### Discover component relationships
 
 ```bash
 # Find code related to two concepts (relationship)
-oak ci search "how does AuthService interact with TokenManager"
+{oak-cli-command} ci search "how does AuthService interact with TokenManager"
 
 # Search for data flow patterns
-oak ci search "order creation inventory update"
+{oak-cli-command} ci search "order creation inventory update"
 
 # Get context about a specific relationship
-oak ci context "relationship between UserService and PaymentProcessor"
+{oak-cli-command} ci context "relationship between UserService and PaymentProcessor"
 ```
 
 ### Get context for current work
 
 ```bash
 # Find code related to files you're editing
-oak ci context "similar implementations" -f src/services/user.py
+{oak-cli-command} ci context "similar implementations" -f src/services/user.py
 
 # Find related code for a specific task
-oak ci context "validation patterns" -f src/api/handlers.py
+{oak-cli-command} ci context "validation patterns" -f src/api/handlers.py
 
 # Get context with specific files in focus
-oak ci context "how auth middleware relates to session handling" -f src/middleware/auth.py
+{oak-cli-command} ci context "how auth middleware relates to session handling" -f src/middleware/auth.py
 ```
 
 ## Example: Finding Similar Implementations
@@ -70,13 +70,13 @@ oak ci context "how auth middleware relates to session handling" -f src/middlewa
 
 ```bash
 # 1. Find existing endpoint implementations
-oak ci search "REST API endpoint handler" --type code
+{oak-cli-command} ci search "REST API endpoint handler" --type code
 
 # 2. Find validation patterns
-oak ci search "input validation for API requests" --type code
+{oak-cli-command} ci search "input validation for API requests" --type code
 
 # 3. Find error handling patterns
-oak ci search "API error response formatting" --type code
+{oak-cli-command} ci search "API error response formatting" --type code
 ```
 
 **What you'll find**: Consistent patterns used elsewhere, even if the endpoints are in different modules or use different naming conventions.
@@ -92,7 +92,7 @@ oak ci search "API error response formatting" --type code
 # - "token_refresh" (authentication adjacent)
 
 # Semantic search finds them all:
-oak ci search "user authentication and authorization" --type code -n 20
+{oak-cli-command} ci search "user authentication and authorization" --type code -n 20
 ```
 
 ## Example: Understanding Component Relationships
@@ -101,13 +101,13 @@ oak ci search "user authentication and authorization" --type code -n 20
 
 ```bash
 # 1. Search for code mentioning both concepts
-oak ci search "OrderService inventory management"
+{oak-cli-command} ci search "OrderService inventory management"
 
 # 2. Get broader context
-oak ci context "relationship between orders and inventory"
+{oak-cli-command} ci context "relationship between orders and inventory"
 
 # 3. Search for data flow patterns
-oak ci search "order creation inventory update"
+{oak-cli-command} ci search "order creation inventory update"
 ```
 
 **What you'll find**: Semantic search reveals event handlers, shared models, and integration points that aren't obvious from imports alone.
@@ -120,7 +120,7 @@ oak ci search "order creation inventory update"
 - Increase `-n` limit when exploring broadly
 - Use `--type code` to focus on implementation (exclude memories)
 - Combine multiple searches to build complete picture
-- Combine with `oak ci context` for richer understanding
+- Combine with `{oak-cli-command} ci context` for richer understanding
 
 ## Output
 
@@ -131,8 +131,8 @@ Results include:
 
 ```bash
 # JSON output (default) - good for parsing
-oak ci search "database transactions" -f json
+{oak-cli-command} ci search "database transactions" -f json
 
 # Text output - good for reading
-oak ci search "database transactions" -f text
+{oak-cli-command} ci search "database transactions" -f text
 ```

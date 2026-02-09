@@ -1,10 +1,12 @@
 """CI configuration commands: config, exclude, debug."""
 
+import re
 from pathlib import Path
 
 import typer
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_CLI_COMMAND_VALIDATION_PATTERN,
     DAEMON_RESTART_DELAY_SECONDS,
     HTTP_TIMEOUT_QUICK,
 )
@@ -67,6 +69,11 @@ def ci_config(
         False,
         "--project",
         help="Write all settings to project config (team-shared baseline)",
+    ),
+    cli_command: str | None = typer.Option(
+        None,
+        "--cli-command",
+        help="Executable used for CI-managed hooks/MCP/notify (default: oak)",
     ),
 ) -> None:
     """Configure embedding, summarization, and logging settings.
@@ -255,6 +262,7 @@ def ci_config(
         and summarization_model is None
         and summarization_url is None
         and summarization_context is None
+        and cli_command is None
     )
 
     if show or no_changes:
@@ -296,11 +304,16 @@ def ci_config(
         effective = config.get_effective_log_level()
         if effective != config.log_level:
             print_info(f"    (effective: {effective} from environment)")
+
+        console.print()
+        console.print("[bold]Integrations:[/bold]")
+        print_info(f"  CLI Command: {config.cli_command}")
         return
 
     # Update configuration
     changed = False
     embedding_changed = False
+    cli_command_changed = False
 
     if provider:
         config.embedding.provider = provider
@@ -317,6 +330,20 @@ def ci_config(
         config.embedding.base_url = base_url
         changed = True
         embedding_changed = True
+
+    if cli_command is not None:
+        normalized_command = cli_command.strip()
+        if not normalized_command:
+            print_error("CLI command cannot be empty.")
+            raise typer.Exit(code=1)
+        if not re.fullmatch(CI_CLI_COMMAND_VALIDATION_PATTERN, normalized_command):
+            print_error(
+                "Invalid --cli-command. Use only letters, numbers, '.', '_', '-', '/', and '\\'."
+            )
+            raise typer.Exit(code=1)
+        config.cli_command = normalized_command
+        changed = True
+        cli_command_changed = True
 
     # Handle debug/log level settings
     if debug is not None:
@@ -388,14 +415,32 @@ def ci_config(
 
         if debug is not None or log_level:
             print_info(f"  Log Level: {config.log_level}")
+        if cli_command_changed:
+            print_info(f"  CLI Command: {config.cli_command}")
 
         console.print()
         if embedding_changed:
             print_warning("Restart the daemon and rebuild the index to apply embedding changes:")
             print_info("  oak ci restart && oak ci reset -f")
-        elif summarization_changed or debug is not None or log_level:
+        elif summarization_changed or debug is not None or log_level or cli_command_changed:
             print_info("Restart the daemon to apply changes:")
-            print_info("  oak ci restart")
+            print_info(f"  {config.cli_command} ci restart")
+
+        if cli_command_changed:
+            from open_agent_kit.features.codebase_intelligence.service import (
+                CodebaseIntelligenceService,
+            )
+            from open_agent_kit.services.config_service import ConfigService
+
+            service = CodebaseIntelligenceService(project_root)
+            agents = ConfigService(project_root).get_agents()
+
+            if agents:
+                print_info("Refreshing hooks, notifications, and MCP registrations...")
+                service.update_agent_hooks(agents)
+                service.update_agent_notifications(agents)
+                service.install_mcp_server(agents)
+                print_success("Integrations refreshed.")
 
 
 @ci_app.command("exclude")

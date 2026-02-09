@@ -116,7 +116,7 @@ Create `oak/constitution.md` (or `.constitution.md` at root):
 After creating the constitution, create agent files that reference it:
 
 ```bash
-oak rules sync-agents
+oak-dev rules sync-agents
 ```
 
 ## Adding Rules to Existing Constitution
@@ -130,8 +130,8 @@ oak rules sync-agents
 cat oak/constitution.md  # or .constitution.md
 
 # Discover all agent instruction files dynamically
-oak rules detect-existing
-oak rules detect-existing --json  # machine-readable output
+oak-dev rules detect-existing
+oak-dev rules detect-existing --json  # machine-readable output
 ```
 
 **Do NOT hardcode agent file names.** Agents are configured dynamically in `.oak/config.yaml` and each agent's manifest defines its own `installation.instruction_file` path.
@@ -168,13 +168,13 @@ After the constitution is updated, sync to all configured agent files:
 
 ```bash
 # Preview what files will be checked/updated
-oak rules sync-agents --dry-run
+oak-dev rules sync-agents --dry-run
 
 # Sync constitution references to all agent files
-oak rules sync-agents
+oak-dev rules sync-agents
 ```
 
-If manual updates are needed, use `oak rules detect-existing --json` to get the full list of agent files. For each file, add a concise reference:
+If manual updates are needed, use `oak-dev rules detect-existing --json` to get the full list of agent files. For each file, add a concise reference:
 
 ```markdown
 ## [Rule Name]
@@ -182,7 +182,7 @@ If manual updates are needed, use `oak rules detect-existing --json` to get the 
 **MUST NOT** [brief prohibition]. See §[section] of `oak/constitution.md` for the full rule, rationale, and verification command.
 ```
 
-**Important:** Agent instruction file paths are defined in each agent's manifest (`installation.instruction_file`). Do not assume fixed file names — always discover dynamically via `oak rules detect-existing`.
+**Important:** Agent instruction file paths are defined in each agent's manifest (`installation.instruction_file`). Do not assume fixed file names — always discover dynamically via `oak-dev rules detect-existing`.
 
 ## Example Workflow
 
@@ -196,4 +196,4 @@ User: "We need to establish coding standards for this Python project"
    - Quality gate (`make check` or equivalent)
    - Anchor files (point to best existing modules)
 3. **Create agent files** referencing the constitution
-4. **Sync**: `oak rules sync-agents`
+4. **Sync**: `oak-dev rules sync-agents`
