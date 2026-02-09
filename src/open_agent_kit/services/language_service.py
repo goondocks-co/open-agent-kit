@@ -79,7 +79,7 @@ class LanguageService:
         try:
             from importlib.metadata import distribution
 
-            dist = distribution("open-agent-kit")
+            dist = distribution("oak-ci")
             direct_url = dist.read_text("direct_url.json")
             if direct_url:
                 import json
@@ -268,7 +268,7 @@ class LanguageService:
         # Build --with arguments
         with_args = []
         for extra in extras:
-            with_args.extend(["--with", f"open-agent-kit[{extra}]"])
+            with_args.extend(["--with", f"oak-ci[{extra}]"])
 
         install_source, is_editable = self._get_install_source()
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -294,7 +294,7 @@ class LanguageService:
                     "uv",
                     "tool",
                     "install",
-                    "open-agent-kit",
+                    "oak-ci",
                     "--upgrade",
                     "--python",
                     python_version,

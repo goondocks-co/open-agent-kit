@@ -99,7 +99,7 @@ class FeatureService:
         try:
             from importlib.metadata import distribution
 
-            dist = distribution("open-agent-kit")
+            dist = distribution("oak-ci")
 
             # Check direct_url.json (PEP 610) for non-PyPI installs
             direct_url = dist.read_text("direct_url.json")
@@ -254,13 +254,13 @@ class FeatureService:
                     "uv",
                     "tool",
                     "install",
-                    "open-agent-kit",
+                    "oak-ci",
                     "--upgrade",
                     "--python",
                     python_version,
                 ] + with_args
                 manual_cmd = (
-                    f"uv tool install open-agent-kit --upgrade "
+                    f"uv tool install oak-ci --upgrade "
                     f"--python {python_version} {' '.join(with_args)}"
                 )
 
