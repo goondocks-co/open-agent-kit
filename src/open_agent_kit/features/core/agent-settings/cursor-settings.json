@@ -1,6 +1,6 @@
 {
-  "$comment": "Cursor agent auto-approval settings for oak commands. Note: This overlaps with IDE settings - both use the same file.",
+  "$comment": "Cursor agent auto-approval settings for OAK CLI command. Note: This overlaps with IDE settings - both use the same file.",
   "chat.tools.terminal.autoApprove": {
-    "oak": true
+    "{oak-cli-command}": true
   }
 }

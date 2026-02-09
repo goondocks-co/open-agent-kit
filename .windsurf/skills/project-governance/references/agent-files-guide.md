@@ -15,7 +15,7 @@ Agent instruction files are **short, operational documents** that:
 ### Option 1: Use OAK's sync command
 
 ```bash
-oak rules sync-agents
+oak-dev rules sync-agents
 ```
 
 ### Option 2: Create manually
@@ -65,8 +65,8 @@ Do NOT hardcode agent file names. Use OAK's built-in commands:
 
 ```bash
 # Discover all agent instruction files dynamically
-oak rules detect-existing
-oak rules detect-existing --json  # machine-readable output
+oak-dev rules detect-existing
+oak-dev rules detect-existing --json  # machine-readable output
 ```
 
 Agent files are configured dynamically in `.oak/config.yaml` and each agent's manifest defines its own `installation.instruction_file` path.
@@ -77,10 +77,10 @@ When the constitution is updated, sync changes to all agent files:
 
 ```bash
 # Preview what files will be checked/updated
-oak rules sync-agents --dry-run
+oak-dev rules sync-agents --dry-run
 
 # Sync constitution references to all agent files
-oak rules sync-agents
+oak-dev rules sync-agents
 ```
 
 ## What Makes a Good Agent File

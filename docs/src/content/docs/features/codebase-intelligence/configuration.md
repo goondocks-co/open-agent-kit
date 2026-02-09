@@ -161,6 +161,30 @@ Configure log rotation to manage disk usage:
 
 See the [Logs](/open-agent-kit/features/codebase-intelligence/logs/) page for details on viewing and filtering logs.
 
+## CLI Command For Managed Integrations
+
+CI-managed hooks, MCP registrations, and notify handlers use a configurable executable command.
+By default this is `oak`.
+
+This is a project-level command alias for managed integrations.
+Use it when you want one repository to run OAK through a different executable
+while other repositories keep using the default `oak`.
+
+```bash
+# Show current setting
+oak ci config --show
+
+# Use oak-dev for CI-managed integrations in this project
+oak ci config --cli-command oak-dev
+```
+
+Common use cases:
+- Avoid command-name conflicts with another local tool named `oak`
+- Keep a dev executable (`oak-dev`) in one repository while using stable `oak` everywhere else
+- Standardize wrappers (for example, team-specific launcher commands) on a single project
+
+After this change, OAK refreshes managed integrations so future hook/MCP/notify executions use the configured command.
+
 ## Directory Exclusions
 
 Control which directories are skipped during codebase indexing.

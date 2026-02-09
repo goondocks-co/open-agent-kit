@@ -303,6 +303,64 @@ class TestSkillServiceInstallation:
         assert result["skills_available"] == []
         assert result["skills_installed"] == []
 
+    def test_install_skill_renders_cli_command_in_all_text_content(
+        self, temp_project, package_skills_dir
+    ):
+        """Install should rewrite CLI command references in all UTF-8 skill text files."""
+        service = SkillService(temp_project)
+        service.package_features_dir = package_skills_dir
+        service.cli_command = "oak-dev"
+
+        source_skill_dir = package_skills_dir / "strategic_planning" / "skills" / "test-skill"
+        (source_skill_dir / "SKILL.md").write_text(
+            """---
+name: test-skill
+description: test
+---
+
+Run {oak-cli-command} ci status
+Run {oak-cli-command} ci sessions
+Docs URL: https://oak.goondocks.co
+Path: oak/daemon.port
+""",
+            encoding="utf-8",
+        )
+        references_dir = source_skill_dir / "references"
+        references_dir.mkdir()
+        (references_dir / "guide.md").write_text(
+            'Use `{oak-cli-command} ci search "query"` for semantic search.',
+            encoding="utf-8",
+        )
+        scripts_dir = source_skill_dir / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "bootstrap.sh").write_text(
+            "#!/usr/bin/env bash\n{oak-cli-command} ci restart\n{oak-cli-command} ci status\n",
+            encoding="utf-8",
+        )
+
+        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+            skills_dir = temp_project / ".claude" / "skills"
+            mock_agents.return_value = [("claude", skills_dir, "skills")]
+            result = service.install_skill("test-skill")
+
+        assert result["skill_name"] == "test-skill"
+        installed_skill_dir = temp_project / ".claude" / "skills" / "test-skill"
+        installed_manifest = (installed_skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        installed_reference = (installed_skill_dir / "references" / "guide.md").read_text(
+            encoding="utf-8"
+        )
+        installed_script = (installed_skill_dir / "scripts" / "bootstrap.sh").read_text(
+            encoding="utf-8"
+        )
+
+        assert "oak-dev ci status" in installed_manifest
+        assert "oak-dev ci sessions" in installed_manifest
+        assert "https://oak.goondocks.co" in installed_manifest
+        assert "oak/daemon.port" in installed_manifest
+        assert "oak-dev ci search" in installed_reference
+        assert "oak-dev ci restart" in installed_script
+        assert "oak-dev ci status" in installed_script
+
 
 class TestSkillServiceRemoval:
     """Tests for skill removal."""
@@ -509,6 +567,46 @@ class TestSkillServiceHelpers:
         installed = service.list_installed_skills()
         assert "skill-a" in installed
         assert "skill-b" in installed
+
+    def test_skill_dirs_differ_normalizes_cli_command_rendering(self, temp_project):
+        """Package and installed skill dirs should compare equal after CLI rendering."""
+        service = SkillService(temp_project)
+        service.cli_command = "oak-dev"
+
+        package_dir = temp_project / "package-skill"
+        installed_dir = temp_project / "installed-skill"
+        (package_dir / "references").mkdir(parents=True)
+        (installed_dir / "references").mkdir(parents=True)
+
+        (package_dir / "SKILL.md").write_text(
+            "Run {oak-cli-command} ci status and {oak-cli-command} ci sessions.",
+            encoding="utf-8",
+        )
+        (package_dir / "references" / "guide.md").write_text(
+            "Use {oak-cli-command} ci search in this guide.",
+            encoding="utf-8",
+        )
+        (package_dir / "scripts").mkdir(parents=True, exist_ok=True)
+        (package_dir / "scripts" / "bootstrap.sh").write_text(
+            "{oak-cli-command} ci restart\n{oak-cli-command} ci status\n",
+            encoding="utf-8",
+        )
+
+        (installed_dir / "SKILL.md").write_text(
+            "Run oak-dev ci status and oak-dev ci sessions.",
+            encoding="utf-8",
+        )
+        (installed_dir / "references" / "guide.md").write_text(
+            "Use oak-dev ci search in this guide.",
+            encoding="utf-8",
+        )
+        (installed_dir / "scripts").mkdir(parents=True, exist_ok=True)
+        (installed_dir / "scripts" / "bootstrap.sh").write_text(
+            "oak-dev ci restart\noak-dev ci status\n",
+            encoding="utf-8",
+        )
+
+        assert service.skill_dirs_differ(package_dir, installed_dir) is False
 
 
 class TestGetSkillService:
@@ -755,6 +853,26 @@ class TestManifestSkillsConsistency:
                 )
 
         assert not errors, "Manifest/directory skill mismatches found:\n" + "\n".join(errors)
+
+    def test_skill_text_assets_use_cli_command_placeholder(self, package_features_path):
+        """Managed skill text should use placeholder, not hardcoded oak commands."""
+        raw_command_pattern = re.compile(r"\boak (ci|rfc|rules)\b")
+        errors: list[str] = []
+
+        for text_path in package_features_path.glob("*/skills/**/*"):
+            if not text_path.is_file():
+                continue
+            try:
+                content = text_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if raw_command_pattern.search(content):
+                errors.append(str(text_path))
+
+        assert not errors, (
+            "Hardcoded command tokens found in skill text assets. "
+            "Use '{oak-cli-command}' placeholder in:\n" + "\n".join(errors)
+        )
 
 
 class TestCodebaseIntelligenceSkillSync:

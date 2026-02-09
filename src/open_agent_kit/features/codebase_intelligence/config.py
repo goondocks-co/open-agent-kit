@@ -26,6 +26,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     BACKUP_INTERVAL_MINUTES_MAX,
     BACKUP_INTERVAL_MINUTES_MIN,
     BACKUP_ON_UPGRADE_DEFAULT,
+    CI_CLI_COMMAND_DEFAULT,
+    CI_CLI_COMMAND_VALIDATION_PATTERN,
+    CI_CONFIG_KEY_CLI_COMMAND,
     CI_CONFIG_KEY_TUNNEL,
     CI_CONFIG_TUNNEL_KEY_AUTO_START,
     CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
@@ -1023,6 +1026,7 @@ class CIConfig:
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
+        cli_command: CLI executable used for CI-managed integrations.
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
         log_rotation: Log file rotation configuration.
     """
@@ -1036,6 +1040,7 @@ class CIConfig:
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
+    cli_command: str = CI_CLI_COMMAND_DEFAULT
     log_level: str = LOG_LEVEL_INFO
     log_rotation: LogRotationConfig = field(default_factory=LogRotationConfig)
 
@@ -1056,6 +1061,22 @@ class CIConfig:
                 field="log_level",
                 value=self.log_level,
                 expected=f"one of {VALID_LOG_LEVELS}",
+            )
+
+        if not self.cli_command:
+            raise ValidationError(
+                "CLI command cannot be empty",
+                field=CI_CONFIG_KEY_CLI_COMMAND,
+                value=self.cli_command,
+                expected="non-empty executable name",
+            )
+
+        if not re.fullmatch(CI_CLI_COMMAND_VALIDATION_PATTERN, self.cli_command):
+            raise ValidationError(
+                f"Invalid CLI command: {self.cli_command}",
+                field=CI_CONFIG_KEY_CLI_COMMAND,
+                value=self.cli_command,
+                expected=f"pattern {CI_CLI_COMMAND_VALIDATION_PATTERN}",
             )
 
     @classmethod
@@ -1088,6 +1109,7 @@ class CIConfig:
             index_on_startup=data.get("index_on_startup", True),
             watch_files=data.get("watch_files", True),
             exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
+            cli_command=data.get(CI_CONFIG_KEY_CLI_COMMAND, CI_CLI_COMMAND_DEFAULT),
             log_level=data.get("log_level", LOG_LEVEL_INFO),
             log_rotation=LogRotationConfig.from_dict(log_rotation_data),
         )
@@ -1104,6 +1126,7 @@ class CIConfig:
             "index_on_startup": self.index_on_startup,
             "watch_files": self.watch_files,
             "exclude_patterns": self.exclude_patterns,
+            CI_CONFIG_KEY_CLI_COMMAND: self.cli_command,
             "log_level": self.log_level,
             "log_rotation": self.log_rotation.to_dict(),
         }
@@ -1477,6 +1500,7 @@ def get_config_origins(project_root: Path) -> dict[str, str]:
         "index_on_startup",
         "watch_files",
         "exclude_patterns",
+        CI_CONFIG_KEY_CLI_COMMAND,
         "log_level",
         "log_rotation",
     ]

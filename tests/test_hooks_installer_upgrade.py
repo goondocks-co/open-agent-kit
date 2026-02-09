@@ -140,13 +140,36 @@ class TestPluginNeedsUpgrade:
         hooks_cfg = _plugin_hooks_config()
         installer = _make_installer(tmp_path, "opencode", hooks_cfg)
 
-        # Copy the real template to the installed location
+        # Copy rendered template output to the installed location
         template_content = (HOOKS_TEMPLATE_DIR / "opencode" / "oak-ci.ts").read_text()
+        rendered_content = installer._rewrite_plugin_content(template_content)
         installed_dir = tmp_path / ".opencode" / "plugins"
         installed_dir.mkdir(parents=True)
-        (installed_dir / "oak-ci.ts").write_text(template_content)
+        (installed_dir / "oak-ci.ts").write_text(rendered_content)
 
         assert installer.needs_upgrade() is False
+
+    def test_plugin_install_rewrites_to_configured_cli_command(self, tmp_path: Path):
+        """Installing plugin should rewrite hook command to configured CLI."""
+        hooks_cfg = _plugin_hooks_config()
+        installer = _make_installer(tmp_path, "opencode", hooks_cfg)
+        installer.cli_command = "oak-dev"
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
+            tmp_path / "templates",
+        ):
+            template_path = tmp_path / "templates" / "opencode"
+            template_path.mkdir(parents=True)
+            (template_path / "oak-ci.ts").write_text(
+                "await $`echo x | {oak-cli-command} ci hook SessionStart --agent opencode`;\n"
+            )
+
+            result = installer.install()
+
+        assert result.success is True
+        installed = (tmp_path / ".opencode" / "plugins" / "oak-ci.ts").read_text()
+        assert "oak-dev ci hook SessionStart --agent opencode" in installed
 
 
 # ===========================================================================
@@ -291,6 +314,81 @@ class TestJsonNeedsUpgrade:
         with patch.object(installer, "_load_hook_template", return_value=template):
             assert installer.needs_upgrade() is True
 
+    def test_json_install_rewrites_to_configured_cli_command(self, tmp_path: Path):
+        """Installing hooks should rewrite oak command to configured CLI."""
+        hooks_cfg = _json_hooks_config()
+        installer = _make_installer(tmp_path, "claude", hooks_cfg)
+        installer.cli_command = "oak-dev"
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
+            tmp_path / "templates",
+        ):
+            template_path = tmp_path / "templates" / "claude"
+            template_path.mkdir(parents=True)
+            (template_path / "hooks.json").write_text(
+                json.dumps(
+                    {
+                        "hooks": {
+                            "SessionStart": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "command": (
+                                                "{oak-cli-command} ci hook "
+                                                "SessionStart --agent claude"
+                                            )
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                )
+            )
+            result = installer.install()
+
+        assert result.success is True
+        config = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        command = config["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+        assert command == "oak-dev ci hook SessionStart --agent claude"
+
+    def test_json_install_replaces_previous_cli_variant_hooks(self, tmp_path: Path):
+        """Installing hooks should replace previously managed CLI variants."""
+        hooks_cfg = _json_hooks_config()
+        installer = _make_installer(tmp_path, "claude", hooks_cfg)
+        installer.cli_command = "oak"
+
+        template = {
+            "hooks": {
+                "SessionStart": [
+                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]}
+                ]
+            }
+        }
+        installed = {
+            "hooks": {
+                "SessionStart": [
+                    {"hooks": [{"command": "oak-dev ci hook SessionStart --agent claude"}]},
+                    {"hooks": [{"command": "echo user hook"}]},
+                ]
+            }
+        }
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir(parents=True)
+        (config_dir / "settings.json").write_text(json.dumps(installed))
+
+        with patch.object(installer, "_load_hook_template", return_value=template):
+            result = installer.install()
+
+        assert result.success is True
+        config = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        hooks = config["hooks"]["SessionStart"]
+        commands = [entry["hooks"][0]["command"] for entry in hooks]
+        assert "oak-dev ci hook SessionStart --agent claude" not in commands
+        assert "oak ci hook SessionStart --agent claude" in commands
+        assert "echo user hook" in commands
+
 
 # ===========================================================================
 # OTEL type tests
@@ -406,3 +504,18 @@ class TestNeedsUpgradeEdgeCases:
 
         # _load_hook_template returns None for missing template
         assert installer.needs_upgrade() is False
+
+    def test_hook_templates_use_cli_command_placeholder(self):
+        """Managed hook templates should not hardcode `oak ci hook`."""
+        errors: list[str] = []
+        for template_path in HOOKS_TEMPLATE_DIR.glob("**/*"):
+            if not template_path.is_file() or template_path.suffix not in {".json", ".ts"}:
+                continue
+            content = template_path.read_text(encoding="utf-8")
+            if "oak ci hook" in content:
+                errors.append(str(template_path))
+
+        assert not errors, (
+            "Hardcoded 'oak ci hook' found in managed hook templates. "
+            "Use '{oak-cli-command} ci hook' placeholder in:\n" + "\n".join(errors)
+        )

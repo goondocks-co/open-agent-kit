@@ -51,7 +51,8 @@ Available RFC templates (specified via `--template` on `oak rfc create`):
 
 ## Agent Auto-Approval Settings
 
-During initialization, OAK installs agent-specific settings that enable auto-approval for `oak` commands:
+During initialization, OAK installs agent-specific settings that enable auto-approval
+for the configured OAK CLI command (`oak` by default):
 
 | Agent | Settings File |
 |-------|---------------|
@@ -62,6 +63,15 @@ During initialization, OAK installs agent-specific settings that enable auto-app
 | Windsurf | `.windsurf/settings.json` |
 
 Run `oak upgrade` to update agent settings to the latest version.
+
+If you need a different command in one repository (for example `oak-dev`), set:
+
+```bash
+oak ci config --cli-command oak-dev
+```
+
+This updates managed integrations in that project to use the new command.
+See [Codebase Intelligence Configuration](/open-agent-kit/features/codebase-intelligence/configuration/#cli-command-for-managed-integrations) for details.
 
 ## Agent Instruction Files
 

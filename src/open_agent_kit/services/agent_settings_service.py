@@ -25,6 +25,10 @@ from typing import Any
 import yaml
 
 from open_agent_kit.config.paths import FEATURES_DIR
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    render_cli_command_placeholder,
+    resolve_ci_cli_command,
+)
 from open_agent_kit.utils import (
     cleanup_empty_directories,
     ensure_dir,
@@ -62,6 +66,7 @@ class AgentSettingsService:
         self.agents_dir = AGENTS_DIR
         # Path: services/agent_settings_service.py -> services/ -> open_agent_kit/
         self.core_dir = Path(__file__).parent.parent / FEATURES_DIR / "core"
+        self.cli_command = resolve_ci_cli_command(self.project_root)
 
         # Cache for loaded manifests
         self._manifest_cache: dict[str, dict[str, Any]] = {}
@@ -156,6 +161,7 @@ class AgentSettingsService:
 
         try:
             content = read_file(template_path)
+            content = render_cli_command_placeholder(content, self.cli_command)
             result: dict[str, Any] = json.loads(content)
             return result
         except (json.JSONDecodeError, OSError) as e:

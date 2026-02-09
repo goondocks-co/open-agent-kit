@@ -8,6 +8,13 @@ This module consolidates all user-facing messages including:
 """
 
 # =============================================================================
+# Project Metadata
+# =============================================================================
+
+PROJECT_TAGLINE = "Your Team's Memory in the Age of AI-Written Code"
+PROJECT_URL = "https://oak.goondocks.co"
+
+# =============================================================================
 # Banner and Help
 # =============================================================================
 
@@ -26,8 +33,8 @@ BANNER = """
 ╰─────────────────────────────────────────────────────────╯
 """
 
-HELP_TEXT = """
-[bold cyan]oak[/bold cyan] - Open Agent Kit: AI-powered development workflows
+HELP_TEXT = f"""
+[bold cyan]oak[/bold cyan] - Open Agent Kit: {PROJECT_TAGLINE}
 
 [bold]Primary Commands:[/bold]
   [cyan]init[/cyan]        Initialize .oak directory with templates and configs
@@ -53,7 +60,7 @@ HELP_TEXT = """
   2. Run [cyan]oak rfc create[/cyan] to create your first RFC
   3. See the Quick Start guide: [dim]QUICKSTART.md[/dim]
 
-For more information, visit: https://github.com/sirkirby/open-agent-kit
+For more information, visit: {PROJECT_URL}
 """
 
 NEXT_STEPS_INIT = """[bold green]What's Next?[/bold green]
@@ -282,9 +289,3 @@ PROGRESS_CHARS = {
     "current": "●",
     "error": "✗",
 }
-
-# =============================================================================
-# URLs
-# =============================================================================
-
-PROJECT_URL = "https://github.com/sirkirby/open-agent-kit"

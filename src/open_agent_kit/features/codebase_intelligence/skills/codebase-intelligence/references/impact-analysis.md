@@ -22,23 +22,23 @@ Semantic search finds code related by meaning. When you change how something wor
 
 ```bash
 # Find all code related to what you're changing
-oak ci search "AuthService token validation" --type code -n 20
+{oak-cli-command} ci search "AuthService token validation" --type code -n 20
 
 # Get impact context for a specific file
-oak ci context "impact of changes" -f src/services/auth.py
+{oak-cli-command} ci context "impact of changes" -f src/services/auth.py
 
 # Search for code using similar patterns
-oak ci search "code that depends on JWT token format" --type code
+{oak-cli-command} ci search "code that depends on JWT token format" --type code
 ```
 
 ### Check for related memories
 
 ```bash
 # Find past learnings that might be relevant
-oak ci search "gotchas with auth changes" --type memory
+{oak-cli-command} ci search "gotchas with auth changes" --type memory
 
 # Find decisions that might be affected
-oak ci search "decisions about token handling"
+{oak-cli-command} ci search "decisions about token handling"
 ```
 
 ## Example: Before Refactoring
@@ -47,16 +47,16 @@ oak ci search "decisions about token handling"
 
 ```bash
 # 1. Find all code conceptually related to payment processing
-oak ci search "payment processing flow" --type code -n 20
+{oak-cli-command} ci search "payment processing flow" --type code -n 20
 
 # 2. Find code that handles payment errors (often missed)
-oak ci search "payment error handling and recovery" --type code
+{oak-cli-command} ci search "payment error handling and recovery" --type code
 
 # 3. Find related integrations
-oak ci search "payment gateway integration" --type code
+{oak-cli-command} ci search "payment gateway integration" --type code
 
 # 4. Check for past issues/decisions
-oak ci search "payment processing gotchas" --type memory
+{oak-cli-command} ci search "payment processing gotchas" --type memory
 ```
 
 **What you'll find**:
@@ -74,25 +74,25 @@ Many of these won't show up in import analysis!
 
 ```bash
 # Find all code that might parse this response
-oak ci search "user API response handling" --type code
+{oak-cli-command} ci search "user API response handling" --type code
 
 # Find frontend code consuming this API
-oak ci search "fetch user data from API" --type code
+{oak-cli-command} ci search "fetch user data from API" --type code
 
 # Find tests that might break
-oak ci search "user API endpoint tests" --type code
+{oak-cli-command} ci search "user API endpoint tests" --type code
 
 # Check for integration patterns
-oak ci context "code that depends on user API format"
+{oak-cli-command} ci context "code that depends on user API format"
 ```
 
 ## Impact Analysis Workflow
 
 1. **Identify the change**: What are you modifying?
-2. **Search for direct usage**: `oak ci search "ComponentName" --type code`
-3. **Search for conceptual usage**: `oak ci search "what ComponentName does" --type code`
-4. **Check for patterns**: `oak ci search "code using similar patterns" --type code`
-5. **Review memories**: `oak ci search "past issues with this area" --type memory`
+2. **Search for direct usage**: `{oak-cli-command} ci search "ComponentName" --type code`
+3. **Search for conceptual usage**: `{oak-cli-command} ci search "what ComponentName does" --type code`
+4. **Check for patterns**: `{oak-cli-command} ci search "code using similar patterns" --type code`
+5. **Review memories**: `{oak-cli-command} ci search "past issues with this area" --type memory`
 6. **Read the results**: Assess which code might need updates
 
 ## Tips
@@ -101,4 +101,4 @@ oak ci context "code that depends on user API format"
 - Search for what the code *does*, not just its name
 - Include error handling and edge cases in your search
 - Check memories for past issues in this area
-- Use `oak ci context` with the file you're changing for focused results
+- Use `{oak-cli-command} ci context` with the file you're changing for focused results

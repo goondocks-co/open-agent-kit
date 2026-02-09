@@ -22,13 +22,13 @@ Use this workflow when:
 
 ```bash
 # Create an RFC interactively
-oak rfc create --title "Add caching layer" --template feature
+oak-dev rfc create --title "Add caching layer" --template feature
 
 # List existing RFCs
-oak rfc list
+oak-dev rfc list
 
 # Validate an RFC
-oak rfc validate oak/rfc/RFC-001-add-caching-layer.md
+oak-dev rfc validate oak/rfc/RFC-001-add-caching-layer.md
 ```
 
 ## RFC Templates
@@ -70,7 +70,7 @@ What else did we consider? Why not those?
 ### 1. Create the RFC
 
 ```bash
-oak rfc create --title "Your RFC Title" --template feature --author "Your Name"
+oak-dev rfc create --title "Your RFC Title" --template feature --author "Your Name"
 ```
 
 This creates a file in `oak/rfc/` with the proper structure.
@@ -88,13 +88,13 @@ Edit the generated file to add:
 The RFC is now ready for team review. Once approved:
 
 ```bash
-oak rfc adopt oak/rfc/RFC-XXX-your-rfc.md
+oak-dev rfc adopt oak/rfc/RFC-XXX-your-rfc.md
 ```
 
 Or if abandoned:
 
 ```bash
-oak rfc abandon oak/rfc/RFC-XXX-your-rfc.md --reason "Superseded by RFC-YYY"
+oak-dev rfc abandon oak/rfc/RFC-XXX-your-rfc.md --reason "Superseded by RFC-YYY"
 ```
 
 ## Tips

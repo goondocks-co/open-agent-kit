@@ -1,5 +1,6 @@
 {
   "chat.tools.terminal.autoApprove": {
-    "oak": true
+    "oak": true,
+    "oak-dev": true
   }
 }

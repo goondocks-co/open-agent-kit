@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SessionStart --agent claude",
+            "command": "oak-dev ci hook SessionStart --agent claude",
             "timeout": 60
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook UserPromptSubmit --agent claude",
+            "command": "oak-dev ci hook UserPromptSubmit --agent claude",
             "timeout": 60
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook PostToolUse --agent claude",
+            "command": "oak-dev ci hook PostToolUse --agent claude",
             "timeout": 60
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook Stop --agent claude",
+            "command": "oak-dev ci hook Stop --agent claude",
             "timeout": 60
           }
         ]
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SessionEnd --agent claude",
+            "command": "oak-dev ci hook SessionEnd --agent claude",
             "timeout": 60
           }
         ]
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook PostToolUseFailure --agent claude",
+            "command": "oak-dev ci hook PostToolUseFailure --agent claude",
             "timeout": 60
           }
         ]
@@ -78,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SubagentStart --agent claude",
+            "command": "oak-dev ci hook SubagentStart --agent claude",
             "timeout": 60
           }
         ]
@@ -90,7 +90,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SubagentStop --agent claude",
+            "command": "oak-dev ci hook SubagentStop --agent claude",
             "timeout": 60
           }
         ]

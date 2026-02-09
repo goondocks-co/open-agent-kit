@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/hooks.json",
-  "$comment": "Codebase Intelligence hooks for Claude Code. Uses `oak ci hook` command for cross-platform compatibility. OAK hooks are identified by the oak ci hook command pattern.",
+  "$comment": "Codebase Intelligence hooks for Claude Code. Uses `{oak-cli-command} ci hook` command for cross-platform compatibility. OAK hooks are identified by the {oak-cli-command} ci hook command pattern.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SessionStart --agent claude",
+            "command": "{oak-cli-command} ci hook SessionStart --agent claude",
             "timeout": 60
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook UserPromptSubmit --agent claude",
+            "command": "{oak-cli-command} ci hook UserPromptSubmit --agent claude",
             "timeout": 60
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook PostToolUse --agent claude",
+            "command": "{oak-cli-command} ci hook PostToolUse --agent claude",
             "timeout": 60
           }
         ]
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook Stop --agent claude",
+            "command": "{oak-cli-command} ci hook Stop --agent claude",
             "timeout": 60
           }
         ]
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SessionEnd --agent claude",
+            "command": "{oak-cli-command} ci hook SessionEnd --agent claude",
             "timeout": 60
           }
         ]
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook PostToolUseFailure --agent claude",
+            "command": "{oak-cli-command} ci hook PostToolUseFailure --agent claude",
             "timeout": 60
           }
         ]
@@ -80,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SubagentStart --agent claude",
+            "command": "{oak-cli-command} ci hook SubagentStart --agent claude",
             "timeout": 60
           }
         ]
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "oak ci hook SubagentStop --agent claude",
+            "command": "{oak-cli-command} ci hook SubagentStop --agent claude",
             "timeout": 60
           }
         ]

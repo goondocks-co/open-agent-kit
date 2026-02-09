@@ -496,6 +496,12 @@ AGENT_NOTIFY_COMMAND_ARGS_CODEX: Final[tuple[str, ...]] = (
 )
 AGENT_NOTIFY_ENDPOINT: Final[str] = "/api/oak/ci/notify"
 
+# CI executable command configuration
+CI_CONFIG_KEY_CLI_COMMAND: Final[str] = "cli_command"
+CI_CLI_COMMAND_DEFAULT: Final[str] = AGENT_NOTIFY_COMMAND_OAK
+CI_CLI_COMMAND_VALIDATION_PATTERN: Final[str] = r"^[A-Za-z0-9._/\-\\]+$"
+CI_CLI_COMMAND_OAK_PREFIX: Final[str] = f"{AGENT_NOTIFY_COMMAND_OAK} "
+
 # OTel attribute keys for data extraction (from Codex PR #2103)
 OTEL_ATTR_CONVERSATION_ID: Final[str] = "conversation.id"
 OTEL_ATTR_APP_VERSION: Final[str] = "app.version"

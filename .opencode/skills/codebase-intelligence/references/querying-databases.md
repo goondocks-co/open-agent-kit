@@ -19,7 +19,7 @@ Use direct SQL when browsing the dashboard is insufficient and detailed analysis
 - Full-text keyword search (FTS5 `MATCH` — different from semantic vector search)
 - When the CI daemon is not running (SQLite is always readable directly)
 
-**Never write to the database directly.** Always use `-readonly` with `sqlite3`. To store memories, use `oak_remember` or `oak ci remember`.
+**Never write to the database directly.** Always use `-readonly` with `sqlite3`. To store memories, use `oak_remember` or `oak-dev ci remember`.
 
 ## Database Location
 
@@ -69,13 +69,13 @@ For everyday codebase intelligence (semantic search, storing memories, retrievin
 
 | MCP Tool | CLI Equivalent | Purpose |
 |----------|---------------|---------|
-| `oak_search` | `oak ci search "query"` | Semantic vector search (code, memories, plans) |
-| `oak_remember` | `oak ci remember "observation"` | Store a memory or learning |
-| `oak_context` | `oak ci context "task"` | Get task-relevant context |
-| — | `oak ci memories --type gotcha` | Browse memories by type |
-| — | `oak ci sessions` | List session summaries |
+| `oak_search` | `oak-dev ci search "query"` | Semantic vector search (code, memories, plans) |
+| `oak_remember` | `oak-dev ci remember "observation"` | Store a memory or learning |
+| `oak_context` | `oak-dev ci context "task"` | Get task-relevant context |
+| — | `oak-dev ci memories --type gotcha` | Browse memories by type |
+| — | `oak-dev ci sessions` | List session summaries |
 
-Check daemon status with `oak ci status`. Start with `oak ci start` if needed.
+Check daemon status with `oak-dev ci status`. Start with `oak-dev ci start` if needed.
 
 ## Important Notes
 
@@ -99,10 +99,10 @@ For complete schema DDL and advanced query patterns, consult:
 For automated analysis that runs these queries and produces reports, use the analysis agent:
 
 ```bash
-oak ci agent run usage-report              # Cost and token usage trends
-oak ci agent run productivity-report       # Session quality and error rates
-oak ci agent run codebase-activity-report  # File hotspots and tool patterns
-oak ci agent run prompt-analysis           # Prompt quality and recommendations
+oak-dev ci agent run usage-report              # Cost and token usage trends
+oak-dev ci agent run productivity-report       # Session quality and error rates
+oak-dev ci agent run codebase-activity-report  # File hotspots and tool patterns
+oak-dev ci agent run prompt-analysis           # Prompt quality and recommendations
 ```
 
 Reports are written to `oak/insights/` (git-tracked, team-shareable).

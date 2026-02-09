@@ -1,5 +1,5 @@
 notify = [
-    "oak",
+    "oak-dev",
     "ci",
     "notify",
     "--agent",
@@ -7,7 +7,7 @@ notify = [
 ]
 
 [mcp_servers.oak-ci]
-command = "oak"
+command = "oak-dev"
 args = [
     "ci",
     "mcp",

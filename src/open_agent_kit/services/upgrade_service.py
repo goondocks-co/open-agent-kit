@@ -804,8 +804,10 @@ class UpgradeService:
                 # moving from .agent/skills/ to .gemini/skills/). Needs reinstall.
                 return True
 
-            # Compare directory contents - if any agent has outdated content, needs upgrade
-            if self._skill_dirs_differ(package_skill_dir, installed_skill_dir):
+            # Compare directory contents after CLI-aware rendering.
+            # This prevents perpetual upgrades when installed skills use a
+            # configured CLI command (e.g. oak-dev) and package assets use oak.
+            if skill_service.skill_dirs_differ(package_skill_dir, installed_skill_dir):
                 return True
 
         return False

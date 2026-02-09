@@ -28,11 +28,15 @@ from open_agent_kit.config.paths import (
     SKILL_MANIFEST_FILE,
     SKILLS_DIR,
 )
+from open_agent_kit.features.codebase_intelligence.cli_command import resolve_ci_cli_command
 from open_agent_kit.models.skill import SkillManifest
 from open_agent_kit.services.config_service import ConfigService
-from open_agent_kit.utils import copy_dir, ensure_dir, write_file
+from open_agent_kit.utils import ensure_dir, write_file
 
 logger = logging.getLogger(__name__)
+
+SKILL_CLI_COMMAND_PLACEHOLDER = "{oak-cli-command}"
+SKILL_BINARY_NULL_BYTE = b"\x00"
 
 
 def _feature_name_to_dir(feature_name: str) -> str:
@@ -66,11 +70,83 @@ class SkillService:
         """
         self.project_root = project_root or Path.cwd()
         self.config_service = ConfigService(project_root)
+        self.cli_command = resolve_ci_cli_command(self.project_root)
 
         # Package features directory (where feature manifests/templates/skills are stored)
         # Skills are read directly from the package and installed to agent directories
         # Path: services/skill_service.py -> services/ -> open_agent_kit/
         self.package_features_dir = Path(__file__).parent.parent / FEATURES_DIR
+
+    def _render_skill_text(self, content: str) -> str:
+        """Render skill text content with the configured CLI command."""
+        return content.replace(SKILL_CLI_COMMAND_PLACEHOLDER, self.cli_command)
+
+    def _load_text_for_render(self, path: Path) -> str | None:
+        """Load UTF-8 text content for rendering, or return None for binary content."""
+        raw = path.read_bytes()
+        if SKILL_BINARY_NULL_BYTE in raw:
+            return None
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+    def _copy_skill_dir(self, source_skill_dir: Path, dest_skill_dir: Path) -> None:
+        """Copy a skill directory while rendering text files for CLI command."""
+        for source_path in source_skill_dir.rglob("*"):
+            relative_path = source_path.relative_to(source_skill_dir)
+            dest_path = dest_skill_dir / relative_path
+
+            if source_path.is_dir():
+                dest_path.mkdir(parents=True, exist_ok=True)
+                continue
+
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            text_content = self._load_text_for_render(source_path)
+            if text_content is None:
+                shutil.copy2(source_path, dest_path)
+                continue
+
+            write_file(dest_path, self._render_skill_text(text_content))
+
+    def skill_dirs_differ(self, package_dir: Path, installed_dir: Path) -> bool:
+        """Check if skill directories differ after applying CLI-aware rendering."""
+        package_files = {
+            f.relative_to(package_dir): f for f in package_dir.rglob("*") if f.is_file()
+        }
+        installed_files = {
+            f.relative_to(installed_dir): f for f in installed_dir.rglob("*") if f.is_file()
+        }
+
+        if set(package_files.keys()) != set(installed_files.keys()):
+            return True
+
+        for rel_path, package_file in package_files.items():
+            installed_file = installed_files[rel_path]
+            package_text = self._load_text_for_render(package_file)
+            installed_text = self._load_text_for_render(installed_file)
+            if package_text is not None and installed_text is not None:
+                if self._render_skill_text(package_text) != installed_text:
+                    return True
+                continue
+
+            if package_text is None and installed_text is None:
+                if self._files_differ(package_file, installed_file):
+                    return True
+                continue
+
+            # One side is text and the other is binary; treat as different.
+            if package_text is None or installed_text is None:
+                return True
+
+        return False
+
+    def _files_differ(self, file1: Path, file2: Path) -> bool:
+        """Check if two files differ."""
+        try:
+            return file1.read_bytes() != file2.read_bytes()
+        except OSError:
+            return True
 
     def _get_agents_with_skills_support(self) -> list[tuple[str, Path, str]]:
         """Get configured agents that support skills.
@@ -332,8 +408,8 @@ class SkillService:
             # Remove existing directory if present (clean install)
             if dest_skill_dir.exists():
                 shutil.rmtree(dest_skill_dir)
-            # Copy entire skill directory including subdirectories
-            copy_dir(source_skill_dir, dest_skill_dir, overwrite=True)
+            # Copy and render markdown content with configured CLI command
+            self._copy_skill_dir(source_skill_dir, dest_skill_dir)
             results["installed_to"].append(str(dest_skill_dir.relative_to(self.project_root)))
             results["agents"].append(agent_name)
 
@@ -596,7 +672,7 @@ class SkillService:
                 # Remove existing directory and copy fresh (handles subdirectory changes)
                 if dest_skill_dir.exists():
                     shutil.rmtree(dest_skill_dir)
-                copy_dir(source_skill_dir, dest_skill_dir, overwrite=True)
+                self._copy_skill_dir(source_skill_dir, dest_skill_dir)
                 if agent_name not in results["agents"]:
                     results["agents"].append(agent_name)
 
@@ -668,7 +744,7 @@ class SkillService:
             # Remove existing directory and copy fresh (handles subdirectory changes)
             if dest_skill_dir.exists():
                 shutil.rmtree(dest_skill_dir)
-            copy_dir(source_skill_dir, dest_skill_dir, overwrite=True)
+            self._copy_skill_dir(source_skill_dir, dest_skill_dir)
             results["agents"].append(agent_name)
 
         results["upgraded"] = True

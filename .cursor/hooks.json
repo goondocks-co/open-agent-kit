@@ -3,62 +3,62 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "oak ci hook sessionStart --agent cursor"
+        "command": "oak-dev ci hook sessionStart --agent cursor"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "oak ci hook beforeSubmitPrompt --agent cursor"
+        "command": "oak-dev ci hook beforeSubmitPrompt --agent cursor"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "oak ci hook afterFileEdit --agent cursor"
+        "command": "oak-dev ci hook afterFileEdit --agent cursor"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "oak ci hook afterAgentResponse --agent cursor"
+        "command": "oak-dev ci hook afterAgentResponse --agent cursor"
       }
     ],
     "afterAgentThought": [
       {
-        "command": "oak ci hook afterAgentThought --agent cursor"
+        "command": "oak-dev ci hook afterAgentThought --agent cursor"
       }
     ],
     "postToolUse": [
       {
-        "command": "oak ci hook postToolUse --agent cursor"
+        "command": "oak-dev ci hook postToolUse --agent cursor"
       }
     ],
     "preCompact": [
       {
-        "command": "oak ci hook preCompact --agent cursor"
+        "command": "oak-dev ci hook preCompact --agent cursor"
       }
     ],
     "stop": [
       {
-        "command": "oak ci hook stop --agent cursor"
+        "command": "oak-dev ci hook stop --agent cursor"
       }
     ],
     "sessionEnd": [
       {
-        "command": "oak ci hook sessionEnd --agent cursor"
+        "command": "oak-dev ci hook sessionEnd --agent cursor"
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "oak ci hook postToolUseFailure --agent cursor"
+        "command": "oak-dev ci hook postToolUseFailure --agent cursor"
       }
     ],
     "subagentStart": [
       {
-        "command": "oak ci hook subagentStart --agent cursor"
+        "command": "oak-dev ci hook subagentStart --agent cursor"
       }
     ],
     "subagentStop": [
       {
-        "command": "oak ci hook subagentStop --agent cursor"
+        "command": "oak-dev ci hook subagentStop --agent cursor"
       }
     ]
   }

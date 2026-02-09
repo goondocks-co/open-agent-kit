@@ -1,65 +1,65 @@
 {
-  "$comment": "Codebase Intelligence hooks for Cursor. Uses `oak ci hook` command for cross-platform compatibility. OAK hooks are identified by the oak ci hook command pattern.",
+  "$comment": "Codebase Intelligence hooks for Cursor. Uses `{oak-cli-command} ci hook` command for cross-platform compatibility. OAK hooks are identified by the {oak-cli-command} ci hook command pattern.",
   "version": 1,
   "hooks": {
     "sessionStart": [
       {
-        "command": "oak ci hook sessionStart --agent cursor"
+        "command": "{oak-cli-command} ci hook sessionStart --agent cursor"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "oak ci hook beforeSubmitPrompt --agent cursor"
+        "command": "{oak-cli-command} ci hook beforeSubmitPrompt --agent cursor"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "oak ci hook afterFileEdit --agent cursor"
+        "command": "{oak-cli-command} ci hook afterFileEdit --agent cursor"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "oak ci hook afterAgentResponse --agent cursor"
+        "command": "{oak-cli-command} ci hook afterAgentResponse --agent cursor"
       }
     ],
     "afterAgentThought": [
       {
-        "command": "oak ci hook afterAgentThought --agent cursor"
+        "command": "{oak-cli-command} ci hook afterAgentThought --agent cursor"
       }
     ],
     "postToolUse": [
       {
-        "command": "oak ci hook postToolUse --agent cursor"
+        "command": "{oak-cli-command} ci hook postToolUse --agent cursor"
       }
     ],
     "preCompact": [
       {
-        "command": "oak ci hook preCompact --agent cursor"
+        "command": "{oak-cli-command} ci hook preCompact --agent cursor"
       }
     ],
     "stop": [
       {
-        "command": "oak ci hook stop --agent cursor"
+        "command": "{oak-cli-command} ci hook stop --agent cursor"
       }
     ],
     "sessionEnd": [
       {
-        "command": "oak ci hook sessionEnd --agent cursor"
+        "command": "{oak-cli-command} ci hook sessionEnd --agent cursor"
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "oak ci hook postToolUseFailure --agent cursor"
+        "command": "{oak-cli-command} ci hook postToolUseFailure --agent cursor"
       }
     ],
     "subagentStart": [
       {
-        "command": "oak ci hook subagentStart --agent cursor"
+        "command": "{oak-cli-command} ci hook subagentStart --agent cursor"
       }
     ],
     "subagentStop": [
       {
-        "command": "oak ci hook subagentStop --agent cursor"
+        "command": "{oak-cli-command} ci hook subagentStop --agent cursor"
       }
     ]
   }

@@ -1,5 +1,6 @@
 {
   "windsurf.cascadeCommandsAllowList": [
-    "oak"
+    "oak",
+    "oak-dev"
   ]
 }

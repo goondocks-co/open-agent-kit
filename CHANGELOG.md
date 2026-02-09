@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-02-09
+
+### Added
+
+- Published `oak-ci` package to PyPI (v1.0.2) with cross-platform install script supporting macOS, Linux, and Windows PATH detection — [Publish oak-ci 1.0.2 and fix install script](http://localhost:38388/activity/sessions/44aa9400-db40-4db8-971e-5991cf0434b4)
+- Concise feature request issue template for GitHub — [Add concise feature request template to repo](http://localhost:38388/activity/sessions/e6d294c4-3847-4b80-ad8c-4489287492b8)
+- CI workflow with idempotent install scripts, mypy gating, and custom domain for GitHub Pages documentation — [Configure CI workflow and idempotent install scripts](http://localhost:38388/activity/sessions/019c3f47-583c-79b0-8b7b-9b794c797b5f)
+
+### Changed
+
+- Agent-kit templates refactored for consistent placeholders (`{{ agent_name }}`, `{{ skill_name }}`) with automatic injection during upgrades — [Refactor Oak agent‑kit templates for consistent placeholders and upgrade auto...](http://localhost:38388/activity/sessions/019c4361-2300-7c91-9a72-e41fe2c9fefa)
+- Repository history cleaned and squashed for public open-source release — [Refactor repository history for clean public release](http://localhost:38388/activity/sessions/3d44092e-6cb0-433f-a611-d1a06ec6fcb7)
+- `.oak/state.yaml` excluded from version control and leftover installer migrations removed for clean first-run experience — [Configure .oak/state.yaml exclusion and remove leftover migrations](http://localhost:38388/activity/sessions/1ec7b4a2-ef29-48db-873b-930c52c5cac2)
+- Agent indexer configured to ignore build artifact directories — [Configure agent to ignore build artifact directories](http://localhost:38388/activity/sessions/16b837e8-90d1-4f38-b4f5-2c2c0d0721eb)
+
+### Fixed
+
+- Fix GitHub Pages broken links, `baseurl` configuration, and hard-coded documentation URLs across README, QUICKSTART, and issue templates — [Fix GitHub Pages links, update baseurl, and correct documentation URLs](http://localhost:38388/activity/sessions/248550ba-3db2-4a40-a4f5-fcf4c0235974)
+- Fix install script failing to add agent binary to PATH on macOS due to incorrect shell detection logic — [Publish oak-ci 1.0.2 and fix install script](http://localhost:38388/activity/sessions/44aa9400-db40-4db8-971e-5991cf0434b4)
+
+### Improved
+
+- Daemon UI TaskList CPU usage reduced from ~10% to ~2% idle via `React.memo`, `useCallback`, debounced search, and batched API requests — [Refactor TaskList to Reduce CPU Usage in Oak Daemon UI](http://localhost:38388/activity/sessions/cdd818d1-75e4-48ee-9d48-2f59af2dfe53)
+- Test suite audited: stale imports removed, test-to-source mapping updated, orphan tests flagged — [Debug test suite audit and stale import cleanup](http://localhost:38388/activity/sessions/c89831a0-e4af-4f79-b8fb-99e6ccea904b)
+
+### Notes
+
+> **Gotcha**: `.oak/state.yaml` tracks applied migration names. If migrations are removed from the codebase but their names remain in state.yaml, the migration runner may attempt to reference non-existent modules, causing `ImportError` or silent failures during startup. After a clean release, ensure state.yaml is reset or excluded from version control.
+
+> **Gotcha**: The install script must handle both user-local and system installations. On macOS, `~/.local/bin` may not be on PATH by default — the installer now appends it to the appropriate shell profile (`.zshrc`, `.bash_profile`), but users with custom shell setups should verify manually.
+
+> **Gotcha**: GitHub issue templates must be placed in `.github/ISSUE_TEMPLATE/` with the `.yml` extension. A missing or misnamed file will silently not appear in the issue creation UI.
+
+## [Previous] - pre-1.0.2
+
 ### Added
 
 - Token-based authentication for daemon API and UI with file-backed secrets — [Implement token‑based authentication for API and UI](http://localhost:38388/activity/sessions/b172c7fd-12d6-463b-a540-9b676a173992)

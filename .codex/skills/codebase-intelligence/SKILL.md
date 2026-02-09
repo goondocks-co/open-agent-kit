@@ -8,7 +8,7 @@ description: >-
   in previous sessions, looking up past conversations or outcomes, querying
   session history, checking activity logs, browsing memories, running SQL
   against activities.db, or exploring patterns that grep would miss. Do NOT use
-  for storing memories — use oak_remember or oak ci remember instead.
+  for storing memories — use oak_remember or oak-dev ci remember instead.
 allowed-tools: Bash, Read
 user-invocable: true
 ---
@@ -23,20 +23,20 @@ Search, analyze, and query your codebase using semantic vector search, impact an
 
 ```bash
 # Find code related to a concept
-oak ci search "form validation logic" --type code
+oak-dev ci search "form validation logic" --type code
 
 # Find similar patterns
-oak ci search "retry with exponential backoff" --type code
+oak-dev ci search "retry with exponential backoff" --type code
 ```
 
 ### Impact analysis
 
 ```bash
 # Find all code related to what you're changing
-oak ci search "AuthService token validation" --type code -n 20
+oak-dev ci search "AuthService token validation" --type code -n 20
 
 # Get impact context for a specific file
-oak ci context "impact of changes" -f src/services/auth.py
+oak-dev ci context "impact of changes" -f src/services/auth.py
 ```
 
 ### Session and memory lookup
@@ -47,10 +47,10 @@ sqlite3 -readonly -header -column .oak/ci/activities.db \
   "SELECT id, agent, title, status, datetime(created_at_epoch, 'unixepoch', 'localtime') as started FROM sessions ORDER BY created_at_epoch DESC LIMIT 5;"
 
 # Search past decisions and learnings
-oak ci search "authentication refactor decision" --type memory
+oak-dev ci search "authentication refactor decision" --type memory
 
 # Browse memories by type
-oak ci memories --type decision
+oak-dev ci memories --type decision
 ```
 
 ### Database query
@@ -66,22 +66,22 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "SELECT count(*) FROM se
 
 | Command | Purpose |
 |---------|---------|
-| `oak ci search "query" --type code` | Semantic vector search for code |
-| `oak ci search "query" --type memory` | Semantic search for memories |
-| `oak ci search "query" -n 20` | Broader search with more results |
-| `oak ci context "task" -f <file>` | Get context for current work |
-| `oak ci remember "observation"` | Store a memory (NOT via SQL) |
-| `oak ci memories --type gotcha` | Browse memories by type |
-| `oak ci sessions` | List session summaries |
-| `oak ci status` | Check daemon status |
+| `oak-dev ci search "query" --type code` | Semantic vector search for code |
+| `oak-dev ci search "query" --type memory` | Semantic search for memories |
+| `oak-dev ci search "query" -n 20` | Broader search with more results |
+| `oak-dev ci context "task" -f <file>` | Get context for current work |
+| `oak-dev ci remember "observation"` | Store a memory (NOT via SQL) |
+| `oak-dev ci memories --type gotcha` | Browse memories by type |
+| `oak-dev ci sessions` | List session summaries |
+| `oak-dev ci status` | Check daemon status |
 
 ### MCP tools
 
 | MCP Tool | CLI Equivalent | Purpose |
 |----------|---------------|---------|
-| `oak_search` | `oak ci search "query"` | Semantic vector search |
-| `oak_remember` | `oak ci remember "observation"` | Store a memory |
-| `oak_context` | `oak ci context "task"` | Get task-relevant context |
+| `oak_search` | `oak-dev ci search "query"` | Semantic vector search |
+| `oak_remember` | `oak-dev ci remember "observation"` | Store a memory |
+| `oak_context` | `oak-dev ci context "task"` | Get task-relevant context |
 
 ### Direct SQL
 
@@ -93,15 +93,15 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "YOUR QUERY HERE"
 
 | Need | Tool | Example |
 |------|------|---------|
-| Find similar implementations | `oak ci search --type code` | "retry with exponential backoff" |
-| Understand component relationships | `oak ci context` | "how auth middleware relates to session handling" |
-| Assess refactoring risk | `oak ci search --type code -n 20` | "PaymentProcessor error handling" |
-| Find past decisions/gotchas | `oak ci search --type memory` | "gotchas with auth changes" |
+| Find similar implementations | `oak-dev ci search --type code` | "retry with exponential backoff" |
+| Understand component relationships | `oak-dev ci context` | "how auth middleware relates to session handling" |
+| Assess refactoring risk | `oak-dev ci search --type code -n 20` | "PaymentProcessor error handling" |
+| Find past decisions/gotchas | `oak-dev ci search --type memory` | "gotchas with auth changes" |
 | Recall previous discussions | `sqlite3 -readonly` | `SELECT title, summary FROM sessions WHERE ...` |
-| Find what was done before | `oak ci memories` / `sqlite3` | "what did we decide about caching?" |
+| Find what was done before | `oak-dev ci memories` / `sqlite3` | "what did we decide about caching?" |
 | Query session history | `sqlite3 -readonly` | `SELECT * FROM sessions ORDER BY ...` |
 | Aggregate usage stats | `sqlite3 -readonly` | `SELECT agent_name, sum(cost_usd) FROM agent_runs ...` |
-| Run automated analysis | `oak ci agent run` | `oak ci agent run usage-report` |
+| Run automated analysis | `oak-dev ci agent run` | `oak-dev ci agent run usage-report` |
 
 ## Why Semantic Search Over Grep
 
@@ -217,10 +217,10 @@ ORDER BY next_run_at_epoch;
 For automated analysis that runs queries and produces reports:
 
 ```bash
-oak ci agent run usage-report              # Cost and token usage trends
-oak ci agent run productivity-report       # Session quality and error rates
-oak ci agent run codebase-activity-report  # File hotspots and tool patterns
-oak ci agent run prompt-analysis           # Prompt quality and recommendations
+oak-dev ci agent run usage-report              # Cost and token usage trends
+oak-dev ci agent run productivity-report       # Session quality and error rates
+oak-dev ci agent run codebase-activity-report  # File hotspots and tool patterns
+oak-dev ci agent run prompt-analysis           # Prompt quality and recommendations
 ```
 
 Reports are written to `oak/insights/` (git-tracked, team-shareable).

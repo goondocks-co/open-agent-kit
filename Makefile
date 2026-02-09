@@ -9,7 +9,7 @@
 #   make setup    # Install dependencies
 #   make check    # Run all checks
 
-.PHONY: help setup setup-full sync lock uninstall test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset
+.PHONY: help setup setup-full sync lock uninstall cli-stable cli-dev cli-dual cli-verify test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset
 
 # Default target
 help:
@@ -18,10 +18,14 @@ help:
 	@echo "Prerequisites: Python 3.13, uv (https://docs.astral.sh/uv)"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make setup         Install all dependencies and oak CLI tool"
+	@echo "    make setup         Install dependencies and editable repo CLI (oak-dev)"
 	@echo "    make sync          Re-sync dependencies after git pull"
 	@echo "    make lock          Update lockfile after changing pyproject.toml"
-	@echo "    make uninstall     Remove dev environment and oak tool"
+	@echo "    make uninstall     Remove dev environment and local editable CLI install"
+	@echo "    make cli-stable    Install/reinstall stable oak CLI via pipx (oak)"
+	@echo "    make cli-dev       Install/reinstall editable repo via pipx suffix (oak-dev)"
+	@echo "    make cli-dual      Install both stable oak and editable oak-dev"
+	@echo "    make cli-verify    Show where oak/oak-dev resolve and pipx package state"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test          Run all tests with coverage"
@@ -68,12 +72,14 @@ help:
 # Setup targets
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
 	uv sync --extra dev
-	uv tool install -e . --force
+	pipx install --editable . --suffix=-dev --force
 	@echo "\nSetup complete! All dependencies installed."
 	@echo "Run 'make check' to verify everything works."
 	@echo ""
-	@echo "The 'oak' command is now available globally (editable install)."
+	@echo "Repo-local dev CLI: use 'oak-dev' in this repository."
+	@echo "Global stable CLI remains 'oak' for other repositories."
 	@echo ""
 	@echo "CI feature dev workflow:"
 	@echo "  make ci-dev      Run daemon with hot reload (auto-restarts on code changes)"
@@ -85,18 +91,39 @@ setup-full: setup
 
 sync:
 	uv sync --extra dev
-	uv tool install -e . --force
-	@echo "Dependencies synced and oak tool reinstalled."
+	pipx install --editable . --suffix=-dev --force
+	@echo "Dependencies synced and oak-dev editable install refreshed."
 
 lock:
 	uv lock
 	@echo "Lockfile updated. Run 'make sync' to install."
 
 uninstall:
+	pipx uninstall oak-ci-dev 2>/dev/null || true
 	uv tool uninstall open-agent-kit 2>/dev/null || true
 	rm -rf .venv
-	@echo "Dev environment and oak tool removed."
+	@echo "Dev environment and local editable CLI install removed."
 	@echo "To reinstall: make setup"
+
+cli-stable:
+	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
+	pipx install oak-ci --force
+	@echo "Stable CLI installed as 'oak'."
+
+cli-dev:
+	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
+	pipx install --editable . --suffix=-dev --force
+	@echo "Editable CLI installed as 'oak-dev'."
+
+cli-dual: cli-stable cli-dev
+	@echo "Dual install complete: oak (stable), oak-dev (editable)."
+
+cli-verify:
+	@echo "Command resolution:"
+	@which -a oak oak-dev || true
+	@echo ""
+	@echo "pipx packages:"
+	@pipx list
 
 # Testing targets
 test:
@@ -230,4 +257,3 @@ dogfood-reset:
 	uv run oak feature add strategic-planning
 	@echo ""
 	@echo "Dogfooding environment reset. Run 'make ci-dev' to start daemon with hot reload."
-
