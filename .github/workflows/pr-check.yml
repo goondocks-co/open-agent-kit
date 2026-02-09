@@ -107,6 +107,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
+        shell: bash {0}
         env:
           # Limit background threads spawned by numeric/ML libraries (onnxruntime,
           # OpenMP, MKL).  On Linux these appear as child processes and the GH
@@ -116,10 +117,18 @@ jobs:
           OPENBLAS_NUM_THREADS: "1"
           TOKENIZERS_PARALLELISM: "false"
         run: |
-          # Clear runner tracking ID so child processes spawned by test
-          # dependencies (onnxruntime, chromadb) are not flagged as orphans.
-          unset RUNNER_TRACKING_ID
-          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
+          # Run pytest in its own session so child processes spawned by test
+          # dependencies (onnxruntime, chromadb) are not in the runner's
+          # process group — prevents the runner from flagging them as orphans.
+          setsid pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml &
+          PYTEST_PID=$!
+          wait $PYTEST_PID
+          EXIT_CODE=$?
+          # Kill any remaining processes in pytest's process group
+          kill -- -$PYTEST_PID 2>/dev/null || true
+          sleep 1
+          kill -9 -- -$PYTEST_PID 2>/dev/null || true
+          exit $EXIT_CODE
 
   integration-test:
     name: Integration Test (Smoke)
