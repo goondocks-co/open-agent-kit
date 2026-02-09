@@ -123,13 +123,24 @@ version-file = "src/open_agent_kit/_version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/open_agent_kit"]
 # Include non-Python files in wheel (config, templates, manifests, static assets)
+# IMPORTANT: artifacts override exclude — use specific paths, never broad globs
+# that could match node_modules or other dev artifacts.
 artifacts = [
+    # Agent manifests
     "src/open_agent_kit/agents/**/*.yaml",
+    # Feature manifests and configs (YAML is safe — no node_modules YAML)
     "src/open_agent_kit/features/**/*.yaml",
-    "src/open_agent_kit/features/**/*.md",
-    "src/open_agent_kit/features/**/*.json",
-    "src/open_agent_kit/features/**/*.sh",
-    # CI daemon UI static files
+    # Feature markdown files — specific paths to avoid daemon/ui/node_modules leak
+    # (hatch artifacts override exclude, so broad globs like features/**/*.md are unsafe)
+    "src/open_agent_kit/features/strategic_planning/**/*.md",
+    "src/open_agent_kit/features/rules_management/**/*.md",
+    "src/open_agent_kit/features/codebase_intelligence/prompts/*.md",
+    "src/open_agent_kit/features/codebase_intelligence/agents/**/*.md",
+    "src/open_agent_kit/features/codebase_intelligence/commands/*.md",
+    "src/open_agent_kit/features/codebase_intelligence/skills/**/*.md",
+    # Agent settings JSON
+    "src/open_agent_kit/features/core/agent-settings/*.json",
+    # CI daemon UI static files (built by vite, not node_modules)
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.html",
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.css",
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.js",
@@ -137,10 +148,13 @@ artifacts = [
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.svg",
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.ico",
 ]
-# Exclude node_modules and other development artifacts
+# Exclude development artifacts (defense-in-depth — artifacts above are already specific)
 exclude = [
     "**/node_modules/**",
-    "**/ui/src/**",
+    "**/daemon/ui/*",
+    "**/daemon/ui/src/**",
+    "**/daemon/ui/public/**",
+    "**/daemon/ui/oak/**",
     "**/.vite/**",
 ]
 

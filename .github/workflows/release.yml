@@ -76,6 +76,11 @@ jobs:
           npm ci
           npm run build
 
+      - name: Clean frontend build artifacts
+        run: |
+          rm -rf src/open_agent_kit/features/codebase_intelligence/daemon/ui/node_modules
+          echo "Removed node_modules to prevent leaking into wheel"
+
       - name: Verify frontend assets
         run: |
           test -f src/open_agent_kit/features/codebase_intelligence/daemon/static/index.html
