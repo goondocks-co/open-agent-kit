@@ -107,33 +107,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
-        shell: bash {0}
-        run: |
-          echo "=== Memory before tests ==="
-          free -h
-
-          # Monitor memory in background (every 10s)
-          while true; do
-            echo "[$(date +%H:%M:%S)] $(free -h | awk '/^Mem:/{print "Used: "$3"/"$2}')"
-            sleep 10
-          done &
-          MONITOR_PID=$!
-
-          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
-          EXIT_CODE=$?
-
-          kill $MONITOR_PID 2>/dev/null || true
-
-          echo ""
-          echo "=== Memory after tests ==="
-          free -h
-
-          # Check for OOM kills
-          echo ""
-          echo "=== OOM check ==="
-          dmesg -T 2>/dev/null | grep -i -E "oom|out of memory|killed process" | tail -5 || echo "No OOM events (or dmesg not accessible)"
-
-          exit $EXIT_CODE
+        run: pytest tests/ -v -o "addopts=" --no-cov
 
   integration-test:
     name: Integration Test (Smoke)
