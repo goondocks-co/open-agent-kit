@@ -15,8 +15,8 @@ import { useStatus } from "@/hooks/use-status";
 /** Confirmation text required for the nuclear reset option */
 const RESET_CONFIRM_TEXT = "REBUILD";
 
-/** Refetch interval for memory stats (5 seconds) */
-const MEMORY_STATS_REFETCH_INTERVAL_MS = 5000;
+/** Refetch interval for memory stats (30 seconds) */
+const MEMORY_STATS_REFETCH_INTERVAL_MS = 30000;
 
 interface MemoryStats {
     sqlite: { total: number; embedded: number; unembedded: number; plans_embedded?: number; plans_unembedded?: number };

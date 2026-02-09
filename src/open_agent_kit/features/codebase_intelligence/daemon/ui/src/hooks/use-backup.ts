@@ -85,8 +85,8 @@ interface RestoreAllResponse {
     per_file: Record<string, RestoreResponse>;
 }
 
-/** Polling interval for backup status (5 seconds) */
-const BACKUP_STATUS_REFETCH_INTERVAL_MS = 5000;
+/** Polling interval for backup status (60 seconds) */
+const BACKUP_STATUS_REFETCH_INTERVAL_MS = 60000;
 
 /**
  * Hook to get current backup file status including all team backups.

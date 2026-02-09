@@ -30,8 +30,8 @@ interface TunnelStopResponse {
     status: string;
 }
 
-/** Polling interval for tunnel status (5 seconds) */
-const TUNNEL_STATUS_REFETCH_INTERVAL_MS = 5000;
+/** Polling interval for tunnel status (30 seconds) */
+const TUNNEL_STATUS_REFETCH_INTERVAL_MS = 30000;
 
 /**
  * Hook to get current tunnel status.

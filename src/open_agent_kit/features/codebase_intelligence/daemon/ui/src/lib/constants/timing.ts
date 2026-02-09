@@ -6,8 +6,11 @@
 // Polling & Timing
 // =============================================================================
 
-/** Status polling interval in milliseconds */
-export const STATUS_POLL_INTERVAL_MS = 2000;
+/** Status polling interval when actively indexing (5 seconds) */
+export const STATUS_POLL_ACTIVE_MS = 5000;
+
+/** Status polling interval when idle (30 seconds) */
+export const STATUS_POLL_IDLE_MS = 30000;
 
 /** Log polling interval in milliseconds */
 export const LOGS_POLL_INTERVAL_MS = 3000;

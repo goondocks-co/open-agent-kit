@@ -81,11 +81,11 @@ export interface SessionAgentsResponse {
     agents: string[];
 }
 
-/** Refetch interval for session lists (5 seconds) */
-const SESSION_REFETCH_INTERVAL_MS = 5000;
+/** Refetch interval for session lists (30 seconds) */
+const SESSION_REFETCH_INTERVAL_MS = 30000;
 
-/** Refetch interval for activity stats (10 seconds) */
-const STATS_REFETCH_INTERVAL_MS = 10000;
+/** Refetch interval for activity stats (60 seconds) */
+const STATS_REFETCH_INTERVAL_MS = 60000;
 
 export function useSessions(
     limit: number = PAGINATION.DEFAULT_LIMIT,
