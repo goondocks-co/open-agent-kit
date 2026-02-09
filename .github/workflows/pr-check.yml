@@ -107,6 +107,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
+        shell: bash {0}
         env:
           # Limit background threads spawned by numeric/ML libraries (onnxruntime,
           # OpenMP, MKL).  On Linux these appear as child processes and the GH
