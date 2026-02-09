@@ -108,26 +108,31 @@ jobs:
 
       - name: Run tests with pytest
         shell: bash {0}
-        env:
-          # Limit background threads spawned by numeric/ML libraries (onnxruntime,
-          # OpenMP, MKL).  On Linux these appear as child processes and the GH
-          # Actions runner treats them as orphans, cancelling the step.
-          OMP_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          TOKENIZERS_PARALLELISM: "false"
         run: |
-          # Run pytest in its own session so child processes spawned by test
-          # dependencies (onnxruntime, chromadb) are not in the runner's
-          # process group — prevents the runner from flagging them as orphans.
-          setsid pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml &
-          PYTEST_PID=$!
-          wait $PYTEST_PID
+          echo "=== Memory before tests ==="
+          free -h
+
+          # Monitor memory in background (every 10s)
+          while true; do
+            echo "[$(date +%H:%M:%S)] $(free -h | awk '/^Mem:/{print "Used: "$3"/"$2}')"
+            sleep 10
+          done &
+          MONITOR_PID=$!
+
+          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
           EXIT_CODE=$?
-          # Kill any remaining processes in pytest's process group
-          kill -- -$PYTEST_PID 2>/dev/null || true
-          sleep 1
-          kill -9 -- -$PYTEST_PID 2>/dev/null || true
+
+          kill $MONITOR_PID 2>/dev/null || true
+
+          echo ""
+          echo "=== Memory after tests ==="
+          free -h
+
+          # Check for OOM kills
+          echo ""
+          echo "=== OOM check ==="
+          dmesg -T 2>/dev/null | grep -i -E "oom|out of memory|killed process" | tail -5 || echo "No OOM events (or dmesg not accessible)"
+
           exit $EXIT_CODE
 
   integration-test:
