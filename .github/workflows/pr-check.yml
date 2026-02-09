@@ -88,17 +88,18 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    container:
-      image: python:3.13-slim
     timeout-minutes: 15
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y git
-
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history needed for hatch-vcs
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
 
       - name: Install dependencies
         run: |

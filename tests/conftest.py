@@ -9,6 +9,32 @@ from pathlib import Path
 import pytest
 
 # =============================================================================
+# CI environment: force immediate process exit after pytest completes
+# =============================================================================
+#
+# GitHub Actions runner kills processes that linger during Python's interpreter
+# shutdown (atexit handlers, non-daemon thread joins, GC of C-extension
+# modules).  This manifests as "The operation was canceled" even though all
+# tests pass.  pytest_unconfigure is the last hook in the pytest lifecycle —
+# all test results and reports (including coverage) have been finalized by this
+# point — so calling os._exit() here is safe.
+
+_ci_exit_status = 0
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Capture the pytest exit status for use in pytest_unconfigure."""
+    global _ci_exit_status  # noqa: PLW0603
+    _ci_exit_status = exitstatus
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Force immediate exit in CI to prevent runner cancellation."""
+    if os.environ.get("CI"):
+        os._exit(_ci_exit_status)
+
+
+# =============================================================================
 # Project-level fixtures
 # =============================================================================
 
