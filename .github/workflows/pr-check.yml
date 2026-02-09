@@ -107,7 +107,36 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
-        run: pytest tests/ -v -o "addopts=" --no-cov
+        run: |
+          python -c "
+          import subprocess, sys, os, signal
+
+          # Run pytest as a child process
+          proc = subprocess.Popen(
+              [sys.executable, '-m', 'pytest', 'tests/', '-v', '-o', 'addopts=', '--no-cov'],
+          )
+          proc.wait()
+          rc = proc.returncode
+
+          # Kill any orphan python processes left behind
+          ps = subprocess.run(['ps', '-eo', 'pid,ppid,command'], capture_output=True, text=True)
+          my_pid = os.getpid()
+          for line in ps.stdout.splitlines()[1:]:
+              parts = line.split(None, 2)
+              if len(parts) < 3:
+                  continue
+              pid_s, ppid_s, cmd = parts
+              if int(pid_s) == my_pid:
+                  continue
+              if 'python' in cmd.lower():
+                  print(f'ci-cleanup: killing orphan pid={pid_s} ppid={ppid_s} cmd={cmd[:120]}')
+                  try:
+                      os.kill(int(pid_s), signal.SIGTERM)
+                  except (ProcessLookupError, PermissionError):
+                      pass
+
+          os._exit(rc)
+          "
 
   integration-test:
     name: Integration Test (Smoke)

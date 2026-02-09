@@ -9,54 +9,22 @@ from pathlib import Path
 import pytest
 
 # =============================================================================
-# CI environment: clean up orphan processes and force immediate exit
+# CI environment: force immediate process exit after pytest completes
 # =============================================================================
 #
-# GitHub Actions runner monitors the process tree for each step.  When the main
-# pytest process finishes but orphan child processes remain, the runner cancels
-# the step ("The operation was canceled") even though all tests passed.
-#
-# Fix (two-phase):
-#   1. pytest_sessionfinish — kill any orphan Python children so the runner
-#      sees a clean process tree.  This runs BEFORE the terminal summary.
-#   2. pytest_unconfigure  — call os._exit() to skip Python's slow interpreter
-#      shutdown (atexit, GC, thread joins) which can also trigger the runner.
+# GitHub Actions runner cancels steps whose process tree has lingering children.
+# os._exit() in pytest_unconfigure ensures the pytest process exits immediately
+# after all reporting is done, without waiting for Python's slow interpreter
+# shutdown (atexit handlers, thread joins, GC of C-extension modules).
+# The outer wrapper in the CI workflow handles orphan process cleanup.
 
 _ci_exit_status = 0
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Kill orphan child processes in CI, then capture exit status."""
+    """Capture the pytest exit status for use in pytest_unconfigure."""
     global _ci_exit_status  # noqa: PLW0603
     _ci_exit_status = exitstatus
-
-    if not os.environ.get("CI"):
-        return
-
-    import signal
-    import subprocess
-
-    my_pid = str(os.getpid())
-    result = subprocess.run(
-        ["ps", "-eo", "pid,ppid,command"],
-        capture_output=True,
-        text=True,
-    )
-    for line in result.stdout.splitlines()[1:]:  # skip header
-        parts = line.split(None, 2)
-        if len(parts) < 3:
-            continue
-        pid_str, ppid_str, cmd = parts
-        if pid_str == my_pid:
-            continue
-        if "python" not in cmd.lower():
-            continue
-        # Log for diagnostics, then terminate
-        print(f"ci-cleanup: killing orphan pid={pid_str} ppid={ppid_str} cmd={cmd[:120]}")
-        try:
-            os.kill(int(pid_str), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
