@@ -108,7 +108,7 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          pytest tests/ -v --cov-report=xml
+          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
 
   integration-test:
     name: Integration Test (Smoke)
