@@ -30,6 +30,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 def pytest_unconfigure(config: pytest.Config) -> None:
     """Force immediate exit in CI to prevent runner cancellation."""
     if os.environ.get("CI"):
+        import sys
+
+        sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(_ci_exit_status)
 
 
