@@ -107,8 +107,16 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
+        env:
+          # Limit background threads spawned by numeric/ML libraries (onnxruntime,
+          # OpenMP, MKL).  On Linux these appear as child processes and the GH
+          # Actions runner treats them as orphans, cancelling the step.
+          OMP_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          TOKENIZERS_PARALLELISM: "false"
         run: |
-          pytest tests/ -v -o "addopts=" --no-cov
+          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
 
   integration-test:
     name: Integration Test (Smoke)
