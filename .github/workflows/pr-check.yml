@@ -117,7 +117,7 @@ jobs:
           OPENBLAS_NUM_THREADS: "1"
           TOKENIZERS_PARALLELISM: "false"
         run: |
-          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
+          pytest tests/ -v -o "addopts=" --no-cov
 
   integration-test:
     name: Integration Test (Smoke)
