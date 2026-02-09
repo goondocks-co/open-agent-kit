@@ -88,18 +88,17 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    container:
+      image: python:3.13-slim
+    timeout-minutes: 15
     steps:
+      - name: Install git
+        run: apt-get update && apt-get install -y git
+
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history needed for hatch-vcs
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -107,30 +106,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
-        shell: bash {0}
-        run: |
-          pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
-          PYTEST_EXIT=$?
-          echo "pytest_exit_code=$PYTEST_EXIT" >> "$GITHUB_OUTPUT"
-          echo "Pytest exited with code: $PYTEST_EXIT"
-          # Exit 0 here — the runner's orphan-process detection may cancel
-          # this step even though pytest passed.  The next step checks the
-          # real exit code.
-          exit 0
-        id: run-tests
-
-      - name: Check test results
-        if: always()
-        run: |
-          EXIT_CODE="${{ steps.run-tests.outputs.pytest_exit_code }}"
-          if [ -z "$EXIT_CODE" ]; then
-            echo "::error::Test step was killed before pytest could report results"
-            exit 1
-          elif [ "$EXIT_CODE" != "0" ]; then
-            echo "::error::Tests failed with exit code $EXIT_CODE"
-            exit 1
-          fi
-          echo "Tests passed (pytest exit code: 0)"
+        run: pytest tests/ -v -o "addopts=" --cov=src/open_agent_kit --cov-report=term-missing --cov-report=xml
 
   integration-test:
     name: Integration Test (Smoke)
