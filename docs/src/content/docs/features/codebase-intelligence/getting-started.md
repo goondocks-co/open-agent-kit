@@ -7,7 +7,8 @@ sidebar:
 
 ## Prerequisites
 
-- **Open Agent Kit** installed (`pipx install oak-ci`)
+- **Python 3.12 or 3.13** (3.14+ is not yet supported)
+- **Open Agent Kit** installed (`pipx install oak-ci --python python3.13`)
 - **Ollama** (Recommended for local embeddings) OR any OpenAI-compatible embedding service
 
 ## Activation

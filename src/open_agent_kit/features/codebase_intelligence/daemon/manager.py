@@ -225,6 +225,16 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
         shared_port_dir.mkdir(parents=True, exist_ok=True)
         shared_port_file.write_text(str(derived_port))
 
+        # Track the port file for cleanup on removal
+        try:
+            from open_agent_kit.services.state_service import StateService
+
+            state_service = StateService(project_root)
+            state_service.record_created_file(shared_port_file, str(derived_port))
+            state_service.record_created_directory(shared_port_dir)
+        except Exception:
+            pass  # State tracking is best-effort; don't break port derivation
+
     # Local override (.oak/ci/daemon.port) takes priority for the port
     # to USE, but does not prevent the shared file from being created.
     if local_port_file.exists():

@@ -325,6 +325,54 @@ class TestGetProjectPort:
         assert int((shared_dir / "daemon.port").read_text().strip()) == 37860
 
 
+class TestGetProjectPortTracking:
+    """Tests for state tracking of oak/daemon.port in get_project_port()."""
+
+    def test_records_created_file_on_port_creation(self, tmp_path: Path):
+        """record_created_file() should be called when oak/daemon.port is created."""
+        ci_dir = tmp_path / ".oak" / "ci"
+
+        with patch("open_agent_kit.services.state_service.StateService") as mock_cls:
+            mock_state = MagicMock()
+            mock_cls.return_value = mock_state
+
+            get_project_port(tmp_path, ci_dir)
+
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        shared_port_dir = tmp_path / "oak"
+        mock_state.record_created_file.assert_called_once_with(
+            shared_port_file, shared_port_file.read_text()
+        )
+        mock_state.record_created_directory.assert_called_once_with(shared_port_dir)
+
+    def test_does_not_track_when_port_file_exists(self, tmp_path: Path):
+        """record_created_file() should NOT be called when oak/daemon.port already exists."""
+        shared_dir = tmp_path / "oak"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "daemon.port").write_text("37860")
+
+        ci_dir = tmp_path / ".oak" / "ci"
+
+        with patch("open_agent_kit.services.state_service.StateService") as mock_cls:
+            get_project_port(tmp_path, ci_dir)
+
+        mock_cls.assert_not_called()
+
+    def test_state_tracking_failure_does_not_break_port(self, tmp_path: Path):
+        """State tracking failure should not prevent port derivation."""
+        ci_dir = tmp_path / ".oak" / "ci"
+
+        with patch("open_agent_kit.services.state_service.StateService") as mock_cls:
+            mock_cls.side_effect = RuntimeError("state broken")
+
+            port = get_project_port(tmp_path, ci_dir)
+
+        assert PORT_RANGE_START <= port < PORT_RANGE_START + PORT_RANGE_SIZE
+        # Port file should still be created
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        assert shared_port_file.exists()
+
+
 # =============================================================================
 # DaemonManager Tests
 # =============================================================================

@@ -4,7 +4,7 @@
 #
 # Detects available Python package managers and installs oak-ci from PyPI.
 # Prefers: pipx > uv > pip (--user)
-# Requires: Python >= 3.12
+# Requires: Python 3.12-3.13
 #
 # Environment variables:
 #   OAK_INSTALL_METHOD  - Force a specific method: pipx, uv, or pip
@@ -15,6 +15,7 @@ set -e
 PACKAGE="oak-ci"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=12
+MAX_PYTHON_MINOR=13
 
 # --- Colors (disabled for non-TTY) ---
 
@@ -43,10 +44,13 @@ bold()  { printf "${BOLD}%s${RESET}" "$1"; }
 # --- Python detection ---
 
 find_python() {
-    for cmd in python3 python; do
+    # Try versioned binaries first (highest supported → lowest), then generic
+    for cmd in python3.13 python3.12 python3 python; do
         if command -v "$cmd" >/dev/null 2>&1; then
-            echo "$cmd"
-            return 0
+            if check_python_version "$cmd" >/dev/null 2>&1; then
+                echo "$cmd"
+                return 0
+            fi
         fi
     done
     return 1
@@ -61,6 +65,9 @@ check_python_version() {
     if [ "$major" -lt "$MIN_PYTHON_MAJOR" ] || { [ "$major" -eq "$MIN_PYTHON_MAJOR" ] && [ "$minor" -lt "$MIN_PYTHON_MINOR" ]; }; then
         return 1
     fi
+    if [ "$major" -gt "$MIN_PYTHON_MAJOR" ] || { [ "$major" -eq "$MIN_PYTHON_MAJOR" ] && [ "$minor" -gt "$MAX_PYTHON_MINOR" ]; }; then
+        return 1
+    fi
     echo "$version_output"
     return 0
 }
@@ -69,21 +76,23 @@ check_python_version() {
 
 install_with_pipx() {
     version_spec="$1"
-    info "Installing with pipx..."
+    python_cmd="$2"
+    info "Installing with pipx (python: $python_cmd)..."
     if [ -n "$version_spec" ]; then
-        pipx install --force "${PACKAGE}==${version_spec}"
+        pipx install --force --python "$python_cmd" "${PACKAGE}==${version_spec}"
     else
-        pipx install --force "$PACKAGE"
+        pipx install --force --python "$python_cmd" "$PACKAGE"
     fi
 }
 
 install_with_uv() {
     version_spec="$1"
-    info "Installing with uv..."
+    python_cmd="$2"
+    info "Installing with uv (python: $python_cmd)..."
     if [ -n "$version_spec" ]; then
-        uv tool install --force "${PACKAGE}==${version_spec}"
+        uv tool install --force --python "$python_cmd" "${PACKAGE}==${version_spec}"
     else
-        uv tool install --force "$PACKAGE"
+        uv tool install --force --python "$python_cmd" "$PACKAGE"
     fi
 }
 
@@ -180,11 +189,11 @@ main() {
     # portability issues — macOS /bin/sh (zsh POSIX mode) exits silently otherwise.
     python_cmd=""
     if ! python_cmd=$(find_python); then
-        error "Python not found. Please install Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ first."
+        error "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}-${MIN_PYTHON_MAJOR}.${MAX_PYTHON_MINOR} not found."
         printf "\n"
         case "$os_name" in
             macOS)  info "Install via: brew install python@3.13" ;;
-            Linux)  info "Install via: sudo apt install python3  (or your distro's package manager)" ;;
+            Linux)  info "Install via: sudo apt install python3.13  (or your distro's package manager)" ;;
         esac
         exit 1
     fi
@@ -193,7 +202,7 @@ main() {
     python_version=""
     if ! python_version=$(check_python_version "$python_cmd"); then
         actual=$("$python_cmd" --version 2>&1 || echo "unknown")
-        error "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ required, found: $actual"
+        error "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}-${MIN_PYTHON_MAJOR}.${MAX_PYTHON_MINOR} required, found: $actual"
         exit 1
     fi
     info "Found Python $python_version ($python_cmd)"
@@ -213,12 +222,12 @@ main() {
         case "$method" in
             pipx)
                 command -v pipx >/dev/null 2>&1 || { error "pipx not found"; exit 1; }
-                install_with_pipx "$version_spec"
+                install_with_pipx "$version_spec" "$python_cmd"
                 actual_method="pipx"
                 ;;
             uv)
                 command -v uv >/dev/null 2>&1 || { error "uv not found"; exit 1; }
-                install_with_uv "$version_spec"
+                install_with_uv "$version_spec" "$python_cmd"
                 actual_method="uv"
                 ;;
             pip)
@@ -231,10 +240,10 @@ main() {
                 ;;
         esac
     elif command -v pipx >/dev/null 2>&1; then
-        install_with_pipx "$version_spec"
+        install_with_pipx "$version_spec" "$python_cmd"
         actual_method="pipx"
     elif command -v uv >/dev/null 2>&1; then
-        install_with_uv "$version_spec"
+        install_with_uv "$version_spec" "$python_cmd"
         actual_method="uv"
     else
         warn "Neither pipx nor uv found, falling back to pip --user"

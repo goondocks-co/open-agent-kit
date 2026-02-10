@@ -237,13 +237,13 @@ skill-check:
 
 # Documentation site targets
 docs-dev:
-	cd docs && npm run dev
+	cd docs && npm install && npm run dev
 
 docs-build:
 	cd docs && npm ci && npm run build
 
 docs-preview:
-	cd docs && npm run preview
+	cd docs && npm install && npm run preview
 
 # Dogfooding target - reset oak environment (preserves oak/ user content)
 dogfood-reset:

@@ -22,17 +22,29 @@ irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.p
 
 ### Alternative: Using pipx
 
+> **Requires Python 3.12 or 3.13.** If your default `python3` is a different version (e.g. 3.14 via Homebrew), specify the interpreter explicitly with `--python`.
+
 ```bash
 pipx install oak-ci
+
+# If python3 points to an unsupported version:
+pipx install oak-ci --python python3.13
 ```
 
 ### Alternative: Using uv
 
+> **Requires Python 3.12 or 3.13.** If your default Python is a different version, specify it with `--python`.
+
 ```bash
 uv tool install oak-ci
+
+# If python3 points to an unsupported version:
+uv tool install oak-ci --python python3.13
 ```
 
 ### Alternative: Using pip
+
+> **Requires Python 3.12 or 3.13.**
 
 ```bash
 pip install oak-ci
@@ -183,6 +195,18 @@ This gives your agents access to:
 
 ## Troubleshooting
 
+### Python 3.14+ errors
+
+OAK requires **Python 3.12 or 3.13**. If your default `python3` points to 3.14 (common with Homebrew), reinstall with an explicit interpreter:
+
+```bash
+# Check your default version
+python3 --version
+
+# Reinstall with a supported version
+pipx install oak-ci --python python3.13 --force
+```
+
 ### oak command not found
 
 ```bash
@@ -193,7 +217,7 @@ which oak
 curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
 
 # Or reinstall via pipx
-pipx install oak-ci
+pipx install oak-ci --python python3.13
 ```
 
 ### .oak directory not found
