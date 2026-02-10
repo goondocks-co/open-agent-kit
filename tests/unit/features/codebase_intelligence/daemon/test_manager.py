@@ -31,6 +31,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.manager import (
     DaemonManager,
     derive_port_from_path,
     get_project_port,
+    read_project_port,
 )
 
 # =============================================================================
@@ -103,6 +104,97 @@ class TestDerivePortFromPath:
         except OSError:
             # Skip if symlinks not supported
             pytest.skip("Symlinks not supported on this system")
+
+
+class TestReadProjectPort:
+    """Test read_project_port function (read-only, no side effects)."""
+
+    def test_returns_none_when_no_files(self, tmp_path: Path):
+        """Returns None when no port files exist."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result is None
+
+    def test_does_not_create_files(self, tmp_path: Path):
+        """Must not create any port files as a side effect."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        read_project_port(tmp_path, ci_dir)
+
+        local_port_file = ci_dir / "daemon.port"
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        assert not local_port_file.exists()
+        assert not shared_port_file.exists()
+
+    def test_reads_local_override(self, tmp_path: Path):
+        """Reads from .oak/ci/daemon.port (Priority 1)."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        port_file = ci_dir / "daemon.port"
+        port_file.write_text("37850")
+
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result == 37850
+
+    def test_reads_shared_port(self, tmp_path: Path):
+        """Reads from oak/daemon.port (Priority 2)."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        shared_dir = tmp_path / "oak"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "daemon.port").write_text("37860")
+
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result == 37860
+
+    def test_local_override_takes_priority(self, tmp_path: Path):
+        """Local override (.oak/ci) wins over shared (oak/) file."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        (ci_dir / "daemon.port").write_text("37850")
+
+        shared_dir = tmp_path / "oak"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "daemon.port").write_text("37860")
+
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result == 37850
+
+    def test_skips_invalid_port_file(self, tmp_path: Path):
+        """Returns None when port file contains invalid data."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        (ci_dir / "daemon.port").write_text("not-a-number")
+
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result is None
+
+    def test_skips_out_of_range_port(self, tmp_path: Path):
+        """Returns None when port file contains out-of-range value."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        (ci_dir / "daemon.port").write_text("99999")
+
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result is None
+
+    def test_falls_through_to_shared_on_invalid_local(self, tmp_path: Path):
+        """Falls through to shared file when local override is invalid."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        (ci_dir / "daemon.port").write_text("garbage")
+
+        shared_dir = tmp_path / "oak"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "daemon.port").write_text("37870")
+
+        result = read_project_port(tmp_path, ci_dir)
+
+        assert result == 37870
 
 
 class TestGetProjectPort:
@@ -190,6 +282,47 @@ class TestGetProjectPort:
         # Should derive new valid port
         port = get_project_port(tmp_path, ci_dir)
         assert PORT_RANGE_START <= port < PORT_RANGE_START + PORT_RANGE_SIZE
+
+    def test_shared_file_created_even_with_local_override(self, tmp_path: Path):
+        """Shared port file (oak/daemon.port) must always be created,
+        even when a local override (.oak/ci/daemon.port) exists."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        (ci_dir / "daemon.port").write_text("37850")
+
+        port = get_project_port(tmp_path, ci_dir)
+
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        assert shared_port_file.exists(), "oak/daemon.port must always be created"
+        # Return value should be the local override
+        assert port == 37850
+
+    def test_local_override_does_not_change_shared_file(self, tmp_path: Path):
+        """Local override affects the return value but not the shared file content."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        ci_dir.mkdir(parents=True)
+        (ci_dir / "daemon.port").write_text("37850")
+
+        get_project_port(tmp_path, ci_dir)
+
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        shared_port = int(shared_port_file.read_text().strip())
+        # Shared file has the derived port, not the override
+        assert shared_port != 37850
+        assert PORT_RANGE_START <= shared_port < PORT_RANGE_START + PORT_RANGE_SIZE
+
+    def test_shared_file_not_overwritten_on_subsequent_calls(self, tmp_path: Path):
+        """Once oak/daemon.port exists, it should not be re-derived."""
+        ci_dir = tmp_path / ".oak" / "ci"
+        shared_dir = tmp_path / "oak"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "daemon.port").write_text("37860")
+
+        port = get_project_port(tmp_path, ci_dir)
+
+        assert port == 37860
+        # File content unchanged
+        assert int((shared_dir / "daemon.port").read_text().strip()) == 37860
 
 
 # =============================================================================

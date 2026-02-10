@@ -68,17 +68,26 @@ class NotificationsInstaller:
     def _get_daemon_port(self) -> int:
         """Get the daemon port for this project.
 
-        Uses the canonical get_project_port() which checks both the local
+        Uses the read-only read_project_port() which checks both the local
         override (.oak/ci/daemon.port) and the team-shared file
-        (oak/daemon.port), deriving a new port if neither exists.
+        (oak/daemon.port) without creating files as a side effect.
+
+        Falls back to get_project_port() only if no port file exists yet,
+        which can happen during initial setup before the daemon has started.
 
         Returns:
             The daemon port number.
         """
         from open_agent_kit.features.codebase_intelligence.daemon.manager import (
             get_project_port,
+            read_project_port,
         )
 
+        port = read_project_port(self.project_root)
+        if port is not None:
+            return port
+
+        logger.warning("No port file found; deriving port (daemon may not be running yet)")
         return get_project_port(self.project_root)
 
     def _get_notify_endpoint(self) -> str:

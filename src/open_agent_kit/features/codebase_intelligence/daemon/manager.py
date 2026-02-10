@@ -159,62 +159,89 @@ def derive_port_from_git_remote(project_root: Path) -> int | None:
         return None
 
 
-def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int:
-    """Get the port for a project, creating one if needed.
+def read_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int | None:
+    """Read existing port from port files without side effects.
 
-    Port resolution priority:
+    Checks the same priority as get_project_port() but only reads —
+    never derives or writes a new port file.
+
+    Priority:
     1. .oak/ci/daemon.port (local override for conflicts, not git-tracked)
     2. oak/daemon.port (team-shared, git-tracked)
-    3. Auto-derive from git remote URL -> write to oak/daemon.port
-    4. Fall back to path-based derivation (non-git projects)
 
     Args:
         project_root: Project root directory.
         ci_data_dir: CI data directory (default: .oak/ci).
 
     Returns:
-        Port number for this project.
+        Port number if a valid port file exists, None otherwise.
+    """
+    data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
+    local_port_file = data_dir / CI_PORT_FILE
+    shared_port_file = project_root / CI_SHARED_PORT_DIR / CI_SHARED_PORT_FILE
+
+    for port_file in (local_port_file, shared_port_file):
+        if port_file.exists():
+            try:
+                stored_port = int(port_file.read_text().strip())
+                if PORT_RANGE_START <= stored_port < PORT_RANGE_START + PORT_RANGE_SIZE:
+                    return stored_port
+            except (ValueError, OSError):
+                pass
+
+    return None
+
+
+def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int:
+    """Get the port for a project, creating the shared port file if needed.
+
+    The shared port file (oak/daemon.port) is git-tracked and is the
+    canonical port for the project. This function guarantees it always
+    exists after being called.
+
+    The local override (.oak/ci/daemon.port) is only for resolving port
+    conflicts on a specific machine — it does not prevent the shared file
+    from being created.
+
+    Args:
+        project_root: Project root directory.
+        ci_data_dir: CI data directory (default: .oak/ci).
+
+    Returns:
+        Port number for this project. Returns the local override if
+        present, otherwise the shared (canonical) port.
     """
     data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
     local_port_file = data_dir / CI_PORT_FILE
     shared_port_dir = project_root / CI_SHARED_PORT_DIR
     shared_port_file = shared_port_dir / CI_SHARED_PORT_FILE
 
-    # Priority 1: Local override (.oak/ci/daemon.port)
+    # Always ensure the shared port file (oak/daemon.port) exists.
+    # This file is committed to source control and is the canonical port.
+    if not shared_port_file.exists():
+        derived_port = derive_port_from_git_remote(project_root)
+        if derived_port is None:
+            derived_port = derive_port_from_path(project_root)
+        shared_port_dir.mkdir(parents=True, exist_ok=True)
+        shared_port_file.write_text(str(derived_port))
+
+    # Local override (.oak/ci/daemon.port) takes priority for the port
+    # to USE, but does not prevent the shared file from being created.
     if local_port_file.exists():
         try:
-            stored_port = int(local_port_file.read_text().strip())
-            if PORT_RANGE_START <= stored_port < PORT_RANGE_START + PORT_RANGE_SIZE:
-                return stored_port
+            override_port = int(local_port_file.read_text().strip())
+            if PORT_RANGE_START <= override_port < PORT_RANGE_START + PORT_RANGE_SIZE:
+                return override_port
         except (ValueError, OSError):
             pass
 
-    # Priority 2: Team-shared port (oak/daemon.port)
-    if shared_port_file.exists():
-        try:
-            stored_port = int(shared_port_file.read_text().strip())
-            if PORT_RANGE_START <= stored_port < PORT_RANGE_START + PORT_RANGE_SIZE:
-                return stored_port
-        except (ValueError, OSError):
-            pass
-
-    # Priority 3: Derive from git remote and write to team-shared file
-    port = derive_port_from_git_remote(project_root)
-    if port is not None:
-        # Store in team-shared location for consistency across machines
-        shared_port_dir.mkdir(parents=True, exist_ok=True)
-        shared_port_file.write_text(str(port))
-        return port
-
-    # Priority 4: Fall back to path-based derivation (non-git projects)
-    port = derive_port_from_path(project_root)
-    # Store in team-shared location so all port readers (hooks, notifications)
-    # find it consistently. The .oak/ci/daemon.port is reserved for conflict
-    # resolution overrides only (see _write_port).
-    shared_port_dir.mkdir(parents=True, exist_ok=True)
-    shared_port_file.write_text(str(port))
-
-    return port
+    # Return the canonical shared port
+    try:
+        return int(shared_port_file.read_text().strip())
+    except (ValueError, OSError):
+        # Shared file was just created above — this shouldn't happen,
+        # but derive a fallback rather than crashing.
+        return derive_port_from_path(project_root)
 
 
 class DaemonManager:
@@ -264,18 +291,6 @@ class DaemonManager:
         """Write PID to file."""
         self._ensure_data_dir()
         self.pid_file.write_text(str(pid))
-
-    def _write_port(self, port: int) -> None:
-        """Write port to local file for conflict resolution.
-
-        This is called when the daemon port changes due to conflict resolution.
-        Writes to .oak/ci/daemon.port (local override) rather than the team-shared
-        oak/daemon.port, so conflict resolution is machine-specific and doesn't
-        affect other team members.
-        """
-        self._ensure_data_dir()
-        port_file = self.ci_data_dir / CI_PORT_FILE
-        port_file.write_text(str(port))
 
     def _remove_pid(self) -> None:
         """Remove PID file."""

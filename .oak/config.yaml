@@ -1,4 +1,4 @@
-version: 1.0.4.dev0+gdae04f6e3.d20260209
+version: 1.0.5.dev1+g666d8426b.d20260210
 agents:
 - copilot
 - opencode
