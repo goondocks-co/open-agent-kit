@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-02-10
+
+### Added
+
+- Homebrew tap (`goondocks-co/oak`) for macOS installation with auto-generated formula and CI workflow to keep the formula in sync with PyPI releases — [Add Homebrew tap for oak‑ci with auto‑generated formula and CI sync](http://localhost:38388/activity/sessions/f39cb49c-b959-41e1-b7d3-321f8d8f8475)
+- OAK-managed file tracking in `oak remove` — agent task YAMLs and `daemon.port` are now recorded via `StateService` and automatically cleaned up on removal, while preserving user content (`constitution.md`, RFCs, plans) and backup history — [Implement OAK‑managed file cleanup in oak remove](http://localhost:38388/activity/sessions/c8dc1dcb-4e07-4e0b-bcd7-261cf61b714b)
+
+### Fixed
+
+- Fix `oak/daemon.port` not created on fresh installs when no git remote is defined, causing daemon startup failures — [Fix daemon port creation and enforce Python version requirement](http://localhost:38388/activity/sessions/676be56f-00cf-4b96-8b63-539622365341)
+- Fix `oak remove` leaving behind OAK-generated agent task files and `daemon.port`, requiring manual cleanup — [Fix oak remove to delete agent task files and daemon port](http://localhost:38388/activity/sessions/3a41f8b7-02fd-4d2d-950e-5b3cde0d6bd1)
+- Enforce Python version requirement in install script and documentation — users installing via `pipx` or `uv` must now specify `--python` to avoid Homebrew defaulting to an unsupported interpreter (e.g., 3.14) — [Fix daemon port creation and enforce Python version requirement](http://localhost:38388/activity/sessions/676be56f-00cf-4b96-8b63-539622365341)
+
+### Notes
+
+> **Gotcha**: Homebrew formula for oak-ci uses `python -m venv` directly (not `virtualenv_create`) because Homebrew's helper passes `--without-pip`. Key details: (1) `venv.pip_install` uses `--no-deps` so deps won't install — the formula uses `system libexec/"bin/pip", "install"` instead, (2) `homebrew-pypi-poet` requires `setuptools<81` on Python 3.13, (3) `bin.install_symlink libexec/"bin/oak"` is needed to expose the binary.
+
+> **Gotcha**: The removal logic now distinguishes between OAK-managed files (agent task YAMLs, `daemon.port`) and user-generated content. If custom files are placed in `oak/agents/` with names matching the `agent-*.yaml` pattern, they may be incorrectly treated as OAK-managed and removed during `oak remove`.
+
+> **Gotcha**: If the `--python` flag is omitted when installing with `pipx` or `uv`, Oak may be installed against an unintended Python interpreter (e.g., Homebrew's Python 3.14), leading to runtime errors from incompatible dependencies like `chromadb` and `pydantic`.
+
 ## [1.0.2] - 2026-02-09
 
 ### Added
