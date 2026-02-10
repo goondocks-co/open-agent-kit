@@ -208,9 +208,11 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
 
     # Priority 4: Fall back to path-based derivation (non-git projects)
     port = derive_port_from_path(project_root)
-    # For non-git projects, store in local directory
-    data_dir.mkdir(parents=True, exist_ok=True)
-    local_port_file.write_text(str(port))
+    # Store in team-shared location so all port readers (hooks, notifications)
+    # find it consistently. The .oak/ci/daemon.port is reserved for conflict
+    # resolution overrides only (see _write_port).
+    shared_port_dir.mkdir(parents=True, exist_ok=True)
+    shared_port_file.write_text(str(port))
 
     return port
 

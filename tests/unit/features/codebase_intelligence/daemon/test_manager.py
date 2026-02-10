@@ -120,7 +120,7 @@ class TestGetProjectPort:
         assert PORT_RANGE_START <= port < PORT_RANGE_START + PORT_RANGE_SIZE
 
     def test_port_file_is_created(self, tmp_path: Path):
-        """Test that port file is created after first call.
+        """Test that shared port file (oak/daemon.port) is created after first call.
 
         Args:
             tmp_path: Temporary directory from pytest.
@@ -128,11 +128,11 @@ class TestGetProjectPort:
         ci_dir = tmp_path / ".oak" / "ci"
         get_project_port(tmp_path, ci_dir)
 
-        port_file = ci_dir / "daemon.port"
-        assert port_file.exists()
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        assert shared_port_file.exists()
 
     def test_port_file_content_is_valid(self, tmp_path: Path):
-        """Test that port file contains valid port number.
+        """Test that shared port file contains valid port number.
 
         Args:
             tmp_path: Temporary directory from pytest.
@@ -140,8 +140,8 @@ class TestGetProjectPort:
         ci_dir = tmp_path / ".oak" / "ci"
         port = get_project_port(tmp_path, ci_dir)
 
-        port_file = ci_dir / "daemon.port"
-        stored_port = int(port_file.read_text().strip())
+        shared_port_file = tmp_path / "oak" / "daemon.port"
+        stored_port = int(shared_port_file.read_text().strip())
         assert stored_port == port
 
     def test_reuses_stored_port(self, tmp_path: Path):

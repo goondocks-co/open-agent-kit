@@ -651,36 +651,20 @@ class HooksInstaller:
             )
 
     def _get_daemon_port(self) -> int:
-        """Get the daemon port from the shared port file or return default.
+        """Get the daemon port for this project.
 
-        Reads from the shared port file (oak/daemon.port) which is
-        git-tracked and represents the assigned port for this project.
-        The daemon will always use this port (killing any hanging process
-        if necessary), so this is the stable source of truth.
+        Uses the canonical get_project_port() which checks both the local
+        override (.oak/ci/daemon.port) and the team-shared file
+        (oak/daemon.port), deriving a new port if neither exists.
 
         Returns:
             The daemon port number.
         """
-        from open_agent_kit.features.codebase_intelligence.constants import (
-            CI_SHARED_PORT_DIR,
-            CI_SHARED_PORT_FILE,
-        )
         from open_agent_kit.features.codebase_intelligence.daemon.manager import (
-            DEFAULT_PORT,
+            get_project_port,
         )
 
-        # Shared port file is the source of truth (git-tracked)
-        shared_port_file = self.project_root / CI_SHARED_PORT_DIR / CI_SHARED_PORT_FILE
-        if shared_port_file.exists():
-            try:
-                port = int(shared_port_file.read_text().strip())
-                logger.debug(f"Read daemon port {port} from {shared_port_file}")
-                return port
-            except (ValueError, OSError) as e:
-                logger.warning(f"Failed to read shared port file {shared_port_file}: {e}")
-
-        logger.debug(f"Using default daemon port {DEFAULT_PORT}")
-        return DEFAULT_PORT
+        return get_project_port(self.project_root)
 
     def _install_otel_hooks(self) -> HooksInstallResult:
         """Install OTEL hooks by generating and merging config into agent's TOML file.
