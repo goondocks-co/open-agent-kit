@@ -163,11 +163,14 @@ jobs:
           ## Install and Upgrade
 
           ```bash
-          # Install (recommended)
-          pipx install oak-ci
+          # Install via Homebrew (macOS — handles Python version automatically)
+          brew install goondocks-co/oak/oak-ci
 
-          # Or via uv
-          uv tool install oak-ci
+          # Or via pipx (requires Python 3.12-3.13)
+          pipx install oak-ci --python python3.13
+
+          # Or via uv (requires Python 3.12-3.13)
+          uv tool install oak-ci --python python3.13
 
           # Or via pip
           pip install oak-ci
@@ -177,8 +180,10 @@ jobs:
           oak init
 
           # Upgrade an existing installation
-          pipx upgrade oak-ci
-          oak upgrade
+          brew upgrade oak-ci              # Homebrew
+          pipx upgrade oak-ci              # pipx
+          uv tool upgrade oak-ci           # uv
+          oak upgrade                      # in-place upgrade
           ```
 
           ## Documentation
@@ -255,3 +260,20 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    needs: [validate-tag, create-release]
+    if: >-
+      needs.validate-tag.outputs.is_testpypi == 'false' &&
+      needs.validate-tag.outputs.is_prerelease == 'false'
+    steps:
+      - name: Trigger tap update
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+        run: |
+          gh workflow run update-formula.yml \
+            -R goondocks-co/homebrew-oak \
+            -f version="$VERSION"

@@ -25,7 +25,12 @@ graph LR
 ## Quick Start
 
 ```bash
-# Install (macOS / Linux)
+# Install via Homebrew (macOS)
+brew install goondocks-co/oak/oak-ci
+```
+
+```bash
+# Or via the install script (macOS / Linux)
 curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
 ```
 
