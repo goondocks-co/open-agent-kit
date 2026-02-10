@@ -44,6 +44,10 @@ export function Layout() {
         ? status.project_root.split('/').pop()
         : null;
 
+    useEffect(() => {
+        document.title = projectName ? `${projectName} — Oak CI` : "Oak CI";
+    }, [projectName]);
+
     const navItems = [
         { to: "/", icon: LayoutDashboard, label: "Dashboard" },
         { to: "/search", icon: Search, label: "Search" },
