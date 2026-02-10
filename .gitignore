@@ -105,6 +105,9 @@ release-files/
 # open-agent-kit: Issue raw JSON (local debugging only)
 oak/issue/**/context.json
 
+# Homebrew tap (separate repo cloned locally for development)
+homebrew-oak/
+
 # open-agent-kit: Codebase Intelligence
 .oak/ci/
 

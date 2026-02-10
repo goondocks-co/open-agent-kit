@@ -184,6 +184,15 @@ main() {
     esac
     info "Detected OS: $os_name"
 
+    # Suggest Homebrew on macOS if available
+    if [ "$os_name" = "macOS" ] && command -v brew >/dev/null 2>&1; then
+        printf "\n"
+        info "Homebrew detected! You can also install via:"
+        printf "  ${BOLD}brew install goondocks-co/oak/oak-ci${RESET}\n"
+        printf "\n"
+        info "Continuing with Python-based install...\n"
+    fi
+
     # Find Python
     # Use if-statement (not cmd || handler) to avoid set -e + command substitution
     # portability issues — macOS /bin/sh (zsh POSIX mode) exits silently otherwise.
