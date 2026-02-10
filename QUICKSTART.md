@@ -4,17 +4,23 @@ Get started with open-agent-kit in under 5 minutes.
 
 ## Installation
 
-### Install Script (Recommended)
+### Homebrew (macOS — Recommended)
+
+Homebrew handles Python version pinning automatically — no need to specify `--python`.
+
+```bash
+brew install goondocks-co/oak/oak-ci
+```
+
+### Install Script (macOS / Linux)
 
 The install script detects your environment and handles everything automatically.
-
-**macOS / Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
 ```
 
-**Windows PowerShell:**
+### Windows PowerShell
 
 ```powershell
 irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.ps1 | iex
@@ -25,9 +31,6 @@ irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.p
 > **Requires Python 3.12 or 3.13.** If your default `python3` is a different version (e.g. 3.14 via Homebrew), specify the interpreter explicitly with `--python`.
 
 ```bash
-pipx install oak-ci
-
-# If python3 points to an unsupported version:
 pipx install oak-ci --python python3.13
 ```
 
@@ -36,9 +39,6 @@ pipx install oak-ci --python python3.13
 > **Requires Python 3.12 or 3.13.** If your default Python is a different version, specify it with `--python`.
 
 ```bash
-uv tool install oak-ci
-
-# If python3 points to an unsupported version:
 uv tool install oak-ci --python python3.13
 ```
 
@@ -166,6 +166,19 @@ For the complete RFC workflow including lifecycle states and best practices, see
 Keep your open-agent-kit installation up to date:
 
 ```bash
+# Homebrew
+brew upgrade oak-ci
+
+# pipx
+pipx upgrade oak-ci
+
+# uv
+uv tool upgrade oak-ci
+```
+
+Then upgrade your project's templates and agent commands:
+
+```bash
 # Preview what would be upgraded
 oak upgrade --dry-run
 
@@ -197,13 +210,15 @@ This gives your agents access to:
 
 ### Python 3.14+ errors
 
-OAK requires **Python 3.12 or 3.13**. If your default `python3` points to 3.14 (common with Homebrew), reinstall with an explicit interpreter:
+OAK requires **Python 3.12 or 3.13**. If your default `python3` points to 3.14 (common with Homebrew), the simplest fix is to use the Homebrew formula (which pins Python 3.13 automatically):
 
 ```bash
-# Check your default version
-python3 --version
+brew install goondocks-co/oak/oak-ci
+```
 
-# Reinstall with a supported version
+Or reinstall with an explicit interpreter:
+
+```bash
 pipx install oak-ci --python python3.13 --force
 ```
 
@@ -213,7 +228,10 @@ pipx install oak-ci --python python3.13 --force
 # Check if installed
 which oak
 
-# Reinstall if needed (macOS / Linux)
+# Reinstall via Homebrew (macOS)
+brew reinstall oak-ci
+
+# Or reinstall via the install script (macOS / Linux)
 curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
 
 # Or reinstall via pipx

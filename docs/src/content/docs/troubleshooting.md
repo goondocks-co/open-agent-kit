@@ -8,7 +8,10 @@ description: Common issues and solutions for OAK.
 If you see `ModuleNotFoundError` for packages like `httpx` after upgrading:
 
 ```bash
-# Reinstall to update all dependencies (requires Python 3.12 or 3.13)
+# Homebrew (handles dependencies automatically)
+brew reinstall oak-ci
+
+# Or with pipx (requires Python 3.12 or 3.13)
 pipx reinstall oak-ci
 
 # Or with uv
@@ -71,7 +74,13 @@ make setup
 
 OAK requires **Python 3.12 or 3.13**. Python 3.14 is not yet supported due to dependency incompatibilities (notably chromadb and pydantic v1).
 
-If your default `python3` points to 3.14 (common with Homebrew), reinstall with an explicit interpreter:
+The simplest fix on macOS is to use the Homebrew formula, which pins Python 3.13 automatically:
+
+```bash
+brew install goondocks-co/oak/oak-ci
+```
+
+Or reinstall with an explicit interpreter:
 
 ```bash
 # Check your default version
@@ -135,6 +144,9 @@ oak ci start      # Start fresh
 ## Uninstallation
 
 ```bash
+# Using Homebrew
+brew uninstall oak-ci
+
 # Using pipx
 pipx uninstall oak-ci
 
