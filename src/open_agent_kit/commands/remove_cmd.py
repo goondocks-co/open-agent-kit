@@ -237,7 +237,7 @@ def _display_removal_preview(
     # Show what will be preserved
     if has_user_content:
         print_info("\n[green]Preserved (user content):[/green]\n")
-        print_info("  [green]+[/green] oak/ (constitution, RFCs, plans)")
+        print_info("  [green]+[/green] oak/ (constitution, RFCs, history)")
 
 
 def _display_removal_summary(context: PipelineContext, preview_data: dict) -> None:
@@ -270,7 +270,7 @@ def _display_removal_summary(context: PipelineContext, preview_data: dict) -> No
             "\n[cyan]Your user content in oak/ has been preserved:[/cyan]\n"
             "  - Constitution and amendments\n"
             "  - RFCs and documentation\n"
-            "  - Plans and research\n"
+            "  - History and backups\n"
             "\nYou can safely delete the oak/ directory manually if desired."
         )
 
