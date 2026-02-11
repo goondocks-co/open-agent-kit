@@ -369,7 +369,7 @@ class TestHooksInstallerIntegration:
         # Create a mock hooks config
         mock_hooks_config = MagicMock()
         mock_hooks_config.type = "json"
-        mock_hooks_config.config_file = "settings.json"
+        mock_hooks_config.config_file = "settings.local.json"
         mock_hooks_config.hooks_key = "hooks"
         mock_hooks_config.format = "nested"
         mock_hooks_config.version_key = None
@@ -427,7 +427,7 @@ class TestHooksInstallerIntegration:
         # Create settings with mixed hooks
         settings_dir = tmp_path / ".claude"
         settings_dir.mkdir()
-        settings_file = settings_dir / "settings.json"
+        settings_file = settings_dir / "settings.local.json"
         settings_file.write_text(
             json.dumps(
                 {
@@ -444,7 +444,7 @@ class TestHooksInstallerIntegration:
         # Create a mock hooks config
         mock_hooks_config = MagicMock()
         mock_hooks_config.type = "json"
-        mock_hooks_config.config_file = "settings.json"
+        mock_hooks_config.config_file = "settings.local.json"
         mock_hooks_config.hooks_key = "hooks"
         mock_hooks_config.format = "nested"
         mock_hooks_config.version_key = None

@@ -41,7 +41,7 @@ def _make_installer(
 
 
 def _json_hooks_config(
-    config_file: str = "settings.json",
+    config_file: str = "settings.local.json",
     hooks_key: str = "hooks",
     fmt: str = "nested",
     template_file: str = "hooks.json",
@@ -215,7 +215,7 @@ class TestJsonNeedsUpgrade:
         }
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(parents=True)
-        (config_dir / "settings.json").write_text(json.dumps(old_hooks))
+        (config_dir / "settings.local.json").write_text(json.dumps(old_hooks))
 
         # New template has different timeout
         new_template = {
@@ -252,7 +252,7 @@ class TestJsonNeedsUpgrade:
         # Write installed config
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(parents=True)
-        (config_dir / "settings.json").write_text(json.dumps(hooks_data))
+        (config_dir / "settings.local.json").write_text(json.dumps(hooks_data))
 
         with patch.object(installer, "_load_hook_template", return_value=hooks_data):
             assert installer.needs_upgrade() is False
@@ -290,7 +290,7 @@ class TestJsonNeedsUpgrade:
         }
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(parents=True)
-        (config_dir / "settings.json").write_text(json.dumps(installed))
+        (config_dir / "settings.local.json").write_text(json.dumps(installed))
 
         with patch.object(installer, "_load_hook_template", return_value=template):
             assert installer.needs_upgrade() is False
@@ -309,7 +309,7 @@ class TestJsonNeedsUpgrade:
         }
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(parents=True)
-        (config_dir / "settings.json").write_text(json.dumps(installed))
+        (config_dir / "settings.local.json").write_text(json.dumps(installed))
 
         with patch.object(installer, "_load_hook_template", return_value=template):
             assert installer.needs_upgrade() is True
@@ -349,7 +349,7 @@ class TestJsonNeedsUpgrade:
             result = installer.install()
 
         assert result.success is True
-        config = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        config = json.loads((tmp_path / ".claude" / "settings.local.json").read_text())
         command = config["hooks"]["SessionStart"][0]["hooks"][0]["command"]
         assert command == "oak-dev ci hook SessionStart --agent claude"
 
@@ -376,13 +376,13 @@ class TestJsonNeedsUpgrade:
         }
         config_dir = tmp_path / ".claude"
         config_dir.mkdir(parents=True)
-        (config_dir / "settings.json").write_text(json.dumps(installed))
+        (config_dir / "settings.local.json").write_text(json.dumps(installed))
 
         with patch.object(installer, "_load_hook_template", return_value=template):
             result = installer.install()
 
         assert result.success is True
-        config = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        config = json.loads((tmp_path / ".claude" / "settings.local.json").read_text())
         hooks = config["hooks"]["SessionStart"]
         commands = [entry["hooks"][0]["command"] for entry in hooks]
         assert "oak-dev ci hook SessionStart --agent claude" not in commands
@@ -519,3 +519,108 @@ class TestNeedsUpgradeEdgeCases:
             "Hardcoded 'oak ci hook' found in managed hook templates. "
             "Use '{oak-cli-command} ci hook' placeholder in:\n" + "\n".join(errors)
         )
+
+
+# ===========================================================================
+# Gitignore integration tests
+# ===========================================================================
+
+
+class TestHooksInstallerGitignore:
+    """Tests for gitignore entries on hook install/remove."""
+
+    def test_get_hook_gitignore_pattern_json(self, tmp_path: Path):
+        """JSON hooks should produce folder/config_file pattern."""
+        cfg = _json_hooks_config(config_file="settings.local.json")
+        installer = _make_installer(tmp_path, "claude", cfg)
+
+        assert installer._get_hook_gitignore_pattern() == ".claude/settings.local.json"
+
+    def test_get_hook_gitignore_pattern_plugin(self, tmp_path: Path):
+        """Plugin hooks should produce folder/plugin_dir/plugin_file pattern."""
+        cfg = _plugin_hooks_config()
+        installer = _make_installer(tmp_path, "opencode", cfg)
+
+        assert installer._get_hook_gitignore_pattern() == ".opencode/plugins/oak-ci.ts"
+
+    def test_get_hook_gitignore_pattern_otel(self, tmp_path: Path):
+        """OTEL hooks should produce folder/config_file pattern."""
+        cfg = _otel_hooks_config()
+        installer = _make_installer(tmp_path, "codex", cfg, folder=".codex/")
+
+        assert installer._get_hook_gitignore_pattern() == ".codex/config.toml"
+
+    def test_get_hook_gitignore_pattern_none_when_no_config(self, tmp_path: Path):
+        """Should return None when hooks_config is None."""
+        installer = HooksInstaller(tmp_path, "claude")
+        mock_manifest = MagicMock()
+        mock_manifest.hooks = None
+        installer._manifest = mock_manifest
+        installer._hooks_config = None
+
+        assert installer._get_hook_gitignore_pattern() is None
+
+    def test_json_install_creates_gitignore_entry(self, tmp_path: Path):
+        """Installing JSON hooks should add a .gitignore entry."""
+        cfg = _json_hooks_config()
+        installer = _make_installer(tmp_path, "claude", cfg)
+
+        template = {
+            "hooks": {
+                "SessionStart": [
+                    {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]}
+                ]
+            }
+        }
+        with patch.object(installer, "_load_hook_template", return_value=template):
+            result = installer.install()
+
+        assert result.success
+        gitignore = (tmp_path / ".gitignore").read_text()
+        assert ".claude/settings.local.json" in gitignore
+
+    def test_json_remove_removes_gitignore_entry(self, tmp_path: Path):
+        """Removing JSON hooks should remove the .gitignore entry."""
+        cfg = _json_hooks_config()
+        installer = _make_installer(tmp_path, "claude", cfg)
+
+        # Pre-populate gitignore and hook file
+        (tmp_path / ".gitignore").write_text(".claude/settings.local.json\n")
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir(parents=True)
+        (config_dir / "settings.local.json").write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "SessionStart": [
+                            {"hooks": [{"command": "oak ci hook SessionStart --agent claude"}]}
+                        ]
+                    }
+                }
+            )
+        )
+
+        result = installer.remove()
+
+        assert result.success
+        gitignore = (tmp_path / ".gitignore").read_text()
+        assert ".claude/settings.local.json" not in gitignore
+
+    def test_plugin_install_creates_gitignore_entry(self, tmp_path: Path):
+        """Installing plugin hooks should add a .gitignore entry."""
+        cfg = _plugin_hooks_config()
+        installer = _make_installer(tmp_path, "opencode", cfg)
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
+            tmp_path / "templates",
+        ):
+            template_path = tmp_path / "templates" / "opencode"
+            template_path.mkdir(parents=True)
+            (template_path / "oak-ci.ts").write_text("// plugin content")
+
+            result = installer.install()
+
+        assert result.success
+        gitignore = (tmp_path / ".gitignore").read_text()
+        assert ".opencode/plugins/oak-ci.ts" in gitignore

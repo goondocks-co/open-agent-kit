@@ -49,6 +49,12 @@ The CI feature runs as a background daemon. Start it and open the dashboard:
 oak ci start --open
 ```
 
+:::note[Fresh clones]
+Hook config files are **local-only** — they are gitignored and never committed. When you clone a project that already has OAK configured, just run `oak ci start` and it will automatically regenerate the hook files and start the daemon. No `oak init` required.
+
+Contributors who don't have OAK installed won't see any errors — the hook files simply don't exist in the working tree.
+:::
+
 On the first run, the daemon will:
 1. **Scan your codebase** to detect source files
 2. **Build the index** — Begin indexing your codebase using the installed parsers (may take a few minutes for large projects)
