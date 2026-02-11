@@ -61,6 +61,7 @@ def _check_version(state: "DaemonState") -> None:
     from open_agent_kit.features.codebase_intelligence.constants import (
         CI_CLI_VERSION_FILE,
         CI_DATA_DIR,
+        is_meaningful_upgrade,
     )
 
     if not state.project_root:
@@ -83,7 +84,9 @@ def _check_version(state: "DaemonState") -> None:
             pass
 
     state.installed_version = installed
-    state.update_available = installed is not None and installed != VERSION
+    state.update_available = (
+        installed is not None and is_meaningful_upgrade(VERSION, installed)
+    )
 
 
 async def _periodic_version_check() -> None:

@@ -11,14 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Daemon version mismatch detection and restart UI — when the `oak` CLI is upgraded, the daemon now detects the version difference via a background check (every 60s), displays a banner in the web UI, and offers a one-click "Restart Daemon" button, eliminating manual `oak ci restart` calls — [Implement daemon version mismatch detection and restart UI](http://localhost:38388/activity/sessions/39e12dc7-e79a-40cf-bde2-b74442528f69)
 - Project name displayed in daemon UI browser tab title for better multi-project disambiguation — [Add project name to daemon UI tab title](http://localhost:38388/activity/sessions/6f305703-4383-4f41-8bba-cafa08c2f0e3)
+- Local-only hook configuration for all AI agents — hook files are now kept out of version control via `.gitignore` entries and `.local.json` variants, so contributors who clone a repo without Oak installed see no hook errors. A `hooks-local-only` migration applies the change on upgrade — [Configure local‑only GitHub hooks for Oak‑enabled agents](http://localhost:38388/activity/sessions/031fde6b-6250-4dc1-b705-52c454b75271)
 
 ### Changed
 
 - Built-in agent task YAMLs no longer copied into `oak/agents/` during installation — the registry now loads built-ins directly from the package, reducing installation footprint and preventing accidental overwrites of user customizations. A cleanup migration removes existing copies on upgrade — [Remove built‑in agent task copies and add cleanup migration](http://localhost:38388/activity/sessions/ea8917a0-aebb-4616-be07-14b5e7843e56), [Refactor installation to remove built‑in agent task copies](http://localhost:38388/activity/sessions/12a1a982-0d3a-401b-b9d0-d38083fafa85)
+- `generate_schema_ref.py` relocated from installed skill directory to `src/open_agent_kit/features/codebase_intelligence/scripts/`, keeping the build-time script out of agent skill payloads and reducing installed footprint — [Refactor schema generation script placement to feature source tree](http://localhost:38388/activity/sessions/f0e6bfbe-cee4-431c-848b-10ad9929adb8), [Refactor generate_schema_ref.py relocation to centralized scripts folder](http://localhost:38388/activity/sessions/9e9f814a-1a6b-49ab-a299-ee6632f5b6e0)
+- Hooks-reference documentation cleaned for end-user focus — removed Oak contributor sections and added a "not" section to clarify feature boundaries — [Update documentation with Oak‑not section and clean hooks reference](http://localhost:38388/activity/sessions/d46e5c83-ff36-4eea-a77c-ba8bbf9cb74d)
 
 ### Fixed
 
 - Fix Homebrew tap build failures and update installation documentation to reflect `brew install goondocks-co/oak/oak-ci` as the recommended macOS install method — [Fix Homebrew tap and update Oak CI installation docs](http://localhost:38388/activity/sessions/45cd3a6f-2589-440c-afa3-97fbf337a8a7)
+- Fix daemon self-restart failing after Homebrew upgrade — `sys.executable` pointed to the old deleted Cellar path, causing `FileNotFoundError`. Now uses `/bin/sh -c "sleep N && oak ci restart"` which always resolves to the current version on `$PATH` — [Implement daemon version mismatch detection and recovery](http://localhost:38388/activity/sessions/2b06d520-1f5e-455a-9dd8-84f14348d627)
+- Fix Homebrew formula PyPI CDN propagation race condition — `brew install` could fail if the PyPI simple index hadn't propagated the new version yet. Formula `post_install` now retries `pip install` 5 times with 30s backoff, and the tap workflow uses `pip download --no-deps` with 20 retries over 10 minutes — [Fix Homebrew tap and update Oak CI installation docs](http://localhost:38388/activity/sessions/45cd3a6f-2589-440c-afa3-97fbf337a8a7)
 
 ### Notes
 
@@ -27,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: When automatic built-in task installation is disabled, any missing built-in task files will cause runtime errors if agents reference them. Ensure required tasks are present in `oak/agents/` before running the pipeline, or rely on the registry's built-in loader.
 
 > **Gotcha**: The project name in the browser tab is sourced from `window.projectName` injected by the server. If this variable is missing or undefined, the title defaults to just the static suffix.
+
+> **Gotcha**: After the `hooks-local-only` migration, hook config files (e.g., `.cursor/hooks.json`, `.windsurf/hooks.json`) are gitignored and exist only on machines with Oak installed. Hooks already degrade gracefully when files are absent, so contributors without Oak are unaffected — but developers must run `oak upgrade` to regenerate local hook files after a fresh clone.
+
+> **Gotcha**: The daemon self-restart route must not use `sys.executable` because Homebrew upgrades delete the old Cellar path. If you see `FileNotFoundError` during restart, verify that the `oak` binary on `$PATH` points to the current version (`which oak`).
 
 ## [1.0.3] - 2026-02-10
 
