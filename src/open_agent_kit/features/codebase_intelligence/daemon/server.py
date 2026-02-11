@@ -52,6 +52,55 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _check_version(state: "DaemonState") -> None:
+    """Check if installed version differs from running version (sync)."""
+    import importlib.metadata
+
+    from open_agent_kit.config.paths import OAK_DIR
+    from open_agent_kit.constants import VERSION
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_CLI_VERSION_FILE,
+        CI_DATA_DIR,
+    )
+
+    if not state.project_root:
+        return
+
+    installed = None
+    # Primary: read stamp file
+    stamp = state.project_root / OAK_DIR / CI_DATA_DIR / CI_CLI_VERSION_FILE
+    try:
+        if stamp.exists():
+            installed = stamp.read_text().strip()
+    except OSError:
+        pass
+
+    # Secondary: importlib.metadata fallback
+    if installed is None:
+        try:
+            installed = importlib.metadata.version("open_agent_kit")
+        except Exception:
+            pass
+
+    state.installed_version = installed
+    state.update_available = installed is not None and installed != VERSION
+
+
+async def _periodic_version_check() -> None:
+    """Periodically check for version mismatch between daemon and CLI."""
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_VERSION_CHECK_INTERVAL_SECONDS,
+    )
+
+    state = get_state()
+    while True:
+        await asyncio.sleep(CI_VERSION_CHECK_INTERVAL_SECONDS)
+        try:
+            _check_version(state)
+        except Exception:
+            logger.debug("Version check failed", exc_info=True)
+
+
 async def _periodic_backup_loop(state: "DaemonState") -> None:
     """Periodically creates backups based on config."""
     while True:
@@ -845,6 +894,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     backup_task = asyncio.create_task(_periodic_backup_loop(state), name="periodic_backup")
     state.background_tasks.append(backup_task)
 
+    # Run one immediate version check, then launch periodic loop
+    _check_version(state)
+    version_check_task = asyncio.create_task(_periodic_version_check(), name="version_check")
+    state.background_tasks.append(version_check_task)
+
     yield
 
     await _shutdown(state)
@@ -946,6 +1000,7 @@ def create_app(
         mcp,
         notifications,
         otel,
+        restart,
         schedules,
         search,
         tunnel,
@@ -974,6 +1029,7 @@ def create_app(
     app.include_router(devtools.router)
     app.include_router(backup.router)
     app.include_router(tunnel.router)
+    app.include_router(restart.router)
 
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)

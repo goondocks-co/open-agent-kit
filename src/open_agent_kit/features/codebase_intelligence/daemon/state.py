@@ -183,6 +183,9 @@ class DaemonState:
     tunnel_provider: "TunnelProvider | None" = None
     _dynamic_cors_origins: set[str] = field(default_factory=set, init=False, repr=False)
     _cors_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    # Version detection
+    installed_version: str | None = None
+    update_available: bool = False
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -472,6 +475,8 @@ class DaemonState:
         self.auth_token = None
         self.tunnel_provider = None
         self._dynamic_cors_origins = set()
+        self.installed_version = None
+        self.update_available = False
 
 
 # Global daemon state instance

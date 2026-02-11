@@ -137,3 +137,18 @@ export const FALLBACK_MESSAGES = {
     NO_RESULTS: "No results found",
     LOADING: "Loading...",
 } as const;
+
+// =============================================================================
+// Version Banner
+// =============================================================================
+
+/** Update banner messages */
+export const VERSION_BANNER = {
+    UPDATE_MESSAGE: "A newer version of Oak is installed",
+    VERSION_CHANGE: "v{running} → v{installed}",
+    RESTART_BUTTON: "Restart Now",
+    RESTARTING: "Restarting...",
+    RESTART_FAILED: "Restart failed. Try: oak ci restart",
+    DISMISS_LABEL: "Dismiss",
+    SESSION_STORAGE_KEY: "oak-ci-update-dismissed",
+} as const;
