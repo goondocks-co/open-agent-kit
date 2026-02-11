@@ -73,7 +73,7 @@ These are the first places to look. The full Anchor Index is in `oak/constitutio
 | ChromaDB (vector search) | `.oak/ci/chroma/` |
 | Daemon logs | `.oak/ci/daemon.log` |
 | User backups (git-tracked) | `oak/history/` |
-| Agent configs (git-tracked) | `oak/agents/` |
+| User agent task overrides (git-tracked) | `oak/agents/` |
 | Shared port (git-tracked) | `oak/daemon.port` |
 | Analysis reports (git-tracked) | `oak/insights/` |
 | Agent-generated docs (git-tracked) | `oak/docs/` |

@@ -1,4 +1,5 @@
-migrations: []
+migrations:
+- cleanup-builtin-agent-tasks
 managed_assets:
   directories:
   - .claude/commands
