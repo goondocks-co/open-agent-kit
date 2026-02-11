@@ -84,9 +84,7 @@ def _check_version(state: "DaemonState") -> None:
             pass
 
     state.installed_version = installed
-    state.update_available = (
-        installed is not None and is_meaningful_upgrade(VERSION, installed)
-    )
+    state.update_available = installed is not None and is_meaningful_upgrade(VERSION, installed)
 
 
 async def _periodic_version_check() -> None:

@@ -163,9 +163,7 @@ class TestVersionCheck:
         assert initialized_state.installed_version == release_version
         assert initialized_state.update_available is False
 
-    def test_dogfooding_dev_with_real_upgrade(
-        self, initialized_state, stamp_file: Path
-    ) -> None:
+    def test_dogfooding_dev_with_real_upgrade(self, initialized_state, stamp_file: Path) -> None:
         """Dev version running, stamp has genuinely newer release -> update available."""
         dev_version = "1.0.10.dev0+gb93e51d90.d20260211"
         newer_release = "1.0.11"
