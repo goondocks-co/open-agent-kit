@@ -44,6 +44,7 @@ Each major dashboard feature has its own dedicated page in the sidebar. Here's a
 
 ## UI Features
 
+- **Update banner** — When the installed OAK version doesn't match the running daemon, a banner appears with version details and a one-click **Restart** button to apply the update
 - **Light/dark mode** — Toggle between themes using the sun/moon icon
 - **Collapsible sidebar** — Collapse the navigation sidebar to maximize content area
 - **Built-in Help** — Click **Help** in the sidebar for task-oriented guides

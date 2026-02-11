@@ -18,6 +18,12 @@ export const LOGS_POLL_INTERVAL_MS = 3000;
 /** Memory processing cycle interval in seconds (backend) */
 export const MEMORY_PROCESS_INTERVAL_SECONDS = 60;
 
+/** Polling interval while waiting for daemon restart (2 seconds) */
+export const RESTART_POLL_INTERVAL_MS = 2000;
+
+/** Maximum time to wait for daemon restart before showing fallback (60 seconds) */
+export const RESTART_TIMEOUT_MS = 60000;
+
 // =============================================================================
 // Time Constants
 // =============================================================================

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Activity, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose } from "lucide-react";
+import { LayoutDashboard, Search, Activity, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { useStatus } from "@/hooks/use-status";
+import { useRestart } from "@/hooks/use-restart";
+import { UpdateBanner } from "@/components/ui/update-banner";
 
 import type { LucideIcon } from "lucide-react";
 
@@ -30,6 +32,7 @@ export function Layout() {
     const location = useLocation();
     const { setTheme, theme } = useTheme();
     const { data: status } = useStatus();
+    const { restart, isRestarting } = useRestart();
 
     const [collapsed, setCollapsed] = useState(() => {
         const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -96,6 +99,22 @@ export function Layout() {
                 </nav>
 
                 <div className={cn("border-t", collapsed ? "p-2" : "p-4")}>
+                    {/* Restart daemon button */}
+                    <button
+                        onClick={restart}
+                        disabled={isRestarting}
+                        title="Restart Daemon"
+                        aria-label="Restart Daemon"
+                        className={cn(
+                            "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground mb-2",
+                            collapsed && "justify-center px-2",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                        )}
+                    >
+                        <RefreshCw className={cn("w-4 h-4 flex-shrink-0", isRestarting && "animate-spin")} />
+                        {!collapsed && <span>{isRestarting ? "Restarting..." : "Restart"}</span>}
+                    </button>
+
                     {/* Theme switcher */}
                     <div className={cn(
                         "flex items-center rounded-md bg-muted/50 mb-2",
@@ -153,6 +172,9 @@ export function Layout() {
             <main className="flex-1 flex flex-col overflow-hidden relative">
                 <div className="flex-1 overflow-y-auto p-8 relative z-10">
                     <div className="max-w-6xl mx-auto">
+                        {status?.version?.update_available && (
+                            <UpdateBanner version={status.version} />
+                        )}
                         <Outlet />
                     </div>
                 </div>

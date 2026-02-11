@@ -138,7 +138,7 @@ Analysis tasks can be scheduled to run automatically using cron expressions. Man
 
 ## Custom Tasks
 
-You can create custom analysis tasks that the Analysis Agent will automatically pick up. Custom tasks live in `oak/agents/` (git-tracked) and use the same YAML format as built-in tasks.
+You can create custom analysis tasks that the Analysis Agent will automatically pick up. Custom tasks live in `oak/agents/` (git-tracked) and use the same YAML format as built-in tasks. Built-in tasks are read from the OAK package itself — they are not copied into your project.
 
 ### Example: Weekly Error Deep-Dive
 

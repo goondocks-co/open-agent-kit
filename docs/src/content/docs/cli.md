@@ -46,6 +46,7 @@ Upgrade Open Agent Kit templates and agent commands to the latest versions.
 - Agent commands: Updates command templates with latest features
 - Feature templates: Replaced with latest versions
 - Agent settings: Smart merge with existing settings (your custom settings are preserved)
+- Database migrations: Applied automatically (schema changes, cleanup tasks)
 
 **Options:**
 
@@ -119,4 +120,10 @@ After running `oak upgrade`, run `oak ci sync` to ensure the daemon picks up any
 oak remove         # Remove OAK configuration and files from the project
 ```
 
-This removes `.oak/`, agent command files, and agent settings. It does **not** remove user content in `oak/` (RFCs, constitution, etc.) or the CLI tool itself.
+This removes:
+- `.oak/` directory (including the daemon port file and all CI data)
+- Agent command files and settings (`.claude/commands/`, `.cursor/commands/`, etc.)
+- Agent task YAML files in `oak/agents/` that were created by OAK
+- OAK-managed hooks, MCP registrations, and skills
+
+It does **not** remove user content in `oak/` (RFCs, constitution, insights, etc.) or the CLI tool itself.

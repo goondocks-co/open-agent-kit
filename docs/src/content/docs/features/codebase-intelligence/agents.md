@@ -13,7 +13,7 @@ Traditional documentation and analysis tools work from code alone. OAK Agents wo
 
 Each agent has:
 
-- **Built-in tasks** — Pre-configured work items that ship with OAK
+- **Built-in tasks** — Pre-configured work items that ship inside the OAK package (not copied into your project)
 - **Custom task support** — Create your own tasks in `oak/agents/` (git-tracked, shareable with your team)
 - **Scheduling** — Run tasks automatically on a cron schedule
 - **Run history** — Every run is logged with status, output, files modified, and token usage

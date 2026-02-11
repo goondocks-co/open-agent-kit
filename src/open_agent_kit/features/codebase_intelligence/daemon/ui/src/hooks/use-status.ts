@@ -45,6 +45,12 @@ export interface BackupSummary {
     size_bytes?: number;
 }
 
+export interface VersionInfo {
+    running: string;
+    installed: string | null;
+    update_available: boolean;
+}
+
 export interface DaemonStatus {
     status: string;
     indexing: boolean;
@@ -67,6 +73,7 @@ export interface DaemonStatus {
         provider: string | null;
         started_at: string | null;
     };
+    version: VersionInfo;
 }
 
 export function useStatus() {

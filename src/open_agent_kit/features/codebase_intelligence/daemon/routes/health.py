@@ -165,6 +165,11 @@ async def get_status() -> dict:
         "storage": _get_storage_stats(state.project_root),
         "backup": _get_backup_summary(state.project_root),
         CI_STATUS_KEY_TUNNEL: _get_tunnel_status(state),
+        "version": {
+            "running": VERSION,
+            "installed": state.installed_version,
+            "update_available": state.update_available,
+        },
     }
 
 

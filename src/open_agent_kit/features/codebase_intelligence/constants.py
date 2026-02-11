@@ -1189,3 +1189,32 @@ VALID_SCHEDULE_TRIGGER_TYPES: Final[tuple[str, ...]] = (
     SCHEDULE_TRIGGER_CRON,
     SCHEDULE_TRIGGER_MANUAL,
 )
+
+# =============================================================================
+# Version Detection
+# =============================================================================
+
+CI_CLI_VERSION_FILE: Final[str] = "cli_version"
+CI_VERSION_CHECK_INTERVAL_SECONDS: Final[int] = 60
+
+# =============================================================================
+# Restart
+# =============================================================================
+
+CI_RESTART_ROUTE_TAG: Final[str] = "restart"
+CI_RESTART_API_PATH: Final[str] = "/api/self-restart"
+CI_RESTART_SHUTDOWN_DELAY_SECONDS: Final[float] = 1.0
+CI_RESTART_SUBPROCESS_DELAY_SECONDS: Final[int] = 2
+
+# Restart response/error constants
+CI_RESTART_STATUS_RESTARTING: Final[str] = "restarting"
+CI_RESTART_ERROR_NO_PROJECT_ROOT: Final[str] = "Project root not set"
+CI_RESTART_LOG_SPAWNING: Final[str] = "Spawning restart subprocess: {command}"
+CI_RESTART_LOG_SCHEDULING_SHUTDOWN: Final[str] = "Scheduling graceful shutdown in {delay}s"
+
+# CLI hint constants
+CI_CLI_HINT_VERSION_MISMATCH: Final[str] = (
+    "Hint: Daemon running v{running}, installed v{installed}. "
+    "Run '{cli_command} ci restart' or visit the dashboard."
+)
+CI_CLI_HINT_TIMEOUT: Final[float] = 1.0

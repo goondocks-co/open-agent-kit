@@ -43,6 +43,24 @@ python3 -m pip show oak-ci
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+## Daemon version mismatch after upgrade
+
+After upgrading OAK, the running daemon may still be on the old version. OAK detects this automatically:
+
+- **In the CLI**: `oak ci start` or `oak ci status` will display a hint if the daemon version doesn't match the installed CLI version.
+- **In the Dashboard**: A banner appears at the top of the page showing the running and installed versions, with a **Restart** button to apply the update.
+
+To resolve manually:
+
+```bash
+oak ci restart      # Restart the daemon with the new version
+oak ci sync         # Or run sync, which also restarts and applies migrations
+```
+
+:::tip
+After running `oak upgrade`, the daemon will detect the version mismatch and prompt you to restart — either via the CLI hint or the dashboard banner.
+:::
+
 ## Something feels broken
 
 `oak init` is idempotent and safe to re-run. It's the first thing to try when something isn't working:
