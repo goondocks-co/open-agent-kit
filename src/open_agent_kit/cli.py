@@ -217,6 +217,7 @@ def _check_daemon_version_hint() -> None:
         CI_CLI_HINT_VERSION_MISMATCH,
         CI_DATA_DIR,
         CI_PID_FILE,
+        is_meaningful_upgrade,
     )
 
     pid_file = Path.cwd() / OAK_DIR / CI_DATA_DIR / CI_PID_FILE
@@ -242,7 +243,7 @@ def _check_daemon_version_hint() -> None:
         )
         data = resp.json()
         running_version = data.get("oak_version")
-        if running_version and running_version != VERSION:
+        if running_version and is_meaningful_upgrade(running_version, VERSION):
             cli_command = resolve_ci_cli_command(project_root)
             console.print(
                 f"[yellow]{CI_CLI_HINT_VERSION_MISMATCH.format(running=running_version, installed=VERSION, cli_command=cli_command)}[/yellow]"
