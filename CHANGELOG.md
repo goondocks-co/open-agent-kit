@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Daemon version mismatch detection and restart UI — when the `oak` CLI is upgraded, the daemon now detects the version difference via a background check (every 60s), displays a banner in the web UI, and offers a one-click "Restart Daemon" button, eliminating manual `oak ci restart` calls — [Implement daemon version mismatch detection and restart UI](http://localhost:38388/activity/sessions/39e12dc7-e79a-40cf-bde2-b74442528f69)
+- Project name displayed in daemon UI browser tab title for better multi-project disambiguation — [Add project name to daemon UI tab title](http://localhost:38388/activity/sessions/6f305703-4383-4f41-8bba-cafa08c2f0e3)
+
+### Changed
+
+- Built-in agent task YAMLs no longer copied into `oak/agents/` during installation — the registry now loads built-ins directly from the package, reducing installation footprint and preventing accidental overwrites of user customizations. A cleanup migration removes existing copies on upgrade — [Remove built‑in agent task copies and add cleanup migration](http://localhost:38388/activity/sessions/ea8917a0-aebb-4616-be07-14b5e7843e56), [Refactor installation to remove built‑in agent task copies](http://localhost:38388/activity/sessions/12a1a982-0d3a-401b-b9d0-d38083fafa85)
+
+### Fixed
+
+- Fix Homebrew tap build failures and update installation documentation to reflect `brew install goondocks-co/oak/oak-ci` as the recommended macOS install method — [Fix Homebrew tap and update Oak CI installation docs](http://localhost:38388/activity/sessions/45cd3a6f-2589-440c-afa3-97fbf337a8a7)
+
+### Notes
+
+> **Gotcha**: The version mismatch detection writes a stamp file (`.oak/ci/cli_version`) only when the CLI runs, so it adds no overhead to normal operation. However, the `restartDaemon` API call must be awaited before updating the UI — otherwise stale data may be displayed.
+
+> **Gotcha**: When automatic built-in task installation is disabled, any missing built-in task files will cause runtime errors if agents reference them. Ensure required tasks are present in `oak/agents/` before running the pipeline, or rely on the registry's built-in loader.
+
+> **Gotcha**: The project name in the browser tab is sourced from `window.projectName` injected by the server. If this variable is missing or undefined, the title defaults to just the static suffix.
+
 ## [1.0.3] - 2026-02-10
 
 ### Added

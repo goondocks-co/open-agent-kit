@@ -97,7 +97,8 @@ Hook endpoints receive data from AI coding agents. The prefix is `/api/oak/ci/`.
 | `POST` | `/api/config/exclusions/reset` | Reset exclusions to defaults |
 | `GET` | `/api/providers/models` | List embedding models from provider |
 | `GET` | `/api/providers/summarization-models` | List LLM models |
-| `POST` | `/api/restart` | Reload config and reinitialize |
+| `POST` | `/api/restart` | Reload config and reinitialize embedding chain |
+| `POST` | `/api/self-restart` | Trigger graceful daemon process restart |
 
 ### Agents
 

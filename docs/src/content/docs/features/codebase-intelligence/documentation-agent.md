@@ -132,7 +132,7 @@ Tasks can be scheduled to run automatically using cron expressions. Manage sched
 
 ## Custom Tasks
 
-You can create custom tasks that the Documentation Agent will automatically pick up. Custom tasks live in `oak/agents/` (git-tracked) and use the same YAML format as built-in tasks.
+You can create custom tasks that the Documentation Agent will automatically pick up. Custom tasks live in `oak/agents/` (git-tracked) and use the same YAML format as built-in tasks. Built-in tasks are read from the OAK package itself — they are not copied into your project.
 
 ### Task File Format
 
