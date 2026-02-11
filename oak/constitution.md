@@ -205,7 +205,7 @@ Codebase Intelligence manages two databases and stores logs locally. Use these p
 | **ChromaDB** | `.oak/ci/chroma/` | Vector search database for semantic code search and memory retrieval |
 | **Daemon Log** | `.oak/ci/daemon.log` | All CI daemon logs (startup, errors, indexing, API requests) |
 | **User Backups** | `oak/history/` | SQL export files generated from the SQLite database (committed to git) |
-| **Agent Configs** | `oak/agents/` | Custom agent task definitions (committed to git) |
+| **Agent Configs** | `oak/agents/` | User-created custom agent task overrides (committed to git). Built-in tasks are loaded directly from the package. |
 | **Shared Port** | `oak/daemon.port` | Team-shared daemon port derived from git remote (committed to git) |
 | **Analysis Reports** | `oak/insights/` | Analysis agent output reports (committed to git) |
 | **Agent-Generated Docs** | `oak/docs/` | Documentation agent output (committed to git) |

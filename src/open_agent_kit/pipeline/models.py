@@ -103,11 +103,6 @@ def plan_has_upgrades(plan: dict[str, Any]) -> bool:
     if skill_plan.get("install") or skill_plan.get("upgrade"):
         return True
 
-    # Check agent_tasks separately (nested structure)
-    agent_tasks_plan = plan.get("agent_tasks", {})
-    if agent_tasks_plan.get("install") or agent_tasks_plan.get("upgrade"):
-        return True
-
     return False
 
 

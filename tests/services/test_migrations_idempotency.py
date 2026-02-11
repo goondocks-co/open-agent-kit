@@ -1,7 +1,7 @@
 """Tests for the migration framework.
 
-Verifies that the migration registry is empty for v1.0 (initial release)
-and that the framework still functions correctly for future migrations.
+Verifies that registered migrations are well-formed and that the
+framework correctly executes, skips, and captures failures.
 """
 
 from __future__ import annotations
@@ -12,18 +12,24 @@ from unittest.mock import patch
 from open_agent_kit.services.migrations import get_migrations, run_migrations
 
 
-class TestMigrationRegistryEmpty:
-    """Verify the migration registry is empty for v1.0."""
+class TestMigrationRegistry:
+    """Verify the migration registry contains well-formed entries."""
 
-    def test_get_migrations_returns_empty_list(self) -> None:
-        """Migration registry should be empty for initial release."""
-        assert get_migrations() == []
+    def test_get_migrations_returns_list_of_tuples(self) -> None:
+        """Each migration entry should be a (id, description, callable) tuple."""
+        migrations = get_migrations()
+        for entry in migrations:
+            assert len(entry) == 3
+            migration_id, description, func = entry
+            assert isinstance(migration_id, str)
+            assert isinstance(description, str)
+            assert callable(func)
 
-    def test_run_migrations_with_empty_registry(self, tmp_path: Path) -> None:
-        """run_migrations should return empty results when no migrations exist."""
-        successful, failed = run_migrations(tmp_path, set())
-        assert successful == []
-        assert failed == []
+    def test_migration_ids_are_unique(self) -> None:
+        """All migration IDs must be unique."""
+        migrations = get_migrations()
+        ids = [m[0] for m in migrations]
+        assert len(ids) == len(set(ids))
 
 
 class TestMigrationFramework:

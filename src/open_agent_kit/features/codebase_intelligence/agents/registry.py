@@ -14,10 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from open_agent_kit.services.state_service import StateService
+from typing import Any
 
 import yaml
 
@@ -751,105 +748,6 @@ class AgentRegistry:
                 return task
 
         raise ValueError(f"Failed to copy task '{task_name}'")
-
-    def install_builtin_tasks(self, force: bool = False) -> dict[str, str]:
-        """Install built-in tasks to the project's agents directory.
-
-        Copies built-in task YAML files to oak/agents/ so users can
-        customize them. By default, only installs tasks that don't already
-        exist (won't overwrite user customizations).
-
-        Args:
-            force: If True, overwrite existing tasks with built-in versions.
-
-        Returns:
-            Dictionary mapping task name to status: 'installed', 'skipped', 'updated', 'error'.
-        """
-        import shutil
-
-        if not self._loaded:
-            self.load_all()
-
-        if self._project_root is None:
-            logger.warning("Cannot install built-in tasks - no project root configured")
-            return {}
-
-        # Ensure target directory exists
-        target_dir = self._project_root / AGENT_PROJECT_CONFIG_DIR
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Track the agents directory for cleanup on removal
-        state_service = self._get_state_service()
-        if state_service is not None:
-            try:
-                state_service.record_created_directory(target_dir)
-            except Exception:
-                pass  # State tracking is best-effort
-
-        results: dict[str, str] = {}
-
-        for task_name, task in self._builtin_tasks.items():
-            if not task.task_path:
-                results[task_name] = "error"
-                continue
-
-            source_path = Path(task.task_path)
-            target_path = target_dir / f"{task_name}{AGENT_PROJECT_CONFIG_EXTENSION}"
-
-            try:
-                if target_path.exists():
-                    if force:
-                        shutil.copy2(source_path, target_path)
-                        results[task_name] = "updated"
-                        logger.info(f"Updated task '{task_name}' from built-in")
-                        self._track_created_file(state_service, target_path)
-                    else:
-                        results[task_name] = "skipped"
-                        logger.debug(f"Skipped task '{task_name}' - user version exists")
-                else:
-                    shutil.copy2(source_path, target_path)
-                    results[task_name] = "installed"
-                    logger.info(f"Installed built-in task '{task_name}'")
-                    self._track_created_file(state_service, target_path)
-            except OSError as e:
-                results[task_name] = "error"
-                logger.warning(f"Failed to install task '{task_name}': {e}")
-
-        # Reload to pick up newly installed tasks as user tasks
-        if any(r in ("installed", "updated") for r in results.values()):
-            self.reload()
-
-        return results
-
-    def _get_state_service(self) -> StateService | None:
-        """Get a StateService instance for tracking managed files.
-
-        Returns:
-            StateService if project_root is set, None otherwise.
-        """
-        if self._project_root is None:
-            return None
-        try:
-            from open_agent_kit.services.state_service import StateService
-
-            return StateService(self._project_root)
-        except Exception:
-            return None
-
-    @staticmethod
-    def _track_created_file(state_service: StateService | None, file_path: Path) -> None:
-        """Record a file as OAK-managed for cleanup on removal.
-
-        Args:
-            state_service: StateService instance (may be None).
-            file_path: Path to the file to track.
-        """
-        if state_service is None:
-            return
-        try:
-            state_service.record_created_file(file_path)
-        except Exception:
-            pass  # State tracking is best-effort
 
     def to_dict(self) -> dict[str, Any]:
         """Convert registry state to dictionary for API responses.
