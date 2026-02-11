@@ -65,7 +65,7 @@ claude
 | **Codex CLI** | Yes (OTel) | Yes | Yes |
 | **OpenCode** | Yes (Plugin) | Yes | Yes |
 | **Windsurf** | Yes | No | Yes |
-| **GitHub Copilot** | Limited | No | Yes |
+| **GitHub Copilot** | Limited | Yes | Yes |
 
 ## Contributing
 
