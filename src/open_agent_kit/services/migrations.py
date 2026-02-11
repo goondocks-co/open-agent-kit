@@ -52,6 +52,40 @@ def _cleanup_builtin_agent_tasks(project_root: Path) -> None:
         logger.warning(f"Failed to remove empty agents directory: {e}")
 
 
+def _cleanup_skill_generate_scripts(project_root: Path) -> None:
+    """Remove build-time generate_*.py scripts from installed skill directories.
+
+    These scripts are dev tools that should not be distributed to agent skill
+    folders. They were previously copied by SkillService._copy_skill_dir()
+    because they lived inside the skill source directory.
+    """
+    from open_agent_kit.services.agent_service import AgentService
+    from open_agent_kit.services.config_service import ConfigService
+
+    config_service = ConfigService(project_root)
+    agent_service = AgentService(project_root)
+
+    try:
+        config = config_service.load_config()
+    except Exception:
+        return
+
+    for agent_name in config.agents:
+        manifest = agent_service.get_agent_manifest(agent_name)
+        if not manifest or not manifest.capabilities.has_skills:
+            continue
+
+        skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
+        skills_base = skills_base.rstrip("/")
+        skills_subdir = manifest.capabilities.skills_directory
+        skills_path = project_root / skills_base / skills_subdir
+
+        target = skills_path / "codebase-intelligence" / "generate_schema_ref.py"
+        if target.is_file():
+            target.unlink()
+            logger.info(f"Removed stale build script: {target.relative_to(project_root)}")
+
+
 def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
     """Get all available migrations.
 
@@ -64,6 +98,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "cleanup-builtin-agent-tasks",
             "Remove redundant built-in task copies from oak/agents/",
             _cleanup_builtin_agent_tasks,
+        ),
+        (
+            "cleanup-skill-generate-scripts",
+            "Remove build-time generate scripts from installed skill directories",
+            _cleanup_skill_generate_scripts,
         ),
     ]
 
