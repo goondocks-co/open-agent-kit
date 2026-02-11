@@ -49,7 +49,7 @@ All hooks communicate via HTTP POST requests to the daemon's API endpoints.
 | `sessionEnd` | `SessionEnd` | Session exits |
 
 :::note[Cursor Dual-Hook Behavior]
-Cursor reads hooks from both `.cursor/hooks.json` AND `.claude/settings.json`, so every hook event fires **twice**. The daemon handles this via content-based deduplication — the second call is silently dropped.
+Cursor reads hooks from both `.cursor/hooks.json` AND `.claude/settings.local.json`, so every hook event fires **twice**. The daemon handles this via content-based deduplication — the second call is silently dropped.
 :::
 
 ### Codex CLI (OpenTelemetry)
@@ -129,7 +129,9 @@ Hooks are deduplicated to prevent duplicate processing:
 
 ## Hook Configuration
 
-Hooks are configured in agent-specific settings files. Example for Claude Code:
+Hooks are configured in agent-specific settings files. These files are **local-only** — they are automatically added to `.gitignore` and regenerated from templates on each `oak ci start`.
+
+Example for Claude Code (written to `.claude/settings.local.json`):
 
 ```json
 {

@@ -99,7 +99,7 @@ mcp:
 # Claude Code uses settings.json with nested hook structure
 hooks:
   type: json
-  config_file: "settings.json"
+  config_file: "settings.local.json"
   hooks_key: "hooks"
   format: nested
   template_file: "hooks.json"

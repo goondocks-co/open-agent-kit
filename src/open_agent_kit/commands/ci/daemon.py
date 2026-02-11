@@ -184,6 +184,23 @@ def ci_start(
     check_oak_initialized(project_root)
     check_ci_enabled(project_root)
 
+    # Reconcile hooks (ensures hook files exist locally after fresh clone)
+    # Skip in quiet mode to avoid overhead when invoked from hooks themselves
+    if not quiet:
+        try:
+            from open_agent_kit.features.codebase_intelligence.service import (
+                CodebaseIntelligenceService,
+            )
+            from open_agent_kit.services.config_service import ConfigService
+
+            config_service = ConfigService(project_root)
+            config = config_service.load_config()
+            if config.agents:
+                ci_service = CodebaseIntelligenceService(project_root)
+                ci_service.update_agent_hooks(config.agents)
+        except Exception as e:
+            logger.debug(f"Hook reconciliation skipped: {e}")
+
     manager = get_daemon_manager(project_root)
 
     if manager.is_running():

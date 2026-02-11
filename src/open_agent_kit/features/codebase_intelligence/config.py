@@ -468,7 +468,7 @@ DEFAULT_EXCLUDE_PATTERNS = [
     *_OAK_MANAGED_PATHS,
     # CI-managed hook configurations (installed by oak ci enable)
     # These contain generated hook scripts, not user code
-    ".claude/settings.json",
+    ".claude/settings.local.json",
     ".cursor/hooks.json",
     ".cursor/hooks",
     ".cursor/hooks/**",
