@@ -2,7 +2,8 @@
 """Build generated assets for all Oak skills.
 
 Discovers and runs all skill asset generators across features.
-Generators are Python scripts named `generate_*.py` inside skill directories.
+Generators are Python scripts named `generate_*.py` inside skill directories
+or feature `scripts/` directories.
 
 Usage:
     python scripts/build_skill_assets.py           # Generate all skill assets
@@ -14,10 +15,12 @@ This is called by:
 
 Pattern:
     To add a generator for a new skill, create a `generate_*.py` script in the
-    skill directory. The script must accept a `--check` flag for CI verification.
+    skill directory or in the feature's `scripts/` directory. The script must
+    accept a `--check` flag for CI verification.
 
-    Example:
+    Examples:
         src/open_agent_kit/features/my_feature/skills/my-skill/generate_foo.py
+        src/open_agent_kit/features/my_feature/scripts/generate_bar.py
 """
 
 import subprocess
@@ -28,8 +31,11 @@ FEATURES_DIR = Path(__file__).parent.parent / "src" / "open_agent_kit" / "featur
 
 
 def discover_generators() -> list[Path]:
-    """Find all generate_*.py scripts inside skill directories."""
-    generators = sorted(FEATURES_DIR.glob("*/skills/*/generate_*.py"))
+    """Find all generate_*.py scripts inside skill or feature scripts directories."""
+    generators = sorted(
+        list(FEATURES_DIR.glob("*/skills/*/generate_*.py"))
+        + list(FEATURES_DIR.glob("*/scripts/generate_*.py"))
+    )
     return generators
 
 

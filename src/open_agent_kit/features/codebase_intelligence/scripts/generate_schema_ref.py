@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path so we can import the schema
-project_root = Path(__file__).resolve().parents[6]  # up to src/../
+project_root = Path(__file__).resolve().parents[5]  # up to src/../
 sys.path.insert(0, str(project_root / "src"))
 
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import (  # noqa: E402
@@ -27,12 +27,12 @@ from open_agent_kit.features.codebase_intelligence.activity.store.schema import 
     SCHEMA_VERSION,
 )
 
-SKILL_DIR = Path(__file__).parent
+CI_FEATURE_DIR = Path(__file__).resolve().parents[1]  # up to codebase_intelligence/
+SKILL_DIR = CI_FEATURE_DIR / "skills" / "codebase-intelligence"
 SCHEMA_REF_PATH = SKILL_DIR / "references" / "schema.md"
 SKILL_MD_PATH = SKILL_DIR / "SKILL.md"
 
 # Analysis agent system prompt (also contains generated core tables)
-CI_FEATURE_DIR = Path(__file__).resolve().parents[2]  # up to codebase_intelligence/
 ANALYSIS_SYSTEM_PROMPT_PATH = (
     CI_FEATURE_DIR / "agents" / "definitions" / "analysis" / "prompts" / "system.md"
 )

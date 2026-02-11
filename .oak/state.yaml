@@ -1,5 +1,6 @@
 migrations:
 - cleanup-builtin-agent-tasks
+- cleanup-skill-generate-scripts
 managed_assets:
   directories:
   - .claude/commands
