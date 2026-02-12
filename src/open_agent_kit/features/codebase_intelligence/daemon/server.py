@@ -278,6 +278,47 @@ def _run_chromadb_rebuild_sync(
         logger.warning(f"Background ChromaDB operation failed: {e}")
 
 
+def _run_session_summary_rebuild_sync(state: "DaemonState") -> None:
+    """Rebuild session summary embeddings from SQLite (for use in background thread)."""
+    from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
+        reembed_session_summaries,
+    )
+
+    if not state.activity_store or not state.vector_store:
+        return
+    try:
+        processed, embedded = reembed_session_summaries(
+            state.activity_store,
+            state.vector_store,
+        )
+        logger.info(
+            f"Background session summary rebuild complete: " f"{embedded}/{processed} embedded"
+        )
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(f"Background session summary rebuild failed: {e}")
+
+
+def _run_plan_index_rebuild_sync(state: "DaemonState") -> None:
+    """Rebuild plan index from SQLite (for use in background thread)."""
+    from open_agent_kit.features.codebase_intelligence.activity.processor.indexing import (
+        rebuild_plan_index,
+    )
+
+    if not state.activity_store or not state.vector_store:
+        return
+    try:
+        stats = rebuild_plan_index(
+            state.activity_store,
+            state.vector_store,
+            batch_size=50,
+        )
+        logger.info(
+            f"Background plan index rebuild complete: " f"{stats.get('indexed', 0)} indexed"
+        )
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(f"Background plan index rebuild failed: {e}")
+
+
 async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
     """Check for SQLite/ChromaDB mismatch and schedule rebuild if needed.
 
@@ -303,9 +344,6 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
     try:
         # Count observations in SQLite (source of truth)
         sqlite_count = state.activity_store.count_observations()
-        if sqlite_count == 0:
-            logger.debug("No observations in SQLite - nothing to rebuild")
-            return
 
         # Count memories in ChromaDB
         try:
@@ -322,14 +360,14 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
             f"unembedded={unembedded_count}"
         )
 
+        loop = asyncio.get_event_loop()
+
         # If ChromaDB is empty but SQLite has data, schedule background rebuild
         if chromadb_count == 0 and sqlite_count > 0:
             logger.warning(
                 f"ChromaDB is empty but SQLite has {sqlite_count} observations. "
                 "Scheduling background rebuild (startup will continue)..."
             )
-            # Run rebuild in background thread - don't await, let startup continue
-            loop = asyncio.get_event_loop()
             loop.run_in_executor(
                 None,
                 _run_chromadb_rebuild_sync,
@@ -343,8 +381,6 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
                 f"Found {unembedded_count} unembedded observations. "
                 "Scheduling background embedding (startup will continue)..."
             )
-            # Run embedding in background thread - don't await, let startup continue
-            loop = asyncio.get_event_loop()
             loop.run_in_executor(
                 None,
                 _run_chromadb_rebuild_sync,
@@ -352,6 +388,42 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
                 "pending",
                 unembedded_count,
             )
+
+        # --- Session summaries rebuild ---
+        # If SQLite has session summaries but ChromaDB doesn't, rebuild them.
+        try:
+            sqlite_sessions_with_summaries = state.activity_store.count_sessions_with_summaries()
+            chromadb_session_count = state.vector_store.count_session_summaries()
+
+            if sqlite_sessions_with_summaries > 0 and chromadb_session_count == 0:
+                logger.warning(
+                    f"ChromaDB has no session summaries but SQLite has "
+                    f"{sqlite_sessions_with_summaries}. Scheduling background rebuild..."
+                )
+                loop.run_in_executor(None, _run_session_summary_rebuild_sync, state)
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Session summary sync check failed: {e}")
+
+        # --- Plans rebuild ---
+        # If SQLite has plans but ChromaDB doesn't, rebuild them.
+        try:
+            sqlite_plans_total = (
+                state.activity_store.count_embedded_plans()
+                + state.activity_store.count_unembedded_plans()
+            )
+            if sqlite_plans_total > 0:
+                # Check ChromaDB for plans - they live in the memory collection
+                # with memory_type='plan'. A zero memory count already triggers
+                # a full rebuild above, so only check when memories exist.
+                if chromadb_count > 0 and state.activity_store.count_embedded_plans() == 0:
+                    # Plans exist in SQLite but none are marked embedded → rebuild
+                    logger.warning(
+                        f"SQLite has {sqlite_plans_total} plans but none are embedded. "
+                        "Scheduling background plan rebuild..."
+                    )
+                    loop.run_in_executor(None, _run_plan_index_rebuild_sync, state)
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Plan sync check failed: {e}")
 
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Error during ChromaDB sync check: {e}")
@@ -670,28 +742,22 @@ async def _init_activity(state: "DaemonState", project_root: Path) -> None:
     from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
         get_machine_identifier,
     )
-    from open_agent_kit.features.codebase_intelligence.summarization import (
-        create_summarizer_from_config,
-    )
 
     activity_db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
     state.machine_id = get_machine_identifier(project_root)
     state.activity_store = ActivityStore(activity_db_path, machine_id=state.machine_id)
     logger.info(f"Activity store initialized at {activity_db_path}")
 
-    # Create processor with summarizer if configured
-    summarizer = None
-    if ci_config.summarization.enabled:
-        summarizer = create_summarizer_from_config(ci_config.summarization)
+    # Create processor with config accessor so summarizer/context_budget/
+    # session_quality read live config (no stale snapshots after UI changes).
+    config_accessor = lambda: state.ci_config  # noqa: E731
 
     if state.vector_store:
         state.activity_processor = ActivityProcessor(
             activity_store=state.activity_store,
             vector_store=state.vector_store,
-            summarizer=summarizer,
             project_root=str(project_root),
-            context_tokens=ci_config.summarization.get_context_tokens(),
-            session_quality_config=ci_config.session_quality,
+            config_accessor=config_accessor,
         )
 
         # Check for SQLite/ChromaDB mismatch on startup
@@ -728,12 +794,14 @@ def _init_agents(state: "DaemonState", project_root: Path) -> None:
     agent_count = state.agent_registry.load_all()
     logger.info(f"Agent registry loaded {agent_count} agents")
 
+    config_accessor = lambda: state.ci_config  # noqa: E731
     state.agent_executor = AgentExecutor(
         project_root=project_root,
         agent_config=ci_config.agents,
         retrieval_engine=state.retrieval_engine,
         activity_store=state.activity_store,
         vector_store=state.vector_store,
+        config_accessor=config_accessor,
     )
     logger.info(f"Agent executor initialized (cache_size={ci_config.agents.executor_cache_size})")
 
@@ -748,6 +816,7 @@ def _init_agents(state: "DaemonState", project_root: Path) -> None:
             agent_registry=state.agent_registry,
             agent_executor=state.agent_executor,
             agent_config=ci_config.agents,
+            config_accessor=config_accessor,
         )
         # Sync schedules from YAML definitions to database
         sync_result = state.agent_scheduler.sync_schedules()

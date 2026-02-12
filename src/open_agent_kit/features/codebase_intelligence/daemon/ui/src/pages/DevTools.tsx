@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { API_ENDPOINTS, MEMORY_SYNC_STATUS, MESSAGE_TYPES } from "@/lib/constants";
 import { useStatus } from "@/hooks/use-status";
+import { useRestart } from "@/hooks/use-restart";
 
 /** Confirmation text required for the nuclear reset option */
 const RESET_CONFIRM_TEXT = "REBUILD";
@@ -69,6 +70,8 @@ export default function DevTools() {
         integrity_check: false,
     });
 
+    const { restart, isRestarting } = useRestart();
+
     // Fetch memory stats
     const { data: memoryStats } = useQuery<MemoryStats>({
         queryKey: ["memory-stats"],
@@ -80,18 +83,20 @@ export default function DevTools() {
     const { data: status } = useStatus();
 
     const compactChromaDBFn = useMutation({
-        mutationFn: () => fetchJson<{ message?: string; size_before_mb?: number }>(
+        mutationFn: () => fetchJson<{ message?: string; size_before_mb?: number; restart_required?: boolean }>(
             API_ENDPOINTS.DEVTOOLS_COMPACT_CHROMADB,
             { method: "POST", headers: devtoolsHeaders() }
         ),
         onSuccess: (data) => {
             setShowCompactDialog(false);
             const msg = data.size_before_mb
-                ? `${data.message} (${data.size_before_mb}MB before compaction)`
-                : data.message || "ChromaDB compaction started.";
+                ? `ChromaDB deleted (${data.size_before_mb}MB freed). Restarting daemon...`
+                : data.message || "ChromaDB deleted. Restarting daemon...";
             setMessage({ type: MESSAGE_TYPES.SUCCESS, text: msg });
-            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
-            queryClient.invalidateQueries({ queryKey: ["status"] });
+            // Chain restart — the fresh daemon will rebuild everything on startup
+            if (data.restart_required) {
+                restart();
+            }
         },
         onError: (err: Error) => {
             setShowCompactDialog(false);
@@ -155,6 +160,18 @@ export default function DevTools() {
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
         },
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to regenerate summaries" })
+    });
+
+    const forceRegenerateSummariesFn = useMutation({
+        mutationFn: () => fetchJson<{ status: string; sessions_queued: number; message?: string }>(`${API_ENDPOINTS.DEVTOOLS_REGENERATE_SUMMARIES}?force=true`, { method: "POST", headers: devtoolsHeaders() }),
+        onSuccess: (data) => {
+            const msg = data.status === "skipped"
+                ? data.message || "No sessions need regeneration"
+                : `Started force-regenerating summaries for ${data.sessions_queued} sessions`;
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: msg });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to force-regenerate summaries" })
     });
 
     const resetProcessingFn = useMutation({
@@ -345,14 +362,14 @@ export default function DevTools() {
                         <Button
                             variant="secondary"
                             onClick={() => setShowCompactDialog(true)}
-                            disabled={compactChromaDBFn.isPending}
+                            disabled={compactChromaDBFn.isPending || isRestarting}
                             className="w-full justify-start"
                         >
-                            <HardDrive className={`mr-2 h-4 w-4 ${compactChromaDBFn.isPending ? "animate-spin" : ""}`} />
-                            {compactChromaDBFn.isPending ? "Compacting..." : "Compact All (Reclaim Space)"}
+                            <HardDrive className={`mr-2 h-4 w-4 ${(compactChromaDBFn.isPending || isRestarting) ? "animate-spin" : ""}`} />
+                            {isRestarting ? "Restarting..." : compactChromaDBFn.isPending ? "Deleting..." : "Compact All (Reclaim Space)"}
                         </Button>
                         <p className="text-xs text-muted-foreground">
-                            Rebuilds all ChromaDB collections from SQLite. This is the <strong>only way to reclaim disk space</strong> after deletions.
+                            Deletes ChromaDB and restarts the daemon. This is the <strong>only way to reclaim disk space</strong> after deletions. All data is rebuilt automatically on restart.
                         </p>
 
                         <div className="h-px bg-border my-4" />
@@ -427,6 +444,19 @@ export default function DevTools() {
                         </Button>
                         <p className="text-xs text-muted-foreground">
                             Backfills missing session summaries for completed sessions. Use after fixing summary generation issues.
+                        </p>
+
+                        <Button
+                            variant="destructive"
+                            onClick={() => forceRegenerateSummariesFn.mutate()}
+                            disabled={forceRegenerateSummariesFn.isPending || regenerateSummariesFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <FileText className={`mr-2 h-4 w-4 ${forceRegenerateSummariesFn.isPending ? "animate-pulse" : ""}`} />
+                            {forceRegenerateSummariesFn.isPending ? "Force Regenerating..." : "Force Regenerate All Summaries"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Regenerates summaries and titles for ALL completed sessions, replacing existing ones. Use after fixing bugs in summary prompts or stats.
                         </p>
 
                         <div className="h-px bg-border my-4" />
@@ -573,9 +603,9 @@ export default function DevTools() {
                 open={showCompactDialog}
                 onOpenChange={setShowCompactDialog}
                 title="Compact ChromaDB Storage"
-                description="This will delete and rebuild all ChromaDB collections (code, memories, session summaries) from SQLite to reclaim disk space. This may take a while for large datasets."
-                confirmLabel="Compact All"
-                loadingLabel="Compacting..."
+                description="This will delete the ChromaDB directory and restart the daemon. All vector data (code index, memories, session summaries) will be automatically rebuilt from SQLite on restart."
+                confirmLabel="Delete & Restart"
+                loadingLabel="Deleting..."
                 onConfirm={async () => {
                     await compactChromaDBFn.mutateAsync();
                     setShowCompactDialog(false);

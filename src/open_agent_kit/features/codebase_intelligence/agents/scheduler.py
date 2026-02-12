@@ -27,10 +27,12 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.agents.executor import AgentExecutor
     from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
-    from open_agent_kit.features.codebase_intelligence.config import AgentConfig
+    from open_agent_kit.features.codebase_intelligence.config import AgentConfig, CIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,7 @@ class AgentScheduler:
         agent_registry: "AgentRegistry",
         agent_executor: "AgentExecutor",
         agent_config: "AgentConfig",
+        config_accessor: "Callable[[], CIConfig | None] | None" = None,
     ):
         """Initialize the scheduler.
 
@@ -65,17 +68,30 @@ class AgentScheduler:
             activity_store: ActivityStore for schedule persistence.
             agent_registry: AgentRegistry for loading task definitions.
             agent_executor: AgentExecutor for running agents.
-            agent_config: AgentConfig with scheduler settings.
+            agent_config: Static AgentConfig fallback (used when
+                config_accessor is not provided, e.g. in tests).
+            config_accessor: Callable returning the current CIConfig. When
+                provided, scheduler settings are read from live config.
         """
         self._activity_store = activity_store
         self._agent_registry = agent_registry
         self._agent_executor = agent_executor
-        self._agent_config = agent_config
+        self._config_accessor = config_accessor
+        self._fallback_agent_config = agent_config
 
         # Background loop control
         self._running = False
         self._loop_task: asyncio.Task[None] | None = None
         self._stop_event = threading.Event()
+
+    @property
+    def _agent_config(self) -> "AgentConfig":
+        """Get agent config from live config accessor or static fallback."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                return config.agents
+        return self._fallback_agent_config
 
     @property
     def is_running(self) -> bool:

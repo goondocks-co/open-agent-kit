@@ -78,10 +78,12 @@ install_with_pipx() {
     version_spec="$1"
     python_cmd="$2"
     info "Installing with pipx (python: $python_cmd)..."
+    # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
+    pipx uninstall "$PACKAGE" 2>/dev/null || true
     if [ -n "$version_spec" ]; then
-        pipx install --force --python "$python_cmd" "${PACKAGE}==${version_spec}"
+        pipx install --python "$python_cmd" "${PACKAGE}==${version_spec}"
     else
-        pipx install --force --python "$python_cmd" "$PACKAGE"
+        pipx install --python "$python_cmd" "$PACKAGE"
     fi
 }
 
@@ -89,10 +91,12 @@ install_with_uv() {
     version_spec="$1"
     python_cmd="$2"
     info "Installing with uv (python: $python_cmd)..."
+    # Uninstall first to ensure --python is respected (mirrors pipx workaround)
+    uv tool uninstall "$PACKAGE" 2>/dev/null || true
     if [ -n "$version_spec" ]; then
-        uv tool install --force --python "$python_cmd" "${PACKAGE}==${version_spec}"
+        uv tool install --python "$python_cmd" "${PACKAGE}==${version_spec}"
     else
-        uv tool install --force --python "$python_cmd" "$PACKAGE"
+        uv tool install --python "$python_cmd" "$PACKAGE"
     fi
 }
 

@@ -405,6 +405,13 @@ class OpenAICompatSummarizer(BaseSummarizer):
                 )
 
             raw_response = choices[0].get("message", {}).get("content", "")
+
+            # Strip reasoning/chain-of-thought tokens from reasoning models
+            from open_agent_kit.features.codebase_intelligence.activity.processor.llm import (
+                strip_reasoning_tokens,
+            )
+
+            raw_response = strip_reasoning_tokens(raw_response)
             return _parse_llm_response(raw_response)
 
         except httpx.TimeoutException:

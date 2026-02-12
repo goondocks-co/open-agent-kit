@@ -89,6 +89,57 @@ class TestAgentExecutorTaskPrompt:
         assert "daemon_url:" in prompt
 
 
+class TestConfigAccessor:
+    """Tests for live config accessor pattern (stale-config fix).
+
+    Services receive a config_accessor callable that returns the current
+    CIConfig. This ensures config changes via the UI take effect immediately
+    without a daemon restart.
+    """
+
+    def test_accessor_reads_live_provider_settings(self, tmp_path: Path) -> None:
+        """Executor reads provider config from accessor, not init snapshot."""
+        from open_agent_kit.features.codebase_intelligence.config import CIConfig
+
+        live_config = CIConfig()
+        live_config.agents = AgentConfig(provider_type="cloud")
+        executor = AgentExecutor(
+            project_root=tmp_path,
+            agent_config=AgentConfig(),  # static fallback (ignored when accessor set)
+            config_accessor=lambda: live_config,
+        )
+
+        # Simulate user changing provider via the UI settings page
+        live_config.agents = AgentConfig(
+            provider_type="lmstudio",
+            provider_base_url="http://localhost:1234",
+            provider_model="mistralai/devstral-small-2-2512",
+        )
+
+        # Executor should see the updated config without any explicit push
+        assert executor._agent_config.provider_type == "lmstudio"
+        assert executor._agent_config.provider_base_url == "http://localhost:1234"
+        assert executor._agent_config.provider_model == "mistralai/devstral-small-2-2512"
+
+    def test_fallback_used_when_no_accessor(self, tmp_path: Path) -> None:
+        """Without config_accessor, executor uses static fallback (test path)."""
+        fallback = AgentConfig(max_turns=5)
+        executor = AgentExecutor(project_root=tmp_path, agent_config=fallback)
+
+        assert executor._agent_config.max_turns == 5
+
+    def test_accessor_none_return_uses_fallback(self, tmp_path: Path) -> None:
+        """If accessor returns None, executor falls back to static config."""
+        fallback = AgentConfig(max_turns=7)
+        executor = AgentExecutor(
+            project_root=tmp_path,
+            agent_config=fallback,
+            config_accessor=lambda: None,
+        )
+
+        assert executor._agent_config.max_turns == 7
+
+
 class TestApplyProviderEnv:
     """Tests for _apply_provider_env security (M-SEC4)."""
 

@@ -10,8 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SH_PATH = REPO_ROOT / "install.sh"
 INSTALL_PS1_PATH = REPO_ROOT / "install.ps1"
 
-PIPX_FORCE_FLAG = "pipx install --force"
-UV_FORCE_FLAG = "uv tool install --force"
+PIPX_UNINSTALL_TOKEN = "pipx uninstall"
+UV_UNINSTALL_TOKEN = "uv tool uninstall"
 PIP_USER_UPGRADE_FLAG = "pip install --user --upgrade"
 INSTALL_VERIFICATION_TOKEN = "Installation verification failed for method"
 PIPX_VERIFY_TOKEN = "pipx list --short"
@@ -24,18 +24,18 @@ SUCCESS_EXIT_CODE = 0
 
 
 def test_install_sh_uses_idempotent_install_flags() -> None:
-    """install.sh should force-install for pipx/uv and use pip --user --upgrade."""
+    """install.sh should uninstall-then-install for pipx/uv and use pip --user --upgrade."""
     content = INSTALL_SH_PATH.read_text(encoding="utf-8")
-    assert PIPX_FORCE_FLAG in content
-    assert UV_FORCE_FLAG in content
+    assert PIPX_UNINSTALL_TOKEN in content
+    assert UV_UNINSTALL_TOKEN in content
     assert PIP_USER_UPGRADE_FLAG in content
 
 
 def test_install_ps1_uses_idempotent_install_flags() -> None:
-    """install.ps1 should force-install for pipx/uv and use pip --user --upgrade."""
+    """install.ps1 should uninstall-then-install for pipx/uv and use pip --user --upgrade."""
     content = INSTALL_PS1_PATH.read_text(encoding="utf-8")
-    assert PIPX_FORCE_FLAG in content
-    assert UV_FORCE_FLAG in content
+    assert PIPX_UNINSTALL_TOKEN in content
+    assert UV_UNINSTALL_TOKEN in content
     assert PIP_USER_UPGRADE_FLAG in content
 
 
