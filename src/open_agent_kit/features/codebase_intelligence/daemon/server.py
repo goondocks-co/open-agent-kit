@@ -6,6 +6,11 @@ Route handlers are organized in separate modules under daemon/routes/.
 
 import asyncio
 import logging
+import os
+import shlex
+import signal
+import subprocess
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +20,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    resolve_ci_cli_command,
+)
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
@@ -27,6 +35,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_DATA_DIR,
     CI_HOOKS_LOG_FILE,
     CI_LOG_FILE,
+    CI_RESTART_SHUTDOWN_DELAY_SECONDS,
+    CI_RESTART_SUBPROCESS_DELAY_SECONDS,
+    CI_STALE_INSTALL_DETECTED_LOG,
     CI_TUNNEL_ERROR_START_UNKNOWN,
     CI_TUNNEL_LOG_ACTIVE,
     CI_TUNNEL_LOG_AUTO_START,
@@ -37,6 +48,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
+from open_agent_kit.utils.platform import get_process_detach_kwargs
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.processor.core import (
@@ -87,6 +99,37 @@ def _check_version(state: "DaemonState") -> None:
     state.update_available = installed is not None and is_meaningful_upgrade(VERSION, installed)
 
 
+def _is_install_stale() -> bool:
+    """Check if the running daemon's package installation was removed from disk."""
+    if not Path(sys.executable).exists():
+        return True
+    static_index = Path(__file__).parent / "static" / "index.html"
+    if not static_index.exists():
+        return True
+    return False
+
+
+async def _trigger_stale_restart() -> None:
+    """Spawn a self-restart when the daemon's install path is gone."""
+    state = get_state()
+    if not state.project_root:
+        return
+    cli_command = resolve_ci_cli_command(state.project_root)
+    restart_cmd = (
+        f"sleep {CI_RESTART_SUBPROCESS_DELAY_SECONDS} && {shlex.quote(cli_command)} ci restart"
+    )
+    subprocess.Popen(
+        ["/bin/sh", "-c", restart_cmd],
+        cwd=str(state.project_root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        **get_process_detach_kwargs(),
+    )
+    await asyncio.sleep(CI_RESTART_SHUTDOWN_DELAY_SECONDS)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
 async def _periodic_version_check() -> None:
     """Periodically check for version mismatch between daemon and CLI."""
     from open_agent_kit.features.codebase_intelligence.constants import (
@@ -100,6 +143,15 @@ async def _periodic_version_check() -> None:
             _check_version(state)
         except Exception:
             logger.debug("Version check failed", exc_info=True)
+
+        # Detect stale installation (e.g. package upgraded, old cellar deleted)
+        try:
+            if _is_install_stale():
+                logger.warning(CI_STALE_INSTALL_DETECTED_LOG)
+                await _trigger_stale_restart()
+                return  # Stop loop — process is about to exit
+        except Exception:
+            logger.debug("Stale install check failed", exc_info=True)
 
 
 async def _periodic_backup_loop(state: "DaemonState") -> None:
@@ -987,8 +1039,6 @@ def create_app(
     Returns:
         Configured FastAPI application.
     """
-    import os
-
     state = get_state()
 
     # Get project root from parameter, environment, or current directory
