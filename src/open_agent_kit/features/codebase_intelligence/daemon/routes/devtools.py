@@ -3,7 +3,6 @@ import shutil
 import sqlite3
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
@@ -253,21 +252,17 @@ class RebuildMemoriesRequest(BaseModel):
 
 
 @router.post("/api/devtools/compact-chromadb", dependencies=_devtools_confirm)
-async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Compact all ChromaDB by deleting directory and rebuilding from SQLite.
+async def compact_chromadb() -> dict[str, Any]:
+    """Compact ChromaDB by deleting directory, then signal frontend to restart.
 
-    This is the ONLY way to reclaim disk space - ChromaDB's delete_collection()
-    does NOT release file space. This endpoint performs a "hard reset" that:
-
-    1. Deletes the entire ChromaDB directory (actually frees disk space)
-    2. Reinitializes with empty collections
-    3. Re-embeds session summaries from SQLite
-    4. Re-embeds memories from SQLite
-    5. Re-indexes all code files
-
-    Use after large refactors, file deletions, or periodically to reclaim space.
-    All operations run in background to avoid timeout.
+    ChromaDB's in-process WAL locks and HNSW file handles don't fully
+    release even after ``client.reset()`` — so we only do the *delete*
+    here and return ``restart_required: true``.  The frontend chains
+    this with ``/api/self-restart`` so the daemon comes back fresh and
+    ``_check_and_rebuild_chromadb()`` rebuilds everything on startup.
     """
+    import asyncio
+
     state = get_state()
     if not state.vector_store:
         raise HTTPException(status_code=503, detail="Vector store not initialized")
@@ -283,7 +278,7 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
             detail="Cannot compact while indexing is in progress. Please wait for the current index build to complete.",
         )
 
-    # Get sizes before compaction for reporting
+    # Get size before compaction for reporting
     chroma_path = state.vector_store.persist_directory
     size_before_mb = 0.0
     try:
@@ -294,151 +289,51 @@ async def compact_chromadb(background_tasks: BackgroundTasks) -> dict[str, Any]:
     except OSError:
         pass
 
-    # Get current stats
-    stats_before = state.vector_store.get_stats()
-    memory_count = state.activity_store.count_observations()
-
-    # Capture references for background task
-    activity_store = state.activity_store
+    # Capture the path for the sync helper
     chroma_path_capture = chroma_path
 
-    def _run_compaction() -> None:
-        """Background task to run compaction with fresh VectorStore.
+    def _delete_chromadb() -> None:
+        """Synchronous helper: detach, close, and delete ChromaDB directory."""
+        # 1. Stop file watcher to release index handles
+        if state.file_watcher:
+            state.file_watcher.stop()
+            logger.info("Compaction: stopped file watcher")
 
-        Detaches the old VectorStore from state before cleanup to prevent
-        concurrent requests (health checks, status polls) from calling
-        _ensure_initialized() on the nulled-out client, which would create
-        a new PersistentClient that races with the directory deletion.
-        """
-        from open_agent_kit.features.codebase_intelligence.activity.processor.indexing import (
-            rebuild_chromadb_from_sqlite,
-            rebuild_plan_index,
-        )
-        from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
-            reembed_session_summaries,
-        )
-        from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
+        # 2. Detach old VectorStore from state FIRST to prevent concurrent
+        #    requests (health checks, status polls) from re-initializing
+        #    the client via _ensure_initialized() during cleanup.
+        old_vector_store = state.vector_store
+        state.vector_store = None
+        state.invalidate_retrieval_engine()
 
-        try:
-            # 1. Stop file watcher to release any index handles
-            if state.file_watcher:
-                state.file_watcher.stop()
-                logger.info("Compaction: stopped file watcher")
+        # 3. Close the old VectorStore client
+        if old_vector_store and old_vector_store._client:
+            try:
+                if hasattr(old_vector_store._client, "reset"):
+                    old_vector_store._client.reset()
+            except Exception as e:
+                logger.debug(f"Client reset failed (expected): {e}")
 
-            # 2. Get size before deletion for reporting
-            bytes_freed = 0
-            if chroma_path_capture.exists():
-                for f in chroma_path_capture.rglob("*"):
-                    if f.is_file():
-                        try:
-                            bytes_freed += f.stat().st_size
-                        except OSError:
-                            pass
+            old_vector_store._code_collection = None
+            old_vector_store._memory_collection = None
+            old_vector_store._session_summaries_collection = None
+            old_vector_store._client = None
 
-            # 3. Detach old VectorStore from state FIRST to prevent concurrent
-            #    requests (health checks, status polls) from re-initializing
-            #    the client via _ensure_initialized() during cleanup.
-            old_vector_store = state.vector_store
-            state.vector_store = None
-            state.invalidate_retrieval_engine()
+        del old_vector_store
 
-            # 4. Close the old VectorStore client
-            if old_vector_store and old_vector_store._client:
-                try:
-                    if hasattr(old_vector_store._client, "reset"):
-                        old_vector_store._client.reset()
-                except Exception as e:
-                    logger.debug(f"Client reset failed (expected): {e}")
+        # 4. Delete ChromaDB directory
+        time.sleep(0.5)  # Brief pause for OS to release handles
+        if chroma_path_capture.exists():
+            shutil.rmtree(chroma_path_capture)
+            logger.info(f"Compaction: deleted ChromaDB directory ({size_before_mb:.1f} MB freed)")
 
-                old_vector_store._code_collection = None
-                old_vector_store._memory_collection = None
-                old_vector_store._session_summaries_collection = None
-                old_vector_store._client = None
-
-            del old_vector_store
-
-            # 5. Delete ChromaDB directory directly
-            time.sleep(0.5)  # Brief pause for OS to release handles
-            if chroma_path_capture.exists():
-                shutil.rmtree(chroma_path_capture)
-                logger.info(
-                    f"Compaction: deleted ChromaDB directory ({bytes_freed / 1024 / 1024:.1f} MB)"
-                )
-
-            # 6. Create fresh VectorStore instance
-            if not state.embedding_chain:
-                raise RuntimeError("Embedding chain not initialized")
-
-            new_vector_store = VectorStore(
-                persist_directory=chroma_path_capture,
-                embedding_provider=state.embedding_chain,
-            )
-            # Force initialization to create collections
-            new_vector_store._ensure_initialized()
-            logger.info("Compaction: created fresh VectorStore")
-
-            # 7. Update state references (re-enables concurrent access)
-            state.vector_store = new_vector_store
-
-            # 8. Update indexer to use new VectorStore
-            if state.indexer:
-                state.indexer.vector_store = new_vector_store
-                logger.info("Compaction: updated indexer with new VectorStore")
-
-            # 9. Re-embed session summaries from SQLite
-            sessions_processed, sessions_embedded = reembed_session_summaries(
-                activity_store,
-                new_vector_store,
-            )
-            logger.info(
-                f"Compaction: re-embedded {sessions_embedded}/{sessions_processed} session summaries"
-            )
-
-            # 10. Re-embed memories from SQLite
-            memory_stats = rebuild_chromadb_from_sqlite(
-                activity_store=activity_store,
-                vector_store=new_vector_store,
-                batch_size=50,
-                reset_embedded_flags=True,
-                clear_chromadb_first=False,  # Already cleared
-            )
-            logger.info(f"Compaction: re-embedded {memory_stats.get('embedded', 0)} memories")
-
-            # 11. Re-index plans
-            plan_stats = rebuild_plan_index(activity_store, new_vector_store, batch_size=50)
-            logger.info(f"Compaction: re-indexed {plan_stats.get('indexed', 0)} plans")
-
-            # 12. Restart file watcher with new indexer
-            if state.file_watcher:
-                state.file_watcher.start()
-                logger.info("Compaction: restarted file watcher")
-
-            # 13. Rebuild code index
-            logger.info("Compaction: starting code index rebuild...")
-            state.run_index_build(full_rebuild=True)
-            logger.info("Compaction: code index rebuild complete")
-
-            logger.info(
-                f"Compaction complete: freed {bytes_freed / 1024 / 1024:.1f} MB, "
-                f"re-embedded {memory_stats.get('embedded', 0)} memories, "
-                f"{sessions_embedded} sessions"
-            )
-
-        except (RuntimeError, ValueError, OSError) as e:
-            logger.error(f"ChromaDB compaction error: {e}", exc_info=True)
-
-    background_tasks.add_task(_run_compaction)
+    await asyncio.to_thread(_delete_chromadb)
 
     return {
-        "status": "started",
-        "message": "ChromaDB hard reset + rebuild started (will delete directory to reclaim space)",
+        "status": "deleted",
+        "restart_required": True,
+        "message": "ChromaDB deleted. Restart the daemon to rebuild.",
         "size_before_mb": round(size_before_mb, 2),
-        "stats_before": {
-            "code_chunks": stats_before.get("code_chunks", 0),
-            "memory_observations": stats_before.get("memory_observations", 0),
-            "session_summaries": stats_before.get("session_summaries", 0),
-        },
-        "sqlite_memories": memory_count,
     }
 
 
@@ -602,11 +497,11 @@ async def database_maintenance(
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    # Check if indexing is in progress - can't compact ChromaDB while indexing
-    if request.compact_chromadb and state.index_status.is_indexing:
+    # ChromaDB compaction now requires a daemon restart — use the dedicated endpoint
+    if request.compact_chromadb:
         raise HTTPException(
-            status_code=409,
-            detail="Cannot compact ChromaDB while indexing is in progress. Please wait for the current index build to complete.",
+            status_code=400,
+            detail="ChromaDB compaction now requires a daemon restart. Use POST /api/devtools/compact-chromadb instead.",
         )
 
     store = state.activity_store
@@ -615,19 +510,10 @@ async def database_maintenance(
     # Get database size before maintenance
     db_path = store.db_path
     size_before_mb = 0.0
-    chromadb_size_before_mb = 0.0
     try:
         import os
 
         size_before_mb = os.path.getsize(db_path) / (1024 * 1024)
-
-        # Also get ChromaDB size if compaction requested
-        if request.compact_chromadb and state.vector_store:
-            chroma_path = state.vector_store.persist_directory
-            if chroma_path.exists():
-                chromadb_size_before_mb = sum(
-                    f.stat().st_size for f in chroma_path.rglob("*") if f.is_file()
-                ) / (1024 * 1024)
     except OSError:
         pass
 
@@ -649,7 +535,6 @@ async def database_maintenance(
         and not request.analyze
         and not request.fts_optimize
         and not request.reindex
-        and not request.compact_chromadb
     ):
         return {
             "status": "completed",
@@ -658,14 +543,8 @@ async def database_maintenance(
             "size_mb": round(size_before_mb, 2),
         }
 
-    # Capture references for background task closure
-    activity_store = state.activity_store
-    chroma_path_for_maintenance = (
-        Path(state.vector_store.persist_directory) if state.vector_store else None
-    )
-
     def _run_maintenance() -> None:
-        """Background task to run maintenance operations."""
+        """Background task to run SQLite maintenance operations."""
         try:
             if request.reindex:
                 conn.execute("REINDEX")
@@ -683,112 +562,9 @@ async def database_maintenance(
                 conn.execute("VACUUM")
                 logger.debug("Database maintenance: VACUUM complete")
 
-            # ChromaDB compaction: create fresh VectorStore to avoid read-only bug
-            if request.compact_chromadb and activity_store and chroma_path_for_maintenance:
-                from open_agent_kit.features.codebase_intelligence.activity.processor.indexing import (
-                    rebuild_chromadb_from_sqlite,
-                    rebuild_plan_index,
-                )
-                from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
-                    reembed_session_summaries,
-                )
-                from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
-
-                logger.info("Starting ChromaDB compaction (fresh VectorStore)...")
-
-                # 1. Stop file watcher
-                if state.file_watcher:
-                    state.file_watcher.stop()
-
-                # 2. Get size before deletion
-                bytes_freed = 0
-                if chroma_path_for_maintenance.exists():
-                    for f in chroma_path_for_maintenance.rglob("*"):
-                        if f.is_file():
-                            try:
-                                bytes_freed += f.stat().st_size
-                            except OSError:
-                                pass
-
-                # 3. Detach old VectorStore from state FIRST to prevent
-                #    concurrent requests from re-initializing the client.
-                old_vector_store = state.vector_store
-                state.vector_store = None
-                state.invalidate_retrieval_engine()
-
-                # 4. Close old client
-                if old_vector_store and old_vector_store._client:
-                    try:
-                        if hasattr(old_vector_store._client, "reset"):
-                            old_vector_store._client.reset()
-                    except Exception:
-                        pass
-                    old_vector_store._code_collection = None
-                    old_vector_store._memory_collection = None
-                    old_vector_store._session_summaries_collection = None
-                    old_vector_store._client = None
-
-                del old_vector_store
-
-                # 5. Delete directory
-                time.sleep(0.5)
-                if chroma_path_for_maintenance.exists():
-                    shutil.rmtree(chroma_path_for_maintenance)
-
-                # 6. Create fresh VectorStore
-                if not state.embedding_chain:
-                    raise RuntimeError("Embedding chain not initialized")
-
-                new_vector_store = VectorStore(
-                    persist_directory=chroma_path_for_maintenance,
-                    embedding_provider=state.embedding_chain,
-                )
-                new_vector_store._ensure_initialized()
-
-                # 7. Update state (re-enables concurrent access)
-                state.vector_store = new_vector_store
-
-                # 8. Update indexer with new VectorStore
-                if state.indexer:
-                    state.indexer.vector_store = new_vector_store
-
-                # 9. Re-embed session summaries
-                sessions_processed, sessions_embedded = reembed_session_summaries(
-                    activity_store,
-                    new_vector_store,
-                )
-
-                # 10. Re-embed memories
-                memory_stats = rebuild_chromadb_from_sqlite(
-                    activity_store=activity_store,
-                    vector_store=new_vector_store,
-                    batch_size=50,
-                    reset_embedded_flags=True,
-                    clear_chromadb_first=False,
-                )
-
-                # 11. Re-index plans
-                rebuild_plan_index(activity_store, new_vector_store, batch_size=50)
-
-                # 12. Restart file watcher
-                if state.file_watcher:
-                    state.file_watcher.start()
-
-                logger.info(
-                    f"ChromaDB compaction complete: freed {bytes_freed / 1024 / 1024:.1f} MB, "
-                    f"{memory_stats.get('embedded', 0)} memories re-embedded"
-                )
-
-                # 13. Rebuild code index
-                logger.info("Compaction: starting code index rebuild...")
-                state.run_index_build(full_rebuild=True)
-                logger.info("Compaction: code index rebuild complete")
-
             logger.info("Database maintenance completed successfully")
         except sqlite3.Error as e:
             logger.error(f"Database maintenance error: {e}", exc_info=True)
-        except (RuntimeError, ValueError, OSError) as e:
-            logger.error(f"ChromaDB compaction error: {e}", exc_info=True)
 
     background_tasks.add_task(_run_maintenance)
 
@@ -801,21 +577,14 @@ async def database_maintenance(
         operations.append("fts_optimize")
     if request.vacuum:
         operations.append("vacuum")
-    if request.compact_chromadb:
-        operations.append("compact_chromadb")
 
-    response: dict[str, Any] = {
+    return {
         "status": "started",
         "message": f"Database maintenance started: {', '.join(operations)}",
         "operations": operations,
         "integrity_check": integrity_result,
         "size_before_mb": round(size_before_mb, 2),
     }
-
-    if request.compact_chromadb:
-        response["chromadb_size_before_mb"] = round(chromadb_size_before_mb, 2)
-
-    return response
 
 
 @router.post("/api/devtools/regenerate-summaries", dependencies=_devtools_confirm)
