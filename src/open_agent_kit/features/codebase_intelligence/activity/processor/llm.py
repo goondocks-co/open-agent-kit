@@ -20,6 +20,47 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Patterns for reasoning model chain-of-thought tokens.
+# These models embed their thinking process in the content field.
+# Order matters: try the most specific patterns first.
+_REASONING_PATTERNS = [
+    # <think>...</think>answer  (DeepSeek, Qwen, GLM, many others)
+    re.compile(r"<think>[\s\S]*?</think>\s*", re.IGNORECASE),
+    # Implicit opening tag: reasoning...</think>answer  (GLM-4.7 observed)
+    re.compile(r"^[\s\S]*?</think>\s*", re.IGNORECASE),
+    # <reasoning>...</reasoning>answer
+    re.compile(r"<reasoning>[\s\S]*?</reasoning>\s*", re.IGNORECASE),
+    # <|thinking|>...<|/thinking|>answer
+    re.compile(r"<\|thinking\|>[\s\S]*?<\|/thinking\|>\s*", re.IGNORECASE),
+]
+
+
+def strip_reasoning_tokens(text: str) -> str:
+    """Strip reasoning/chain-of-thought tokens from LLM response text.
+
+    Reasoning models (DeepSeek, GLM-4.7, Qwen, etc.) embed their thinking
+    process in the content field using special tokens like <think>...</think>.
+    This function removes that reasoning to extract only the final answer.
+
+    Args:
+        text: Raw LLM response content.
+
+    Returns:
+        Response with reasoning tokens stripped. Returns original text
+        if no reasoning tokens are detected or if stripping would
+        produce an empty result.
+    """
+    if not text:
+        return text
+
+    for pattern in _REASONING_PATTERNS:
+        stripped = pattern.sub("", text).strip()
+        if stripped and stripped != text.strip():
+            logger.debug(f"Stripped reasoning tokens ({len(text)} → {len(stripped)} chars)")
+            return stripped
+
+    return text
+
 
 def call_llm(
     prompt: str,
@@ -101,6 +142,10 @@ def call_llm(
 
         if not raw_response:
             return {"success": False, "error": "Empty LLM response"}
+
+        # Strip reasoning/chain-of-thought tokens from reasoning models
+        # (e.g. GLM-4.7, DeepSeek) before any downstream processing
+        raw_response = strip_reasoning_tokens(raw_response)
 
         logger.debug(f"LLM response ({len(raw_response)} chars): {raw_response[:300]}")
 
