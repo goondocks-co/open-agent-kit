@@ -107,7 +107,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with pytest
-        run: pytest tests/ -v -o "addopts=" --no-cov
+        run: pytest tests/ -v -o "addopts=" --no-cov -n auto
 
   integration-test:
     name: Integration Test (Smoke)

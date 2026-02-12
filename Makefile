@@ -167,7 +167,7 @@ typecheck:
 	uv run mypy src/open_agent_kit
 
 # Combined check (mirrors CI pr-check.yml)
-check: format-check typecheck test
+check: format-check typecheck test-parallel
 	@echo "\nAll checks passed!"
 
 # Build targets
