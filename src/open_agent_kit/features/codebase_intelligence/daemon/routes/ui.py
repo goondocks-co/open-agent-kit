@@ -1,21 +1,24 @@
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 router = APIRouter(tags=["ui"])
 
 static_path = Path(__file__).parent.parent / "static"
-# We'll need to mount this on the main app instance, but APIRouter doesn't support .mount()
-# So we have to expose a way for the main app to mount it, or use a workaround.
-# Actually, the best way for the daemon is to check the main server.py
-# BUT `server.py` likely imports this router.
-# Let's see if we can just serve the specific files we know about as routes first,
-# OR we rely on the main server mounting it.
-# Check server.py first before editing further?
-# Actually, let's just add specific routes for favicon and logo if mounting IS hard here.
+
+_STALE_INSTALL_HTML = """\
+<!DOCTYPE html>
+<html><head><title>OAK CI - Restart Required</title>
+<style>body{font-family:system-ui;max-width:600px;margin:80px auto;padding:0 20px}
+code{background:#f0f0f0;padding:2px 6px;border-radius:3px}</style></head>
+<body><h1>Daemon Restart Required</h1>
+<p>The OAK package was upgraded but this daemon is still running from the old installation.</p>
+<p>Run <code>oak ci restart</code> to pick up the new version.</p>
+<p><small>The daemon will also auto-restart within 60 seconds.</small></p>
+</body></html>"""
 
 
 def _get_cache_version() -> str:
@@ -26,15 +29,19 @@ def _get_cache_version() -> str:
     return "1"
 
 
-@router.get("/logo.png")
-async def logo() -> FileResponse:
+@router.get("/logo.png", response_class=Response)
+async def logo() -> Response:
     path = Path(__file__).parent.parent / "static" / "logo.png"
+    if not path.exists():
+        return Response(status_code=404)
     return FileResponse(path, media_type="image/png")
 
 
-@router.get("/favicon.png")
-async def favicon() -> FileResponse:
+@router.get("/favicon.png", response_class=Response)
+async def favicon() -> Response:
     path = Path(__file__).parent.parent / "static" / "favicon.png"
+    if not path.exists():
+        return Response(status_code=404)
     return FileResponse(path)
 
 
@@ -60,7 +67,10 @@ async def dashboard(rest: str | None = None) -> HTMLResponse:
     index_path = Path(__file__).parent.parent / "static" / "index.html"
 
     # Read index content (Vite handles cache busting via hashed filenames)
-    content = index_path.read_text()
+    try:
+        content = index_path.read_text()
+    except (FileNotFoundError, OSError):
+        return HTMLResponse(content=_STALE_INSTALL_HTML)
 
     # Inject auth token as meta tag so the UI JS can read it
     state = get_state()

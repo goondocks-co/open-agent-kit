@@ -1201,6 +1201,11 @@ CI_VERSION_CHECK_INTERVAL_SECONDS: Final[int] = 60
 # Restart
 # =============================================================================
 
+CI_STALE_INSTALL_DETECTED_LOG: Final[str] = (
+    "Stale installation detected (package files missing from disk). "
+    "Triggering self-restart to pick up the upgraded version."
+)
+
 CI_RESTART_ROUTE_TAG: Final[str] = "restart"
 CI_RESTART_API_PATH: Final[str] = "/api/self-restart"
 CI_RESTART_SHUTDOWN_DELAY_SECONDS: Final[float] = 1.0

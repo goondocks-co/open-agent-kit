@@ -125,41 +125,44 @@ class FileWatcher:
 
         logger.info(f"Processing file changes: {len(pending)} modified, {len(deleted)} deleted")
 
-        if self.on_index_start:
-            self.on_index_start()
+        try:
+            if self.on_index_start:
+                self.on_index_start()
 
-        total_chunks = 0
+            total_chunks = 0
 
-        # Handle deleted files
-        for filepath in deleted:
-            try:
-                removed = self.indexer.remove_file(filepath)
-                logger.debug(f"Removed {removed} chunks for deleted file: {filepath}")
-            except (ValueError, TypeError, KeyError) as e:
-                logger.warning(f"Failed to remove {filepath} from index: {e}")
+            # Handle deleted files
+            for filepath in deleted:
+                try:
+                    removed = self.indexer.remove_file(filepath)
+                    logger.debug(f"Removed {removed} chunks for deleted file: {filepath}")
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.warning(f"Failed to remove {filepath} from index: {e}")
 
-        # Handle modified/created files
-        for filepath in pending:
-            if not filepath.exists():
-                # File was deleted after being queued
-                continue
+            # Handle modified/created files
+            for filepath in pending:
+                if not filepath.exists():
+                    # File was deleted after being queued
+                    continue
 
-            try:
-                chunks = self.indexer.index_single_file(filepath)
-                total_chunks += chunks
-                logger.debug(f"Re-indexed {filepath}: {chunks} chunks")
-            except (OSError, ValueError, TypeError) as e:
-                logger.warning(f"Failed to re-index {filepath}: {e}")
+                try:
+                    chunks = self.indexer.index_single_file(filepath)
+                    total_chunks += chunks
+                    logger.debug(f"Re-indexed {filepath}: {chunks} chunks")
+                except (OSError, ValueError, TypeError) as e:
+                    logger.warning(f"Failed to re-index {filepath}: {e}")
 
-        if self.on_index_complete:
-            self.on_index_complete(total_chunks)
+            if self.on_index_complete:
+                self.on_index_complete(total_chunks)
 
-        # Update file count in state
-        state = get_state()
-        if state.vector_store:
-            state.index_status.file_count = state.vector_store.count_unique_files()
+            # Update file count in state
+            state = get_state()
+            if state.vector_store:
+                state.index_status.file_count = state.vector_store.count_unique_files()
 
-        logger.info(f"Incremental indexing complete: {total_chunks} chunks updated")
+            logger.info(f"Incremental indexing complete: {total_chunks} chunks updated")
+        except Exception:
+            logger.error("Watcher reindex failed unexpectedly", exc_info=True)
 
     def _on_file_created(self, filepath: Path) -> None:
         """Handle file creation event."""
