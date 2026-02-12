@@ -819,11 +819,18 @@ async def database_maintenance(
 
 
 @router.post("/api/devtools/regenerate-summaries", dependencies=_devtools_confirm)
-async def regenerate_summaries(background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Regenerate missing session summaries for completed sessions.
+async def regenerate_summaries(
+    background_tasks: BackgroundTasks,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Regenerate session summaries for completed sessions.
 
-    Finds sessions that are completed but don't have summaries and
-    triggers summary generation for each. Runs in background to avoid timeout.
+    By default, only backfills missing summaries. With force=true, regenerates
+    ALL summaries (useful after fixing summary generation bugs like incorrect
+    stat keys in prompts).
+
+    Args:
+        force: If true, regenerate all summaries, not just missing ones.
     """
     state = get_state()
     if not state.activity_processor:
@@ -835,31 +842,55 @@ async def regenerate_summaries(background_tasks: BackgroundTasks) -> dict[str, A
 
     # Capture processor reference for closure (mypy type narrowing)
     processor = state.activity_processor
+    store = state.activity_store
 
-    # Get sessions missing summaries (higher limit for backfill)
-    missing = state.activity_store.get_sessions_missing_summaries(limit=100)
+    if force:
+        # Get ALL completed sessions with enough activities
+        min_activities = processor.min_session_activities
+        conn = store._get_connection()
+        cursor = conn.execute(
+            """
+            SELECT s.* FROM sessions s
+            WHERE s.status = 'completed'
+            AND (SELECT COUNT(*) FROM activities a WHERE a.session_id = s.id) >= ?
+            ORDER BY s.created_at_epoch DESC
+            LIMIT 500
+            """,
+            (min_activities,),
+        )
+        from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
 
-    if not missing:
+        sessions = [Session.from_row(row) for row in cursor.fetchall()]
+    else:
+        # Only sessions missing summaries
+        sessions = store.get_sessions_missing_summaries(limit=100)
+
+    if not sessions:
         return {
             "status": "skipped",
-            "message": "No sessions missing summaries",
+            "message": "No sessions to regenerate" if force else "No sessions missing summaries",
             "sessions_queued": 0,
         }
 
+    regenerate_title = force  # Force title regeneration when force=true
+
     def _regenerate() -> None:
         count = 0
-        for session in missing:
+        for session in sessions:
             try:
-                summary = processor.process_session_summary(session.id)
+                summary = processor.process_session_summary(
+                    session.id, regenerate_title=regenerate_title
+                )
                 if summary:
                     count += 1
                     logger.info(f"Regenerated summary for session {session.id[:8]}")
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
                 logger.warning(f"Failed to regenerate summary for {session.id[:8]}: {e}")
-        logger.info(f"Regenerated {count} session summaries out of {len(missing)} queued")
+        logger.info(f"Regenerated {count} session summaries out of {len(sessions)} queued")
 
     background_tasks.add_task(_regenerate)
-    return {"status": "started", "sessions_queued": len(missing)}
+    mode = "force" if force else "backfill"
+    return {"status": "started", "sessions_queued": len(sessions), "mode": mode}
 
 
 @router.post("/api/devtools/cleanup-minimal-sessions", dependencies=_devtools_confirm)

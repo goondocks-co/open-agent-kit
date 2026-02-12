@@ -223,9 +223,9 @@ def process_session_summary(
     prompt = summary_template.prompt
     prompt = prompt.replace("{{session_duration}}", f"{duration_minutes:.1f}")
     prompt = prompt.replace("{{prompt_batch_count}}", str(len(batches)))
-    prompt = prompt.replace("{{files_read_count}}", str(len(stats.get("files_read", []))))
-    prompt = prompt.replace("{{files_modified_count}}", str(len(stats.get("files_modified", []))))
-    prompt = prompt.replace("{{files_created_count}}", str(len(stats.get("files_created", []))))
+    prompt = prompt.replace("{{files_read_count}}", str(stats.get("reads", 0)))
+    prompt = prompt.replace("{{files_modified_count}}", str(stats.get("edits", 0)))
+    prompt = prompt.replace("{{files_created_count}}", str(stats.get("writes", 0)))
     prompt = prompt.replace("{{tool_calls}}", str(tool_calls))
     prompt = prompt.replace("{{prompt_batches}}", prompt_batches_text)
     prompt = prompt.replace("{{plan_context}}", plan_context)

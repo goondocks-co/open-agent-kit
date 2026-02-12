@@ -157,6 +157,18 @@ export default function DevTools() {
         onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to regenerate summaries" })
     });
 
+    const forceRegenerateSummariesFn = useMutation({
+        mutationFn: () => fetchJson<{ status: string; sessions_queued: number; message?: string }>(`${API_ENDPOINTS.DEVTOOLS_REGENERATE_SUMMARIES}?force=true`, { method: "POST", headers: devtoolsHeaders() }),
+        onSuccess: (data) => {
+            const msg = data.status === "skipped"
+                ? data.message || "No sessions need regeneration"
+                : `Started force-regenerating summaries for ${data.sessions_queued} sessions`;
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: msg });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to force-regenerate summaries" })
+    });
+
     const resetProcessingFn = useMutation({
         mutationFn: () => fetchJson(API_ENDPOINTS.DEVTOOLS_RESET_PROCESSING, { method: "POST", headers: devtoolsHeaders(), body: JSON.stringify({ delete_memories: true }) }),
         onSuccess: () => {
@@ -427,6 +439,19 @@ export default function DevTools() {
                         </Button>
                         <p className="text-xs text-muted-foreground">
                             Backfills missing session summaries for completed sessions. Use after fixing summary generation issues.
+                        </p>
+
+                        <Button
+                            variant="destructive"
+                            onClick={() => forceRegenerateSummariesFn.mutate()}
+                            disabled={forceRegenerateSummariesFn.isPending || regenerateSummariesFn.isPending}
+                            className="w-full justify-start"
+                        >
+                            <FileText className={`mr-2 h-4 w-4 ${forceRegenerateSummariesFn.isPending ? "animate-pulse" : ""}`} />
+                            {forceRegenerateSummariesFn.isPending ? "Force Regenerating..." : "Force Regenerate All Summaries"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Regenerates summaries and titles for ALL completed sessions, replacing existing ones. Use after fixing bugs in summary prompts or stats.
                         </p>
 
                         <div className="h-px bg-border my-4" />
