@@ -670,28 +670,22 @@ async def _init_activity(state: "DaemonState", project_root: Path) -> None:
     from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
         get_machine_identifier,
     )
-    from open_agent_kit.features.codebase_intelligence.summarization import (
-        create_summarizer_from_config,
-    )
 
     activity_db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
     state.machine_id = get_machine_identifier(project_root)
     state.activity_store = ActivityStore(activity_db_path, machine_id=state.machine_id)
     logger.info(f"Activity store initialized at {activity_db_path}")
 
-    # Create processor with summarizer if configured
-    summarizer = None
-    if ci_config.summarization.enabled:
-        summarizer = create_summarizer_from_config(ci_config.summarization)
+    # Create processor with config accessor so summarizer/context_budget/
+    # session_quality read live config (no stale snapshots after UI changes).
+    config_accessor = lambda: state.ci_config  # noqa: E731
 
     if state.vector_store:
         state.activity_processor = ActivityProcessor(
             activity_store=state.activity_store,
             vector_store=state.vector_store,
-            summarizer=summarizer,
             project_root=str(project_root),
-            context_tokens=ci_config.summarization.get_context_tokens(),
-            session_quality_config=ci_config.session_quality,
+            config_accessor=config_accessor,
         )
 
         # Check for SQLite/ChromaDB mismatch on startup
@@ -728,12 +722,14 @@ def _init_agents(state: "DaemonState", project_root: Path) -> None:
     agent_count = state.agent_registry.load_all()
     logger.info(f"Agent registry loaded {agent_count} agents")
 
+    config_accessor = lambda: state.ci_config  # noqa: E731
     state.agent_executor = AgentExecutor(
         project_root=project_root,
         agent_config=ci_config.agents,
         retrieval_engine=state.retrieval_engine,
         activity_store=state.activity_store,
         vector_store=state.vector_store,
+        config_accessor=config_accessor,
     )
     logger.info(f"Agent executor initialized (cache_size={ci_config.agents.executor_cache_size})")
 
@@ -748,6 +744,7 @@ def _init_agents(state: "DaemonState", project_root: Path) -> None:
             agent_registry=state.agent_registry,
             agent_executor=state.agent_executor,
             agent_config=ci_config.agents,
+            config_accessor=config_accessor,
         )
         # Sync schedules from YAML definitions to database
         sync_result = state.agent_scheduler.sync_schedules()

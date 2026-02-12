@@ -43,10 +43,12 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from claude_agent_sdk.types import McpSdkServerConfig
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-    from open_agent_kit.features.codebase_intelligence.config import AgentConfig
+    from open_agent_kit.features.codebase_intelligence.config import AgentConfig, CIConfig
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
@@ -74,18 +76,25 @@ class AgentExecutor:
         retrieval_engine: "RetrievalEngine | None" = None,
         activity_store: "ActivityStore | None" = None,
         vector_store: "VectorStore | None" = None,
+        config_accessor: "Callable[[], CIConfig | None] | None" = None,
     ):
         """Initialize the executor.
 
         Args:
             project_root: Project root directory for agent operations.
-            agent_config: AgentConfig with executor settings.
+            agent_config: Static AgentConfig fallback (used when
+                config_accessor is not provided, e.g. in tests).
             retrieval_engine: RetrievalEngine for CI tools (optional).
             activity_store: ActivityStore for CI tools (optional).
             vector_store: VectorStore for CI tools (optional).
+            config_accessor: Callable returning the current CIConfig. When
+                provided, agent config is read from live config instead of
+                the static init value. This ensures provider/model changes
+                via the UI take effect immediately without a daemon restart.
         """
         self._project_root = project_root
-        self._agent_config = agent_config
+        self._config_accessor = config_accessor
+        self._fallback_agent_config = agent_config
         self._retrieval_engine = retrieval_engine
         self._activity_store = activity_store
         self._vector_store = vector_store
@@ -100,6 +109,15 @@ class AgentExecutor:
 
         # MCP server cache keyed by frozenset of enabled tools
         self._ci_mcp_servers: dict[frozenset[str], McpSdkServerConfig | None] = {}
+
+    @property
+    def _agent_config(self) -> "AgentConfig":
+        """Get agent config from live config accessor or static fallback."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                return config.agents
+        return self._fallback_agent_config
 
     @property
     def project_root(self) -> Path:

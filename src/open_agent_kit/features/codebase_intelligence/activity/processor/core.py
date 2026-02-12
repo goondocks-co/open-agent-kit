@@ -58,10 +58,15 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from open_agent_kit.features.codebase_intelligence.activity.store import (
         ActivityStore,
     )
-    from open_agent_kit.features.codebase_intelligence.config import SessionQualityConfig
+    from open_agent_kit.features.codebase_intelligence.config import (
+        CIConfig,
+        SessionQualityConfig,
+    )
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.summarization.base import (
         BaseSummarizer,
@@ -82,36 +87,91 @@ class ActivityProcessor:
         self,
         activity_store: "ActivityStore",
         vector_store: "VectorStore",
-        summarizer: "BaseSummarizer | None",
+        summarizer: "BaseSummarizer | None" = None,
         prompt_config: PromptTemplateConfig | None = None,
         project_root: str | None = None,
         context_tokens: int = 4096,
         session_quality_config: "SessionQualityConfig | None" = None,
+        config_accessor: "Callable[[], CIConfig | None] | None" = None,
     ):
         """Initialize the processor.
 
         Args:
             activity_store: SQLite store for activities.
             vector_store: ChromaDB store for observations.
-            summarizer: LLM summarizer for extraction.
+            summarizer: Static summarizer fallback (used when config_accessor
+                is not provided, e.g. in tests).
             prompt_config: Prompt template configuration.
             project_root: Project root for oak ci commands.
-            context_tokens: Model's context window size (from config).
-            session_quality_config: Session quality thresholds for determining
-                which sessions to title, summarize, and embed. If not provided,
-                uses default values from constants.
+            context_tokens: Static context_tokens fallback (used when
+                config_accessor is not provided).
+            session_quality_config: Static session quality fallback.
+            config_accessor: Callable returning the current CIConfig. When
+                provided, summarizer/context_budget/session_quality are read
+                from live config instead of the static init values. This
+                ensures config changes via the UI take effect immediately
+                without a daemon restart.
         """
         self.activity_store = activity_store
         self.vector_store = vector_store
-        self.summarizer = summarizer
         self.prompt_config = prompt_config or PromptTemplateConfig.load_from_directory()
         self.project_root = project_root
-        self.context_budget = ContextBudget.from_context_tokens(context_tokens)
-        self.session_quality_config = session_quality_config
+
+        # Config accessor for live config reads (production path).
+        # When set, properties below read from it instead of static fallbacks.
+        self._config_accessor = config_accessor
+
+        # Static fallbacks (used by tests and when no accessor is provided)
+        self._fallback_summarizer = summarizer
+        self._fallback_context_budget = ContextBudget.from_context_tokens(context_tokens)
+        self._fallback_session_quality_config = session_quality_config
+
+        # Summarizer cache: recreated when config fingerprint changes
+        self._cached_summarizer: BaseSummarizer | None = None
+        self._summarizer_config_key: tuple[str, str, str, bool] | None = None
 
         self._processing_lock = threading.Lock()
         self._is_processing = False
         self._last_process_time: datetime | None = None
+
+    @property
+    def summarizer(self) -> "BaseSummarizer | None":
+        """Get the current summarizer, recreating if config changed."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                sc = config.summarization
+                key = (sc.provider, sc.model, sc.base_url, sc.enabled)
+                if key != self._summarizer_config_key:
+                    if sc.enabled:
+                        from open_agent_kit.features.codebase_intelligence.summarization import (
+                            create_summarizer_from_config,
+                        )
+
+                        self._cached_summarizer = create_summarizer_from_config(sc)
+                    else:
+                        self._cached_summarizer = None
+                    self._summarizer_config_key = key
+                return self._cached_summarizer
+        return self._fallback_summarizer
+
+    @property
+    def context_budget(self) -> ContextBudget:
+        """Get context budget from live config or static fallback."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                return ContextBudget.from_context_tokens(config.summarization.get_context_tokens())
+        return self._fallback_context_budget
+
+    @property
+    def session_quality_config(self) -> "SessionQualityConfig | None":
+        """Get session quality config from live config or static fallback."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                return config.session_quality
+        return self._fallback_session_quality_config
 
     @property
     def min_session_activities(self) -> int:
@@ -120,8 +180,9 @@ class ActivityProcessor:
             MIN_SESSION_ACTIVITIES,
         )
 
-        if self.session_quality_config:
-            return self.session_quality_config.min_activities
+        sqc = self.session_quality_config
+        if sqc:
+            return sqc.min_activities
         return MIN_SESSION_ACTIVITIES
 
     @property
@@ -131,8 +192,9 @@ class ActivityProcessor:
             SESSION_INACTIVE_TIMEOUT_SECONDS,
         )
 
-        if self.session_quality_config:
-            return self.session_quality_config.stale_timeout_seconds
+        sqc = self.session_quality_config
+        if sqc:
+            return sqc.stale_timeout_seconds
         return SESSION_INACTIVE_TIMEOUT_SECONDS
 
     def _call_llm(self, prompt: str) -> dict[str, Any]:
