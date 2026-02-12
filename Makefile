@@ -82,6 +82,7 @@ setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
 	uv sync --extra dev
 	@# oak-dev = symlink to .venv/bin/oak (editable install from uv sync)
+	@mkdir -p "$(USER_BIN_DIR)"
 	ln -sf "$(CURDIR)/.venv/bin/oak" "$(USER_BIN_DIR)/oak-dev"
 	@echo "\nSetup complete! All dependencies installed."
 	@echo "Run 'make check' to verify everything works."
@@ -100,6 +101,7 @@ setup-full: setup
 sync:
 	uv sync --extra dev
 	@# Refresh oak-dev symlink (in case .venv was recreated)
+	@mkdir -p "$(USER_BIN_DIR)"
 	ln -sf "$(CURDIR)/.venv/bin/oak" "$(USER_BIN_DIR)/oak-dev"
 	@echo "Dependencies synced and oak-dev symlink refreshed."
 

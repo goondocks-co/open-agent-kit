@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.config import (
         CIConfig,
         SessionQualityConfig,
+        SummarizationConfig,
     )
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.summarization.base import (
@@ -128,11 +129,19 @@ class ActivityProcessor:
 
         # Summarizer cache: recreated when config fingerprint changes
         self._cached_summarizer: BaseSummarizer | None = None
-        self._summarizer_config_key: tuple[str, str, str, bool] | None = None
+        self._summarizer_config_key: tuple[str, str, str, str | None, float, bool] | None = None
+        self._summarizer_lock = threading.Lock()
 
         self._processing_lock = threading.Lock()
         self._is_processing = False
         self._last_process_time: datetime | None = None
+
+    @staticmethod
+    def _summarizer_fingerprint(
+        sc: "SummarizationConfig",
+    ) -> "tuple[str, str, str, str | None, float, bool]":
+        """Build a cache key from all fields that affect summarizer construction."""
+        return (sc.provider, sc.model, sc.base_url, sc.api_key, sc.timeout, sc.enabled)
 
     @property
     def summarizer(self) -> "BaseSummarizer | None":
@@ -141,17 +150,20 @@ class ActivityProcessor:
             config = self._config_accessor()
             if config is not None:
                 sc = config.summarization
-                key = (sc.provider, sc.model, sc.base_url, sc.enabled)
+                key = self._summarizer_fingerprint(sc)
                 if key != self._summarizer_config_key:
-                    if sc.enabled:
-                        from open_agent_kit.features.codebase_intelligence.summarization import (
-                            create_summarizer_from_config,
-                        )
+                    with self._summarizer_lock:
+                        # Double-check after acquiring lock
+                        if key != self._summarizer_config_key:
+                            if sc.enabled:
+                                from open_agent_kit.features.codebase_intelligence.summarization import (
+                                    create_summarizer_from_config,
+                                )
 
-                        self._cached_summarizer = create_summarizer_from_config(sc)
-                    else:
-                        self._cached_summarizer = None
-                    self._summarizer_config_key = key
+                                self._cached_summarizer = create_summarizer_from_config(sc)
+                            else:
+                                self._cached_summarizer = None
+                            self._summarizer_config_key = key
                 return self._cached_summarizer
         return self._fallback_summarizer
 

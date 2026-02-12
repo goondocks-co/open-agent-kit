@@ -101,7 +101,7 @@ class TestProcessorConfigAccessor:
         # Access summarizer to populate cache key
         _ = processor.summarizer
         first_key = processor._summarizer_config_key
-        assert first_key == ("ollama", "model-a", "http://localhost:11434", True)
+        assert first_key == ("ollama", "model-a", "http://localhost:11434", None, 180.0, True)
 
         # Same config — cache key unchanged
         _ = processor.summarizer
@@ -117,7 +117,7 @@ class TestProcessorConfigAccessor:
 
         _ = processor.summarizer
         second_key = processor._summarizer_config_key
-        assert second_key == ("ollama", "model-b", "http://localhost:11434", True)
+        assert second_key == ("ollama", "model-b", "http://localhost:11434", None, 180.0, True)
         assert second_key != first_key
 
     def test_summarizer_none_when_disabled(self, _stores: tuple) -> None:
