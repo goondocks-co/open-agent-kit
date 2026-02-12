@@ -74,7 +74,7 @@ setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
 	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
 	uv sync --extra dev
-	pipx install --editable . --suffix=-dev --force
+	pipx install --editable . --suffix=-dev --force --python python3.13
 	@echo "\nSetup complete! All dependencies installed."
 	@echo "Run 'make check' to verify everything works."
 	@echo ""
