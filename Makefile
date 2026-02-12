@@ -8,8 +8,16 @@
 # Quick start:
 #   make setup    # Install dependencies
 #   make check    # Run all checks
+#
+# CLI architecture:
+#   oak-dev  → symlink to .venv/bin/oak (editable, from uv sync)
+#   oak      → uv tool install oak-ci (stable from PyPI, separate venv)
+#   Both can coexist simultaneously.
 
 .PHONY: help setup setup-full sync lock uninstall cli-stable cli-dev cli-dual cli-verify test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset
+
+# Where uv/pipx put global binaries (respect XDG on Linux)
+USER_BIN_DIR := $(or $(shell uv tool dir --bin 2>/dev/null),$(HOME)/.local/bin)
 
 # Default target
 help:
@@ -22,10 +30,10 @@ help:
 	@echo "    make sync          Re-sync dependencies after git pull"
 	@echo "    make lock          Update lockfile after changing pyproject.toml"
 	@echo "    make uninstall     Remove dev environment and local editable CLI install"
-	@echo "    make cli-stable    Install/reinstall stable oak CLI via pipx (oak)"
-	@echo "    make cli-dev       Install/reinstall editable repo via pipx suffix (oak-dev)"
+	@echo "    make cli-stable    Install/reinstall stable oak CLI from PyPI (oak)"
+	@echo "    make cli-dev       Install/reinstall editable repo CLI (oak-dev)"
 	@echo "    make cli-dual      Install both stable oak and editable oak-dev"
-	@echo "    make cli-verify    Show where oak/oak-dev resolve and pipx package state"
+	@echo "    make cli-verify    Show where oak/oak-dev resolve and tool state"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test          Run all tests with coverage"
@@ -72,9 +80,9 @@ help:
 # Setup targets
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Error: uv is not installed. Visit https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
-	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
 	uv sync --extra dev
-	pipx install --editable . --suffix=-dev --force --python python3.13
+	@# oak-dev = symlink to .venv/bin/oak (editable install from uv sync)
+	ln -sf "$(CURDIR)/.venv/bin/oak" "$(USER_BIN_DIR)/oak-dev"
 	@echo "\nSetup complete! All dependencies installed."
 	@echo "Run 'make check' to verify everything works."
 	@echo ""
@@ -91,39 +99,40 @@ setup-full: setup
 
 sync:
 	uv sync --extra dev
-	pipx install --editable . --suffix=-dev --force
-	@echo "Dependencies synced and oak-dev editable install refreshed."
+	@# Refresh oak-dev symlink (in case .venv was recreated)
+	ln -sf "$(CURDIR)/.venv/bin/oak" "$(USER_BIN_DIR)/oak-dev"
+	@echo "Dependencies synced and oak-dev symlink refreshed."
 
 lock:
 	uv lock
 	@echo "Lockfile updated. Run 'make sync' to install."
 
 uninstall:
-	pipx uninstall oak-ci-dev 2>/dev/null || true
-	uv tool uninstall open-agent-kit 2>/dev/null || true
+	rm -f "$(USER_BIN_DIR)/oak-dev"
+	uv tool uninstall oak-ci 2>/dev/null || true
 	rm -rf .venv
-	@echo "Dev environment and local editable CLI install removed."
+	@echo "Dev environment and CLI installs removed."
 	@echo "To reinstall: make setup"
 
 cli-stable:
-	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
-	pipx install oak-ci --force
+	uv tool install oak-ci --python python3.13 --force
 	@echo "Stable CLI installed as 'oak'."
 
-cli-dev:
-	@command -v pipx >/dev/null 2>&1 || { echo "Error: pipx is not installed."; exit 1; }
-	pipx install --editable . --suffix=-dev --force
+cli-dev: sync
 	@echo "Editable CLI installed as 'oak-dev'."
 
 cli-dual: cli-stable cli-dev
-	@echo "Dual install complete: oak (stable), oak-dev (editable)."
+	@echo "Dual install complete: oak (stable from PyPI), oak-dev (editable from .venv)."
 
 cli-verify:
 	@echo "Command resolution:"
-	@which -a oak oak-dev || true
+	@which -a oak oak-dev 2>/dev/null || true
 	@echo ""
-	@echo "pipx packages:"
-	@pipx list
+	@echo "oak-dev target:"
+	@readlink "$(USER_BIN_DIR)/oak-dev" 2>/dev/null || echo "  (not installed)"
+	@echo ""
+	@echo "uv tools:"
+	@uv tool list 2>/dev/null || true
 
 # Testing targets
 test:

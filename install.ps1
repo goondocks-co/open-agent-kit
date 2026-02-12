@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 $Package = "oak-ci"
 $MinPythonMajor = 3
 $MinPythonMinor = 12
+$MaxPythonMinor = 13
 
 function Write-Info  { param($Msg) Write-Host "==> $Msg" -ForegroundColor Blue }
 function Write-Ok    { param($Msg) Write-Host "==> $Msg" -ForegroundColor Green }
@@ -38,6 +39,9 @@ function Test-PythonVersion {
         if ($major -lt $MinPythonMajor -or ($major -eq $MinPythonMajor -and $minor -lt $MinPythonMinor)) {
             return $null
         }
+        if ($major -gt $MinPythonMajor -or ($major -eq $MinPythonMajor -and $minor -gt $MaxPythonMinor)) {
+            return $null
+        }
         return $version
     } catch {
         return $null
@@ -47,20 +51,24 @@ function Test-PythonVersion {
 function Install-WithPipx {
     param($VersionSpec)
     Write-Info "Installing with pipx..."
+    # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
+    pipx uninstall $Package 2>$null | Out-Null
     if ($VersionSpec) {
-        pipx install --force "${Package}==${VersionSpec}"
+        pipx install "${Package}==${VersionSpec}"
     } else {
-        pipx install --force $Package
+        pipx install $Package
     }
 }
 
 function Install-WithUv {
     param($VersionSpec)
     Write-Info "Installing with uv..."
+    # Uninstall first to ensure clean install (mirrors pipx workaround)
+    uv tool uninstall $Package 2>$null | Out-Null
     if ($VersionSpec) {
-        uv tool install --force "${Package}==${VersionSpec}"
+        uv tool install "${Package}==${VersionSpec}"
     } else {
-        uv tool install --force $Package
+        uv tool install $Package
     }
 }
 
@@ -149,7 +157,7 @@ function Main {
     # Find Python
     $pythonCmd = Find-Python
     if (-not $pythonCmd) {
-        Write-Err "Python not found. Please install Python ${MinPythonMajor}.${MinPythonMinor}+ first."
+        Write-Err "Python ${MinPythonMajor}.${MinPythonMinor}-${MinPythonMajor}.${MaxPythonMinor} not found."
         Write-Host ""
         Write-Info "Install from: https://www.python.org/downloads/"
         exit 1
