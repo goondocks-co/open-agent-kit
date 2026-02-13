@@ -111,7 +111,7 @@ async def start_tunnel() -> dict:
             cloudflared_path=tunnel_config.cloudflared_path,
             ngrok_path=tunnel_config.ngrok_path,
         )
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=CI_TUNNEL_ERROR_CREATE_PROVIDER.format(error=e),
@@ -171,7 +171,7 @@ async def stop_tunnel() -> dict:
     # Stop the tunnel
     try:
         state.tunnel_provider.stop()
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.warning(CI_TUNNEL_ERROR_STOP.format(error=e))
     finally:
         state.tunnel_provider = None

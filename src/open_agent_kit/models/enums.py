@@ -9,7 +9,7 @@ string constants provides:
 - Clear documentation of allowed values
 """
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
 class RFCStatus(str, Enum):
@@ -40,6 +40,20 @@ class AmendmentType(str, Enum):
     def values(cls) -> list[str]:
         """Return list of all amendment types."""
         return [t.value for t in cls]
+
+
+class HookType(StrEnum):
+    """Hook installation types for agent CI integration.
+
+    Determines how CI hooks are installed for each agent:
+    - JSON: Hooks merged into a JSON config file (Claude, Cursor, Gemini, VS Code Copilot)
+    - PLUGIN: Hooks installed as a plugin file (OpenCode)
+    - OTEL: Hooks use OpenTelemetry events via OTLP receiver (Codex)
+    """
+
+    JSON = "json"
+    PLUGIN = "plugin"
+    OTEL = "otel"
 
 
 class RFCNumberFormat(str, Enum):

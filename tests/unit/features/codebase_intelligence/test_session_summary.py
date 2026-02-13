@@ -232,9 +232,10 @@ class TestProcessSessionSummary:
             summarizer=None,
         )
 
-        result = processor.process_session_summary("session-123")
+        summary, title = processor.process_session_summary_with_title("session-123")
 
-        assert result is None
+        assert summary is None
+        assert title is None
 
     def test_process_session_summary_session_not_found(
         self, mock_activity_store, mock_vector_store, mock_summarizer
@@ -252,9 +253,10 @@ class TestProcessSessionSummary:
             summarizer=mock_summarizer,
         )
 
-        result = processor.process_session_summary("nonexistent-session")
+        summary, title = processor.process_session_summary_with_title("nonexistent-session")
 
-        assert result is None
+        assert summary is None
+        assert title is None
         mock_activity_store.get_session.assert_called_once_with("nonexistent-session")
 
     def test_process_session_summary_no_batches(
@@ -283,9 +285,10 @@ class TestProcessSessionSummary:
             summarizer=mock_summarizer,
         )
 
-        result = processor.process_session_summary("session-123")
+        summary, title = processor.process_session_summary_with_title("session-123")
 
-        assert result is None
+        assert summary is None
+        assert title is None
 
     def test_process_session_summary_too_short(
         self, mock_activity_store, mock_vector_store, mock_summarizer
@@ -328,9 +331,10 @@ class TestProcessSessionSummary:
             summarizer=mock_summarizer,
         )
 
-        result = processor.process_session_summary("session-123")
+        summary, title = processor.process_session_summary_with_title("session-123")
 
-        assert result is None
+        assert summary is None
+        assert title is None
 
     def test_process_session_summary_success(
         self, mock_activity_store, mock_vector_store, mock_summarizer
@@ -393,9 +397,9 @@ class TestProcessSessionSummary:
                 summarizer=mock_summarizer,
             )
 
-            result = processor.process_session_summary("session-123")
+            summary, _title = processor.process_session_summary_with_title("session-123")
 
-        assert result == "Implemented JWT authentication and fixed login bug"
+        assert summary == "Implemented JWT authentication and fixed login bug"
         mock_vector_store.add_memory.assert_called_once()
 
         # Verify the memory was created with correct type
@@ -453,9 +457,10 @@ class TestProcessSessionSummary:
                 summarizer=mock_summarizer,
             )
 
-            result = processor.process_session_summary("session-123")
+            summary, title = processor.process_session_summary_with_title("session-123")
 
-        assert result is None
+        assert summary is None
+        assert title is None
         mock_vector_store.add_memory.assert_not_called()
 
     def test_process_session_summary_strips_quotes(
@@ -510,11 +515,11 @@ class TestProcessSessionSummary:
                 summarizer=mock_summarizer,
             )
 
-            result = processor.process_session_summary("session-123")
+            summary, _title = processor.process_session_summary_with_title("session-123")
 
-        assert result == "Summary with surrounding quotes"
-        assert not result.startswith('"')
-        assert not result.endswith('"')
+        assert summary == "Summary with surrounding quotes"
+        assert not summary.startswith('"')
+        assert not summary.endswith('"')
 
     def test_process_session_summary_skips_if_already_summarized_no_new_batches(
         self, mock_activity_store, mock_vector_store, mock_summarizer
@@ -568,10 +573,11 @@ class TestProcessSessionSummary:
             summarizer=mock_summarizer,
         )
 
-        result = processor.process_session_summary("session-123")
+        summary, title = processor.process_session_summary_with_title("session-123")
 
         # Should skip - no new batches since last summary
-        assert result is None
+        assert summary is None
+        assert title is None
         mock_summarizer.summarize.assert_not_called()
 
     def test_process_session_summary_includes_all_batches_on_resume(
@@ -660,10 +666,10 @@ class TestProcessSessionSummary:
                 summarizer=mock_summarizer,
             )
 
-            result = processor.process_session_summary("session-123")
+            summary, _title = processor.process_session_summary_with_title("session-123")
 
         # Should generate summary
-        assert result == "Full session: implemented feature and fixed bugs"
+        assert summary == "Full session: implemented feature and fixed bugs"
         # Verify it was stored
         mock_activity_store.store_observation.assert_called_once()
 

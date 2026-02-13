@@ -443,7 +443,7 @@ class DaemonState:
             logger.error("Index build timed out")
             self.index_status.set_error()
             raise
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
             logger.exception(f"Index build failed: {e}")
             self.index_status.set_error()
             return None

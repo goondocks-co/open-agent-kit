@@ -1,10 +1,57 @@
 """Feature models for open-agent-kit."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
 from pydantic import BaseModel, Field
+
+
+class FeatureConfigEntry(TypedDict):
+    """Type for entries in the FEATURE_CONFIG constant.
+
+    Used when manifest.yaml doesn't exist to provide fallback feature metadata.
+    """
+
+    name: str
+    description: str
+    default_enabled: bool
+    dependencies: list[str]
+    commands: list[str]
+
+
+class LanguageConfig(TypedDict):
+    """Type for entries in the SUPPORTED_LANGUAGES constant.
+
+    Defines display name, pip extra, and package for a language parser.
+    """
+
+    display: str
+    extra: str
+    package: str
+
+
+class Prerequisite(BaseModel):
+    """External prerequisite required by a feature.
+
+    Represents a service or command that must be available for a feature
+    to function (e.g., Ollama for embeddings).
+    """
+
+    name: str = Field(..., description="Human-readable prerequisite name")
+    type: str = Field(default="command", description="Prerequisite type: 'command' or 'service'")
+    description: str = Field(
+        default="", description="Description of what this prerequisite provides"
+    )
+    check_command: str | None = Field(default=None, description="Command to check availability")
+    required: bool = Field(
+        default=True, description="Whether the prerequisite is required or optional"
+    )
+    install_url: str = Field(default="", description="URL with installation instructions")
+    install_instructions: str = Field(default="", description="Detailed installation instructions")
+    models: list[str] = Field(
+        default_factory=list, description="Required models (e.g., for Ollama)"
+    )
 
 
 class LifecycleHooks(BaseModel):
@@ -90,7 +137,7 @@ class FeatureManifest(BaseModel):
         default_factory=list,
         description="Python packages to install when feature is enabled (e.g., ['fastapi>=0.109.0'])",
     )
-    prerequisites: list[dict[str, Any]] = Field(
+    prerequisites: list[Prerequisite] = Field(
         default_factory=list,
         description="External prerequisites (services, tools) required by this feature",
     )

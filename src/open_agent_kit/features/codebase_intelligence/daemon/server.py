@@ -92,7 +92,7 @@ def _check_version(state: "DaemonState") -> None:
     if installed is None:
         try:
             installed = importlib.metadata.version("open_agent_kit")
-        except Exception:
+        except (ImportError, importlib.metadata.PackageNotFoundError):
             pass
 
     state.installed_version = installed
@@ -141,7 +141,7 @@ async def _periodic_version_check() -> None:
         await asyncio.sleep(CI_VERSION_CHECK_INTERVAL_SECONDS)
         try:
             _check_version(state)
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
             logger.debug("Version check failed", exc_info=True)
 
         # Detect stale installation (e.g. package upgraded, old cellar deleted)
@@ -150,7 +150,7 @@ async def _periodic_version_check() -> None:
                 logger.warning(CI_STALE_INSTALL_DETECTED_LOG)
                 await _trigger_stale_restart()
                 return  # Stop loop — process is about to exit
-        except Exception:
+        except (OSError, RuntimeError):
             logger.debug("Stale install check failed", exc_info=True)
 
 
@@ -166,7 +166,7 @@ async def _periodic_backup_loop(state: "DaemonState") -> None:
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _run_auto_backup, state)
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
             logger.exception("Auto-backup failed")
 
 

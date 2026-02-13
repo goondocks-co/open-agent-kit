@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import sqlite3
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 # - ValueError: invalid data or parameters
 # - RuntimeError: ChromaDB or processing errors
 # - AttributeError: store not fully initialized
-ROUTE_EXCEPTION_TYPES = (OSError, ValueError, RuntimeError, AttributeError)
+ROUTE_EXCEPTION_TYPES = (OSError, ValueError, RuntimeError, AttributeError, sqlite3.Error)
 
 
 def session_to_lineage_item(

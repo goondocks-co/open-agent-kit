@@ -289,7 +289,7 @@ class TestPlanDetectorErrorHandling:
             "open_agent_kit.features.codebase_intelligence.plan_detector.PlanDetector._get_agent_service"
         ) as mock_get:
             mock_service = MagicMock()
-            mock_service.get_all_plan_directories.side_effect = Exception("Service error")
+            mock_service.get_all_plan_directories.side_effect = ValueError("Service error")
             mock_get.return_value = mock_service
 
             detector = PlanDetector(project_root=tmp_path)
@@ -386,5 +386,5 @@ class TestDetectPlanInResponse:
 
     def test_agent_service_error_returns_false(self):
         """Test graceful handling when AgentService raises."""
-        self._mock_service.get_agent_manifest.side_effect = Exception("Service error")
+        self._mock_service.get_agent_manifest.side_effect = ValueError("Service error")
         assert detect_plan_in_response("# Plan: Something", "vscode-copilot") is False

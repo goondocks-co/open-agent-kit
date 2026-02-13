@@ -111,7 +111,7 @@ class PlanDetector:
                     f"Loaded plan patterns for {len(self._plan_patterns)} agents",
                     extra={"agents": list(self._plan_patterns.values())},
                 )
-            except Exception as e:
+            except (OSError, ValueError, KeyError, AttributeError) as e:
                 logger.warning(f"Failed to load plan patterns: {e}")
                 self._plan_patterns = {}
         return self._plan_patterns
@@ -289,7 +289,7 @@ def detect_plan_in_response(
         for pattern in patterns:
             if re.search(pattern, head, re.IGNORECASE | re.MULTILINE):
                 return True
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError, re.error):
         logger.debug("Failed to check plan response patterns for agent %s", agent)
 
     return False

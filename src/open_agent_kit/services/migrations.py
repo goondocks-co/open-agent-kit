@@ -10,6 +10,8 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from open_agent_kit.models.enums import HookType
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +69,7 @@ def _cleanup_skill_generate_scripts(project_root: Path) -> None:
 
     try:
         config = config_service.load_config()
-    except Exception:
+    except (OSError, ValueError):
         return
 
     for agent_name in config.agents:
@@ -107,7 +109,7 @@ def _hooks_local_only(project_root: Path) -> None:
     try:
         config_service = ConfigService(project_root)
         config = config_service.load_config()
-    except Exception:
+    except (OSError, ValueError):
         return
 
     if not config.agents:
@@ -119,7 +121,7 @@ def _hooks_local_only(project_root: Path) -> None:
     for agent_name in config.agents:
         try:
             manifest = agent_service.get_agent_manifest(agent_name)
-        except Exception:
+        except (OSError, ValueError):
             continue
 
         if not manifest or not manifest.hooks:
@@ -129,7 +131,7 @@ def _hooks_local_only(project_root: Path) -> None:
         folder = manifest.installation.folder.rstrip("/")
 
         # Determine the hook file path from manifest
-        if hooks_config.type == "plugin":
+        if hooks_config.type == HookType.PLUGIN:
             if hooks_config.plugin_dir and hooks_config.plugin_file:
                 hook_rel = f"{folder}/{hooks_config.plugin_dir}/{hooks_config.plugin_file}"
             else:

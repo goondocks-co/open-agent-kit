@@ -203,26 +203,31 @@ def get_bulk_session_stats(
         session_ids,
     )
 
+    # Bulk query for tool counts across all sessions (eliminates N+1)
+    tool_cursor = conn.execute(
+        f"""
+        SELECT session_id, tool_name, COUNT(*) as count
+        FROM activities
+        WHERE session_id IN ({placeholders})
+        GROUP BY session_id, tool_name
+        """,
+        session_ids,
+    )
+    # Build tool_counts map: session_id -> {tool_name: count}
+    tool_counts_map: dict[str, dict[str, int]] = {}
+    for tool_row in tool_cursor.fetchall():
+        sid = tool_row["session_id"]
+        if sid not in tool_counts_map:
+            tool_counts_map[sid] = {}
+        tool_counts_map[sid][tool_row["tool_name"]] = tool_row["count"]
+
     # Build result dict with aggregated stats
     stats_map: dict[str, dict[str, Any]] = {}
     for row in cursor.fetchall():
         session_id = row["session_id"]
 
-        # Get tool counts for this session (still need separate query for tool breakdown)
-        tool_cursor = conn.execute(
-            """
-            SELECT tool_name, COUNT(*) as count
-            FROM activities
-            WHERE session_id = ?
-            GROUP BY tool_name
-            ORDER BY count DESC
-            """,
-            (session_id,),
-        )
-        tool_counts = {r["tool_name"]: r["count"] for r in tool_cursor.fetchall()}
-
         stats_map[session_id] = {
-            "tool_counts": tool_counts,
+            "tool_counts": tool_counts_map.get(session_id, {}),
             "activity_count": row["activity_count"] or 0,
             "prompt_batch_count": row["prompt_batch_count"] or 0,
             "files_touched": row["files_touched"] or 0,

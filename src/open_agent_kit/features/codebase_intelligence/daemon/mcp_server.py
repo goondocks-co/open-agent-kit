@@ -33,6 +33,10 @@ from open_agent_kit.features.codebase_intelligence.daemon.manager import (  # no
     DaemonManager,
     get_project_port,
 )
+from open_agent_kit.features.codebase_intelligence.exceptions import (  # noqa: E402
+    DaemonConnectionError,
+    DaemonError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +63,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         try:
             if token_path.is_file():
                 return token_path.read_text().strip() or None
-        except Exception:
+        except OSError:
             pass
         return None
 
@@ -148,7 +152,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             pass  # Fall through to retry / auto-start
         except httpx.HTTPStatusError as e:
             if e.response.status_code != 401:
-                raise Exception(
+                raise DaemonError(
                     f"Daemon error: {e.response.status_code} - {e.response.text}"
                 ) from e
             # 401 on first attempt — token was stale but we already read fresh,
@@ -173,7 +177,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             except (httpx.ConnectError, httpx.HTTPStatusError):
                 pass  # Fall through to error
 
-        raise Exception(
+        raise DaemonConnectionError(
             f"CI daemon not running and auto-start failed.\n"
             f"Try manually: oak ci start\n"
             f"Check logs: {ci_data_dir / 'daemon.log'}"

@@ -108,7 +108,7 @@ class PromptClassifier:
                     f"Loaded plan execution patterns for {len(self._plan_execution_patterns)} agents",
                     extra={"agents": list(self._plan_execution_patterns.values())},
                 )
-            except Exception as e:
+            except (OSError, ValueError, KeyError, AttributeError) as e:
                 logger.warning(f"Failed to load plan execution patterns: {e}")
                 self._plan_execution_patterns = {}
         return self._plan_execution_patterns

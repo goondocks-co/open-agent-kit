@@ -177,15 +177,6 @@ def test_plan_upgrade_multiple_agents(initialized_project: Path) -> None:
     assert "windsurf" in agents
 
 
-def test_get_upgrade_service_helper() -> None:
-    """Test get_upgrade_service helper function."""
-    from open_agent_kit.services.upgrade_service import get_upgrade_service
-
-    service = get_upgrade_service()
-    assert isinstance(service, UpgradeService)
-    assert service.project_root == Path.cwd()
-
-
 def test_upgrade_service_with_custom_project_root(temp_project_dir: Path) -> None:
     """Test UpgradeService with custom project root."""
     service = UpgradeService(temp_project_dir)

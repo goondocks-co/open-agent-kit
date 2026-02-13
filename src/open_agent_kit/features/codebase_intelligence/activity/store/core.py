@@ -94,6 +94,22 @@ class ActivityStore:
         conn: sqlite3.Connection = self._local.conn
         return conn
 
+    def _get_readonly_connection(self) -> sqlite3.Connection:
+        """Get thread-local read-only database connection.
+
+        Separate from the main read-write connection to enforce read-only access
+        for analysis queries. Reused across calls to avoid connection overhead.
+        """
+        if not hasattr(self._local, "ro_conn") or self._local.ro_conn is None:
+            self._local.ro_conn = sqlite3.connect(
+                f"file:{self.db_path}?mode=ro",
+                uri=True,
+                timeout=10.0,
+            )
+            self._local.ro_conn.row_factory = sqlite3.Row
+        conn: sqlite3.Connection = self._local.ro_conn
+        return conn
+
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         """Context manager for database transactions."""
@@ -183,10 +199,13 @@ class ActivityStore:
         stats.invalidate_stats_cache(self, session_id)
 
     def close(self) -> None:
-        """Close database connection."""
+        """Close database connections (read-write and read-only)."""
         if hasattr(self._local, "conn") and self._local.conn:
             self._local.conn.close()
             self._local.conn = None
+        if hasattr(self._local, "ro_conn") and self._local.ro_conn:
+            self._local.ro_conn.close()
+            self._local.ro_conn = None
 
     # ==========================================================================
     # Read-only SQL query execution (for analysis agents)
@@ -244,25 +263,17 @@ class ActivityStore:
         # Clamp limit
         effective_limit = min(limit, CI_QUERY_MAX_ROWS)
 
-        # Open a read-only connection (separate from the main connection)
-        conn = sqlite3.connect(
-            f"file:{self.db_path}?mode=ro",
-            uri=True,
-            timeout=10.0,
-        )
-        conn.row_factory = sqlite3.Row
-        try:
-            # Apply limit if not already in query
-            query = sql.strip().rstrip(";")
-            if "LIMIT" not in normalized:
-                query = f"{query} LIMIT {effective_limit}"
+        # Reuse thread-local read-only connection (separate from the main r/w connection)
+        conn = self._get_readonly_connection()
+        # Apply limit if not already in query
+        query = sql.strip().rstrip(";")
+        if "LIMIT" not in normalized:
+            query = f"{query} LIMIT {effective_limit}"
 
-            cursor = conn.execute(query, params or ())
-            columns = [desc[0] for desc in cursor.description] if cursor.description else []
-            rows = [tuple(row) for row in cursor.fetchmany(effective_limit)]
-            return columns, rows
-        finally:
-            conn.close()
+        cursor = conn.execute(query, params or ())
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        rows = [tuple(row) for row in cursor.fetchmany(effective_limit)]
+        return columns, rows
 
     # ==========================================================================
     # Session operations - delegate to sessions module
@@ -393,6 +404,10 @@ class ActivityStore:
     def get_active_prompt_batch(self, session_id: str) -> PromptBatch | None:
         """Get the current active prompt batch for a session."""
         return batches.get_active_prompt_batch(self, session_id)
+
+    def get_latest_prompt_batch(self, session_id: str) -> PromptBatch | None:
+        """Get the most recent prompt batch for a session (any status)."""
+        return batches.get_latest_prompt_batch(self, session_id)
 
     def get_session_plan_batch(
         self, session_id: str, plan_file_path: str | None = None
@@ -625,7 +640,8 @@ class ActivityStore:
 
     def import_from_sql(self, backup_path: Path) -> int:
         """Import data from SQL backup into existing database."""
-        return backup.import_from_sql(self, backup_path)
+        result = backup.import_from_sql_with_dedup(self, backup_path)
+        return result.total_imported
 
     def import_from_sql_with_dedup(
         self, backup_path: Path, dry_run: bool = False

@@ -260,7 +260,7 @@ class SyncService:
                 result.operations_completed.append(
                     f"First restore pass: {len(plan.team_backup_files)} files"
                 )
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 result.warnings.append(f"First restore pass error: {e}")
                 logger.warning(f"First restore pass error: {e}")
 
@@ -307,7 +307,7 @@ class SyncService:
                     result.operations_completed.append(
                         f"Backup created: {backup_result.record_count} records{activities_note}"
                     )
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 result.warnings.append(f"Backup creation error: {e}")
                 logger.warning(f"Backup creation error: {e}")
 
@@ -331,7 +331,7 @@ class SyncService:
                 result.operations_completed.append(
                     f"Second restore pass: {len(plan.team_backup_files)} files"
                 )
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 result.warnings.append(f"Second restore pass error: {e}")
                 logger.warning(f"Second restore pass error: {e}")
 

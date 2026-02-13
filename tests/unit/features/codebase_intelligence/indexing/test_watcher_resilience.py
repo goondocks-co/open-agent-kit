@@ -60,7 +60,7 @@ class TestDoReindexResilience:
         self, watcher: FileWatcher, mock_indexer, tmp_path: Path
     ) -> None:
         """_do_reindex() does not raise when index_single_file throws Exception."""
-        mock_indexer.index_single_file.side_effect = Exception("ChromaDB lock")
+        mock_indexer.index_single_file.side_effect = RuntimeError("ChromaDB lock")
 
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1")

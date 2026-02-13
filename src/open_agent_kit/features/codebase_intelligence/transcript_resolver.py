@@ -93,7 +93,7 @@ class TranscriptResolver:
                     f"Loaded transcript configs for {len(self._transcript_configs)} agents",
                     extra={"agents": list(self._transcript_configs.keys())},
                 )
-            except Exception as e:
+            except (OSError, ValueError, KeyError, AttributeError) as e:
                 logger.warning(f"Failed to load transcript configs: {e}")
                 self._transcript_configs = {}
         return self._transcript_configs

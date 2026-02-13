@@ -51,6 +51,7 @@ VALID_PROVIDERS: Final[tuple[str, ...]] = (
 DEFAULT_PROVIDER: Final[str] = PROVIDER_OLLAMA
 DEFAULT_MODEL: Final[str] = ""  # Empty - user must select from discovered models
 DEFAULT_BASE_URL: Final[str] = "http://localhost:11434"
+DEFAULT_TEST_EMBEDDING_MODEL: Final[str] = "nomic-embed-text"
 
 # =============================================================================
 # Index Status
@@ -80,6 +81,7 @@ AGENT_CURSOR: Final[str] = "cursor"
 AGENT_GEMINI: Final[str] = "gemini"
 AGENT_COPILOT: Final[str] = "vscode-copilot"
 AGENT_CODEX: Final[str] = "codex"
+AGENT_UNKNOWN: Final[str] = "unknown"
 SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
     AGENT_CLAUDE,
     AGENT_CURSOR,
@@ -480,6 +482,10 @@ HOOK_FIELD_STOP_HOOK_ACTIVE: Final[str] = "stop_hook_active"
 HOOK_DEDUP_CACHE_MAX: Final[int] = 500
 HOOK_DEDUP_HASH_ALGORITHM: Final[str] = "sha256"
 HOOK_DROP_LOG_TAG: Final[str] = "[DROP]"
+
+# Hook payload truncation limits (characters)
+HOOK_TOOL_TRUNCATE_LENGTH: Final[int] = 500
+HOOK_READ_TRUNCATE_LENGTH: Final[int] = 200
 
 # Hook types
 HOOK_TYPE_JSON: Final[str] = "json"
@@ -964,11 +970,21 @@ VALID_SUMMARIZATION_PROVIDERS: Final[tuple[str, ...]] = (
 DEFAULT_SUMMARIZATION_PROVIDER: Final[str] = SUMMARIZATION_PROVIDER_OLLAMA
 DEFAULT_SUMMARIZATION_MODEL: Final[str] = ""  # Empty - user must select from discovered models
 DEFAULT_SUMMARIZATION_BASE_URL: Final[str] = "http://localhost:11434"
+DEFAULT_TEST_SUMMARIZATION_MODEL: Final[str] = "qwen2.5:3b"
 # Timeout for LLM inference (180s to accommodate local model loading + inference)
 # Local Ollama can take 30-60s to load a model on first request, plus inference time
 DEFAULT_SUMMARIZATION_TIMEOUT: Final[float] = 180.0
 # Extended timeout for first LLM request when model may need loading (warmup)
 WARMUP_TIMEOUT_MULTIPLIER: Final[float] = 2.0
+
+# =============================================================================
+# Prompt Classification Thresholds
+# =============================================================================
+# Tool-ratio thresholds for classifying session activity type.
+# If edit-tool count exceeds this fraction of total tools → "implementation"
+IMPLEMENTATION_TOOL_RATIO_THRESHOLD: Final[float] = 0.3
+# If explore-tool count exceeds this fraction of total tools → "exploration"
+EXPLORATION_TOOL_RATIO_THRESHOLD: Final[float] = 0.5
 
 # =============================================================================
 # Prompt Source Types

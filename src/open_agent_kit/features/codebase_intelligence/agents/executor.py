@@ -860,7 +860,7 @@ class AgentExecutor:
                     # Timeout is not retried - handle below
                     raise
 
-                except Exception as e:
+                except Exception as e:  # broad catch intentional: SDK may raise any error type
                     last_error = e
                     if not self._is_transient_error(e) or attempt == AGENT_RETRY_MAX_ATTEMPTS - 1:
                         # Non-transient error or final attempt - re-raise
@@ -914,7 +914,7 @@ class AgentExecutor:
             run.completed_at = datetime.now()
             logger.info(f"Agent run {run.id} was cancelled")
 
-        except Exception as e:
+        except Exception as e:  # broad catch intentional: top-level run handler must update status
             # Clean up active client tracking on error
             with self._clients_lock:
                 self._active_clients.pop(run.id, None)

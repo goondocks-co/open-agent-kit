@@ -83,7 +83,7 @@ class LMStudioProvider(EmbeddingProvider):
 
     @staticmethod
     def _guess_dimensions(model: str) -> int:
-        """Guess dimensions from model name.
+        """Look up dimensions from shared metadata, with heuristic fallback.
 
         Args:
             model: Model name.
@@ -91,17 +91,11 @@ class LMStudioProvider(EmbeddingProvider):
         Returns:
             Estimated dimensions.
         """
-        model_lower = model.lower()
-        if "1.5b" in model_lower or "large" in model_lower:
-            return 1024
-        if "small" in model_lower or "mini" in model_lower:
-            return 384
-        if "3-large" in model_lower:
-            return 3072
-        if "3-small" in model_lower or "ada" in model_lower:
-            return 1536
-        # Default for most embedding models
-        return 768
+        from open_agent_kit.features.codebase_intelligence.embeddings.metadata import (
+            get_known_dimensions,
+        )
+
+        return get_known_dimensions(model)
 
     @property
     def name(self) -> str:

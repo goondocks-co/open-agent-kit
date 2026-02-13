@@ -47,7 +47,7 @@ def archive_memory(store: VectorStore, memory_id: str, archived: bool = True) ->
 
         store._memory_collection.update(ids=[memory_id], metadatas=[metadata])
         return True
-    except Exception as e:
+    except (ValueError, RuntimeError, OSError, AttributeError) as e:
         logger.error(f"Failed to archive memory {memory_id}: {e}")
         return False
 
@@ -227,7 +227,7 @@ def add_tag_to_memories(store: VectorStore, memory_ids: list[str], tag: str) -> 
                 metadata["tags"] = ",".join(tags_list)
                 store._memory_collection.update(ids=[memory_id], metadatas=[metadata])
                 count += 1
-    except Exception as e:
+    except (ValueError, RuntimeError, OSError, AttributeError) as e:
         logger.error(f"Failed to add tag to memories: {e}")
 
     return count
@@ -262,7 +262,7 @@ def remove_tag_from_memories(store: VectorStore, memory_ids: list[str], tag: str
                 metadata["tags"] = ",".join(tags_list)
                 store._memory_collection.update(ids=[memory_id], metadatas=[metadata])
                 count += 1
-    except Exception as e:
+    except (ValueError, RuntimeError, OSError, AttributeError) as e:
         logger.error(f"Failed to remove tag from memories: {e}")
 
     return count
@@ -307,12 +307,12 @@ def get_stats(store: VectorStore) -> dict:
     # Handle race condition where collection may be deleted during reindex
     try:
         code_count = store._code_collection.count() if store._code_collection else 0
-    except Exception:
+    except (ValueError, RuntimeError, OSError, AttributeError):
         code_count = 0
 
     try:
         memory_count = store._memory_collection.count() if store._memory_collection else 0
-    except Exception:
+    except (ValueError, RuntimeError, OSError, AttributeError):
         memory_count = 0
 
     return {
@@ -403,7 +403,7 @@ def _close_chromadb_client(store: VectorStore) -> None:
             # Try to reset the client if it supports it (releases all resources)
             if hasattr(store._client, "reset"):
                 store._client.reset()
-        except Exception as e:
+        except (ValueError, RuntimeError, OSError, AttributeError) as e:
             logger.debug(f"Client reset failed (expected if already closed): {e}")
 
     # Clear all references to allow garbage collection

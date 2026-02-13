@@ -21,18 +21,6 @@ from open_agent_kit.features.codebase_intelligence.embeddings.base import (
 
 logger = logging.getLogger(__name__)
 
-# Known models and their dimensions
-KNOWN_MODELS = {
-    "text-embedding-ada-002": 1536,
-    "text-embedding-3-small": 1536,
-    "text-embedding-3-large": 3072,
-    "nomic-embed-text": 768,
-    "nomic-embed-code": 768,
-    "BAAI/bge-small-en-v1.5": 384,
-    "BAAI/bge-base-en-v1.5": 768,
-    "BAAI/bge-large-en-v1.5": 1024,
-}
-
 # Character limit for embeddings (conservative estimate)
 MAX_CHARS_PER_TEXT = 6000
 
@@ -73,15 +61,21 @@ class OpenAICompatProvider(EmbeddingProvider):
         self._client = httpx.Client(timeout=timeout)
         self._available: bool | None = None
 
-        # Determine dimensions
+        # Determine dimensions from shared metadata registry
         if dimensions:
             self._dimensions = dimensions
-        elif model in KNOWN_MODELS:
-            self._dimensions = KNOWN_MODELS[model]
         else:
-            # Default to 768, will be updated on first successful embed
-            self._dimensions = 768
-            self._dimensions_detected = False
+            from open_agent_kit.features.codebase_intelligence.embeddings.metadata import (
+                get_known_model_metadata,
+            )
+
+            known = get_known_model_metadata(model)
+            if known["dimensions"] is not None:
+                self._dimensions = known["dimensions"]
+            else:
+                # Unknown model: default to 768, will be updated on first embed
+                self._dimensions = 768
+                self._dimensions_detected = False
 
     @property
     def name(self) -> str:

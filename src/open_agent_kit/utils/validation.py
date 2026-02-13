@@ -135,7 +135,7 @@ def validate_file_path(path: str) -> bool:
     try:
         p = Path(path)
         return p.exists() and p.is_file()
-    except Exception:
+    except (OSError, ValueError):
         return False
 
 
@@ -151,7 +151,7 @@ def validate_dir_path(path: str) -> bool:
     try:
         p = Path(path)
         return p.exists() and p.is_dir()
-    except Exception:
+    except (OSError, ValueError):
         return False
 
 

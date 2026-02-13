@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_CLAUDE,
+    AGENT_UNKNOWN,
     CI_SESSION_COLUMN_TRANSCRIPT_PATH,
     LINK_EVENT_AUTO_LINKED,
     LINK_EVENT_MANUAL_LINKED,
@@ -21,6 +23,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     MIN_SESSION_ACTIVITIES,
     SESSION_LINK_REASON_MANUAL,
     SESSION_LINK_REASON_SUGGESTION,
+    SESSION_STATUS_ACTIVE,
+    SESSION_STATUS_COMPLETED,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
@@ -114,33 +118,52 @@ def get_or_create_session(
     existing = get_session(store, session_id)
     if existing:
         # Reactivate if previously ended
-        if existing.status == "completed":
+        if existing.status == SESSION_STATUS_COMPLETED:
             with store._transaction() as conn:
                 conn.execute(
-                    """
+                    f"""
                     UPDATE sessions
-                    SET status = 'active', ended_at = NULL
+                    SET status = '{SESSION_STATUS_ACTIVE}', ended_at = NULL
                     WHERE id = ?
                     """,
                     (session_id,),
                 )
-            existing.status = "active"
+            existing.status = SESSION_STATUS_ACTIVE
             existing.ended_at = None
             logger.debug(f"Reactivated session {session_id}")
 
-        # Update agent label if it differs.
-        # Cursor reads both .claude/settings.json and .cursor/hooks.json,
-        # causing two SessionStart hooks to fire for the same session_id:
-        # first with agent=claude, then with agent=cursor.  The more
-        # specific label (the later call) should win.
+        # Update agent label with priority-based logic.
+        # Dual-fire scenario: Cursor / VS Code Copilot fire BOTH the Claude
+        # cloud hooks (--agent claude) AND their own agent-specific hooks
+        # (--agent cursor).  The Claude hooks fire for *every* event, so a
+        # naive "last writer wins" would flip-flop between "claude" and the
+        # real agent.
+        #
+        # Priority:  specific agent  >  "claude"  >  "unknown"
+        # Once a session is attributed to a specific agent, a generic label
+        # ("claude" or "unknown") must not overwrite it.
         if existing.agent != agent:
-            with store._transaction() as conn:
-                conn.execute(
-                    "UPDATE sessions SET agent = ? WHERE id = ?",
-                    (agent, session_id),
+            _GENERIC_AGENTS = (AGENT_CLAUDE, AGENT_UNKNOWN)
+            incoming_is_generic = agent in _GENERIC_AGENTS
+            existing_is_specific = existing.agent not in _GENERIC_AGENTS
+
+            if incoming_is_generic and existing_is_specific:
+                logger.debug(
+                    "Kept session %s agent=%s (incoming %s is generic)",
+                    session_id,
+                    existing.agent,
+                    agent,
                 )
-            logger.debug(f"Updated session {session_id} agent label: {existing.agent} -> {agent}")
-            existing.agent = agent
+            else:
+                with store._transaction() as conn:
+                    conn.execute(
+                        "UPDATE sessions SET agent = ? WHERE id = ?",
+                        (agent, session_id),
+                    )
+                logger.debug(
+                    f"Updated session {session_id} agent label: {existing.agent} -> {agent}"
+                )
+                existing.agent = agent
 
         return existing, False
 
@@ -172,9 +195,9 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
     """
     with store._transaction() as conn:
         conn.execute(
-            """
+            f"""
             UPDATE sessions
-            SET ended_at = ?, status = 'completed', summary = ?
+            SET ended_at = ?, status = '{SESSION_STATUS_COMPLETED}', summary = ?
             WHERE id = ?
             """,
             (datetime.now().isoformat(), summary, session_id),
@@ -251,10 +274,10 @@ def reactivate_session_if_needed(store: ActivityStore, session_id: str) -> bool:
     """
     with store._transaction() as conn:
         cursor = conn.execute(
-            """
+            f"""
             UPDATE sessions
-            SET status = 'active', ended_at = NULL
-            WHERE id = ? AND status = 'completed'
+            SET status = '{SESSION_STATUS_ACTIVE}', ended_at = NULL
+            WHERE id = ? AND status = '{SESSION_STATUS_COMPLETED}'
             """,
             (session_id,),
         )
@@ -314,9 +337,9 @@ def get_unprocessed_sessions(store: ActivityStore, limit: int = 10) -> list[Sess
     """
     conn = store._get_connection()
     cursor = conn.execute(
-        """
+        f"""
         SELECT * FROM sessions
-        WHERE processed = FALSE AND status = 'completed'
+        WHERE processed = FALSE AND status = '{SESSION_STATUS_COMPLETED}'
         ORDER BY created_at_epoch DESC
         LIMIT ?
         """,
@@ -419,7 +442,7 @@ def get_recent_sessions(
         query = "SELECT * FROM sessions s"
         if conditions:
             query += f" WHERE {' AND '.join(conditions)}"
-        query += " ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at_epoch DESC LIMIT ? OFFSET ?"
+        query += f" ORDER BY CASE WHEN status = '{SESSION_STATUS_ACTIVE}' THEN 0 ELSE 1 END, created_at_epoch DESC LIMIT ? OFFSET ?"
     else:
         # Default: sort by created_at_epoch (session start time)
         query = "SELECT * FROM sessions s"
@@ -453,11 +476,11 @@ def get_sessions_needing_titles(store: ActivityStore, limit: int = 10) -> list[S
     # Only process sessions that are either completed OR have been active 5+ minutes
     five_minutes_ago = int(time.time()) - 300
     cursor = conn.execute(
-        """
+        f"""
         SELECT s.* FROM sessions s
         WHERE s.title IS NULL
         AND EXISTS (SELECT 1 FROM prompt_batches pb WHERE pb.session_id = s.id)
-        AND (s.status = 'completed' OR s.created_at_epoch < ?)
+        AND (s.status = '{SESSION_STATUS_COMPLETED}' OR s.created_at_epoch < ?)
         ORDER BY s.created_at_epoch DESC
         LIMIT ?
         """,
@@ -488,9 +511,9 @@ def get_sessions_missing_summaries(
 
     conn = store._get_connection()
     cursor = conn.execute(
-        """
+        f"""
         SELECT s.* FROM sessions s
-        WHERE s.status = 'completed'
+        WHERE s.status = '{SESSION_STATUS_COMPLETED}'
         AND NOT EXISTS (
             SELECT 1 FROM memory_observations m
             WHERE m.session_id = s.id AND m.memory_type = ?
@@ -556,14 +579,14 @@ def recover_stale_sessions(
     # 4. Most recent prompt batch creation (user sent a new prompt)
     conn = store._get_connection()
     cursor = conn.execute(
-        """
+        f"""
         SELECT s.id, MAX(a.timestamp_epoch) as last_activity, s.created_at_epoch,
                COUNT(a.id) as activity_count,
                (SELECT MAX(pb.created_at_epoch) FROM prompt_batches pb WHERE pb.session_id = s.id) as last_batch_epoch,
                (SELECT COUNT(*) FROM prompt_batches pb WHERE pb.session_id = s.id AND pb.status = 'active') as active_batches
         FROM sessions s
         LEFT JOIN activities a ON s.id = a.session_id
-        WHERE s.status = 'active'
+        WHERE s.status = '{SESSION_STATUS_ACTIVE}'
         GROUP BY s.id
         HAVING
             -- Skip sessions with active prompt batches (currently being worked on)
@@ -591,10 +614,10 @@ def recover_stale_sessions(
             # Quality session - mark as completed for summarization
             with store._transaction() as conn:
                 conn.execute(
-                    """
+                    f"""
                     UPDATE sessions
-                    SET status = 'completed', ended_at = ?
-                    WHERE id = ? AND status = 'active'
+                    SET status = '{SESSION_STATUS_COMPLETED}', ended_at = ?
+                    WHERE id = ? AND status = '{SESSION_STATUS_ACTIVE}'
                     """,
                     (datetime.now().isoformat(), session_id),
                 )
@@ -710,14 +733,14 @@ def find_linkable_parent_session(
     # Tier 1: Look for session that JUST ended (within max_gap_seconds)
     # =========================================================================
     cursor = conn.execute(
-        """
+        f"""
         SELECT id, ended_at
         FROM sessions
         WHERE id != ?
           AND agent = ?
           AND project_root = ?
           AND ended_at IS NOT NULL
-          AND status = 'completed'
+          AND status = '{SESSION_STATUS_COMPLETED}'
         ORDER BY created_at_epoch DESC
         LIMIT 1
         """,
@@ -752,13 +775,13 @@ def find_linkable_parent_session(
     # Only match if session has prompt activity (not an empty concurrent session)
     # =========================================================================
     cursor = conn.execute(
-        """
+        f"""
         SELECT id, created_at_epoch
         FROM sessions
         WHERE id != ?
           AND agent = ?
           AND project_root = ?
-          AND status = 'active'
+          AND status = '{SESSION_STATUS_ACTIVE}'
           AND prompt_count > 0
         ORDER BY created_at_epoch DESC
         LIMIT 1
@@ -1051,8 +1074,9 @@ def would_create_cycle(
 ) -> bool:
     """Check if linking session_id to proposed_parent_id would create a cycle.
 
-    A cycle would occur if proposed_parent_id is in the ancestry chain of session_id,
-    or if session_id is in the ancestry chain of proposed_parent_id.
+    A cycle would occur if session_id appears in the ancestry chain of
+    proposed_parent_id.  Uses a recursive CTE to detect this in a single
+    query instead of multiple round trips.
 
     Args:
         store: The ActivityStore instance.
@@ -1067,29 +1091,25 @@ def would_create_cycle(
     if session_id == proposed_parent_id:
         return True
 
-    # Check if session_id is an ancestor of proposed_parent_id
-    # (i.e., proposed_parent_id is in the descendant chain of session_id)
-    # If so, linking would create: session_id -> proposed_parent_id -> ... -> session_id
-    current_id: str | None = proposed_parent_id
-    seen: set[str] = set()
-    depth = 0
-
-    while current_id and depth < max_depth:
-        if current_id in seen:
-            # Already a cycle in the data
-            return True
-        if current_id == session_id:
-            # session_id is an ancestor of proposed_parent_id
-            return True
-        seen.add(current_id)
-
-        session = get_session(store, current_id)
-        if not session:
-            break
-        current_id = session.parent_session_id
-        depth += 1
-
-    return False
+    # Walk the ancestry chain of proposed_parent_id via recursive CTE.
+    # If session_id appears anywhere in that chain, linking would create a cycle.
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        WITH RECURSIVE ancestors(id, depth) AS (
+            SELECT parent_session_id, 1
+            FROM sessions WHERE id = ?
+            UNION ALL
+            SELECT s.parent_session_id, a.depth + 1
+            FROM sessions s
+            JOIN ancestors a ON s.id = a.id
+            WHERE a.id IS NOT NULL AND a.depth < ?
+        )
+        SELECT 1 FROM ancestors WHERE id = ? LIMIT 1
+        """,
+        (proposed_parent_id, max_depth, session_id),
+    )
+    return cursor.fetchone() is not None
 
 
 def is_session_sufficient(
@@ -1136,6 +1156,7 @@ def cleanup_low_quality_sessions(
     processing loop and also available via the devtools API.
 
     Only deletes COMPLETED sessions to avoid touching active work.
+    Uses bulk SQL deletes in a single transaction for efficiency.
 
     Args:
         store: The ActivityStore instance.
@@ -1146,10 +1167,6 @@ def cleanup_low_quality_sessions(
     Returns:
         List of deleted session IDs.
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
-        delete_session,
-    )
-
     if min_activities is None:
         min_activities = MIN_SESSION_ACTIVITIES
 
@@ -1157,11 +1174,11 @@ def cleanup_low_quality_sessions(
 
     # Find completed sessions with fewer than min_activities activities
     cursor = conn.execute(
-        """
+        f"""
         SELECT s.id, COUNT(a.id) as activity_count
         FROM sessions s
         LEFT JOIN activities a ON s.id = a.session_id
-        WHERE s.status = 'completed'
+        WHERE s.status = '{SESSION_STATUS_COMPLETED}'
         GROUP BY s.id
         HAVING activity_count < ?
         """,
@@ -1172,18 +1189,49 @@ def cleanup_low_quality_sessions(
     if not low_quality_sessions:
         return []
 
-    deleted_ids = []
-    for session_id in low_quality_sessions:
-        delete_session(store, session_id, vector_store=vector_store)
-        deleted_ids.append(session_id)
+    # Collect ChromaDB observation IDs before SQL deletion (if vector store provided)
+    all_observation_ids: list[str] = []
+    if vector_store:
+        placeholders = ",".join("?" * len(low_quality_sessions))
+        obs_cursor = conn.execute(
+            f"SELECT id FROM memory_observations WHERE session_id IN ({placeholders})",
+            low_quality_sessions,
+        )
+        all_observation_ids = [row[0] for row in obs_cursor.fetchall()]
 
-    if deleted_ids:
-        logger.info(
-            f"Cleaned up {len(deleted_ids)} low-quality sessions "
-            f"(< {min_activities} activities): {[s[:8] for s in deleted_ids]}"
+    # Bulk delete all related data in a single transaction
+    placeholders = ",".join("?" * len(low_quality_sessions))
+    with store._transaction() as tx_conn:
+        tx_conn.execute(
+            f"DELETE FROM activities WHERE session_id IN ({placeholders})",
+            low_quality_sessions,
+        )
+        tx_conn.execute(
+            f"DELETE FROM memory_observations WHERE session_id IN ({placeholders})",
+            low_quality_sessions,
+        )
+        tx_conn.execute(
+            f"DELETE FROM prompt_batches WHERE session_id IN ({placeholders})",
+            low_quality_sessions,
+        )
+        tx_conn.execute(
+            f"DELETE FROM sessions WHERE id IN ({placeholders})",
+            low_quality_sessions,
         )
 
-    return deleted_ids
+    # Batch ChromaDB cleanup (best-effort, SQLite already committed)
+    if vector_store and all_observation_ids:
+        try:
+            vector_store.delete_memories(all_observation_ids)
+        except (ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to clean up ChromaDB embeddings for low-quality sessions: {e}")
+
+    logger.info(
+        f"Cleaned up {len(low_quality_sessions)} low-quality sessions "
+        f"(< {min_activities} activities): {[s[:8] for s in low_quality_sessions]}"
+    )
+
+    return low_quality_sessions
 
 
 def find_active_parent_for_subagent(
@@ -1223,10 +1271,10 @@ def find_active_parent_for_subagent(
 
     # Primary: active session with recent tool activity (epoch-based)
     cursor = conn.execute(
-        """
+        f"""
         SELECT s.id FROM sessions s
         INNER JOIN activities a ON a.session_id = s.id
-        WHERE s.status = 'active'
+        WHERE s.status = '{SESSION_STATUS_ACTIVE}'
           AND s.id != ?
           AND s.agent = ?
           AND a.timestamp_epoch > ?
@@ -1243,9 +1291,9 @@ def find_active_parent_for_subagent(
     # Handles the race condition where SubagentStart fires before
     # PostToolUse stores the parent's runSubagent activity.
     cursor = conn.execute(
-        """
+        f"""
         SELECT id FROM sessions
-        WHERE status = 'active' AND id != ? AND agent = ?
+        WHERE status = '{SESSION_STATUS_ACTIVE}' AND id != ? AND agent = ?
         ORDER BY created_at_epoch DESC LIMIT 1
         """,
         (subagent_session_id, agent),

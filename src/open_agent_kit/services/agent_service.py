@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 
 from open_agent_kit.models.agent_manifest import AgentManifest, AgentTranscriptConfig
+from open_agent_kit.models.results import AgentInstructionInfo
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.services.state_service import StateService
 from open_agent_kit.utils import (
@@ -380,12 +381,11 @@ class AgentService:
                 continue
 
             # Get command names from feature config
-            from typing import cast
-
             from open_agent_kit.constants import FEATURE_CONFIG
 
-            feature_config = FEATURE_CONFIG.get(feature_name, {})
-            command_names = cast(list[str], feature_config.get("commands", []))
+            if feature_name not in FEATURE_CONFIG:
+                continue
+            command_names = FEATURE_CONFIG[feature_name]["commands"]
 
             for command_name in command_names:
                 # Read template from feature's commands directory
@@ -461,16 +461,15 @@ class AgentService:
         Returns:
             Number of files removed
         """
-        from typing import cast
-
         from open_agent_kit.constants import FEATURE_CONFIG
 
         commands_dir = self.get_agent_commands_dir(agent_type)
         if not commands_dir.exists():
             return 0
 
-        feature_config = FEATURE_CONFIG.get(feature_name, {})
-        command_names = cast(list[str], feature_config.get("commands", []))
+        if feature_name not in FEATURE_CONFIG:
+            return 0
+        command_names = FEATURE_CONFIG[feature_name]["commands"]
 
         removed_count = 0
         for command_name in command_names:
@@ -538,25 +537,22 @@ class AgentService:
         Returns:
             List of command names (e.g., ['rfc-create', 'constitution-validate'])
         """
-        from typing import cast
-
         from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
 
         all_commands: list[str] = []
         for feature_name in SUPPORTED_FEATURES:
-            feature_config = FEATURE_CONFIG.get(feature_name, {})
-            command_names = cast(list[str], feature_config.get("commands", []))
-            all_commands.extend(command_names)
+            if feature_name in FEATURE_CONFIG:
+                all_commands.extend(FEATURE_CONFIG[feature_name]["commands"])
         return all_commands
 
-    def detect_existing_agent_instructions(self) -> dict[str, dict]:
+    def detect_existing_agent_instructions(self) -> dict[str, AgentInstructionInfo]:
         """Detect existing agent instruction files for all configured agents.
 
         Returns:
             Dictionary mapping agent_type to detection info
         """
         configured_agents = self.get_agents_from_config()
-        detection_results = {}
+        detection_results: dict[str, AgentInstructionInfo] = {}
 
         for agent_type in configured_agents:
             agent_type = agent_type.lower()
@@ -578,12 +574,12 @@ class AgentService:
                         logger.warning(f"Failed to read instruction file {instruction_path}: {e}")
                         content = None
 
-                detection_results[agent_type] = {
-                    "exists": exists,
-                    "path": instruction_path,
-                    "content": content,
-                    "has_constitution_ref": has_constitution_ref,
-                }
+                detection_results[agent_type] = AgentInstructionInfo(
+                    exists=exists,
+                    path=instruction_path,
+                    content=content,
+                    has_constitution_ref=has_constitution_ref,
+                )
 
             except ValueError:
                 continue
@@ -647,26 +643,29 @@ class AgentService:
 
         detection = self.detect_existing_agent_instructions()
 
-        files_to_process = {}
+        # Group by file path so shared instruction files are processed once
+        file_paths: dict[str, Path] = {}
+        file_agents: dict[str, list[str]] = {}
+        file_exists: dict[str, bool] = {}
+        file_has_ref: dict[str, bool] = {}
+
         for agent_type, info in detection.items():
             file_path = info["path"]
             file_key = str(file_path)
 
-            if file_key not in files_to_process:
-                files_to_process[file_key] = {
-                    "path": file_path,
-                    "agents": [],
-                    "exists": info["exists"],
-                    "has_constitution_ref": info["has_constitution_ref"],
-                }
+            if file_key not in file_paths:
+                file_paths[file_key] = file_path
+                file_agents[file_key] = []
+                file_exists[file_key] = info["exists"]
+                file_has_ref[file_key] = info["has_constitution_ref"]
 
-            files_to_process[file_key]["agents"].append(agent_type)
+            file_agents[file_key].append(agent_type)
 
-        for file_info in files_to_process.values():
-            file_path = file_info["path"]
-            agents = file_info["agents"]
-            exists = file_info["exists"]
-            has_ref = file_info["has_constitution_ref"]
+        for file_key in file_paths:
+            path = file_paths[file_key]
+            agents = file_agents[file_key]
+            exists = file_exists[file_key]
+            has_ref = file_has_ref[file_key]
 
             try:
                 if has_ref:
@@ -680,17 +679,17 @@ class AgentService:
                     continue
 
                 if exists:
-                    backup_path = self._append_constitution_reference(file_path, constitution_path)
+                    backup_path = self._append_constitution_reference(path, constitution_path)
                     results["backed_up"].append(str(backup_path))
                     for agent in agents:
                         results["updated"].append(agent)
                 else:
-                    self._create_agent_instruction_file(file_path, constitution_path, agents)
+                    self._create_agent_instruction_file(path, constitution_path, agents)
                     for agent in agents:
                         results["created"].append(agent)
 
             except Exception as e:
-                error_msg = f"Failed to process {file_path} for {', '.join(agents)}: {e}"
+                error_msg = f"Failed to process {path} for {', '.join(agents)}: {e}"
                 results["errors"].append(error_msg)
 
         return results

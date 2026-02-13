@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 from open_agent_kit.features.codebase_intelligence.cli_command import (
     resolve_ci_cli_command,
 )
+from open_agent_kit.models.enums import HookType
 from open_agent_kit.utils.env_utils import add_gitignore_entries, remove_gitignore_entries
 
 logger = logging.getLogger(__name__)
@@ -115,9 +116,9 @@ class HooksInstaller:
                 message=f"No hooks configuration in manifest for {self.agent}",
             )
 
-        if self.hooks_config.type == "plugin":
+        if self.hooks_config.type == HookType.PLUGIN:
             return self._install_plugin()
-        elif self.hooks_config.type == "otel":
+        elif self.hooks_config.type == HookType.OTEL:
             return self._install_otel_hooks()
         else:
             return self._install_json_hooks()
@@ -136,9 +137,9 @@ class HooksInstaller:
                 message=f"No hooks configuration in manifest for {self.agent}",
             )
 
-        if self.hooks_config.type == "plugin":
+        if self.hooks_config.type == HookType.PLUGIN:
             return self._remove_plugin()
-        elif self.hooks_config.type == "otel":
+        elif self.hooks_config.type == HookType.OTEL:
             return self._remove_otel_hooks()
         else:
             return self._remove_json_hooks()
@@ -310,7 +311,7 @@ class HooksInstaller:
             with open(template_file) as f:
                 result: dict[str, Any] = json.load(f)
                 return self._render_hook_template_commands(result)
-        except Exception as e:
+        except (OSError, ValueError, json.JSONDecodeError, KeyError) as e:
             logger.error(f"Failed to load hook template for {self.agent}: {e}")
             return None
 
@@ -402,7 +403,7 @@ class HooksInstaller:
 
         folder = self.manifest.installation.folder.rstrip("/")
 
-        if self.hooks_config.type == "plugin":
+        if self.hooks_config.type == HookType.PLUGIN:
             if self.hooks_config.plugin_dir and self.hooks_config.plugin_file:
                 return f"{folder}/{self.hooks_config.plugin_dir}/{self.hooks_config.plugin_file}"
             return None

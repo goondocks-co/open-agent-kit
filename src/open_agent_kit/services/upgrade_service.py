@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 from open_agent_kit.config.paths import FEATURES_DIR, OAK_DIR
 from open_agent_kit.constants import FEATURE_CONFIG, SUPPORTED_FEATURES
+from open_agent_kit.models.enums import HookType
 from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.services.agent_settings_service import AgentSettingsService
 from open_agent_kit.services.config_service import ConfigService
@@ -26,23 +27,9 @@ from open_agent_kit.utils import (
     read_file,
     write_file,
 )
+from open_agent_kit.utils.naming import feature_name_to_dir as _feature_name_to_dir
 
 logger = logging.getLogger(__name__)
-
-
-def _feature_name_to_dir(feature_name: str) -> str:
-    """Convert feature name to directory name (hyphens to underscores).
-
-    Feature names use hyphens (codebase-intelligence) but Python packages
-    use underscores (codebase_intelligence).
-
-    Args:
-        feature_name: Feature name with hyphens
-
-    Returns:
-        Directory name with underscores
-    """
-    return feature_name.replace("-", "_")
 
 
 class UpgradeCategoryResults(TypedDict):
@@ -331,6 +318,7 @@ class UpgradeService:
                 self._upgrade_agent_command(cmd)
                 results["commands"]["upgraded"].append(cmd["file"])
             except Exception as e:
+                logger.debug("Command upgrade failed: %s", cmd["file"], exc_info=True)
                 results["commands"]["failed"].append(f"{cmd['file']}: {e}")
 
         # Note: Template upgrades are no longer needed - templates are read from package
@@ -341,6 +329,7 @@ class UpgradeService:
                 self._upgrade_agent_settings(agent)
                 results["agent_settings"]["upgraded"].append(agent)
             except Exception as e:
+                logger.debug("Agent settings upgrade failed: %s", agent, exc_info=True)
                 results["agent_settings"]["failed"].append(f"{agent}: {e}")
 
         # Install and upgrade skills
@@ -350,6 +339,7 @@ class UpgradeService:
                 self._install_skill(skill_info["skill"], skill_info["feature"])
                 results["skills"]["upgraded"].append(skill_info["skill"])
             except Exception as e:
+                logger.debug("Skill install failed: %s", skill_info["skill"], exc_info=True)
                 results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
 
         for skill_info in skill_plan["upgrade"]:
@@ -357,6 +347,7 @@ class UpgradeService:
                 self._upgrade_skill(skill_info["skill"])
                 results["skills"]["upgraded"].append(skill_info["skill"])
             except Exception as e:
+                logger.debug("Skill upgrade failed: %s", skill_info["skill"], exc_info=True)
                 results["skills"]["failed"].append(f"{skill_info['skill']}: {e}")
 
         for obsolete_info in skill_plan["obsolete"]:
@@ -364,6 +355,9 @@ class UpgradeService:
                 self._remove_obsolete_skill(obsolete_info["skill"])
                 results["obsolete_removed"]["upgraded"].append(obsolete_info["skill"])
             except Exception as e:
+                logger.debug(
+                    "Obsolete skill removal failed: %s", obsolete_info["skill"], exc_info=True
+                )
                 results["obsolete_removed"]["failed"].append(f"{obsolete_info['skill']}: {e}")
 
         # Add missing gitignore entries (grouped by feature for cleaner output)
@@ -405,6 +399,7 @@ class UpgradeService:
                         for entry in added:
                             results["gitignore"]["upgraded"].append(f"{feature_name}: {entry}")
                 except Exception as e:
+                    logger.debug("Gitignore update failed: %s", feature_name, exc_info=True)
                     for entry in entries:
                         results["gitignore"]["failed"].append(f"{feature_name}: {entry}: {e}")
 
@@ -475,8 +470,9 @@ class UpgradeService:
 
         # Check each enabled feature's commands
         for feature_name in enabled_features:
-            feature_config = FEATURE_CONFIG.get(feature_name, {})
-            command_names = cast(list[str], feature_config.get("commands", []))
+            if feature_name not in FEATURE_CONFIG:
+                continue
+            command_names = cast(list[str], FEATURE_CONFIG[feature_name]["commands"])
             feature_commands_dir = (
                 self.package_features_dir / _feature_name_to_dir(feature_name) / "commands"
             )
@@ -772,39 +768,6 @@ class UpgradeService:
 
         return False
 
-    def _skill_dirs_differ(self, package_dir: Path, installed_dir: Path) -> bool:
-        """Check if two skill directories have different content.
-
-        Compares all files in both directories recursively.
-
-        Args:
-            package_dir: Package skill directory
-            installed_dir: Installed skill directory
-
-        Returns:
-            True if directories differ
-        """
-        # Get all files in package directory (relative paths)
-        package_files = {
-            f.relative_to(package_dir): f for f in package_dir.rglob("*") if f.is_file()
-        }
-        installed_files = {
-            f.relative_to(installed_dir): f for f in installed_dir.rglob("*") if f.is_file()
-        }
-
-        # Check if file sets differ
-        if set(package_files.keys()) != set(installed_files.keys()):
-            return True
-
-        # Compare file contents
-        for rel_path in package_files:
-            package_file = package_files[rel_path]
-            installed_file = installed_files[rel_path]
-            if self._files_differ(package_file, installed_file):
-                return True
-
-        return False
-
     def _get_upgradeable_hooks(self) -> list[UpgradePlanHookItem]:
         """Get feature hooks that need to be upgraded.
 
@@ -865,9 +828,9 @@ class UpgradeService:
         if not hooks:
             return f"{folder}/hooks"
 
-        if hooks.type == "plugin" and hooks.plugin_dir and hooks.plugin_file:
+        if hooks.type == HookType.PLUGIN and hooks.plugin_dir and hooks.plugin_file:
             return f"{folder}/{hooks.plugin_dir}/{hooks.plugin_file}"
-        elif hooks.type == "otel":
+        elif hooks.type == HookType.OTEL:
             config_file = hooks.config_file or "config.toml"
             return f"{folder}/{config_file}"
         elif hooks.config_file:
@@ -1262,15 +1225,3 @@ class UpgradeService:
         # No special repair logic needed - declarative reconciliation handles it.
 
         return repaired
-
-
-def get_upgrade_service(project_root: Path | None = None) -> UpgradeService:
-    """Get an UpgradeService instance.
-
-    Args:
-        project_root: Project root directory (defaults to current directory)
-
-    Returns:
-        UpgradeService instance
-    """
-    return UpgradeService(project_root)

@@ -311,7 +311,7 @@ async def compact_chromadb() -> dict[str, Any]:
             try:
                 if hasattr(old_vector_store._client, "reset"):
                     old_vector_store._client.reset()
-            except Exception as e:
+            except (OSError, RuntimeError, AttributeError) as e:
                 logger.debug(f"Client reset failed (expected): {e}")
 
             old_vector_store._code_collection = None
@@ -647,7 +647,7 @@ async def regenerate_summaries(
         count = 0
         for session in sessions:
             try:
-                summary = processor.process_session_summary(
+                summary, _title = processor.process_session_summary_with_title(
                     session.id, regenerate_title=regenerate_title
                 )
                 if summary:

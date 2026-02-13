@@ -28,7 +28,7 @@ async def index_status() -> dict:
     if state.vector_store:
         try:
             stats = state.vector_store.get_stats()
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Error getting vector store stats: {e}")
             # Return status even if stats retrieval fails
 

@@ -29,29 +29,16 @@ from open_agent_kit.config.paths import (
     SKILLS_DIR,
 )
 from open_agent_kit.features.codebase_intelligence.cli_command import resolve_ci_cli_command
+from open_agent_kit.models.results import SkillInstallResult, SkillRefreshResult, SkillRemoveResult
 from open_agent_kit.models.skill import SkillManifest
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.utils import ensure_dir, write_file
+from open_agent_kit.utils.naming import feature_name_to_dir as _feature_name_to_dir
 
 logger = logging.getLogger(__name__)
 
 SKILL_CLI_COMMAND_PLACEHOLDER = "{oak-cli-command}"
 SKILL_BINARY_NULL_BYTE = b"\x00"
-
-
-def _feature_name_to_dir(feature_name: str) -> str:
-    """Convert feature name to directory name (hyphens to underscores).
-
-    Feature names use hyphens (codebase-intelligence) but Python packages
-    use underscores (codebase_intelligence).
-
-    Args:
-        feature_name: Feature name with hyphens
-
-    Returns:
-        Directory name with underscores
-    """
-    return feature_name.replace("-", "_")
 
 
 class SkillService:
@@ -364,7 +351,7 @@ class SkillService:
 
         return sorted(skills)
 
-    def install_skill(self, skill_name: str, feature_name: str | None = None) -> dict[str, Any]:
+    def install_skill(self, skill_name: str, feature_name: str | None = None) -> SkillInstallResult:
         """Install a skill to all agents that support skills.
 
         Args:
@@ -372,16 +359,9 @@ class SkillService:
             feature_name: Optional feature name (for finding skill location)
 
         Returns:
-            Dictionary with installation results:
-            {
-                'skill_name': 'planning-workflow',
-                'installed_to': ['.claude/skills/planning-workflow'],
-                'agents': ['claude'],
-                'already_installed': False,
-                'skipped': False  # True if no agents support skills
-            }
+            SkillInstallResult with installation details.
         """
-        results: dict[str, Any] = {
+        results: SkillInstallResult = {
             "skill_name": skill_name,
             "installed_to": [],
             "agents": [],
@@ -486,22 +466,16 @@ class SkillService:
 
         return results
 
-    def remove_skill(self, skill_name: str) -> dict[str, Any]:
+    def remove_skill(self, skill_name: str) -> SkillRemoveResult:
         """Remove a skill from the project.
 
         Args:
             skill_name: Name of the skill to remove
 
         Returns:
-            Dictionary with removal results:
-            {
-                'skill_name': 'planning-workflow',
-                'removed_from': ['.claude/skills/planning-workflow'],
-                'agents': ['claude'],
-                'not_installed': False
-            }
+            SkillRemoveResult with removal details.
         """
-        results: dict[str, Any] = {
+        results: SkillRemoveResult = {
             "skill_name": skill_name,
             "removed_from": [],
             "agents": [],
@@ -634,21 +608,16 @@ class SkillService:
 
         return results
 
-    def refresh_skills(self) -> dict[str, Any]:
+    def refresh_skills(self) -> SkillRefreshResult:
         """Refresh all installed skills by re-copying from package.
 
         This updates skill content to match the latest package versions.
         Only refreshes for agents that support skills.
 
         Returns:
-            Dictionary with refresh results:
-            {
-                'skills_refreshed': ['planning-workflow', 'research-synthesis'],
-                'agents': ['claude'],
-                'errors': []
-            }
+            SkillRefreshResult with refresh details.
         """
-        results: dict[str, Any] = {
+        results: SkillRefreshResult = {
             "skills_refreshed": [],
             "agents": [],
             "errors": [],

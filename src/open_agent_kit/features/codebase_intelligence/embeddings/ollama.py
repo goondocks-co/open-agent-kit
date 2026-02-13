@@ -4,6 +4,7 @@ import logging
 
 import httpx
 
+from open_agent_kit.features.codebase_intelligence.constants import DEFAULT_BASE_URL
 from open_agent_kit.features.codebase_intelligence.embeddings.base import (
     EmbeddingError,
     EmbeddingProvider,
@@ -31,7 +32,7 @@ class OllamaProvider(EmbeddingProvider):
     def __init__(
         self,
         model: str,
-        base_url: str = "http://localhost:11434",
+        base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
         max_chars: int | None = None,
         dimensions: int | None = None,

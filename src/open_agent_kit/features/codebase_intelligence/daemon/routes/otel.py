@@ -99,7 +99,7 @@ def _load_otel_config(agent: str) -> dict[str, Any] | None:
             "config_template": otel.config_template,
             "config_section": otel.config_section,
         }
-    except Exception as e:
+    except (OSError, ValueError, KeyError, AttributeError) as e:
         logger.debug(f"Failed to load OTEL config for agent {agent}: {e}")
         return None
 
@@ -120,7 +120,7 @@ def _get_all_otel_agents() -> list[str]:
             if config:
                 agents.append(agent)
         return agents
-    except Exception as e:
+    except (OSError, ValueError, KeyError, AttributeError) as e:
         logger.debug(f"Failed to list OTEL agents: {e}")
         return []
 
@@ -680,7 +680,7 @@ async def otlp_logs_receiver(request: Request) -> Response:
                         processed += 1
                     else:
                         rejected += 1
-                except Exception as e:
+                except (OSError, ValueError, KeyError, RuntimeError) as e:
                     logger.warning(f"Error processing OTEL log record: {e}")
                     rejected += 1
 
@@ -714,7 +714,7 @@ async def otlp_root_receiver(request: Request) -> Response:
             if "resourceLogs" in body_str or "logRecords" in body_str:
                 # Reconstruct request and delegate
                 return await otlp_logs_receiver(request)
-        except Exception:
+        except (OSError, ValueError, UnicodeDecodeError):
             pass
 
     # Not an OTLP request, return 404
