@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useConfig, useUpdateConfig, useExclusions, useUpdateExclusions, resetExclusions, restartDaemon, listProviderModels, listSummarizationModels, testEmbeddingConfig, testSummarizationConfig, type RestartResponse } from "@/hooks/use-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { AlertCircle, Save, Loader2, CheckCircle2, Plus, X, RotateCcw, FolderX, AlertTriangle, ArrowRight } from "lucide-react";
+import { AlertCircle, Save, Loader2, CheckCircle2, Plus, X, RotateCcw, FolderX, AlertTriangle, ArrowRight, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -617,7 +617,10 @@ export default function Config() {
                                 <CardTitle>Embedding Settings</CardTitle>
                                 <OriginBadge origin={config?.origins?.embedding} />
                             </div>
-                            <CardDescription>Configure the model used for semantic search code indexing.</CardDescription>
+                            <CardDescription>
+                                Configure the model used for semantic search code indexing.
+                                {" "}<Link to="/help" className="inline-flex items-center gap-1 text-primary hover:underline"><BookOpen className="h-3 w-3" />Setup Guide</Link>
+                            </CardDescription>
                         </div>
                         <ReadyBadge show={embeddingValidation.isValid} />
                     </div>
@@ -749,7 +752,10 @@ export default function Config() {
                                     <CardTitle>Summarization</CardTitle>
                                     <OriginBadge origin={config?.origins?.summarization} />
                                 </div>
-                                <CardDescription>Enable LLM-powered activity summarization (optional).</CardDescription>
+                                <CardDescription>
+                                    Enable LLM-powered activity summarization.
+                                    {" "}<Link to="/help" className="inline-flex items-center gap-1 text-primary hover:underline"><BookOpen className="h-3 w-3" />Model recommendations</Link>
+                                </CardDescription>
                             </div>
                         </div>
                         <ReadyBadge show={formData[CONFIG_SECTIONS.SUMMARIZATION].enabled && summarizationValidation.isValid} />

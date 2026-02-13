@@ -163,18 +163,127 @@ function SetupGuideContent() {
                     {/* Pull Embedding Model */}
                     <div className="space-y-3">
                         <h3 className="font-semibold">3. Pull an Embedding Model</h3>
-                        <CommandBlock
-                            label="Recommended: nomic-embed-text"
-                            command="ollama pull nomic-embed-text"
-                        />
                         <p className="text-sm text-muted-foreground">
-                            Other good options: <code className="bg-muted px-1 rounded">mxbai-embed-large</code>, <code className="bg-muted px-1 rounded">all-minilm</code>
+                            You need an embedding model to index your codebase. Pick one based on your needs:
                         </p>
+                        <div className="space-y-3">
+                            <div className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">nomic-embed-text</span>
+                                    <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full">
+                                        Quick Start
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    768 dimensions, 2K context. Fast, lightweight, and a great default for most projects.
+                                </p>
+                                <CommandBlock command="ollama pull nomic-embed-text" />
+                            </div>
+                            <div className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">nomic-embed-code</span>
+                                    <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full">
+                                        Best for Code
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    768 dimensions, 32K context. Trained specifically on source code — better results for code search and indexing.
+                                </p>
+                                <CommandBlock command="ollama pull manutic/nomic-embed-code" />
+                            </div>
+                            <div className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">bge-m3</span>
+                                    <span className="text-xs bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-full">
+                                        Higher Quality
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    1024 dimensions, 8K context. Larger model with stronger retrieval quality, especially for mixed code and prose.
+                                </p>
+                                <CommandBlock command="ollama pull bge-m3" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Summarization Model */}
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">4. Pull a Summarization Model</h3>
+                        <p className="text-sm text-muted-foreground">
+                            A summarization model generates natural-language summaries of your coding sessions. Pick one based on your available RAM:
+                        </p>
+                        <div className="space-y-3">
+                            <div className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">gpt-oss-20b</span>
+                                    <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full">
+                                        Recommended
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    128K context. Strong summarization quality. Recommend ~36 GB+ RAM Mac (or a GPU with sufficient VRAM).
+                                </p>
+                                <CommandBlock command="ollama pull gpt-oss-20b" />
+                            </div>
+                            <div className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">gemma3:12b</span>
+                                    <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full">
+                                        Popular
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    128K context. Good quality in a smaller footprint. A solid choice for machines with 16-32 GB of RAM on Mac or dedicated GPU on PC.
+                                </p>
+                                <CommandBlock command="ollama pull gemma3:12b" />
+                            </div>
+                            <div className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">qwen3:8b / qwen3:4b</span>
+                                    <span className="text-xs bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full">
+                                        Lightweight
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    40K context (8B) / 256K context (4B). Surprisingly capable for their size — great if you're resource-constrained or want fast inference. Should work on most machines.
+                                </p>
+                                <CommandBlock command="ollama pull qwen3:8b" />
+                            </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            You can always change your summarization model later from the <Link to="/config" className="text-primary hover:underline">Configuration page</Link>.
+                        </p>
+
+                        {/* RAM vs VRAM Note */}
+                        <div className="rounded-lg border border-muted bg-muted/30 p-4 space-y-1">
+                            <p className="text-sm font-medium">A note on RAM vs. VRAM</p>
+                            <p className="text-xs text-muted-foreground">
+                                <strong>Mac (Apple Silicon):</strong> Memory is shared between CPU and GPU, so a MacBook Pro with 32 GB of RAM can allocate most of it as VRAM — the RAM numbers above map directly to your system memory.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                <strong>PC / Linux with a dedicated GPU:</strong> Ollama runs on your GPU's dedicated VRAM. If the model doesn't fit in VRAM it will fall back to CPU, which is significantly slower. Check your GPU's VRAM (e.g. 8 GB, 16 GB, 24 GB) and pick a model that fits.
+                            </p>
+                        </div>
+
+                        {/* Context Window Tip */}
+                        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2">
+                            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                                Tip: Increase Ollama's Context Window
+                            </p>
+                            <p className="text-xs text-blue-700 dark:text-blue-300">
+                                Ollama defaults to a 4K context window on machines with less than 24 GB of VRAM, which limits how much code the summarization model can process at once.
+                                To increase it, set the <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">OLLAMA_CONTEXT_LENGTH</code> environment variable when starting Ollama:
+                            </p>
+                            <CommandBlock command="OLLAMA_CONTEXT_LENGTH=32768 ollama serve" />
+                            <p className="text-xs text-blue-700 dark:text-blue-300">
+                                Use a value that fits your available memory — 32768 is a good starting point. Higher values use more RAM.
+                            </p>
+                        </div>
                     </div>
 
                     {/* Configure */}
                     <div className="space-y-3">
-                        <h3 className="font-semibold">4. Configure in Oak CI</h3>
+                        <h3 className="font-semibold">5. Configure in Oak CI</h3>
                         <p className="text-sm text-muted-foreground">
                             Go to the <Link to="/config" className="text-primary hover:underline">Configuration page</Link>, select Ollama as your provider, and click "Refresh" to discover your models.
                         </p>
