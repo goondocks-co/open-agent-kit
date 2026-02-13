@@ -18,8 +18,8 @@ OAK also runs its own autonomous agents that turn captured intelligence into act
 | **Cursor** | `.cursor/` | Yes | Yes | Yes |
 | **Gemini CLI** | `.gemini/` | Yes | Yes | Yes |
 | **OpenCode** | `.opencode/` | Yes (Plugin) | Yes | Yes |
+| **VS Code Copilot** | `.github/` | Yes | Yes | Yes |
 | **Windsurf** | `.windsurf/` | Yes | No | Yes |
-| **GitHub Copilot** | `.github/` | Limited | No | Yes |
 
 For details on what each agent's hooks actually provide (context injection, activity capture, summarization), see the [Codebase Intelligence overview](/open-agent-kit/features/codebase-intelligence/).
 
@@ -48,7 +48,7 @@ OAK creates and manages instruction files that reference your project constituti
 | Agent | Instruction File |
 |-------|-----------------|
 | Claude Code | `.claude/CLAUDE.md` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
+| VS Code Copilot | `.github/copilot-instructions.md` |
 | Codex / Cursor / OpenCode | `AGENTS.md` (root level, shared) |
 | Gemini | `GEMINI.md` (root level) |
 | Windsurf | `.windsurf/rules/rules.md` |

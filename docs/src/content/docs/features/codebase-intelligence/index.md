@@ -75,12 +75,8 @@ graph TD
 | **Gemini CLI** | Session + Prompt + Post-tool | Yes | `settings.json` hooks |
 | **Cursor** | Session + Prompt + Post-tool | Yes | `.cursor/hooks.json` |
 | **OpenCode** | Session + Prompt + Post-tool | Yes | TypeScript plugin (`oak-ci.ts`) |
+| **VS Code Copilot** | Session + Prompt + Post-tool | Yes | `.github/hooks/hooks.json` |
 | **Windsurf** | Prompt only | Yes | `.windsurf/hooks.json` |
 | **Codex CLI** | Via OpenTelemetry | Yes | OTLP log events & Notify |
-| **GitHub Copilot** | None (cloud-only hooks) | No | `.github/hooks/hooks.json` |
 
 **Context injection** is what makes CI proactive — it automatically surfaces relevant memories and code search results into your agent's context. Agents with **Session + Prompt + Post-tool** injection get the richest experience: context at session start, before each prompt, and after file operations. Agents with **Prompt only** receive context before each prompt but not at session start.
-
-:::note[GitHub Copilot limitations]
-Copilot's hooks run in the cloud, not locally. Since OAK's daemon runs on your machine, Copilot hooks cannot reach it. Copilot still gets skills and commands, but no context injection or activity capture until local hook support is added.
-:::
