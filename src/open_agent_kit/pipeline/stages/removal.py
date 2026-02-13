@@ -95,7 +95,7 @@ class PlanRemovalStage(BaseStage):
         try:
             skill_service = SkillService(context.project_root)
             installed_skills = skill_service.list_installed_skills()
-        except Exception:
+        except (OSError, ValueError):
             pass
 
         plan = {
@@ -169,7 +169,7 @@ class CleanupCiArtifactsStage(BaseStage):
 
         try:
             available_agents = agent_service.list_available_agents()
-        except Exception:
+        except (OSError, ValueError):
             available_agents = ["claude", "cursor", "gemini", "vscode-copilot", "codex"]
 
         # Use CI service cleanup if packages are available
@@ -384,7 +384,7 @@ class CleanupDirectoriesStage(BaseStage):
                     if not any(dir_path.iterdir()):
                         dir_path.rmdir()
                         removed.append(str(dir_path.relative_to(context.project_root)))
-                except Exception:
+                except OSError:
                     pass
 
         return StageOutcome.success(
@@ -431,11 +431,11 @@ class CleanupDirectoriesStage(BaseStage):
                         skills_dir = agent_folder / manifest.capabilities.skills_directory
                         dirs.add(skills_dir)
 
-                except Exception:
+                except (OSError, ValueError):
                     # Skip agents that fail to load
                     pass
 
-        except Exception:
+        except (OSError, ValueError):
             # If agent service fails, just return empty set
             pass
 

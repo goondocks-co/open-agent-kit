@@ -105,7 +105,7 @@ class TestVersionCheck:
         # No CI dir at all
         with (
             patch("open_agent_kit.constants.VERSION", _CURRENT_VERSION),
-            patch("importlib.metadata.version", side_effect=Exception("not found")),
+            patch("importlib.metadata.version", side_effect=ImportError("not found")),
         ):
             _check_version(initialized_state)
 

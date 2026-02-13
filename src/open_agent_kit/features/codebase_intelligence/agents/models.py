@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from open_agent_kit.features.codebase_intelligence.constants import DEFAULT_BASE_URL
+
 # =============================================================================
 # Task Configuration Models
 # =============================================================================
@@ -226,7 +228,7 @@ class AgentProvider(BaseModel):
         """Get the default base URL for this provider type."""
         defaults = {
             "cloud": "https://api.anthropic.com",
-            "ollama": "http://localhost:11434",
+            "ollama": DEFAULT_BASE_URL,
             "lmstudio": "http://localhost:1234",
             "bedrock": "",
             "openrouter": "https://openrouter.ai/api/v1",
@@ -290,7 +292,7 @@ class AgentProvider(BaseModel):
         elif self.type == "ollama":
             # From official Ollama docs:
             # ANTHROPIC_AUTH_TOKEN=ollama, ANTHROPIC_API_KEY="" (empty)
-            env["ANTHROPIC_BASE_URL"] = self.base_url or "http://localhost:11434"
+            env["ANTHROPIC_BASE_URL"] = self.base_url or DEFAULT_BASE_URL
             env["ANTHROPIC_AUTH_TOKEN"] = "ollama"
             env["ANTHROPIC_API_KEY"] = ""  # Empty string per docs
         elif self.type == "lmstudio":

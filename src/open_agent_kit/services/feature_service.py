@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from open_agent_kit.config.paths import FEATURE_MANIFEST_FILE, FEATURES_DIR
+from open_agent_kit.models.results import FeatureRefreshResult
 
 if TYPE_CHECKING:
     from open_agent_kit.services.template_service import TemplateService
@@ -18,23 +19,10 @@ from open_agent_kit.utils import (
     remove_gitignore_entries,
     write_file,
 )
+from open_agent_kit.utils.install_detection import get_install_source, is_uv_tool_install
+from open_agent_kit.utils.naming import feature_name_to_dir as _feature_name_to_dir
 
 logger = logging.getLogger(__name__)
-
-
-def _feature_name_to_dir(feature_name: str) -> str:
-    """Convert feature name to directory name (hyphens to underscores).
-
-    Feature names use hyphens (codebase-intelligence) but Python packages
-    use underscores (codebase_intelligence).
-
-    Args:
-        feature_name: Feature name with hyphens
-
-    Returns:
-        Directory name with underscores
-    """
-    return feature_name.replace("-", "_")
 
 
 class FeatureService:
@@ -67,64 +55,6 @@ class FeatureService:
             self._template_service = TemplateService(project_root=self.project_root)
         return self._template_service
 
-    def _is_uv_tool_install(self) -> bool:
-        """Check if OAK is running from a uv tool installation.
-
-        Works on both POSIX and Windows systems:
-        - POSIX: ~/.local/share/uv/tools/
-        - Windows: %LOCALAPPDATA%\\uv\\tools\\
-        """
-        from open_agent_kit.utils.platform import is_uv_tool_install
-
-        return is_uv_tool_install()
-
-    def _get_install_source(self) -> tuple[str | None, bool]:
-        """Get the install source if OAK was installed from a non-PyPI source.
-
-        Detects:
-        - Local file paths (`uv tool install /path/to/oak`)
-        - Editable installs (`uv tool install -e /path/to/oak`)
-        - Git URLs (`uv tool install git+https://github.com/...`)
-
-        This allows feature dependency installation to work without requiring
-        PyPI publication. The editable flag ensures that editable installs
-        (used during development) are preserved when reinstalling with
-        additional dependencies.
-
-        Returns:
-            Tuple of (install_source, is_editable):
-            - install_source: local path or git URL if non-PyPI, None otherwise
-            - is_editable: True if this is an editable install (dir_info.editable)
-        """
-        try:
-            from importlib.metadata import distribution
-
-            dist = distribution("oak-ci")
-
-            # Check direct_url.json (PEP 610) for non-PyPI installs
-            direct_url = dist.read_text("direct_url.json")
-            if direct_url:
-                import json
-
-                url_info = json.loads(direct_url)
-                url = url_info.get("url", "")
-
-                # Check if this is an editable install (PEP 610 dir_info)
-                is_editable = bool(url_info.get("dir_info", {}).get("editable", False))
-
-                # Local file path install
-                if url.startswith("file://"):
-                    return str(url[7:]), is_editable  # Strip file:// prefix
-
-                # Git URL install (vcs_info present means it's a VCS install)
-                if url_info.get("vcs_info"):
-                    vcs = url_info["vcs_info"].get("vcs", "git")
-                    return f"{vcs}+{url}", False  # Git installs are never editable
-
-            return None, False
-        except Exception:
-            return None, False
-
     def _install_pip_packages(self, packages: list[str], feature_name: str) -> bool:
         """Install pip packages for a feature into OAK's Python environment.
 
@@ -153,7 +83,7 @@ class FeatureService:
             return True
 
         # Check if running from uv tool install
-        if self._is_uv_tool_install():
+        if is_uv_tool_install():
             return self._install_packages_uv_tool(packages, feature_name)
 
         # Regular environment (venv, pip install, etc.)
@@ -220,7 +150,7 @@ class FeatureService:
             with_args.extend(["--with", pkg])
 
         # Check if this is a non-PyPI install (local path or git URL)
-        install_source, is_editable = self._get_install_source()
+        install_source, is_editable = get_install_source()
 
         # Get current Python version to ensure consistency
         import sys
@@ -286,11 +216,11 @@ class FeatureService:
             print_warning(f"Failed to install packages for '{feature_name}': {e}")
             return False
 
-    def _check_prerequisites(self, prerequisites: list[dict]) -> dict[str, Any]:
+    def _check_prerequisites(self, prerequisites: list) -> dict[str, Any]:
         """Check if prerequisites for a feature are satisfied.
 
         Args:
-            prerequisites: List of prerequisite definitions from manifest
+            prerequisites: List of Prerequisite instances from manifest
 
         Returns:
             Dictionary with check results:
@@ -312,12 +242,12 @@ class FeatureService:
         }
 
         for prereq in prerequisites:
-            name = prereq.get("name", "unknown")
-            prereq_type = prereq.get("type", "command")
-            check_cmd = prereq.get("check_command")
-            required = prereq.get("required", True)
-            install_url = prereq.get("install_url", "")
-            install_instructions = prereq.get("install_instructions", "")
+            name = prereq.name
+            prereq_type = prereq.type
+            check_cmd = prereq.check_command
+            required = prereq.required
+            install_url = prereq.install_url
+            install_instructions = prereq.install_instructions
 
             print_info(f"Checking prerequisite: {name}...")
 
@@ -802,7 +732,7 @@ class FeatureService:
 
         return results
 
-    def refresh_features(self) -> dict[str, Any]:
+    def refresh_features(self) -> FeatureRefreshResult:
         """Refresh all installed features by re-rendering with current config.
 
         This re-renders command templates using current agent manifest
@@ -814,7 +744,7 @@ class FeatureService:
             - commands_rendered: dict of feature -> list of commands
             - agents: list of agents updated
         """
-        results: dict[str, Any] = {
+        results: FeatureRefreshResult = {
             "features_refreshed": [],
             "commands_rendered": {},
             "agents": [],
@@ -1066,8 +996,6 @@ class FeatureService:
         # Dispatch to appropriate service based on feature
         if feature_name == "constitution":
             return self._execute_constitution_hook(action, **kwargs)
-        elif feature_name == "rfc":
-            return self._execute_rfc_hook(action, **kwargs)
         elif feature_name == "codebase-intelligence":
             return self._execute_codebase_intelligence_hook(action, **kwargs)
         else:
@@ -1094,19 +1022,6 @@ class FeatureService:
             )
         else:
             raise ValueError(f"Unknown constitution hook action: {action}")
-
-    def _execute_rfc_hook(self, action: str, **kwargs: Any) -> Any:
-        """Execute an RFC feature hook.
-
-        Args:
-            action: Hook action name
-            **kwargs: Arguments for the action
-
-        Returns:
-            Result from the action
-        """
-        # RFC hooks can be added here as needed
-        raise ValueError(f"Unknown rfc hook action: {action}")
 
     def _execute_codebase_intelligence_hook(self, action: str, **kwargs: Any) -> Any:
         """Execute a codebase-intelligence feature hook.
@@ -1136,15 +1051,3 @@ class FeatureService:
                 execute_hook("remove_mcp_servers", self.project_root, agents_removed=agents_removed)
 
         return execute_hook(action, self.project_root, **kwargs)
-
-
-def get_feature_service(project_root: Path | None = None) -> FeatureService:
-    """Get a FeatureService instance.
-
-    Args:
-        project_root: Project root directory (defaults to current directory)
-
-    Returns:
-        FeatureService instance
-    """
-    return FeatureService(project_root)

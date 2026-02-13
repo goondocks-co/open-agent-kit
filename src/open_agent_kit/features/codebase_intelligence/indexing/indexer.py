@@ -2,6 +2,7 @@
 
 import fnmatch
 import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -342,6 +343,10 @@ class CodebaseIndexer:
     def discover_files(self) -> list[Path]:
         """Discover all indexable files in the project.
 
+        Uses os.walk with in-place directory pruning to skip ignored
+        directories early, avoiding descent into large trees like
+        node_modules or .git.
+
         Returns:
             List of file paths to index.
         """
@@ -357,35 +362,41 @@ class CodebaseIndexer:
 
         files = []
 
-        for filepath in self.project_root.rglob("*"):
-            if not filepath.is_file():
-                continue
+        for root, dirs, filenames in os.walk(self.project_root):
+            root_path = Path(root)
 
-            # Get relative path for pattern matching (early, for ignore check)
+            # Get relative root for pattern matching
             try:
-                relative = filepath.relative_to(self.project_root)
+                relative_root = root_path.relative_to(self.project_root)
             except ValueError:
                 continue
 
-            # Check ignore patterns FIRST - skip early without logging warnings
-            # This prevents noise from files already excluded by .gitignore or config
-            ignored_by = self._get_ignore_pattern(relative, all_patterns)
-            if ignored_by:
-                # Only log if file has indexable extension (reduces noise)
-                if filepath.suffix.lower() in INDEXABLE_EXTENSIONS:
-                    logger.debug(f"Excluded {relative} (pattern: {ignored_by})")
-                continue
+            # Prune ignored directories in-place (prevents descent)
+            dirs[:] = [
+                d for d in dirs if not self._get_ignore_pattern(relative_root / d, all_patterns)
+            ]
 
-            # Security: Validate path safety (symlink and traversal protection)
-            if not self._validate_path_safety(filepath):
-                continue
+            for filename in filenames:
+                filepath = root_path / filename
+                relative = relative_root / filename
 
-            # Security: Block sensitive files (safety net for non-ignored files)
-            if self._is_sensitive_file(filepath):
-                continue
+                # Check ignore patterns FIRST - skip early without logging warnings
+                ignored_by = self._get_ignore_pattern(relative, all_patterns)
+                if ignored_by:
+                    if filepath.suffix.lower() in INDEXABLE_EXTENSIONS:
+                        logger.debug(f"Excluded {relative} (pattern: {ignored_by})")
+                    continue
 
-            if self._should_index_file(filepath):
-                files.append(filepath)
+                # Security: Validate path safety (symlink and traversal protection)
+                if not self._validate_path_safety(filepath):
+                    continue
+
+                # Security: Block sensitive files (safety net for non-ignored files)
+                if self._is_sensitive_file(filepath):
+                    continue
+
+                if self._should_index_file(filepath):
+                    files.append(filepath)
 
         logger.info(f"Discovered {len(files)} indexable files")
         return files

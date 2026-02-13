@@ -200,6 +200,36 @@ def get_active_prompt_batch(store: ActivityStore, session_id: str) -> PromptBatc
     return PromptBatch.from_row(row) if row else None
 
 
+def get_latest_prompt_batch(store: ActivityStore, session_id: str) -> PromptBatch | None:
+    """Get the most recent prompt batch for a session regardless of status.
+
+    Unlike ``get_active_prompt_batch`` (which filters on ``status='active'``),
+    this returns the latest batch even if it was already completed.  This is
+    used by the dual-fire stop handler: the first fire finalizes the active
+    batch, so the second fire (which carries the ``transcript_path``) needs
+    to find the just-completed batch.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to query.
+
+    Returns:
+        Most recent PromptBatch if one exists, None otherwise.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM prompt_batches
+        WHERE session_id = ?
+        ORDER BY prompt_number DESC
+        LIMIT 1
+        """,
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    return PromptBatch.from_row(row) if row else None
+
+
 def end_prompt_batch(store: ActivityStore, batch_id: int) -> None:
     """Mark a prompt batch as completed (when agent stops responding).
 

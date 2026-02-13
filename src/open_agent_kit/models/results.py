@@ -4,6 +4,7 @@ This module provides TypedDict definitions for command and service results,
 ensuring type-safe dictionary structures with IDE autocompletion support.
 """
 
+from pathlib import Path
 from typing import TypedDict
 
 
@@ -75,3 +76,61 @@ class UpgradePlanData(TypedDict, total=False):
     structural_repairs: list[str]
     version_outdated: bool
     skills: dict[str, list[str]]
+
+
+class FeatureRefreshResult(TypedDict):
+    """Result of refreshing all installed features."""
+
+    features_refreshed: list[str]
+    commands_rendered: dict[str, list[str]]
+    agents: list[str]
+
+
+class SkillInstallResult(TypedDict, total=False):
+    """Result of installing a skill."""
+
+    skill_name: str
+    installed_to: list[str]
+    agents: list[str]
+    already_installed: bool
+    skipped: bool
+    reason: str
+    error: str
+
+
+class SkillRemoveResult(TypedDict, total=False):
+    """Result of removing a skill."""
+
+    skill_name: str
+    removed_from: list[str]
+    agents: list[str]
+    not_installed: bool
+    error: str
+
+
+class SkillRefreshResult(TypedDict, total=False):
+    """Result of refreshing all installed skills."""
+
+    skills_refreshed: list[str]
+    agents: list[str]
+    errors: list[str]
+    skipped: bool
+    reason: str
+
+
+class LanguageAddResult(TypedDict, total=False):
+    """Result of adding language parsers."""
+
+    success: bool
+    installed: list[str]
+    skipped: list[str]
+    error: str
+
+
+class AgentInstructionInfo(TypedDict):
+    """Detection info for an agent's instruction file."""
+
+    exists: bool
+    path: Path
+    content: str | None
+    has_constitution_ref: bool

@@ -22,13 +22,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from open_agent_kit.config.paths import FEATURES_DIR
 from open_agent_kit.features.codebase_intelligence.cli_command import (
     render_cli_command_placeholder,
     resolve_ci_cli_command,
 )
+from open_agent_kit.models.agent_manifest import AgentManifest
 from open_agent_kit.utils import (
     cleanup_empty_directories,
     ensure_dir,
@@ -69,16 +68,16 @@ class AgentSettingsService:
         self.cli_command = resolve_ci_cli_command(self.project_root)
 
         # Cache for loaded manifests
-        self._manifest_cache: dict[str, dict[str, Any]] = {}
+        self._manifest_cache: dict[str, AgentManifest] = {}
 
-    def _load_manifest(self, agent: str) -> dict[str, Any] | None:
+    def _load_manifest(self, agent: str) -> AgentManifest | None:
         """Load agent manifest from package.
 
         Args:
             agent: Agent name
 
         Returns:
-            Manifest dictionary, or None if not found
+            AgentManifest instance, or None if not found
         """
         if agent in self._manifest_cache:
             return self._manifest_cache[agent]
@@ -89,11 +88,10 @@ class AgentSettingsService:
             return None
 
         try:
-            content = manifest_path.read_text()
-            manifest: dict[str, Any] = yaml.safe_load(content)
+            manifest = AgentManifest.load(manifest_path)
             self._manifest_cache[agent] = manifest
             return manifest
-        except (yaml.YAMLError, OSError) as e:
+        except (ValueError, OSError) as e:
             logger.warning(f"Failed to load manifest for {agent}: {e}")
             return None
 
@@ -110,8 +108,7 @@ class AgentSettingsService:
         if not manifest:
             return None
 
-        settings: dict[str, Any] = manifest.get("settings", {})
-        auto_approve: dict[str, Any] = settings.get("auto_approve", {})
+        auto_approve: dict[str, Any] = manifest.settings.get("auto_approve", {})
 
         # Check if auto-approval is enabled for this agent
         if not auto_approve.get("enabled", False):

@@ -162,7 +162,7 @@ class OpenAICompatSummarizer(BaseSummarizer):
 
             return models
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError) as e:
             logger.debug(f"Error listing models: {e}")
             return []
 
@@ -191,7 +191,7 @@ class OpenAICompatSummarizer(BaseSummarizer):
                 owned_by=m.get("owned_by"),
             )
 
-        except Exception:
+        except (httpx.HTTPError, ValueError, KeyError):
             return None
 
     def _find_model(self) -> str | None:
@@ -246,7 +246,7 @@ class OpenAICompatSummarizer(BaseSummarizer):
 
             return self._available
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.debug(f"API not available: {e}")
             self._available = False
             return False
@@ -420,7 +420,7 @@ class OpenAICompatSummarizer(BaseSummarizer):
                 success=False,
                 error="Summarization timed out",
             )
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.warning(f"Summarization failed: {e}")
             return SummarizationResult(
                 success=False,
@@ -614,7 +614,7 @@ def discover_model_context(
                         if ctx and isinstance(ctx, int):
                             logger.debug(f"Found context for {model}: {ctx} (from /v1/models)")
                             return int(ctx)
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.debug(f"OpenAI /v1/models failed: {e}")
 
         # Method 2: Try OpenAI-compatible /v1/models/{model} endpoint
@@ -630,7 +630,7 @@ def discover_model_context(
                 if ctx and isinstance(ctx, int):
                     logger.debug(f"Found context for {model}: {ctx} (from /v1/models/{model})")
                     return int(ctx)
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.debug(f"OpenAI /v1/models/{model} failed: {e}")
 
         # Method 3: Try Ollama's native /api/show endpoint (fallback for Ollama)
@@ -665,7 +665,7 @@ def discover_model_context(
                             f"Found context for {model}: {ctx} (from /api/show parameters)"
                         )
                         return ctx
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.debug(f"Ollama /api/show failed: {e}")
 
     logger.debug(f"Could not discover context window for {model}")

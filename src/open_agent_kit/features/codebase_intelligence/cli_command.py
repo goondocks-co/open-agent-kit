@@ -47,7 +47,7 @@ def resolve_ci_cli_command(project_root: Path) -> str:
 
         config = load_ci_config(project_root)
         return normalize_cli_command(config.cli_command)
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         logger.debug(f"Falling back to default CLI command: {e}")
         return CI_CLI_COMMAND_DEFAULT
 

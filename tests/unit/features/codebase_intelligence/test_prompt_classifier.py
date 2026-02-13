@@ -301,7 +301,7 @@ class TestPromptClassifierErrorHandling:
             "open_agent_kit.features.codebase_intelligence.prompt_classifier.PromptClassifier._get_agent_service"
         ) as mock_get:
             mock_service = MagicMock()
-            mock_service.get_all_plan_execution_prefixes.side_effect = Exception("Service error")
+            mock_service.get_all_plan_execution_prefixes.side_effect = ValueError("Service error")
             mock_get.return_value = mock_service
 
             classifier = PromptClassifier(project_root=tmp_path)
@@ -320,7 +320,7 @@ class TestPromptClassifierErrorHandling:
             "open_agent_kit.features.codebase_intelligence.prompt_classifier.PromptClassifier._get_agent_service"
         ) as mock_get:
             mock_service = MagicMock()
-            mock_service.get_all_plan_execution_prefixes.side_effect = Exception("Service error")
+            mock_service.get_all_plan_execution_prefixes.side_effect = ValueError("Service error")
             mock_get.return_value = mock_service
 
             classifier = PromptClassifier(project_root=tmp_path)

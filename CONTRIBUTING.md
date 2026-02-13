@@ -96,7 +96,7 @@ Provide:
 
 | Topic | Documentation |
 |-------|---------------|
-| Architecture & patterns | [Architecture](docs/dev/architecture.md) |
+| Full documentation | [oak.goondocks.co](https://oak.goondocks.co/) |
 | Coding standards | [Constitution](oak/constitution.md) |
 
 ## Questions?

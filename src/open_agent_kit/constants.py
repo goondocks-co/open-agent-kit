@@ -18,6 +18,7 @@ For type-safe enums, import from:
 
 from open_agent_kit import __version__
 from open_agent_kit.models.enums import RFCNumberFormat
+from open_agent_kit.models.feature import FeatureConfigEntry, LanguageConfig
 
 # =============================================================================
 # Version
@@ -163,7 +164,7 @@ FEATURE_DISPLAY_NAMES = {
 
 # Feature configuration metadata
 # Used by FeatureService when manifest.yaml doesn't exist
-FEATURE_CONFIG: dict[str, dict] = {
+FEATURE_CONFIG: dict[str, FeatureConfigEntry] = {
     "rules-management": {
         "name": "Rules Management",
         "description": "Project constitution and rules for AI agents",
@@ -204,7 +205,7 @@ FEATURE_CONFIG: dict[str, dict] = {
 
 # Supported languages for code intelligence
 # Keys are language identifiers, values contain display name and pip extra
-SUPPORTED_LANGUAGES: dict[str, dict[str, str]] = {
+SUPPORTED_LANGUAGES: dict[str, LanguageConfig] = {
     "python": {"display": "Python", "extra": "parser-python", "package": "tree-sitter-python"},
     "javascript": {
         "display": "JavaScript",

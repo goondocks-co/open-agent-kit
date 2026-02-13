@@ -140,59 +140,7 @@ cat oak/constitution.md
 /oak.constitution-amend
 ```
 
-## Step 3: Create and Manage RFCs
-
-With your constitution in place, use RFCs to document technical decisions.
-
-### Create an RFC
-
-```text
-/oak.rfc-create Implement user authentication system with OAuth2
-```
-
-The AI agent will create a comprehensive RFC at `oak/rfc/RFC-001-*.md` with all required sections filled in.
-
-### List and Validate RFCs
-
-```text
-/oak.rfc-list
-/oak.rfc-validate RFC-001
-```
-
-For the complete RFC workflow including lifecycle states and best practices, see the [Strategic Planning](https://oak.goondocks.co/features/strategic-planning/) docs.
-
-## Upgrading
-
-Keep your open-agent-kit installation up to date:
-
-```bash
-# Homebrew
-brew upgrade oak-ci
-
-# pipx
-pipx upgrade oak-ci
-
-# uv
-uv tool upgrade oak-ci
-```
-
-Then upgrade your project's templates and agent commands:
-
-```bash
-# Preview what would be upgraded
-oak upgrade --dry-run
-
-# Upgrade everything (with confirmation)
-oak upgrade
-
-# Upgrade only agent commands (safe)
-oak upgrade --commands
-
-# Upgrade only templates
-oak upgrade --templates --force
-```
-
-## Step 4: Start Codebase Intelligence (Optional)
+## Step 3: Start Codebase Intelligence (Optional)
 
 The CI daemon provides semantic code search, session history, and project memories for your AI agents.
 
@@ -278,16 +226,21 @@ oak ci start
 
 Ensure you run `oak init` from the actual project root (the directory containing your `.git` folder).
 
+## Upgrading
+
+```bash
+# Homebrew
+brew upgrade oak-ci
+
+# pipx / uv
+pipx upgrade oak-ci   # or: uv tool upgrade oak-ci
+```
+
+Then upgrade project templates: `oak upgrade --dry-run` to preview, `oak upgrade` to apply.
+
 ## Next Steps
 
-- Read the [full documentation](https://oak.goondocks.co/)
-- Review the [RFC workflow](https://oak.goondocks.co/features/strategic-planning/)
-- Review the [CLI reference](https://oak.goondocks.co/cli/)
-- See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute to the project
-
-## Getting Help
-
-- Run `oak --help` for available CLI commands
-- Use agent commands: `/oak.rfc-create`, `/oak.constitution-create`, etc.
-- Check the [issue tracker](https://github.com/goondocks-co/open-agent-kit/issues)
-- See [README.md](README.md) for project overview
+- [Full documentation](https://oak.goondocks.co/) — features, CLI reference, workflows
+- [RFC workflow](https://oak.goondocks.co/features/strategic-planning/) — technical decision documentation
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribute to the project
+- [README.md](README.md) — project overview

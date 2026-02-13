@@ -211,7 +211,7 @@ def create_ci_tools(
                     "content": [{"type": "text", "text": f"Query validation error: {e}"}],
                     "is_error": True,
                 }
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"CI query failed: {e}")
                 return {
                     "content": [

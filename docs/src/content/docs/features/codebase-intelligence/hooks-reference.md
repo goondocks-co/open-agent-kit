@@ -52,6 +52,21 @@ All hooks communicate via HTTP POST requests to the daemon's API endpoints.
 Cursor reads hooks from both `.cursor/hooks.json` AND `.claude/settings.local.json`, so every hook event fires **twice**. The daemon handles this via content-based deduplication — the second call is silently dropped.
 :::
 
+### VS Code Copilot
+
+VS Code Copilot uses Claude Code-compatible hook format (see [VS Code Hooks Documentation](https://code.visualstudio.com/docs/copilot/customization/hooks)).
+
+| VS Code Copilot Event | OAK Event | Notes |
+|----------------------|-----------|-------|
+| `SessionStart` | `SessionStart` | Same name |
+| `UserPromptSubmit` | `UserPromptSubmit` | Same name |
+| `PreToolUse` | `PreToolUse` | Same name |
+| `PostToolUse` | `PostToolUse` | Same name |
+| `PreCompact` | `PreCompact` | Same name |
+| `SubagentStart` | `SubagentStart` | Mission Control / background agents |
+| `SubagentStop` | `SubagentStop` | Mission Control / background agents |
+| `Stop` | `Stop` | Same name |
+
 ### Codex CLI (OpenTelemetry)
 
 :::note[Codex CLI only]

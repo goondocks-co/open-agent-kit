@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from open_agent_kit.features.codebase_intelligence.constants import DEFAULT_BASE_URL
 from open_agent_kit.features.codebase_intelligence.embeddings.base import (
     EmbeddingError,
     EmbeddingProvider,
@@ -80,7 +81,7 @@ class EmbeddingProviderChain(EmbeddingProvider):
         self,
         providers: list[EmbeddingProvider] | None = None,
         ollama_model: str = "nomic-embed-text",
-        ollama_url: str = "http://localhost:11434",
+        ollama_url: str = DEFAULT_BASE_URL,
     ):
         """Initialize provider chain.
 

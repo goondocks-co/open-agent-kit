@@ -49,7 +49,7 @@ class InstallLanguageParsersStage(BaseStage):
             # Non-fatal - parsers can be installed later via oak languages add
             return StageOutcome.success(
                 "Language parsers installation incomplete (can be retried with 'oak languages add')",
-                data=result,
+                data=dict(result),
             )
 
 

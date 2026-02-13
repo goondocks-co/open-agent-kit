@@ -31,7 +31,10 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentTemplateListItem,
     CreateTaskRequest,
 )
-from open_agent_kit.features.codebase_intelligence.constants import AGENT_PROJECT_CONFIG_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_PROJECT_CONFIG_DIR,
+    DEFAULT_BASE_URL,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 if TYPE_CHECKING:
@@ -754,7 +757,7 @@ async def update_agent_settings(request: dict) -> dict:
 @router.get("/provider-models")
 async def list_agent_provider_models(
     provider: str = Query(default="ollama", description="Provider type"),
-    base_url: str = Query(default="http://localhost:11434", description="Provider base URL"),
+    base_url: str = Query(default=DEFAULT_BASE_URL, description="Provider base URL"),
 ) -> dict:
     """List LLM models available from a provider for agent execution.
 
@@ -897,7 +900,7 @@ async def test_agent_provider(request: dict) -> dict:
     import httpx
 
     provider = request.get("provider", "ollama")
-    base_url = request.get("base_url", "http://localhost:11434")
+    base_url = request.get("base_url", DEFAULT_BASE_URL)
     model = request.get("model")
 
     # Security: Validate URL is localhost-only

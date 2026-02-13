@@ -75,7 +75,7 @@ def _resolve_resume_agent(agent: str) -> str:
         for known_agent in known_agents:
             if known_agent in normalized_agent:
                 return known_agent
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError):
         logger.debug("Failed to resolve normalized agent label", exc_info=True)
     return normalized_agent
 
@@ -100,7 +100,7 @@ def _get_resume_command(agent: str, session_id: str) -> str | None:
         manifest = agent_service.get_agent_manifest(_resolve_resume_agent(agent))
         if manifest and manifest.ci and manifest.ci.resume_command:
             return manifest.ci.resume_command.replace("{session_id}", session_id)
-    except Exception as e:
+    except (OSError, ValueError, KeyError, AttributeError) as e:
         logger.debug(f"Failed to get resume command for agent {agent}: {e}")
 
     return None

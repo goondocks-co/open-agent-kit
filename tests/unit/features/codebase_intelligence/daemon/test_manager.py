@@ -363,7 +363,7 @@ class TestGetProjectPortTracking:
         ci_dir = tmp_path / ".oak" / "ci"
 
         with patch("open_agent_kit.services.state_service.StateService") as mock_cls:
-            mock_cls.side_effect = RuntimeError("state broken")
+            mock_cls.side_effect = ValueError("state broken")
 
             port = get_project_port(tmp_path, ci_dir)
 
@@ -1490,7 +1490,7 @@ class TestDaemonManagerStatusExtended:
         mock_read_pid.return_value = 1234
         mock_is_running.return_value = True
 
-        mock_client.side_effect = Exception("Connection error")
+        mock_client.side_effect = OSError("Connection error")
 
         status = manager.get_status()
 

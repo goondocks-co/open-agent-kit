@@ -11,23 +11,9 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from open_agent_kit.config.paths import FEATURES_DIR
 from open_agent_kit.constants import SUPPORTED_FEATURES
 from open_agent_kit.utils import file_exists, write_file
+from open_agent_kit.utils.naming import feature_name_to_dir as _feature_name_to_dir
 
 logger = logging.getLogger(__name__)
-
-
-def _feature_name_to_dir(feature_name: str) -> str:
-    """Convert feature name to directory name (hyphens to underscores).
-
-    Feature names use hyphens (codebase-intelligence) but Python packages
-    use underscores (codebase_intelligence).
-
-    Args:
-        feature_name: Feature name with hyphens
-
-    Returns:
-        Directory name with underscores
-    """
-    return feature_name.replace("-", "_")
 
 
 class TemplateService:

@@ -254,7 +254,7 @@ class MCPInstaller:
                 message="CLI command timed out",
                 method="cli",
             )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return InstallResult(
                 success=False,
                 message=f"CLI error: {e}",
@@ -317,7 +317,7 @@ class MCPInstaller:
                 message="CLI command timed out",
                 method="cli",
             )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return InstallResult(
                 success=False,
                 message=f"CLI error: {e}",

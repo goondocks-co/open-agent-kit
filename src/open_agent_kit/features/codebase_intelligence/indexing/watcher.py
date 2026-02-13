@@ -161,7 +161,7 @@ class FileWatcher:
                 state.index_status.file_count = state.vector_store.count_unique_files()
 
             logger.info(f"Incremental indexing complete: {total_chunks} chunks updated")
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
             logger.error("Watcher reindex failed unexpectedly", exc_info=True)
 
     def _on_file_created(self, filepath: Path) -> None:

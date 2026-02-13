@@ -560,7 +560,7 @@ def create_backup(
 
             config = load_ci_config(project_root)
             include_activities = config.backup.include_activities
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError):
             from open_agent_kit.features.codebase_intelligence.constants import (
                 BACKUP_INCLUDE_ACTIVITIES_DEFAULT,
             )
@@ -594,7 +594,7 @@ def create_backup(
             machine_id=machine_id,
             include_activities=include_activities,
         )
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         return BackupResult(
             success=False,
             backup_path=output_path,
@@ -677,7 +677,7 @@ def restore_backup(
             import_result=import_result,
             machine_id=machine_id,
         )
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         return RestoreResult(
             success=False,
             backup_path=input_path,
@@ -744,7 +744,7 @@ def restore_all(
             per_file=per_file,
             machine_id=machine_id,
         )
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         return RestoreAllResult(
             success=False,
             machine_id=machine_id,
@@ -1011,22 +1011,6 @@ def _parse_backup_schema_version(lines: list[str]) -> int | None:
             except ValueError:
                 return None
     return None
-
-
-def import_from_sql(store: ActivityStore, backup_path: Path) -> int:
-    """Import data from SQL backup into existing database (legacy interface).
-
-    This is a wrapper around import_from_sql_with_dedup for backwards compatibility.
-
-    Args:
-        store: The ActivityStore instance.
-        backup_path: Path to SQL backup file.
-
-    Returns:
-        Number of records imported.
-    """
-    result = import_from_sql_with_dedup(store, backup_path)
-    return result.total_imported
 
 
 def import_from_sql_with_dedup(
@@ -1804,32 +1788,35 @@ def _parse_sql_values_as_strings(values_str: str) -> list[str]:
     return values
 
 
+_TABLE_TO_IMPORTED_ATTR: dict[str, str] = {
+    "sessions": "sessions_imported",
+    "prompt_batches": "batches_imported",
+    "memory_observations": "observations_imported",
+    "activities": "activities_imported",
+    "agent_schedules": "schedules_imported",
+}
+
+_TABLE_TO_SKIPPED_ATTR: dict[str, str] = {
+    "sessions": "sessions_skipped",
+    "prompt_batches": "batches_skipped",
+    "memory_observations": "observations_skipped",
+    "activities": "activities_skipped",
+    "agent_schedules": "schedules_skipped",
+}
+
+
 def _increment_imported(result: ImportResult, table: str) -> None:
     """Increment the appropriate imported counter."""
-    if table == "sessions":
-        result.sessions_imported += 1
-    elif table == "prompt_batches":
-        result.batches_imported += 1
-    elif table == "memory_observations":
-        result.observations_imported += 1
-    elif table == "activities":
-        result.activities_imported += 1
-    elif table == "agent_schedules":
-        result.schedules_imported += 1
+    attr = _TABLE_TO_IMPORTED_ATTR.get(table)
+    if attr:
+        setattr(result, attr, getattr(result, attr) + 1)
 
 
 def _increment_skipped(result: ImportResult, table: str) -> None:
     """Increment the appropriate skipped counter."""
-    if table == "sessions":
-        result.sessions_skipped += 1
-    elif table == "prompt_batches":
-        result.batches_skipped += 1
-    elif table == "memory_observations":
-        result.observations_skipped += 1
-    elif table == "activities":
-        result.activities_skipped += 1
-    elif table == "agent_schedules":
-        result.schedules_skipped += 1
+    attr = _TABLE_TO_SKIPPED_ATTR.get(table)
+    if attr:
+        setattr(result, attr, getattr(result, attr) + 1)
 
 
 # =============================================================================

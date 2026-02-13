@@ -232,7 +232,7 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
             state_service = StateService(project_root)
             state_service.record_created_file(shared_port_file, str(derived_port))
             state_service.record_created_directory(shared_port_dir)
-        except Exception:
+        except (ImportError, OSError, ValueError, KeyError):
             pass  # State tracking is best-effort; don't break port derivation
 
     # Local override (.oak/ci/daemon.port) takes priority for the port
@@ -383,9 +383,7 @@ class DaemonManager:
         except ImportError:
             # httpx not installed yet - check if port is in use as fallback
             return self._is_port_in_use()
-        except Exception as e:
-            # Catch all exceptions from httpx calls (ConnectError, HTTPError, etc.)
-            # to ensure health check returns gracefully without raising
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.debug(f"Health check failed: {e}")
             return False
 
@@ -423,7 +421,7 @@ class DaemonManager:
                     return False
         except ImportError:
             pass  # httpx not installed — can't verify
-        except Exception as e:
+        except (httpx.HTTPError, OSError, ValueError) as e:
             logger.debug(f"Project root check failed: {e}")
 
         return True
@@ -476,9 +474,7 @@ class DaemonManager:
                         health = response.json()
                         status["uptime_seconds"] = health.get("uptime_seconds", 0)
                         status["project_root"] = health.get("project_root")
-            except Exception as e:
-                # Catch all exceptions from httpx calls (ConnectError, HTTPError, etc.)
-                # to ensure get_status always returns gracefully
+            except (httpx.HTTPError, OSError, ValueError) as e:
                 logger.debug(f"Failed to get health info: {e}")
 
         return status
@@ -821,6 +817,8 @@ class DaemonManager:
                         "oak_version": data.get("oak_version"),
                         "schema_version": data.get("schema_version"),
                     }
-        except Exception:
+        except ImportError:
+            pass
+        except (httpx.HTTPError, OSError, ValueError):
             pass
         return None

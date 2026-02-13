@@ -3,11 +3,17 @@
 Handles feature lifecycle hooks and coordinates CI functionality.
 """
 
+from __future__ import annotations
+
 import logging
 import os
+import subprocess
 import webbrowser
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.daemon.manager import DaemonManager
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.cli_command import (
@@ -74,7 +80,7 @@ class CodebaseIntelligenceService:
         ]
         return any(os.environ.get(var) for var in test_indicators)
 
-    def _get_daemon_manager(self) -> Any:
+    def _get_daemon_manager(self) -> DaemonManager:
         """Get daemon manager instance."""
         from open_agent_kit.features.codebase_intelligence.daemon.manager import DaemonManager
 
@@ -120,7 +126,7 @@ class CodebaseIntelligenceService:
                         "message": "Failed to install CI dependencies. Check logs for details.",
                     }
                 console.print("[green]CI dependencies installed successfully[/green]")
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError, RuntimeError) as e:
                 logger.error(f"Failed to install CI dependencies: {e}")
                 return {
                     "status": "error",
@@ -153,7 +159,7 @@ class CodebaseIntelligenceService:
             config_service = ConfigService(self.project_root)
             agents = config_service.get_agents()
             daemon_result = self.ensure_daemon(agents, open_browser=True)
-        except Exception as e:
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
             logger.warning(f"Failed to ensure daemon during initialize: {e}")
             daemon_result = {"status": "warning", "message": str(e)}
 
@@ -274,7 +280,7 @@ class CodebaseIntelligenceService:
             manager.stop()
             results["daemon_stopped"] = True
             print_success("  Daemon stopped")
-        except Exception as e:
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
             logger.warning(f"Failed to stop daemon: {e}")
             print_warning(f"  Could not stop daemon: {e}")
 
@@ -285,7 +291,7 @@ class CodebaseIntelligenceService:
                 results["data_removed"] = True
                 print_success(f"  Data directory removed: {self.ci_data_dir}")
                 logger.info(f"Removed CI data directory: {self.ci_data_dir}")
-            except Exception as e:
+            except OSError as e:
                 logger.warning(f"Failed to remove CI data directory: {e}")
                 print_warning(f"  Could not remove data directory: {e}")
 
@@ -355,7 +361,7 @@ class CodebaseIntelligenceService:
                     print_info("  Opening config page in browser...")
                     try:
                         webbrowser.open(config_url)
-                    except Exception as browser_err:
+                    except OSError as browser_err:
                         logger.warning(f"Could not open browser: {browser_err}")
                         print_info(f"  Open {config_url} to configure embedding settings")
             else:
@@ -365,7 +371,7 @@ class CodebaseIntelligenceService:
                     "status": "warning",
                     "message": f"Failed to start daemon. See {log_file}",
                 }
-        except Exception as e:
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
             logger.warning(f"Failed to ensure daemon: {e}")
             print_warning(f"CI daemon error: {e}")
             daemon_result = {"status": "warning", "message": str(e)}
@@ -432,7 +438,7 @@ class CodebaseIntelligenceService:
                 else:
                     results[agent] = f"error: {result.message}"
                     logger.warning(f"Failed to install hooks for {agent}: {result.message}")
-            except Exception as e:
+            except (OSError, ValueError, KeyError, RuntimeError) as e:
                 logger.warning(f"Failed to update hooks for {agent}: {e}")
                 results[agent] = f"error: {e}"
 
@@ -481,7 +487,7 @@ class CodebaseIntelligenceService:
                 else:
                     results[agent] = f"error: {result.message}"
                     logger.warning(f"Failed to install notifications for {agent}: {result.message}")
-            except Exception as e:
+            except (OSError, ValueError, KeyError, RuntimeError) as e:
                 logger.warning(f"Failed to update notifications for {agent}: {e}")
                 results[agent] = f"error: {e}"
 
@@ -512,7 +518,7 @@ class CodebaseIntelligenceService:
                 else:
                     results[agent] = f"error: {result.message}"
                     logger.warning(f"Failed to remove hooks for {agent}: {result.message}")
-            except Exception as e:
+            except (OSError, ValueError, KeyError, RuntimeError) as e:
                 logger.warning(f"Failed to remove hooks for {agent}: {e}")
                 results[agent] = f"error: {e}"
 
@@ -545,7 +551,7 @@ class CodebaseIntelligenceService:
                 else:
                     results[agent] = f"error: {result.message}"
                     logger.warning(f"Failed to remove notifications for {agent}: {result.message}")
-            except Exception as e:
+            except (OSError, ValueError, KeyError, RuntimeError) as e:
                 logger.warning(f"Failed to remove notifications for {agent}: {e}")
                 results[agent] = f"error: {e}"
 
@@ -570,7 +576,7 @@ class CodebaseIntelligenceService:
             with open(mcp_config_path) as f:
                 config = yaml.safe_load(f)
             return cast(dict[str, Any], config)
-        except Exception as e:
+        except (OSError, ValueError, yaml.YAMLError) as e:
             logger.error(f"Failed to load MCP config: {e}")
             return None
 
@@ -593,7 +599,7 @@ class CodebaseIntelligenceService:
             agent_service = AgentService(self.project_root)
             manifest = agent_service.get_agent_manifest(agent)
             return manifest.mcp is not None
-        except Exception as e:
+        except (OSError, ValueError, KeyError, AttributeError) as e:
             logger.warning(f"Failed to check MCP capability for {agent}: {e}")
             return False
 

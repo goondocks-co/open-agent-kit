@@ -1,5 +1,6 @@
 """Skill management commands for open-agent-kit."""
 
+import logging
 from pathlib import Path
 
 import typer
@@ -17,6 +18,7 @@ from open_agent_kit.utils import (
     print_info,
 )
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 skill_app = typer.Typer(
@@ -137,6 +139,7 @@ def skill_install(
                 print_info(f"  - {path}")
 
     except Exception as e:
+        logger.exception("Skill install failed: %s", name)
         tracker.fail_step(f"Failed to install {name}", str(e))
         raise typer.Exit(code=1)
 
@@ -186,6 +189,7 @@ def skill_remove(
                 print_info(f"  - {path}")
 
     except Exception as e:
+        logger.exception("Skill remove failed: %s", name)
         tracker.fail_step(f"Failed to remove {name}", str(e))
         raise typer.Exit(code=1)
 
@@ -224,6 +228,7 @@ def skill_refresh() -> None:
             skill_service.upgrade_skill(skill_name)
             tracker.complete_step(f"Refreshed {skill_name}")
         except Exception as e:
+            logger.exception("Skill refresh failed: %s", skill_name)
             tracker.fail_step(f"Failed to refresh {skill_name}", str(e))
 
     tracker.finish("Skills refreshed successfully!")

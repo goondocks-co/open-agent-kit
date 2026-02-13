@@ -57,7 +57,7 @@ for the configured OAK CLI command (`oak` by default):
 | Agent | Settings File |
 |-------|---------------|
 | Claude | `.claude/settings.json` |
-| Copilot | `.github/copilot-settings.json` |
+| VS Code Copilot | `.vscode/settings.json` |
 | Cursor | `.cursor/settings.json` |
 | Gemini | `.gemini/settings.json` |
 | Windsurf | `.windsurf/settings.json` |
@@ -80,8 +80,8 @@ OAK creates and manages instruction files that reference your project constituti
 | Agent | Instruction File |
 |-------|-----------------|
 | Claude Code | `.claude/CLAUDE.md` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-| Codex / Cursor | `AGENTS.md` (root level, shared) |
+| VS Code Copilot | `.github/copilot-instructions.md` |
+| Codex / Cursor / OpenCode | `AGENTS.md` (root level, shared) |
 | Gemini | `GEMINI.md` (root level) |
 | Windsurf | `.windsurf/rules/rules.md` |
 

@@ -154,9 +154,8 @@ class VectorStore:
 
             return collection
 
-        except Exception:
+        except Exception:  # broad catch intentional: ChromaDB exception types vary by version
             # Collection doesn't exist (NotFoundError) or other ChromaDB error, create it
-            # Using broad Exception since ChromaDB exception types vary by version
             return self._client.create_collection(name=name, metadata=hnsw_config)
 
     def _handle_dimension_mismatch(self, collection_name: str, actual_dims: int) -> None:

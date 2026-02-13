@@ -25,10 +25,17 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
     CI_CONFIG_TUNNEL_KEY_NGROK_PATH,
     CI_CONFIG_TUNNEL_KEY_PROVIDER,
+    DEFAULT_BASE_URL,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingError
+from open_agent_kit.features.codebase_intelligence.embeddings.metadata import (
+    EMBEDDING_MODEL_PATTERNS,
+)
+from open_agent_kit.features.codebase_intelligence.embeddings.metadata import (
+    get_known_model_metadata as _get_known_model_metadata,
+)
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
@@ -36,89 +43,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["config"])
-
-
-# =============================================================================
-# Shared Constants (DRY)
-# =============================================================================
-
-# Default provider URLs
-DEFAULT_PROVIDER_URLS: dict[str, str] = {
-    "ollama": "http://localhost:11434",
-    "lmstudio": "http://localhost:1234",
-    "openai": "https://api.openai.com",
-}
-
-# Known embedding model metadata: dimensions and context window (tokens)
-# Used by model discovery and test endpoints to provide accurate metadata
-KNOWN_EMBEDDING_MODELS: dict[str, dict[str, int]] = {
-    # Nomic models
-    "nomic-embed-text": {"dimensions": 768, "context_window": 8192},
-    "nomic-embed-code": {"dimensions": 768, "context_window": 8192},
-    # BGE family (BAAI General Embedding)
-    "bge-small": {"dimensions": 384, "context_window": 512},
-    "bge-base": {"dimensions": 768, "context_window": 512},
-    "bge-large": {"dimensions": 1024, "context_window": 512},
-    "bge-m3": {"dimensions": 1024, "context_window": 8192},
-    # GTE family (General Text Embedding)
-    "gte-small": {"dimensions": 384, "context_window": 512},
-    "gte-base": {"dimensions": 768, "context_window": 512},
-    "gte-large": {"dimensions": 1024, "context_window": 512},
-    "gte-qwen": {"dimensions": 1536, "context_window": 8192},
-    # E5 family (Microsoft)
-    "e5-small": {"dimensions": 384, "context_window": 512},
-    "e5-base": {"dimensions": 768, "context_window": 512},
-    "e5-large": {"dimensions": 1024, "context_window": 512},
-    # Other common models
-    "mxbai-embed-large": {"dimensions": 1024, "context_window": 512},
-    "all-minilm": {"dimensions": 384, "context_window": 256},
-    "snowflake-arctic-embed": {"dimensions": 1024, "context_window": 512},
-    # OpenAI models
-    "text-embedding-3-small": {"dimensions": 1536, "context_window": 8191},
-    "text-embedding-3-large": {"dimensions": 3072, "context_window": 8191},
-    "text-embedding-ada-002": {"dimensions": 1536, "context_window": 8191},
-    # LM Studio prefixed variants (maps to same underlying models)
-    "text-embedding-nomic-embed-text-v1.5": {"dimensions": 768, "context_window": 8192},
-    "text-embedding-nomic-embed-code": {"dimensions": 768, "context_window": 8192},
-    "text-embedding-bge-m3": {"dimensions": 1024, "context_window": 8192},
-    "text-embedding-gte-qwen2": {"dimensions": 1536, "context_window": 8192},
-}
-
-# Patterns that indicate a model is an embedding model (case-insensitive)
-# Used to filter embedding models from general model lists
-EMBEDDING_MODEL_PATTERNS: list[str] = [
-    "embed",  # nomic-embed-text, mxbai-embed-large, etc.
-    "embedding",  # text-embedding-3-small, etc.
-    "bge-",  # bge-m3, bge-small, bge-large (BAAI General Embedding)
-    "bge:",  # bge:latest
-    "gte-",  # gte-qwen (General Text Embedding)
-    "e5-",  # e5-large, e5-small (Microsoft)
-    "snowflake-arctic-embed",  # Snowflake embedding
-    "paraphrase",  # paraphrase-multilingual
-    "nomic-embed",  # Explicit nomic embedding
-    "arctic-embed",  # Arctic embedding
-    "mxbai-embed",  # mxbai embedding
-]
-
-
-def _get_known_model_metadata(model_name: str) -> dict[str, int | None]:
-    """Look up known model metadata by name (case-insensitive partial match).
-
-    Args:
-        model_name: Model name to look up.
-
-    Returns:
-        Dict with 'dimensions' and 'context_window' keys
-        (values may be None if model is unknown).
-    """
-    model_lower = model_name.lower()
-    for known_name, metadata in KNOWN_EMBEDDING_MODELS.items():
-        if known_name in model_lower or model_lower in known_name:
-            return {
-                "dimensions": metadata.get("dimensions"),
-                "context_window": metadata.get("context_window"),
-            }
-    return {"dimensions": None, "context_window": None}
 
 
 async def _query_ollama_model_info(
@@ -170,7 +94,7 @@ async def _query_ollama_model_info(
                 if match:
                     result["context_window"] = int(match.group(1))
 
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
         logger.debug(f"Failed to query Ollama /api/show for {model_name}: {e}")
 
     return result
@@ -569,11 +493,12 @@ async def update_config(request: Request) -> dict:
         f"Config saved. summarization.context_tokens = {config.summarization.context_tokens}"
     )
 
-    # Auto-apply embedding changes by triggering restart
-    # This provides better UX - user doesn't need to manually click restart
-    if embedding_changed:
-        # Import restart handler and call it directly
-        restart_result = await restart_daemon()
+    def _build_update_response(
+        *,
+        auto_applied: bool,
+        message: str,
+        indexing_started: bool = False,
+    ) -> dict:
         return {
             "status": "updated",
             "embedding": {
@@ -612,10 +537,20 @@ async def update_config(request: Request) -> dict:
             "log_level_changed": log_level_changed,
             "log_rotation_changed": log_rotation_changed,
             "backup_changed": backup_changed,
-            "auto_applied": True,
-            "indexing_started": restart_result.get("indexing_started", False),
-            "message": restart_result.get("message", "Configuration saved and applied."),
+            "auto_applied": auto_applied,
+            "indexing_started": indexing_started,
+            "message": message,
         }
+
+    # Auto-apply embedding changes by triggering restart
+    # This provides better UX - user doesn't need to manually click restart
+    if embedding_changed:
+        restart_result = await restart_daemon()
+        return _build_update_response(
+            auto_applied=True,
+            indexing_started=restart_result.get("indexing_started", False),
+            message=restart_result.get("message", "Configuration saved and applied."),
+        )
 
     message = "Configuration saved."
     if backup_changed:
@@ -630,47 +565,7 @@ async def update_config(request: Request) -> dict:
             changes.append("log rotation settings")
         message = f"Changed {', '.join(changes)}. Restart daemon to apply."
 
-    return {
-        "status": "updated",
-        "embedding": {
-            "provider": config.embedding.provider,
-            "model": config.embedding.model,
-            "base_url": config.embedding.base_url,
-            "max_chunk_chars": config.embedding.get_max_chunk_chars(),
-        },
-        "summarization": {
-            "enabled": config.summarization.enabled,
-            "provider": config.summarization.provider,
-            "model": config.summarization.model,
-            "base_url": config.summarization.base_url,
-            "context_tokens": config.summarization.context_tokens,
-        },
-        "session_quality": {
-            "min_activities": config.session_quality.min_activities,
-            "stale_timeout_seconds": config.session_quality.stale_timeout_seconds,
-        },
-        "log_rotation": {
-            "enabled": config.log_rotation.enabled,
-            "max_size_mb": config.log_rotation.max_size_mb,
-            "backup_count": config.log_rotation.backup_count,
-        },
-        CI_CONFIG_KEY_TUNNEL: {
-            CI_CONFIG_TUNNEL_KEY_PROVIDER: config.tunnel.provider,
-            CI_CONFIG_TUNNEL_KEY_AUTO_START: config.tunnel.auto_start,
-            CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: config.tunnel.cloudflared_path or "",
-            CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
-        },
-        BACKUP_CONFIG_KEY: config.backup.to_dict(),
-        "log_level": config.log_level,
-        "embedding_changed": embedding_changed,
-        "summarization_changed": summarization_changed,
-        "session_quality_changed": session_quality_changed,
-        "log_level_changed": log_level_changed,
-        "log_rotation_changed": log_rotation_changed,
-        "backup_changed": backup_changed,
-        "auto_applied": False,
-        "message": message,
-    }
+    return _build_update_response(auto_applied=False, message=message)
 
 
 async def _query_ollama(client: httpx.AsyncClient, url: str) -> dict:
@@ -853,7 +748,7 @@ async def _query_lmstudio(client: httpx.AsyncClient, url: str) -> dict:
 @router.get("/api/providers/models")
 async def list_provider_models(
     provider: str = "ollama",
-    base_url: str = "http://localhost:11434",
+    base_url: str = DEFAULT_BASE_URL,
     api_key: str | None = None,
 ) -> dict:
     """List embedding models available from a provider.
@@ -945,7 +840,7 @@ async def _discover_embedding_context(
                         if ctx and isinstance(ctx, int):
                             logger.debug(f"Found context for {model}: {ctx} (from /v1/models)")
                             return int(ctx)
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.debug(f"OpenAI /v1/models failed: {e}")
 
         # Try OpenAI-compatible /v1/models/{model} endpoint
@@ -961,7 +856,7 @@ async def _discover_embedding_context(
                 if ctx and isinstance(ctx, int):
                     logger.debug(f"Found context for {model}: {ctx} (from /v1/models/{model})")
                     return int(ctx)
-        except Exception as e:
+        except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
             logger.debug(f"OpenAI /v1/models/{model} failed: {e}")
 
         # For Ollama, try to get context from /api/show
@@ -973,7 +868,7 @@ async def _discover_embedding_context(
                         f"Found context for {model}: {show_info['context_window']} from /api/show"
                     )
                     return show_info["context_window"]
-            except Exception as e:
+            except (httpx.HTTPError, ValueError, KeyError, OSError) as e:
                 logger.debug(f"Failed to get context from Ollama /api/show: {e}")
 
     # Default fallback - return None to indicate manual entry needed
@@ -995,7 +890,7 @@ async def test_config(request: Request) -> dict:
     except (ValueError, json.JSONDecodeError):
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
-    base_url = data.get("base_url", "http://localhost:11434")
+    base_url = data.get("base_url", DEFAULT_BASE_URL)
     provider_type = data.get("provider", "ollama")
     model_name = data.get("model", "nomic-embed-text")
 
@@ -1412,7 +1307,7 @@ async def _query_llm_models(
 
                     if ctx:
                         model["context_window"] = int(ctx)
-            except Exception:
+            except (httpx.HTTPError, ValueError, KeyError, OSError):
                 pass  # Fallback to default/heuristics if 'show' fails
 
     return {"success": True, "models": llm_models}
@@ -1421,7 +1316,7 @@ async def _query_llm_models(
 @router.get("/api/providers/summarization-models")
 async def list_summarization_models(
     provider: str = "ollama",
-    base_url: str = "http://localhost:11434",
+    base_url: str = DEFAULT_BASE_URL,
     api_key: str | None = None,
 ) -> dict:
     """List LLM models available for summarization from a provider.
@@ -1474,7 +1369,7 @@ async def test_summarization_config(request: Request) -> dict:
 
     provider = data.get("provider", "ollama")
     model = data.get("model", "qwen2.5:3b")
-    base_url = data.get("base_url", "http://localhost:11434")
+    base_url = data.get("base_url", DEFAULT_BASE_URL)
     api_key = data.get("api_key")
 
     # Security: Validate URL is localhost-only to prevent SSRF attacks
@@ -1590,7 +1485,7 @@ async def discover_context_tokens(request: Request) -> dict:
         }
 
     provider = data.get("provider", "ollama")
-    base_url = data.get("base_url", "http://localhost:11434")
+    base_url = data.get("base_url", DEFAULT_BASE_URL)
     api_key = data.get("api_key")
 
     # Security: Validate URL is localhost-only to prevent SSRF attacks

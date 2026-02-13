@@ -441,10 +441,10 @@ def _get_oak_managed_paths() -> list[str]:
                 agent_paths = manifest.get_oak_managed_paths()
                 paths.update(agent_paths)
                 logger.debug(f"Agent {manifest.name} managed paths: {agent_paths}")
-            except Exception as e:
+            except (OSError, ValueError, KeyError, AttributeError) as e:
                 logger.warning(f"Failed to load manifest for {agent_dir.name}: {e}")
 
-    except Exception as e:
+    except OSError as e:
         logger.warning(f"Error scanning agent manifests: {e}")
 
     return sorted(paths)
@@ -1410,7 +1410,7 @@ def save_ci_config(
         try:
             with open(config_file, encoding="utf-8") as f:
                 existing_config = yaml.safe_load(f) or {}
-        except Exception as e:
+        except (OSError, yaml.YAMLError) as e:
             logger.warning(f"Failed to read existing config: {e}")
 
     ci_dict = config.to_dict()
@@ -1442,7 +1442,7 @@ def save_ci_config(
                 try:
                     with open(user_file, encoding="utf-8") as f:
                         existing_user = yaml.safe_load(f) or {}
-                except Exception as e:
+                except (OSError, yaml.YAMLError) as e:
                     logger.warning(f"Failed to read existing user config: {e}")
             existing_user["codebase_intelligence"] = user_keys
             _write_yaml_config(user_file, existing_user)

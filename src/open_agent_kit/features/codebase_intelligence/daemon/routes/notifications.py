@@ -62,7 +62,7 @@ def _load_notify_config(agent: str) -> dict[str, Any] | None:
             or AGENT_NOTIFY_FIELD_INPUT_MESSAGES,
             "command": notify.command or AGENT_NOTIFY_DEFAULT_COMMAND,
         }
-    except Exception as e:
+    except (OSError, ValueError, KeyError, AttributeError) as e:
         logger.debug(f"Failed to load notify config for agent {agent}: {e}")
         return None
 
@@ -79,7 +79,7 @@ def _get_all_notify_agents() -> list[str]:
             if config:
                 agents.append(agent)
         return agents
-    except Exception as e:
+    except (OSError, ValueError, KeyError, AttributeError) as e:
         logger.debug(f"Failed to list notify agents: {e}")
         return []
 

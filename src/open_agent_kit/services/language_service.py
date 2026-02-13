@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from open_agent_kit.constants import DEFAULT_LANGUAGES, SUPPORTED_LANGUAGES
+from open_agent_kit.models.results import LanguageAddResult
 from open_agent_kit.services.config_service import ConfigService
+from open_agent_kit.utils.install_detection import get_install_source, is_uv_tool_install
 
 logger = logging.getLogger(__name__)
 
@@ -62,53 +64,14 @@ class LanguageService:
             }
         return result
 
-    def _is_uv_tool_install(self) -> bool:
-        """Check if OAK is running from a uv tool installation."""
-        from open_agent_kit.utils.platform import is_uv_tool_install
-
-        return is_uv_tool_install()
-
-    def _get_install_source(self) -> tuple[str | None, bool]:
-        """Get the install source if OAK was installed from a non-PyPI source.
-
-        Returns:
-            Tuple of (install_source, is_editable):
-            - install_source: local path or git URL if non-PyPI, None otherwise
-            - is_editable: True if this is an editable install (dir_info.editable)
-        """
-        try:
-            from importlib.metadata import distribution
-
-            dist = distribution("oak-ci")
-            direct_url = dist.read_text("direct_url.json")
-            if direct_url:
-                import json
-
-                url_info = json.loads(direct_url)
-                url = url_info.get("url", "")
-
-                # Check if this is an editable install (PEP 610 dir_info)
-                is_editable = bool(url_info.get("dir_info", {}).get("editable", False))
-
-                if url.startswith("file://"):
-                    return str(url[7:]), is_editable
-
-                if url_info.get("vcs_info"):
-                    vcs = url_info["vcs_info"].get("vcs", "git")
-                    return f"{vcs}+{url}", False  # Git installs are never editable
-
-            return None, False
-        except Exception:
-            return None, False
-
-    def add_languages(self, languages: list[str]) -> dict[str, Any]:
+    def add_languages(self, languages: list[str]) -> LanguageAddResult:
         """Install language parsers via pip.
 
         Args:
             languages: List of language identifiers to install
 
         Returns:
-            Dictionary with installation results
+            LanguageAddResult with installation details.
         """
         from open_agent_kit.utils import print_error, print_info, print_success, print_warning
 
@@ -219,7 +182,7 @@ class LanguageService:
         """
         from open_agent_kit.utils import print_info, print_warning
 
-        if self._is_uv_tool_install():
+        if is_uv_tool_install():
             return self._install_via_uv_tool(extras, languages)
 
         # Regular environment
@@ -270,7 +233,7 @@ class LanguageService:
         for extra in extras:
             with_args.extend(["--with", f"oak-ci[{extra}]"])
 
-        install_source, is_editable = self._get_install_source()
+        install_source, is_editable = get_install_source()
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
 
         try:

@@ -55,6 +55,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     INJECTION_MAX_SESSION_SUMMARIES,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
+    SESSION_STATUS_ACTIVE,
 )
 
 if TYPE_CHECKING:
@@ -74,6 +75,24 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# Exception types caught by background processing phases.
+# Each phase has its own error boundary so failures are isolated.
+# Exception types caught by background processing phases.
+# Each phase has its own error boundary so failures are isolated —
+# a bug in one phase must not crash the entire processor loop.
+# TypeError/KeyError/AttributeError are intentionally included:
+# while they often indicate programming errors, in this context
+# phase isolation is more important than fail-fast behavior.
+# All caught exceptions are logged with exc_info=True for debugging.
+_BG_EXCEPTIONS = (
+    OSError,
+    sqlite3.OperationalError,
+    ValueError,
+    TypeError,
+    KeyError,
+    AttributeError,
+)
 
 
 class ActivityProcessor:
@@ -685,47 +704,6 @@ class ActivityProcessor:
             min_activities=self.min_session_activities,
         )
 
-    def process_session_summary(
-        self, session_id: str, regenerate_title: bool = False
-    ) -> str | None:
-        """Generate and store a session summary and optionally regenerate title.
-
-        Args:
-            session_id: Session to summarize.
-            regenerate_title: If True, force regenerate title even if one exists.
-
-        Returns:
-            Summary text if generated, None otherwise.
-        """
-        if not self.summarizer:
-            logger.info("Session summary skipped: summarizer not configured")
-            return None
-
-        # Create a wrapper for generate_title_from_summary that binds store and config
-        def _generate_title_from_summary(sid: str, summary: str) -> str | None:
-            return generate_title_from_summary(
-                session_id=sid,
-                summary=summary,
-                activity_store=self.activity_store,
-                prompt_config=self.prompt_config,
-                call_llm=self._call_llm,
-            )
-
-        summary, title = process_session_summary(
-            session_id=session_id,
-            activity_store=self.activity_store,
-            vector_store=self.vector_store,
-            prompt_config=self.prompt_config,
-            call_llm=self._call_llm,
-            generate_title=self.generate_session_title,
-            regenerate_title=regenerate_title,
-            generate_title_from_summary=_generate_title_from_summary,
-        )
-
-        # Return just the summary for backward compatibility
-        # The title is stored directly in the session by the functions
-        return summary
-
     def process_session_summary_with_title(
         self, session_id: str, regenerate_title: bool = False
     ) -> tuple[str | None, str | None]:
@@ -783,7 +761,7 @@ class ActivityProcessor:
         session = self.activity_store.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
-        if session.status != "active":
+        if session.status != SESSION_STATUS_ACTIVE:
             raise ValueError(
                 f"Session {session_id} is already '{session.status}', only active sessions can be completed"
             )
@@ -844,6 +822,156 @@ class ActivityProcessor:
             with self._processing_lock:
                 self._is_processing = False
 
+    # ------------------------------------------------------------------
+    # Background processing phases
+    #
+    # Each phase has its own error boundary so a failure in one phase
+    # does not skip subsequent phases.  This decomposition also makes
+    # each phase independently testable and sets the groundwork for
+    # future parallelization (W5.6).
+    # ------------------------------------------------------------------
+
+    def _bg_recover_stuck_data(self) -> None:
+        """Phase 1: Recover stuck batches, stale runs, and orphaned activities."""
+        try:
+            from open_agent_kit.features.codebase_intelligence.constants import (
+                BATCH_ACTIVE_TIMEOUT_SECONDS,
+            )
+
+            # Auto-end batches stuck in 'active' too long
+            stuck_count = self.activity_store.recover_stuck_batches(
+                timeout_seconds=BATCH_ACTIVE_TIMEOUT_SECONDS,
+                project_root=self.project_root,
+            )
+            if stuck_count:
+                logger.info(f"Recovered {stuck_count} stuck batches")
+
+            # Mark stale agent runs as failed
+            stale_run_ids = self.activity_store.recover_stale_runs(
+                buffer_seconds=AGENT_RUN_RECOVERY_BUFFER_SECONDS,
+                default_timeout_seconds=DEFAULT_AGENT_TIMEOUT_SECONDS,
+            )
+            if stale_run_ids:
+                logger.info(
+                    f"Recovered {len(stale_run_ids)} stale agent runs: "
+                    f"{[r[:8] for r in stale_run_ids]}"
+                )
+
+            # Associate orphaned activities with batches
+            orphan_count = self.activity_store.recover_orphaned_activities()
+            if orphan_count:
+                logger.info(f"Recovered {orphan_count} orphaned activities")
+        except _BG_EXCEPTIONS as e:
+            logger.error(f"Background recovery error: {e}", exc_info=True)
+
+    def _bg_recover_stale_sessions(self) -> None:
+        """Phase 2: End/delete stale sessions and summarize recovered ones."""
+        try:
+            recovered_ids, deleted_ids = self.activity_store.recover_stale_sessions(
+                timeout_seconds=self.stale_timeout_seconds,
+                min_activities=self.min_session_activities,
+                vector_store=self.vector_store,
+            )
+            if deleted_ids:
+                logger.info(
+                    f"Deleted {len(deleted_ids)} empty stale sessions: "
+                    f"{[s[:8] for s in deleted_ids]}"
+                )
+            if recovered_ids:
+                logger.info(f"Recovered {len(recovered_ids)} stale sessions")
+                for session_id in recovered_ids:
+                    try:
+                        summary, _title = self.process_session_summary_with_title(session_id)
+                        if summary:
+                            logger.info(
+                                f"Generated summary for recovered session "
+                                f"{session_id[:8]}: {summary[:50]}..."
+                            )
+                    except (OSError, ValueError, TypeError, RuntimeError) as e:
+                        logger.warning(
+                            f"Failed to summarize recovered session {session_id[:8]}: {e}"
+                        )
+        except _BG_EXCEPTIONS as e:
+            logger.error(f"Background stale-session recovery error: {e}", exc_info=True)
+
+    def _bg_cleanup_and_summarize(self) -> None:
+        """Phase 3: Clean up low-quality sessions and generate missing summaries.
+
+        Cleanup runs first to avoid wasting LLM calls on sessions that
+        will be deleted.
+        """
+        try:
+            cleanup_ids = self.activity_store.cleanup_low_quality_sessions(
+                vector_store=self.vector_store,
+                min_activities=self.min_session_activities,
+            )
+            if cleanup_ids:
+                logger.info(
+                    f"Cleaned up {len(cleanup_ids)} low-quality completed sessions: "
+                    f"{[s[:8] for s in cleanup_ids]}"
+                )
+
+            if self.summarizer:
+                missing = self.activity_store.get_sessions_missing_summaries(
+                    limit=INJECTION_MAX_SESSION_SUMMARIES,
+                    min_activities=self.min_session_activities,
+                )
+                for session in missing:
+                    try:
+                        summary, _title = self.process_session_summary_with_title(session.id)
+                        if summary:
+                            logger.info(
+                                f"Generated summary for session {session.id[:8]}: "
+                                f"{summary[:50]}..."
+                            )
+                    except (OSError, ValueError, TypeError, RuntimeError) as e:
+                        logger.warning(f"Failed to summarize session {session.id[:8]}: {e}")
+        except _BG_EXCEPTIONS as e:
+            logger.error(f"Background cleanup/summarize error: {e}", exc_info=True)
+
+    def _bg_process_pending(self) -> None:
+        """Phase 4: Process pending batches and fallback sessions."""
+        try:
+            batch_results = self.process_pending_batches()
+            if batch_results:
+                logger.info(f"Background processed {len(batch_results)} prompt batches")
+
+            self.process_pending()
+        except _BG_EXCEPTIONS as e:
+            logger.error(f"Background batch processing error: {e}", exc_info=True)
+
+    def _bg_index_and_title(self) -> None:
+        """Phase 5: Index pending plans and generate missing titles."""
+        try:
+            plan_stats = self.index_pending_plans()
+            if plan_stats.get("indexed", 0) > 0:
+                logger.info(f"Background indexed {plan_stats['indexed']} plans")
+
+            title_count = self.generate_pending_titles()
+            if title_count > 0:
+                logger.info(f"Background generated {title_count} session titles")
+        except _BG_EXCEPTIONS as e:
+            logger.error(f"Background indexing/title error: {e}", exc_info=True)
+
+    def run_background_cycle(self) -> None:
+        """Execute one full background processing cycle.
+
+        Runs all phases sequentially.  Each phase has its own error
+        boundary so a failure in one does not skip the rest.
+
+        Phase ordering:
+        1. Recover stuck data (batches, runs, orphans)
+        2. Recover stale sessions
+        3. Cleanup low-quality sessions + generate summaries
+        4. Process pending batches/sessions
+        5. Index plans + generate titles
+        """
+        self._bg_recover_stuck_data()
+        self._bg_recover_stale_sessions()
+        self._bg_cleanup_and_summarize()
+        self._bg_process_pending()
+        self._bg_index_and_title()
+
     def schedule_background_processing(
         self,
         interval_seconds: int = 60,
@@ -859,126 +987,8 @@ class ActivityProcessor:
 
         def run_and_reschedule() -> None:
             try:
-                from open_agent_kit.features.codebase_intelligence.constants import (
-                    BATCH_ACTIVE_TIMEOUT_SECONDS,
-                )
-
-                # Recovery: Auto-end batches stuck in 'active' too long
-                # Pass project_root so recovery can capture response_summary from transcripts
-                stuck_count = self.activity_store.recover_stuck_batches(
-                    timeout_seconds=BATCH_ACTIVE_TIMEOUT_SECONDS,
-                    project_root=self.project_root,
-                )
-                if stuck_count:
-                    logger.info(f"Recovered {stuck_count} stuck batches")
-
-                # Recovery: Mark stale agent runs as failed
-                # This handles daemon crashes that leave runs in RUNNING state
-                stale_run_ids = self.activity_store.recover_stale_runs(
-                    buffer_seconds=AGENT_RUN_RECOVERY_BUFFER_SECONDS,
-                    default_timeout_seconds=DEFAULT_AGENT_TIMEOUT_SECONDS,
-                )
-                if stale_run_ids:
-                    logger.info(
-                        f"Recovered {len(stale_run_ids)} stale agent runs: "
-                        f"{[r[:8] for r in stale_run_ids]}"
-                    )
-
-                # Recovery: Auto-end or delete sessions inactive too long
-                # Empty sessions are deleted, non-empty sessions are marked completed
-                # Uses configured thresholds from session_quality_config (via properties)
-                recovered_ids, deleted_ids = self.activity_store.recover_stale_sessions(
-                    timeout_seconds=self.stale_timeout_seconds,
-                    min_activities=self.min_session_activities,
-                    vector_store=self.vector_store,
-                )
-                if deleted_ids:
-                    logger.info(
-                        f"Deleted {len(deleted_ids)} empty stale sessions: "
-                        f"{[s[:8] for s in deleted_ids]}"
-                    )
-                if recovered_ids:
-                    logger.info(f"Recovered {len(recovered_ids)} stale sessions")
-                    # Generate summaries for recovered sessions (eventual consistency)
-                    # This handles cases where SessionEnd hook didn't fire
-                    for session_id in recovered_ids:
-                        try:
-                            summary = self.process_session_summary(session_id)
-                            if summary:
-                                logger.info(
-                                    f"Generated summary for recovered session "
-                                    f"{session_id[:8]}: {summary[:50]}..."
-                                )
-                        except (OSError, ValueError, TypeError, RuntimeError) as e:
-                            logger.warning(
-                                f"Failed to summarize recovered session {session_id[:8]}: {e}"
-                            )
-
-                # Cleanup: Delete completed sessions below quality threshold
-                # This catches sessions that ended normally via SessionEnd but had
-                # too few activities to be worth summarizing/embedding.
-                # Must run BEFORE summary generation to avoid wasted LLM calls.
-                cleanup_ids = self.activity_store.cleanup_low_quality_sessions(
-                    vector_store=self.vector_store,
-                    min_activities=self.min_session_activities,
-                )
-                if cleanup_ids:
-                    logger.info(
-                        f"Cleaned up {len(cleanup_ids)} low-quality completed sessions: "
-                        f"{[s[:8] for s in cleanup_ids]}"
-                    )
-
-                # Generate summaries for completed sessions missing summaries
-                if self.summarizer:
-                    missing = self.activity_store.get_sessions_missing_summaries(
-                        limit=INJECTION_MAX_SESSION_SUMMARIES,
-                        min_activities=self.min_session_activities,
-                    )
-                    for session in missing:
-                        try:
-                            summary = self.process_session_summary(session.id)
-                            if summary:
-                                logger.info(
-                                    f"Generated summary for session {session.id[:8]}: "
-                                    f"{summary[:50]}..."
-                                )
-                        except (OSError, ValueError, TypeError, RuntimeError) as e:
-                            logger.warning(f"Failed to summarize session {session.id[:8]}: {e}")
-
-                # Recovery: Associate orphaned activities with batches
-                orphan_count = self.activity_store.recover_orphaned_activities()
-                if orphan_count:
-                    logger.info(f"Recovered {orphan_count} orphaned activities")
-
-                # Process pending prompt batches (preferred - processes by user prompt)
-                batch_results = self.process_pending_batches()
-                if batch_results:
-                    logger.info(f"Background processed {len(batch_results)} prompt batches")
-
-                # Also process any sessions with unprocessed activities
-                # (fallback for activities not associated with a batch)
-                self.process_pending()
-
-                # Index pending plans for semantic search
-                plan_stats = self.index_pending_plans()
-                if plan_stats.get("indexed", 0) > 0:
-                    logger.info(f"Background indexed {plan_stats['indexed']} plans")
-
-                # Generate titles for sessions without them
-                title_count = self.generate_pending_titles()
-                if title_count > 0:
-                    logger.info(f"Background generated {title_count} session titles")
-            except (
-                OSError,
-                sqlite3.OperationalError,
-                ValueError,
-                TypeError,
-                KeyError,
-                AttributeError,
-            ) as e:
-                logger.error(f"Background processing error: {e}", exc_info=True)
+                self.run_background_cycle()
             finally:
-                # Reschedule
                 timer = threading.Timer(interval_seconds, run_and_reschedule)
                 timer.daemon = True
                 timer.start()
