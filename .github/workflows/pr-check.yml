@@ -46,7 +46,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run installer smoke tests
         run: uv run pytest tests/test_install_scripts.py -v --no-cov
@@ -72,7 +72,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run ruff linting
         run: uv run ruff check src/ --output-format=github
@@ -107,7 +107,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run tests with pytest
         run: uv run pytest tests/ -v -o "addopts=" --no-cov -n auto
