@@ -9,10 +9,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
-    AGENT_COPILOT,
     AGENT_CURSOR,
     AGENTS_HOOK_SPECIFIC_OUTPUT,
-    COPILOT_EVENTS_WITH_HOOK_SPECIFIC_OUTPUT,
     DEFAULT_PREVIEW_LENGTH,
     DEFAULT_RELATED_QUERY_LENGTH,
     INJECTION_MAX_CODE_CHUNKS,

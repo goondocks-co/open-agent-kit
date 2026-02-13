@@ -425,7 +425,9 @@ MAX_QUERY_LENGTH: Final[int] = 10000
 MIN_QUERY_LENGTH: Final[int] = 1
 MAX_OBSERVATION_LENGTH: Final[int] = 50000
 RESPONSE_SUMMARY_MAX_LENGTH: Final[int] = 5000  # Agent response summary truncation
-PLAN_CONTENT_MAX_LENGTH: Final[int] = 50000  # Plan content (inline/heuristic) — much larger than summary
+PLAN_CONTENT_MAX_LENGTH: Final[int] = (
+    50000  # Plan content (inline/heuristic) — much larger than summary
+)
 
 # Heuristic plan detection: scan only the beginning of the response
 PLAN_RESPONSE_SCAN_LENGTH: Final[int] = 500

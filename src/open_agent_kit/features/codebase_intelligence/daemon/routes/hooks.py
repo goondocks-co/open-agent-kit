@@ -41,8 +41,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_FIELD_TOOL_OUTPUT_B64,
     HOOK_FIELD_TOOL_USE_ID,
     MEMORY_EMBED_LINE_SEPARATOR,
-    RESPONSE_SUMMARY_MAX_LENGTH,
     PROMPT_SOURCE_PLAN,
+    RESPONSE_SUMMARY_MAX_LENGTH,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
     build_rich_search_query,
@@ -1770,6 +1770,45 @@ async def hook_subagent_start(request: Request) -> dict:
 
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[SUBAGENT-START] type={agent_type} id={agent_id} session={session_id}")
+
+    # VS Code Copilot gives each subagent its own session_id, unlike Claude Code
+    # where subagents share the parent's session_id.  When a SubagentStart arrives
+    # with an unknown session_id, find the parent session and pre-create the
+    # subagent session with parent_session_id linked.
+    #
+    # Parent detection strategy (handles concurrent sessions):
+    #   1. Filter by same agent type (vscode-copilot subagent → vscode-copilot parent)
+    #   2. Use most recent tool activity, not session start time — the parent will
+    #      have had a PreToolUse just moments before SubagentStart fires
+    #   3. Fall back to most recently started session of the same agent if no
+    #      activity data matches
+    if state.activity_store and state.project_root and session_id:
+        agent_name = body.get("agent", "unknown")
+        existing = state.activity_store.get_session(session_id)
+        if not existing:
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.store import sessions
+
+                parent_id = sessions.find_active_parent_for_subagent(
+                    state.activity_store,
+                    subagent_session_id=session_id,
+                    agent=agent_name,
+                )
+
+                sessions.create_session(
+                    state.activity_store,
+                    session_id=session_id,
+                    agent=agent_name,
+                    project_root=str(state.project_root),
+                    parent_session_id=parent_id,
+                    parent_session_reason="subagent",
+                )
+                logger.info(
+                    f"[SUBAGENT-START] Created session {session_id[:8]} "
+                    f"with parent={parent_id[:8] if parent_id else 'none'}"
+                )
+            except _HOOK_STORE_EXCEPTIONS as e:
+                logger.debug(f"Failed to pre-create subagent session: {e}")
 
     # Store as activity to track subagent spawn
     if state.activity_store and session_id:

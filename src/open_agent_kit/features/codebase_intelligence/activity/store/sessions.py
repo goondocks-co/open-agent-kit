@@ -9,7 +9,7 @@ import logging
 import sqlite3
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
 from open_agent_kit.features.codebase_intelligence.constants import (
@@ -1184,6 +1184,74 @@ def cleanup_low_quality_sessions(
         )
 
     return deleted_ids
+
+
+def find_active_parent_for_subagent(
+    store: ActivityStore,
+    subagent_session_id: str,
+    agent: str,
+    recency_seconds: int = 30,
+) -> str | None:
+    """Find the most likely parent session for a subagent.
+
+    Used when an agent (e.g. VS Code Copilot) gives each subagent its own
+    session_id.  The parent is the active session of the *same* agent type
+    that most likely spawned this subagent.
+
+    Strategy (handles concurrent sessions and race conditions):
+      1. Find the active session of the same agent with the most recent
+         tool activity within ``recency_seconds``, using epoch timestamps
+         for correct comparison.
+      2. Fall back to the most recently *created* active session of the
+         same agent.  This handles the common race condition where
+         SubagentStart fires before PostToolUse stores the parent's
+         ``runSubagent`` activity.
+
+    Args:
+        store: The ActivityStore instance.
+        subagent_session_id: Session ID of the new subagent (excluded from results).
+        agent: Agent name to match (e.g. ``vscode-copilot``).
+        recency_seconds: How far back to look for recent tool activity.
+
+    Returns:
+        Parent session ID if found, None otherwise.
+    """
+    conn = store._get_connection()
+
+    # Compute cutoff as epoch (avoids datetime('now') UTC vs local-time bug)
+    cutoff_epoch = int(time.time()) - recency_seconds
+
+    # Primary: active session with recent tool activity (epoch-based)
+    cursor = conn.execute(
+        """
+        SELECT s.id FROM sessions s
+        INNER JOIN activities a ON a.session_id = s.id
+        WHERE s.status = 'active'
+          AND s.id != ?
+          AND s.agent = ?
+          AND a.timestamp_epoch > ?
+        ORDER BY a.timestamp_epoch DESC
+        LIMIT 1
+        """,
+        (subagent_session_id, agent, cutoff_epoch),
+    )
+    row = cursor.fetchone()
+    if row:
+        return cast(str, row[0])
+
+    # Fallback: most recently created active session of same agent.
+    # Handles the race condition where SubagentStart fires before
+    # PostToolUse stores the parent's runSubagent activity.
+    cursor = conn.execute(
+        """
+        SELECT id FROM sessions
+        WHERE status = 'active' AND id != ? AND agent = ?
+        ORDER BY created_at_epoch DESC LIMIT 1
+        """,
+        (subagent_session_id, agent),
+    )
+    row = cursor.fetchone()
+    return cast(str, row[0]) if row else None
 
 
 def is_suggestion_dismissed(store: ActivityStore, session_id: str) -> bool:
