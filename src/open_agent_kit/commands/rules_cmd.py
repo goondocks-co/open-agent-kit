@@ -237,7 +237,7 @@ def detect_existing(
 ) -> None:
     """Detect existing agent instruction files.
 
-    Checks for existing agent instruction files like .github/copilot-instructions.md,
+    Checks for existing agent instruction files like .github/copilot-instructions.md (VS Code Copilot),
     CLAUDE.md, etc. and returns information about what exists. Useful for agents
     to gather context before creating a constitution.
 

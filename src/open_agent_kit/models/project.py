@@ -42,7 +42,7 @@ class ProjectConfig:
 
     # Agent configuration
     enabled_agents: list[str] = field(
-        default_factory=lambda: ["claude", "copilot", "cursor", "codex"]
+        default_factory=lambda: ["claude", "vscode-copilot", "cursor", "codex"]
     )
     agent_timeout: int = 30  # seconds
 
@@ -148,7 +148,7 @@ class ProjectConfig:
             rfc_template=rfc.get("template", "default"),
             rfc_auto_index=rfc.get("auto_index", True),
             rfc_number_format=rfc.get("number_format", "YYYY-NNN"),
-            enabled_agents=agents.get("enabled", ["claude", "copilot", "cursor", "codex"]),
+            enabled_agents=agents.get("enabled", ["claude", "vscode-copilot", "cursor", "codex"]),
             agent_timeout=agents.get("timeout", 30),
             template_sources=templates.get(
                 "sources",

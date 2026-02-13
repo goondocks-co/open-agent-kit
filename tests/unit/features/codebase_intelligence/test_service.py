@@ -109,16 +109,17 @@ class TestHooksInstallerOakDetection:
             hook = {"command": "oak-dev ci hook sessionStart --agent cursor"}
             assert installer._is_oak_managed_hook(hook) is True
 
-    def test_detects_oak_ci_hook_command_copilot(self, tmp_path: Path):
-        """Test detection of oak ci hook command in copilot format (bash/powershell)."""
+    def test_detects_oak_ci_hook_command_vscode_copilot(self, tmp_path: Path):
+        """Test detection of oak ci hook command in vscode-copilot format (flat/command)."""
         with patch.object(HooksInstaller, "manifest") as mock_manifest:
-            mock_manifest.hooks.format = "copilot"
-            installer = HooksInstaller(tmp_path, "copilot")
-            installer._hooks_config = MagicMock(format="copilot")
+            mock_manifest.hooks.format = "flat"
+            installer = HooksInstaller(tmp_path, "vscode-copilot")
+            installer._hooks_config = MagicMock(format="flat")
 
             hook = {
-                "bash": "oak ci hook sessionStart --agent copilot",
-                "powershell": "oak ci hook sessionStart --agent copilot",
+                "type": "command",
+                "command": "oak ci hook SessionStart --agent vscode-copilot",
+                "timeout": 60,
             }
             assert installer._is_oak_managed_hook(hook) is True
 

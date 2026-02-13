@@ -17,10 +17,10 @@ class TestGetAgentInstructionFile:
         path = service.get_agent_instruction_file("claude")
         assert path == initialized_project / "CLAUDE.md"
 
-    def test_returns_correct_path_for_copilot(self, initialized_project: Path) -> None:
-        """Test get_agent_instruction_file returns correct path for Copilot."""
+    def test_returns_correct_path_for_vscode_copilot(self, initialized_project: Path) -> None:
+        """Test get_agent_instruction_file returns correct path for VS Code Copilot."""
         service = AgentService(initialized_project)
-        path = service.get_agent_instruction_file("copilot")
+        path = service.get_agent_instruction_file("vscode-copilot")
         assert path == initialized_project / ".github" / "copilot-instructions.md"
 
     def test_returns_correct_path_for_cursor(self, initialized_project: Path) -> None:
@@ -72,23 +72,23 @@ class TestGetAgentInstructionFile:
 class TestDetectExistingAgentInstructions:
     """Tests for detect_existing_agent_instructions method."""
 
-    def test_detects_existing_copilot_instructions(self, initialized_project: Path) -> None:
-        """Test detection of existing copilot instructions."""
+    def test_detects_existing_vscode_copilot_instructions(self, initialized_project: Path) -> None:
+        """Test detection of existing vscode-copilot instructions."""
         copilot_dir = initialized_project / ".github"
         copilot_dir.mkdir(parents=True, exist_ok=True)
         copilot_file = copilot_dir / "copilot-instructions.md"
         test_content = "# Team Instructions\n\nOur conventions..."
         copilot_file.write_text(test_content, encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         existing = service.detect_existing_agent_instructions()
-        assert "copilot" in existing
-        assert existing["copilot"]["exists"] is True
-        assert existing["copilot"]["content"] == test_content
-        assert len(existing["copilot"]["content"]) > 0
-        assert existing["copilot"]["has_constitution_ref"] is False
-        assert existing["copilot"]["path"] == copilot_file
+        assert "vscode-copilot" in existing
+        assert existing["vscode-copilot"]["exists"] is True
+        assert existing["vscode-copilot"]["content"] == test_content
+        assert len(existing["vscode-copilot"]["content"]) > 0
+        assert existing["vscode-copilot"]["has_constitution_ref"] is False
+        assert existing["vscode-copilot"]["path"] == copilot_file
 
     def test_returns_info_for_nonexistent_file(self, initialized_project: Path) -> None:
         """Test detection when instruction file doesn't exist."""
@@ -110,11 +110,11 @@ class TestDetectExistingAgentInstructions:
         content_with_ref = "# Team Instructions\n\nOur conventions...\n\n## Project Constitution\n\nSee [oak/constitution.md](../oak/constitution.md)\n"
         copilot_file.write_text(content_with_ref, encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         existing = service.detect_existing_agent_instructions()
-        assert existing["copilot"]["exists"] is True
-        assert existing["copilot"]["has_constitution_ref"] is True
+        assert existing["vscode-copilot"]["exists"] is True
+        assert existing["vscode-copilot"]["has_constitution_ref"] is True
 
     def test_handles_shared_files(self, initialized_project: Path) -> None:
         """Test that cursor and codex both detect the same AGENTS.md file."""
@@ -141,12 +141,12 @@ class TestDetectExistingAgentInstructions:
         copilot_file = copilot_dir / "copilot-instructions.md"
         copilot_file.write_text("# Copilot Instructions\n", encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["claude", "copilot"])
+        config_service.create_default_config(agents=["claude", "vscode-copilot"])
         service = AgentService(initialized_project)
         existing = service.detect_existing_agent_instructions()
         assert len(existing) == 2
         assert existing["claude"]["exists"] is True
-        assert existing["copilot"]["exists"] is True
+        assert existing["vscode-copilot"]["exists"] is True
 
     def test_empty_result_when_no_agents_configured(self, initialized_project: Path) -> None:
         """Test that detection returns empty dict when no agents configured."""
@@ -161,10 +161,10 @@ class TestDetectExistingAgentInstructions:
         copilot_file = copilot_dir / "copilot-instructions.md"
         copilot_file.write_text("# Instructions\n", encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         existing = service.detect_existing_agent_instructions()
-        assert "copilot" in existing
+        assert "vscode-copilot" in existing
 
 
 class TestHasConstitutionReference:
@@ -267,14 +267,14 @@ class TestUpdateAgentInstructionsFromConstitution:
         original_content = "# Team Instructions\n\nOur conventions..."
         copilot_file.write_text(original_content, encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         results = service.update_agent_instructions_from_constitution(
             constitution_file, mode="additive"
         )
-        assert "copilot" in results["updated"]
-        assert "copilot" not in results["created"]
-        assert "copilot" not in results["skipped"]
+        assert "vscode-copilot" in results["updated"]
+        assert "vscode-copilot" not in results["created"]
+        assert "vscode-copilot" not in results["skipped"]
         assert len(results["backed_up"]) == 1
         updated_content = copilot_file.read_text(encoding="utf-8")
         assert original_content in updated_content
@@ -293,7 +293,7 @@ class TestUpdateAgentInstructionsFromConstitution:
         original_content = "# Original Content\n"
         copilot_file.write_text(original_content, encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         results = service.update_agent_instructions_from_constitution(constitution_file)
         backup_file = copilot_file.with_suffix(copilot_file.suffix + ".backup")
@@ -313,12 +313,12 @@ class TestUpdateAgentInstructionsFromConstitution:
         content_with_ref = "# Instructions\n\n## Project Constitution\nAlready has reference to oak/constitution.md\n"
         copilot_file.write_text(content_with_ref, encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         results = service.update_agent_instructions_from_constitution(constitution_file)
-        assert "copilot" in results["skipped"]
-        assert "copilot" not in results["updated"]
-        assert "copilot" not in results["created"]
+        assert "vscode-copilot" in results["skipped"]
+        assert "vscode-copilot" not in results["updated"]
+        assert "vscode-copilot" not in results["created"]
         assert len(results["backed_up"]) == 0
         assert copilot_file.read_text(encoding="utf-8") == content_with_ref
 
@@ -380,12 +380,12 @@ class TestUpdateAgentInstructionsFromConstitution:
         original_content = "# Team Instructions\n"
         copilot_file.write_text(original_content, encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["copilot"])
+        config_service.create_default_config(agents=["vscode-copilot"])
         service = AgentService(initialized_project)
         results = service.update_agent_instructions_from_constitution(
             constitution_file, mode="skip"
         )
-        assert "copilot" in results["skipped"]
+        assert "vscode-copilot" in results["skipped"]
         assert copilot_file.read_text(encoding="utf-8") == original_content
 
     def test_skip_mode_creates_new_files(self, initialized_project: Path) -> None:
@@ -529,10 +529,10 @@ class TestIntegration:
         constitution_file = constitution_dir / "constitution.md"
         constitution_file.write_text("# Project Constitution\n", encoding="utf-8")
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["claude", "copilot", "cursor"])
+        config_service.create_default_config(agents=["claude", "vscode-copilot", "cursor"])
         service = AgentService(initialized_project)
         results = service.update_agent_instructions_from_constitution(constitution_file)
-        assert set(results["created"]) == {"claude", "copilot", "cursor"}
+        assert set(results["created"]) == {"claude", "vscode-copilot", "cursor"}
         assert len(results["updated"]) == 0
         assert len(results["skipped"]) == 0
         assert len(results["errors"]) == 0
@@ -556,11 +556,11 @@ class TestIntegration:
             "# Copilot\n\n## Project Constitution\nAlready has reference\n", encoding="utf-8"
         )
         config_service = ConfigService(initialized_project)
-        config_service.create_default_config(agents=["claude", "copilot", "cursor"])
+        config_service.create_default_config(agents=["claude", "vscode-copilot", "cursor"])
         service = AgentService(initialized_project)
         results = service.update_agent_instructions_from_constitution(constitution_file)
         assert "claude" in results["updated"]
-        assert "copilot" in results["skipped"]
+        assert "vscode-copilot" in results["skipped"]
         assert "cursor" in results["created"]
 
     def test_idempotency(self, initialized_project: Path) -> None:
@@ -608,11 +608,11 @@ class TestGetAgentContext:
         service = AgentService(initialized_project)
 
         claude_context = service.get_agent_context("claude")
-        copilot_context = service.get_agent_context("copilot")
+        copilot_context = service.get_agent_context("vscode-copilot")
 
         # Both should have agent_type set correctly
         assert claude_context["agent_type"] == "claude"
-        assert copilot_context["agent_type"] == "copilot"
+        assert copilot_context["agent_type"] == "vscode-copilot"
 
     def test_get_agent_context_case_insensitive(self, initialized_project: Path) -> None:
         """Test agent type lookup is case insensitive."""

@@ -5,7 +5,7 @@ features. Skills are only installed to agents that have the `has_skills` capabil
 defined in their manifest. Currently supported agents include:
 - Claude Code (.claude/skills/)
 - Codex CLI (.codex/skills/)
-- GitHub Copilot (.github/skills/)
+- VS Code Copilot (.github/skills/)
 - Gemini CLI (.gemini/skills/)
 
 Directory structure:
@@ -163,7 +163,12 @@ class SkillService:
         agents_with_skills: list[tuple[str, Path, str]] = []
 
         for agent_name in config.agents:
-            manifest = agent_service.get_agent_manifest(agent_name)
+            try:
+                manifest = agent_service.get_agent_manifest(agent_name)
+            except ValueError:
+                # Agent may have been renamed/removed — skip gracefully
+                # (e.g. "copilot" → "vscode-copilot" migration pending)
+                continue
             if manifest and manifest.capabilities.has_skills:
                 # Build the skills directory path
                 # Use skills_folder override if specified, otherwise use installation.folder

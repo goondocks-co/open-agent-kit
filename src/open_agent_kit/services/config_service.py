@@ -18,7 +18,7 @@ Configuration Hierarchy:
 
 Configuration Sections:
     - project: Name, description, version
-    - agents: Configured AI agents (claude, copilot, etc.)
+    - agents: Configured AI agents (claude, vscode-copilot, etc.)
     - rfc: RFC settings (auto_number, format, template, validation)
 
 Typical Usage:

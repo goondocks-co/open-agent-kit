@@ -12,12 +12,16 @@ Architecture:
 - No hardcoded agent lists or plan patterns
 - New agents automatically supported when manifest includes plans_subfolder
 - Singleton pattern for efficient caching of plan patterns
+- Heuristic response pattern matching for inline plan detection
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from open_agent_kit.features.codebase_intelligence.constants import PLAN_RESPONSE_SCAN_LENGTH
 
 if TYPE_CHECKING:
     from open_agent_kit.services.agent_service import AgentService
@@ -245,3 +249,47 @@ def detect_plan(file_path: str | None) -> PlanDetectionResult:
         PlanDetectionResult with agent info
     """
     return get_plan_detector().detect(file_path)
+
+
+def detect_plan_in_response(
+    response_summary: str,
+    agent: str,
+) -> bool:
+    """Check if response text matches any plan heuristic pattern from the agent manifest.
+
+    This is the 4th plan detection mechanism (heuristic), checked after the three
+    deterministic mechanisms (file-based, tool-based, prefix-based). It enables
+    plan detection for agents like VS Code Copilot that generate plans inline
+    in response text rather than writing to disk or using specific tools.
+
+    Args:
+        response_summary: The captured agent response text.
+        agent: Agent name (e.g., "vscode-copilot").
+
+    Returns:
+        True if any plan_response_patterns match the response head.
+    """
+    if not response_summary:
+        return False
+
+    try:
+        from open_agent_kit.services.agent_service import AgentService
+
+        agent_service = AgentService()
+        manifest = agent_service.get_agent_manifest(agent)
+        if not manifest or not manifest.ci:
+            return False
+
+        patterns = manifest.ci.plan_response_patterns
+        if not patterns:
+            return False
+
+        # Only scan the beginning of the response for efficiency and precision
+        head = response_summary[:PLAN_RESPONSE_SCAN_LENGTH]
+        for pattern in patterns:
+            if re.search(pattern, head, re.IGNORECASE | re.MULTILINE):
+                return True
+    except Exception:
+        logger.debug("Failed to check plan response patterns for agent %s", agent)
+
+    return False

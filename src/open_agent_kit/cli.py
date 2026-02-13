@@ -54,7 +54,7 @@ def init(
         None,
         "--agent",
         "-a",
-        help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
+        help="Agent(s) to use (can specify multiple times). Options: claude, vscode-copilot, codex, cursor, gemini, windsurf",
     ),
     no_interactive: bool = typer.Option(
         False,

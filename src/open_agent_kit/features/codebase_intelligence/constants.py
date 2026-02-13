@@ -78,7 +78,7 @@ DAEMON_STATUS_UNHEALTHY: Final[str] = "unhealthy"
 AGENT_CLAUDE: Final[str] = "claude"
 AGENT_CURSOR: Final[str] = "cursor"
 AGENT_GEMINI: Final[str] = "gemini"
-AGENT_COPILOT: Final[str] = "copilot"
+AGENT_COPILOT: Final[str] = "vscode-copilot"
 AGENT_CODEX: Final[str] = "codex"
 SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
     AGENT_CLAUDE,
@@ -86,6 +86,44 @@ SUPPORTED_HOOK_AGENTS: Final[tuple[str, ...]] = (
     AGENT_GEMINI,
     AGENT_COPILOT,
     AGENT_CODEX,
+)
+
+# Agents that use the hookSpecificOutput protocol for context injection.
+# Used by format_hook_output() in the daemon to wrap injected context in
+# the hookSpecificOutput envelope.  Both Claude Code and VS Code Copilot
+# understand this format for events that support it.
+AGENTS_HOOK_SPECIFIC_OUTPUT: Final[tuple[str, ...]] = (
+    AGENT_CLAUDE,
+    AGENT_COPILOT,
+)
+
+# Agents that REQUIRE hookSpecificOutput in EVERY hook response.
+# VS Code Copilot crashes if hookSpecificOutput is missing from any response
+# (accesses .additionalContext on undefined).
+# Claude Code does NOT belong here — it validates hookSpecificOutput against
+# its schema and rejects empty objects for events without specific output
+# (e.g. SessionEnd, Stop).  For Claude, the daemon already returns proper
+# hookSpecificOutput for events that support it; no CLI safety net is needed.
+AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT: Final[tuple[str, ...]] = (AGENT_COPILOT,)
+
+# Hook events where VS Code Copilot docs claim hookSpecificOutput is supported.
+# Retained for reference, but empirically VS Code requires hookSpecificOutput
+# in ALL hook responses — omitting it for ANY event crashes VS Code with:
+#   "Cannot read properties of undefined (reading 'hookSpecificOutput')"
+#
+# The daemon format_hook_output() now returns hookSpecificOutput for ALL
+# vscode-copilot events.  The CLI safety net in hooks.py also ensures
+# hookSpecificOutput is always present for AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT.
+#
+# Based on VS Code Copilot hook schema:
+#   https://code.visualstudio.com/docs/copilot/customization/hooks
+COPILOT_EVENTS_WITH_HOOK_SPECIFIC_OUTPUT: Final[tuple[str, ...]] = (
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
 )
 
 # =============================================================================
@@ -387,6 +425,10 @@ MAX_QUERY_LENGTH: Final[int] = 10000
 MIN_QUERY_LENGTH: Final[int] = 1
 MAX_OBSERVATION_LENGTH: Final[int] = 50000
 RESPONSE_SUMMARY_MAX_LENGTH: Final[int] = 5000  # Agent response summary truncation
+PLAN_CONTENT_MAX_LENGTH: Final[int] = 50000  # Plan content (inline/heuristic) — much larger than summary
+
+# Heuristic plan detection: scan only the beginning of the response
+PLAN_RESPONSE_SCAN_LENGTH: Final[int] = 500
 
 # =============================================================================
 # Session and Hook Events
@@ -403,6 +445,7 @@ HOOK_EVENT_SUBAGENT_START: Final[str] = "subagent-start"
 HOOK_EVENT_SUBAGENT_STOP: Final[str] = "subagent-stop"
 HOOK_EVENT_AGENT_THOUGHT: Final[str] = "agent-thought"
 HOOK_EVENT_PRE_COMPACT: Final[str] = "pre-compact"
+HOOK_EVENT_PRE_TOOL_USE: Final[str] = "pre-tool-use"
 
 # Hook origins for deduplication when multiple configs fire
 HOOK_ORIGIN_CLAUDE_CONFIG: Final[str] = "claude_config"

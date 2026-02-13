@@ -170,7 +170,7 @@ class CleanupCiArtifactsStage(BaseStage):
         try:
             available_agents = agent_service.list_available_agents()
         except Exception:
-            available_agents = ["claude", "cursor", "gemini", "copilot", "codex"]
+            available_agents = ["claude", "cursor", "gemini", "vscode-copilot", "codex"]
 
         # Use CI service cleanup if packages are available
         try:

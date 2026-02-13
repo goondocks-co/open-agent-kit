@@ -15,7 +15,7 @@ class SkillManifest(BaseModel):
     to enhance agent performance. Each skill is a SKILL.md file with YAML frontmatter
     containing metadata and markdown body containing the skill content.
 
-    Skills are supported by agents like Claude Code, Codex CLI, GitHub Copilot, and
+    Skills are supported by agents like Claude Code, Codex CLI, VS Code Copilot, and
     Gemini CLI. The SKILL.md format is standardized across these agents.
 
     The name field must follow strict naming conventions to ensure compatibility

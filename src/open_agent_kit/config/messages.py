@@ -47,7 +47,7 @@ HELP_TEXT = f"""
   [dim]$ oak init[/dim]
 
   [dim]# One-shot initialize by setting agents[/dim]
-  [dim]$ oak init --agent copilot --agent codex[/dim]
+  [dim]$ oak init --agent vscode-copilot --agent codex[/dim]
 
   [dim]# Create an RFC[/dim]
   [dim]$ oak rfc create "New authentication system"[/dim]
@@ -67,7 +67,7 @@ NEXT_STEPS_INIT = """[bold green]What's Next?[/bold green]
 
 OAK enhances your AI coding assistants with code intelligence.
 
-[bold]For agents with skills support (Claude, Copilot, Gemini):[/bold]
+[bold]For agents with skills support (Claude, VS Code Copilot, Gemini):[/bold]
   Skills are automatically discovered. Use them naturally:
   [dim]• "add a project rule about test coverage"[/dim]
   [dim]• "create an RFC for the new authentication system"[/dim]
@@ -258,7 +258,7 @@ INIT_HELP_TEXT = {
 
 USAGE_EXAMPLES = {
     "init_agent": "oak init --agent claude",
-    "init_multi_agent": "oak init --agent copilot --agent cursor",
+    "init_multi_agent": "oak init --agent vscode-copilot --agent cursor",
     "init_force": "oak init --force",
     "rfc_validate_number": "oak rfc validate RFC-001",
     "rfc_validate_path": "oak rfc validate path/to/rfc.md",

@@ -45,7 +45,7 @@ def init_command(
         None,
         "--agent",
         "-a",
-        help="Agent(s) to use (can specify multiple times). Options: claude, copilot, codex, cursor, gemini, windsurf",
+        help="Agent(s) to use (can specify multiple times). Options: claude, vscode-copilot, codex, cursor, gemini, windsurf",
     ),
     language: list[str] = typer.Option(
         None,

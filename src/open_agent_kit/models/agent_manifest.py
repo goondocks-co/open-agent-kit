@@ -160,6 +160,16 @@ class AgentCIConfig(BaseModel):
         description="Tool name that signals plan mode exit (e.g., 'ExitPlanMode'). When detected, re-reads plan file to capture final content.",
     )
 
+    # Heuristic plan detection via response pattern matching
+    plan_response_patterns: list[str] | None = Field(
+        default=None,
+        description=(
+            "Regex patterns matched against the start of agent response text to detect inline plans. "
+            "If any pattern matches, the batch is promoted to source_type='plan'. "
+            "Patterns are applied with re.search on the first 500 chars of the response."
+        ),
+    )
+
     # Transcript configuration for response summary extraction
     transcript: AgentTranscriptConfig | None = Field(
         default=None,
@@ -374,7 +384,7 @@ class AgentHooksConfig(BaseModel):
     session tracking, activity capture, and context injection.
 
     Three types are supported:
-    - "json": Hooks are added to a JSON config file (Claude, Cursor, Gemini, Copilot)
+    - "json": Hooks are added to a JSON config file (Claude, Cursor, Gemini, VS Code Copilot)
     - "plugin": Hooks are installed as a plugin file (OpenCode)
     - "otel": Hooks use OpenTelemetry events translated via OTLP receiver (Codex)
     """
@@ -393,7 +403,7 @@ class AgentHooksConfig(BaseModel):
     )
     format: str = Field(
         default="nested",
-        description="Hook structure format: 'nested' (Claude/Gemini), 'flat' (Cursor), 'copilot' (bash/powershell)",
+        description="Hook structure format: 'nested' (Claude/Gemini), 'flat' (Cursor), 'vscode-copilot' (bash/powershell)",
     )
     version_key: str | None = Field(
         default=None,

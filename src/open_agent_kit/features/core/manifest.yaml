@@ -13,7 +13,7 @@ components:
     description: "Agent auto-approval settings for oak commands"
     files:
       - agent-settings/claude-settings.json
-      - agent-settings/copilot-settings.json
+      - agent-settings/vscode-copilot-settings.json
       - agent-settings/cursor-settings.json
       - agent-settings/gemini-settings.json
       - agent-settings/windsurf-settings.json

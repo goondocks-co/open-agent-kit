@@ -844,7 +844,7 @@ class UpgradeService:
                     }
                 )
             except Exception as e:
-                logger.warning(f"Failed to plan hook upgrades for {agent}: {e}")
+                logger.debug(f"Skipping hook upgrade planning for {agent}: {e}")
 
         return result
 
@@ -921,7 +921,7 @@ class UpgradeService:
                     }
                 )
             except Exception as e:
-                logger.warning(f"Failed to plan notification upgrades for {agent}: {e}")
+                logger.debug(f"Skipping notification upgrade planning for {agent}: {e}")
 
         return result
 
@@ -989,7 +989,7 @@ class UpgradeService:
             manifest = self.agent_service.get_agent_manifest(agent)
             return manifest.mcp is not None
         except (ValueError, KeyError) as e:
-            logger.warning(f"Failed to get agent manifest for {agent}: {e}")
+            logger.debug(f"Skipping MCP planning for {agent}: {e}")
             return False
 
     def _mcp_is_configured(self, agent: str, feature_name: str) -> bool:

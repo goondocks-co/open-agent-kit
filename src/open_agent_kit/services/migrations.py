@@ -71,7 +71,10 @@ def _cleanup_skill_generate_scripts(project_root: Path) -> None:
         return
 
     for agent_name in config.agents:
-        manifest = agent_service.get_agent_manifest(agent_name)
+        try:
+            manifest = agent_service.get_agent_manifest(agent_name)
+        except ValueError:
+            continue
         if not manifest or not manifest.capabilities.has_skills:
             continue
 
@@ -228,6 +231,60 @@ def _migrate_claude_hooks_to_local(project_root: Path, folder: str) -> None:
     logger.info("Migrated Claude hooks from settings.json to settings.local.json")
 
 
+def _migrate_copilot_to_vscode_copilot(project_root: Path) -> None:
+    """Rename 'copilot' agent to 'vscode-copilot' in config and remove old-format hooks.
+
+    1. Updates .oak/config.yaml agents list: replaces "copilot" with "vscode-copilot".
+    2. Removes .github/hooks/oak-ci-hooks.json if it contains old-format hooks
+       (detected by "bash"/"powershell" keys or "--agent copilot" pattern).
+    """
+    import json
+
+    import yaml
+
+    config_path = project_root / ".oak" / "config.yaml"
+    if config_path.is_file():
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                config_data = yaml.safe_load(f)
+
+            if isinstance(config_data, dict):
+                agents = config_data.get("agents", [])
+                if isinstance(agents, list) and "copilot" in agents:
+                    config_data["agents"] = [
+                        "vscode-copilot" if a == "copilot" else a for a in agents
+                    ]
+                    with open(config_path, "w", encoding="utf-8") as f:
+                        yaml.safe_dump(config_data, f, default_flow_style=False)
+                    logger.info(
+                        "Renamed 'copilot' to 'vscode-copilot' in .oak/config.yaml agents list"
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to update .oak/config.yaml for copilot rename: {e}")
+
+    # Remove old-format hooks file if it exists and contains old-format hooks
+    old_hooks_path = project_root / ".github" / "hooks" / "oak-ci-hooks.json"
+    if old_hooks_path.is_file():
+        try:
+            content = old_hooks_path.read_text(encoding="utf-8")
+            # Detect old-format hooks by presence of shell keys or old agent flag
+            is_old_format = (
+                '"bash"' in content or '"powershell"' in content or "--agent copilot" in content
+            )
+            if is_old_format:
+                old_hooks_path.unlink()
+                logger.info("Removed old-format hooks file: .github/hooks/oak-ci-hooks.json")
+                # Clean up empty parent directories
+                hooks_dir = old_hooks_path.parent
+                try:
+                    if hooks_dir.is_dir() and not any(hooks_dir.iterdir()):
+                        hooks_dir.rmdir()
+                except OSError:
+                    pass
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Failed to check/remove old hooks file: {e}")
+
+
 def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
     """Get all available migrations.
 
@@ -250,6 +307,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "hooks-local-only",
             "Make hook config files local-only (gitignored, not committed)",
             _hooks_local_only,
+        ),
+        (
+            "rename-copilot-to-vscode-copilot",
+            "Rename copilot agent to vscode-copilot and remove old-format hooks",
+            _migrate_copilot_to_vscode_copilot,
         ),
     ]
 

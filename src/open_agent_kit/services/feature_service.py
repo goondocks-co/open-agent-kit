@@ -569,7 +569,7 @@ class FeatureService:
             {
                 'commands_installed': ['rfc-create', 'rfc-list'],
                 'templates_copied': ['engineering.md', 'architecture.md'],
-                'agents': ['claude', 'copilot'],
+                'agents': ['claude', 'vscode-copilot'],
                 'pip_packages_installed': ['fastapi>=0.109.0', ...]
             }
         """

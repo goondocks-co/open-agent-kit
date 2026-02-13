@@ -194,7 +194,7 @@ class TestAgentStages:
             flow_type=FlowType.UPDATE,
             selections=SelectionState(
                 agents=["claude"],
-                previous_agents=["claude", "copilot"],
+                previous_agents=["claude", "vscode-copilot"],
             ),
         )
         assert stage.should_run(context) is True
@@ -373,6 +373,96 @@ class TestHookStages:
             flow_type=FlowType.FRESH_INIT,
         )
         assert stage.should_run(context) is True
+
+
+class TestRunMigrationsStage:
+    """Tests for RunMigrationsStage ordering and context refresh."""
+
+    def test_run_migrations_order(self):
+        """RunMigrationsStage runs before agent reconciliation stages."""
+        from open_agent_kit.pipeline.stages.upgrade import RunMigrationsStage
+
+        stage = RunMigrationsStage()
+        # Must run after structural repairs (150) but before
+        # InstallAgentCommandsStage (220) and other agent stages.
+        assert stage.order == 155
+
+    def test_run_migrations_refreshes_context_agents(self, tmp_path: Path):
+        """Context.selections.agents is refreshed after successful migrations."""
+        from unittest.mock import patch
+
+        from open_agent_kit.pipeline.stages.upgrade import RunMigrationsStage
+
+        stage = RunMigrationsStage()
+
+        # Set up a config file that a "migration" has already rewritten
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        config_path = oak_dir / "config.yaml"
+        config_path.write_text("version: '0.1.0'\nagents:\n  - claude\n  - vscode-copilot\n")
+
+        # Context starts with the STALE agent list (pre-migration)
+        context = PipelineContext(
+            project_root=tmp_path,
+            flow_type=FlowType.UPGRADE,
+            selections=SelectionState(agents=["claude", "copilot"]),
+        )
+        context.set_result(
+            "plan_upgrade",
+            {"plan": {"migrations": ["rename-copilot-to-vscode-copilot"]}, "has_upgrades": True},
+        )
+
+        # Mock run_migrations to report one success, and
+        # add_completed_migrations to be a no-op (state file not needed)
+        with (
+            patch(
+                "open_agent_kit.services.migrations.run_migrations",
+                return_value=(["rename-copilot-to-vscode-copilot"], []),
+            ),
+            patch(
+                "open_agent_kit.services.config_service.ConfigService.add_completed_migrations",
+            ),
+        ):
+            outcome = stage.execute(context)
+
+        assert outcome.result == StageResult.SUCCESS
+        # Context must now reflect the POST-migration agent list
+        assert "vscode-copilot" in context.selections.agents
+        assert "copilot" not in context.selections.agents
+
+    def test_run_migrations_no_refresh_when_none_succeed(self, tmp_path: Path):
+        """Context.selections.agents is NOT modified when no migrations run."""
+        from unittest.mock import patch
+
+        from open_agent_kit.pipeline.stages.upgrade import RunMigrationsStage
+
+        stage = RunMigrationsStage()
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        (oak_dir / "config.yaml").write_text("version: '0.1.0'\nagents:\n  - claude\n")
+
+        original_agents = ["claude", "copilot"]
+        context = PipelineContext(
+            project_root=tmp_path,
+            flow_type=FlowType.UPGRADE,
+            selections=SelectionState(agents=list(original_agents)),
+        )
+        context.set_result(
+            "plan_upgrade",
+            {"plan": {"migrations": ["some-migration"]}, "has_upgrades": True},
+        )
+
+        # No migrations succeed
+        with patch(
+            "open_agent_kit.services.migrations.run_migrations",
+            return_value=([], [("some-migration", "error")]),
+        ):
+            outcome = stage.execute(context)
+
+        assert outcome.result == StageResult.SUCCESS
+        # Agents should be unchanged — no refresh happened
+        assert context.selections.agents == original_agents
 
 
 class TestUpgradeStages:
