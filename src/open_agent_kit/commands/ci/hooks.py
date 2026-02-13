@@ -15,6 +15,8 @@ import typer
 
 from open_agent_kit.config.paths import GIT_DIR, OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_CLAUDE,
+    AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT,
     CI_AUTH_SCHEME_BEARER,
     CI_DATA_DIR,
     CI_TOKEN_FILE,
@@ -55,7 +57,7 @@ def _find_project_root() -> Path:
 def ci_hook(
     event: str = typer.Argument(..., help="Hook event name (e.g., SessionStart, PostToolUse)"),
     agent: str = typer.Option(
-        "claude",
+        AGENT_CLAUDE,
         "--agent",
         "-a",
         help="Agent name (claude, cursor, copilot, gemini, windsurf)",
@@ -110,15 +112,24 @@ def ci_hook(
     except Exception:
         input_json = {}
 
-    # Extract common fields (universal: accept alternative field names from any agent)
+    # Extract common fields (universal: accept alternative field names from any agent).
+    # VS Code Copilot sends camelCase fields (sessionId, conversationId, generationId)
+    # while Claude sends snake_case. Accept both.
     session_id = (
         input_json.get("session_id")
+        or input_json.get("sessionId")
         or input_json.get("conversation_id")
+        or input_json.get("conversationId")
         or input_json.get("trajectory_id")
         or ""
     )
-    conversation_id = input_json.get("conversation_id") or ""
-    generation_id = input_json.get("generation_id") or input_json.get("execution_id") or ""
+    conversation_id = input_json.get("conversation_id") or input_json.get("conversationId") or ""
+    generation_id = (
+        input_json.get("generation_id")
+        or input_json.get("generationId")
+        or input_json.get("execution_id")
+        or ""
+    )
 
     # Flatten nested tool_info (Windsurf nests tool data under tool_info)
     if "tool_info" in input_json:
@@ -212,27 +223,6 @@ def ci_hook(
         except Exception:
             pass
 
-    def _format_claude_response(response: dict[str, Any], event_name: str) -> dict[str, Any]:
-        """Format response for Claude Code hooks."""
-        injected = response.get("context", {}).get("injected_context") or response.get(
-            "injected_context"
-        )
-        if injected:
-            return {
-                "hookSpecificOutput": {
-                    "hookEventName": event_name,
-                    "additionalContext": injected,
-                }
-            }
-        return {}
-
-    def _format_cursor_response(response: dict[str, Any]) -> dict[str, Any]:
-        """Format response for Cursor hooks."""
-        injected = response.get("context", {}).get("injected_context")
-        if injected:
-            return {"additional_context": injected}
-        return {}
-
     # Map events to their handlers (normalized to handle different casing)
     event_lower = event.lower()
     output: dict[str, Any] = {}
@@ -255,10 +245,7 @@ def ci_hook(
                     "generation_id": generation_id,
                 },
             )
-            if agent == "claude":
-                output = _format_claude_response(response, "SessionStart")
-            elif agent == "cursor":
-                output = _format_cursor_response(response)
+            output = response.get("hook_output", {})
 
         elif event_lower in (
             "userpromptsubmit",
@@ -285,11 +272,27 @@ def ci_hook(
                     "generation_id": generation_id,
                 },
             )
-            if agent == "claude":
-                output = _format_claude_response(response, "UserPromptSubmit")
-            elif agent == "cursor":
-                # Cursor expects continue: true for beforeSubmitPrompt
-                output = {"continue": True}
+            output = response.get("hook_output", {})
+
+        elif event_lower == "pretooluse":
+            tool_name = input_json.get("tool_name", "")
+            tool_input = input_json.get("tool_input", {})
+            tool_use_id = input_json.get("tool_use_id", "")
+            response = _call_api(
+                "pre-tool-use",
+                {
+                    "agent": agent,
+                    "session_id": session_id,
+                    "conversation_id": conversation_id,
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                    "tool_use_id": tool_use_id,
+                    "hook_origin": hook_origin,
+                    "hook_event_name": event,
+                    "generation_id": generation_id,
+                },
+            )
+            output = response.get("hook_output", {})
 
         elif event_lower in (
             "posttooluse",
@@ -361,8 +364,7 @@ def ci_hook(
                     "generation_id": generation_id,
                 },
             )
-            if agent == "claude":
-                output = _format_claude_response(response, "PostToolUse")
+            output = response.get("hook_output", {})
 
         elif event_lower in ("stop", "afteragent", "post_cascade_response"):
             transcript_path = input_json.get("transcript_path", "")
@@ -510,6 +512,42 @@ def ci_hook(
 
     except Exception:
         pass  # Hooks should never crash the calling tool
+
+    # Safety net for agents that REQUIRE hookSpecificOutput in every response.
+    # VS Code Copilot crashes if hookSpecificOutput is missing for events
+    # that support it (accesses .additionalContext on undefined).
+    #
+    # VS Code Copilot requires hookSpecificOutput in ALL hook responses,
+    # not just events that the docs claim support it.  Without it, VS Code
+    # crashes with:
+    #   "Cannot read properties of undefined (reading 'hookSpecificOutput')"
+    #
+    # The daemon format_hook_output() handles this for --agent vscode-copilot.
+    # This CLI safety net covers edge cases where the daemon returns empty
+    # output (e.g. events not handled by daemon routes).
+    #
+    # Claude Code is NOT included — it validates hookSpecificOutput against
+    # its schema and rejects it for events without specific output.
+    if agent in AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT and "hookSpecificOutput" not in output:
+        output = {
+            "continue": True,
+            "hookSpecificOutput": {"hookEventName": event},
+        }
+
+    # Dual-firing safety: VS Code Copilot reads hooks from BOTH
+    # .claude/settings.local.json (--agent claude) AND .github/hooks/
+    # (--agent vscode-copilot).  When running inside VS Code (detected
+    # via VSCODE_PID), the --agent claude hook is redundant — the
+    # --agent vscode-copilot hook handles context injection.
+    #
+    # Return empty hookSpecificOutput so VS Code doesn't crash when
+    # processing the result.  Context injection is left to the
+    # --agent vscode-copilot hook.
+    if os.environ.get("VSCODE_PID") and agent == AGENT_CLAUDE:
+        output = {
+            "continue": True,
+            "hookSpecificOutput": {"hookEventName": event},
+        }
 
     # Output JSON response
     print(json_module.dumps(output))

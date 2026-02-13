@@ -427,6 +427,27 @@ class TestBuildUpgradePipeline:
         assert "upgrade_skills" in stage_names
         assert "run_migrations" in stage_names
 
+    def test_upgrade_migrations_before_agent_reconciliation(self):
+        """Migrations must run before any stage that uses context.selections.agents."""
+        pipeline = build_upgrade_pipeline().build()
+        stages_by_name = {s.name: s for s in pipeline._stages}
+
+        migrations = stages_by_name["run_migrations"]
+
+        # These stages iterate context.selections.agents and must see
+        # the post-migration agent list.
+        for dependent_name in (
+            "install_agent_commands",
+            "cleanup_obsolete_commands",
+            "reconcile_feature_hooks",
+            "reconcile_mcp_servers",
+        ):
+            if dependent_name in stages_by_name:
+                assert migrations.order < stages_by_name[dependent_name].order, (
+                    f"run_migrations (order={migrations.order}) must run before "
+                    f"{dependent_name} (order={stages_by_name[dependent_name].order})"
+                )
+
     def test_stage_count_for_upgrade(self, tmp_path: Path):
         """Test stage count for upgrade flow."""
         pipeline = build_upgrade_pipeline().build()

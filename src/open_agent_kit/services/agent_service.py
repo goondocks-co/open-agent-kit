@@ -63,7 +63,7 @@ class AgentService:
         """List all available agent types from package manifests.
 
         Returns:
-            List of agent names (e.g., ['claude', 'cursor', 'copilot'])
+            List of agent names (e.g., ['claude', 'cursor', 'vscode-copilot'])
         """
         agents = []
         if self.package_agents_dir.exists():
@@ -78,7 +78,7 @@ class AgentService:
         """Load agent manifest from package.
 
         Args:
-            agent_type: Agent type name (e.g., "claude", "copilot")
+            agent_type: Agent type name (e.g., "claude", "vscode-copilot")
 
         Returns:
             AgentManifest instance
@@ -108,14 +108,14 @@ class AgentService:
         """Get native commands directory for an agent.
 
         Args:
-            agent_type: Agent type name (e.g., "claude", "copilot")
+            agent_type: Agent type name (e.g., "claude", "vscode-copilot")
 
         Returns:
             Path to agent's native commands directory
 
         Examples:
             - claude: project_root/.claude/commands/
-            - copilot: project_root/.github/agents/
+            - vscode-copilot: project_root/.github/agents/
             - cursor: project_root/.cursor/commands/
         """
         manifest = self.get_agent_manifest(agent_type)
@@ -250,7 +250,7 @@ class AgentService:
         source of truth.
 
         Args:
-            agent_type: Agent type name (e.g., "claude", "copilot")
+            agent_type: Agent type name (e.g., "claude", "vscode-copilot")
 
         Returns:
             Dictionary with agent context for Jinja2 template rendering
@@ -279,7 +279,7 @@ class AgentService:
 
         Examples:
             - claude: oak.rfc-create.md
-            - copilot: oak.rfc-create.agent.md
+            - vscode-copilot: oak.rfc-create.agent.md
         """
         manifest = self.get_agent_manifest(agent_type)
         return manifest.get_command_filename(command_name)
@@ -300,14 +300,14 @@ class AgentService:
         """Get path to agent's instruction file.
 
         Args:
-            agent_type: Agent type (claude, copilot, etc.)
+            agent_type: Agent type (claude, vscode-copilot, etc.)
 
         Returns:
             Path to instruction file, or None if not defined
 
         Examples:
             claude -> .claude/CLAUDE.md
-            copilot -> .github/copilot-instructions.md
+            vscode-copilot -> .github/copilot-instructions.md
             cursor -> .cursor/rules.md
         """
         manifest = self.get_agent_manifest(agent_type)

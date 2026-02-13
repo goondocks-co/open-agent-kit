@@ -13,10 +13,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from open_agent_kit.features.codebase_intelligence.constants import PLAN_RESPONSE_SCAN_LENGTH
 from open_agent_kit.features.codebase_intelligence.plan_detector import (
     PlanDetectionResult,
     PlanDetector,
     detect_plan,
+    detect_plan_in_response,
     get_plan_detector,
     is_plan_file,
     reset_plan_detector,
@@ -38,7 +40,7 @@ def mock_agent_service():
     mock.get_all_plan_directories.return_value = {
         "claude": ".claude/plans",
         "cursor": ".cursor/plans",
-        "copilot": ".github/copilot/plans",
+        "vscode-copilot": ".github/copilot/plans",
     }
     return mock
 
@@ -102,13 +104,13 @@ class TestPlanDetectorProjectLocal:
         assert ".cursor/plans/" in result.plans_dir
         assert result.is_global is False
 
-    def test_detect_copilot_plan(self, detector_with_mock, tmp_path):
-        """Test detecting Copilot plan file."""
+    def test_detect_vscode_copilot_plan(self, detector_with_mock, tmp_path):
+        """Test detecting VS Code Copilot plan file."""
         plan_path = str(tmp_path / ".github/copilot/plans/task.md")
         result = detector_with_mock.detect(plan_path)
 
         assert result.is_plan is True
-        assert result.agent_type == "copilot"
+        assert result.agent_type == "vscode-copilot"
         assert ".github/copilot/plans/" in result.plans_dir
         assert result.is_global is False
 
@@ -198,7 +200,7 @@ class TestPlanDetectorPatternLoading:
         assert len(patterns) == 3
         assert ".claude/plans/" in patterns
         assert ".cursor/plans/" in patterns
-        assert ".github/copilot/plans/" in patterns
+        assert ".github/copilot/plans/" in patterns  # vscode-copilot plans dir
 
     def test_patterns_cached(self, mock_agent_service, tmp_path):
         """Test that patterns are cached after first load."""
@@ -222,7 +224,7 @@ class TestPlanDetectorPatternLoading:
 
         assert "claude" in agents
         assert "cursor" in agents
-        assert "copilot" in agents
+        assert "vscode-copilot" in agents
         assert len(agents) == 3
 
 
@@ -305,3 +307,84 @@ class TestPlanDetectorErrorHandling:
         # Should not raise
         result = detector_with_mock.detect("not/a/real/path")
         assert result.is_plan is False
+
+
+class TestDetectPlanInResponse:
+    """Test heuristic plan detection via response pattern matching."""
+
+    @pytest.fixture
+    def mock_manifest_with_patterns(self):
+        """Create a mock manifest with plan_response_patterns configured."""
+        mock_manifest = MagicMock()
+        mock_manifest.ci.plan_response_patterns = [
+            r"^#+\s*Plan\b",  # "# Plan: ..." or "## Plan ..."
+            r"^Plan:\s",  # "Plan: Some title"
+        ]
+        return mock_manifest
+
+    @pytest.fixture
+    def mock_manifest_no_patterns(self):
+        """Create a mock manifest with no plan_response_patterns."""
+        mock_manifest = MagicMock()
+        mock_manifest.ci.plan_response_patterns = None
+        return mock_manifest
+
+    @pytest.fixture(autouse=True)
+    def patch_agent_service(self, mock_manifest_with_patterns):
+        """Patch AgentService to return our mock manifest by default."""
+        with patch("open_agent_kit.services.agent_service.AgentService") as mock_cls:
+            mock_service = MagicMock()
+            mock_service.get_agent_manifest.return_value = mock_manifest_with_patterns
+            mock_cls.return_value = mock_service
+            self._mock_service = mock_service
+            yield mock_cls
+
+    def test_detects_heading_plan(self):
+        """Test detection of '# Plan: ...' heading."""
+        assert detect_plan_in_response("# Plan: Embed Session Ids", "vscode-copilot") is True
+
+    def test_detects_h2_plan(self):
+        """Test detection of '## Plan ...' heading."""
+        assert (
+            detect_plan_in_response("## Plan for Feature X\n\nDetails...", "vscode-copilot") is True
+        )
+
+    def test_detects_plan_colon(self):
+        """Test detection of 'Plan: ...' prefix."""
+        assert (
+            detect_plan_in_response("Plan: Embed Session Ids\nStep 1...", "vscode-copilot") is True
+        )
+
+    def test_ignores_plan_mid_text(self):
+        """Test that 'plan' mid-text does not match (patterns are anchored to line start)."""
+        assert detect_plan_in_response("Here is my plan for the feature", "vscode-copilot") is False
+
+    def test_ignores_empty_response(self):
+        """Test that empty response returns False."""
+        assert detect_plan_in_response("", "vscode-copilot") is False
+
+    def test_ignores_none_response(self):
+        """Test that None response returns False."""
+        assert detect_plan_in_response(None, "vscode-copilot") is False
+
+    def test_no_patterns_returns_false(self, mock_manifest_no_patterns):
+        """Test that agent with no patterns returns False."""
+        self._mock_service.get_agent_manifest.return_value = mock_manifest_no_patterns
+        assert detect_plan_in_response("# Plan: Something", "vscode-copilot") is False
+
+    def test_unknown_agent_returns_false(self):
+        """Test that unknown agent (no manifest) returns False."""
+        self._mock_service.get_agent_manifest.return_value = None
+        assert detect_plan_in_response("# Plan: Something", "nonexistent") is False
+
+    def test_scans_only_head(self):
+        """Test that pattern matching only scans the first PLAN_RESPONSE_SCAN_LENGTH chars."""
+        # Put the plan heading beyond the scan window
+        padding = "x" * (PLAN_RESPONSE_SCAN_LENGTH + 100)
+        response = padding + "\n# Plan: Late Heading"
+        assert detect_plan_in_response(response, "vscode-copilot") is False
+
+    def test_agent_service_error_returns_false(self):
+        """Test graceful handling when AgentService raises."""
+        self._mock_service.get_agent_manifest.side_effect = Exception("Service error")
+        assert detect_plan_in_response("# Plan: Something", "vscode-copilot") is False

@@ -1,6 +1,6 @@
 """Transcript parsing utilities for agent JSONL files.
 
-Supports Claude Code and SubagentStop transcript formats.
+Supports Claude Code, VS Code Copilot, and SubagentStop transcript formats.
 """
 
 import json
@@ -53,6 +53,14 @@ def parse_transcript_response(
                     inner_msg = msg.get("message", {})
                     if inner_msg.get("role") == "assistant":
                         content = inner_msg.get("content", "")
+                        text = _extract_text_from_content(content)
+                        if text:
+                            return text[:max_length]
+                # Handle VS Code Copilot format: {"type": "assistant.message", "data": {"content": "..."}}
+                elif msg.get("type") == "assistant.message":
+                    data = msg.get("data", {})
+                    if isinstance(data, dict):
+                        content = data.get("content", "")
                         text = _extract_text_from_content(content)
                         if text:
                             return text[:max_length]

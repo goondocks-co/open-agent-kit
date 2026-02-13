@@ -126,9 +126,9 @@ def test_init_adding_agents_updates_version(temp_project_dir: Path) -> None:
     config.version = "0.0.1"
     config_service.save_config(config)
 
-    # Update to use both claude and copilot
-    init_command(force=False, agent=["claude", "copilot"], no_interactive=True)
+    # Update to use both claude and vscode-copilot
+    init_command(force=False, agent=["claude", "vscode-copilot"], no_interactive=True)
     config = config_service.load_config()
     assert config.version == __version__
     assert "claude" in config.agents
-    assert "copilot" in config.agents
+    assert "vscode-copilot" in config.agents

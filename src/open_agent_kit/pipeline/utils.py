@@ -5,14 +5,11 @@ in pipeline stage implementations.
 """
 
 from collections.abc import Callable, Iterable
-from typing import TypeVar
 
 from open_agent_kit.pipeline.models import ProcessingResult
 
-T = TypeVar("T")
 
-
-def process_items(
+def process_items[T](
     items: Iterable[T],
     processor: Callable[[T], None],
     item_name_fn: Callable[[T], str] | None = None,

@@ -16,6 +16,12 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_CLAUDE,
+    AGENT_COPILOT,
+    AGENT_CURSOR,
+    PROMPT_SOURCE_PLAN,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.server import create_app
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     get_state,
@@ -161,7 +167,7 @@ class TestSessionStartHook:
         """Test session start with agent and session_id provided."""
         session_id = str(uuid4())
         payload = {
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
             "session_id": session_id,
             "source": "startup",
         }
@@ -170,12 +176,12 @@ class TestSessionStartHook:
         assert response.status_code == 200
         data = response.json()
         assert data["session_id"] == session_id
-        assert data["context"]["agent"] == "claude"
+        assert data["context"]["agent"] == AGENT_CLAUDE
 
     def test_session_start_injects_context_on_startup(self, client, setup_state_with_mocks):
         """Test that full context is injected on startup source."""
         payload = {
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
             "source": "startup",
             "session_id": str(uuid4()),
         }
@@ -191,7 +197,7 @@ class TestSessionStartHook:
     def test_session_start_no_context_on_resume(self, client, setup_state_with_mocks):
         """Test that context is not fully injected on resume source."""
         payload = {
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
             "source": "resume",
             "session_id": str(uuid4()),
         }
@@ -206,7 +212,7 @@ class TestSessionStartHook:
         """Test that activity store is called to create or resume session."""
         session_id = str(uuid4())
         payload = {
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
             "session_id": session_id,
         }
         response = client.post("/api/oak/ci/session-start", json=payload)
@@ -217,7 +223,7 @@ class TestSessionStartHook:
 
     def test_session_start_includes_index_stats(self, client, setup_state_with_mocks):
         """Test that index stats are included in response."""
-        payload = {"agent": "claude", "session_id": str(uuid4())}
+        payload = {"agent": AGENT_CLAUDE, "session_id": str(uuid4())}
         response = client.post("/api/oak/ci/session-start", json=payload)
 
         assert response.status_code == 200
@@ -256,11 +262,67 @@ class TestSessionStartHook:
         assert "project_root" in data["context"]
         assert data["context"]["project_root"] == "/tmp/test_project"
 
+    def test_session_start_hook_output_for_claude(self, client, setup_state_with_mocks):
+        """Test that hook_output contains correct hookSpecificOutput for Claude."""
+        session_id = str(uuid4())
+        payload = {
+            "agent": AGENT_CLAUDE,
+            "session_id": session_id,
+            "source": "startup",
+            "hook_event_name": "SessionStart",
+        }
+        response = client.post("/api/oak/ci/session-start", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "hook_output" in data
+        hook_output = data["hook_output"]
+        assert hook_output["continue"] is True
+        assert "hookSpecificOutput" in hook_output
+        assert hook_output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+
+    def test_session_start_hook_output_for_vscode_copilot(self, client, setup_state_with_mocks):
+        """Test that hook_output is always present for vscode-copilot (prevents crash)."""
+        session_id = str(uuid4())
+        payload = {
+            "agent": AGENT_COPILOT,
+            "session_id": session_id,
+            "source": "startup",
+            "hook_event_name": "SessionStart",
+        }
+        response = client.post("/api/oak/ci/session-start", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "hook_output" in data
+        hook_output = data["hook_output"]
+        assert hook_output["continue"] is True
+        assert "hookSpecificOutput" in hook_output
+        assert hook_output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+
+    def test_session_start_hook_output_for_cursor(self, client, setup_state_with_mocks):
+        """Test that hook_output uses cursor format."""
+        session_id = str(uuid4())
+        payload = {
+            "agent": AGENT_CURSOR,
+            "session_id": session_id,
+            "source": "startup",
+            "hook_event_name": "SessionStart",
+        }
+        response = client.post("/api/oak/ci/session-start", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "hook_output" in data
+        # Cursor with no injected context → empty dict
+        hook_output = data["hook_output"]
+        assert "hookSpecificOutput" not in hook_output
+
     def test_session_start_duplicate_hook_idempotent(self, client, setup_state_with_mocks):
         """Test that duplicate SessionStart hooks are handled idempotently."""
         session_id = str(uuid4())
         payload = {
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
             "session_id": session_id,
             "source": "startup",
         }
@@ -309,6 +371,35 @@ class TestPromptSubmitHook:
         assert data["status"] == "ok"
         assert "context" in data
 
+    def test_prompt_submit_hook_output_present(self, client, setup_state_with_mocks):
+        """Test that hook_output is present in prompt-submit response."""
+        payload = {
+            "prompt": "Write a test for the function",
+            "session_id": str(uuid4()),
+            "agent": AGENT_CLAUDE,
+            "hook_event_name": "UserPromptSubmit",
+        }
+        response = client.post("/api/oak/ci/prompt-submit", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "hook_output" in data
+
+    def test_prompt_submit_hook_output_cursor(self, client, setup_state_with_mocks):
+        """Test that cursor gets continue:true for prompt-submit."""
+        payload = {
+            "prompt": "Write a test for the function",
+            "session_id": str(uuid4()),
+            "agent": AGENT_CURSOR,
+            "hook_event_name": "beforeSubmitPrompt",
+        }
+        response = client.post("/api/oak/ci/prompt-submit", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "hook_output" in data
+        assert data["hook_output"]["continue"] is True
+
     def test_prompt_submit_skips_short_prompts(self, client, setup_state_with_mocks):
         """Test that short prompts are skipped."""
         payload = {
@@ -329,7 +420,7 @@ class TestPromptSubmitHook:
         payload = {
             "session_id": session_id,
             "prompt": "This is a test prompt with enough content",
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
         }
         response = client.post("/api/oak/ci/prompt-submit", json=payload)
 
@@ -382,7 +473,7 @@ class TestPromptSubmitHook:
         payload = {
             "session_id": session_id,
             "prompt": "This is a test prompt with enough content",
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
         }
         response = client.post("/api/oak/ci/prompt-submit", json=payload)
 
@@ -409,7 +500,7 @@ class TestPromptSubmitHook:
         payload1 = {
             "session_id": session_id,
             "prompt": "First prompt that is long enough",
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
         }
         client.post("/api/oak/ci/prompt-submit", json=payload1)
 
@@ -417,7 +508,7 @@ class TestPromptSubmitHook:
         payload2 = {
             "session_id": session_id,
             "prompt": "Second prompt that is long enough",
-            "agent": "claude",
+            "agent": AGENT_CLAUDE,
         }
         response = client.post("/api/oak/ci/prompt-submit", json=payload2)
 
@@ -446,6 +537,22 @@ class TestPostToolUseHook:
         data = response.json()
         assert data["status"] == "ok"
         assert "observations_captured" in data
+
+    def test_post_tool_use_hook_output_present(self, client, setup_state_with_mocks):
+        """Test that hook_output is present in post-tool-use response."""
+        payload = {
+            "tool_name": "Read",
+            "session_id": str(uuid4()),
+            "agent": AGENT_CLAUDE,
+            "hook_event_name": "PostToolUse",
+        }
+        response = client.post("/api/oak/ci/post-tool-use", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "hook_output" in data
+        assert data["hook_output"]["continue"] is True
+        assert data["hook_output"]["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
 
     def test_post_tool_use_with_tool_input(self, client, setup_state_with_mocks):
         """Test post-tool-use with tool input."""
@@ -647,6 +754,77 @@ class TestStopHook:
         if "prompt_batch_stats" in data:
             assert isinstance(data["prompt_batch_stats"], dict)
 
+    def test_stop_promotes_plan_on_heuristic_match(self, client, setup_state_with_mocks):
+        """Test that stop hook promotes batch to plan when heuristic detects a plan."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+        client.post(
+            "/api/oak/ci/prompt-submit",
+            json={
+                "session_id": session_id,
+                "prompt": "Test prompt with enough content",
+            },
+        )
+
+        # Mock detect_plan_in_response to return True
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan_in_response",
+            return_value=True,
+        ):
+            response = client.post(
+                "/api/oak/ci/stop",
+                json={
+                    "session_id": session_id,
+                    "agent": AGENT_COPILOT,
+                    "response_summary": "# Plan: Embed Session Ids\n\nStep 1...",
+                },
+            )
+
+        assert response.status_code == 200
+        # Verify update_prompt_batch_source_type was called with plan
+        setup_state_with_mocks.activity_store.update_prompt_batch_source_type.assert_called_once()
+        call_args = setup_state_with_mocks.activity_store.update_prompt_batch_source_type.call_args
+        assert call_args[0][1] == PROMPT_SOURCE_PLAN  # second positional arg is source_type
+        assert call_args[1].get("plan_content") is not None  # plan_content kwarg
+
+    def test_stop_skips_heuristic_when_already_plan(self, client, setup_state_with_mocks):
+        """Test that heuristic is skipped when batch is already source_type=plan."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+        client.post(
+            "/api/oak/ci/prompt-submit",
+            json={
+                "session_id": session_id,
+                "prompt": "Test prompt with enough content",
+            },
+        )
+
+        # Set the active batch's source_type to plan already
+        mock_batch = setup_state_with_mocks.activity_store.get_active_prompt_batch.return_value
+        mock_batch.source_type = PROMPT_SOURCE_PLAN
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan_in_response",
+        ) as mock_detect:
+            response = client.post(
+                "/api/oak/ci/stop",
+                json={
+                    "session_id": session_id,
+                    "agent": AGENT_COPILOT,
+                    "response_summary": "# Plan: Embed Session Ids",
+                },
+            )
+
+        assert response.status_code == 200
+        # detect_plan_in_response should NOT have been called since batch is already a plan
+        mock_detect.assert_not_called()
+        # update_prompt_batch_source_type should NOT have been called
+        setup_state_with_mocks.activity_store.update_prompt_batch_source_type.assert_not_called()
+
 
 # =============================================================================
 # Session End Hook Tests
@@ -672,7 +850,7 @@ class TestSessionEndHook:
 
         response = client.post(
             "/api/oak/ci/session-end",
-            json={"session_id": session_id, "agent": "claude"},
+            json={"session_id": session_id, "agent": AGENT_CLAUDE},
         )
 
         assert response.status_code == 200
@@ -832,7 +1010,7 @@ class TestHookIntegration:
         # Start session
         start_response = client.post(
             "/api/oak/ci/session-start",
-            json={"session_id": session_id, "agent": "claude"},
+            json={"session_id": session_id, "agent": AGENT_CLAUDE},
         )
         assert start_response.status_code == 200
 
@@ -868,7 +1046,7 @@ class TestHookIntegration:
         # End session
         end_response = client.post(
             "/api/oak/ci/session-end",
-            json={"session_id": session_id, "agent": "claude"},
+            json={"session_id": session_id, "agent": AGENT_CLAUDE},
         )
         assert end_response.status_code == 200
 

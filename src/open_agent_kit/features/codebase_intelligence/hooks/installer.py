@@ -358,8 +358,8 @@ class HooksInstaller:
             # Cursor: simple {command: "..."} structure
             command = hook.get("command", "")
         elif hook_format == "copilot":
-            # Copilot: {bash: "...", powershell: "..."} structure
-            command = hook.get("bash", "") or hook.get("powershell", "")
+            # Copilot: {command: "..."} (new VS Code format) or {bash: "...", powershell: "..."} (legacy)
+            command = hook.get("command", "") or hook.get("bash", "") or hook.get("powershell", "")
         else:
             # Nested (Claude/Gemini): {hooks: [{command: "..."}]} structure
             inner_hooks = hook.get("hooks", [])

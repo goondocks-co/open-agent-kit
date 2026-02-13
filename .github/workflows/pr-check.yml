@@ -11,6 +11,7 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
+      - "uv.lock"
       - "install.sh"
       - "install.ps1"
       - ".github/workflows/**"
@@ -38,16 +39,17 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --frozen --extra dev
 
       - name: Run installer smoke tests
-        run: |
-          pytest tests/test_install_scripts.py -v --no-cov
+        run: uv run pytest tests/test_install_scripts.py -v --no-cov
 
   lint-and-format:
     name: Lint and Format Check
@@ -63,27 +65,26 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-          cache: "pip"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --frozen --extra dev
 
       - name: Run ruff linting
-        run: |
-          ruff check src/ --output-format=github
+        run: uv run ruff check src/ --output-format=github
 
       - name: Check code formatting with black
-        run: |
-          black src/ tests/ --check --diff
+        run: uv run black src/ tests/ --check --diff
 
       - name: Run type checking with mypy
-        run: |
-          mypy src/ --show-error-codes
+        run: uv run mypy src/ --show-error-codes
 
       - name: Verify skill assets are in sync
-        run: python scripts/build_skill_assets.py --check
+        run: uv run python scripts/build_skill_assets.py --check
 
   test:
     name: Run Tests
@@ -99,15 +100,17 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-          cache: "pip"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --frozen --extra dev
 
       - name: Run tests with pytest
-        run: pytest tests/ -v -o "addopts=" --no-cov -n auto
+        run: uv run pytest tests/ -v -o "addopts=" --no-cov -n auto
 
   integration-test:
     name: Integration Test (Smoke)

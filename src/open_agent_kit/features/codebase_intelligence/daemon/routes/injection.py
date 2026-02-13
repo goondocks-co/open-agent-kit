@@ -6,9 +6,11 @@ Extracted from hooks.py for maintainability.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_CURSOR,
+    AGENTS_HOOK_SPECIFIC_OUTPUT,
     DEFAULT_PREVIEW_LENGTH,
     DEFAULT_RELATED_QUERY_LENGTH,
     INJECTION_MAX_CODE_CHUNKS,
@@ -303,3 +305,61 @@ def build_session_context(state: "DaemonState", include_memories: bool = True) -
             # sufficient context. Use oak_context tool for task-specific memories.
 
     return "\n\n".join(parts) if parts else ""
+
+
+# =============================================================================
+# Hook Output Formatting
+# =============================================================================
+
+
+def format_hook_output(
+    response: dict[str, Any],
+    agent: str,
+    hook_event_name: str,
+) -> dict[str, Any]:
+    """Format daemon response into the JSON shape the calling agent expects on stdout.
+
+    Each agent protocol has its own expected output format. This function
+    centralises that logic so the CLI can be a thin pipe that extracts
+    ``hook_output`` from the daemon response and prints it.
+
+    Args:
+        response: The daemon route response dict (may contain ``context.injected_context``
+            or top-level ``injected_context``).
+        agent: Agent identifier (e.g. ``"claude"``, ``"vscode-copilot"``, ``"cursor"``).
+        hook_event_name: The hook event name (e.g. ``"SessionStart"``).
+
+    Returns:
+        Dict ready to be serialised as JSON and printed to stdout by the CLI.
+    """
+    injected = response.get("context", {}).get("injected_context") or response.get(
+        "injected_context"
+    )
+
+    # Claude Code / VS Code Copilot: hookSpecificOutput format.
+    #
+    # VS Code Copilot requires hookSpecificOutput in ALL hook responses.
+    # Without it, VS Code crashes with:
+    #   "Cannot read properties of undefined (reading 'hookSpecificOutput')"
+    # This applies to ALL events, including UserPromptSubmit and PreCompact
+    # which the docs claim don't support hookSpecificOutput.
+    #
+    # For --agent claude, hookSpecificOutput is the standard format.
+    # For --agent vscode-copilot, hookSpecificOutput is mandatory.
+    if agent in AGENTS_HOOK_SPECIFIC_OUTPUT:
+        hook_specific: dict[str, Any] = {"hookEventName": hook_event_name}
+        if injected:
+            hook_specific["additionalContext"] = injected
+        return {
+            "continue": True,
+            "hookSpecificOutput": hook_specific,
+        }
+
+    # Cursor: flat additional_context format
+    if agent == AGENT_CURSOR:
+        if injected:
+            return {"additional_context": injected}
+        return {}
+
+    # Other agents: no formatting
+    return {}

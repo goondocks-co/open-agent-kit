@@ -13,6 +13,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_CLAUDE,
+    AGENT_COPILOT,
+    AGENT_CURSOR,
     DEFAULT_PREVIEW_LENGTH,
     DEFAULT_RELATED_QUERY_LENGTH,
     INJECTION_MAX_CODE_CHUNKS,
@@ -29,6 +32,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.injection impor
     build_rich_search_query,
     build_session_context,
     format_code_for_injection,
+    format_hook_output,
     format_memories_for_injection,
     format_session_summaries,
 )
@@ -469,6 +473,143 @@ class TestBuildSessionContext:
         }
         result = build_session_context(mock_state)
         assert result == ""
+
+
+class TestFormatHookOutput:
+    """Tests for format_hook_output function."""
+
+    def test_claude_with_injected_context(self):
+        """Claude agent with injected context returns hookSpecificOutput with additionalContext."""
+        response = {"context": {"injected_context": "some context"}}
+        result = format_hook_output(response, AGENT_CLAUDE, "SessionStart")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": "some context",
+            },
+        }
+
+    def test_claude_without_context(self):
+        """Claude agent without context still returns hookSpecificOutput (no crash)."""
+        response = {"context": {}}
+        result = format_hook_output(response, AGENT_CLAUDE, "SessionStart")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {"hookEventName": "SessionStart"},
+        }
+
+    def test_vscode_copilot_with_injected_context(self):
+        """VS Code Copilot with injected context returns hookSpecificOutput for supported events."""
+        response = {"context": {"injected_context": "copilot context"}}
+        result = format_hook_output(response, AGENT_COPILOT, "SessionStart")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": "copilot context",
+            },
+        }
+
+    def test_vscode_copilot_without_context(self):
+        """VS Code Copilot without context includes hookSpecificOutput for supported events."""
+        response = {}
+        result = format_hook_output(response, AGENT_COPILOT, "SessionStart")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {"hookEventName": "SessionStart"},
+        }
+
+    def test_vscode_copilot_userpromptsubmit_with_context(self):
+        """VS Code Copilot uses hookSpecificOutput for ALL events including UserPromptSubmit.
+
+        VS Code requires hookSpecificOutput universally — without it, it crashes
+        with "Cannot read properties of undefined (reading 'hookSpecificOutput')".
+        """
+        response = {"context": {"injected_context": "prompt context"}}
+        result = format_hook_output(response, AGENT_COPILOT, "UserPromptSubmit")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": "prompt context",
+            },
+        }
+
+    def test_vscode_copilot_userpromptsubmit_without_context(self):
+        """VS Code Copilot gets hookSpecificOutput even without injected context."""
+        response = {}
+        result = format_hook_output(response, AGENT_COPILOT, "UserPromptSubmit")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {"hookEventName": "UserPromptSubmit"},
+        }
+
+    def test_vscode_copilot_precompact_with_context(self):
+        """VS Code Copilot uses hookSpecificOutput for PreCompact too."""
+        response = {"context": {"injected_context": "compact context"}}
+        result = format_hook_output(response, AGENT_COPILOT, "PreCompact")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {
+                "hookEventName": "PreCompact",
+                "additionalContext": "compact context",
+            },
+        }
+
+    def test_vscode_copilot_subagentstop_supported(self):
+        """VS Code Copilot uses hookSpecificOutput for SubagentStop (supported event)."""
+        response = {"context": {"injected_context": "stop context"}}
+        result = format_hook_output(response, AGENT_COPILOT, "SubagentStop")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {
+                "hookEventName": "SubagentStop",
+                "additionalContext": "stop context",
+            },
+        }
+
+    def test_cursor_with_injected_context(self):
+        """Cursor agent with injected context returns additional_context."""
+        response = {"context": {"injected_context": "cursor context"}}
+        result = format_hook_output(response, AGENT_CURSOR, "UserPromptSubmit")
+        assert result == {"additional_context": "cursor context"}
+
+    def test_cursor_without_context(self):
+        """Cursor agent without context returns empty dict."""
+        response = {"context": {}}
+        result = format_hook_output(response, AGENT_CURSOR, "UserPromptSubmit")
+        assert result == {}
+
+    def test_unknown_agent(self):
+        """Unknown agent returns empty dict."""
+        response = {"context": {"injected_context": "should be ignored"}}
+        result = format_hook_output(response, "windsurf", "SessionStart")
+        assert result == {}
+
+    def test_context_in_top_level_injected_context(self):
+        """Context in top-level injected_context is extracted correctly (post-tool-use format)."""
+        response = {"injected_context": "top-level context"}
+        result = format_hook_output(response, AGENT_CLAUDE, "PostToolUse")
+        assert result == {
+            "continue": True,
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": "top-level context",
+            },
+        }
+
+    def test_context_in_nested_context(self):
+        """Context in nested context.injected_context is extracted correctly (session-start format)."""
+        response = {"context": {"injected_context": "nested context"}}
+        result = format_hook_output(response, AGENT_CLAUDE, "SessionStart")
+        assert result["hookSpecificOutput"]["additionalContext"] == "nested context"
+
+    def test_preserves_hook_event_name(self):
+        """Different hook event names are preserved in output."""
+        for event_name in ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"):
+            result = format_hook_output({}, AGENT_CLAUDE, event_name)
+            assert result["hookSpecificOutput"]["hookEventName"] == event_name
 
 
 class TestLangMap:

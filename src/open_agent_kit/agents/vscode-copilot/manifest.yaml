@@ -1,10 +1,10 @@
-# GitHub Copilot Agent Manifest
-# GitHub Copilot with coding agent and Mission Control capabilities
+# VS Code Copilot Agent Manifest
+# VS Code Copilot with agent mode, hooks, and MCP support
 
-name: copilot
-display_name: "GitHub Copilot"
+name: vscode-copilot
+display_name: "VS Code Copilot"
 version: "1.0.0"
-description: "GitHub Copilot with coding agent, Mission Control, and MCP support"
+description: "VS Code Copilot with agent mode, hooks, and MCP support"
 
 installation:
   folder: ".github/"
@@ -43,6 +43,12 @@ ci:
   plan_execution_prefix: null
   exit_plan_tool: null
 
+  # Heuristic plan detection via response pattern matching
+  # Copilot generates plans inline in responses (e.g., "# Plan: Embed Session Ids...")
+  plan_response_patterns:
+    - "^#+\\s*Plan\\b"      # "# Plan: ..." or "## Plan ..."
+    - "^Plan:\\s"            # "Plan: Some title"
+
 settings:
   # Auto-approval settings for oak commands
   # GitHub Copilot uses chat.tools.terminal.autoApprove in VSCode settings (1.99+)
@@ -51,7 +57,7 @@ settings:
     enabled: true
     file: ".vscode/settings.json"
     format: json
-    template: "agent-settings/copilot-settings.json"  # Template from features/core/
+    template: "agent-settings/vscode-copilot-settings.json"
 
 mcp:
   # MCP server registration config
@@ -65,12 +71,11 @@ mcp:
     args: "{args}"
 
 # Hooks configuration for Codebase Intelligence
-# Copilot hooks are stored in .github/hooks/ per GitHub docs
-# https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/use-hooks
+# VS Code Copilot hooks use Claude Code-compatible format
+# https://code.visualstudio.com/docs/copilot/customization/hooks
 hooks:
   type: json
   config_file: "hooks/oak-ci-hooks.json"
   hooks_key: "hooks"
-  format: copilot
-  version_key: "version"
+  format: flat
   template_file: "hooks.json"

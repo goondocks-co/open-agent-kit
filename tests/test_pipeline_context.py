@@ -41,10 +41,10 @@ class TestSelectionState:
         """Test agents_removed property."""
         state = SelectionState(
             agents=["claude"],
-            previous_agents=["claude", "copilot"],
+            previous_agents=["claude", "vscode-copilot"],
         )
 
-        assert state.agents_removed == {"copilot"}
+        assert state.agents_removed == {"vscode-copilot"}
 
     def test_agents_no_change(self):
         """Test when no agents changed."""

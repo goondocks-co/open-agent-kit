@@ -167,7 +167,7 @@ class TestFeatureInstallation:
 
         Note: We use 'cursor' agent because it doesn't have has_skills=True,
         which means it uses command prompts instead of SKILL.md files.
-        Copilot now has has_skills=True like Claude.
+        VS Code Copilot now has has_skills=True like Claude.
         """
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)

@@ -50,7 +50,7 @@ def select(
     Example:
         >>> options = [
         ...     SelectOption("claude", "Claude", "Anthropic's Claude AI"),
-        ...     SelectOption("copilot", "GitHub Copilot", "GitHub's AI assistant"),
+        ...     SelectOption("vscode-copilot", "VS Code Copilot", "GitHub's AI assistant"),
         ... ]
         >>> result = select(options, "Choose an agent:")
     """

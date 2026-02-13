@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_CURSOR,
     HOOK_DEDUP_CACHE_MAX,
     HOOK_DEDUP_HASH_ALGORITHM,
     HOOK_DROP_LOG_TAG,
@@ -18,6 +19,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_EVENT_POST_TOOL_USE,
     HOOK_EVENT_POST_TOOL_USE_FAILURE,
     HOOK_EVENT_PRE_COMPACT,
+    HOOK_EVENT_PRE_TOOL_USE,
     HOOK_EVENT_PROMPT_SUBMIT,
     HOOK_EVENT_SESSION_END,
     HOOK_EVENT_SESSION_START,
@@ -40,11 +42,13 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_FIELD_TOOL_USE_ID,
     MEMORY_EMBED_LINE_SEPARATOR,
     PROMPT_SOURCE_PLAN,
+    RESPONSE_SUMMARY_MAX_LENGTH,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
     build_rich_search_query,
     build_session_context,
     format_code_for_injection,
+    format_hook_output,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
@@ -373,7 +377,10 @@ async def hook_session_start(request: Request) -> dict:
             "status": state.index_status.status,
         }
 
-    return {"status": "ok", "session_id": session_id, "context": context}
+    hook_event_name = body.get("hook_event_name", "SessionStart")
+    response = {"status": "ok", "session_id": session_id, "context": context}
+    response["hook_output"] = format_hook_output(response, agent, hook_event_name)
+    return response
 
 
 @router.post(f"{OAK_CI_PREFIX}/prompt-submit")
@@ -683,7 +690,98 @@ async def hook_prompt_submit(request: Request) -> dict:
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.debug(f"Failed to search code for prompt: {e}")
 
-    return {"status": "ok", "context": context, "prompt_batch_id": prompt_batch_id}
+    hook_event_name = body.get("hook_event_name", "UserPromptSubmit")
+    response = {"status": "ok", "context": context, "prompt_batch_id": prompt_batch_id}
+    if agent == AGENT_CURSOR:
+        response["hook_output"] = {"continue": True}
+    else:
+        response["hook_output"] = format_hook_output(response, agent, hook_event_name)
+    return response
+
+
+@router.post(f"{OAK_CI_PREFIX}/pre-tool-use")
+async def hook_pre_tool_use(request: Request) -> dict:
+    """Handle pre-tool-use - track tool invocations before execution.
+
+    This is called before a tool is executed. We store the activity for tracking
+    but make no permission decisions (always returns ok).
+    """
+    state = get_state()
+
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        logger.debug("Failed to parse JSON body in pre-tool-use")
+        body = {}
+
+    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    agent = body.get("agent", "unknown")
+    tool_name = body.get(HOOK_FIELD_TOOL_NAME, "")
+    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
+
+    if not session_id:
+        logger.info(f"{HOOK_DROP_LOG_TAG} Dropped pre-tool-use: missing session_id")
+        return {"status": "ok", "context": {}}
+
+    # Dedupe by tool_use_id (same pattern as post-tool-use)
+    if tool_use_id:
+        dedupe_key = _build_dedupe_key(
+            HOOK_EVENT_PRE_TOOL_USE,
+            session_id,
+            [tool_use_id],
+        )
+        if state.should_dedupe_hook_event(dedupe_key, HOOK_DEDUP_CACHE_MAX):
+            logger.debug(
+                "Deduped pre-tool-use session=%s origin=%s token=%s",
+                session_id,
+                hook_origin,
+                tool_use_id,
+            )
+            return {"status": "ok", "context": {}}
+
+    # Handle tool_input - could be dict (from JSON) or string
+    tool_input = body.get(HOOK_FIELD_TOOL_INPUT, {})
+    if isinstance(tool_input, str):
+        try:
+            tool_input = json.loads(tool_input)
+        except (ValueError, json.JSONDecodeError):
+            tool_input = {"raw": tool_input}
+    elif tool_input is None:
+        tool_input = {}
+
+    # Lifecycle logging to dedicated hooks.log
+    hooks_logger.info(f"[PRE-TOOL-USE] {tool_name} session={session_id}")
+
+    # Store activity in SQLite for tracking
+    if state.activity_store and session_id:
+        try:
+            from open_agent_kit.features.codebase_intelligence.activity import Activity
+
+            # Get current prompt batch ID from SQLite
+            prompt_batch_id = None
+            active_batch = state.activity_store.get_active_prompt_batch(session_id)
+            if active_batch:
+                prompt_batch_id = active_batch.id
+
+            activity = Activity(
+                session_id=session_id,
+                prompt_batch_id=prompt_batch_id,
+                tool_name=tool_name,
+                tool_input=tool_input if isinstance(tool_input, dict) else None,
+                tool_output_summary="",
+                success=True,
+            )
+            state.activity_store.add_activity_buffered(activity)
+            logger.debug(f"Stored pre-tool-use activity: {tool_name} (batch={prompt_batch_id})")
+
+        except _HOOK_STORE_EXCEPTIONS as e:
+            logger.debug(f"Failed to store pre-tool-use activity: {e}")
+
+    hook_event_name = body.get("hook_event_name", "PreToolUse")
+    result: dict[str, Any] = {"status": "ok", "context": {}}
+    result["hook_output"] = format_hook_output(result, agent, hook_event_name)
+    return result
 
 
 @router.post(f"{OAK_CI_PREFIX}/post-tool-use")
@@ -700,6 +798,7 @@ async def hook_post_tool_use(request: Request) -> dict:
         body = {}
 
     session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+    agent = body.get("agent", "unknown")
     tool_name = body.get(HOOK_FIELD_TOOL_NAME, "")
     hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
     tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
@@ -777,7 +876,7 @@ async def hook_post_tool_use(request: Request) -> dict:
     if logger.isEnabledFor(logging.DEBUG):
         import json as json_module
 
-        logger.debug(f"  Agent: {body.get('agent', 'unknown')}")
+        logger.debug(f"  Agent: {agent}")
         if tool_input:
             try:
                 input_str = json_module.dumps(tool_input, indent=2)
@@ -1149,6 +1248,8 @@ async def hook_post_tool_use(request: Request) -> dict:
     if injected_context:
         result["injected_context"] = injected_context
 
+    hook_event_name = body.get("hook_event_name", "PostToolUse")
+    result["hook_output"] = format_hook_output(result, agent, hook_event_name)
     return result
 
 
@@ -1172,11 +1273,13 @@ async def hook_stop(request: Request) -> dict:
 
     session_id = body.get("session_id") or body.get("conversation_id")
     transcript_path = body.get("transcript_path", "")
+    agent = body.get("agent", "unknown")
 
     # Debug logging to trace transcript_path flow
     logger.debug(
-        "[STOP] session=%s transcript_path=%s body_keys=%s",
+        "[STOP] session=%s agent=%s transcript_path=%s body_keys=%s",
         session_id,
+        agent,
         transcript_path[:100] if transcript_path else "(empty)",
         list(body.keys()),
     )
@@ -1234,7 +1337,7 @@ async def hook_stop(request: Request) -> dict:
             if not response_summary:
                 body_summary = body.get("response_summary", "")
                 if body_summary:
-                    response_summary = body_summary[:5000]
+                    response_summary = body_summary[:RESPONSE_SUMMARY_MAX_LENGTH]
                     logger.debug(
                         "[STOP] Using body response_summary (%d chars)",
                         len(response_summary),
@@ -1249,6 +1352,49 @@ async def hook_stop(request: Request) -> dict:
                     state.activity_store.update_session_transcript_path(session_id, transcript_path)
                 except _HOOK_STORE_EXCEPTIONS as e:
                     logger.debug(f"[STOP] Failed to store transcript_path: {e}")
+
+            # Heuristic plan detection: check if response matches plan patterns
+            # This is the 4th detection mechanism, only runs if no deterministic
+            # mechanism already promoted the batch to plan.
+            if response_summary and active_batch and active_batch.source_type != PROMPT_SOURCE_PLAN:
+                from open_agent_kit.features.codebase_intelligence.plan_detector import (
+                    detect_plan_in_response,
+                )
+
+                if detect_plan_in_response(response_summary, agent):
+                    logger.info(
+                        "[STOP] Heuristic plan detected in response for batch %s (agent=%s)",
+                        prompt_batch_id,
+                        agent,
+                    )
+                    # Re-fetch the full response at PLAN_CONTENT_MAX_LENGTH.
+                    # response_summary is capped at RESPONSE_SUMMARY_MAX_LENGTH (5K)
+                    # which is too short for plans. Re-parse from transcript or body
+                    # at the higher limit to capture the complete plan.
+                    from open_agent_kit.features.codebase_intelligence.constants import (
+                        PLAN_CONTENT_MAX_LENGTH,
+                    )
+
+                    full_plan_content = None
+                    if transcript_path:
+                        full_plan_content = parse_transcript_response(
+                            transcript_path, max_length=PLAN_CONTENT_MAX_LENGTH
+                        )
+                    if not full_plan_content:
+                        body_summary = body.get("response_summary", "")
+                        if body_summary:
+                            full_plan_content = body_summary[:PLAN_CONTENT_MAX_LENGTH]
+                    # Fall back to the (truncated) response_summary if re-fetch failed
+                    plan_content = full_plan_content or response_summary
+
+                    try:
+                        state.activity_store.update_prompt_batch_source_type(
+                            prompt_batch_id,
+                            PROMPT_SOURCE_PLAN,
+                            plan_content=plan_content,
+                        )
+                    except _HOOK_STORE_EXCEPTIONS as e:
+                        logger.debug(f"[STOP] Failed to promote batch to plan: {e}")
 
             from open_agent_kit.features.codebase_intelligence.activity import (
                 finalize_prompt_batch,
@@ -1624,6 +1770,45 @@ async def hook_subagent_start(request: Request) -> dict:
 
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[SUBAGENT-START] type={agent_type} id={agent_id} session={session_id}")
+
+    # VS Code Copilot gives each subagent its own session_id, unlike Claude Code
+    # where subagents share the parent's session_id.  When a SubagentStart arrives
+    # with an unknown session_id, find the parent session and pre-create the
+    # subagent session with parent_session_id linked.
+    #
+    # Parent detection strategy (handles concurrent sessions):
+    #   1. Filter by same agent type (vscode-copilot subagent → vscode-copilot parent)
+    #   2. Use most recent tool activity, not session start time — the parent will
+    #      have had a PreToolUse just moments before SubagentStart fires
+    #   3. Fall back to most recently started session of the same agent if no
+    #      activity data matches
+    if state.activity_store and state.project_root and session_id:
+        agent_name = body.get("agent", "unknown")
+        existing = state.activity_store.get_session(session_id)
+        if not existing:
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.store import sessions
+
+                parent_id = sessions.find_active_parent_for_subagent(
+                    state.activity_store,
+                    subagent_session_id=session_id,
+                    agent=agent_name,
+                )
+
+                sessions.create_session(
+                    state.activity_store,
+                    session_id=session_id,
+                    agent=agent_name,
+                    project_root=str(state.project_root),
+                    parent_session_id=parent_id,
+                    parent_session_reason="subagent",
+                )
+                logger.info(
+                    f"[SUBAGENT-START] Created session {session_id[:8]} "
+                    f"with parent={parent_id[:8] if parent_id else 'none'}"
+                )
+            except _HOOK_STORE_EXCEPTIONS as e:
+                logger.debug(f"Failed to pre-create subagent session: {e}")
 
     # Store as activity to track subagent spawn
     if state.activity_store and session_id:

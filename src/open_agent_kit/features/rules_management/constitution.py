@@ -61,22 +61,22 @@ class ConstitutionService:
     def gather_existing_conventions_context(self) -> dict[str, str | None]:
         """Gather existing agent instructions to use as context for constitution generation.
 
-        This method detects existing agent instruction files (like .github/copilot-instructions.md)
+        This method detects existing agent instruction files (like .github/copilot-instructions.md for VS Code Copilot)
         and returns their content so AI agents can incorporate existing team conventions
         into the generated constitution.
 
         Returns:
             Dictionary mapping agent_type to instruction file content:
             {
-                'copilot': '# Copilot Instructions\n...',
+                'vscode-copilot': '# Copilot Instructions\n...',
                 'claude': None,  # (file doesn't exist)
             }
 
         Example:
             >>> service = ConstitutionService()
             >>> context = service.gather_existing_conventions_context()
-            >>> if context.get('copilot'):
-            >>>     print("Found existing Copilot instructions to incorporate")
+            >>> if context.get('vscode-copilot'):
+            >>>     print("Found existing VS Code Copilot instructions to incorporate")
         """
         agent_service = AgentService(self.project_root)
         existing_instructions = agent_service.detect_existing_agent_instructions()
@@ -690,7 +690,7 @@ class ConstitutionService:
             Dictionary with sync results:
             {
                 "created": ["claude", ...],  # New files created
-                "updated": ["copilot", ...],  # Existing files updated with reference
+                "updated": ["vscode-copilot", ...],  # Existing files updated with reference
                 "skipped": ["cursor", ...],   # Already had reference
                 "errors": ["error message", ...]
             }

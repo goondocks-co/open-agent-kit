@@ -52,7 +52,7 @@ AGENT_SETTINGS_TEMPLATES_DIR = "agent-settings"
 
 # Agent settings file paths (for reference - actual paths come from manifests)
 CLAUDE_SETTINGS_FILE = ".claude/settings.local.json"
-COPILOT_SETTINGS_FILE = ".vscode/settings.json"  # Copilot uses VSCode settings
+COPILOT_SETTINGS_FILE = ".vscode/settings.json"  # VS Code Copilot uses VSCode settings
 CURSOR_SETTINGS_FILE = ".cursor/settings.json"
 GEMINI_SETTINGS_FILE = ".gemini/settings.json"
 WINDSURF_SETTINGS_FILE = ".windsurf/settings.json"
@@ -60,7 +60,7 @@ WINDSURF_SETTINGS_FILE = ".windsurf/settings.json"
 # Note: Codex uses global TOML config (~/.codex/config.toml) - not project-specific
 AGENT_SETTINGS_TEMPLATES = {
     "claude": "agent-settings/claude-settings.json",
-    "copilot": "agent-settings/copilot-settings.json",
+    "vscode-copilot": "agent-settings/vscode-copilot-settings.json",
     "cursor": "agent-settings/cursor-settings.json",
     "gemini": "agent-settings/gemini-settings.json",
     "windsurf": "agent-settings/windsurf-settings.json",

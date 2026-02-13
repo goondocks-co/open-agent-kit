@@ -496,11 +496,16 @@ class UpgradeHooksStage(BaseStage):
 
 
 class RunMigrationsStage(BaseStage):
-    """Run pending migrations."""
+    """Run pending migrations.
+
+    Runs BEFORE agent reconciliation stages so that config-mutating
+    migrations (e.g. agent renames) take effect before any stage
+    iterates ``context.selections.agents``.
+    """
 
     name = "run_migrations"
     display_name = "Running migrations"
-    order = 250
+    order = 155  # After structural repairs (150), before agent reconciliation (220+)
     applicable_flows = {FlowType.UPGRADE}
     is_critical = False
 
@@ -527,6 +532,11 @@ class RunMigrationsStage(BaseStage):
         # Track successful migrations
         if successful_migrations:
             config_service.add_completed_migrations(successful_migrations)
+
+            # After config-mutating migrations (e.g. agent renames),
+            # refresh context so downstream stages see the updated agent list.
+            config = config_service.load_config()
+            context.selections.agents = config.agents
 
         # Format failed migrations
         failed = [f"{mid}: {error}" for mid, error in failed_migrations]
