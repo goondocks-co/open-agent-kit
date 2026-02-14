@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     embedded BOOLEAN DEFAULT FALSE,  -- Has this been added to ChromaDB?
     content_hash TEXT,  -- Hash for cross-machine deduplication
     source_machine_id TEXT,  -- Machine that originated this record
+    status TEXT DEFAULT 'active',              -- active | resolved | superseded
+    resolved_by_session_id TEXT,               -- Session that resolved this
+    resolved_at TEXT,                          -- ISO timestamp of resolution
+    superseded_by TEXT,                        -- Observation ID that supersedes this
+    session_origin_type TEXT,                  -- planning | investigation | implementation | mixed
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -157,6 +162,11 @@ CREATE INDEX IF NOT EXISTS idx_sessions_source_machine ON sessions(source_machin
 CREATE INDEX IF NOT EXISTS idx_prompt_batches_source_machine ON prompt_batches(source_machine_id);
 CREATE INDEX IF NOT EXISTS idx_memory_observations_source_machine ON memory_observations(source_machine_id);
 CREATE INDEX IF NOT EXISTS idx_activities_source_machine ON activities(source_machine_id);
+
+-- Indexes for observation lifecycle
+CREATE INDEX IF NOT EXISTS idx_memory_observations_status ON memory_observations(status);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_resolved_by ON memory_observations(resolved_by_session_id);
+CREATE INDEX IF NOT EXISTS idx_memory_observations_origin_type ON memory_observations(session_origin_type);
 
 -- FTS5 virtual table for full-text search across activities
 CREATE VIRTUAL TABLE IF NOT EXISTS activities_fts USING fts5(

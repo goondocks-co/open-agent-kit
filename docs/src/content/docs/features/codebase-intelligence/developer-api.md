@@ -45,8 +45,10 @@ The daemon only allows requests from `localhost` and active tunnel URLs. Externa
 | `GET` | `/api/memories/tags` | List all unique memory tags |
 | `POST` | `/api/memories/{id}/archive` | Archive a memory |
 | `POST` | `/api/memories/{id}/unarchive` | Unarchive a memory |
+| `PUT` | `/api/memories/{id}/status` | Update observation lifecycle status |
 | `DELETE` | `/api/memories/{id}` | Delete a memory |
 | `POST` | `/api/memories/bulk` | Bulk operations on memories |
+| `POST` | `/api/memories/bulk-resolve` | Bulk-resolve observations by session or IDs |
 
 ### Agent Hooks
 
@@ -144,6 +146,7 @@ Hook endpoints receive data from AI coding agents. The prefix is `/api/oak/ci/`.
 | `POST` | `/api/devtools/regenerate-summaries` | Regenerate missing summaries |
 | `POST` | `/api/devtools/cleanup-minimal-sessions` | Remove low-quality sessions |
 | `POST` | `/api/devtools/reprocess-observations` | Reprocess observation extraction |
+| `POST` | `/api/devtools/resolve-stale-observations` | Find and resolve stale observations |
 | `GET` | `/api/devtools/memory-stats` | Get detailed memory statistics |
 
 See also the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for the MCP protocol tools exposed to agents.

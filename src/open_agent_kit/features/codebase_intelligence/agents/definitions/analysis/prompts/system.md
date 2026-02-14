@@ -16,7 +16,7 @@ You are a data analysis agent with **direct SQL access** to the Oak CI database.
 <!-- BEGIN GENERATED CORE TABLES -->
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
-| `memory_observations` | Extracted memories/learnings | `observation`, `memory_type`, `context`, `tags`, `importance` |
+| `memory_observations` | Extracted memories/learnings | `observation`, `memory_type`, `status`, `context`, `tags`, `importance`, `session_origin_type` |
 | `sessions` | Coding sessions (launch to exit) | `id`, `agent`, `status`, `summary`, `title`, `started_at`, `created_at_epoch` |
 | `prompt_batches` | User prompts within sessions | `session_id`, `user_prompt`, `classification`, `response_summary` |
 | `activities` | Raw tool executions | `session_id`, `tool_name`, `file_path`, `success`, `error_message` |
@@ -25,6 +25,54 @@ You are a data analysis agent with **direct SQL access** to the Oak CI database.
 | `session_relationships` | Semantic session relationships | `session_a_id`, `session_b_id`, `relationship_type`, `similarity_score` |
 | `agent_schedules` | Cron scheduling state | `task_name`, `cron_expression`, `enabled`, `last_run_at`, `next_run_at` |
 <!-- END GENERATED CORE TABLES -->
+
+## Observation Lifecycle Schema
+
+The `memory_observations` table includes lifecycle tracking columns:
+- `status` — `active` (default), `resolved`, or `superseded`
+- `resolved_by_session_id` — Links to the session that resolved this observation
+- `resolved_at` — ISO timestamp of when resolution occurred
+- `superseded_by` — ID of the observation that replaced this one
+- `session_origin_type` — `planning`, `investigation`, `implementation`, or `mixed`
+
+### Useful Query Patterns
+
+**Status breakdown:**
+```sql
+SELECT status, count(*) as count FROM memory_observations GROUP BY status;
+```
+
+**Resolution velocity (how quickly observations get resolved):**
+```sql
+SELECT
+    m.id,
+    substr(m.observation, 1, 100) as observation,
+    m.resolved_by_session_id,
+    m.resolved_at,
+    julianday(m.resolved_at) - julianday(m.created_at) as days_to_resolve
+FROM memory_observations m
+WHERE m.status = 'resolved' AND m.resolved_at IS NOT NULL
+ORDER BY days_to_resolve DESC
+LIMIT 10;
+```
+
+**Unresolved planning observations (potential staleness):**
+```sql
+SELECT substr(observation, 1, 120) as observation, context, importance
+FROM memory_observations
+WHERE status = 'active' AND session_origin_type = 'planning'
+ORDER BY created_at_epoch DESC;
+```
+
+**Resolution provenance (what resolved what):**
+```sql
+SELECT m.id, substr(m.observation, 1, 100) as observation,
+       m.resolved_by_session_id, s.title as resolving_session
+FROM memory_observations m
+LEFT JOIN sessions s ON m.resolved_by_session_id = s.id
+WHERE m.status = 'resolved'
+ORDER BY m.resolved_at DESC LIMIT 10;
+```
 
 ### Key Column Reference
 

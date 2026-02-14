@@ -62,6 +62,8 @@ def list_memories(
     start_date: str | None = None,
     end_date: str | None = None,
     include_archived: bool = False,
+    status: str | None = "active",
+    include_resolved: bool = False,
 ) -> tuple[list[dict], int]:
     """List memories with pagination and optional filtering.
 
@@ -75,6 +77,8 @@ def list_memories(
         start_date: Filter to memories created on or after this date (ISO format).
         end_date: Filter to memories created on or before this date (ISO format).
         include_archived: If True, include archived memories. Default False.
+        status: Filter to this observation status. Default "active".
+        include_resolved: If True, include all statuses (overrides status filter).
 
     Returns:
         Tuple of (memories list, total count).
@@ -156,6 +160,20 @@ def list_memories(
         sorted_indices = filtered_indices
         total_count = len(sorted_indices)
 
+    # Filter by observation status
+    if not include_resolved and status:
+        filtered_indices = []
+        for i in sorted_indices:
+            obs_status = (
+                results["metadatas"][i].get("status", "active")
+                if results["metadatas"]
+                else "active"
+            )
+            if obs_status == status:
+                filtered_indices.append(i)
+        sorted_indices = filtered_indices
+        total_count = len(sorted_indices)
+
     # Apply pagination
     paginated_indices = sorted_indices[offset : offset + limit]
 
@@ -175,6 +193,44 @@ def list_memories(
         )
 
     return memories, total_count
+
+
+def update_memory_status(
+    store: VectorStore,
+    memory_id: str,
+    status: str,
+    session_origin_type: str | None = None,
+) -> bool:
+    """Update the lifecycle status of a memory in ChromaDB.
+
+    Args:
+        store: The VectorStore instance.
+        memory_id: ID of the memory to update.
+        status: New status (active, resolved, superseded).
+        session_origin_type: Optional session origin type to set.
+
+    Returns:
+        True if the memory was found and updated.
+    """
+    store._ensure_initialized()
+
+    try:
+        # Get current metadata
+        result = store._memory_collection.get(ids=[memory_id], include=["metadatas"])
+        if not result["ids"]:
+            return False
+
+        # Update metadata with new status
+        metadata = result["metadatas"][0] if result["metadatas"] else {}
+        metadata["status"] = status
+        if session_origin_type is not None:
+            metadata["session_origin_type"] = session_origin_type
+
+        store._memory_collection.update(ids=[memory_id], metadatas=[metadata])
+        return True
+    except (ValueError, RuntimeError, OSError, AttributeError) as e:
+        logger.error(f"Failed to update memory status {memory_id}: {e}")
+        return False
 
 
 def bulk_archive_memories(store: VectorStore, memory_ids: list[str], archived: bool = True) -> int:

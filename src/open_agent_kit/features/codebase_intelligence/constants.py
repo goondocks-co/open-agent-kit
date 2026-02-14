@@ -690,7 +690,50 @@ TUNNEL_URL_PARSE_TIMEOUT_SECONDS: Final[float] = 15.0
 TUNNEL_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Activity store schema version
-CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 1
+CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 2
+
+# Observation Lifecycle
+OBSERVATION_STATUS_ACTIVE: Final[str] = "active"
+OBSERVATION_STATUS_RESOLVED: Final[str] = "resolved"
+OBSERVATION_STATUS_SUPERSEDED: Final[str] = "superseded"
+VALID_OBSERVATION_STATUSES: Final[tuple[str, ...]] = (
+    OBSERVATION_STATUS_ACTIVE,
+    OBSERVATION_STATUS_RESOLVED,
+    OBSERVATION_STATUS_SUPERSEDED,
+)
+
+# Session Origin Types
+SESSION_ORIGIN_PLANNING: Final[str] = "planning"
+SESSION_ORIGIN_INVESTIGATION: Final[str] = "investigation"
+SESSION_ORIGIN_IMPLEMENTATION: Final[str] = "implementation"
+SESSION_ORIGIN_MIXED: Final[str] = "mixed"
+VALID_SESSION_ORIGIN_TYPES: Final[tuple[str, ...]] = (
+    SESSION_ORIGIN_PLANNING,
+    SESSION_ORIGIN_INVESTIGATION,
+    SESSION_ORIGIN_IMPLEMENTATION,
+    SESSION_ORIGIN_MIXED,
+)
+
+# Planning importance cap
+SESSION_ORIGIN_PLANNING_IMPORTANCE_CAP: Final[int] = 5
+
+# Session origin classification thresholds
+SESSION_ORIGIN_READ_EDIT_RATIO_THRESHOLD: Final[float] = 5.0
+SESSION_ORIGIN_MAX_EDITS_FOR_PLANNING: Final[int] = 2
+SESSION_ORIGIN_MIN_EDITS_FOR_IMPLEMENTATION: Final[int] = 3
+
+# Auto-resolve: supersede older observations when a new one is semantically equivalent
+AUTO_RESOLVE_SIMILARITY_THRESHOLD: Final[float] = 0.85
+AUTO_RESOLVE_SIMILARITY_THRESHOLD_NO_CONTEXT: Final[float] = 0.92
+AUTO_RESOLVE_SEARCH_LIMIT: Final[int] = 5
+AUTO_RESOLVE_SKIP_TYPES: Final[tuple[str, ...]] = ("session_summary",)
+
+# Auto-resolve validation limits
+AUTO_RESOLVE_SIMILARITY_MIN: Final[float] = 0.5
+AUTO_RESOLVE_SIMILARITY_MAX: Final[float] = 0.99
+AUTO_RESOLVE_SEARCH_LIMIT_MIN: Final[int] = 1
+AUTO_RESOLVE_SEARCH_LIMIT_MAX: Final[int] = 20
+AUTO_RESOLVE_CONFIG_KEY: Final[str] = "auto_resolve"
 
 # Activity store columns
 CI_SESSION_COLUMN_TRANSCRIPT_PATH: Final[str] = "transcript_path"
@@ -715,6 +758,26 @@ CI_CONFIG_TUNNEL_KEY_PROVIDER: Final[str] = "provider"
 CI_CONFIG_TUNNEL_KEY_AUTO_START: Final[str] = "auto_start"
 CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: Final[str] = "cloudflared_path"
 CI_CONFIG_TUNNEL_KEY_NGROK_PATH: Final[str] = "ngrok_path"
+
+# =============================================================================
+# CI Config Top-Level Section Keys
+# =============================================================================
+# These constants name each top-level section inside
+# ``codebase_intelligence:`` in .oak/config.yaml.  Used by
+# CIConfig.from_dict / to_dict, get_config_origins, and daemon config routes.
+#
+# NOTE: BACKUP_CONFIG_KEY, AUTO_RESOLVE_CONFIG_KEY, CI_CONFIG_KEY_TUNNEL,
+# and CI_CONFIG_KEY_CLI_COMMAND are defined in their respective domain
+# sections above and are also valid section keys.
+CI_CONFIG_KEY_EMBEDDING: Final[str] = "embedding"
+CI_CONFIG_KEY_SUMMARIZATION: Final[str] = "summarization"
+CI_CONFIG_KEY_AGENTS: Final[str] = "agents"
+CI_CONFIG_KEY_SESSION_QUALITY: Final[str] = "session_quality"
+CI_CONFIG_KEY_INDEX_ON_STARTUP: Final[str] = "index_on_startup"
+CI_CONFIG_KEY_WATCH_FILES: Final[str] = "watch_files"
+CI_CONFIG_KEY_EXCLUDE_PATTERNS: Final[str] = "exclude_patterns"
+CI_CONFIG_KEY_LOG_LEVEL: Final[str] = "log_level"
+CI_CONFIG_KEY_LOG_ROTATION: Final[str] = "log_rotation"
 
 # Tunnel API response keys
 TUNNEL_RESPONSE_KEY_STATUS: Final[str] = "status"
@@ -1063,7 +1126,9 @@ INJECTION_SESSION_SUMMARIES_TITLE: Final[str] = "## Recent Session Summaries (mo
 INJECTION_SESSION_START_REMINDER_TITLE: Final[str] = "## OAK CI Tools"
 INJECTION_SESSION_START_REMINDER_LINES: Final[tuple[str, ...]] = (
     "- MCP tools: `oak_search` (code/memories), `oak_context` (task context), "
-    "`oak_remember` (store learnings).",
+    "`oak_remember` (store learnings), `oak_resolve_memory` (mark resolved).",
+    "- After fixing a bug or addressing a gotcha surfaced by `oak_search`, "
+    "call `oak_resolve_memory` with the observation ID to mark it resolved.",
 )
 INJECTION_SESSION_START_REMINDER_BLOCK: Final[str] = MEMORY_EMBED_LINE_SEPARATOR.join(
     (INJECTION_SESSION_START_REMINDER_TITLE, *INJECTION_SESSION_START_REMINDER_LINES)
@@ -1083,6 +1148,12 @@ MAX_SCHEDULER_INTERVAL_SECONDS: Final[int] = 3600
 DEFAULT_EXECUTOR_CACHE_SIZE: Final[int] = 100
 MIN_EXECUTOR_CACHE_SIZE: Final[int] = 10
 MAX_EXECUTOR_CACHE_SIZE: Final[int] = 1000
+
+# Background processing: batch size, parallelism, and interval
+DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE: Final[int] = 50
+DEFAULT_BACKGROUND_PROCESSING_WORKERS: Final[int] = 4
+MIN_BACKGROUND_PROCESSING_WORKERS: Final[int] = 1
+MAX_BACKGROUND_PROCESSING_WORKERS: Final[int] = 16
 
 # Background processing interval: how often activity processor runs
 DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 60

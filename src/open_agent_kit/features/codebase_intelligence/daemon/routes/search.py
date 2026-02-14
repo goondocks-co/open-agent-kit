@@ -9,18 +9,20 @@ All retrieval logic is centralized in RetrievalEngine for consistency.
 """
 
 import logging
+from datetime import UTC
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query
 
-if TYPE_CHECKING:
-    from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
-    from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
-
+from open_agent_kit.features.codebase_intelligence.constants import (
+    OBSERVATION_STATUS_RESOLVED,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.models import (
     BulkAction,
     BulkMemoriesRequest,
     BulkMemoriesResponse,
+    BulkResolveRequest,
+    BulkResolveResponse,
     ChunkType,
     CodeResult,
     ContextCodeResult,
@@ -42,9 +44,14 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     SearchRequest,
     SearchResponse,
     SessionResult,
+    UpdateObservationStatusRequest,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.retrieval.engine import Confidence
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
+    from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +86,9 @@ async def search_get(
     apply_doc_type_weights: bool = Query(
         default=True, description="Apply doc_type weighting. Disable for translation searches."
     ),
+    include_resolved: bool = Query(
+        default=False, description="Include resolved/superseded memories in results."
+    ),
 ) -> SearchResponse:
     """Perform semantic search (GET endpoint for UI)."""
     request = SearchRequest(
@@ -86,6 +96,7 @@ async def search_get(
         limit=limit,
         search_type=search_type,
         apply_doc_type_weights=apply_doc_type_weights,
+        include_resolved=include_resolved,
     )
     return await search_post(request)
 
@@ -103,6 +114,7 @@ async def search_post(request: SearchRequest) -> SearchResponse:
         search_type=request.search_type,
         limit=request.limit,
         apply_doc_type_weights=request.apply_doc_type_weights,
+        include_resolved=request.include_resolved,
     )
 
     # Map engine result to API response models
@@ -131,6 +143,7 @@ async def search_post(request: SearchRequest) -> SearchResponse:
             tokens=r.get("tokens", 0),
             relevance=r["relevance"],
             confidence=Confidence(r.get("confidence", "medium")),
+            status=r.get("status", "active"),
         )
         for r in result.memory
     ]
@@ -200,6 +213,7 @@ async def fetch_content(request: FetchRequest) -> FetchResponse:
 async def remember(request: RememberRequest) -> RememberResponse:
     """Store an observation using RetrievalEngine."""
     engine, _state = _get_retrieval_engine()
+    state = get_state()
 
     logger.info(f"Remember request: {request.observation[:50]}...")
 
@@ -210,6 +224,23 @@ async def remember(request: RememberRequest) -> RememberResponse:
         context=request.context,
         tags=request.tags,
     )
+
+    # Auto-resolve older observations superseded by this one
+    if state.activity_store and state.vector_store:
+        from open_agent_kit.features.codebase_intelligence.activity.processor.auto_resolve import (
+            auto_resolve_superseded,
+        )
+
+        auto_resolve_superseded(
+            new_obs_id=observation_id,
+            obs_text=request.observation,
+            memory_type=request.memory_type.value,
+            context=request.context,
+            session_id="",  # No session context for direct remember calls
+            vector_store=state.vector_store,
+            activity_store=state.activity_store,
+            auto_resolve_config=state.ci_config.auto_resolve if state.ci_config else None,
+        )
 
     return RememberResponse(
         id=observation_id,
@@ -274,6 +305,10 @@ async def list_memories(
     end_date: str | None = Query(default=None, description="Filter by end date (YYYY-MM-DD)"),
     include_archived: bool = Query(default=False, description="Include archived memories"),
     exclude_sessions: bool = Query(default=False, description="Exclude session summaries"),
+    status: str | None = Query(default="active", description="Filter by observation status"),
+    include_resolved: bool = Query(
+        default=False, description="Include resolved/superseded observations"
+    ),
 ) -> MemoriesListResponse:
     """List stored memories with pagination and filtering.
 
@@ -299,6 +334,8 @@ async def list_memories(
         start_date=start_date,
         end_date=end_date,
         include_archived=include_archived,
+        status=status,
+        include_resolved=include_resolved,
     )
 
     # Map to response model
@@ -311,6 +348,8 @@ async def list_memories(
             tags=mem.get("tags", []),
             created_at=mem.get("created_at"),
             archived=mem.get("archived", False),
+            status=mem.get("status", "active"),
+            session_origin_type=mem.get("session_origin_type"),
         )
         for mem in memories
     ]
@@ -320,6 +359,93 @@ async def list_memories(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.put("/api/memories/{memory_id}/status")
+async def update_memory_status(memory_id: str, request: UpdateObservationStatusRequest) -> dict:
+    """Update the lifecycle status of a memory observation.
+
+    Two-phase write: SQLite first (source of truth), then ChromaDB (search index).
+    """
+    from datetime import datetime
+
+    engine, _state = _get_retrieval_engine()
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+
+    # Phase 1: Update SQLite (source of truth)
+    resolved_at = datetime.now(UTC).isoformat() if request.status != "active" else None
+
+    sqlite_updated = state.activity_store.update_observation_status(
+        observation_id=memory_id,
+        status=request.status.value,
+        resolved_by_session_id=request.resolved_by_session_id,
+        resolved_at=resolved_at,
+        superseded_by=request.superseded_by,
+    )
+
+    if not sqlite_updated:
+        raise HTTPException(status_code=404, detail=f"Observation {memory_id} not found")
+
+    # Phase 2: Update ChromaDB (search index)
+    engine.resolve_memory(memory_id, request.status.value)
+
+    return {"success": True, "memory_id": memory_id, "status": request.status.value}
+
+
+@router.post("/api/memories/bulk-resolve")
+async def bulk_resolve_memories(request: BulkResolveRequest) -> BulkResolveResponse:
+    """Bulk-resolve observations by session or memory IDs.
+
+    Each observation gets its own resolved_by_session_id link.
+    """
+    from datetime import datetime
+
+    engine, _state = _get_retrieval_engine()
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+
+    resolved_at = datetime.now(UTC).isoformat()
+    resolved_count = 0
+
+    if request.session_id:
+        # Resolve all observations from a session
+        observations = state.activity_store.get_observations_by_session(
+            request.session_id, status="active"
+        )
+        for obs in observations:
+            # SQLite
+            state.activity_store.update_observation_status(
+                observation_id=obs.id,
+                status=request.status.value,
+                resolved_by_session_id=request.resolved_by_session_id,
+                resolved_at=resolved_at,
+            )
+            # ChromaDB
+            engine.resolve_memory(obs.id, request.status.value)
+            resolved_count += 1
+
+    elif request.memory_ids:
+        for memory_id in request.memory_ids:
+            sqlite_updated = state.activity_store.update_observation_status(
+                observation_id=memory_id,
+                status=request.status.value,
+                resolved_by_session_id=request.resolved_by_session_id,
+                resolved_at=resolved_at,
+            )
+            if sqlite_updated:
+                engine.resolve_memory(memory_id, request.status.value)
+                resolved_count += 1
+
+    return BulkResolveResponse(
+        success=True,
+        resolved_count=resolved_count,
+        message=f"Resolved {resolved_count} observations",
     )
 
 
@@ -514,6 +640,23 @@ async def bulk_memory_operation(request: BulkMemoriesRequest) -> BulkMemoriesRes
             affected_count = state.vector_store.remove_tag_from_memories(
                 request.memory_ids, request.tag
             )
+
+        elif request.action == BulkAction.RESOLVE:
+            from datetime import datetime
+
+            resolved_at = datetime.now(UTC).isoformat()
+            engine, _eng_state = _get_retrieval_engine()
+            for memory_id in request.memory_ids:
+                sqlite_updated = False
+                if state.activity_store:
+                    sqlite_updated = state.activity_store.update_observation_status(
+                        observation_id=memory_id,
+                        status=OBSERVATION_STATUS_RESOLVED,
+                        resolved_at=resolved_at,
+                    )
+                if sqlite_updated or not state.activity_store:
+                    engine.resolve_memory(memory_id, OBSERVATION_STATUS_RESOLVED)
+                    affected_count += 1
 
         return BulkMemoriesResponse(
             success=True,

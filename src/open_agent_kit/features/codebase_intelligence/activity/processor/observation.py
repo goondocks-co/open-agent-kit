@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import (
         ActivityStore,
     )
+    from open_agent_kit.features.codebase_intelligence.config import AutoResolveConfig
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,8 @@ def store_observation(
     classification: str | None = None,
     prompt_batch_id: int | None = None,
     project_root: str | None = None,
+    session_origin_type: str | None = None,
+    auto_resolve_config: "AutoResolveConfig | None" = None,
 ) -> str | None:
     """Store an observation using dual-write: SQLite (source of truth) + ChromaDB (search index).
 
@@ -97,10 +100,22 @@ def store_observation(
     importance_map = {"low": 3, "medium": 5, "high": 8, "critical": 10}
     importance_int = importance_map.get(importance_str, 5)
 
+    # Cap importance for planning/investigation sessions
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        SESSION_ORIGIN_INVESTIGATION,
+        SESSION_ORIGIN_PLANNING,
+        SESSION_ORIGIN_PLANNING_IMPORTANCE_CAP,
+    )
+
+    if session_origin_type in (SESSION_ORIGIN_PLANNING, SESSION_ORIGIN_INVESTIGATION):
+        importance_int = min(importance_int, SESSION_ORIGIN_PLANNING_IMPORTANCE_CAP)
+
     # Build tags
     tags = ["auto-extracted", f"importance:{importance_str}"]
     if classification:
         tags.append(f"session:{classification}")
+    if session_origin_type:
+        tags.append(f"origin:{session_origin_type}")
 
     context = _normalize_context_path(observation.get("context"), project_root)
     obs_id = str(uuid4())
@@ -118,6 +133,7 @@ def store_observation(
         importance=importance_int,
         created_at=created_at,
         embedded=False,  # Not yet in ChromaDB
+        session_origin_type=session_origin_type,
     )
 
     try:
@@ -136,6 +152,7 @@ def store_observation(
         tags=tags,
         created_at=created_at,
         importance=importance_int,
+        session_origin_type=session_origin_type,
     )
 
     try:
@@ -143,9 +160,30 @@ def store_observation(
         # Step 3: Mark as embedded in SQLite
         activity_store.mark_observation_embedded(obs_id)
         logger.debug(f"Stored observation to ChromaDB [{obs_type}]: {obs_text[:50]}...")
-        return obs_id
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
         # ChromaDB failed, but SQLite has the data - it can be retried later
         logger.warning(f"Failed to embed observation in ChromaDB (will retry later): {e}")
         # Return the ID anyway - SQLite storage succeeded
         return obs_id
+
+    # Step 4: Auto-resolve older observations superseded by this one
+    from open_agent_kit.features.codebase_intelligence.activity.processor.auto_resolve import (
+        auto_resolve_superseded,
+    )
+
+    superseded = auto_resolve_superseded(
+        new_obs_id=obs_id,
+        obs_text=obs_text,
+        memory_type=memory_type.value,
+        context=context,
+        session_id=session_id,
+        vector_store=vector_store,
+        activity_store=activity_store,
+        auto_resolve_config=auto_resolve_config,
+    )
+    if superseded:
+        logger.info(
+            f"Observation {obs_id[:12]}... superseded {len(superseded)} older observation(s)"
+        )
+
+    return obs_id

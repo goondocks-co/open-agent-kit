@@ -1,9 +1,9 @@
 ---
 title: MCP Tools Reference
-description: Reference documentation for the oak_search, oak_remember, and oak_context MCP tools.
+description: Reference documentation for the oak_search, oak_remember, oak_context, and oak_resolve_memory MCP tools.
 ---
 
-The Codebase Intelligence daemon exposes three tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
+The Codebase Intelligence daemon exposes four tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
 
 ## oak_search
 
@@ -122,3 +122,42 @@ Returns a curated set of context optimized for the task, including:
   "task": "Fix the failing database migration test"
 }
 ```
+
+---
+
+## oak_resolve_memory
+
+Mark a memory observation as resolved or superseded. Use this after completing work that addresses a gotcha, fixing a bug that was tracked as an observation, or when a newer observation replaces an older one.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `id` | string | Yes | — | The observation ID to resolve |
+| `status` | string | No | `"resolved"` | New status: `"resolved"` or `"superseded"` |
+| `reason` | string | No | — | Optional reason for resolution |
+
+### Response
+
+Returns confirmation of the status update.
+
+### Examples
+
+```json
+{
+  "id": "obs_abc123",
+  "status": "resolved",
+  "reason": "Fixed in commit abc123"
+}
+```
+
+```json
+{
+  "id": "obs_def456",
+  "status": "superseded"
+}
+```
+
+:::tip
+Observation IDs are included in search results and injected context, so agents have what they need to call `oak_resolve_memory` without extra lookups.
+:::

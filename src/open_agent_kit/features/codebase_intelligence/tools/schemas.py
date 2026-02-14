@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_QUERY_DEFAULT_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+    OBSERVATION_STATUS_ACTIVE,
     SEARCH_TYPE_ALL,
 )
 
@@ -28,6 +29,10 @@ class SearchInput(BaseModel):
         description="Maximum number of results to return",
         ge=1,
         le=50,
+    )
+    include_resolved: bool = Field(
+        default=False,
+        description="If True, include resolved/superseded memories in results",
     )
 
 
@@ -77,6 +82,14 @@ class MemoriesInput(BaseModel):
         description="Maximum number of results to return",
         ge=1,
         le=100,
+    )
+    status: str = Field(
+        default=OBSERVATION_STATUS_ACTIVE,
+        description="Filter by observation status: 'active', 'resolved', or 'superseded'",
+    )
+    include_resolved: bool = Field(
+        default=False,
+        description="If True, include all statuses regardless of status filter",
     )
 
 

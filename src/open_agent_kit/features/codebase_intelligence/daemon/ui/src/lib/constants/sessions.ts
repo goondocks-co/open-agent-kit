@@ -175,6 +175,26 @@ export function formatStaleTimeout(seconds: number): string {
 }
 
 // =============================================================================
+// Auto-Resolve Defaults & Limits (must match Python constants)
+// =============================================================================
+
+/** Default auto-resolve settings */
+export const AUTO_RESOLVE_DEFAULTS = {
+    ENABLED: true,
+    SIMILARITY_THRESHOLD: 0.85,
+    SIMILARITY_THRESHOLD_NO_CONTEXT: 0.92,
+    SEARCH_LIMIT: 5,
+} as const;
+
+/** Auto-resolve validation limits */
+export const AUTO_RESOLVE_LIMITS = {
+    SIMILARITY_MIN: 0.5,
+    SIMILARITY_MAX: 0.99,
+    SEARCH_LIMIT_MIN: 1,
+    SEARCH_LIMIT_MAX: 20,
+} as const;
+
+// =============================================================================
 // Session Suggestion Constants
 // =============================================================================
 

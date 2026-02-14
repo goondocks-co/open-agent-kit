@@ -132,6 +132,11 @@ export function getUnarchiveMemoryEndpoint(memoryId: string): string {
     return `${API_ENDPOINTS.MEMORIES}/${memoryId}/unarchive`;
 }
 
+/** Build memory status endpoint */
+export function getMemoryStatusEndpoint(memoryId: string): string {
+    return `${API_ENDPOINTS.MEMORIES}/${memoryId}/status`;
+}
+
 /** Build promote batch endpoint */
 export function getPromoteBatchEndpoint(batchId: number): string {
     return `/api/activity/prompt-batches/${batchId}/promote`;

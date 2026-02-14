@@ -90,3 +90,35 @@ activity_classifications:
       - "Edits without new files"
       - "Moving/renaming operations"
       - "No new test files"
+
+observation_statuses:
+  active:
+    description: "Current and relevant"
+  resolved:
+    description: "Issue addressed in a later session"
+  superseded:
+    description: "Replaced by a newer observation"
+
+session_origin_types:
+  planning:
+    description: "Planning-phase session"
+    indicators:
+      - "High read:edit ratio"
+      - "Few file modifications"
+      - "Plan batches present"
+  investigation:
+    description: "Exploration/debugging session"
+    indicators:
+      - "Many file reads"
+      - "Minimal edits"
+      - "No plan batches"
+  implementation:
+    description: "Active coding session"
+    indicators:
+      - "Significant file modifications"
+      - "Low read:edit ratio"
+  mixed:
+    description: "Combined activity types"
+    indicators:
+      - "Both reads and edits"
+      - "Does not fit other categories"

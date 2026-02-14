@@ -2,7 +2,7 @@
 
 Complete DDL for the Oak CI SQLite database at `.oak/ci/activities.db`.
 
-Current schema version: **1**
+Current schema version: **2**
 
 ## memory_observations
 
@@ -24,12 +24,17 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     embedded BOOLEAN DEFAULT FALSE,  -- Has this been added to ChromaDB?
     content_hash TEXT,  -- Hash for cross-machine deduplication
     source_machine_id TEXT,  -- Machine that originated this record
+    status TEXT DEFAULT 'active',              -- active | resolved | superseded
+    resolved_by_session_id TEXT,               -- Session that resolved this
+    resolved_at TEXT,                          -- ISO timestamp of resolution
+    superseded_by TEXT,                        -- Observation ID that supersedes this
+    session_origin_type TEXT,                  -- planning | investigation | implementation | mixed
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
 ```
 
-**Key indexes:** `idx_memory_observations_embedded`, `idx_memory_observations_session`, `idx_memory_observations_hash`, `idx_memory_observations_type`, `idx_memory_observations_context`, `idx_memory_observations_created`, `idx_memory_observations_type_created`, `idx_memory_observations_source_machine`
+**Key indexes:** `idx_memory_observations_embedded`, `idx_memory_observations_session`, `idx_memory_observations_hash`, `idx_memory_observations_type`, `idx_memory_observations_context`, `idx_memory_observations_created`, `idx_memory_observations_type_created`, `idx_memory_observations_source_machine`, `idx_memory_observations_status`, `idx_memory_observations_resolved_by`, `idx_memory_observations_origin_type`
 
 ## sessions
 

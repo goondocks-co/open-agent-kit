@@ -4,11 +4,14 @@ Creates high-level summaries of completed sessions using LLM.
 """
 
 import logging
+import subprocess
 from collections.abc import Callable
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    MACHINE_ID_SUBPROCESS_TIMEOUT,
     RECOVERY_BATCH_PROMPT,
     SESSION_SUMMARY_OBS_ID_PREFIX,
     SUMMARY_MAX_PLAN_CONTEXT_LENGTH,
@@ -24,6 +27,43 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+_DEVELOPER_NAME_FALLBACK = "the developer"
+
+
+@lru_cache(maxsize=1)
+def _get_developer_name() -> str:
+    """Resolve developer name for use in session summaries.
+
+    Resolution order:
+    1. git config user.name (universally available, works with any git host)
+    2. GITHUB_USER environment variable
+    3. Fallback: "the developer"
+
+    Cached after first call since the value won't change within a process.
+    """
+    import os
+
+    # 1. git config user.name — works with any git host
+    try:
+        result = subprocess.run(
+            ["git", "config", "user.name"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=MACHINE_ID_SUBPROCESS_TIMEOUT,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # 2. GITHUB_USER env var
+    env_user = os.environ.get("GITHUB_USER", "").strip()
+    if env_user:
+        return env_user
+
+    return _DEVELOPER_NAME_FALLBACK
 
 
 def _is_recovery_prompt(prompt: str | None) -> bool:
@@ -177,6 +217,16 @@ def process_session_summary(
     # Get session stats
     stats = activity_store.get_session_stats(session_id)
 
+    # Compute session origin type for the summary
+    from open_agent_kit.features.codebase_intelligence.activity.processor.classification import (
+        compute_session_origin_type,
+    )
+
+    has_plan_batches = any(b.source_type in ("plan", "derived_plan") for b in batches)
+    session_origin_type = compute_session_origin_type(
+        stats=stats, has_plan_batches=has_plan_batches
+    )
+
     # Check if session has enough substance to summarize
     tool_calls = stats.get("activity_count", 0)
     if tool_calls < 3:
@@ -229,6 +279,8 @@ def process_session_summary(
     prompt = prompt.replace("{{tool_calls}}", str(tool_calls))
     prompt = prompt.replace("{{prompt_batches}}", prompt_batches_text)
     prompt = prompt.replace("{{plan_context}}", plan_context)
+    prompt = prompt.replace("{{session_origin_type}}", session_origin_type or "mixed")
+    prompt = prompt.replace("{{developer_name}}", _get_developer_name())
 
     # Call LLM
     result = call_llm(prompt)
@@ -265,6 +317,7 @@ def process_session_summary(
         importance=7,  # Session summaries are moderately important
         created_at=created_at,
         embedded=False,
+        session_origin_type=session_origin_type,
     )
 
     try:
@@ -281,6 +334,7 @@ def process_session_summary(
         context=f"session:{session_id}",
         tags=tags,
         created_at=created_at,
+        session_origin_type=session_origin_type,
     )
 
     try:

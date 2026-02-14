@@ -10,6 +10,8 @@ import typer
 from open_agent_kit.features.codebase_intelligence.constants import (
     HTTP_TIMEOUT_QUICK,
     HTTP_TIMEOUT_STANDARD,
+    OBSERVATION_STATUS_ACTIVE,
+    VALID_OBSERVATION_STATUSES,
 )
 from open_agent_kit.utils import (
     print_error,
@@ -42,6 +44,14 @@ def ci_memories(
     exclude_sessions: bool = typer.Option(
         False, "--exclude-sessions", "-x", help="Exclude session summaries"
     ),
+    status: str = typer.Option(
+        OBSERVATION_STATUS_ACTIVE,
+        "--status",
+        help="Filter by status: 'active', 'resolved', or 'superseded'",
+    ),
+    include_resolved: bool = typer.Option(
+        False, "--include-resolved", help="Include all statuses regardless of --status filter"
+    ),
     format_output: str = typer.Option(
         "text", "--format", "-f", help="Output format: 'json' or 'text'"
     ),
@@ -52,12 +62,14 @@ def ci_memories(
     by CI. Unlike search, this lists memories without semantic matching.
 
     Examples:
-        oak ci memories                    # List recent memories
-        oak ci memories --type gotcha      # Filter by type
-        oak ci memories -n 50              # Show more results
-        oak ci memories --type session_summary  # List session summaries only
-        oak ci memories -x                 # Exclude session summaries
-        oak ci memories -f json            # JSON output for scripting
+        oak ci memories                        # List recent active memories
+        oak ci memories --type gotcha          # Filter by type
+        oak ci memories --status resolved      # Show resolved memories
+        oak ci memories --include-resolved     # Show all statuses
+        oak ci memories -n 50                  # Show more results
+        oak ci memories --type session_summary # List session summaries only
+        oak ci memories -x                     # Exclude session summaries
+        oak ci memories -f json                # JSON output for scripting
     """
     import httpx
 
@@ -78,15 +90,26 @@ def ci_memories(
         )
         raise typer.Exit(code=1)
 
+    # Validate status if provided
+    if status not in VALID_OBSERVATION_STATUSES:
+        print_error(
+            f"Invalid status '{status}'. Must be one of: "
+            f"{', '.join(VALID_OBSERVATION_STATUSES)}"
+        )
+        raise typer.Exit(code=1)
+
     try:
         params: dict[str, str | int] = {
             "limit": min(max(1, limit), 100),
             "offset": max(0, offset),
+            "status": status,
         }
         if memory_type:
             params["memory_type"] = memory_type
         if exclude_sessions:
             params["exclude_sessions"] = "true"
+        if include_resolved:
+            params["include_resolved"] = "true"
 
         with httpx.Client(timeout=HTTP_TIMEOUT_STANDARD) as client:
             response = client.get(
@@ -123,12 +146,20 @@ def ci_memories(
                     icon = type_icons.get(mem_type, "•")
                     observation = mem.get("observation", "")
                     created = mem.get("created_at", "")
+                    mem_status = mem.get("status", OBSERVATION_STATUS_ACTIVE)
 
                     # Truncate long observations
                     if len(observation) > 100:
                         observation = observation[:97] + "..."
 
-                    console.print(f"\n{icon} [bold][{mem_type}][/bold] {observation}")
+                    # Show status indicator for non-active memories
+                    status_suffix = ""
+                    if mem_status != OBSERVATION_STATUS_ACTIVE:
+                        status_suffix = f" [dim]({mem_status})[/dim]"
+
+                    console.print(
+                        f"\n{icon} [bold][{mem_type}][/bold] {observation}{status_suffix}"
+                    )
                     if created:
                         # Format datetime if present
                         try:
@@ -251,6 +282,111 @@ def ci_sessions(
         raise typer.Exit(code=1)
     except Exception as e:
         print_error(f"Failed to list sessions: {e}")
+        raise typer.Exit(code=1)
+
+
+@ci_app.command("resolve")
+def ci_resolve(
+    memory_id: str | None = typer.Argument(None, help="Observation ID to resolve"),
+    session: str | None = typer.Option(
+        None, "--session", "-s", help="Resolve all observations from this session"
+    ),
+    status: str = typer.Option(
+        "resolved", "--status", help="Target status: 'resolved' or 'superseded'"
+    ),
+    reason: str | None = typer.Option(None, "--reason", "-r", help="Reason for resolution"),
+    format_output: str = typer.Option(
+        "text", "--format", "-f", help="Output format: 'json' or 'text'"
+    ),
+) -> None:
+    """Mark observation(s) as resolved or superseded.
+
+    Resolve a single observation by ID, or all observations from a session.
+
+    Examples:
+        oak ci resolve abc-123                       # Resolve by ID
+        oak ci resolve abc-123 --status superseded   # Mark as superseded
+        oak ci resolve --session sess-456            # Bulk resolve by session
+        oak ci resolve abc-123 -r "Fixed in PR #42"  # With reason
+    """
+    import httpx
+
+    project_root = Path.cwd()
+    check_oak_initialized(project_root)
+    check_ci_enabled(project_root)
+
+    if not memory_id and not session:
+        print_error("Provide either a memory ID or --session to resolve.")
+        raise typer.Exit(code=1)
+
+    # Validate status
+    valid_resolve_statuses = ("resolved", "superseded")
+    if status not in valid_resolve_statuses:
+        print_error(
+            f"Invalid status '{status}'. Must be one of: {', '.join(valid_resolve_statuses)}"
+        )
+        raise typer.Exit(code=1)
+
+    manager = get_daemon_manager(project_root)
+    if not manager.is_running():
+        print_error("CI daemon not running. Start with: oak ci start")
+        raise typer.Exit(code=1)
+
+    try:
+        base_url = f"http://localhost:{manager.port}"
+
+        with httpx.Client(timeout=HTTP_TIMEOUT_STANDARD) as client:
+            if memory_id:
+                # Single resolve via PUT
+                data: dict[str, Any] = {"status": status}
+                if reason:
+                    data["reason"] = reason
+                response = client.put(
+                    f"{base_url}/api/memories/{memory_id}/status",
+                    json=data,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if format_output == "json":
+                    console.print(json.dumps(result, indent=2))
+                else:
+                    if result.get("updated"):
+                        print_success(f"Memory {memory_id} marked as {status}.")
+                    else:
+                        print_warning(f"Memory {memory_id} was not updated.")
+            else:
+                # Bulk resolve by session via POST
+                data = {
+                    "session_id": session,
+                    "status": status,
+                }
+                if reason:
+                    data["reason"] = reason
+                response = client.post(
+                    f"{base_url}/api/memories/bulk-resolve",
+                    json=data,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if format_output == "json":
+                    console.print(json.dumps(result, indent=2))
+                else:
+                    count = result.get("updated_count", 0)
+                    if count > 0:
+                        print_success(f"Resolved {count} observation(s) from session {session}.")
+                    else:
+                        print_warning(f"No observations found for session {session}.")
+
+    except httpx.ConnectError:
+        print_error("Cannot connect to CI daemon. Is it running?")
+        raise typer.Exit(code=1)
+    except httpx.HTTPStatusError as e:
+        print_error(f"Failed to resolve: {e.response.text}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print_error(f"Failed to resolve observation: {e}")
         raise typer.Exit(code=1)
 
 

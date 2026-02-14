@@ -8,12 +8,14 @@ import json
 import logging
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.processor.classification import (
     classify_heuristic,
     classify_session,
+    compute_session_origin_type,
     select_template_by_classification,
 )
 from open_agent_kit.features.codebase_intelligence.activity.processor.handlers import (
@@ -52,6 +54,8 @@ from open_agent_kit.features.codebase_intelligence.activity.prompts import (
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_RUN_RECOVERY_BUFFER_SECONDS,
     DEFAULT_AGENT_TIMEOUT_SECONDS,
+    DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE,
+    DEFAULT_BACKGROUND_PROCESSING_WORKERS,
     INJECTION_MAX_SESSION_SUMMARIES,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
@@ -205,6 +209,15 @@ class ActivityProcessor:
         return self._fallback_session_quality_config
 
     @property
+    def processing_workers(self) -> int:
+        """Get number of parallel processing workers from live config or constant."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                return config.agents.background_processing_workers
+        return DEFAULT_BACKGROUND_PROCESSING_WORKERS
+
+    @property
     def min_session_activities(self) -> int:
         """Get minimum activities threshold from config or constant."""
         from open_agent_kit.features.codebase_intelligence.constants import (
@@ -300,8 +313,16 @@ class ActivityProcessor:
         observation: dict[str, Any],
         classification: str | None = None,
         prompt_batch_id: int | None = None,
+        session_origin_type: str | None = None,
     ) -> str | None:
         """Store an observation using dual-write: SQLite + ChromaDB."""
+        # Read auto-resolve config from live config if available
+        auto_resolve_config = None
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                auto_resolve_config = config.auto_resolve
+
         return store_observation(
             session_id=session_id,
             observation=observation,
@@ -310,6 +331,8 @@ class ActivityProcessor:
             classification=classification,
             prompt_batch_id=prompt_batch_id,
             project_root=self.project_root,
+            session_origin_type=session_origin_type,
+            auto_resolve_config=auto_resolve_config,
         )
 
     def process_session(self, session_id: str) -> ProcessingResult:
@@ -559,6 +582,33 @@ class ActivityProcessor:
             )
 
         try:
+            # Clean up any existing observations from a previous processing run.
+            # Without this, reprocessing a batch creates NEW observations (new UUIDs)
+            # while leaving the old ones in place, causing unbounded duplication.
+            old_obs_ids = self.activity_store.delete_batch_observations(batch_id)
+            if old_obs_ids:
+                try:
+                    self.vector_store.delete_memories(old_obs_ids)
+                    logger.info(
+                        f"Cleaned up {len(old_obs_ids)} old observations for batch {batch_id} "
+                        f"before reprocessing"
+                    )
+                except (ValueError, RuntimeError, KeyError, AttributeError) as e:
+                    # SQLite cleanup succeeded; ChromaDB will be stale but not duplicated
+                    logger.warning(f"ChromaDB cleanup failed for batch {batch_id}: {e}")
+
+            # Compute session origin type from activity stats
+            session_stats = self.activity_store.get_session_stats(batch.session_id)
+            all_batches = self.activity_store.get_session_prompt_batches(
+                batch.session_id, limit=100
+            )
+            has_plan_batches = any(
+                b.source_type in (PROMPT_SOURCE_PLAN, "derived_plan") for b in all_batches
+            )
+            session_origin_type = compute_session_origin_type(
+                stats=session_stats, has_plan_batches=has_plan_batches
+            )
+
             # Dispatch to appropriate handler based on source type
             handler = get_batch_handler(source_type)
 
@@ -578,6 +628,7 @@ class ActivityProcessor:
                 "classify_session": classify_session,
                 "select_template_by_classification": select_template_by_classification,
                 "get_oak_ci_context": get_oak_ci_context,
+                "session_origin_type": session_origin_type,
             }
 
             return handler(**handler_kwargs)
@@ -601,7 +652,9 @@ class ActivityProcessor:
                 prompt_batch_id=batch_id,
             )
 
-    def process_pending_batches(self, max_batches: int = 10) -> list[ProcessingResult]:
+    def process_pending_batches(
+        self, max_batches: int = DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE
+    ) -> list[ProcessingResult]:
         """Process all pending prompt batches.
 
         Args:
@@ -642,11 +695,35 @@ class ActivityProcessor:
 
             logger.info(f"Processing {len(batches)} pending prompt batches")
 
+            batch_ids = [b.id for b in batches if b.id is not None]
+            workers = min(self.processing_workers, len(batch_ids))
+
             results = []
-            for batch in batches:
-                if batch.id is not None:
-                    result = self.process_prompt_batch(batch.id)
-                    results.append(result)
+            if workers <= 1:
+                # Single batch — no thread pool overhead
+                for bid in batch_ids:
+                    results.append(self.process_prompt_batch(bid))
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {
+                        pool.submit(self.process_prompt_batch, bid): bid for bid in batch_ids
+                    }
+                    for future in as_completed(futures):
+                        try:
+                            results.append(future.result())
+                        except Exception as e:
+                            bid = futures[future]
+                            logger.error(f"Batch {bid} failed in thread pool: {e}")
+                            results.append(
+                                ProcessingResult(
+                                    session_id="",
+                                    activities_processed=0,
+                                    observations_extracted=0,
+                                    success=False,
+                                    error=str(e),
+                                    prompt_batch_id=bid,
+                                )
+                            )
 
             self._last_process_time = datetime.now()
             return results
@@ -667,6 +744,16 @@ class ActivityProcessor:
         This is a wrapper for the handlers.process_user_batch function.
         Used by promote_agent_batch.
         """
+        # Compute session origin type for the batch
+        session_stats = self.activity_store.get_session_stats(batch.session_id)
+        all_batches = self.activity_store.get_session_prompt_batches(batch.session_id, limit=100)
+        has_plan_batches = any(
+            b.source_type in (PROMPT_SOURCE_PLAN, "derived_plan") for b in all_batches
+        )
+        session_origin_type = compute_session_origin_type(
+            stats=session_stats, has_plan_batches=has_plan_batches
+        )
+
         return process_user_batch(
             batch_id=batch_id,
             batch=batch,
@@ -682,6 +769,7 @@ class ActivityProcessor:
             classify_session=classify_session,
             select_template_by_classification=select_template_by_classification,
             get_oak_ci_context=get_oak_ci_context,
+            session_origin_type=session_origin_type,
         )
 
     def generate_session_title(self, session_id: str) -> str | None:

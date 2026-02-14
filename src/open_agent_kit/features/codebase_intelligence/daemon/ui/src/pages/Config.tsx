@@ -33,6 +33,8 @@ import {
     LOG_ROTATION_LIMITS,
     SESSION_QUALITY_DEFAULTS,
     SESSION_QUALITY_LIMITS,
+    AUTO_RESOLVE_DEFAULTS,
+    AUTO_RESOLVE_LIMITS,
     calculateMaxLogDiskUsage,
     formatStaleTimeout,
     getDefaultProviderUrl,
@@ -94,11 +96,19 @@ interface SessionQualityFormData {
     stale_timeout_seconds: number;
 }
 
+interface AutoResolveFormData {
+    enabled: boolean;
+    similarity_threshold: number;
+    similarity_threshold_no_context: number;
+    search_limit: number;
+}
+
 interface FormData {
     embedding: EmbeddingFormData;
     summarization: SummarizationFormData;
     log_rotation: LogRotationFormData;
     session_quality: SessionQualityFormData;
+    auto_resolve: AutoResolveFormData;
 }
 
 /** Validation result structure */
@@ -256,6 +266,14 @@ export default function Config() {
             mappedData.session_quality = config.session_quality ?? {
                 min_activities: SESSION_QUALITY_DEFAULTS.MIN_ACTIVITIES,
                 stale_timeout_seconds: SESSION_QUALITY_DEFAULTS.STALE_TIMEOUT_SECONDS,
+            };
+
+            // Auto-resolve mapping - use defaults if not present
+            mappedData.auto_resolve = config.auto_resolve ?? {
+                enabled: AUTO_RESOLVE_DEFAULTS.ENABLED,
+                similarity_threshold: AUTO_RESOLVE_DEFAULTS.SIMILARITY_THRESHOLD,
+                similarity_threshold_no_context: AUTO_RESOLVE_DEFAULTS.SIMILARITY_THRESHOLD_NO_CONTEXT,
+                search_limit: AUTO_RESOLVE_DEFAULTS.SEARCH_LIMIT,
             };
 
             setFormData(mappedData);
@@ -528,6 +546,7 @@ export default function Config() {
             const sum = formData.summarization;
             const rot = formData.log_rotation;
             const sq = formData.session_quality;
+            const ar = formData.auto_resolve;
 
             // Transform UI field names back to API field names
             const apiPayload = {
@@ -556,6 +575,12 @@ export default function Config() {
                 session_quality: {
                     min_activities: sq.min_activities,
                     stale_timeout_seconds: sq.stale_timeout_seconds,
+                },
+                auto_resolve: {
+                    enabled: ar.enabled,
+                    similarity_threshold: ar.similarity_threshold,
+                    similarity_threshold_no_context: ar.similarity_threshold_no_context,
+                    search_limit: ar.search_limit,
                 },
             };
             const result = await updateConfig.mutateAsync(apiPayload) as { message?: string };
@@ -966,6 +991,138 @@ export default function Config() {
                 <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">
                         Changes take effect immediately for new sessions.
+                    </p>
+                    <Button onClick={handleSave} disabled={!isDirty || updateConfig.isPending} size="sm">
+                        {updateConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
+                </CardFooter>
+            </Card>
+
+            {/* Auto-Resolve Section */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center gap-2">
+                        <CardTitle>Auto-Resolve</CardTitle>
+                        <OriginBadge origin={config?.origins?.auto_resolve} />
+                    </div>
+                    <CardDescription>When new observations are stored, automatically supersede older duplicates.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            id="auto_resolve_enabled"
+                            checked={formData.auto_resolve?.enabled ?? AUTO_RESOLVE_DEFAULTS.ENABLED}
+                            onChange={(e) => {
+                                setFormData((prev) => {
+                                    if (!prev) return prev;
+                                    return {
+                                        ...prev,
+                                        auto_resolve: {
+                                            ...prev.auto_resolve,
+                                            enabled: e.target.checked,
+                                        },
+                                    };
+                                });
+                                setIsDirty(true);
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <label htmlFor="auto_resolve_enabled" className="text-sm font-medium cursor-pointer">
+                            Enable automatic supersession of duplicate observations
+                        </label>
+                    </div>
+
+                    <div className={cn("grid grid-cols-3 gap-4", !formData.auto_resolve?.enabled && "opacity-50 pointer-events-none")}>
+                        <div className="space-y-2">
+                            <Label>Similarity Threshold</Label>
+                            <Input
+                                type="number"
+                                min={AUTO_RESOLVE_LIMITS.SIMILARITY_MIN}
+                                max={AUTO_RESOLVE_LIMITS.SIMILARITY_MAX}
+                                step={0.01}
+                                value={formData.auto_resolve?.similarity_threshold ?? AUTO_RESOLVE_DEFAULTS.SIMILARITY_THRESHOLD}
+                                onChange={(e) => {
+                                    const value = parseFloat(e.target.value) || AUTO_RESOLVE_DEFAULTS.SIMILARITY_THRESHOLD;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            auto_resolve: {
+                                                ...prev.auto_resolve,
+                                                similarity_threshold: Math.min(Math.max(value, AUTO_RESOLVE_LIMITS.SIMILARITY_MIN), AUTO_RESOLVE_LIMITS.SIMILARITY_MAX),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                When context (file path) matches.
+                                Range: {AUTO_RESOLVE_LIMITS.SIMILARITY_MIN}–{AUTO_RESOLVE_LIMITS.SIMILARITY_MAX}
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>No-Context Threshold</Label>
+                            <Input
+                                type="number"
+                                min={AUTO_RESOLVE_LIMITS.SIMILARITY_MIN}
+                                max={AUTO_RESOLVE_LIMITS.SIMILARITY_MAX}
+                                step={0.01}
+                                value={formData.auto_resolve?.similarity_threshold_no_context ?? AUTO_RESOLVE_DEFAULTS.SIMILARITY_THRESHOLD_NO_CONTEXT}
+                                onChange={(e) => {
+                                    const value = parseFloat(e.target.value) || AUTO_RESOLVE_DEFAULTS.SIMILARITY_THRESHOLD_NO_CONTEXT;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            auto_resolve: {
+                                                ...prev.auto_resolve,
+                                                similarity_threshold_no_context: Math.min(Math.max(value, AUTO_RESOLVE_LIMITS.SIMILARITY_MIN), AUTO_RESOLVE_LIMITS.SIMILARITY_MAX),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                When observations lack shared context.
+                                Must be ≥ similarity threshold.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Search Limit</Label>
+                            <Input
+                                type="number"
+                                min={AUTO_RESOLVE_LIMITS.SEARCH_LIMIT_MIN}
+                                max={AUTO_RESOLVE_LIMITS.SEARCH_LIMIT_MAX}
+                                value={formData.auto_resolve?.search_limit ?? AUTO_RESOLVE_DEFAULTS.SEARCH_LIMIT}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10) || AUTO_RESOLVE_DEFAULTS.SEARCH_LIMIT;
+                                    setFormData((prev) => {
+                                        if (!prev) return prev;
+                                        return {
+                                            ...prev,
+                                            auto_resolve: {
+                                                ...prev.auto_resolve,
+                                                search_limit: Math.min(Math.max(value, AUTO_RESOLVE_LIMITS.SEARCH_LIMIT_MIN), AUTO_RESOLVE_LIMITS.SEARCH_LIMIT_MAX),
+                                            },
+                                        };
+                                    });
+                                    setIsDirty(true);
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Max candidates checked per observation.
+                                Range: {AUTO_RESOLVE_LIMITS.SEARCH_LIMIT_MIN}–{AUTO_RESOLVE_LIMITS.SEARCH_LIMIT_MAX}
+                            </p>
+                        </div>
+                    </div>
+                </CardContent>
+                <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                        Changes take effect immediately for new observations.
                     </p>
                     <Button onClick={handleSave} disabled={!isDirty || updateConfig.isPending} size="sm">
                         {updateConfig.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

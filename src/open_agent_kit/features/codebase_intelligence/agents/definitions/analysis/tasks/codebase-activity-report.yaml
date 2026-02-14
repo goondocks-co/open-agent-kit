@@ -46,14 +46,22 @@ default_task: |
   - Recent memory trends (are new gotchas being discovered?)
   - Memories per session ratio
 
-  ## 4. Active Codebase Areas
+  ## 4. Memory Lifecycle
+
+  Use ci_query against memory_observations to analyze observation lifecycle:
+  - Status distribution: `SELECT status, count(*) as count FROM memory_observations GROUP BY status`
+  - Active observations by session origin type: `SELECT session_origin_type, count(*) as count FROM memory_observations WHERE status='active' GROUP BY session_origin_type`
+  - Resolution velocity: how quickly observations get resolved (days between creation and resolution)
+  - Unresolved planning observations that may be stale
+
+  ## 5. Active Codebase Areas
 
   Use ci_query to identify which parts of the codebase are most active:
   - Group file paths by top-level directory
   - Activity density (activities per unique file)
   - New vs modified files ratio
 
-  ## 5. Write Report
+  ## 6. Write Report
 
   Write the report with hotspot visualizations (markdown tables),
   trend analysis, and suggestions for areas needing attention.

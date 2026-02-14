@@ -11,6 +11,7 @@ from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_SESSION_COLUMN_TRANSCRIPT_PATH,
+    OBSERVATION_STATUS_ACTIVE,
 )
 from open_agent_kit.features.codebase_intelligence.utils.redact import redact_secrets
 
@@ -339,6 +340,11 @@ class StoredObservation:
     created_at: datetime = field(default_factory=datetime.now)
     embedded: bool = False  # Has this been added to ChromaDB?
     source_machine_id: str | None = None  # Machine that originated this record (v13)
+    status: str = OBSERVATION_STATUS_ACTIVE
+    resolved_by_session_id: str | None = None
+    resolved_at: datetime | None = None
+    superseded_by: str | None = None
+    session_origin_type: str | None = None
 
     def _compute_content_hash(self) -> str:
         """Compute content hash for deduplication."""
@@ -364,6 +370,11 @@ class StoredObservation:
             "created_at_epoch": int(self.created_at.timestamp()),
             "embedded": self.embedded,
             "source_machine_id": self.source_machine_id,
+            "status": self.status,
+            "resolved_by_session_id": self.resolved_by_session_id,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "superseded_by": self.superseded_by,
+            "session_origin_type": self.session_origin_type,
             "content_hash": self._compute_content_hash(),
         }
         # Redact secrets from free-text fields before persistence
@@ -391,5 +402,18 @@ class StoredObservation:
             embedded=bool(row["embedded"]),
             source_machine_id=(
                 row["source_machine_id"] if "source_machine_id" in row.keys() else None
+            ),
+            status=(row["status"] if "status" in row.keys() else OBSERVATION_STATUS_ACTIVE),
+            resolved_by_session_id=(
+                row["resolved_by_session_id"] if "resolved_by_session_id" in row.keys() else None
+            ),
+            resolved_at=(
+                datetime.fromisoformat(row["resolved_at"])
+                if "resolved_at" in row.keys() and row["resolved_at"]
+                else None
+            ),
+            superseded_by=(row["superseded_by"] if "superseded_by" in row.keys() else None),
+            session_origin_type=(
+                row["session_origin_type"] if "session_origin_type" in row.keys() else None
             ),
         )

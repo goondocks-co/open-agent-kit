@@ -303,6 +303,7 @@ def process_user_batch(
     classify_session: Callable[..., str],
     select_template_by_classification: Callable[..., Any],
     get_oak_ci_context: Callable[..., str],
+    session_origin_type: str | None = None,
 ) -> ProcessingResult:
     """Process a user-initiated batch with full LLM extraction.
 
@@ -467,6 +468,7 @@ def process_user_batch(
                 classification=classification,
                 prompt_batch_id=batch_id,
                 project_root=project_root,
+                session_origin_type=session_origin_type,
             )
             if obs_id:
                 stored_count += 1

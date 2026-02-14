@@ -19,8 +19,16 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AUTO_RESOLVE_CONFIG_KEY,
     BACKUP_CONFIG_KEY,
+    CI_CONFIG_KEY_EMBEDDING,
+    CI_CONFIG_KEY_INDEX_ON_STARTUP,
+    CI_CONFIG_KEY_LOG_LEVEL,
+    CI_CONFIG_KEY_LOG_ROTATION,
+    CI_CONFIG_KEY_SESSION_QUALITY,
+    CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TUNNEL,
+    CI_CONFIG_KEY_WATCH_FILES,
     CI_CONFIG_TUNNEL_KEY_AUTO_START,
     CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
     CI_CONFIG_TUNNEL_KEY_NGROK_PATH,
@@ -298,7 +306,7 @@ async def get_config() -> dict:
     origins = get_config_origins(state.project_root)
 
     return {
-        "embedding": {
+        CI_CONFIG_KEY_EMBEDDING: {
             "provider": config.embedding.provider,
             "model": config.embedding.model,
             "base_url": config.embedding.base_url,
@@ -307,7 +315,7 @@ async def get_config() -> dict:
             "max_chunk_chars": config.embedding.get_max_chunk_chars(),
             "fallback_enabled": config.embedding.fallback_enabled,
         },
-        "summarization": {
+        CI_CONFIG_KEY_SUMMARIZATION: {
             "enabled": config.summarization.enabled,
             "provider": config.summarization.provider,
             "model": config.summarization.model,
@@ -315,17 +323,17 @@ async def get_config() -> dict:
             "timeout": config.summarization.timeout,
             "context_tokens": config.summarization.context_tokens,
         },
-        "session_quality": {
+        CI_CONFIG_KEY_SESSION_QUALITY: {
             "min_activities": config.session_quality.min_activities,
             "stale_timeout_seconds": config.session_quality.stale_timeout_seconds,
         },
-        "log_rotation": {
+        CI_CONFIG_KEY_LOG_ROTATION: {
             "enabled": config.log_rotation.enabled,
             "max_size_mb": config.log_rotation.max_size_mb,
             "backup_count": config.log_rotation.backup_count,
         },
-        "index_on_startup": config.index_on_startup,
-        "watch_files": config.watch_files,
+        CI_CONFIG_KEY_INDEX_ON_STARTUP: config.index_on_startup,
+        CI_CONFIG_KEY_WATCH_FILES: config.watch_files,
         CI_CONFIG_KEY_TUNNEL: {
             CI_CONFIG_TUNNEL_KEY_PROVIDER: config.tunnel.provider,
             CI_CONFIG_TUNNEL_KEY_AUTO_START: config.tunnel.auto_start,
@@ -338,7 +346,13 @@ async def get_config() -> dict:
             "interval_minutes": config.backup.interval_minutes,
             "on_upgrade": config.backup.on_upgrade,
         },
-        "log_level": config.log_level,
+        AUTO_RESOLVE_CONFIG_KEY: {
+            "enabled": config.auto_resolve.enabled,
+            "similarity_threshold": config.auto_resolve.similarity_threshold,
+            "similarity_threshold_no_context": config.auto_resolve.similarity_threshold_no_context,
+            "search_limit": config.auto_resolve.search_limit,
+        },
+        CI_CONFIG_KEY_LOG_LEVEL: config.log_level,
         "origins": origins,
     }
 
@@ -369,8 +383,8 @@ async def update_config(request: Request) -> dict:
     summarization_changed = False
 
     # Update embedding settings (nested object: { embedding: { provider, model, ... } })
-    if "embedding" in data and isinstance(data["embedding"], dict):
-        emb = data["embedding"]
+    if CI_CONFIG_KEY_EMBEDDING in data and isinstance(data[CI_CONFIG_KEY_EMBEDDING], dict):
+        emb = data[CI_CONFIG_KEY_EMBEDDING]
         if "provider" in emb:
             config.embedding.provider = emb["provider"]
             embedding_changed = True
@@ -396,8 +410,8 @@ async def update_config(request: Request) -> dict:
             embedding_changed = True
 
     # Update summarization settings (nested object: { summarization: { enabled, provider, ... } })
-    if "summarization" in data and isinstance(data["summarization"], dict):
-        summ = data["summarization"]
+    if CI_CONFIG_KEY_SUMMARIZATION in data and isinstance(data[CI_CONFIG_KEY_SUMMARIZATION], dict):
+        summ = data[CI_CONFIG_KEY_SUMMARIZATION]
         logger.debug(f"Summarization update request: {summ}")
         if "enabled" in summ:
             config.summarization.enabled = summ["enabled"]
@@ -420,8 +434,8 @@ async def update_config(request: Request) -> dict:
 
     # Handle log_level updates (top-level key)
     log_level_changed = False
-    if "log_level" in data:
-        new_level = data["log_level"].upper()
+    if CI_CONFIG_KEY_LOG_LEVEL in data:
+        new_level = data[CI_CONFIG_KEY_LOG_LEVEL].upper()
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         if new_level in valid_levels and new_level != config.log_level:
             config.log_level = new_level
@@ -429,8 +443,8 @@ async def update_config(request: Request) -> dict:
 
     # Handle log_rotation updates (requires restart)
     log_rotation_changed = False
-    if "log_rotation" in data and isinstance(data["log_rotation"], dict):
-        rot = data["log_rotation"]
+    if CI_CONFIG_KEY_LOG_ROTATION in data and isinstance(data[CI_CONFIG_KEY_LOG_ROTATION], dict):
+        rot = data[CI_CONFIG_KEY_LOG_ROTATION]
         if "enabled" in rot and rot["enabled"] != config.log_rotation.enabled:
             config.log_rotation.enabled = rot["enabled"]
             log_rotation_changed = True
@@ -443,8 +457,10 @@ async def update_config(request: Request) -> dict:
 
     # Handle session_quality updates (takes effect immediately)
     session_quality_changed = False
-    if "session_quality" in data and isinstance(data["session_quality"], dict):
-        sq = data["session_quality"]
+    if CI_CONFIG_KEY_SESSION_QUALITY in data and isinstance(
+        data[CI_CONFIG_KEY_SESSION_QUALITY], dict
+    ):
+        sq = data[CI_CONFIG_KEY_SESSION_QUALITY]
         if "min_activities" in sq and sq["min_activities"] != config.session_quality.min_activities:
             config.session_quality.min_activities = sq["min_activities"]
             session_quality_changed = True
@@ -474,6 +490,32 @@ async def update_config(request: Request) -> dict:
         if "on_upgrade" in bkp and bkp["on_upgrade"] != config.backup.on_upgrade:
             config.backup.on_upgrade = bool(bkp["on_upgrade"])
             backup_changed = True
+    # Handle auto_resolve config updates (takes effect immediately)
+    auto_resolve_changed = False
+    if AUTO_RESOLVE_CONFIG_KEY in data and isinstance(data[AUTO_RESOLVE_CONFIG_KEY], dict):
+        ar = data[AUTO_RESOLVE_CONFIG_KEY]
+        if "enabled" in ar and ar["enabled"] != config.auto_resolve.enabled:
+            config.auto_resolve.enabled = bool(ar["enabled"])
+            auto_resolve_changed = True
+        if (
+            "similarity_threshold" in ar
+            and ar["similarity_threshold"] != config.auto_resolve.similarity_threshold
+        ):
+            config.auto_resolve.similarity_threshold = float(ar["similarity_threshold"])
+            auto_resolve_changed = True
+        if (
+            "similarity_threshold_no_context" in ar
+            and ar["similarity_threshold_no_context"]
+            != config.auto_resolve.similarity_threshold_no_context
+        ):
+            config.auto_resolve.similarity_threshold_no_context = float(
+                ar["similarity_threshold_no_context"]
+            )
+            auto_resolve_changed = True
+        if "search_limit" in ar and ar["search_limit"] != config.auto_resolve.search_limit:
+            config.auto_resolve.search_limit = int(ar["search_limit"])
+            auto_resolve_changed = True
+
     # Update tunnel settings (nested object: { tunnel: { provider, auto_start, ... } })
     if CI_CONFIG_KEY_TUNNEL in data and isinstance(data[CI_CONFIG_KEY_TUNNEL], dict):
         tun = data[CI_CONFIG_KEY_TUNNEL]
@@ -501,24 +543,24 @@ async def update_config(request: Request) -> dict:
     ) -> dict:
         return {
             "status": "updated",
-            "embedding": {
+            CI_CONFIG_KEY_EMBEDDING: {
                 "provider": config.embedding.provider,
                 "model": config.embedding.model,
                 "base_url": config.embedding.base_url,
                 "max_chunk_chars": config.embedding.get_max_chunk_chars(),
             },
-            "summarization": {
+            CI_CONFIG_KEY_SUMMARIZATION: {
                 "enabled": config.summarization.enabled,
                 "provider": config.summarization.provider,
                 "model": config.summarization.model,
                 "base_url": config.summarization.base_url,
                 "context_tokens": config.summarization.context_tokens,
             },
-            "session_quality": {
+            CI_CONFIG_KEY_SESSION_QUALITY: {
                 "min_activities": config.session_quality.min_activities,
                 "stale_timeout_seconds": config.session_quality.stale_timeout_seconds,
             },
-            "log_rotation": {
+            CI_CONFIG_KEY_LOG_ROTATION: {
                 "enabled": config.log_rotation.enabled,
                 "max_size_mb": config.log_rotation.max_size_mb,
                 "backup_count": config.log_rotation.backup_count,
@@ -530,13 +572,15 @@ async def update_config(request: Request) -> dict:
                 CI_CONFIG_TUNNEL_KEY_NGROK_PATH: config.tunnel.ngrok_path or "",
             },
             BACKUP_CONFIG_KEY: config.backup.to_dict(),
-            "log_level": config.log_level,
+            AUTO_RESOLVE_CONFIG_KEY: config.auto_resolve.to_dict(),
+            CI_CONFIG_KEY_LOG_LEVEL: config.log_level,
             "embedding_changed": embedding_changed,
             "summarization_changed": summarization_changed,
             "session_quality_changed": session_quality_changed,
             "log_level_changed": log_level_changed,
             "log_rotation_changed": log_rotation_changed,
             "backup_changed": backup_changed,
+            "auto_resolve_changed": auto_resolve_changed,
             "auto_applied": auto_applied,
             "indexing_started": indexing_started,
             "message": message,
@@ -555,6 +599,8 @@ async def update_config(request: Request) -> dict:
     message = "Configuration saved."
     if backup_changed:
         message += " Backup settings take effect on next cycle."
+    if auto_resolve_changed:
+        message += " Auto-resolve settings take effect immediately."
     if summarization_changed or session_quality_changed:
         message += " Changes take effect immediately."
     elif log_level_changed or log_rotation_changed:
@@ -1200,7 +1246,7 @@ async def restart_daemon() -> dict:
 
     return {
         "status": "restarted",
-        "embedding": {
+        CI_CONFIG_KEY_EMBEDDING: {
             "provider": ci_config.embedding.provider,
             "model": ci_config.embedding.model,
             "dimensions": new_dims,

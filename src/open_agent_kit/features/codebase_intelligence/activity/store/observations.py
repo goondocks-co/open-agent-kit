@@ -40,10 +40,12 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
             INSERT OR REPLACE INTO memory_observations
             (id, session_id, prompt_batch_id, observation, memory_type,
              context, tags, importance, file_path, created_at, created_at_epoch, embedded,
-             source_machine_id, content_hash)
+             source_machine_id, content_hash,
+             status, resolved_by_session_id, resolved_at, superseded_by, session_origin_type)
             VALUES (:id, :session_id, :prompt_batch_id, :observation, :memory_type,
                     :context, :tags, :importance, :file_path, :created_at,
-                    :created_at_epoch, :embedded, :source_machine_id, :content_hash)
+                    :created_at_epoch, :embedded, :source_machine_id, :content_hash,
+                    :status, :resolved_by_session_id, :resolved_at, :superseded_by, :session_origin_type)
             """,
             row,
         )
@@ -174,6 +176,38 @@ def mark_all_observations_unembedded(store: ActivityStore) -> int:
     return count
 
 
+def count_observations_for_batches(
+    store: ActivityStore,
+    batch_ids: list[int],
+    machine_id: str,
+) -> int:
+    """Count observations linked to specific batches from a given machine.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_ids: Prompt batch IDs to count observations for.
+        machine_id: Only count observations from this machine.
+
+    Returns:
+        Observation count.
+    """
+    if not batch_ids:
+        return 0
+
+    conn = store._get_connection()
+    placeholders = ",".join("?" * len(batch_ids))
+    cursor = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM memory_observations
+        WHERE prompt_batch_id IN ({placeholders})
+          AND source_machine_id = ?
+        """,
+        (*batch_ids, machine_id),
+    )
+    result = cursor.fetchone()
+    return int(result[0]) if result else 0
+
+
 def count_observations(store: ActivityStore) -> int:
     """Count total observations in SQLite.
 
@@ -259,3 +293,158 @@ def count_observations_by_type(store: ActivityStore, memory_type: str) -> int:
     )
     result = cursor.fetchone()
     return int(result[0]) if result else 0
+
+
+def update_observation_status(
+    store: ActivityStore,
+    observation_id: str,
+    status: str,
+    resolved_by_session_id: str | None = None,
+    resolved_at: str | None = None,
+    superseded_by: str | None = None,
+) -> bool:
+    """Update the lifecycle status of an observation.
+
+    Args:
+        store: The ActivityStore instance.
+        observation_id: The observation ID.
+        status: New status (active, resolved, superseded).
+        resolved_by_session_id: Session that resolved this observation.
+        resolved_at: ISO timestamp of resolution.
+        superseded_by: Observation ID that supersedes this one.
+
+    Returns:
+        True if the observation was found and updated.
+    """
+    with store._transaction() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE memory_observations
+            SET status = ?,
+                resolved_by_session_id = COALESCE(?, resolved_by_session_id),
+                resolved_at = COALESCE(?, resolved_at),
+                superseded_by = COALESCE(?, superseded_by)
+            WHERE id = ?
+            """,
+            (status, resolved_by_session_id, resolved_at, superseded_by, observation_id),
+        )
+        updated = cursor.rowcount > 0
+
+    if updated:
+        logger.debug(f"Updated observation {observation_id} status to {status}")
+    else:
+        logger.warning(f"Observation {observation_id} not found for status update")
+    return updated
+
+
+def get_observations_by_session(
+    store: ActivityStore,
+    session_id: str,
+    status: str | None = None,
+) -> list[StoredObservation]:
+    """Get all observations for a session, optionally filtered by status.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: The session ID.
+        status: Filter by status (active, resolved, superseded). None for all.
+
+    Returns:
+        List of observations for the session.
+    """
+    conn = store._get_connection()
+    if status:
+        cursor = conn.execute(
+            "SELECT * FROM memory_observations WHERE session_id = ? AND status = ? "
+            "ORDER BY created_at_epoch",
+            (session_id, status),
+        )
+    else:
+        cursor = conn.execute(
+            "SELECT * FROM memory_observations WHERE session_id = ? " "ORDER BY created_at_epoch",
+            (session_id,),
+        )
+    return [StoredObservation.from_row(row) for row in cursor.fetchall()]
+
+
+def count_observations_by_status(store: ActivityStore) -> dict[str, int]:
+    """Count observations grouped by lifecycle status.
+
+    Args:
+        store: The ActivityStore instance.
+
+    Returns:
+        Dictionary mapping status to count, e.g. {"active": 42, "resolved": 10}.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT COALESCE(status, 'active') as status, COUNT(*) as count "
+        "FROM memory_observations GROUP BY COALESCE(status, 'active')"
+    )
+    return {row[0]: row[1] for row in cursor.fetchall()}
+
+
+def get_active_observations(
+    store: ActivityStore,
+    limit: int = 100,
+) -> list[StoredObservation]:
+    """Get active observations ordered oldest-first.
+
+    Used by staleness detection to find observations that may have been
+    addressed in later sessions.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum observations to return.
+
+    Returns:
+        List of active StoredObservation entries, oldest first.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM memory_observations
+        WHERE COALESCE(status, 'active') = 'active'
+        ORDER BY created_at_epoch ASC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [StoredObservation.from_row(row) for row in cursor.fetchall()]
+
+
+def find_later_edit_session(
+    store: ActivityStore,
+    file_path: str,
+    after_epoch: float,
+    exclude_session_id: str,
+) -> str | None:
+    """Check if a file was edited in a later session.
+
+    Used by staleness heuristics to detect when an observation's context
+    file has been modified by subsequent work.
+
+    Args:
+        store: The ActivityStore instance.
+        file_path: File path to check for later edits.
+        after_epoch: Only consider edits after this Unix timestamp.
+        exclude_session_id: Session to exclude (the observation's own session).
+
+    Returns:
+        Session ID that edited the file, or None if no later edits found.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT DISTINCT a.session_id
+        FROM activities a
+        WHERE a.file_path = ?
+          AND a.timestamp_epoch > ?
+          AND a.session_id != ?
+          AND a.tool_name IN ('Edit', 'MultiEdit', 'Write')
+        LIMIT 1
+        """,
+        (file_path, after_epoch, exclude_session_id),
+    )
+    row = cursor.fetchone()
+    return row[0] if row else None

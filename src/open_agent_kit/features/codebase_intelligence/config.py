@@ -19,6 +19,14 @@ import yaml
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
+    AUTO_RESOLVE_CONFIG_KEY,
+    AUTO_RESOLVE_SEARCH_LIMIT,
+    AUTO_RESOLVE_SEARCH_LIMIT_MAX,
+    AUTO_RESOLVE_SEARCH_LIMIT_MIN,
+    AUTO_RESOLVE_SIMILARITY_MAX,
+    AUTO_RESOLVE_SIMILARITY_MIN,
+    AUTO_RESOLVE_SIMILARITY_THRESHOLD,
+    AUTO_RESOLVE_SIMILARITY_THRESHOLD_NO_CONTEXT,
     BACKUP_AUTO_ENABLED_DEFAULT,
     BACKUP_CONFIG_KEY,
     BACKUP_INCLUDE_ACTIVITIES_DEFAULT,
@@ -28,8 +36,17 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     BACKUP_ON_UPGRADE_DEFAULT,
     CI_CLI_COMMAND_DEFAULT,
     CI_CLI_COMMAND_VALIDATION_PATTERN,
+    CI_CONFIG_KEY_AGENTS,
     CI_CONFIG_KEY_CLI_COMMAND,
+    CI_CONFIG_KEY_EMBEDDING,
+    CI_CONFIG_KEY_EXCLUDE_PATTERNS,
+    CI_CONFIG_KEY_INDEX_ON_STARTUP,
+    CI_CONFIG_KEY_LOG_LEVEL,
+    CI_CONFIG_KEY_LOG_ROTATION,
+    CI_CONFIG_KEY_SESSION_QUALITY,
+    CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TUNNEL,
+    CI_CONFIG_KEY_WATCH_FILES,
     CI_CONFIG_TUNNEL_KEY_AUTO_START,
     CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
     CI_CONFIG_TUNNEL_KEY_NGROK_PATH,
@@ -39,6 +56,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_AGENT_MAX_TURNS,
     DEFAULT_AGENT_TIMEOUT_SECONDS,
     DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    DEFAULT_BACKGROUND_PROCESSING_WORKERS,
     DEFAULT_BASE_URL,
     DEFAULT_EXECUTOR_CACHE_SIZE,
     DEFAULT_LOG_BACKUP_COUNT,
@@ -57,12 +75,14 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     MAX_AGENT_MAX_TURNS,
     MAX_AGENT_TIMEOUT_SECONDS,
     MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    MAX_BACKGROUND_PROCESSING_WORKERS,
     MAX_EXECUTOR_CACHE_SIZE,
     MAX_LOG_BACKUP_COUNT,
     MAX_LOG_MAX_SIZE_MB,
     MAX_SCHEDULER_INTERVAL_SECONDS,
     MIN_AGENT_TIMEOUT_SECONDS,
     MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    MIN_BACKGROUND_PROCESSING_WORKERS,
     MIN_EXECUTOR_CACHE_SIZE,
     MIN_LOG_MAX_SIZE_MB,
     MIN_SCHEDULER_INTERVAL_SECONDS,
@@ -542,6 +562,7 @@ class AgentConfig:
         scheduler_interval_seconds: Interval between scheduler checks for due schedules.
         executor_cache_size: Max runs to keep in executor's in-memory cache.
         background_processing_interval_seconds: Interval for activity processor background tasks.
+        background_processing_workers: Number of parallel threads for batch processing.
         provider_type: API provider type (cloud, ollama, lmstudio, bedrock, openrouter).
         provider_base_url: Base URL for the provider API (for local providers).
         provider_model: Default model to use for agent execution.
@@ -564,6 +585,7 @@ class AgentConfig:
     scheduler_interval_seconds: int = DEFAULT_SCHEDULER_INTERVAL_SECONDS
     executor_cache_size: int = DEFAULT_EXECUTOR_CACHE_SIZE
     background_processing_interval_seconds: int = DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS
+    background_processing_workers: int = DEFAULT_BACKGROUND_PROCESSING_WORKERS
     # Provider configuration for agent execution
     provider_type: str = "cloud"
     provider_base_url: str | None = None
@@ -654,6 +676,23 @@ class AgentConfig:
                 value=self.background_processing_interval_seconds,
                 expected=f"<= {MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
             )
+        # Validate background processing workers
+        if self.background_processing_workers < MIN_BACKGROUND_PROCESSING_WORKERS:
+            raise ValidationError(
+                f"background_processing_workers must be at least "
+                f"{MIN_BACKGROUND_PROCESSING_WORKERS}",
+                field="background_processing_workers",
+                value=self.background_processing_workers,
+                expected=f">= {MIN_BACKGROUND_PROCESSING_WORKERS}",
+            )
+        if self.background_processing_workers > MAX_BACKGROUND_PROCESSING_WORKERS:
+            raise ValidationError(
+                f"background_processing_workers must be at most "
+                f"{MAX_BACKGROUND_PROCESSING_WORKERS}",
+                field="background_processing_workers",
+                value=self.background_processing_workers,
+                expected=f"<= {MAX_BACKGROUND_PROCESSING_WORKERS}",
+            )
         # Validate provider type
         valid_provider_types = {"cloud", "ollama", "lmstudio", "bedrock", "openrouter"}
         if self.provider_type not in valid_provider_types:
@@ -686,6 +725,10 @@ class AgentConfig:
                 "background_processing_interval_seconds",
                 DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
             ),
+            background_processing_workers=data.get(
+                "background_processing_workers",
+                DEFAULT_BACKGROUND_PROCESSING_WORKERS,
+            ),
             provider_type=data.get("provider_type", "cloud"),
             provider_base_url=data.get("provider_base_url"),
             provider_model=data.get("provider_model"),
@@ -700,6 +743,7 @@ class AgentConfig:
             "scheduler_interval_seconds": self.scheduler_interval_seconds,
             "executor_cache_size": self.executor_cache_size,
             "background_processing_interval_seconds": self.background_processing_interval_seconds,
+            "background_processing_workers": self.background_processing_workers,
             "provider_type": self.provider_type,
             "provider_base_url": self.provider_base_url,
             "provider_model": self.provider_model,
@@ -796,6 +840,96 @@ class SessionQualityConfig:
         return {
             "min_activities": self.min_activities,
             "stale_timeout_seconds": self.stale_timeout_seconds,
+        }
+
+
+@dataclass
+class AutoResolveConfig:
+    """Configuration for automatic observation supersession.
+
+    When a new observation is stored, the system searches for semantically
+    similar active observations and marks them as superseded.
+
+    Attributes:
+        enabled: Whether auto-resolve is enabled.
+        similarity_threshold: Similarity threshold for observations with matching context.
+        similarity_threshold_no_context: Similarity threshold when context is absent.
+        search_limit: Maximum candidates to search per new observation.
+    """
+
+    enabled: bool = True
+    similarity_threshold: float = AUTO_RESOLVE_SIMILARITY_THRESHOLD
+    similarity_threshold_no_context: float = AUTO_RESOLVE_SIMILARITY_THRESHOLD_NO_CONTEXT
+    search_limit: int = AUTO_RESOLVE_SEARCH_LIMIT
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate configuration values.
+
+        Raises:
+            ValidationError: If any configuration value is invalid.
+        """
+        for field_name, value in [
+            ("similarity_threshold", self.similarity_threshold),
+            ("similarity_threshold_no_context", self.similarity_threshold_no_context),
+        ]:
+            if not (AUTO_RESOLVE_SIMILARITY_MIN <= value <= AUTO_RESOLVE_SIMILARITY_MAX):
+                raise ValidationError(
+                    f"{field_name} must be between {AUTO_RESOLVE_SIMILARITY_MIN} "
+                    f"and {AUTO_RESOLVE_SIMILARITY_MAX}",
+                    field=field_name,
+                    value=value,
+                    expected=f">= {AUTO_RESOLVE_SIMILARITY_MIN} and <= {AUTO_RESOLVE_SIMILARITY_MAX}",
+                )
+        if self.similarity_threshold_no_context < self.similarity_threshold:
+            raise ValidationError(
+                "similarity_threshold_no_context must be >= similarity_threshold",
+                field="similarity_threshold_no_context",
+                value=self.similarity_threshold_no_context,
+                expected=f">= {self.similarity_threshold}",
+            )
+        if not (
+            AUTO_RESOLVE_SEARCH_LIMIT_MIN <= self.search_limit <= AUTO_RESOLVE_SEARCH_LIMIT_MAX
+        ):
+            raise ValidationError(
+                f"search_limit must be between {AUTO_RESOLVE_SEARCH_LIMIT_MIN} "
+                f"and {AUTO_RESOLVE_SEARCH_LIMIT_MAX}",
+                field="search_limit",
+                value=self.search_limit,
+                expected=f">= {AUTO_RESOLVE_SEARCH_LIMIT_MIN} and <= {AUTO_RESOLVE_SEARCH_LIMIT_MAX}",
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AutoResolveConfig":
+        """Create config from dictionary.
+
+        Args:
+            data: Configuration dictionary.
+
+        Returns:
+            AutoResolveConfig instance.
+        """
+        return cls(
+            enabled=data.get("enabled", True),
+            similarity_threshold=data.get(
+                "similarity_threshold", AUTO_RESOLVE_SIMILARITY_THRESHOLD
+            ),
+            similarity_threshold_no_context=data.get(
+                "similarity_threshold_no_context", AUTO_RESOLVE_SIMILARITY_THRESHOLD_NO_CONTEXT
+            ),
+            search_limit=data.get("search_limit", AUTO_RESOLVE_SEARCH_LIMIT),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "enabled": self.enabled,
+            "similarity_threshold": self.similarity_threshold,
+            "similarity_threshold_no_context": self.similarity_threshold_no_context,
+            "search_limit": self.search_limit,
         }
 
 
@@ -1023,6 +1157,7 @@ class CIConfig:
         session_quality: Session quality threshold configuration.
         tunnel: Tunnel sharing configuration.
         backup: Backup behavior configuration.
+        auto_resolve: Auto-resolve (supersession) configuration.
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
@@ -1037,6 +1172,7 @@ class CIConfig:
     session_quality: SessionQualityConfig = field(default_factory=SessionQualityConfig)
     tunnel: TunnelConfig = field(default_factory=TunnelConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    auto_resolve: AutoResolveConfig = field(default_factory=AutoResolveConfig)
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
@@ -1058,7 +1194,7 @@ class CIConfig:
         if self.log_level.upper() not in VALID_LOG_LEVELS:
             raise ValidationError(
                 f"Invalid log level: {self.log_level}",
-                field="log_level",
+                field=CI_CONFIG_KEY_LOG_LEVEL,
                 value=self.log_level,
                 expected=f"one of {VALID_LOG_LEVELS}",
             )
@@ -1092,13 +1228,14 @@ class CIConfig:
         Raises:
             ValidationError: If configuration values are invalid.
         """
-        embedding_data = data.get("embedding", {})
-        summarization_data = data.get("summarization", {})
-        agents_data = data.get("agents", {})
-        session_quality_data = data.get("session_quality", {})
+        embedding_data = data.get(CI_CONFIG_KEY_EMBEDDING, {})
+        summarization_data = data.get(CI_CONFIG_KEY_SUMMARIZATION, {})
+        agents_data = data.get(CI_CONFIG_KEY_AGENTS, {})
+        session_quality_data = data.get(CI_CONFIG_KEY_SESSION_QUALITY, {})
         tunnel_data = data.get(CI_CONFIG_KEY_TUNNEL, {})
         backup_data = data.get(BACKUP_CONFIG_KEY, {})
-        log_rotation_data = data.get("log_rotation", {})
+        auto_resolve_data = data.get(AUTO_RESOLVE_CONFIG_KEY, {})
+        log_rotation_data = data.get(CI_CONFIG_KEY_LOG_ROTATION, {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
             summarization=SummarizationConfig.from_dict(summarization_data),
@@ -1106,29 +1243,33 @@ class CIConfig:
             session_quality=SessionQualityConfig.from_dict(session_quality_data),
             tunnel=TunnelConfig.from_dict(tunnel_data),
             backup=BackupConfig.from_dict(backup_data),
-            index_on_startup=data.get("index_on_startup", True),
-            watch_files=data.get("watch_files", True),
-            exclude_patterns=data.get("exclude_patterns", DEFAULT_EXCLUDE_PATTERNS.copy()),
+            auto_resolve=AutoResolveConfig.from_dict(auto_resolve_data),
+            index_on_startup=data.get(CI_CONFIG_KEY_INDEX_ON_STARTUP, True),
+            watch_files=data.get(CI_CONFIG_KEY_WATCH_FILES, True),
+            exclude_patterns=data.get(
+                CI_CONFIG_KEY_EXCLUDE_PATTERNS, DEFAULT_EXCLUDE_PATTERNS.copy()
+            ),
             cli_command=data.get(CI_CONFIG_KEY_CLI_COMMAND, CI_CLI_COMMAND_DEFAULT),
-            log_level=data.get("log_level", LOG_LEVEL_INFO),
+            log_level=data.get(CI_CONFIG_KEY_LOG_LEVEL, LOG_LEVEL_INFO),
             log_rotation=LogRotationConfig.from_dict(log_rotation_data),
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            "embedding": self.embedding.to_dict(),
-            "summarization": self.summarization.to_dict(),
-            "agents": self.agents.to_dict(),
-            "session_quality": self.session_quality.to_dict(),
+            CI_CONFIG_KEY_EMBEDDING: self.embedding.to_dict(),
+            CI_CONFIG_KEY_SUMMARIZATION: self.summarization.to_dict(),
+            CI_CONFIG_KEY_AGENTS: self.agents.to_dict(),
+            CI_CONFIG_KEY_SESSION_QUALITY: self.session_quality.to_dict(),
             CI_CONFIG_KEY_TUNNEL: self.tunnel.to_dict(),
             BACKUP_CONFIG_KEY: self.backup.to_dict(),
-            "index_on_startup": self.index_on_startup,
-            "watch_files": self.watch_files,
-            "exclude_patterns": self.exclude_patterns,
+            AUTO_RESOLVE_CONFIG_KEY: self.auto_resolve.to_dict(),
+            CI_CONFIG_KEY_INDEX_ON_STARTUP: self.index_on_startup,
+            CI_CONFIG_KEY_WATCH_FILES: self.watch_files,
+            CI_CONFIG_KEY_EXCLUDE_PATTERNS: self.exclude_patterns,
             CI_CONFIG_KEY_CLI_COMMAND: self.cli_command,
-            "log_level": self.log_level,
-            "log_rotation": self.log_rotation.to_dict(),
+            CI_CONFIG_KEY_LOG_LEVEL: self.log_level,
+            CI_CONFIG_KEY_LOG_ROTATION: self.log_rotation.to_dict(),
         }
 
     def get_combined_exclude_patterns(self) -> list[str]:
@@ -1187,17 +1328,17 @@ class CIConfig:
 # Everything NOT listed here is project-classified (team-shared) by default.
 USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
     {
-        "embedding",  # Model choice + dims are machine-dependent; vector DB is local
-        "summarization",  # LLM model availability varies per machine
-        "agents.provider_type",  # Agent LLM backend varies per machine
-        "agents.provider_base_url",  # Agent LLM backend varies per machine
-        "agents.provider_model",  # Agent LLM backend varies per machine
-        "tunnel",  # Tunnel provider/paths are machine-local
-        "log_level",  # Personal debugging preference
-        "log_rotation",  # Machine-local log management
-        "backup.auto_enabled",  # Personal preference for auto-backup
-        "backup.include_activities",  # Personal preference for backup scope
-        "backup.interval_minutes",  # Personal preference for backup frequency
+        CI_CONFIG_KEY_EMBEDDING,  # Model choice + dims are machine-dependent; vector DB is local
+        CI_CONFIG_KEY_SUMMARIZATION,  # LLM model availability varies per machine
+        f"{CI_CONFIG_KEY_AGENTS}.provider_type",  # Agent LLM backend varies per machine
+        f"{CI_CONFIG_KEY_AGENTS}.provider_base_url",  # Agent LLM backend varies per machine
+        f"{CI_CONFIG_KEY_AGENTS}.provider_model",  # Agent LLM backend varies per machine
+        CI_CONFIG_KEY_TUNNEL,  # Tunnel provider/paths are machine-local
+        CI_CONFIG_KEY_LOG_LEVEL,  # Personal debugging preference
+        CI_CONFIG_KEY_LOG_ROTATION,  # Machine-local log management
+        f"{BACKUP_CONFIG_KEY}.auto_enabled",  # Personal preference for auto-backup
+        f"{BACKUP_CONFIG_KEY}.include_activities",  # Personal preference for backup scope
+        f"{BACKUP_CONFIG_KEY}.interval_minutes",  # Personal preference for backup frequency
     }
 )
 
@@ -1491,18 +1632,19 @@ def get_config_origins(project_root: Path) -> dict[str, str]:
 
     # All top-level sections in CIConfig
     all_sections = [
-        "embedding",
-        "summarization",
-        "agents",
-        "session_quality",
-        "tunnel",
-        "backup",
-        "index_on_startup",
-        "watch_files",
-        "exclude_patterns",
+        CI_CONFIG_KEY_EMBEDDING,
+        CI_CONFIG_KEY_SUMMARIZATION,
+        CI_CONFIG_KEY_AGENTS,
+        CI_CONFIG_KEY_SESSION_QUALITY,
+        CI_CONFIG_KEY_TUNNEL,
+        BACKUP_CONFIG_KEY,
+        AUTO_RESOLVE_CONFIG_KEY,
+        CI_CONFIG_KEY_INDEX_ON_STARTUP,
+        CI_CONFIG_KEY_WATCH_FILES,
+        CI_CONFIG_KEY_EXCLUDE_PATTERNS,
         CI_CONFIG_KEY_CLI_COMMAND,
-        "log_level",
-        "log_rotation",
+        CI_CONFIG_KEY_LOG_LEVEL,
+        CI_CONFIG_KEY_LOG_ROTATION,
     ]
 
     origins: dict[str, str] = {}

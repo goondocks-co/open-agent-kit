@@ -29,6 +29,7 @@ export interface MemoryResult {
     summary: string;
     relevance: number;
     confidence: ConfidenceLevel;
+    status?: string;
 }
 
 export interface PlanResult {
@@ -96,12 +97,13 @@ export function useSearch(
     query: string,
     confidenceFilter: ConfidenceFilter = "all",
     applyDocTypeWeights: boolean = true,
-    searchType: SearchType = SEARCH_TYPES.ALL
+    searchType: SearchType = SEARCH_TYPES.ALL,
+    includeResolved: boolean = false,
 ) {
     const queryResult = useQuery<SearchResponse>({
-        queryKey: ["search", query, applyDocTypeWeights, searchType],
+        queryKey: ["search", query, applyDocTypeWeights, searchType, includeResolved],
         queryFn: ({ signal }) => fetchJson(
-            `${API_ENDPOINTS.SEARCH}?query=${encodeURIComponent(query)}&apply_doc_type_weights=${applyDocTypeWeights}&search_type=${searchType}`,
+            `${API_ENDPOINTS.SEARCH}?query=${encodeURIComponent(query)}&apply_doc_type_weights=${applyDocTypeWeights}&search_type=${searchType}&include_resolved=${includeResolved}`,
             { signal }
         ),
         enabled: query.length > MIN_SEARCH_QUERY_LENGTH,

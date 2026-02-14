@@ -110,7 +110,11 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             logger.error(f"CI daemon auto-start error: {e}")
             return False
 
-    def _call_daemon(endpoint: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _call_daemon(
+        endpoint: str,
+        data: dict[str, Any] | None = None,
+        method: str | None = None,
+    ) -> dict[str, Any]:
         """Call the CI daemon REST API.
 
         Resilient to daemon restarts: reads the auth token fresh from disk
@@ -120,7 +124,9 @@ def create_mcp_server(project_root: Path) -> FastMCP:
 
         Args:
             endpoint: API endpoint path (e.g., "/api/search")
-            data: JSON data to send (for POST requests)
+            data: JSON data to send (for POST/PUT requests)
+            method: HTTP method override ('GET', 'POST', 'PUT'). If None,
+                defaults to POST when data is provided, GET otherwise.
 
         Returns:
             Response JSON data.
@@ -136,7 +142,15 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             if token:
                 req_headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {token}"
             with httpx.Client(timeout=30.0) as client:
-                if data is not None:
+                # Determine HTTP method
+                resolved_method = method
+                if resolved_method is None:
+                    resolved_method = "POST" if data is not None else "GET"
+                resolved_method = resolved_method.upper()
+
+                if resolved_method == "PUT":
+                    response = client.put(url, json=data, headers=req_headers)
+                elif resolved_method == "POST":
                     response = client.post(url, json=data, headers=req_headers)
                 else:
                     response = client.get(url, headers=req_headers)
@@ -188,6 +202,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         query: str,
         search_type: str = "all",
         limit: int = 10,
+        include_resolved: bool = False,
     ) -> str:
         """Search the codebase and project memories using semantic similarity.
 
@@ -198,6 +213,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             query: Natural language search query (e.g., 'authentication middleware')
             search_type: Search code, memories, or both. Options: 'all', 'code', 'memory'
             limit: Maximum results to return (1-50)
+            include_resolved: If True, include resolved/superseded memories in results
 
         Returns:
             JSON string with search results containing code and memory matches.
@@ -208,6 +224,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
                 "query": query,
                 "search_type": search_type,
                 "limit": min(max(1, limit), 50),
+                "include_resolved": include_resolved,
             },
         )
         return json.dumps(result)
@@ -275,8 +292,32 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         )
         return json.dumps(result)
 
-    # Note: Keeping tools minimal (3 tools) to avoid context bloat for agents
-    # oak_status is available via CLI (oak ci status) but not exposed as MCP tool
+    @mcp.tool()
+    def oak_resolve_memory(
+        id: str,
+        status: str = "resolved",
+        reason: str | None = None,
+    ) -> str:
+        """Mark a memory observation as resolved or superseded.
+
+        Use this after completing work that addresses a gotcha, fixing a bug that
+        was tracked as an observation, or when a newer observation replaces an older one.
+
+        Args:
+            id: The observation ID to resolve.
+            status: New status - 'resolved' (default) or 'superseded'.
+            reason: Optional reason for resolution.
+
+        Returns:
+            JSON result of the status update.
+        """
+        data: dict[str, Any] = {"status": status}
+        if reason:
+            data["reason"] = reason
+        result = _call_daemon(f"/api/memories/{id}/status", data=data, method="PUT")
+        return json.dumps(result)
+
+    # Note: oak_status is available via CLI (oak ci status) but not exposed as MCP tool
 
     return mcp
 

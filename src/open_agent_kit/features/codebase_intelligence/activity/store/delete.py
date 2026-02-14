@@ -50,6 +50,97 @@ def get_batch_observation_ids(store: ActivityStore, batch_id: int) -> list[str]:
     return [row[0] for row in cursor.fetchall()]
 
 
+def delete_batch_observations(store: ActivityStore, batch_id: int) -> list[str]:
+    """Delete all observations for a prompt batch from SQLite.
+
+    Used before reprocessing a batch to prevent duplicate observations.
+    Returns the deleted IDs so the caller can also clean ChromaDB.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_id: Prompt batch ID whose observations should be deleted.
+
+    Returns:
+        List of deleted observation IDs (for ChromaDB cleanup).
+    """
+    # Get IDs first (for ChromaDB cleanup by caller)
+    obs_ids = get_batch_observation_ids(store, batch_id)
+    if not obs_ids:
+        return []
+
+    with store._transaction() as conn:
+        placeholders = ",".join("?" * len(obs_ids))
+        conn.execute(
+            f"DELETE FROM memory_observations WHERE id IN ({placeholders})",
+            obs_ids,
+        )
+
+    logger.info(f"Deleted {len(obs_ids)} observations for batch {batch_id} (pre-reprocessing)")
+    return obs_ids
+
+
+def delete_observations_for_batches(
+    store: ActivityStore,
+    batch_ids: list[int],
+    machine_id: str,
+) -> list[str]:
+    """Delete observations for multiple batches and reset batch flags atomically.
+
+    Collects observation IDs, deletes them from SQLite, and resets the
+    processed/classification flags on the batches — all in a single transaction.
+    Returns the deleted observation IDs so the caller can clean ChromaDB.
+
+    Args:
+        store: The ActivityStore instance.
+        batch_ids: Prompt batch IDs whose observations should be deleted.
+        machine_id: Only delete observations from this machine.
+
+    Returns:
+        List of deleted observation IDs (for ChromaDB cleanup).
+    """
+    if not batch_ids:
+        return []
+
+    conn = store._get_connection()
+    batch_placeholders = ",".join("?" * len(batch_ids))
+
+    # Collect IDs before deleting (for ChromaDB cleanup by caller)
+    cursor = conn.execute(
+        f"""
+        SELECT id FROM memory_observations
+        WHERE prompt_batch_id IN ({batch_placeholders})
+          AND source_machine_id = ?
+        """,
+        (*batch_ids, machine_id),
+    )
+    obs_ids = [row[0] for row in cursor.fetchall()]
+
+    with store._transaction() as tx_conn:
+        # Delete observations
+        if obs_ids:
+            obs_placeholders = ",".join("?" * len(obs_ids))
+            tx_conn.execute(
+                f"DELETE FROM memory_observations WHERE id IN ({obs_placeholders})",
+                obs_ids,
+            )
+
+        # Reset processed flag on batches so background processor re-extracts
+        tx_conn.execute(
+            f"""
+            UPDATE prompt_batches
+            SET processed = FALSE, classification = NULL
+            WHERE id IN ({batch_placeholders})
+            """,
+            batch_ids,
+        )
+
+    logger.info(
+        f"Deleted {len(obs_ids)} observations and reset {len(batch_ids)} batches "
+        f"for reprocessing (machine={machine_id})"
+    )
+    return obs_ids
+
+
 def delete_observation(store: ActivityStore, observation_id: str) -> bool:
     """Delete an observation from SQLite.
 
