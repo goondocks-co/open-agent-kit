@@ -96,5 +96,6 @@ The daemon exposes tools for agents via the Model Context Protocol:
 | `oak_search` | Semantic search over code, memories, and plans |
 | `oak_remember` | Store observations for future sessions |
 | `oak_context` | Get relevant context for the current task |
+| `oak_resolve_memory` | Mark observations as resolved or superseded |
 
 See the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for full parameter documentation.
