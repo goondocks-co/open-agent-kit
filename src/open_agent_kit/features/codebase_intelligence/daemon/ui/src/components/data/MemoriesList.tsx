@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMemories, useMemoryTags, useArchiveMemory, useUnarchiveMemory, useBulkMemories } from "@/hooks/use-memories";
+import { useMemories, useMemoryTags, useArchiveMemory, useUnarchiveMemory, useBulkMemories, useResolveMemory } from "@/hooks/use-memories";
 import { useDeleteMemory } from "@/hooks/use-delete";
 import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
@@ -8,7 +8,7 @@ import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
-import { BrainCircuit, Trash2, Filter, Tag, Calendar, Archive, ArchiveRestore, CheckSquare, Square, X, Plus, Minus, Maximize2 } from "lucide-react";
+import { BrainCircuit, Trash2, Filter, Tag, Calendar, Archive, ArchiveRestore, CheckSquare, Square, X, Plus, Minus, Maximize2, CheckCircle2 } from "lucide-react";
 import {
     DELETE_CONFIRMATIONS,
     MEMORY_TYPE_FILTER_OPTIONS,
@@ -19,8 +19,10 @@ import {
     BULK_ACTIONS,
     MEMORY_OBSERVATION_TRUNCATION_LIMIT,
     MEMORY_TYPES,
+    OBSERVATION_STATUS_FILTER_OPTIONS,
+    OBSERVATION_STATUS_BADGE_CLASSES,
 } from "@/lib/constants";
-import type { MemoryTypeFilter, MemoryType, DateRangePreset, BulkAction } from "@/lib/constants";
+import type { MemoryTypeFilter, MemoryType, DateRangePreset, BulkAction, ObservationStatusFilter, ObservationStatus } from "@/lib/constants";
 
 import type { MemoryListItem } from "@/hooks/use-memories";
 
@@ -32,6 +34,7 @@ export default function MemoriesList() {
     const [selectedTag, setSelectedTag] = useState<string>("");
     const [dateRange, setDateRange] = useState<DateRangePreset>("all");
     const [includeArchived, setIncludeArchived] = useState(false);
+    const [statusFilter, setStatusFilter] = useState<ObservationStatusFilter>("active");
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkTagInput, setBulkTagInput] = useState("");
     const [showTagInput, setShowTagInput] = useState<"add" | "remove" | null>(null);
@@ -45,12 +48,15 @@ export default function MemoriesList() {
         tag: selectedTag,
         startDate,
         includeArchived,
+        status: statusFilter,
+        includeResolved: statusFilter === "all",
     });
     const { data: tagsData } = useMemoryTags();
     const deleteMemory = useDeleteMemory();
     const archiveMemory = useArchiveMemory();
     const unarchiveMemory = useUnarchiveMemory();
     const bulkMemories = useBulkMemories();
+    const resolveMemory = useResolveMemory();
     const { isOpen, setIsOpen, itemToDelete, openDialog, closeDialog } = useConfirmDialog();
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
     const { isOpen: isContentOpen, setIsOpen: setContentOpen, dialogContent, openDialog: openContentDialog } = useContentDialog();
@@ -93,6 +99,11 @@ export default function MemoriesList() {
         reset();
     };
 
+    const handleStatusFilterChange = (newStatus: ObservationStatusFilter) => {
+        setStatusFilter(newStatus);
+        reset();
+    };
+
     const handleArchiveClick = async (e: React.MouseEvent, memoryId: string) => {
         e.preventDefault();
         e.stopPropagation();
@@ -107,15 +118,23 @@ export default function MemoriesList() {
         reset();
     };
 
+    const handleResolveClick = async (e: React.MouseEvent, memoryId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await resolveMemory.mutateAsync(memoryId);
+        reset();
+    };
+
     const clearAllFilters = () => {
         setMemoryType("all");
         setSelectedTag("");
         setDateRange("all");
         setIncludeArchived(false);
+        setStatusFilter("active");
         reset();
     };
 
-    const hasActiveFilters = memoryType !== "all" || selectedTag !== "" || dateRange !== "all" || includeArchived;
+    const hasActiveFilters = memoryType !== "all" || selectedTag !== "" || dateRange !== "all" || includeArchived || statusFilter !== "active";
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
@@ -190,6 +209,11 @@ export default function MemoriesList() {
         return MEMORY_TYPE_BADGE_CLASSES[type as MemoryType] || "bg-gray-500/10 text-gray-600";
     };
 
+    // Helper to get badge class for observation status
+    const getStatusBadgeClass = (status: string): string => {
+        return OBSERVATION_STATUS_BADGE_CLASSES[status as ObservationStatus] || "bg-gray-500/10 text-gray-500";
+    };
+
     if (allMemories.length === 0) {
         return (
             <div className="space-y-4">
@@ -203,6 +227,16 @@ export default function MemoriesList() {
                         title="Filter by memory type"
                     >
                         {MEMORY_TYPE_FILTER_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                    <select
+                        className="bg-background border border-input rounded-md px-3 py-1.5 text-sm font-medium"
+                        value={statusFilter}
+                        onChange={(e) => handleStatusFilterChange(e.target.value as ObservationStatusFilter)}
+                        title="Filter by status"
+                    >
+                        {OBSERVATION_STATUS_FILTER_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                     </select>
@@ -292,6 +326,16 @@ export default function MemoriesList() {
                             <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                     </select>
+                    <select
+                        className="bg-background border border-input rounded-md px-3 py-1.5 text-sm font-medium"
+                        value={statusFilter}
+                        onChange={(e) => handleStatusFilterChange(e.target.value as ObservationStatusFilter)}
+                        title="Filter by status"
+                    >
+                        {OBSERVATION_STATUS_FILTER_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
                     <Tag className="w-4 h-4 text-muted-foreground ml-2" />
                     <select
                         className="bg-background border border-input rounded-md px-3 py-1.5 text-sm font-medium"
@@ -372,6 +416,14 @@ export default function MemoriesList() {
                         >
                             <ArchiveRestore className="w-3 h-3" />
                             Unarchive
+                        </button>
+                        <button
+                            onClick={() => handleBulkAction(BULK_ACTIONS.RESOLVE)}
+                            disabled={bulkMemories.isPending}
+                            className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-green-500/10 text-green-600 hover:bg-green-500/20"
+                        >
+                            <CheckCircle2 className="w-3 h-3" />
+                            Resolve
                         </button>
                         <div className="relative">
                             {showTagInput === "add" ? (
@@ -468,7 +520,7 @@ export default function MemoriesList() {
 
             <div className="grid gap-4 md:grid-cols-2">
                 {allMemories.map((mem) => (
-                    <Card key={mem.id} className={`overflow-hidden group relative ${mem.archived ? "opacity-60" : ""} ${selectedIds.has(mem.id) ? "ring-2 ring-primary" : ""}`}>
+                    <Card key={mem.id} className={`overflow-hidden group relative ${mem.archived || (mem.status && mem.status !== "active") ? "opacity-60" : ""} ${selectedIds.has(mem.id) ? "ring-2 ring-primary" : ""}`}>
                         <CardHeader className="py-3 bg-muted/30">
                             <CardTitle className="text-sm font-medium flex items-center justify-between">
                                 <span className="flex items-center gap-2">
@@ -493,9 +545,25 @@ export default function MemoriesList() {
                                             archived
                                         </span>
                                     )}
+                                    {mem.status && mem.status !== "active" && (
+                                        <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusBadgeClass(mem.status)}`}>
+                                            {mem.status}
+                                        </span>
+                                    )}
                                 </span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs text-muted-foreground">{formatDate(mem.created_at)}</span>
+                                    {!mem.archived && mem.status === "active" && (
+                                        <button
+                                            onClick={(e) => handleResolveClick(e, mem.id)}
+                                            className="p-1 rounded text-muted-foreground hover:text-green-500 hover:bg-green-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                                            title="Mark as resolved"
+                                            aria-label="Mark as resolved"
+                                            disabled={resolveMemory.isPending}
+                                        >
+                                            <CheckCircle2 className="w-3 h-3" />
+                                        </button>
+                                    )}
                                     {mem.archived ? (
                                         <button
                                             onClick={(e) => handleUnarchiveClick(e, mem.id)}

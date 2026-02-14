@@ -419,6 +419,7 @@ class RetrievalEngine:
         search_type: str = SEARCH_TYPE_ALL,
         limit: int | None = None,
         apply_doc_type_weights: bool = True,
+        include_resolved: bool = False,
     ) -> SearchResult:
         """Search code and/or memories.
 
@@ -475,9 +476,11 @@ class RetrievalEngine:
 
         if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_MEMORY):
             # Search memories, excluding plans (they have their own category)
+            memory_filters = None if include_resolved else {"status": "active"}
             memory_results = self.store.search_memory(
                 query=query,
                 limit=limit,
+                metadata_filters=memory_filters,
             )
             # Filter out plans from memory results (they go in the plans category)
             memory_results = [r for r in memory_results if r.get("memory_type") != MEMORY_TYPE_PLAN]
@@ -497,6 +500,7 @@ class RetrievalEngine:
                         "confidence": (
                             memory_confidences[i].value if memory_confidences else "medium"
                         ),
+                        "status": r.get("status", "active"),
                     }
                 )
                 result.total_tokens_available += r.get("token_estimate", 0)
@@ -674,10 +678,11 @@ class RetrievalEngine:
             )
             result.total_tokens += tokens
 
-        # Search for relevant memories
+        # Search for relevant memories (always filter to active)
         memory_results = self.store.search_memory(
             query=search_query,
             limit=DEFAULT_CONTEXT_MEMORY_LIMIT,
+            metadata_filters={"status": "active"},
         )
 
         for r in memory_results:
@@ -748,6 +753,22 @@ class RetrievalEngine:
         """
         return self.store.archive_memory(memory_id, archived)
 
+    def resolve_memory(
+        self,
+        memory_id: str,
+        status: str = "resolved",
+    ) -> bool:
+        """Update the lifecycle status of a memory in ChromaDB.
+
+        Args:
+            memory_id: ID of the memory to resolve.
+            status: New status (resolved, superseded).
+
+        Returns:
+            True if the memory was found and updated.
+        """
+        return self.store.update_memory_status(memory_id, status)
+
     def list_memories(
         self,
         limit: int = DEFAULT_MEMORY_LIST_LIMIT,
@@ -758,6 +779,8 @@ class RetrievalEngine:
         start_date: str | None = None,
         end_date: str | None = None,
         include_archived: bool = False,
+        status: str | None = "active",
+        include_resolved: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         """List stored memories with pagination.
 
@@ -772,6 +795,8 @@ class RetrievalEngine:
             start_date: Filter to memories created on or after this date (ISO format).
             end_date: Filter to memories created on or before this date (ISO format).
             include_archived: If True, include archived memories. Default False.
+            status: Filter to this observation status. Default "active".
+            include_resolved: If True, include all statuses. Default False.
 
         Returns:
             Tuple of (memories list, total count).
@@ -785,4 +810,6 @@ class RetrievalEngine:
             start_date=start_date,
             end_date=end_date,
             include_archived=include_archived,
+            status=status,
+            include_resolved=include_resolved,
         )

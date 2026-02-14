@@ -592,6 +592,10 @@ class ActivityStore:
         """Mark all observations as not embedded."""
         return observations.mark_all_observations_unembedded(self)
 
+    def count_observations_for_batches(self, batch_ids: list[int], machine_id: str) -> int:
+        """Count observations linked to specific batches from a given machine."""
+        return observations.count_observations_for_batches(self, batch_ids, machine_id)
+
     def count_observations(self) -> int:
         """Count total observations in SQLite."""
         return observations.count_observations(self)
@@ -611,6 +615,29 @@ class ActivityStore:
     def count_observations_by_type(self, memory_type: str) -> int:
         """Count observations by memory_type."""
         return observations.count_observations_by_type(self, memory_type)
+
+    def update_observation_status(
+        self,
+        observation_id: str,
+        status: str,
+        resolved_by_session_id: str | None = None,
+        resolved_at: str | None = None,
+        superseded_by: str | None = None,
+    ) -> bool:
+        """Update observation lifecycle status."""
+        return observations.update_observation_status(
+            self, observation_id, status, resolved_by_session_id, resolved_at, superseded_by
+        )
+
+    def get_observations_by_session(
+        self, session_id: str, status: str | None = None
+    ) -> list[StoredObservation]:
+        """Get observations for a session, optionally filtered by status."""
+        return observations.get_observations_by_session(self, session_id, status)
+
+    def count_observations_by_status(self) -> dict[str, int]:
+        """Count observations grouped by lifecycle status."""
+        return observations.count_observations_by_status(self)
 
     # ==========================================================================
     # Statistics operations - delegate to stats module
@@ -737,6 +764,14 @@ class ActivityStore:
     # ==========================================================================
     # Delete operations - delegate to delete module
     # ==========================================================================
+
+    def delete_batch_observations(self, batch_id: int) -> list[str]:
+        """Delete all observations for a batch (returns IDs for ChromaDB cleanup)."""
+        return delete.delete_batch_observations(self, batch_id)
+
+    def delete_observations_for_batches(self, batch_ids: list[int], machine_id: str) -> list[str]:
+        """Delete observations for multiple batches and reset batch flags atomically."""
+        return delete.delete_observations_for_batches(self, batch_ids, machine_id)
 
     def get_session_observation_ids(self, session_id: str) -> list[str]:
         """Get all observation IDs for a session."""

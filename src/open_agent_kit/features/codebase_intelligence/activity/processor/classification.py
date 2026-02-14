@@ -161,3 +161,52 @@ def select_template_by_classification(
 
     # Fallback to extraction
     return prompt_config.get_template("extraction") or prompt_config.templates[0]
+
+
+def compute_session_origin_type(
+    stats: dict[str, Any],
+    has_plan_batches: bool = False,
+) -> str:
+    """Compute the session origin type from activity statistics.
+
+    This is a deterministic classifier (no LLM) that categorizes sessions
+    based on their read/edit ratio and activity patterns.
+
+    Args:
+        stats: Session statistics dict with keys like 'reads', 'edits', 'writes'.
+        has_plan_batches: Whether the session contains plan-type batches.
+
+    Returns:
+        Session origin type: planning, investigation, implementation, or mixed.
+    """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        SESSION_ORIGIN_IMPLEMENTATION,
+        SESSION_ORIGIN_INVESTIGATION,
+        SESSION_ORIGIN_MAX_EDITS_FOR_PLANNING,
+        SESSION_ORIGIN_MIN_EDITS_FOR_IMPLEMENTATION,
+        SESSION_ORIGIN_MIXED,
+        SESSION_ORIGIN_PLANNING,
+        SESSION_ORIGIN_READ_EDIT_RATIO_THRESHOLD,
+    )
+
+    reads = stats.get("reads", 0)
+    edits = stats.get("edits", 0)
+    writes = stats.get("writes", 0)
+    total_mods = edits + writes
+    ratio = reads / max(total_mods, 1)
+
+    if has_plan_batches and total_mods <= SESSION_ORIGIN_MAX_EDITS_FOR_PLANNING:
+        return SESSION_ORIGIN_PLANNING
+
+    if (
+        ratio > SESSION_ORIGIN_READ_EDIT_RATIO_THRESHOLD
+        and total_mods <= SESSION_ORIGIN_MAX_EDITS_FOR_PLANNING
+    ):
+        return SESSION_ORIGIN_INVESTIGATION
+
+    if total_mods >= SESSION_ORIGIN_MIN_EDITS_FOR_IMPLEMENTATION:
+        if ratio > SESSION_ORIGIN_READ_EDIT_RATIO_THRESHOLD:
+            return SESSION_ORIGIN_MIXED
+        return SESSION_ORIGIN_IMPLEMENTATION
+
+    return SESSION_ORIGIN_MIXED

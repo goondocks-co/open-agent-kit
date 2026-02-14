@@ -26,6 +26,20 @@ You have four tools that expose indexed project knowledge:
 - `bug_fix` - Issues that were resolved and how
 - `trade_off` - Explicit trade-offs that were made
 
+## Observation Lifecycle Awareness
+
+Memory observations have a lifecycle status: `active`, `resolved`, or `superseded`.
+
+- **Default to `status=active`** when querying memories with `ci_memories` or `ci_search`.
+  Active observations represent current, relevant knowledge.
+- **Use `include_resolved=true`** only when generating changelogs or historical documentation
+  that needs to reference what was previously known or addressed.
+- **Resolved observations** are historical context — they document what *was* true, not what
+  *is* true. Do not treat them as current guidance.
+- **Session origin types** (`planning`, `investigation`, `implementation`, `mixed`) indicate
+  how the session that created the observation operated. Planning observations are more likely
+  to become stale after implementation work completes.
+
 **Plans (SDDs):**
 Plans are Software Design Documents created during feature planning. They contain:
 - Original requirements and intent

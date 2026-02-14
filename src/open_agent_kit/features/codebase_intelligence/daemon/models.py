@@ -70,6 +70,7 @@ class SearchRequest(BaseModel):
         default=True,
         description="Apply doc_type weighting to deprioritize i18n/config files. Disable for translation searches.",
     )
+    include_resolved: bool = False
 
 
 class DocType(str, Enum):
@@ -108,6 +109,7 @@ class MemoryResult(BaseModel):
     relevance: float
     confidence: Confidence = Confidence.MEDIUM
     created_at: datetime | None = None
+    status: str = "active"
 
 
 class PlanResult(BaseModel):
@@ -203,6 +205,8 @@ class MemoryListItem(BaseModel):
     tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     archived: bool = False
+    status: str = "active"
+    session_origin_type: str | None = None
 
 
 class MemoriesListResponse(BaseModel):
@@ -214,6 +218,23 @@ class MemoriesListResponse(BaseModel):
     offset: int = 0
 
 
+class ObservationStatus(str, Enum):
+    """Lifecycle status for memory observations."""
+
+    ACTIVE = "active"
+    RESOLVED = "resolved"
+    SUPERSEDED = "superseded"
+
+
+class SessionOriginType(str, Enum):
+    """Classification of how a session operated."""
+
+    PLANNING = "planning"
+    INVESTIGATION = "investigation"
+    IMPLEMENTATION = "implementation"
+    MIXED = "mixed"
+
+
 class BulkAction(str, Enum):
     """Supported bulk actions for memories."""
 
@@ -222,6 +243,7 @@ class BulkAction(str, Enum):
     UNARCHIVE = "unarchive"
     ADD_TAG = "add_tag"
     REMOVE_TAG = "remove_tag"
+    RESOLVE = "resolve"
 
 
 class BulkMemoriesRequest(BaseModel):
@@ -237,6 +259,32 @@ class BulkMemoriesResponse(BaseModel):
 
     success: bool = True
     affected_count: int = 0
+    message: str = ""
+
+
+class UpdateObservationStatusRequest(BaseModel):
+    """Request to update observation lifecycle status."""
+
+    status: ObservationStatus
+    resolved_by_session_id: str | None = None
+    reason: str | None = None
+    superseded_by: str | None = None
+
+
+class BulkResolveRequest(BaseModel):
+    """Request to bulk-resolve observations."""
+
+    session_id: str | None = None
+    memory_ids: list[str] | None = None
+    status: ObservationStatus = ObservationStatus.RESOLVED
+    resolved_by_session_id: str = Field(...)
+
+
+class BulkResolveResponse(BaseModel):
+    """Response from bulk-resolve operation."""
+
+    success: bool = True
+    resolved_count: int = 0
     message: str = ""
 
 

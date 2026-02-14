@@ -285,6 +285,7 @@ def format_stats_results(
     unique_files: int = 0,
     memory_count: int = 0,
     observation_count: int = 0,
+    status_breakdown: dict[str, int] | None = None,
 ) -> str:
     """Format project statistics.
 
@@ -293,6 +294,7 @@ def format_stats_results(
         unique_files: Number of unique files indexed.
         memory_count: Number of memories stored.
         observation_count: Number of observations in activity store.
+        status_breakdown: Observation counts by status (e.g. {"active": 42, "resolved": 10}).
 
     Returns:
         Formatted markdown string with stats.
@@ -308,5 +310,9 @@ def format_stats_results(
     if observation_count > 0:
         lines.append("### Activity History")
         lines.append(f"- Total observations: {observation_count}")
+        if status_breakdown:
+            lines.append("- Status breakdown:")
+            for status, count in sorted(status_breakdown.items()):
+                lines.append(f"  - {status}: {count}")
 
     return "\n".join(lines)

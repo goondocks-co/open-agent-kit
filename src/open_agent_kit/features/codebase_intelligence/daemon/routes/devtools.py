@@ -2,10 +2,10 @@ import logging
 import shutil
 import sqlite3
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.activity.store import sessions
@@ -711,6 +711,104 @@ async def cleanup_minimal_sessions() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Database error: {e}") from e
 
 
+@router.post("/api/devtools/resolve-stale-observations", dependencies=_devtools_confirm)
+async def resolve_stale_observations(
+    request: Request,
+    dry_run: bool = Query(False, description="Preview without making changes"),
+    max_observations: int = Query(
+        100, description="Maximum observations to process", ge=1, le=1000
+    ),
+) -> dict[str, Any]:
+    """Suggest and optionally resolve stale observations.
+
+    Iterates active observations and uses file overlap heuristics to suggest
+    which observations may be stale (addressed in later sessions).
+
+    Requires X-Devtools-Confirm: true header (enforced by router dependency).
+
+    This is a v1 stub — full LLM-based analysis is future work.
+    """
+    state = get_state()
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+
+    store = state.activity_store
+
+    # Get active observations, oldest first
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT id, session_id, observation, context, file_path, created_at_epoch
+        FROM memory_observations
+        WHERE COALESCE(status, 'active') = 'active'
+        ORDER BY created_at_epoch ASC
+        LIMIT ?
+        """,
+        (max_observations,),
+    )
+    rows = cursor.fetchall()
+
+    suggestions: list[dict[str, Any]] = []
+    resolved_count = 0
+
+    for row in rows:
+        obs_id = row[0]
+        obs_session_id = row[1]
+        obs_context = row[3]
+        obs_file_path = row[4]
+        obs_created_epoch = row[5]
+
+        # Heuristic: check if there are later sessions that modified the same file
+        if obs_file_path or obs_context:
+            target_path = obs_file_path or obs_context
+            later_cursor = conn.execute(
+                """
+                SELECT DISTINCT a.session_id
+                FROM activities a
+                WHERE a.file_path = ?
+                  AND a.timestamp_epoch > ?
+                  AND a.session_id != ?
+                  AND a.tool_name IN ('Edit', 'MultiEdit', 'Write')
+                LIMIT 1
+                """,
+                (target_path, obs_created_epoch, obs_session_id),
+            )
+            later_session = later_cursor.fetchone()
+
+            if later_session:
+                suggestion: dict[str, Any] = {
+                    "observation_id": obs_id,
+                    "reason": f"File {target_path} was modified in later session {later_session[0]}",
+                    "suggested_resolved_by": later_session[0],
+                }
+                suggestions.append(suggestion)
+
+                if not dry_run:
+                    resolved_at = datetime.now(UTC).isoformat()
+                    store.update_observation_status(
+                        observation_id=obs_id,
+                        status="resolved",
+                        resolved_by_session_id=later_session[0],
+                        resolved_at=resolved_at,
+                    )
+                    # Update ChromaDB metadata if vector store is available
+                    if state.vector_store:
+                        state.vector_store.update_memory_status(obs_id, "resolved")
+                    resolved_count += 1
+
+    return {
+        "dry_run": dry_run,
+        "total_scanned": len(rows),
+        "suggestions": suggestions,
+        "resolved_count": resolved_count,
+        "message": (
+            f"Found {len(suggestions)} potentially stale observations"
+            if dry_run
+            else f"Resolved {resolved_count} stale observations"
+        ),
+    }
+
+
 class ReprocessObservationsRequest(BaseModel):
     """Request model for reprocessing observations."""
 
@@ -741,11 +839,11 @@ async def reprocess_observations(
 
     The workflow:
     1. Get batch IDs based on mode (filtered by source_machine_id = current)
-    2. Delete existing observations if delete_existing=True
+    2. Delete existing observations from SQLite AND ChromaDB if delete_existing=True
     3. Reset processing flags on batches
     4. Queue batches for re-extraction in background
 
-    After reprocessing, run POST /api/devtools/rebuild-memories to sync ChromaDB.
+    ChromaDB is cleaned inline (no manual rebuild-memories step needed).
     """
     state = get_state()
     if not state.activity_store:
@@ -876,54 +974,28 @@ async def reprocess_observations(
         }
 
     # Count existing observations for these batches
-    existing_obs_count = 0
-    try:
-        placeholders = ",".join("?" * len(batch_ids))
-        cursor = conn.execute(
-            f"""
-            SELECT COUNT(*) FROM memory_observations
-            WHERE prompt_batch_id IN ({placeholders})
-              AND source_machine_id = ?
-            """,
-            (*batch_ids, machine_id),
-        )
-        existing_obs_count = cursor.fetchone()[0]
-    except sqlite3.Error:
-        pass  # Non-critical - just for reporting
+    existing_obs_count = store.count_observations_for_batches(batch_ids, machine_id)
 
     # Delete existing observations and reset batch flags
     deleted_count = 0
     if request.delete_existing:
         try:
-            with store._transaction() as tx_conn:
-                # Delete observations for these batches (only from this machine)
-                placeholders = ",".join("?" * len(batch_ids))
-                cursor = tx_conn.execute(
-                    f"""
-                    DELETE FROM memory_observations
-                    WHERE prompt_batch_id IN ({placeholders})
-                      AND source_machine_id = ?
-                    """,
-                    (*batch_ids, machine_id),
-                )
-                deleted_count = cursor.rowcount
+            old_obs_ids = store.delete_observations_for_batches(batch_ids, machine_id)
+            deleted_count = len(old_obs_ids)
 
-                # Reset processed flag on batches
-                tx_conn.execute(
-                    f"""
-                    UPDATE prompt_batches
-                    SET processed = FALSE, classification = NULL
-                    WHERE id IN ({placeholders})
-                    """,
-                    batch_ids,
-                )
+            # Clean ChromaDB so orphaned vectors don't pollute search results
+            if old_obs_ids and state.vector_store:
+                try:
+                    state.vector_store.delete_memories(old_obs_ids)
+                    logger.info(f"Cleaned {len(old_obs_ids)} observations from ChromaDB")
+                except (ValueError, RuntimeError, KeyError, AttributeError) as e:
+                    # SQLite cleanup succeeded; ChromaDB will be stale but not duplicated.
+                    # process_prompt_batch also cleans at processing time as a safety net.
+                    logger.warning(
+                        f"ChromaDB cleanup failed (will be fixed at processing time): {e}"
+                    )
 
-            logger.info(
-                f"Deleted {deleted_count} observations and reset {len(batch_ids)} batches "
-                f"for reprocessing (machine={machine_id})"
-            )
-
-        except sqlite3.Error as e:
+        except (OSError, ValueError, TypeError) as e:
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to delete observations: {e}",

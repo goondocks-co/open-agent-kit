@@ -42,6 +42,7 @@ default_task: |
   - ci_memories(type=discovery) → Verify README feature claims
   - ci_memories(type=decision) → CONTRIBUTING workflow rationale
   - ci_memories(type=bug_fix) → Check if recent fixes affect setup steps
+  - Default to active observations only (omit `include_resolved`) — root docs should reflect current state
 
   ## 4. Update Each File Within Its Boundaries
 

@@ -63,6 +63,7 @@ default_task: |
   - ci_memories(type="decision") for architectural rationale
   - ci_memories(type="gotcha") for warnings users need
   - ci_memories(type="discovery") for insights
+  - Default to active observations only (omit `include_resolved`) — feature docs should reflect current state
 
   **Write documentation:**
 

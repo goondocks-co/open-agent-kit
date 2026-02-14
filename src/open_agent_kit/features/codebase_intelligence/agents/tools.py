@@ -86,6 +86,7 @@ def create_ci_tools(
                 "query": str,  # Natural language search query
                 "search_type": str,  # 'all', 'code', 'memory', or 'plans'
                 "limit": int,  # Maximum results (1-50)
+                "include_resolved": bool,  # Include resolved/superseded memories
             },
         )
         async def ci_search(args: dict[str, Any]) -> dict[str, Any]:
@@ -117,6 +118,8 @@ def create_ci_tools(
             {
                 "memory_type": str,  # Filter by type (optional)
                 "limit": int,  # Maximum results (1-100)
+                "status": str,  # Filter by status: 'active', 'resolved', 'superseded'
+                "include_resolved": bool,  # Include all statuses
             },
         )
         async def ci_memories(args: dict[str, Any]) -> dict[str, Any]:

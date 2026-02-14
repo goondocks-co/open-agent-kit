@@ -292,10 +292,14 @@ class VectorStore:
         return search.search_code(self, query, limit)
 
     def search_memory(
-        self, query: str, limit: int = 10, memory_types: list[str] | None = None
+        self,
+        query: str,
+        limit: int = 10,
+        memory_types: list[str] | None = None,
+        metadata_filters: dict | None = None,
     ) -> list[dict]:
         """Search memory observations."""
-        return search.search_memory(self, query, limit, memory_types)
+        return search.search_memory(self, query, limit, memory_types, metadata_filters)
 
     def get_by_ids(self, ids: list[str], collection: str = "code") -> list[dict]:
         """Fetch full content by IDs."""
@@ -304,6 +308,15 @@ class VectorStore:
     # ==========================================================================
     # Management operations - delegate to management module
     # ==========================================================================
+
+    def update_memory_status(
+        self,
+        memory_id: str,
+        status: str,
+        session_origin_type: str | None = None,
+    ) -> bool:
+        """Update memory status in ChromaDB metadata."""
+        return management.update_memory_status(self, memory_id, status, session_origin_type)
 
     def archive_memory(self, memory_id: str, archived: bool = True) -> bool:
         """Archive or unarchive a memory."""
@@ -319,6 +332,8 @@ class VectorStore:
         start_date: str | None = None,
         end_date: str | None = None,
         include_archived: bool = False,
+        status: str | None = "active",
+        include_resolved: bool = False,
     ) -> tuple[list[dict], int]:
         """List memories with pagination and optional filtering."""
         return management.list_memories(
@@ -331,6 +346,8 @@ class VectorStore:
             start_date,
             end_date,
             include_archived,
+            status,
+            include_resolved,
         )
 
     def bulk_archive_memories(self, memory_ids: list[str], archived: bool = True) -> int:

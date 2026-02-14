@@ -53,16 +53,18 @@ View, search, and manage all stored observations across your project.
 ### Filtering
 
 - **By type** — Filter by memory type: `gotcha`, `bug_fix`, `decision`, `discovery`, `trade_off`, `session_summary`
+- **By status** — Filter by lifecycle status: `active` (default), `resolved`, `superseded`. By default, only active observations are shown.
 - **By tags** — Filter by user-assigned tags for organization
 
 ### Memory Actions
 
+- **Resolve** — Mark an observation as resolved when the issue it describes has been addressed. Resolved observations are hidden from default search results but preserved for historical context. Agents can also resolve observations via the `oak_resolve_memory` MCP tool.
 - **Archive / Unarchive** — Soft-hide a memory from the active list. Archived memories are preserved in the database and can be restored at any time. This is not a delete — it's a way to reduce noise while keeping the data safe.
 - **Delete** — Permanently remove a memory
-- **Bulk actions** — Select multiple memories for batch delete, archive, or tag management
+- **Bulk actions** — Select multiple memories for batch delete, archive, resolve, or tag management
 
 ![Memories with type and tag filters](../../../../assets/images/activity-memories.png)
 
 :::tip
-Archiving is the recommended way to clean up noisy memories. Unlike delete, it's reversible — you can always unarchive a memory if you need it back.
+Most observations are resolved automatically. When a new observation supersedes an older one on the same topic, OAK marks the older one as `superseded` automatically using semantic similarity matching. See [Memory — Auto-Resolve](/open-agent-kit/features/codebase-intelligence/memory/#auto-resolve-automatic-supersession) for details.
 :::

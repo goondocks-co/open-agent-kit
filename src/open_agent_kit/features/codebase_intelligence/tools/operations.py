@@ -15,6 +15,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
+    VALID_OBSERVATION_STATUSES,
 )
 from open_agent_kit.features.codebase_intelligence.tools.formatting import (
     format_context_results,
@@ -98,6 +99,7 @@ class ToolOperations:
             query=input_data.query,
             search_type=search_type,
             limit=input_data.limit,
+            include_resolved=input_data.include_resolved,
         )
 
         return format_search_results(result, query=input_data.query)
@@ -163,6 +165,8 @@ class ToolOperations:
         memories, total = self.engine.list_memories(
             limit=input_data.limit,
             memory_types=memory_types,
+            status=input_data.status,
+            include_resolved=input_data.include_resolved,
         )
 
         if not memories:
@@ -213,6 +217,34 @@ class ToolOperations:
         output += f"\n(Showing {len(sessions)} sessions)"
         return output
 
+    def resolve_memory(self, args: dict[str, Any]) -> str:
+        """Resolve a memory observation via the retrieval engine.
+
+        Args:
+            args: Dict with 'id' (required), 'status' (default 'resolved').
+
+        Returns:
+            Confirmation message string.
+
+        Raises:
+            ValueError: If ID is missing or status is invalid.
+        """
+        memory_id = args.get("id")
+        if not memory_id:
+            raise ValueError("Memory ID is required")
+
+        status = args.get("status", "resolved")
+        if status not in VALID_OBSERVATION_STATUSES:
+            raise ValueError(
+                f"Invalid status '{status}'. Must be one of: "
+                f"{', '.join(VALID_OBSERVATION_STATUSES)}"
+            )
+
+        success = self.engine.resolve_memory(memory_id, status)
+        if success:
+            return f"Memory {memory_id} marked as {status}."
+        return f"Memory {memory_id} not found or could not be updated."
+
     def get_stats(self, args: dict[str, Any] | None = None) -> str:
         """Execute project stats operation.
 
@@ -226,6 +258,7 @@ class ToolOperations:
         unique_files = 0
         memory_count = 0
         observation_count = 0
+        status_breakdown: dict[str, int] = {}
 
         if self.vector_store:
             vs_stats = self.vector_store.get_stats()
@@ -235,12 +268,14 @@ class ToolOperations:
 
         if self.activity_store:
             observation_count = self.activity_store.count_observations()
+            status_breakdown = self.activity_store.count_observations_by_status()
 
         return format_stats_results(
             code_chunks=code_chunks,
             unique_files=unique_files,
             memory_count=memory_count,
             observation_count=observation_count,
+            status_breakdown=status_breakdown,
         )
 
     def execute_query(self, args: dict[str, Any]) -> str:

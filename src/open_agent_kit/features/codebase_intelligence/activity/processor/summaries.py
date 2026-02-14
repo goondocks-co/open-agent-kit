@@ -177,6 +177,16 @@ def process_session_summary(
     # Get session stats
     stats = activity_store.get_session_stats(session_id)
 
+    # Compute session origin type for the summary
+    from open_agent_kit.features.codebase_intelligence.activity.processor.classification import (
+        compute_session_origin_type,
+    )
+
+    has_plan_batches = any(b.source_type in ("plan", "derived_plan") for b in batches)
+    session_origin_type = compute_session_origin_type(
+        stats=stats, has_plan_batches=has_plan_batches
+    )
+
     # Check if session has enough substance to summarize
     tool_calls = stats.get("activity_count", 0)
     if tool_calls < 3:
@@ -229,6 +239,7 @@ def process_session_summary(
     prompt = prompt.replace("{{tool_calls}}", str(tool_calls))
     prompt = prompt.replace("{{prompt_batches}}", prompt_batches_text)
     prompt = prompt.replace("{{plan_context}}", plan_context)
+    prompt = prompt.replace("{{session_origin_type}}", session_origin_type or "mixed")
 
     # Call LLM
     result = call_llm(prompt)
@@ -265,6 +276,7 @@ def process_session_summary(
         importance=7,  # Session summaries are moderately important
         created_at=created_at,
         embedded=False,
+        session_origin_type=session_origin_type,
     )
 
     try:
@@ -281,6 +293,7 @@ def process_session_summary(
         context=f"session:{session_id}",
         tags=tags,
         created_at=created_at,
+        session_origin_type=session_origin_type,
     )
 
     try:

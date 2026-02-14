@@ -12,11 +12,15 @@ import {
     CONFIDENCE_BADGE_CLASSES,
     DOC_TYPE_BADGE_CLASSES,
     DOC_TYPE_LABELS,
+    OBSERVATION_STATUS_BADGE_CLASSES,
+    OBSERVATION_STATUS_LABELS,
+    OBSERVATION_STATUSES,
     SEARCH_TYPE_OPTIONS,
     SEARCH_TYPES,
     type ConfidenceFilter,
     type ConfidenceLevel,
     type DocType,
+    type ObservationStatus,
     type SearchType,
 } from "@/lib/constants";
 import type { CodeResult, MemoryResult, PlanResult, SessionResult } from "@/hooks/use-search";
@@ -30,6 +34,7 @@ export default function Search() {
     const [debouncedQuery, setDebouncedQuery] = useState("");
     const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all");
     const [applyDocTypeWeights, setApplyDocTypeWeights] = useState(true);
+    const [includeResolved, setIncludeResolved] = useState(false);
 
     // Initialize searchType from URL param, defaulting to ALL
     const tabParam = searchParams.get("tab");
@@ -49,7 +54,7 @@ export default function Search() {
         setSearchParams(searchParams, { replace: true });
     };
 
-    const { data: results, isLoading, error } = useSearch(debouncedQuery, confidenceFilter, applyDocTypeWeights, searchType);
+    const { data: results, isLoading, error } = useSearch(debouncedQuery, confidenceFilter, applyDocTypeWeights, searchType, includeResolved);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -121,6 +126,15 @@ export default function Search() {
                     />
                     Weight by type
                 </label>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+                    <input
+                        type="checkbox"
+                        checked={includeResolved}
+                        onChange={(e) => setIncludeResolved(e.target.checked)}
+                        className="rounded border-gray-300"
+                    />
+                    Include resolved
+                </label>
                 <Button type="submit" disabled={!query || isLoading}>
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <SearchIcon className="w-4 h-4 mr-2" />}
                     Search
@@ -136,20 +150,20 @@ export default function Search() {
                         <div className="space-y-3">
                             {results.code.map((match: CodeResult, i: number) => (
                                 <Card key={`code-${i}`} className="overflow-hidden">
-                                    <CardHeader className="py-3 bg-muted/30">
-                                        <CardTitle className="text-sm font-mono flex items-center gap-2">
+                                    <CardHeader className="py-3 bg-muted/30 space-y-1.5">
+                                        <CardTitle className="text-sm font-mono truncate">
                                             <span className="text-primary">{match.filepath}</span>
-                                            {match.name && <span className="text-muted-foreground">({match.name})</span>}
-                                            <span className="ml-auto flex items-center gap-2">
-                                                <span className={`text-xs px-2 py-0.5 rounded ${DOC_TYPE_BADGE_CLASSES[match.doc_type as DocType] || ""}`}>
-                                                    {DOC_TYPE_LABELS[match.doc_type as DocType] || match.doc_type}
-                                                </span>
-                                                <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || ""}`}>
-                                                    {match.confidence}
-                                                </span>
-                                                <span className="text-xs text-muted-foreground">Score: {match.relevance?.toFixed(SCORE_DISPLAY_PRECISION)}</span>
-                                            </span>
+                                            {match.name && <span className="text-muted-foreground"> ({match.name})</span>}
                                         </CardTitle>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs px-2 py-0.5 rounded ${DOC_TYPE_BADGE_CLASSES[match.doc_type as DocType] || ""}`}>
+                                                {DOC_TYPE_LABELS[match.doc_type as DocType] || match.doc_type}
+                                            </span>
+                                            <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || ""}`}>
+                                                {match.confidence}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">Score: {match.relevance?.toFixed(SCORE_DISPLAY_PRECISION)}</span>
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="p-4">
                                         <pre className="text-xs overflow-x-auto p-2 bg-muted/50 rounded-md">
@@ -169,10 +183,15 @@ export default function Search() {
                         </h2>
                         <div className="space-y-3">
                             {results.memory.map((match: MemoryResult, i: number) => (
-                                <Card key={`mem-${i}`} className="overflow-hidden">
+                                <Card key={`mem-${i}`} className={`overflow-hidden${match.status && match.status !== OBSERVATION_STATUSES.ACTIVE ? " opacity-60" : ""}`}>
                                     <CardHeader className="py-3 bg-muted/30">
                                         <CardTitle className="text-sm font-medium flex items-center gap-2">
                                             <span className="capitalize badge">{match.memory_type}</span>
+                                            {match.status && match.status !== OBSERVATION_STATUSES.ACTIVE && (
+                                                <span className={`text-xs px-2 py-0.5 rounded-full ${OBSERVATION_STATUS_BADGE_CLASSES[match.status as ObservationStatus] || ""}`}>
+                                                    {OBSERVATION_STATUS_LABELS[match.status as ObservationStatus] || match.status}
+                                                </span>
+                                            )}
                                             <span className="ml-auto flex items-center gap-2">
                                                 <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || ""}`}>
                                                     {match.confidence}

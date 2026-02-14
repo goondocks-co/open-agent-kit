@@ -13,11 +13,25 @@ You are summarizing a coding session to help future sessions understand what was
 - Files modified: {{files_modified_count}}
 - Files created: {{files_created_count}}
 - Total tool calls: {{tool_calls}}
+- **Session Origin Type:** {{session_origin_type}}
 
 ## Prompt Batches
 
 {{prompt_batches}}
 {{plan_context}}
+
+## Session Origin Type
+
+The session origin type indicates the dominant activity pattern:
+- **planning**: Primarily reading and planning, few file modifications
+- **investigation**: Exploration and debugging, many reads with minimal edits
+- **implementation**: Active coding with significant file modifications
+- **mixed**: Combined activity patterns
+
+When summarizing, note whether observations are planning-phase findings (may become
+stale once work is implemented) versus implementation learnings (more likely to remain
+relevant long-term).
+
 ## Task
 
 Write a concise summary of this session. You have access to both the user's prompts and the agent's actions, so capture the full picture:

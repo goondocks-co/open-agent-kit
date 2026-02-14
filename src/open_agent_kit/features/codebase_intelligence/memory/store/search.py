@@ -61,6 +61,7 @@ def search_memory(
     query: str,
     limit: int = 10,
     memory_types: list[str] | None = None,
+    metadata_filters: dict | None = None,
 ) -> list[dict]:
     """Search memory observations.
 
@@ -69,6 +70,7 @@ def search_memory(
         query: Search query.
         limit: Maximum results to return.
         memory_types: Filter by memory types.
+        metadata_filters: Additional ChromaDB where-clause filters.
 
     Returns:
         List of search results.
@@ -77,10 +79,18 @@ def search_memory(
 
     query_embedding = store.embedding_provider.embed_query(query)
 
-    # Build where filter if memory_types specified
-    where = None
+    # Build where filter
+    where_clauses: list[dict] = []
     if memory_types:
-        where = {"memory_type": {"$in": memory_types}}
+        where_clauses.append({"memory_type": {"$in": memory_types}})
+    if metadata_filters:
+        where_clauses.append(metadata_filters)
+
+    where: dict | None = None
+    if len(where_clauses) == 1:
+        where = where_clauses[0]
+    elif len(where_clauses) > 1:
+        where = {"$and": where_clauses}
 
     results = store._memory_collection.query(
         query_embeddings=[query_embedding],

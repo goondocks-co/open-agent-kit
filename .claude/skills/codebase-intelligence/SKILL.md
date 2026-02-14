@@ -72,6 +72,9 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "SELECT count(*) FROM se
 | `oak-dev ci context "task" -f <file>` | Get context for current work |
 | `oak-dev ci remember "observation"` | Store a memory (NOT via SQL) |
 | `oak-dev ci memories --type gotcha` | Browse memories by type |
+| `oak-dev ci memories --status active` | Browse memories by lifecycle status |
+| `oak-dev ci resolve <id>` | Mark observation as resolved |
+| `oak-dev ci resolve --session <id>` | Bulk-resolve all observations from a session |
 | `oak-dev ci sessions` | List session summaries |
 | `oak-dev ci status` | Check daemon status |
 
@@ -82,6 +85,7 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "SELECT count(*) FROM se
 | `oak_search` | `oak-dev ci search "query"` | Semantic vector search |
 | `oak_remember` | `oak-dev ci remember "observation"` | Store a memory |
 | `oak_context` | `oak-dev ci context "task"` | Get task-relevant context |
+| `oak_resolve_memory` | `oak-dev ci resolve <id>` | Mark observation resolved/superseded |
 
 ### Direct SQL
 
@@ -101,6 +105,8 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "YOUR QUERY HERE"
 | Find what was done before | `oak-dev ci memories` / `sqlite3` | "what did we decide about caching?" |
 | Query session history | `sqlite3 -readonly` | `SELECT * FROM sessions ORDER BY ...` |
 | Aggregate usage stats | `sqlite3 -readonly` | `SELECT agent_name, sum(cost_usd) FROM agent_runs ...` |
+| Resolve stale observations | `oak-dev ci resolve` | After completing work that addresses a gotcha |
+| Find unresolved planning items | `sqlite3 -readonly` | `SELECT ... WHERE status='active' AND session_origin_type='planning'` |
 | Run automated analysis | `oak-dev ci agent run` | `oak-dev ci agent run usage-report` |
 
 ## Why Semantic Search Over Grep
@@ -117,7 +123,7 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "YOUR QUERY HERE"
 <!-- BEGIN GENERATED CORE TABLES -->
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
-| `memory_observations` | Extracted memories/learnings | `observation`, `memory_type`, `context`, `tags`, `importance` |
+| `memory_observations` | Extracted memories/learnings | `observation`, `memory_type`, `status`, `context`, `tags`, `importance`, `session_origin_type` |
 | `sessions` | Coding sessions (launch to exit) | `id`, `agent`, `status`, `summary`, `title`, `started_at`, `created_at_epoch` |
 | `prompt_batches` | User prompts within sessions | `session_id`, `user_prompt`, `classification`, `response_summary` |
 | `activities` | Raw tool executions | `session_id`, `tool_name`, `file_path`, `success`, `error_message` |
@@ -136,6 +142,44 @@ The `memory_type` column in `memory_observations` uses these values:
 - `discovery` — General insight about the codebase
 - `trade_off` — Trade-off that was made and why
 - `session_summary` — LLM-generated session summary
+
+### Observation Status
+
+The `status` column tracks lifecycle state:
+- `active` — Current and relevant (default for all new observations)
+- `resolved` — Issue was addressed in a later session
+- `superseded` — Replaced by a newer, more accurate observation
+
+### Resolving Observations
+
+When `oak_search` or `oak_context` surfaces a gotcha, bug_fix, or discovery that you then address during your session, **resolve it** so future sessions don't see stale guidance:
+
+1. Note the observation `id` from the search results.
+2. After completing the fix or addressing the issue, call:
+   - **MCP:** `oak_resolve_memory(id="<observation-id>")`
+   - **CLI:** `oak-dev ci resolve <observation-id>`
+3. For superseded observations (replaced by a better one), use `status="superseded"`.
+
+**When to resolve:**
+- You fixed a bug that was tracked as a `bug_fix` observation
+- You addressed a `gotcha` (e.g., refactored the problematic code)
+- A `discovery` about a problem is no longer accurate after your changes
+- A `decision` was reversed or replaced by a new decision
+
+**When NOT to resolve:**
+- The observation is still accurate even after your changes
+- You only partially addressed the issue
+- The observation is a permanent architectural insight (e.g., "service X uses eventual consistency")
+
+### Session Origin Types
+
+The `session_origin_type` column classifies how the session that created the observation operated:
+- `planning` — Planning-phase session (high read:edit ratio, few modifications)
+- `investigation` — Exploration/debugging session (many reads, minimal edits)
+- `implementation` — Active coding session (significant file modifications)
+- `mixed` — Combined activity patterns
+
+Planning/investigation observations are automatically capped at importance 5.
 
 ## Essential Queries
 
@@ -201,6 +245,39 @@ SELECT task_name, enabled, cron_expression, description,
        datetime(next_run_at_epoch, 'unixepoch', 'localtime') as next_run
 FROM agent_schedules
 ORDER BY next_run_at_epoch;
+```
+
+### Observation Lifecycle Status
+
+```sql
+SELECT status, count(*) as count
+FROM memory_observations
+GROUP BY status;
+```
+
+### Active Observations from Planning Sessions
+
+```sql
+SELECT substr(observation, 1, 120) as observation, memory_type,
+       context, session_origin_type,
+       datetime(created_at_epoch, 'unixepoch', 'localtime') as created
+FROM memory_observations
+WHERE status = 'active' AND session_origin_type = 'planning'
+ORDER BY created_at_epoch DESC
+LIMIT 20;
+```
+
+### Resolution Provenance (what resolved what)
+
+```sql
+SELECT m.id, substr(m.observation, 1, 100) as observation,
+       m.resolved_by_session_id, s.title as resolving_session,
+       m.resolved_at
+FROM memory_observations m
+LEFT JOIN sessions s ON m.resolved_by_session_id = s.id
+WHERE m.status = 'resolved'
+ORDER BY m.resolved_at DESC
+LIMIT 10;
 ```
 
 ## Important Notes

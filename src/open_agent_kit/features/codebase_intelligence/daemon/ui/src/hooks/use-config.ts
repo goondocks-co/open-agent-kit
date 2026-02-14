@@ -16,6 +16,13 @@ export interface SessionQualityConfig {
     stale_timeout_seconds: number;
 }
 
+export interface AutoResolveConfig {
+    enabled: boolean;
+    similarity_threshold: number;
+    similarity_threshold_no_context: number;
+    search_limit: number;
+}
+
 export interface Config {
     embedding: {
         provider: string;
@@ -40,6 +47,7 @@ export interface Config {
     };
     log_rotation: LogRotationConfig;
     session_quality: SessionQualityConfig;
+    auto_resolve: AutoResolveConfig;
     log_level: string;
     origins?: Record<string, "user" | "project" | "default">;
 }

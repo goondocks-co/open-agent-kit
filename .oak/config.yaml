@@ -1,3 +1,4 @@
+version: 1.0.17.dev0+ga411edfde.d20260213
 agents:
 - vscode-copilot
 - opencode
@@ -6,6 +7,19 @@ agents:
 - windsurf
 - cursor
 - claude
+rfc:
+  directory: oak/rfc
+  template: engineering
+  auto_number: true
+  number_format: sequential
+  validate_on_create: true
+constitution:
+  directory: oak
+languages:
+  installed: [javascript, python, typescript]
+skills:
+  installed: [project-governance, codebase-intelligence]
+  auto_install: true
 codebase_intelligence:
   agents:
     background_processing_interval_seconds: 60
@@ -123,22 +137,8 @@ codebase_intelligence:
     ngrok_path: null
     provider: cloudflared
   watch_files: true
-constitution:
-  directory: oak
-languages:
-  installed:
-  - javascript
-  - python
-  - typescript
-rfc:
-  auto_number: true
-  directory: oak/rfc
-  number_format: sequential
-  template: engineering
-  validate_on_create: true
-skills:
-  auto_install: true
-  installed:
-  - project-governance
-  - codebase-intelligence
-version: 1.0.13
+  auto_resolve:
+    enabled: true
+    similarity_threshold: 0.85
+    similarity_threshold_no_context: 0.92
+    search_limit: 5

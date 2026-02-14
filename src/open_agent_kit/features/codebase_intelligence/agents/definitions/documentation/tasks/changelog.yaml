@@ -61,6 +61,11 @@ default_task: |
      - Any gotchas or important information from memories
      ```
 
+  **Observation lifecycle note:** Use `include_resolved=true` when querying
+  `ci_memories` for changelog generation. Resolved observations represent
+  completed work and are appropriate source material for documenting what
+  was fixed or addressed.
+
   Focus on user-facing changes and significant internal improvements.
   Skip trivial refactors unless they affect behavior.
 

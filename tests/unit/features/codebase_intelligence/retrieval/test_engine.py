@@ -735,6 +735,8 @@ class TestListMemories:
             start_date=None,
             end_date=None,
             include_archived=False,
+            status="active",
+            include_resolved=False,
         )
 
     def test_passes_memory_types_filter(
@@ -770,6 +772,8 @@ class TestListMemories:
             start_date=None,
             end_date=None,
             include_archived=False,
+            status="active",
+            include_resolved=False,
         )
 
 

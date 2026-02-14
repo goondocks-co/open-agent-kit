@@ -94,9 +94,12 @@ def format_memories_for_injection(
         obs = mem.get("observation", "")
         ctx = mem.get("context", "")
 
+        mem_id = mem.get("id", "")
         line = f"- {emoji} **{mem_type}**: {obs}"
         if ctx:
             line += f" _(context: {ctx})_"
+        if mem_id:
+            line += f" `[id: {mem_id}]`"
         lines.append(line)
 
     return "\n".join(lines)

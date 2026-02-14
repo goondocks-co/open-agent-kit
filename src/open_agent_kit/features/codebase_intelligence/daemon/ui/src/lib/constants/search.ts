@@ -136,3 +136,36 @@ export const MEMORY_TYPE_FILTER_OPTIONS = [
 ] as const;
 
 export type MemoryTypeFilter = "all" | MemoryType;
+
+// =============================================================================
+// Observation Lifecycle Statuses
+// =============================================================================
+
+export const OBSERVATION_STATUSES = {
+    ACTIVE: "active",
+    RESOLVED: "resolved",
+    SUPERSEDED: "superseded",
+} as const;
+
+export type ObservationStatus = typeof OBSERVATION_STATUSES[keyof typeof OBSERVATION_STATUSES];
+
+export const OBSERVATION_STATUS_LABELS: Record<ObservationStatus, string> = {
+    [OBSERVATION_STATUSES.ACTIVE]: "Active",
+    [OBSERVATION_STATUSES.RESOLVED]: "Resolved",
+    [OBSERVATION_STATUSES.SUPERSEDED]: "Superseded",
+};
+
+export const OBSERVATION_STATUS_BADGE_CLASSES: Record<ObservationStatus, string> = {
+    [OBSERVATION_STATUSES.ACTIVE]: "bg-green-500/10 text-green-600",
+    [OBSERVATION_STATUSES.RESOLVED]: "bg-blue-500/10 text-blue-600",
+    [OBSERVATION_STATUSES.SUPERSEDED]: "bg-gray-500/10 text-gray-500",
+};
+
+export const OBSERVATION_STATUS_FILTER_OPTIONS = [
+    { value: "all", label: "All Statuses" },
+    { value: OBSERVATION_STATUSES.ACTIVE, label: "Active" },
+    { value: OBSERVATION_STATUSES.RESOLVED, label: "Resolved" },
+    { value: OBSERVATION_STATUSES.SUPERSEDED, label: "Superseded" },
+] as const;
+
+export type ObservationStatusFilter = "all" | ObservationStatus;

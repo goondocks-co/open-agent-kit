@@ -12,6 +12,7 @@ export const BULK_ACTIONS = {
     UNARCHIVE: "unarchive",
     ADD_TAG: "add_tag",
     REMOVE_TAG: "remove_tag",
+    RESOLVE: "resolve",
 } as const;
 
 export type BulkAction = typeof BULK_ACTIONS[keyof typeof BULK_ACTIONS];
@@ -23,6 +24,7 @@ export const BULK_ACTION_LABELS: Record<BulkAction, string> = {
     [BULK_ACTIONS.UNARCHIVE]: "Unarchive",
     [BULK_ACTIONS.ADD_TAG]: "Add Tag",
     [BULK_ACTIONS.REMOVE_TAG]: "Remove Tag",
+    [BULK_ACTIONS.RESOLVE]: "Resolve",
 } as const;
 
 // =============================================================================

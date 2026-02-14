@@ -54,6 +54,7 @@ default_task: |
   - ci_memories(type="trade_off") → What alternatives were considered
   - ci_memories(type="gotcha") → What to watch out for
   - ci_search(type="plans") → Original design documents if they exist
+  - Default to active observations only (omit `include_resolved`) — architecture docs should reflect current state
 
   ## 3. Write Architecture Documentation (Incremental)
 

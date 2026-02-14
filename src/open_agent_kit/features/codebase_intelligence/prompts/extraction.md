@@ -33,6 +33,20 @@ Rate each observation's importance based on its value for future sessions:
 
 Prefer fewer high-quality observations over many low-importance ones.
 
+## Session Context Awareness
+
+Consider the session's activity pattern when rating observation importance:
+
+- **Planning/investigation sessions** (many reads, few edits): Prefer lower importance
+  ratings for observations that describe current problems or temporary state rather
+  than permanent learnings. These observations describe what *is*, not what *should be*.
+- **Implementation sessions** (significant edits): Observations about decisions made,
+  patterns established, or gotchas encountered are more likely to be permanent learnings
+  and may warrant higher importance.
+
+When in doubt, prefer a conservative (lower) importance rating — observations can be
+promoted later but high-importance noise is harder to filter.
+
 ## Output Format
 
 Respond with a JSON object:

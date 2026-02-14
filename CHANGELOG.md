@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Observation lifecycle management — observations now track status (`active`, `resolved`, `superseded`) with session-type awareness (`planning`, `investigation`, `implementation`, `mixed`), enabling agents to distinguish current knowledge from historical context and filter stale observations from context windows — [Implement observation lifecycle management system](http://localhost:38388/activity/sessions/cc6d1209-222c-4d32-9420-011876a7ee61)
 - Memory-observation lineage tracking — observations now link back to their source memory, enabling bidirectional navigation between memories and the observations that created them — [Add memory-observation lineage support across codebase intelligence](http://localhost:38388/activity/sessions/fd23376c-0545-4a31-a433-1a2a5cdfb620)
 - Session ID metadata for embedding search — summaries and memories now include `session_id` in embedding metadata, enabling filtered searches scoped to specific sessions — [Add session_id metadata for searchable summaries and memories](http://localhost:38388/activity/sessions/f6fd6830-e260-4603-bc29-41178a7da9b6), [Add sessionId to embedding metadata and database](http://localhost:38388/activity/sessions/4d46f5a6-a2dd-4e13-ae89-19d5c0b07c0d)
 - Inline plan detection via response patterns — plans are now detected heuristically from assistant responses when explicit plan hooks are not available, improving plan capture coverage for agents without native plan support — [Add inline plan detection via response patterns](http://localhost:38388/activity/sessions/df16233a-9114-4b6e-a4e2-420e62cd2b47)
@@ -54,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: VS Code Copilot hook crashes were caused by schema validation running before hook formatting centralization. If you see hook errors after an upgrade, run `oak upgrade` to regenerate hook configurations with the corrected schema handling.
 
 > **Gotcha**: Inline plan detection uses heuristic response patterns (e.g., numbered steps, "Implementation Plan" headers). False positives are possible for assistant responses that resemble plans but aren't. The detector favors recall over precision — plans are better captured twice than missed.
+
+> **Gotcha**: Observation lifecycle status defaults to `active`. When querying memories via `ci_memories` or `ci_search`, use `status=active` for current knowledge and `include_resolved=true` only for historical documentation (e.g., changelogs). Resolved observations represent what *was* true, not what *is* true.
+
+> **Gotcha**: Session origin types (`planning`, `investigation`, `implementation`, `mixed`) are inferred from file changes and code patterns. Planning-originated observations are more likely to become stale after implementation work completes — the auto-resolve system uses semantic similarity to detect when newer observations supersede older ones.
 
 ## [1.0.3] - 2026-02-10
 

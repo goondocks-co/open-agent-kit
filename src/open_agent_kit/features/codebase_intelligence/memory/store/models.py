@@ -15,6 +15,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     MEMORY_EMBED_LABEL_SEPARATOR,
     MEMORY_EMBED_LABEL_TEMPLATE,
     MEMORY_EMBED_LINE_SEPARATOR,
+    OBSERVATION_STATUS_ACTIVE,
 )
 from open_agent_kit.features.codebase_intelligence.memory.store.classification import (
     classify_doc_type,
@@ -132,6 +133,8 @@ class MemoryObservation:
     tags: list[str] | None = None
     created_at: datetime | None = None
     importance: int = 5  # 1-10 scale, default medium
+    status: str = OBSERVATION_STATUS_ACTIVE
+    session_origin_type: str | None = None
 
     @property
     def token_estimate(self) -> int:
@@ -173,6 +176,8 @@ class MemoryObservation:
             "created_at": self.created_at.isoformat() if self.created_at else "",
             "token_estimate": self.token_estimate,
             "importance": self.importance,
+            "status": self.status,
+            "session_origin_type": self.session_origin_type or "",
         }
 
 
