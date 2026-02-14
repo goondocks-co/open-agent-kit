@@ -50,23 +50,34 @@ export const DATE_RANGE_OPTIONS = [
 ] as const;
 
 /**
+ * Format a Date as a local YYYY-MM-DD string.
+ * Uses local timezone to match backend's datetime.now() storage.
+ */
+function toLocalDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+/**
  * Calculate start date for a given preset.
- * Returns ISO date string (YYYY-MM-DD) or empty string for "all".
+ * Returns local date string (YYYY-MM-DD) or empty string for "all".
  */
 export function getDateRangeStart(preset: DateRangePreset): string {
     const now = new Date();
     switch (preset) {
         case DATE_RANGE_PRESETS.TODAY:
-            return now.toISOString().split("T")[0];
+            return toLocalDateString(now);
         case DATE_RANGE_PRESETS.WEEK: {
             const weekAgo = new Date(now);
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return weekAgo.toISOString().split("T")[0];
+            return toLocalDateString(weekAgo);
         }
         case DATE_RANGE_PRESETS.MONTH: {
             const monthAgo = new Date(now);
             monthAgo.setMonth(monthAgo.getMonth() - 1);
-            return monthAgo.toISOString().split("T")[0];
+            return toLocalDateString(monthAgo);
         }
         default:
             return "";

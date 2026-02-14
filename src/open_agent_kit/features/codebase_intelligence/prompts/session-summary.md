@@ -5,6 +5,8 @@ description: Generate a high-level summary of what was accomplished in the sessi
 
 You are summarizing a coding session to help future sessions understand what was done.
 
+The developer working in this session is **{{developer_name}}**. Refer to them by name instead of "the user" or "the developer".
+
 ## Session Statistics
 
 - Duration: {{session_duration}} minutes
@@ -36,7 +38,7 @@ relevant long-term).
 
 Write a concise summary of this session. You have access to both the user's prompts and the agent's actions, so capture the full picture:
 
-- **User intent**: What was the user trying to accomplish? What was their approach or priority?
+- **Developer intent**: What was {{developer_name}} trying to accomplish? What was their approach or priority?
 - **Key actions**: What did the agent do? Which files were modified and why?
 - **Outcomes**: What was achieved? Any decisions made or problems solved?
 - **Context**: Any constraints, trade-offs, or discoveries worth noting?
@@ -50,13 +52,13 @@ Respond with ONLY the summary text. No JSON, no code blocks, just plain text. A 
 ## Examples
 
 Good (captures intent + actions + outcome):
-- "User wanted to add dark mode support. Implemented theme toggle in settings/ThemeProvider.tsx using CSS variables, added useTheme hook, and updated 12 components to use theme tokens instead of hardcoded colors. Chose CSS variables over styled-components for better performance."
+- "Chris wanted to add dark mode support. Implemented theme toggle in settings/ThemeProvider.tsx using CSS variables, added useTheme hook, and updated 12 components to use theme tokens instead of hardcoded colors. Chose CSS variables over styled-components for better performance."
 
 Good (captures debugging journey):
-- "User reported intermittent test failures in CI. Investigated flaky tests in tests/api/, discovered race condition in database cleanup. Fixed by adding proper test isolation with transaction rollbacks. Also identified that TestClient was sharing state across tests."
+- "Alex reported intermittent test failures in CI. Investigated flaky tests in tests/api/, discovered race condition in database cleanup. Fixed by adding proper test isolation with transaction rollbacks. Also identified that TestClient was sharing state across tests."
 
 Good (captures exploration with learnings):
-- "User needed to understand the payment processing flow before adding refund support. Traced code from PaymentController through StripeService to webhook handlers. Key finding: payments use idempotency keys stored in Redis, refunds will need similar pattern."
+- "Sam needed to understand the payment processing flow before adding refund support. Traced code from PaymentController through StripeService to webhook handlers. Key finding: payments use idempotency keys stored in Redis, refunds will need similar pattern."
 
 Bad (too vague):
 - "Fixed some bugs and added a feature"

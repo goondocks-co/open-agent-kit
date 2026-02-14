@@ -4,11 +4,14 @@ Creates high-level summaries of completed sessions using LLM.
 """
 
 import logging
+import subprocess
 from collections.abc import Callable
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    MACHINE_ID_SUBPROCESS_TIMEOUT,
     RECOVERY_BATCH_PROMPT,
     SESSION_SUMMARY_OBS_ID_PREFIX,
     SUMMARY_MAX_PLAN_CONTEXT_LENGTH,
@@ -24,6 +27,43 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+_DEVELOPER_NAME_FALLBACK = "the developer"
+
+
+@lru_cache(maxsize=1)
+def _get_developer_name() -> str:
+    """Resolve developer name for use in session summaries.
+
+    Resolution order:
+    1. git config user.name (universally available, works with any git host)
+    2. GITHUB_USER environment variable
+    3. Fallback: "the developer"
+
+    Cached after first call since the value won't change within a process.
+    """
+    import os
+
+    # 1. git config user.name — works with any git host
+    try:
+        result = subprocess.run(
+            ["git", "config", "user.name"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=MACHINE_ID_SUBPROCESS_TIMEOUT,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # 2. GITHUB_USER env var
+    env_user = os.environ.get("GITHUB_USER", "").strip()
+    if env_user:
+        return env_user
+
+    return _DEVELOPER_NAME_FALLBACK
 
 
 def _is_recovery_prompt(prompt: str | None) -> bool:
@@ -240,6 +280,7 @@ def process_session_summary(
     prompt = prompt.replace("{{prompt_batches}}", prompt_batches_text)
     prompt = prompt.replace("{{plan_context}}", plan_context)
     prompt = prompt.replace("{{session_origin_type}}", session_origin_type or "mixed")
+    prompt = prompt.replace("{{developer_name}}", _get_developer_name())
 
     # Call LLM
     result = call_llm(prompt)

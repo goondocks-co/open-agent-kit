@@ -8,6 +8,7 @@ import json
 import logging
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -53,6 +54,8 @@ from open_agent_kit.features.codebase_intelligence.activity.prompts import (
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_RUN_RECOVERY_BUFFER_SECONDS,
     DEFAULT_AGENT_TIMEOUT_SECONDS,
+    DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE,
+    DEFAULT_BACKGROUND_PROCESSING_WORKERS,
     INJECTION_MAX_SESSION_SUMMARIES,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
@@ -204,6 +207,15 @@ class ActivityProcessor:
             if config is not None:
                 return config.session_quality
         return self._fallback_session_quality_config
+
+    @property
+    def processing_workers(self) -> int:
+        """Get number of parallel processing workers from live config or constant."""
+        if self._config_accessor is not None:
+            config = self._config_accessor()
+            if config is not None:
+                return config.agents.background_processing_workers
+        return DEFAULT_BACKGROUND_PROCESSING_WORKERS
 
     @property
     def min_session_activities(self) -> int:
@@ -640,7 +652,9 @@ class ActivityProcessor:
                 prompt_batch_id=batch_id,
             )
 
-    def process_pending_batches(self, max_batches: int = 10) -> list[ProcessingResult]:
+    def process_pending_batches(
+        self, max_batches: int = DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE
+    ) -> list[ProcessingResult]:
         """Process all pending prompt batches.
 
         Args:
@@ -681,11 +695,35 @@ class ActivityProcessor:
 
             logger.info(f"Processing {len(batches)} pending prompt batches")
 
+            batch_ids = [b.id for b in batches if b.id is not None]
+            workers = min(self.processing_workers, len(batch_ids))
+
             results = []
-            for batch in batches:
-                if batch.id is not None:
-                    result = self.process_prompt_batch(batch.id)
-                    results.append(result)
+            if workers <= 1:
+                # Single batch — no thread pool overhead
+                for bid in batch_ids:
+                    results.append(self.process_prompt_batch(bid))
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {
+                        pool.submit(self.process_prompt_batch, bid): bid for bid in batch_ids
+                    }
+                    for future in as_completed(futures):
+                        try:
+                            results.append(future.result())
+                        except Exception as e:
+                            bid = futures[future]
+                            logger.error(f"Batch {bid} failed in thread pool: {e}")
+                            results.append(
+                                ProcessingResult(
+                                    session_id="",
+                                    activities_processed=0,
+                                    observations_extracted=0,
+                                    success=False,
+                                    error=str(e),
+                                    prompt_batch_id=bid,
+                                )
+                            )
 
             self._last_process_time = datetime.now()
             return results

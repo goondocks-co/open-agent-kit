@@ -1149,6 +1149,12 @@ DEFAULT_EXECUTOR_CACHE_SIZE: Final[int] = 100
 MIN_EXECUTOR_CACHE_SIZE: Final[int] = 10
 MAX_EXECUTOR_CACHE_SIZE: Final[int] = 1000
 
+# Background processing: batch size, parallelism, and interval
+DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE: Final[int] = 50
+DEFAULT_BACKGROUND_PROCESSING_WORKERS: Final[int] = 4
+MIN_BACKGROUND_PROCESSING_WORKERS: Final[int] = 1
+MAX_BACKGROUND_PROCESSING_WORKERS: Final[int] = 16
+
 # Background processing interval: how often activity processor runs
 DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 60
 MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS: Final[int] = 10

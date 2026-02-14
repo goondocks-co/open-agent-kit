@@ -56,6 +56,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_AGENT_MAX_TURNS,
     DEFAULT_AGENT_TIMEOUT_SECONDS,
     DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    DEFAULT_BACKGROUND_PROCESSING_WORKERS,
     DEFAULT_BASE_URL,
     DEFAULT_EXECUTOR_CACHE_SIZE,
     DEFAULT_LOG_BACKUP_COUNT,
@@ -74,12 +75,14 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     MAX_AGENT_MAX_TURNS,
     MAX_AGENT_TIMEOUT_SECONDS,
     MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    MAX_BACKGROUND_PROCESSING_WORKERS,
     MAX_EXECUTOR_CACHE_SIZE,
     MAX_LOG_BACKUP_COUNT,
     MAX_LOG_MAX_SIZE_MB,
     MAX_SCHEDULER_INTERVAL_SECONDS,
     MIN_AGENT_TIMEOUT_SECONDS,
     MIN_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
+    MIN_BACKGROUND_PROCESSING_WORKERS,
     MIN_EXECUTOR_CACHE_SIZE,
     MIN_LOG_MAX_SIZE_MB,
     MIN_SCHEDULER_INTERVAL_SECONDS,
@@ -559,6 +562,7 @@ class AgentConfig:
         scheduler_interval_seconds: Interval between scheduler checks for due schedules.
         executor_cache_size: Max runs to keep in executor's in-memory cache.
         background_processing_interval_seconds: Interval for activity processor background tasks.
+        background_processing_workers: Number of parallel threads for batch processing.
         provider_type: API provider type (cloud, ollama, lmstudio, bedrock, openrouter).
         provider_base_url: Base URL for the provider API (for local providers).
         provider_model: Default model to use for agent execution.
@@ -581,6 +585,7 @@ class AgentConfig:
     scheduler_interval_seconds: int = DEFAULT_SCHEDULER_INTERVAL_SECONDS
     executor_cache_size: int = DEFAULT_EXECUTOR_CACHE_SIZE
     background_processing_interval_seconds: int = DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS
+    background_processing_workers: int = DEFAULT_BACKGROUND_PROCESSING_WORKERS
     # Provider configuration for agent execution
     provider_type: str = "cloud"
     provider_base_url: str | None = None
@@ -671,6 +676,23 @@ class AgentConfig:
                 value=self.background_processing_interval_seconds,
                 expected=f"<= {MAX_BACKGROUND_PROCESSING_INTERVAL_SECONDS}",
             )
+        # Validate background processing workers
+        if self.background_processing_workers < MIN_BACKGROUND_PROCESSING_WORKERS:
+            raise ValidationError(
+                f"background_processing_workers must be at least "
+                f"{MIN_BACKGROUND_PROCESSING_WORKERS}",
+                field="background_processing_workers",
+                value=self.background_processing_workers,
+                expected=f">= {MIN_BACKGROUND_PROCESSING_WORKERS}",
+            )
+        if self.background_processing_workers > MAX_BACKGROUND_PROCESSING_WORKERS:
+            raise ValidationError(
+                f"background_processing_workers must be at most "
+                f"{MAX_BACKGROUND_PROCESSING_WORKERS}",
+                field="background_processing_workers",
+                value=self.background_processing_workers,
+                expected=f"<= {MAX_BACKGROUND_PROCESSING_WORKERS}",
+            )
         # Validate provider type
         valid_provider_types = {"cloud", "ollama", "lmstudio", "bedrock", "openrouter"}
         if self.provider_type not in valid_provider_types:
@@ -703,6 +725,10 @@ class AgentConfig:
                 "background_processing_interval_seconds",
                 DEFAULT_BACKGROUND_PROCESSING_INTERVAL_SECONDS,
             ),
+            background_processing_workers=data.get(
+                "background_processing_workers",
+                DEFAULT_BACKGROUND_PROCESSING_WORKERS,
+            ),
             provider_type=data.get("provider_type", "cloud"),
             provider_base_url=data.get("provider_base_url"),
             provider_model=data.get("provider_model"),
@@ -717,6 +743,7 @@ class AgentConfig:
             "scheduler_interval_seconds": self.scheduler_interval_seconds,
             "executor_cache_size": self.executor_cache_size,
             "background_processing_interval_seconds": self.background_processing_interval_seconds,
+            "background_processing_workers": self.background_processing_workers,
             "provider_type": self.provider_type,
             "provider_base_url": self.provider_base_url,
             "provider_model": self.provider_model,

@@ -75,7 +75,7 @@ class ActivityStore:
             self._local.conn = sqlite3.connect(
                 str(self.db_path),
                 check_same_thread=False,
-                timeout=30.0,
+                timeout=60.0,
             )
             self._local.conn.row_factory = sqlite3.Row
             # Enable WAL mode for better concurrent performance
@@ -104,9 +104,10 @@ class ActivityStore:
             self._local.ro_conn = sqlite3.connect(
                 f"file:{self.db_path}?mode=ro",
                 uri=True,
-                timeout=10.0,
+                timeout=60.0,
             )
             self._local.ro_conn.row_factory = sqlite3.Row
+            self._local.ro_conn.execute("PRAGMA query_only = ON")
         conn: sqlite3.Connection = self._local.ro_conn
         return conn
 
