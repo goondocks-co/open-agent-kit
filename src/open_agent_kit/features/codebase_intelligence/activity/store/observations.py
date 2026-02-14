@@ -382,3 +382,69 @@ def count_observations_by_status(store: ActivityStore) -> dict[str, int]:
         "FROM memory_observations GROUP BY COALESCE(status, 'active')"
     )
     return {row[0]: row[1] for row in cursor.fetchall()}
+
+
+def get_active_observations(
+    store: ActivityStore,
+    limit: int = 100,
+) -> list[StoredObservation]:
+    """Get active observations ordered oldest-first.
+
+    Used by staleness detection to find observations that may have been
+    addressed in later sessions.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum observations to return.
+
+    Returns:
+        List of active StoredObservation entries, oldest first.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM memory_observations
+        WHERE COALESCE(status, 'active') = 'active'
+        ORDER BY created_at_epoch ASC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [StoredObservation.from_row(row) for row in cursor.fetchall()]
+
+
+def find_later_edit_session(
+    store: ActivityStore,
+    file_path: str,
+    after_epoch: float,
+    exclude_session_id: str,
+) -> str | None:
+    """Check if a file was edited in a later session.
+
+    Used by staleness heuristics to detect when an observation's context
+    file has been modified by subsequent work.
+
+    Args:
+        store: The ActivityStore instance.
+        file_path: File path to check for later edits.
+        after_epoch: Only consider edits after this Unix timestamp.
+        exclude_session_id: Session to exclude (the observation's own session).
+
+    Returns:
+        Session ID that edited the file, or None if no later edits found.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT DISTINCT a.session_id
+        FROM activities a
+        WHERE a.file_path = ?
+          AND a.timestamp_epoch > ?
+          AND a.session_id != ?
+          AND a.tool_name IN ('Edit', 'MultiEdit', 'Write')
+        LIMIT 1
+        """,
+        (file_path, after_epoch, exclude_session_id),
+    )
+    row = cursor.fetchone()
+    return row[0] if row else None

@@ -640,6 +640,18 @@ class ActivityStore:
         """Count observations grouped by lifecycle status."""
         return observations.count_observations_by_status(self)
 
+    def get_active_observations(self, limit: int = 100) -> list[StoredObservation]:
+        """Get active observations ordered oldest-first."""
+        return observations.get_active_observations(self, limit)
+
+    def find_later_edit_session(
+        self, file_path: str, after_epoch: float, exclude_session_id: str
+    ) -> str | None:
+        """Check if a file was edited in a later session."""
+        return observations.find_later_edit_session(
+            self, file_path, after_epoch, exclude_session_id
+        )
+
     # ==========================================================================
     # Statistics operations - delegate to stats module
     # ==========================================================================

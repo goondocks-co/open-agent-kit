@@ -734,71 +734,48 @@ async def resolve_stale_observations(
 
     store = state.activity_store
 
-    # Get active observations, oldest first
-    conn = store._get_connection()
-    cursor = conn.execute(
-        """
-        SELECT id, session_id, observation, context, file_path, created_at_epoch
-        FROM memory_observations
-        WHERE COALESCE(status, 'active') = 'active'
-        ORDER BY created_at_epoch ASC
-        LIMIT ?
-        """,
-        (max_observations,),
-    )
-    rows = cursor.fetchall()
+    active_observations = store.get_active_observations(limit=max_observations)
 
     suggestions: list[dict[str, Any]] = []
     resolved_count = 0
 
-    for row in rows:
-        obs_id = row[0]
-        obs_session_id = row[1]
-        obs_context = row[3]
-        obs_file_path = row[4]
-        obs_created_epoch = row[5]
-
+    for obs in active_observations:
         # Heuristic: check if there are later sessions that modified the same file
-        if obs_file_path or obs_context:
-            target_path = obs_file_path or obs_context
-            later_cursor = conn.execute(
-                """
-                SELECT DISTINCT a.session_id
-                FROM activities a
-                WHERE a.file_path = ?
-                  AND a.timestamp_epoch > ?
-                  AND a.session_id != ?
-                  AND a.tool_name IN ('Edit', 'MultiEdit', 'Write')
-                LIMIT 1
-                """,
-                (target_path, obs_created_epoch, obs_session_id),
+        target_path = obs.file_path or obs.context
+        if not target_path:
+            continue
+
+        later_session_id = store.find_later_edit_session(
+            file_path=target_path,
+            after_epoch=obs.created_at.timestamp(),
+            exclude_session_id=obs.session_id,
+        )
+        if not later_session_id:
+            continue
+
+        suggestion: dict[str, Any] = {
+            "observation_id": obs.id,
+            "reason": f"File {target_path} was modified in later session {later_session_id}",
+            "suggested_resolved_by": later_session_id,
+        }
+        suggestions.append(suggestion)
+
+        if not dry_run:
+            resolved_at = datetime.now(UTC).isoformat()
+            store.update_observation_status(
+                observation_id=obs.id,
+                status="resolved",
+                resolved_by_session_id=later_session_id,
+                resolved_at=resolved_at,
             )
-            later_session = later_cursor.fetchone()
-
-            if later_session:
-                suggestion: dict[str, Any] = {
-                    "observation_id": obs_id,
-                    "reason": f"File {target_path} was modified in later session {later_session[0]}",
-                    "suggested_resolved_by": later_session[0],
-                }
-                suggestions.append(suggestion)
-
-                if not dry_run:
-                    resolved_at = datetime.now(UTC).isoformat()
-                    store.update_observation_status(
-                        observation_id=obs_id,
-                        status="resolved",
-                        resolved_by_session_id=later_session[0],
-                        resolved_at=resolved_at,
-                    )
-                    # Update ChromaDB metadata if vector store is available
-                    if state.vector_store:
-                        state.vector_store.update_memory_status(obs_id, "resolved")
-                    resolved_count += 1
+            # Update ChromaDB metadata if vector store is available
+            if state.vector_store:
+                state.vector_store.update_memory_status(obs.id, "resolved")
+            resolved_count += 1
 
     return {
         "dry_run": dry_run,
-        "total_scanned": len(rows),
+        "total_scanned": len(active_observations),
         "suggestions": suggestions,
         "resolved_count": resolved_count,
         "message": (
