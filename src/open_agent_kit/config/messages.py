@@ -38,8 +38,10 @@ HELP_TEXT = f"""
 
 [bold]Primary Commands:[/bold]
   [cyan]init[/cyan]        Initialize .oak directory with templates and configs
+  [cyan]ci[/cyan]          Codebase Intelligence — daemon, search, memories
   [cyan]upgrade[/cyan]     Upgrade templates and agent commands to latest versions
-  [cyan]rfc[/cyan]         Manage RFCs and Architecture Decision Records
+  [cyan]languages[/cyan]   Manage language support for code intelligence
+  [cyan]remove[/cyan]      Remove open-agent-kit from the current project
   [cyan]version[/cyan]     Show version information
 
 [bold]Examples:[/bold]
@@ -47,17 +49,17 @@ HELP_TEXT = f"""
   [dim]$ oak init[/dim]
 
   [dim]# One-shot initialize by setting agents[/dim]
-  [dim]$ oak init --agent vscode-copilot --agent codex[/dim]
+  [dim]$ oak init --agent claude --agent cursor[/dim]
 
-  [dim]# Create an RFC[/dim]
-  [dim]$ oak rfc create "New authentication system"[/dim]
+  [dim]# Start Codebase Intelligence with the dashboard[/dim]
+  [dim]$ oak ci start --open[/dim]
 
   [dim]# Upgrade to latest version[/dim]
   [dim]$ oak upgrade --dry-run[/dim]
 
 [bold]Get Started:[/bold]
   1. Run [cyan]oak init[/cyan] to set up your project
-  2. Run [cyan]oak rfc create[/cyan] to create your first RFC
+  2. Run [cyan]oak ci start --open[/cyan] to launch Codebase Intelligence
   3. See the Quick Start guide: [dim]QUICKSTART.md[/dim]
 
 For more information, visit: {PROJECT_URL}

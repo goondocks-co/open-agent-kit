@@ -166,13 +166,12 @@ def main(
 ) -> None:
     """open-agent-kit - AI-powered development workflows.
 
-    A CLI tool for managing RFCs, project workflows, and team conventions
-    with AI assistance from Claude, Copilot, Codex, or Cursor.
+    A local-first CLI tool that gives your AI coding agents team memory,
+    code intelligence, and consistent project conventions.
 
     Get started:
         oak init              # Initialize project
-        oak rfc create "..."  # Create an RFC
-        oak rfc list          # List all RFCs
+        oak ci start --open   # Start Codebase Intelligence
 
     For more information, visit: https://oak.goondocks.co
     """
