@@ -202,6 +202,9 @@ def rebuild_chromadb_from_sqlite(
         - skipped: Already embedded (if reset_embedded_flags=False)
         - cleared: Items cleared from ChromaDB (if clear_chromadb_first=True)
     """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        OBSERVATION_STATUS_ACTIVE,
+    )
     from open_agent_kit.features.codebase_intelligence.memory.store import (
         MemoryObservation,
     )
@@ -251,6 +254,8 @@ def rebuild_chromadb_from_sqlite(
                     context=stored_obs.context,
                     tags=stored_obs.tags or [],
                     created_at=stored_obs.created_at,
+                    status=stored_obs.status or OBSERVATION_STATUS_ACTIVE,
+                    session_origin_type=stored_obs.session_origin_type,
                 )
 
                 # Embed and store

@@ -360,7 +360,9 @@ class TestRestoreAll:
 
         restore_all(tmp_path, db_path, backup_files=[file_a], dry_run=True)
 
-        mock_import.assert_called_once_with(mock_store, file_a, dry_run=True)
+        mock_import.assert_called_once_with(
+            mock_store, file_a, dry_run=True, replace_machine=False, vector_store=None
+        )
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(

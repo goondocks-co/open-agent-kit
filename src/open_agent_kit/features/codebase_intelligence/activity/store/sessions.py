@@ -527,6 +527,54 @@ def get_sessions_missing_summaries(
     return [Session.from_row(row) for row in cursor.fetchall()]
 
 
+def get_completed_sessions(
+    store: ActivityStore,
+    *,
+    min_activities: int | None = None,
+    limit: int = 500,
+) -> list[Session]:
+    """Get completed sessions, optionally filtered by minimum activity count.
+
+    Unlike ``get_sessions_missing_summaries``, this returns ALL completed
+    sessions regardless of whether they already have summaries. Used by
+    the devtools regenerate-summaries endpoint in force mode.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum sessions to return.
+        min_activities: If provided, only return sessions with at least
+            this many activities.
+
+    Returns:
+        List of completed Session objects, newest first.
+    """
+    conn = store._get_connection()
+
+    if min_activities is not None:
+        cursor = conn.execute(
+            f"""
+            SELECT s.* FROM sessions s
+            WHERE s.status = '{SESSION_STATUS_COMPLETED}'
+            AND (SELECT COUNT(*) FROM activities a WHERE a.session_id = s.id) >= ?
+            ORDER BY s.created_at_epoch DESC
+            LIMIT ?
+            """,
+            (min_activities, limit),
+        )
+    else:
+        cursor = conn.execute(
+            f"""
+            SELECT * FROM sessions
+            WHERE status = '{SESSION_STATUS_COMPLETED}'
+            ORDER BY created_at_epoch DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+
+    return [Session.from_row(row) for row in cursor.fetchall()]
+
+
 def recover_stale_sessions(
     store: ActivityStore,
     timeout_seconds: int = 3600,

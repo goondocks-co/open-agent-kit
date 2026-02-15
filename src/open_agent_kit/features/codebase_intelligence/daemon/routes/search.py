@@ -366,32 +366,20 @@ async def list_memories(
 async def update_memory_status(memory_id: str, request: UpdateObservationStatusRequest) -> dict:
     """Update the lifecycle status of a memory observation.
 
-    Two-phase write: SQLite first (source of truth), then ChromaDB (search index).
+    Delegates to engine.resolve_memory() which handles the two-phase write
+    (SQLite + ChromaDB) as a single operation.
     """
-    from datetime import datetime
-
     engine, _state = _get_retrieval_engine()
-    state = get_state()
 
-    if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not initialized")
-
-    # Phase 1: Update SQLite (source of truth)
-    resolved_at = datetime.now(UTC).isoformat() if request.status != "active" else None
-
-    sqlite_updated = state.activity_store.update_observation_status(
-        observation_id=memory_id,
+    success = engine.resolve_memory(
+        memory_id=memory_id,
         status=request.status.value,
         resolved_by_session_id=request.resolved_by_session_id,
-        resolved_at=resolved_at,
         superseded_by=request.superseded_by,
     )
 
-    if not sqlite_updated:
+    if not success:
         raise HTTPException(status_code=404, detail=f"Observation {memory_id} not found")
-
-    # Phase 2: Update ChromaDB (search index)
-    engine.resolve_memory(memory_id, request.status.value)
 
     return {"success": True, "memory_id": memory_id, "status": request.status.value}
 
@@ -401,16 +389,14 @@ async def bulk_resolve_memories(request: BulkResolveRequest) -> BulkResolveRespo
     """Bulk-resolve observations by session or memory IDs.
 
     Each observation gets its own resolved_by_session_id link.
+    Delegates to engine.resolve_memory() for two-phase writes.
     """
-    from datetime import datetime
-
     engine, _state = _get_retrieval_engine()
     state = get_state()
 
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    resolved_at = datetime.now(UTC).isoformat()
     resolved_count = 0
 
     if request.session_id:
@@ -419,27 +405,20 @@ async def bulk_resolve_memories(request: BulkResolveRequest) -> BulkResolveRespo
             request.session_id, status="active"
         )
         for obs in observations:
-            # SQLite
-            state.activity_store.update_observation_status(
-                observation_id=obs.id,
+            engine.resolve_memory(
+                memory_id=obs.id,
                 status=request.status.value,
                 resolved_by_session_id=request.resolved_by_session_id,
-                resolved_at=resolved_at,
             )
-            # ChromaDB
-            engine.resolve_memory(obs.id, request.status.value)
             resolved_count += 1
 
     elif request.memory_ids:
         for memory_id in request.memory_ids:
-            sqlite_updated = state.activity_store.update_observation_status(
-                observation_id=memory_id,
+            if engine.resolve_memory(
+                memory_id=memory_id,
                 status=request.status.value,
                 resolved_by_session_id=request.resolved_by_session_id,
-                resolved_at=resolved_at,
-            )
-            if sqlite_updated:
-                engine.resolve_memory(memory_id, request.status.value)
+            ):
                 resolved_count += 1
 
     return BulkResolveResponse(

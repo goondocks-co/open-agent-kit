@@ -23,6 +23,111 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def get_batch_ids_for_reprocessing(
+    store: ActivityStore,
+    machine_id: str,
+    *,
+    mode: str = "all",
+    session_id: str | None = None,
+    start_epoch: float | None = None,
+    end_epoch: float | None = None,
+    importance_threshold: int | None = None,
+) -> list[int]:
+    """Get batch IDs eligible for reprocessing, filtered by source machine.
+
+    Only returns batches where source_machine_id matches the given machine_id
+    to prevent accidentally modifying teammates' imported data.
+
+    Args:
+        store: The ActivityStore instance.
+        machine_id: Current machine identifier (only process own data).
+        mode: Reprocessing mode - 'all', 'date_range', 'session', 'low_importance'.
+        session_id: Required for 'session' mode.
+        start_epoch: Required for 'date_range' mode.
+        end_epoch: Required for 'date_range' mode.
+        importance_threshold: For 'low_importance' mode (reprocess below this).
+
+    Returns:
+        List of prompt batch IDs eligible for reprocessing.
+
+    Raises:
+        ValueError: If required parameters are missing for the chosen mode,
+            or if an invalid mode is specified.
+        KeyError: If the specified session is not found or not owned by this machine.
+    """
+    conn = store._get_connection()
+
+    if mode == "all":
+        cursor = conn.execute(
+            """
+            SELECT id FROM prompt_batches
+            WHERE source_machine_id = ?
+              AND status = 'completed'
+              AND source_type = 'user'
+            ORDER BY created_at_epoch ASC
+            """,
+            (machine_id,),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    if mode == "date_range":
+        if start_epoch is None or end_epoch is None:
+            raise ValueError("date_range mode requires start_epoch and end_epoch")
+        cursor = conn.execute(
+            """
+            SELECT id FROM prompt_batches
+            WHERE source_machine_id = ?
+              AND status = 'completed'
+              AND created_at_epoch >= ?
+              AND created_at_epoch <= ?
+            ORDER BY created_at_epoch ASC
+            """,
+            (machine_id, start_epoch, end_epoch),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    if mode == "session":
+        if not session_id:
+            raise ValueError("session mode requires session_id")
+        # Check session belongs to this machine
+        cursor = conn.execute(
+            "SELECT id FROM sessions WHERE id = ? AND source_machine_id = ?",
+            (session_id, machine_id),
+        )
+        if not cursor.fetchone():
+            raise KeyError(f"Session not found or not owned by this machine: {session_id}")
+        cursor = conn.execute(
+            """
+            SELECT id FROM prompt_batches
+            WHERE session_id = ?
+              AND source_machine_id = ?
+              AND status = 'completed'
+            ORDER BY created_at_epoch ASC
+            """,
+            (session_id, machine_id),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    if mode == "low_importance":
+        threshold = importance_threshold or 4
+        cursor = conn.execute(
+            """
+            SELECT DISTINCT pb.id
+            FROM prompt_batches pb
+            JOIN memory_observations mo ON mo.prompt_batch_id = pb.id
+            WHERE pb.source_machine_id = ?
+              AND pb.status = 'completed'
+              AND mo.importance < ?
+            ORDER BY pb.created_at_epoch ASC
+            """,
+            (machine_id, threshold),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    valid_modes = "all, date_range, session, low_importance"
+    raise ValueError(f"Invalid mode: {mode}. Use: {valid_modes}")
+
+
 def create_prompt_batch(
     store: ActivityStore,
     session_id: str,

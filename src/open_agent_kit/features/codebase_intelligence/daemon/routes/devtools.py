@@ -2,7 +2,7 @@ import logging
 import shutil
 import sqlite3
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
@@ -81,78 +81,19 @@ async def backfill_content_hashes() -> dict[str, Any]:
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
-        compute_activity_hash,
-        compute_observation_hash,
-        compute_prompt_batch_hash,
-    )
-
-    store = state.activity_store
-    conn = store._get_connection()
-
-    batch_count = 0
-    obs_count = 0
-    activity_count = 0
-
     try:
-        # Backfill prompt_batches
-        cursor = conn.execute(
-            "SELECT id, session_id, prompt_number FROM prompt_batches WHERE content_hash IS NULL"
-        )
-        for row in cursor.fetchall():
-            batch_id, session_id, prompt_number = row
-            hash_val = compute_prompt_batch_hash(str(session_id), int(prompt_number))
-            conn.execute(
-                "UPDATE prompt_batches SET content_hash = ? WHERE id = ?",
-                (hash_val, batch_id),
-            )
-            batch_count += 1
-
-        # Backfill memory_observations
-        cursor = conn.execute(
-            "SELECT id, observation, memory_type, context FROM memory_observations "
-            "WHERE content_hash IS NULL"
-        )
-        for row in cursor.fetchall():
-            obs_id, observation, memory_type, context = row
-            hash_val = compute_observation_hash(str(observation), str(memory_type), context)
-            conn.execute(
-                "UPDATE memory_observations SET content_hash = ? WHERE id = ?",
-                (hash_val, obs_id),
-            )
-            obs_count += 1
-
-        # Backfill activities
-        cursor = conn.execute(
-            "SELECT id, session_id, timestamp_epoch, tool_name FROM activities "
-            "WHERE content_hash IS NULL"
-        )
-        for row in cursor.fetchall():
-            activity_id, session_id, timestamp_epoch, tool_name = row
-            hash_val = compute_activity_hash(str(session_id), int(timestamp_epoch), str(tool_name))
-            conn.execute(
-                "UPDATE activities SET content_hash = ? WHERE id = ?",
-                (hash_val, activity_id),
-            )
-            activity_count += 1
-
-        conn.commit()
-
-        logger.info(
-            f"Backfilled content hashes: {batch_count} batches, "
-            f"{obs_count} observations, {activity_count} activities"
-        )
-
-        return {
-            "status": "success",
-            "message": f"Backfilled {batch_count + obs_count + activity_count} hashes",
-            "batches": batch_count,
-            "observations": obs_count,
-            "activities": activity_count,
-        }
-
+        counts = state.activity_store.backfill_content_hashes()
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}") from e
+
+    total = sum(counts.values())
+    return {
+        "status": "success",
+        "message": f"Backfilled {total} hashes",
+        "batches": counts["prompt_batches"],
+        "observations": counts["observations"],
+        "activities": counts["activities"],
+    }
 
 
 @router.post("/api/devtools/rebuild-index", dependencies=_devtools_confirm)
@@ -182,40 +123,22 @@ async def reset_processing(request: ResetProcessingRequest) -> dict[str, Any]:
     if not state.activity_store:
         raise HTTPException(status_code=503, detail="Activity store not initialized")
 
-    store = state.activity_store
     chromadb_cleared = 0
 
     try:
-        with store._transaction() as conn:
-            # 1. Delete generated memories if requested
-            if request.delete_memories:
-                conn.execute("DELETE FROM memory_observations")
-
-                # Also clear ChromaDB memory collection to prevent orphaned vectors
-                # This is the only way to reclaim space - ChromaDB has no vacuum
-                if state.vector_store:
-                    chromadb_cleared = state.vector_store.clear_memory_collection()
-                    logger.info(f"Cleared {chromadb_cleared} items from ChromaDB memory collection")
-
-            # 2. Reset sessions
-            conn.execute(
-                "UPDATE sessions SET processed = FALSE, summary = NULL WHERE status = 'completed'"
-            )
-
-            # 3. Reset prompt batches
-            conn.execute(
-                "UPDATE prompt_batches "
-                "SET processed = FALSE, classification = NULL "
-                "WHERE status = 'completed'"
-            )
-
-            # 4. Reset activities
-            conn.execute("UPDATE activities SET processed = FALSE")
-
-            logger.info("Reset processing state via DevTools")
-
+        counts = state.activity_store.reset_processing_state(
+            delete_memories=request.delete_memories
+        )
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}") from e
+
+    # ChromaDB cleanup stays in the route — the store layer doesn't hold
+    # the vector store reference for this operation.
+    if request.delete_memories and state.vector_store:
+        chromadb_cleared = state.vector_store.clear_memory_collection()
+        logger.info(f"Cleared {chromadb_cleared} items from ChromaDB memory collection")
+
+    logger.info("Reset processing state via DevTools: %s", counts)
 
     return {
         "status": "success",
@@ -589,24 +512,13 @@ async def database_maintenance(
     def _run_maintenance() -> None:
         """Background task to run SQLite maintenance operations."""
         try:
-            if request.reindex:
-                conn.execute("REINDEX")
-                logger.debug("Database maintenance: REINDEX complete")
-
-            if request.analyze:
-                conn.execute("ANALYZE")
-                logger.debug("Database maintenance: ANALYZE complete")
-
-            if request.fts_optimize:
-                conn.execute("INSERT INTO activities_fts(activities_fts) VALUES('optimize')")
-                logger.debug("Database maintenance: FTS optimize complete")
-
-            if request.vacuum:
-                conn.execute("VACUUM")
-                logger.debug("Database maintenance: VACUUM complete")
-
-            logger.info("Database maintenance completed successfully")
-        except sqlite3.Error as e:
+            store.optimize_database(
+                vacuum=request.vacuum,
+                analyze=request.analyze,
+                fts_optimize=request.fts_optimize,
+                reindex=request.reindex,
+            )
+        except Exception as e:
             logger.error(f"Database maintenance error: {e}", exc_info=True)
 
     background_tasks.add_task(_run_maintenance)
@@ -657,27 +569,12 @@ async def regenerate_summaries(
     store = state.activity_store
 
     if force:
-        # Get ALL completed sessions with enough activities
         min_activities = processor.min_session_activities
-        conn = store._get_connection()
-        cursor = conn.execute(
-            """
-            SELECT s.* FROM sessions s
-            WHERE s.status = 'completed'
-            AND (SELECT COUNT(*) FROM activities a WHERE a.session_id = s.id) >= ?
-            ORDER BY s.created_at_epoch DESC
-            LIMIT 500
-            """,
-            (min_activities,),
-        )
-        from open_agent_kit.features.codebase_intelligence.activity.store.models import Session
-
-        sessions = [Session.from_row(row) for row in cursor.fetchall()]
+        sessions_list = store.get_completed_sessions(min_activities=min_activities, limit=500)
     else:
-        # Only sessions missing summaries
-        sessions = store.get_sessions_missing_summaries(limit=100)
+        sessions_list = store.get_sessions_missing_summaries(limit=100)
 
-    if not sessions:
+    if not sessions_list:
         return {
             "status": "skipped",
             "message": "No sessions to regenerate" if force else "No sessions missing summaries",
@@ -688,7 +585,7 @@ async def regenerate_summaries(
 
     def _regenerate() -> None:
         count = 0
-        for session in sessions:
+        for session in sessions_list:
             try:
                 summary, _title = processor.process_session_summary_with_title(
                     session.id, regenerate_title=regenerate_title
@@ -698,11 +595,11 @@ async def regenerate_summaries(
                     logger.info(f"Regenerated summary for session {session.id[:8]}")
             except (OSError, ValueError, RuntimeError, AttributeError) as e:
                 logger.warning(f"Failed to regenerate summary for {session.id[:8]}: {e}")
-        logger.info(f"Regenerated {count} session summaries out of {len(sessions)} queued")
+        logger.info(f"Regenerated {count} session summaries out of {len(sessions_list)} queued")
 
     background_tasks.add_task(_regenerate)
     mode = "force" if force else "backfill"
-    return {"status": "started", "sessions_queued": len(sessions), "mode": mode}
+    return {"status": "started", "sessions_queued": len(sessions_list), "mode": mode}
 
 
 @router.post("/api/devtools/cleanup-minimal-sessions", dependencies=_devtools_confirm)
@@ -804,16 +701,13 @@ async def resolve_stale_observations(
         suggestions.append(suggestion)
 
         if not dry_run:
-            resolved_at = datetime.now(UTC).isoformat()
-            store.update_observation_status(
-                observation_id=obs.id,
-                status="resolved",
-                resolved_by_session_id=later_session_id,
-                resolved_at=resolved_at,
-            )
-            # Update ChromaDB metadata if vector store is available
-            if state.vector_store:
-                state.vector_store.update_memory_status(obs.id, "resolved")
+            engine = state.retrieval_engine
+            if engine:
+                engine.resolve_memory(
+                    memory_id=obs.id,
+                    status="resolved",
+                    resolved_by_session_id=later_session_id,
+                )
             resolved_count += 1
 
     return {
@@ -874,106 +768,31 @@ async def reprocess_observations(
     store = state.activity_store
     machine_id = state.machine_id or ""
 
-    # Build query to get batch IDs based on mode
-    # Always filter by source_machine_id to only touch our own data
-    batch_ids: list[int] = []
-
-    try:
-        conn = store._get_connection()
-
-        if request.mode == "all":
-            # All completed user batches from this machine
-            cursor = conn.execute(
-                """
-                SELECT id FROM prompt_batches
-                WHERE source_machine_id = ?
-                  AND status = 'completed'
-                  AND source_type = 'user'
-                ORDER BY created_at_epoch ASC
-                """,
-                (machine_id,),
-            )
-            batch_ids = [row[0] for row in cursor.fetchall()]
-
-        elif request.mode == "date_range":
-            if not request.start_date or not request.end_date:
-                raise HTTPException(
-                    status_code=400,
-                    detail="date_range mode requires start_date and end_date",
-                )
-            # Parse ISO dates to epoch
-            start_epoch = datetime.fromisoformat(request.start_date).timestamp()
-            end_epoch = datetime.fromisoformat(request.end_date).timestamp()
-
-            cursor = conn.execute(
-                """
-                SELECT id FROM prompt_batches
-                WHERE source_machine_id = ?
-                  AND status = 'completed'
-                  AND created_at_epoch >= ?
-                  AND created_at_epoch <= ?
-                ORDER BY created_at_epoch ASC
-                """,
-                (machine_id, start_epoch, end_epoch),
-            )
-            batch_ids = [row[0] for row in cursor.fetchall()]
-
-        elif request.mode == "session":
-            if not request.session_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="session mode requires session_id",
-                )
-            # Check session belongs to this machine
-            cursor = conn.execute(
-                """
-                SELECT id FROM sessions
-                WHERE id = ? AND source_machine_id = ?
-                """,
-                (request.session_id, machine_id),
-            )
-            if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Session not found or not owned by this machine: {request.session_id}",
-                )
-
-            cursor = conn.execute(
-                """
-                SELECT id FROM prompt_batches
-                WHERE session_id = ?
-                  AND source_machine_id = ?
-                  AND status = 'completed'
-                ORDER BY created_at_epoch ASC
-                """,
-                (request.session_id, machine_id),
-            )
-            batch_ids = [row[0] for row in cursor.fetchall()]
-
-        elif request.mode == "low_importance":
-            threshold = request.importance_threshold or 4
-            # Find batches that have observations below the threshold
-            cursor = conn.execute(
-                """
-                SELECT DISTINCT pb.id
-                FROM prompt_batches pb
-                JOIN memory_observations mo ON mo.prompt_batch_id = pb.id
-                WHERE pb.source_machine_id = ?
-                  AND pb.status = 'completed'
-                  AND mo.importance < ?
-                ORDER BY pb.created_at_epoch ASC
-                """,
-                (machine_id, threshold),
-            )
-            batch_ids = [row[0] for row in cursor.fetchall()]
-
-        else:
-            valid_modes = "all, date_range, session, low_importance"
+    # Parse date_range params to epoch before calling store layer
+    start_epoch: float | None = None
+    end_epoch: float | None = None
+    if request.mode == "date_range":
+        if not request.start_date or not request.end_date:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid mode: {request.mode}. Use: {valid_modes}",
+                detail="date_range mode requires start_date and end_date",
             )
+        start_epoch = datetime.fromisoformat(request.start_date).timestamp()
+        end_epoch = datetime.fromisoformat(request.end_date).timestamp()
 
+    try:
+        batch_ids = store.get_batch_ids_for_reprocessing(
+            machine_id,
+            mode=request.mode,
+            session_id=request.session_id,
+            start_epoch=start_epoch,
+            end_epoch=end_epoch,
+            importance_threshold=request.importance_threshold,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}") from e
 

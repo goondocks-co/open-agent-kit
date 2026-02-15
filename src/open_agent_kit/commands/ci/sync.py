@@ -137,7 +137,7 @@ def ci_sync(
     if plan.stop_daemon:
         operations.append("Stop daemon")
     if plan.restore_team_backups:
-        operations.append("Import team backups (first pass)")
+        operations.append("Replace team backups (first pass)")
     if plan.full_index_rebuild:
         operations.append("Delete ChromaDB for full rebuild")
     if plan.start_daemon:
@@ -145,7 +145,7 @@ def ci_sync(
     if plan.restore_team_backups:
         activities_note = " (with activities)" if include_activities else ""
         operations.append(f"Create fresh backup{activities_note}")
-        operations.append("Import team backups (second pass)")
+        operations.append("Replace team backups (second pass)")
     for i, op in enumerate(operations, 1):
         console.print(f"  {i}. {op}")
 
@@ -183,11 +183,16 @@ def ci_sync(
         for error in result.errors:
             console.print(f"  [red]✗[/red] {error}")
 
-    if result.records_imported > 0 or result.records_skipped > 0:
+    if result.records_imported > 0 or result.records_skipped > 0 or result.records_deleted > 0:
         console.print()
-        print_info(
-            f"Records: {result.records_imported} imported, {result.records_skipped} skipped (duplicates)"
-        )
+        parts: list[str] = []
+        if result.records_deleted > 0:
+            parts.append(f"{result.records_deleted} replaced")
+        if result.records_imported > 0:
+            parts.append(f"{result.records_imported} imported")
+        if result.records_skipped > 0:
+            parts.append(f"{result.records_skipped} skipped (duplicates)")
+        print_info(f"Records: {', '.join(parts)}")
 
     if result.migrations_applied > 0:
         print_info(f"Migrations: {result.migrations_applied} applied")

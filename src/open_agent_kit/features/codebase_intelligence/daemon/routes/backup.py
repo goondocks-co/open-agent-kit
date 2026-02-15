@@ -128,6 +128,7 @@ class RestoreAllRequest(BaseModel):
 
     dry_run: bool = False
     auto_rebuild_chromadb: bool = True  # Rebuild ChromaDB after restore
+    replace_machine: bool = True  # Drop-and-replace: delete stale data before import
 
 
 class BackupFileInfo(BaseModel):
@@ -172,6 +173,10 @@ class RestoreResponse(BaseModel):
     observations_skipped: int = 0
     activities_imported: int = 0
     activities_skipped: int = 0
+    sessions_deleted: int = 0
+    batches_deleted: int = 0
+    observations_deleted: int = 0
+    activities_deleted: int = 0
     errors: int = 0
     error_messages: list[str] = []  # Detailed error messages for debugging
     chromadb_rebuild_started: bool = False
@@ -184,9 +189,12 @@ class RestoreResponse(BaseModel):
         chromadb_rebuild_started: bool = False,
     ) -> "RestoreResponse":
         """Create response from ImportResult."""
-        message = (
-            f"Restored {result.total_imported} records, skipped {result.total_skipped} duplicates"
-        )
+        parts: list[str] = []
+        if result.total_deleted > 0:
+            parts.append(f"replaced {result.total_deleted}")
+        parts.append(f"imported {result.total_imported}")
+        parts.append(f"skipped {result.total_skipped} duplicates")
+        message = ", ".join(parts)
         if result.errors > 0:
             message += f" ({result.errors} errors)"
         if chromadb_rebuild_started:
@@ -203,6 +211,10 @@ class RestoreResponse(BaseModel):
             observations_skipped=result.observations_skipped,
             activities_imported=result.activities_imported,
             activities_skipped=result.activities_skipped,
+            sessions_deleted=result.sessions_deleted,
+            batches_deleted=result.batches_deleted,
+            observations_deleted=result.observations_deleted,
+            activities_deleted=result.activities_deleted,
             errors=result.errors,
             error_messages=result.error_messages,
             chromadb_rebuild_started=chromadb_rebuild_started,
@@ -217,12 +229,22 @@ class RestoreAllResponse(BaseModel):
     files_processed: int
     total_imported: int
     total_skipped: int
+    total_deleted: int = 0
     total_errors: int
     per_file: dict[str, RestoreResponse]
 
 
-def _trigger_chromadb_rebuild(background_tasks: BackgroundTasks) -> bool:
+def _trigger_chromadb_rebuild(
+    background_tasks: BackgroundTasks,
+    incremental: bool = False,
+) -> bool:
     """Trigger ChromaDB rebuild and session re-embedding in background.
+
+    Args:
+        background_tasks: FastAPI background tasks handle.
+        incremental: When True, only embed pending (``embedded=0``) records
+            instead of wiping and re-embedding everything.  Used after
+            drop-and-replace restore where local embeddings are still valid.
 
     Returns True if rebuild was started, False otherwise.
     """
@@ -230,13 +252,24 @@ def _trigger_chromadb_rebuild(background_tasks: BackgroundTasks) -> bool:
     if not state.activity_processor:
         return False
 
-    logger.info("Starting post-restore ChromaDB rebuild in background")
-    background_tasks.add_task(
-        state.activity_processor.rebuild_chromadb_from_sqlite,
-        batch_size=50,
-        reset_embedded_flags=True,
-        clear_chromadb_first=True,
-    )
+    if incremental:
+        logger.info("Starting incremental post-restore embedding in background")
+        background_tasks.add_task(
+            state.activity_processor.embed_pending_observations,
+            batch_size=50,
+        )
+        background_tasks.add_task(
+            state.activity_processor.index_pending_plans,
+            batch_size=10,
+        )
+    else:
+        logger.info("Starting post-restore ChromaDB full rebuild in background")
+        background_tasks.add_task(
+            state.activity_processor.rebuild_chromadb_from_sqlite,
+            batch_size=50,
+            reset_embedded_flags=True,
+            clear_chromadb_first=True,
+        )
 
     if state.vector_store and state.activity_store:
         from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
@@ -244,13 +277,15 @@ def _trigger_chromadb_rebuild(background_tasks: BackgroundTasks) -> bool:
         )
 
         store = state.activity_store  # narrowed by guard above
+        clear_first = not incremental
         background_tasks.add_task(
             reembed_session_summaries,
             activity_store=store,
             vector_store=state.vector_store,
-            clear_first=True,
+            clear_first=clear_first,
         )
-        logger.info("Starting post-restore session summary re-embedding in background")
+        mode = "incremental" if incremental else "full"
+        logger.info(f"Starting post-restore session summary re-embedding ({mode}) in background")
 
     return True
 
@@ -502,6 +537,8 @@ async def restore_all_backups_endpoint(
         project_root=state.project_root,
         db_path=db_path,
         dry_run=request.dry_run,
+        replace_machine=request.replace_machine,
+        vector_store=state.vector_store if request.replace_machine else None,
     )
 
     if not result.success:
@@ -514,22 +551,28 @@ async def restore_all_backups_endpoint(
 
     total_imported = result.total_imported
     total_skipped = result.total_skipped
+    total_deleted = result.total_deleted
     total_errors = sum(r.errors for r in result.per_file.values())
 
     # Trigger ChromaDB rebuild if not dry run and requested
     chromadb_rebuild_started = False
     if not request.dry_run and request.auto_rebuild_chromadb and total_imported > 0:
-        chromadb_rebuild_started = _trigger_chromadb_rebuild(background_tasks)
+        chromadb_rebuild_started = _trigger_chromadb_rebuild(
+            background_tasks,
+            incremental=request.replace_machine,
+        )
 
     logger.info(
-        f"Restore all complete: {total_imported} imported, "
+        f"Restore all complete: {total_deleted} deleted, {total_imported} imported, "
         f"{total_skipped} skipped, {total_errors} errors"
     )
 
-    message = (
-        f"Restored {total_imported} records from {len(result.per_file)} files, "
-        f"skipped {total_skipped} duplicates"
-    )
+    parts: list[str] = []
+    if total_deleted > 0:
+        parts.append(f"replaced {total_deleted}")
+    parts.append(f"imported {total_imported} records from {len(result.per_file)} files")
+    parts.append(f"skipped {total_skipped} duplicates")
+    message = ", ".join(parts)
     if chromadb_rebuild_started:
         message += ". ChromaDB rebuild started in background."
 
@@ -539,6 +582,7 @@ async def restore_all_backups_endpoint(
         files_processed=len(result.per_file),
         total_imported=total_imported,
         total_skipped=total_skipped,
+        total_deleted=total_deleted,
         total_errors=total_errors,
         per_file=per_file,
     )

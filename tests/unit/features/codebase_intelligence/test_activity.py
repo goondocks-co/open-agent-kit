@@ -2053,6 +2053,10 @@ class TestActivityStoreBackup:
 
     def test_export_to_sql_creates_file(self, activity_store: ActivityStore, temp_db: Path):
         """Test that export_to_sql creates a SQL file."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+        )
+
         # Create some test data
         activity_store.create_session(
             session_id="backup-test-1",
@@ -2066,7 +2070,7 @@ class TestActivityStoreBackup:
 
         # Export to SQL
         backup_path = temp_db.parent / "backup.sql"
-        count = activity_store.export_to_sql(backup_path)
+        count = export_to_sql(activity_store, backup_path)
 
         assert backup_path.exists()
         assert count >= 2  # At least session and prompt batch
@@ -2079,6 +2083,10 @@ class TestActivityStoreBackup:
     ):
         """Test that export includes memory observations."""
         import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+        )
 
         # Create session and observation
         activity_store.create_session(
@@ -2097,7 +2105,7 @@ class TestActivityStoreBackup:
 
         # Export to SQL
         backup_path = temp_db.parent / "backup.sql"
-        count = activity_store.export_to_sql(backup_path)
+        count = export_to_sql(activity_store, backup_path)
 
         assert count >= 2  # session + observation
         content = backup_path.read_text()
@@ -2108,6 +2116,10 @@ class TestActivityStoreBackup:
         self, activity_store: ActivityStore, temp_db: Path
     ):
         """Test that activities table is excluded by default."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+        )
+
         # Create session with activities
         activity_store.create_session(
             session_id="backup-test-3",
@@ -2126,7 +2138,7 @@ class TestActivityStoreBackup:
 
         # Export without activities
         backup_path = temp_db.parent / "backup.sql"
-        activity_store.export_to_sql(backup_path, include_activities=False)
+        export_to_sql(activity_store, backup_path, include_activities=False)
 
         content = backup_path.read_text()
         assert "INSERT INTO sessions" in content
@@ -2136,6 +2148,10 @@ class TestActivityStoreBackup:
         self, activity_store: ActivityStore, temp_db: Path
     ):
         """Test that activities can be included in export."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+        )
+
         # Create session with activities
         activity_store.create_session(
             session_id="backup-test-4",
@@ -2154,7 +2170,7 @@ class TestActivityStoreBackup:
 
         # Export with activities
         backup_path = temp_db.parent / "backup.sql"
-        activity_store.export_to_sql(backup_path, include_activities=True)
+        export_to_sql(activity_store, backup_path, include_activities=True)
 
         content = backup_path.read_text()
         assert "INSERT INTO activities" in content
@@ -2162,6 +2178,11 @@ class TestActivityStoreBackup:
     def test_import_from_sql_restores_data(self, temp_db: Path):
         """Test that import_from_sql restores data to a fresh database."""
         import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
 
         # Create source store with data
         source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
@@ -2184,7 +2205,7 @@ class TestActivityStoreBackup:
 
         # Export
         backup_path = temp_db.parent / "backup.sql"
-        source_store.export_to_sql(backup_path)
+        export_to_sql(source_store, backup_path)
         source_store.close()
 
         # Create fresh target store
@@ -2192,9 +2213,9 @@ class TestActivityStoreBackup:
         target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
 
         # Import
-        count = target_store.import_from_sql(backup_path)
+        result = import_from_sql_with_dedup(target_store, backup_path)
 
-        assert count >= 3  # session + prompt batch + observation
+        assert result.total_imported >= 3  # session + prompt batch + observation
 
         # Verify data was restored
         session = target_store.get_session("import-test-1")
@@ -2210,6 +2231,11 @@ class TestActivityStoreBackup:
     def test_import_marks_observations_as_unembedded(self, temp_db: Path):
         """Test that imported observations are marked as unembedded for ChromaDB rebuild."""
         import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
 
         # Create source store with embedded observation
         source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
@@ -2234,13 +2260,13 @@ class TestActivityStoreBackup:
 
         # Export
         backup_path = temp_db.parent / "backup.sql"
-        source_store.export_to_sql(backup_path)
+        export_to_sql(source_store, backup_path)
         source_store.close()
 
         # Create fresh target and import
         target_db = temp_db.parent / "target.db"
         target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
-        target_store.import_from_sql(backup_path)
+        import_from_sql_with_dedup(target_store, backup_path)
 
         # Verify observations are unembedded after import (for ChromaDB rebuild)
         assert target_store.count_unembedded_observations() >= 1
@@ -2251,6 +2277,11 @@ class TestActivityStoreBackup:
         self, activity_store: ActivityStore, temp_db: Path
     ):
         """Test that import handles duplicate records without failing."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
+
         # Create initial data
         activity_store.create_session(
             session_id="dup-test-1",
@@ -2260,15 +2291,19 @@ class TestActivityStoreBackup:
 
         # Export
         backup_path = temp_db.parent / "backup.sql"
-        activity_store.export_to_sql(backup_path)
+        export_to_sql(activity_store, backup_path)
 
         # Import again (should not fail on duplicate)
-        # Count may be 0 due to duplicates being skipped, but should not raise
-        activity_store.import_from_sql(backup_path)
+        # Duplicates are skipped via dedup, but should not raise
+        import_from_sql_with_dedup(activity_store, backup_path)
 
     def test_export_escapes_special_characters(self, activity_store: ActivityStore, temp_db: Path):
         """Test that export properly escapes SQL special characters."""
         import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+        )
 
         # Create session with special characters
         activity_store.create_session(
@@ -2286,7 +2321,7 @@ class TestActivityStoreBackup:
 
         # Export should not fail
         backup_path = temp_db.parent / "backup.sql"
-        count = activity_store.export_to_sql(backup_path)
+        count = export_to_sql(activity_store, backup_path)
         assert count >= 2
 
         # Content should be valid SQL
@@ -2298,6 +2333,11 @@ class TestActivityStoreBackup:
     def test_roundtrip_preserves_data_integrity(self, temp_db: Path):
         """Test that export->import roundtrip preserves data integrity."""
         import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
 
         # Create source with comprehensive data
         source_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
@@ -2328,13 +2368,13 @@ class TestActivityStoreBackup:
 
         # Export
         backup_path = temp_db.parent / "backup.sql"
-        source_store.export_to_sql(backup_path)
+        export_to_sql(source_store, backup_path)
         source_store.close()
 
         # Import to fresh database
         target_db = temp_db.parent / "roundtrip_target.db"
         target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
-        target_store.import_from_sql(backup_path)
+        import_from_sql_with_dedup(target_store, backup_path)
 
         # Verify counts match
         target_sessions = len(target_store.get_recent_sessions(limit=100))
@@ -2355,6 +2395,10 @@ class TestActivityStoreBackup:
 
         This enables importing backups from newer schema versions.
         """
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
         # Create a backup file with an extra column that doesn't exist
         backup_content = """-- OAK Codebase Intelligence History Backup
 -- Exported: 2025-01-01T00:00:00
@@ -2369,10 +2413,10 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
 
         # Import to a fresh database - should NOT fail due to unknown column
         target_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
-        count = target_store.import_from_sql(backup_path)
+        result = import_from_sql_with_dedup(target_store, backup_path)
 
         # Session should be imported (unknown column stripped)
-        assert count >= 1
+        assert result.total_imported >= 1
         session = target_store.get_session("future-test-1")
         assert session is not None
         assert session.agent == "claude"
@@ -2408,14 +2452,19 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         )
 
         # Export
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
+
         backup_path = temp_db.parent / "parent_child_backup.sql"
-        source_store.export_to_sql(backup_path)
+        export_to_sql(source_store, backup_path)
         source_store.close()
 
         # Import to fresh database
         target_db = temp_db.parent / "target_parent_child.db"
         target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
-        target_store.import_from_sql(backup_path)
+        import_from_sql_with_dedup(target_store, backup_path)
 
         # Verify parent-child link preserved
         child = target_store.get_session("child-session")
@@ -2444,8 +2493,12 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         backup_path.write_text(backup_content)
 
         # Import to a fresh database
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
         target_store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
-        target_store.import_from_sql(backup_path)
+        import_from_sql_with_dedup(target_store, backup_path)
 
         # Session should be imported with parent_session_id set to NULL
         session = target_store.get_session("orphan-child")
@@ -2499,14 +2552,19 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         assert cursor.fetchone()[0] == plan_batch.id
 
         # Export
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
+
         backup_path = temp_db.parent / "plan_link_backup.sql"
-        source_store.export_to_sql(backup_path)
+        export_to_sql(source_store, backup_path)
         source_store.close()
 
         # Import to fresh database
         target_db = temp_db.parent / "target_plan_link.db"
         target_store = ActivityStore(target_db, machine_id=TEST_MACHINE_ID)
-        target_store.import_from_sql(backup_path)
+        import_from_sql_with_dedup(target_store, backup_path)
 
         # Verify the relationship is preserved (IDs may differ but link exists)
         target_conn = target_store._get_connection()
@@ -2532,6 +2590,10 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         imported data from other machines.
         """
         import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+        )
 
         # Create a store and add local data
         store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
@@ -2602,7 +2664,7 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
 
         # Export - should only include local data
         backup_path = temp_db.parent / "origin_tracking_backup.sql"
-        store.export_to_sql(backup_path)
+        export_to_sql(store, backup_path)
 
         # Read and verify backup content
         backup_content = backup_path.read_text()
@@ -2627,6 +2689,11 @@ INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count,
         preserved so that future exports from this machine won't re-export
         the imported data.
         """
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            export_to_sql,
+            import_from_sql_with_dedup,
+        )
+
         # Create a backup file that looks like it came from another machine
         foreign_machine = "other_machine_bob"
         backup_content = f"""-- OAK Codebase Intelligence History Backup
@@ -2648,7 +2715,7 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
 
         # Import the backup
         store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
-        store.import_from_sql(backup_path)
+        import_from_sql_with_dedup(store, backup_path)
 
         # Verify the data was imported
         session = store.get_session("imported-session")
@@ -2660,7 +2727,7 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
         assert current_machine != foreign_machine, "Test requires different machine IDs"
 
         export_path = temp_db.parent / "re_export.sql"
-        count = store.export_to_sql(export_path)
+        count = export_to_sql(store, export_path)
 
         # No records should be exported (all data is from the foreign machine)
         assert count == 0
@@ -2672,6 +2739,454 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
         ), "Export file should not be created when no records match the current machine"
 
         store.close()
+
+
+class TestReplaceImport:
+    """Tests for drop-and-replace team backup restore (replace_machine mode)."""
+
+    OTHER_MACHINE_ID = "other_machine_alice_abc123"
+
+    def _create_foreign_session(
+        self,
+        store: ActivityStore,
+        session_id: str,
+        machine_id: str,
+        *,
+        with_observation: bool = False,
+        with_activity: bool = False,
+    ) -> None:
+        """Insert records that look like they came from another machine."""
+        import uuid
+
+        conn = store._get_connection()
+        conn.execute(
+            """
+            INSERT INTO sessions (id, agent, project_root, started_at, status,
+                                 prompt_count, tool_count, processed, created_at_epoch,
+                                 source_machine_id)
+            VALUES (?, 'claude', '/other', '2025-01-01T00:00:00', 'completed',
+                    1, 0, 0, 1704067200, ?)
+            """,
+            (session_id, machine_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO prompt_batches (session_id, prompt_number, started_at, status,
+                                        activity_count, processed, created_at_epoch,
+                                        source_machine_id)
+            VALUES (?, 1, '2025-01-01T00:00:00', 'completed', 0, 0, 1704067200, ?)
+            """,
+            (session_id, machine_id),
+        )
+        if with_observation:
+            conn.execute(
+                """
+                INSERT INTO memory_observations (id, session_id, observation, memory_type,
+                                                created_at, created_at_epoch, embedded,
+                                                source_machine_id)
+                VALUES (?, ?, 'Foreign obs', 'discovery', '2025-01-01T00:00:00',
+                        1704067200, 0, ?)
+                """,
+                (str(uuid.uuid4()), session_id, machine_id),
+            )
+        if with_activity:
+            conn.execute(
+                """
+                INSERT INTO activities (session_id, tool_name, timestamp, timestamp_epoch,
+                                       source_machine_id)
+                VALUES (?, 'Read', '2025-01-01T00:00:00', 1704067200, ?)
+                """,
+                (session_id, machine_id),
+            )
+        conn.commit()
+
+    def _make_backup_content(self, machine_id: str, session_id: str, observation_text: str) -> str:
+        """Build a minimal .sql backup file string."""
+        return f"""-- OAK Codebase Intelligence History Backup
+-- Exported: 2025-01-01T00:00:00
+-- Machine: {machine_id}
+-- Schema version: 13
+
+-- sessions (1 records)
+INSERT INTO sessions (id, agent, project_root, started_at, status, prompt_count, tool_count, processed, created_at_epoch, source_machine_id) VALUES ('{session_id}', 'claude', '/other', '2025-01-01T00:00:00', 'completed', 1, 0, 0, 1704067200, '{machine_id}');
+
+-- prompt_batches (1 records)
+INSERT INTO prompt_batches (id, session_id, prompt_number, started_at, status, activity_count, processed, created_at_epoch, source_machine_id) VALUES (1, '{session_id}', 1, '2025-01-01T00:00:00', 'completed', 0, 0, 1704067200, '{machine_id}');
+
+-- memory_observations (1 records)
+INSERT INTO memory_observations (id, session_id, observation, memory_type, created_at, created_at_epoch, embedded, source_machine_id) VALUES ('obs-{session_id}', '{session_id}', '{observation_text}', 'discovery', '2025-01-01T00:00:00', 1704067200, 0, '{machine_id}');
+"""
+
+    def test_delete_records_by_machine(self, activity_store: ActivityStore):
+        """Delete removes all records for a machine while leaving local data intact."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+            delete_records_by_machine,
+        )
+
+        # Create local data
+        activity_store.create_session("local-sess", agent="claude", project_root="/p")
+
+        # Create foreign data
+        self._create_foreign_session(
+            activity_store,
+            "foreign-sess",
+            self.OTHER_MACHINE_ID,
+            with_observation=True,
+            with_activity=True,
+        )
+
+        # Verify both exist
+        assert activity_store.get_session("local-sess") is not None
+        assert activity_store.get_session("foreign-sess") is not None
+
+        # Delete foreign machine records
+        counts = delete_records_by_machine(activity_store, self.OTHER_MACHINE_ID)
+
+        assert counts["sessions"] == 1
+        assert counts["prompt_batches"] == 1
+        assert counts["memory_observations"] == 1
+        assert counts["activities"] == 1
+
+        # Local data untouched
+        assert activity_store.get_session("local-sess") is not None
+        # Foreign data gone
+        assert activity_store.get_session("foreign-sess") is None
+
+    def test_replace_import_prevents_amplification(self, temp_db: Path):
+        """Importing the same backup twice with replace_machine=True should not double records."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        # Create backup file A
+        backup_content_v1 = self._make_backup_content(
+            self.OTHER_MACHINE_ID, "amp-sess", "Original observation text"
+        )
+        backup_path = temp_db.parent / f"{self.OTHER_MACHINE_ID}.sql"
+        backup_path.write_text(backup_content_v1)
+
+        # First import
+        r1 = import_from_sql_with_dedup(store, backup_path, replace_machine=True)
+        assert r1.total_imported >= 3  # session + batch + observation
+        assert r1.total_deleted == 0  # nothing to delete first time
+
+        # Simulate regeneration: same session, different observation text
+        backup_content_v2 = self._make_backup_content(
+            self.OTHER_MACHINE_ID, "amp-sess", "Regenerated observation text"
+        )
+        backup_path.write_text(backup_content_v2)
+
+        # Second import with replace
+        r2 = import_from_sql_with_dedup(store, backup_path, replace_machine=True)
+        assert r2.total_deleted >= 3  # old records cleaned
+        assert r2.total_imported >= 3  # new records imported
+
+        # Verify only one observation exists (not doubled)
+        obs_count = store.count_observations()
+        assert obs_count == 1
+
+        # Verify the observation has the new text
+        conn = store._get_connection()
+        cursor = conn.execute("SELECT observation FROM memory_observations")
+        assert cursor.fetchone()[0] == "Regenerated observation text"
+
+        store.close()
+
+    def test_replace_import_preserves_local_data(self, temp_db: Path):
+        """Replace import of machine B data should not touch machine A data."""
+        import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        # Create local data
+        store.create_session("local-sess", agent="claude", project_root="/p")
+        obs = StoredObservation(
+            id=str(uuid.uuid4()),
+            session_id="local-sess",
+            observation="Local observation",
+            memory_type="discovery",
+        )
+        store.store_observation(obs)
+
+        # Import foreign backup with replace
+        backup_content = self._make_backup_content(
+            self.OTHER_MACHINE_ID, "foreign-sess", "Foreign obs"
+        )
+        backup_path = temp_db.parent / f"{self.OTHER_MACHINE_ID}.sql"
+        backup_path.write_text(backup_content)
+
+        import_from_sql_with_dedup(store, backup_path, replace_machine=True)
+
+        # Local data should be untouched
+        assert store.get_session("local-sess") is not None
+        assert store.count_observations() == 2  # local + foreign
+
+        store.close()
+
+    def test_replace_import_skips_own_machine(self, temp_db: Path):
+        """Replace import of own-machine backup should not pre-delete."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        # Create local data
+        store.create_session("my-sess", agent="claude", project_root="/p")
+
+        # Create a backup that looks like it came from this machine
+        backup_content = self._make_backup_content(TEST_MACHINE_ID, "my-sess", "My observation")
+        backup_path = temp_db.parent / f"{TEST_MACHINE_ID}.sql"
+        backup_path.write_text(backup_content)
+
+        result = import_from_sql_with_dedup(store, backup_path, replace_machine=True)
+
+        # Should NOT have deleted anything (own machine guard)
+        assert result.total_deleted == 0
+        # Session should still exist (skipped as duplicate)
+        assert store.get_session("my-sess") is not None
+
+        store.close()
+
+    def test_replace_import_handles_fk_cascade(self, temp_db: Path):
+        """Replace import should handle session_relationships FK cascade without errors."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        # Create foreign sessions with a relationship between them
+        self._create_foreign_session(
+            store, "fk-sess-a", self.OTHER_MACHINE_ID, with_observation=True
+        )
+        self._create_foreign_session(
+            store, "fk-sess-b", self.OTHER_MACHINE_ID, with_observation=True
+        )
+        conn = store._get_connection()
+        conn.execute(
+            """
+            INSERT INTO session_relationships (session_a_id, session_b_id, relationship_type,
+                                              created_at, created_at_epoch, created_by)
+            VALUES ('fk-sess-a', 'fk-sess-b', 'related', '2025-01-01T00:00:00', 1704067200, 'manual')
+            """,
+        )
+        conn.commit()
+
+        # Now import a backup for that machine (should delete + reimport without FK errors)
+        backup_content = self._make_backup_content(
+            self.OTHER_MACHINE_ID, "fk-sess-a", "Replaced obs"
+        )
+        backup_path = temp_db.parent / f"{self.OTHER_MACHINE_ID}.sql"
+        backup_path.write_text(backup_content)
+
+        # Should not raise FK constraint errors
+        result = import_from_sql_with_dedup(store, backup_path, replace_machine=True)
+        assert result.total_deleted >= 2  # both sessions + children
+        assert result.errors == 0
+
+        store.close()
+
+    def test_delete_by_machine_cross_machine_fk(self, temp_db: Path):
+        """Delete-by-machine must handle cross-machine FK references from prior additive imports.
+
+        Prior additive (hash-based) imports can leave activities from machine A
+        whose prompt_batch_id points to a batch owned by machine B.  Deleting
+        machine B's records by source_machine_id alone would fail with
+        IntegrityError because those machine-A activities still reference the
+        batches being deleted.  The fix deletes children by FK reference to the
+        batch IDs being removed.
+        """
+        from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+            delete_records_by_machine,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        # Create a session and batch owned by machine B
+        conn = store._get_connection()
+        conn.execute(
+            "INSERT INTO sessions (id, agent, project_root, started_at, created_at_epoch, "
+            "source_machine_id) VALUES ('xfk-sess', 'claude', '/p', '2025-01-01T00:00:00', "
+            "1704067200, ?)",
+            (self.OTHER_MACHINE_ID,),
+        )
+        conn.execute(
+            "INSERT INTO prompt_batches (id, session_id, prompt_number, started_at, status, "
+            "created_at_epoch, source_machine_id) VALUES (9000, 'xfk-sess', 1, "
+            "'2025-01-01T00:00:00', 'completed', 1704067200, ?)",
+            (self.OTHER_MACHINE_ID,),
+        )
+
+        # Simulate a cross-machine FK: activity from LOCAL machine referencing
+        # machine B's batch (artifact of prior additive import)
+        conn.execute(
+            "INSERT INTO activities (session_id, prompt_batch_id, tool_name, timestamp, "
+            "timestamp_epoch, source_machine_id) VALUES ('xfk-sess', 9000, 'Read', "
+            "'2025-01-01T00:00:00', 1704067200, ?)",
+            (TEST_MACHINE_ID,),
+        )
+        conn.commit()
+
+        # This must NOT raise sqlite3.IntegrityError
+        counts = delete_records_by_machine(store, self.OTHER_MACHINE_ID)
+
+        assert counts["prompt_batches"] == 1
+        # The cross-machine activity should have been cleaned up via batch FK
+        assert counts["activities"] >= 1
+
+        store.close()
+
+    def test_delete_by_machine_self_referential_fk(self, temp_db: Path):
+        """Delete-by-machine must handle the self-referential source_plan_batch_id FK."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+            delete_records_by_machine,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        conn = store._get_connection()
+        conn.execute(
+            "INSERT INTO sessions (id, agent, project_root, started_at, created_at_epoch, "
+            "source_machine_id) VALUES ('self-fk-sess', 'claude', '/p', '2025-01-01T00:00:00', "
+            "1704067200, ?)",
+            (self.OTHER_MACHINE_ID,),
+        )
+        # Batch A — will be referenced by batch B's source_plan_batch_id
+        conn.execute(
+            "INSERT INTO prompt_batches (id, session_id, prompt_number, started_at, status, "
+            "created_at_epoch, source_machine_id) VALUES (9100, 'self-fk-sess', 1, "
+            "'2025-01-01T00:00:00', 'completed', 1704067200, ?)",
+            (self.OTHER_MACHINE_ID,),
+        )
+        # Batch B — self-referential FK to batch A
+        conn.execute(
+            "INSERT INTO prompt_batches (id, session_id, prompt_number, started_at, status, "
+            "created_at_epoch, source_machine_id, source_plan_batch_id) VALUES (9101, "
+            "'self-fk-sess', 2, '2025-01-01T00:00:00', 'completed', 1704067200, ?, 9100)",
+            (self.OTHER_MACHINE_ID,),
+        )
+        conn.commit()
+
+        # This must NOT raise sqlite3.IntegrityError
+        counts = delete_records_by_machine(store, self.OTHER_MACHINE_ID)
+
+        assert counts["prompt_batches"] == 2
+        assert counts["sessions"] == 1
+
+        store.close()
+
+    def test_replace_import_cleans_chromadb(self, temp_db: Path):
+        """Replace import should call vector_store.delete_memories with correct IDs."""
+        from unittest.mock import MagicMock
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+        mock_vs = MagicMock()
+
+        # Create foreign data with an observation
+        self._create_foreign_session(
+            store, "chroma-sess", self.OTHER_MACHINE_ID, with_observation=True
+        )
+
+        # Get the observation ID that was created
+        conn = store._get_connection()
+        cursor = conn.execute(
+            "SELECT id FROM memory_observations WHERE source_machine_id = ?",
+            (self.OTHER_MACHINE_ID,),
+        )
+        obs_id = cursor.fetchone()[0]
+
+        # Import with replace and mock vector_store
+        backup_content = self._make_backup_content(self.OTHER_MACHINE_ID, "chroma-sess", "New obs")
+        backup_path = temp_db.parent / f"{self.OTHER_MACHINE_ID}.sql"
+        backup_path.write_text(backup_content)
+
+        import_from_sql_with_dedup(store, backup_path, replace_machine=True, vector_store=mock_vs)
+
+        # Verify delete_memories was called with the old observation ID
+        mock_vs.delete_memories.assert_called_once_with([obs_id])
+
+        store.close()
+
+    def test_incremental_embed_preserves_existing(self, temp_db: Path):
+        """After replace import, local observations should keep embedded=1."""
+        import uuid
+
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            import_from_sql_with_dedup,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        # Create local session with embedded observation
+        store.create_session("embed-local", agent="claude", project_root="/p")
+        obs_id = str(uuid.uuid4())
+        obs = StoredObservation(
+            id=obs_id,
+            session_id="embed-local",
+            observation="Local embedded obs",
+            memory_type="discovery",
+        )
+        store.store_observation(obs)
+        store.mark_observation_embedded(obs_id)
+        assert store.count_embedded_observations() == 1
+
+        # Import foreign backup with replace
+        backup_content = self._make_backup_content(
+            self.OTHER_MACHINE_ID, "foreign-sess", "Foreign obs"
+        )
+        backup_path = temp_db.parent / f"{self.OTHER_MACHINE_ID}.sql"
+        backup_path.write_text(backup_content)
+
+        import_from_sql_with_dedup(store, backup_path, replace_machine=True)
+
+        # Local observation should still be marked as embedded
+        assert store.count_embedded_observations() == 1
+        # Foreign observation should be unembedded
+        assert store.count_unembedded_observations() == 1
+
+        store.close()
+
+    def test_import_result_total_deleted_property(self):
+        """ImportResult.total_deleted sums all deleted fields."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            ImportResult,
+        )
+
+        result = ImportResult(
+            sessions_deleted=2,
+            batches_deleted=5,
+            observations_deleted=10,
+            activities_deleted=20,
+            runs_deleted=1,
+        )
+        assert result.total_deleted == 38
+
+    def test_restore_all_result_total_deleted_property(self):
+        """RestoreAllResult.total_deleted sums across files."""
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            ImportResult,
+            RestoreAllResult,
+        )
+
+        r = RestoreAllResult(
+            success=True,
+            per_file={
+                "a.sql": ImportResult(sessions_deleted=2, observations_deleted=3),
+                "b.sql": ImportResult(sessions_deleted=1, observations_deleted=4),
+            },
+        )
+        assert r.total_deleted == 10
 
 
 class TestPlanDetectionDuringOrphanRecovery:

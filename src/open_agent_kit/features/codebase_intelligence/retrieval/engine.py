@@ -11,10 +11,13 @@ Provides:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CHARS_PER_TOKEN_ESTIMATE,
@@ -139,17 +142,25 @@ class RetrievalEngine:
     - Unified search interface for code and memories
     - Token-aware context assembly
     - Model-agnostic confidence scoring
+    - Two-phase memory status writes (SQLite + ChromaDB)
     """
 
-    def __init__(self, vector_store: VectorStore, config: RetrievalConfig | None = None):
+    def __init__(
+        self,
+        vector_store: VectorStore,
+        config: RetrievalConfig | None = None,
+        activity_store: "ActivityStore | None" = None,
+    ):
         """Initialize retrieval engine.
 
         Args:
             vector_store: VectorStore instance for searching.
             config: Retrieval configuration.
+            activity_store: Optional ActivityStore for two-phase memory writes.
         """
         self.store = vector_store
         self.config = config or RetrievalConfig()
+        self.activity_store = activity_store
 
     # =========================================================================
     # Confidence Calculation (model-agnostic)
@@ -757,16 +768,37 @@ class RetrievalEngine:
         self,
         memory_id: str,
         status: str = "resolved",
+        resolved_by_session_id: str | None = None,
+        superseded_by: str | None = None,
     ) -> bool:
-        """Update the lifecycle status of a memory in ChromaDB.
+        """Update the lifecycle status of a memory observation.
+
+        Two-phase write: SQLite first (source of truth), then ChromaDB
+        (search index). All callers should use this single method instead
+        of updating the stores independently.
 
         Args:
             memory_id: ID of the memory to resolve.
-            status: New status (resolved, superseded).
+            status: New status (active, resolved, superseded).
+            resolved_by_session_id: Session that resolved this observation.
+            superseded_by: Observation ID that supersedes this one.
 
         Returns:
             True if the memory was found and updated.
         """
+        resolved_at = datetime.now(UTC).isoformat() if status != "active" else None
+
+        # Phase 1: Update SQLite (source of truth)
+        if self.activity_store:
+            self.activity_store.update_observation_status(
+                observation_id=memory_id,
+                status=status,
+                resolved_by_session_id=resolved_by_session_id,
+                resolved_at=resolved_at,
+                superseded_by=superseded_by,
+            )
+
+        # Phase 2: Update ChromaDB (search index)
         return self.store.update_memory_status(memory_id, status)
 
     def list_memories(
