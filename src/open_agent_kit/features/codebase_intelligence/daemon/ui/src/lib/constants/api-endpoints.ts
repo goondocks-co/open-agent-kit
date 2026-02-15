@@ -70,6 +70,7 @@ export const API_ENDPOINTS = {
     DEVTOOLS_REEMBED_SESSIONS: "/api/activity/reembed-sessions",
     DEVTOOLS_COMPACT_CHROMADB: "/api/devtools/compact-chromadb",
     DEVTOOLS_CLEANUP_MINIMAL_SESSIONS: "/api/devtools/cleanup-minimal-sessions",
+    DEVTOOLS_CLEANUP_ORPHANS: "/api/devtools/cleanup-orphans",
 
     // Backup endpoints
     BACKUP_STATUS: "/api/backup/status",

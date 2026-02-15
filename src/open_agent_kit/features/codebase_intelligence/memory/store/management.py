@@ -416,6 +416,28 @@ def count_plans(store: VectorStore) -> int:
         return 0
 
 
+def get_all_memory_ids(store: VectorStore) -> list[str]:
+    """Get all IDs from the ChromaDB memory collection.
+
+    Used by orphan cleanup to diff against SQLite expected IDs.
+
+    Args:
+        store: The VectorStore instance.
+
+    Returns:
+        List of all memory IDs in ChromaDB.
+    """
+    store._ensure_initialized()
+    if not store._memory_collection:
+        return []
+    try:
+        results = store._memory_collection.get(include=[])
+        return results["ids"] if results and results.get("ids") else []
+    except (RuntimeError, ValueError, OSError) as e:
+        logger.warning(f"Failed to get all memory IDs: {e}")
+        return []
+
+
 def clear_memory_collection(store: VectorStore) -> int:
     """Clear only memory collection, preserving code index.
 

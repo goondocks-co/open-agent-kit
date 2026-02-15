@@ -469,6 +469,49 @@ async def get_memory_stats() -> dict[str, Any]:
     }
 
 
+@router.post("/api/devtools/cleanup-orphans", dependencies=_devtools_confirm)
+async def cleanup_orphans() -> dict[str, Any]:
+    """Remove orphaned entries from ChromaDB that have no matching SQLite record.
+
+    Orphans accumulate when SQLite deletes succeed but ChromaDB deletes fail
+    (e.g., during session cleanup or batch reprocessing). This endpoint diffs
+    ChromaDB IDs against SQLite embedded IDs and deletes only the orphans.
+    """
+    state = get_state()
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not initialized")
+    if not state.vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+
+    # Collect all IDs that SHOULD be in ChromaDB
+    expected_ids = set(state.activity_store.get_embedded_observation_ids())
+    expected_ids.update(state.activity_store.get_embedded_plan_chromadb_ids())
+
+    # Collect all IDs that ARE in ChromaDB
+    chromadb_ids = set(state.vector_store.get_all_memory_ids())
+
+    orphaned_ids = list(chromadb_ids - expected_ids)
+
+    if not orphaned_ids:
+        return {
+            "status": "clean",
+            "message": "No orphaned entries found",
+            "orphaned_count": 0,
+            "deleted_count": 0,
+        }
+
+    deleted_count = state.vector_store.delete_memories(orphaned_ids)
+
+    logger.info(f"Cleaned up {deleted_count} orphaned ChromaDB entries")
+
+    return {
+        "status": "success",
+        "message": f"Removed {deleted_count} orphaned entries from ChromaDB",
+        "orphaned_count": len(orphaned_ids),
+        "deleted_count": deleted_count,
+    }
+
+
 @router.post("/api/devtools/database-maintenance", dependencies=_devtools_confirm)
 async def database_maintenance(
     request: DatabaseMaintenanceRequest,

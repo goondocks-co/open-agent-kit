@@ -1052,6 +1052,29 @@ def count_embedded_plans(store: ActivityStore) -> int:
     return int(result[0]) if result else 0
 
 
+def get_embedded_plan_chromadb_ids(store: ActivityStore) -> list[str]:
+    """Get ChromaDB IDs for all embedded plans.
+
+    Plan IDs in ChromaDB use the format 'plan-{batch_id}'.
+    Used by orphan cleanup to diff against ChromaDB IDs.
+
+    Args:
+        store: The ActivityStore instance.
+
+    Returns:
+        List of ChromaDB-format plan IDs (e.g. 'plan-42').
+    """
+    conn = store._get_connection()
+    cursor = conn.execute("""
+        SELECT id FROM prompt_batches
+        WHERE source_type = 'plan'
+          AND plan_content IS NOT NULL
+          AND plan_content != ''
+          AND plan_embedded = 1
+        """)
+    return [f"plan-{row[0]}" for row in cursor.fetchall()]
+
+
 def mark_all_plans_unembedded(store: ActivityStore) -> int:
     """Mark all plans as not embedded (for full ChromaDB rebuild).
 
