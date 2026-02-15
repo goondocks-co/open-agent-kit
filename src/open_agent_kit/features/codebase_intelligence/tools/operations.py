@@ -218,7 +218,10 @@ class ToolOperations:
         return output
 
     def resolve_memory(self, args: dict[str, Any]) -> str:
-        """Resolve a memory observation via the retrieval engine.
+        """Resolve a memory observation.
+
+        Delegates to engine.resolve_memory() which handles the two-phase
+        write (SQLite + ChromaDB) as a single operation.
 
         Args:
             args: Dict with 'id' (required), 'status' (default 'resolved').

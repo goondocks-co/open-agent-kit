@@ -2,7 +2,7 @@ import logging
 import shutil
 import sqlite3
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
@@ -804,16 +804,13 @@ async def resolve_stale_observations(
         suggestions.append(suggestion)
 
         if not dry_run:
-            resolved_at = datetime.now(UTC).isoformat()
-            store.update_observation_status(
-                observation_id=obs.id,
-                status="resolved",
-                resolved_by_session_id=later_session_id,
-                resolved_at=resolved_at,
-            )
-            # Update ChromaDB metadata if vector store is available
-            if state.vector_store:
-                state.vector_store.update_memory_status(obs.id, "resolved")
+            engine = state.retrieval_engine
+            if engine:
+                engine.resolve_memory(
+                    memory_id=obs.id,
+                    status="resolved",
+                    resolved_by_session_id=later_session_id,
+                )
             resolved_count += 1
 
     return {

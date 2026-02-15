@@ -246,6 +246,7 @@ class DaemonState:
 
         self._retrieval_engine = RetrievalEngine(
             vector_store=self.vector_store,
+            activity_store=self.activity_store,
         )
         return self._retrieval_engine
 
