@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Power state aware daemon behavior — daemon now scales background processing based on system activity with four states: ACTIVE (full processing), IDLE (maintenance only), SLEEP (minimal I/O), and DEEP_SLEEP (paused). This reduces resource consumption when the user stops coding, allowing macOS to enter proper sleep states. Background tasks like SQLite queries and backups now respect power state transitions — [Implement power state aware daemon behavior](http://localhost:38388/activity/sessions/01735ec6-438a-4950-8a57-4c630f170b24), [Debug idle resource consumption issue](http://localhost:38388/activity/sessions/618dc82e-46a4-48c3-b3a3-fcab14f5ffd5)
 - Observation lifecycle management — observations now track status (`active`, `resolved`, `superseded`) with session-type awareness (`planning`, `investigation`, `implementation`, `mixed`), enabling agents to distinguish current knowledge from historical context and filter stale observations from context windows — [Implement observation lifecycle management system](http://localhost:38388/activity/sessions/cc6d1209-222c-4d32-9420-011876a7ee61)
 - Personalized session summaries — LLM-generated summaries now use Git/GitHub usernames instead of generic "the user" references, improving searchability and attribution — [Fix date filtering and user identity issues in session summaries](http://localhost:38388/activity/sessions/49e246b5-ded7-483d-abc9-7de56e780caf)
 - Memory-observation lineage tracking — observations now link back to their source memory, enabling bidirectional navigation between memories and the observations that created them — [Add memory-observation lineage support across codebase intelligence](http://localhost:38388/activity/sessions/fd23376c-0545-4a31-a433-1a2a5cdfb620)
@@ -31,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix MCP server plan resolution and tool call handling — plans now show resolved state correctly during polling, and tool call descriptions are clearer for debugging — [Fix plan resolution and tool call handling in MCP server](http://localhost:38388/activity/sessions/399c6996-ffc6-4e91-b8fc-e07ca3639517)
 - Fix "today" filter showing incorrect results due to timezone mismatch — date filtering now correctly handles timezone differences between server and client — [Fix date filtering and user identity issues in session summaries](http://localhost:38388/activity/sessions/49e246b5-ded7-483d-abc9-7de56e780caf)
 - Fix VS Code Copilot hook crashes — centralized hook formatting and fixed schema validation errors that caused the Copilot integration to crash after recent refactors — [Fix VS Code Copilot crash by centralizing hook formatting](http://localhost:38388/activity/sessions/94f771fb-3afd-41f0-80d5-dbf739a0b146), [Fix VS Code Copilot schema crash after refactor](http://localhost:38388/activity/sessions/d6d3ab1f-2f9f-4b7b-9660-319397875362), [Fix undefined hook error in VS Code Co‑Pilot integration](http://localhost:38388/activity/sessions/70d43b82-ebfc-4f1f-aeb4-04a2e0890983)
 - Fix early migration order to refresh agent list — migrations now run in correct order to ensure the agent list is refreshed before the upgrade pipeline processes it — [Fix early migration order to refresh agent list for upgrade pipeline](http://localhost:38388/activity/sessions/ef95084c-ad6b-4c97-9c4e-9d316b0dd9dd)
@@ -59,6 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: VS Code Copilot hook crashes were caused by schema validation running before hook formatting centralization. If you see hook errors after an upgrade, run `oak upgrade` to regenerate hook configurations with the corrected schema handling.
 
 > **Gotcha**: Inline plan detection uses heuristic response patterns (e.g., numbered steps, "Implementation Plan" headers). False positives are possible for assistant responses that resemble plans but aren't. The detector favors recall over precision — plans are better captured twice than missed.
+
+> **Gotcha**: Power state idle detection requires a fallback to `start_time` when `last_hook_activity` is None. Without this, the daemon stays in ACTIVE state forever if no hooks fire after startup (e.g., daemon starts and user walks away). The fix uses `last_activity = daemon_state.last_hook_activity or daemon_state.start_time`.
 
 > **Gotcha**: Observation lifecycle status defaults to `active`. When querying memories via `ci_memories` or `ci_search`, use `status=active` for current knowledge and `include_resolved=true` only for historical documentation (e.g., changelogs). Resolved observations represent what *was* true, not what *is* true.
 

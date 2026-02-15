@@ -36,6 +36,8 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
 )
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 from open_agent_kit.features.codebase_intelligence.constants import (
+    BACKUP_TRIGGER_MANUAL,
+    BACKUP_TRIGGER_ON_TRANSITION,
     CI_ACTIVITIES_DB_FILENAME,
     CI_BACKUP_HEADER_MAX_LINES,
     CI_BACKUP_PATH_INVALID_ERROR,
@@ -153,7 +155,7 @@ class BackupStatusResponse(BaseModel):
     all_backups: list[BackupFileInfo] = []  # All available backup files
     auto_backup_enabled: bool = False
     last_auto_backup: str | None = None
-    next_auto_backup_minutes: int | None = None
+    backup_trigger: str = BACKUP_TRIGGER_MANUAL  # "manual" or "on_transition"
 
 
 class RestoreResponse(BaseModel):
@@ -314,12 +316,14 @@ async def get_backup_status() -> BackupStatusResponse:
 
     # Compute auto-backup status from config
     auto_backup_enabled = False
-    next_auto_backup_minutes: int | None = None
     last_auto_backup_iso: str | None = None
 
     config = state.ci_config
     if config:
         auto_backup_enabled = config.backup.auto_enabled
+
+    # Determine backup trigger type
+    backup_trigger = BACKUP_TRIGGER_ON_TRANSITION if auto_backup_enabled else BACKUP_TRIGGER_MANUAL
 
     # Check this machine's backup (also used as fallback for last-backup time)
     backup_file_mtime: float | None = None
@@ -332,25 +336,10 @@ async def get_backup_status() -> BackupStatusResponse:
         backup_size_bytes = stat.st_size
 
     # Resolve last backup display time (file mtime fallback for "last backup" label)
-    # and next backup countdown (based on daemon scheduling, not file age)
-    if auto_backup_enabled and config:
-        import time
-
-        interval = config.backup.interval_minutes
+    if auto_backup_enabled:
         last_backup_epoch = get_last_backup_epoch(state, backup_path)
         if last_backup_epoch is not None:
             last_auto_backup_iso = datetime.fromtimestamp(last_backup_epoch).isoformat()
-
-        # "Next backup" is based on the daemon's loop schedule:
-        # - If an auto-backup ran this session, next = last_auto_backup + interval
-        # - Otherwise, first backup = daemon_start + interval
-        schedule_ref = state.last_auto_backup or state.start_time
-        if schedule_ref is not None:
-            elapsed_minutes = (time.time() - schedule_ref) / 60
-            remaining = max(0, interval - elapsed_minutes)
-            next_auto_backup_minutes = int(remaining)
-        else:
-            next_auto_backup_minutes = interval
 
     if backup_file_mtime is not None:
         return BackupStatusResponse(
@@ -364,7 +353,7 @@ async def get_backup_status() -> BackupStatusResponse:
             all_backups=all_backups,
             auto_backup_enabled=auto_backup_enabled,
             last_auto_backup=last_auto_backup_iso,
-            next_auto_backup_minutes=next_auto_backup_minutes,
+            backup_trigger=backup_trigger,
         )
 
     return BackupStatusResponse(
@@ -376,7 +365,7 @@ async def get_backup_status() -> BackupStatusResponse:
         all_backups=all_backups,
         auto_backup_enabled=auto_backup_enabled,
         last_auto_backup=last_auto_backup_iso,
-        next_auto_backup_minutes=next_auto_backup_minutes,
+        backup_trigger=backup_trigger,
     )
 
 

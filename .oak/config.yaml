@@ -31,6 +31,7 @@ codebase_intelligence:
     provider_type: cloud
     scheduler_interval_seconds: 60
     timeout_seconds: 600
+    background_processing_workers: 4
   backup:
     on_upgrade: true
   cli_command: oak-dev

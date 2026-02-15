@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     INDEX_STATUS_IDLE,
+    POWER_STATE_ACTIVE,
+    POWER_STATE_DEEP_SLEEP,
 )
 
 if TYPE_CHECKING:
@@ -186,6 +188,10 @@ class DaemonState:
     # Version detection
     installed_version: str | None = None
     update_available: bool = False
+    # Power state lifecycle
+    last_hook_activity: float | None = None  # epoch of last hook event
+    power_state: str = POWER_STATE_ACTIVE  # current power state
+    _power_state_lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -448,6 +454,32 @@ class DaemonState:
             self.index_status.set_error()
             return None
 
+    def record_hook_activity(self) -> None:
+        """Record that a hook event occurred. Thread-safe."""
+        import time
+
+        self.last_hook_activity = time.time()
+        if self.power_state == POWER_STATE_DEEP_SLEEP:
+            self._wake_from_deep_sleep()
+
+    def _wake_from_deep_sleep(self) -> None:
+        """Restart background cycle when activity resumes after deep sleep."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        with self._power_state_lock:
+            if self.power_state != POWER_STATE_DEEP_SLEEP:
+                return
+            self.power_state = POWER_STATE_ACTIVE
+        logger.info("Power state: deep_sleep -> active (hook activity detected)")
+        if self.file_watcher:
+            self.file_watcher.start()
+        if self.activity_processor:
+            self.activity_processor.schedule_background_processing(
+                state_accessor=lambda: self,
+            )
+
     def reset(self) -> None:
         """Reset state for testing or restart."""
         self.start_time = None
@@ -477,6 +509,8 @@ class DaemonState:
         self._dynamic_cors_origins = set()
         self.installed_version = None
         self.update_available = False
+        self.last_hook_activity = None
+        self.power_state = POWER_STATE_ACTIVE
 
 
 # Global daemon state instance

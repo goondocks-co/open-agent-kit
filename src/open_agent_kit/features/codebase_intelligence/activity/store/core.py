@@ -376,6 +376,10 @@ class ActivityStore:
         """Check whether the suggested-parent suggestion was dismissed."""
         return sessions.is_suggestion_dismissed(self, session_id)
 
+    def count_session_activities(self, session_id: str) -> int:
+        """Count total activities for a session."""
+        return sessions.count_session_activities(self, session_id)
+
     def count_sessions_with_summaries(self) -> int:
         """Count sessions that have a session_summary observation."""
         return sessions.count_sessions_with_summaries(self)

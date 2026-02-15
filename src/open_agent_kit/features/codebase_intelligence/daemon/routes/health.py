@@ -132,6 +132,7 @@ async def get_status() -> dict:
 
     return {
         "status": DAEMON_STATUS_RUNNING,
+        "power_state": state.power_state,
         "indexing": state.index_status.is_indexing,
         "embedding_provider": embedding_provider,
         "embedding_stats": embedding_stats,

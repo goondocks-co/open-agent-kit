@@ -72,6 +72,5 @@ export async function deleteJson<T>(endpoint: string): Promise<T> {
 export interface BackupConfig {
     auto_enabled: boolean;
     include_activities: boolean;
-    interval_minutes: number;
     on_upgrade: boolean;
 }

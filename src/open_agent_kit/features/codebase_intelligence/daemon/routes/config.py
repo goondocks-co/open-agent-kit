@@ -343,7 +343,6 @@ async def get_config() -> dict:
         BACKUP_CONFIG_KEY: {
             "auto_enabled": config.backup.auto_enabled,
             "include_activities": config.backup.include_activities,
-            "interval_minutes": config.backup.interval_minutes,
             "on_upgrade": config.backup.on_upgrade,
         },
         AUTO_RESOLVE_CONFIG_KEY: {
@@ -483,9 +482,6 @@ async def update_config(request: Request) -> dict:
             and bkp["include_activities"] != config.backup.include_activities
         ):
             config.backup.include_activities = bool(bkp["include_activities"])
-            backup_changed = True
-        if "interval_minutes" in bkp and bkp["interval_minutes"] != config.backup.interval_minutes:
-            config.backup.interval_minutes = int(bkp["interval_minutes"])
             backup_changed = True
         if "on_upgrade" in bkp and bkp["on_upgrade"] != config.backup.on_upgrade:
             config.backup.on_upgrade = bool(bkp["on_upgrade"])
@@ -1608,7 +1604,6 @@ async def get_backup_config() -> dict:
     return {
         "auto_enabled": config.backup.auto_enabled,
         "include_activities": config.backup.include_activities,
-        "interval_minutes": config.backup.interval_minutes,
         "on_upgrade": config.backup.on_upgrade,
         "last_auto_backup": last_auto_backup_iso,
     }

@@ -1,12 +1,12 @@
 """Tests for periodic auto-backup behavior.
 
 Tests cover:
-- Periodic loop behavior when enabled/disabled
 - Auto backup trigger calls create_backup()
 - DaemonState.last_auto_backup is updated on success
+- Periodic backup loop removal (replaced by transition backups)
+- Transition backup store reuse
 """
 
-import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +14,7 @@ import pytest
 
 from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
     BackupResult,
+    create_backup,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.server import (
     _run_auto_backup,
@@ -125,75 +126,6 @@ class TestRunAutoBackup:
         assert state.last_auto_backup is None
 
 
-class TestPeriodicBackupLoop:
-    """Tests for _periodic_backup_loop async coroutine."""
-
-    @pytest.mark.anyio
-    async def test_sleeps_when_disabled(self):
-        """Loop sleeps 60s when auto_enabled is False."""
-        from open_agent_kit.features.codebase_intelligence.daemon.server import (
-            _periodic_backup_loop,
-        )
-
-        state = DaemonState()
-        state.project_root = Path("/tmp/test")
-
-        # Create a mock config with auto_enabled=False
-        mock_config = MagicMock()
-        mock_config.backup.auto_enabled = False
-        state._ci_config = mock_config
-
-        sleep_calls: list[float] = []
-        call_count = 0
-
-        async def mock_sleep(seconds: float) -> None:
-            nonlocal call_count
-            sleep_calls.append(seconds)
-            call_count += 1
-            if call_count >= 1:
-                raise asyncio.CancelledError
-
-        with patch("asyncio.sleep", side_effect=mock_sleep):
-            with pytest.raises(asyncio.CancelledError):
-                await _periodic_backup_loop(state)
-
-        assert len(sleep_calls) >= 1
-        assert sleep_calls[0] == 60
-
-    @pytest.mark.anyio
-    async def test_sleeps_interval_when_enabled(self):
-        """Loop sleeps for config interval when auto_enabled is True."""
-        from open_agent_kit.features.codebase_intelligence.daemon.server import (
-            _periodic_backup_loop,
-        )
-
-        state = DaemonState()
-        state.project_root = Path("/tmp/test")
-
-        mock_config = MagicMock()
-        mock_config.backup.auto_enabled = True
-        mock_config.backup.interval_minutes = 15
-        state._ci_config = mock_config
-
-        sleep_calls: list[float] = []
-        call_count = 0
-
-        async def mock_sleep(seconds: float) -> None:
-            nonlocal call_count
-            sleep_calls.append(seconds)
-            call_count += 1
-            if call_count >= 1:
-                raise asyncio.CancelledError
-
-        with patch("asyncio.sleep", side_effect=mock_sleep):
-            with pytest.raises(asyncio.CancelledError):
-                await _periodic_backup_loop(state)
-
-        # Should sleep for interval_minutes * 60 = 15 * 60 = 900
-        assert len(sleep_calls) >= 1
-        assert sleep_calls[0] == 900
-
-
 class TestDaemonStateLastAutoBackup:
     """Tests for last_auto_backup field on DaemonState."""
 
@@ -217,3 +149,124 @@ class TestDaemonStateLastAutoBackup:
         now = time.time()
         state.last_auto_backup = now
         assert state.last_auto_backup == now
+
+
+# =============================================================================
+# Periodic Backup Loop Removal (replaced by transition backups)
+# =============================================================================
+
+
+class TestPeriodicBackupLoopRemoved:
+    """Verify _periodic_backup_loop is no longer used in lifespan."""
+
+    def test_periodic_backup_loop_removed(self):
+        """Verify _periodic_backup_loop is no longer called in lifespan.
+
+        The periodic backup loop was replaced by transition-triggered backups
+        in the power state lifecycle. The lifespan function should no longer
+        create a 'periodic_backup' background task.
+        """
+        import ast
+        import inspect
+
+        from open_agent_kit.features.codebase_intelligence.daemon import server
+
+        source = inspect.getsource(server.lifespan)
+        tree = ast.parse(source)
+
+        # Walk the AST looking for references to _periodic_backup_loop
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id == "_periodic_backup_loop":
+                pytest.fail(
+                    "lifespan() still references _periodic_backup_loop; "
+                    "it should use transition backups instead"
+                )
+
+
+# =============================================================================
+# Transition Backup Store Reuse
+# =============================================================================
+
+
+class TestTransitionBackupStoreReuse:
+    """Tests for create_backup activity_store parameter."""
+
+    def test_transition_backup_reuses_existing_store(self, tmp_path: Path):
+        """Call create_backup(activity_store=mock_store) -> assert no new ActivityStore created."""
+        from open_agent_kit.config.paths import OAK_DIR
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_ACTIVITIES_DB_FILENAME,
+            CI_DATA_DIR,
+        )
+
+        # Create the database file so the check passes
+        db_dir = tmp_path / OAK_DIR / CI_DATA_DIR
+        db_dir.mkdir(parents=True)
+        db_path = db_dir / CI_ACTIVITIES_DB_FILENAME
+        db_path.write_text("placeholder")
+
+        mock_store = MagicMock()
+        mock_store.machine_id = "test_machine"
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.export_to_sql",
+                return_value=10,
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.get_machine_identifier",
+                return_value="test_machine",
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore"
+            ) as MockActivityStore,
+        ):
+            result = create_backup(
+                project_root=tmp_path,
+                db_path=db_path,
+                activity_store=mock_store,
+            )
+
+        assert result.success is True
+        # No new ActivityStore should have been constructed
+        MockActivityStore.assert_not_called()
+
+    def test_transition_backup_creates_store_when_none(self, tmp_path: Path):
+        """Call create_backup(activity_store=None) -> assert ActivityStore constructor called."""
+        from open_agent_kit.config.paths import OAK_DIR
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_ACTIVITIES_DB_FILENAME,
+            CI_DATA_DIR,
+        )
+
+        # Create the database file so the check passes
+        db_dir = tmp_path / OAK_DIR / CI_DATA_DIR
+        db_dir.mkdir(parents=True)
+        db_path = db_dir / CI_ACTIVITIES_DB_FILENAME
+        db_path.write_text("placeholder")
+
+        mock_store_instance = MagicMock()
+        mock_store_instance.machine_id = "test_machine"
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.export_to_sql",
+                return_value=10,
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.get_machine_identifier",
+                return_value="test_machine",
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore",
+                return_value=mock_store_instance,
+            ) as MockActivityStore,
+        ):
+            result = create_backup(
+                project_root=tmp_path,
+                db_path=db_path,
+            )
+
+        assert result.success is True
+        # A new ActivityStore should have been constructed
+        MockActivityStore.assert_called_once()

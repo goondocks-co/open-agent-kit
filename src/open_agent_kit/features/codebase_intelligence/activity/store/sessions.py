@@ -621,6 +621,11 @@ def recover_stale_sessions(
                     """,
                     (datetime.now().isoformat(), session_id),
                 )
+            # If the session has zero unprocessed activities, mark it
+            # processed immediately to prevent it becoming a zombie that
+            # the background processor re-visits every tick.
+            if count_session_activities(store, session_id) == 0:
+                mark_session_processed(store, session_id)
             recovered_ids.append(session_id)
 
     if recovered_ids:
@@ -1110,6 +1115,25 @@ def would_create_cycle(
         (proposed_parent_id, max_depth, session_id),
     )
     return cursor.fetchone() is not None
+
+
+def count_session_activities(store: ActivityStore, session_id: str) -> int:
+    """Count total activities for a session.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to count activities for.
+
+    Returns:
+        Number of activities in the session.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM activities WHERE session_id = ?",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    return row[0] if row else 0
 
 
 def is_session_sufficient(

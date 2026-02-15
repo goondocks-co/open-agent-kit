@@ -374,6 +374,10 @@ class VectorStore:
         """Count total memory observations in ChromaDB."""
         return management.count_memories(self)
 
+    def count_plans(self) -> int:
+        """Count plan entries in ChromaDB memory collection."""
+        return management.count_plans(self)
+
     def clear_code_index(self) -> None:
         """Clear only the code index, preserving memories."""
         management.clear_code_index(self)

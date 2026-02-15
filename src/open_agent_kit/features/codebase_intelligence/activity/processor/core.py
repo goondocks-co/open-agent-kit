@@ -57,6 +57,15 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE,
     DEFAULT_BACKGROUND_PROCESSING_WORKERS,
     INJECTION_MAX_SESSION_SUMMARIES,
+    POWER_ACTIVE_INTERVAL,
+    POWER_DEEP_SLEEP_THRESHOLD,
+    POWER_IDLE_THRESHOLD,
+    POWER_SLEEP_INTERVAL,
+    POWER_SLEEP_THRESHOLD,
+    POWER_STATE_ACTIVE,
+    POWER_STATE_DEEP_SLEEP,
+    POWER_STATE_IDLE,
+    POWER_STATE_SLEEP,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
     SESSION_STATUS_ACTIVE,
@@ -73,6 +82,7 @@ if TYPE_CHECKING:
         SessionQualityConfig,
         SummarizationConfig,
     )
+    from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.summarization.base import (
         BaseSummarizer,
@@ -365,6 +375,7 @@ class ActivityProcessor:
 
         if not activities:
             logger.debug(f"No unprocessed activities for session {session_id}")
+            self.activity_store.mark_session_processed(session_id)
             return ProcessingResult(
                 session_id=session_id,
                 activities_processed=0,
@@ -1062,22 +1073,31 @@ class ActivityProcessor:
 
     def schedule_background_processing(
         self,
-        interval_seconds: int = 60,
+        interval_seconds: int = POWER_ACTIVE_INTERVAL,
+        state_accessor: "Callable[[], DaemonState] | None" = None,
     ) -> threading.Timer:
-        """Schedule periodic background processing.
+        """Schedule periodic background processing with power-state awareness.
+
+        When *state_accessor* is provided the timer callback evaluates idle
+        duration and adjusts which phases run and how long to sleep before
+        the next cycle.  When the daemon reaches deep sleep the timer is
+        **not** rescheduled -- the wake-from-deep-sleep path in
+        ``DaemonState.record_hook_activity`` restarts it.
 
         Args:
-            interval_seconds: Interval between processing runs.
+            interval_seconds: Base interval between processing runs.
+            state_accessor: Optional callable returning the current DaemonState.
 
         Returns:
             Timer object (can be cancelled).
         """
 
         def run_and_reschedule() -> None:
-            try:
-                self.run_background_cycle()
-            finally:
-                timer = threading.Timer(interval_seconds, run_and_reschedule)
+            new_state, next_interval = self._evaluate_and_run_cycle(
+                state_accessor, interval_seconds
+            )
+            if next_interval > 0:
+                timer = threading.Timer(next_interval, run_and_reschedule)
                 timer.daemon = True
                 timer.start()
 
@@ -1087,6 +1107,162 @@ class ActivityProcessor:
 
         logger.info(f"Scheduled background activity processing every {interval_seconds}s")
         return timer
+
+    def _evaluate_and_run_cycle(
+        self,
+        state_accessor: "Callable[[], DaemonState] | None",
+        base_interval: int,
+    ) -> tuple[str, int]:
+        """Evaluate power state, run appropriate phases, return (state, interval).
+
+        Logic:
+        - ACTIVE: full ``run_background_cycle()`` (phases 1-5)
+        - IDLE: maintenance + indexing (phases 1-2, 5), same interval
+        - SLEEP: recovery + indexing (phases 1, 5), longer interval
+        - DEEP_SLEEP: no work, interval 0 (timer stops)
+
+        Phase 5 (plan indexing + title generation) runs in IDLE/SLEEP because
+        it is lightweight (embedding + ChromaDB upsert, no LLM calls) and plans
+        are often created at the end of a session just before idle begins.
+
+        Args:
+            state_accessor: Optional callable returning the current DaemonState.
+            base_interval: The base interval in seconds.
+
+        Returns:
+            Tuple of (power_state_name, next_interval_seconds).
+            An interval of 0 means the timer should NOT be rescheduled.
+        """
+        import time
+
+        daemon_state: DaemonState | None = None
+        if state_accessor is not None:
+            daemon_state = state_accessor()
+
+        # Determine idle duration — use last hook activity if available,
+        # otherwise fall back to daemon start time so the idle clock ticks
+        # even when no hooks have ever fired (e.g. daemon starts, user walks away).
+        idle_seconds: float | None = None
+        if daemon_state is not None:
+            last_activity = daemon_state.last_hook_activity or daemon_state.start_time
+            if last_activity is not None:
+                idle_seconds = time.time() - last_activity
+
+        # Determine target power state
+        if idle_seconds is None or idle_seconds < POWER_IDLE_THRESHOLD:
+            target_state = POWER_STATE_ACTIVE
+        elif idle_seconds < POWER_SLEEP_THRESHOLD:
+            target_state = POWER_STATE_IDLE
+        elif idle_seconds < POWER_DEEP_SLEEP_THRESHOLD:
+            target_state = POWER_STATE_SLEEP
+        else:
+            target_state = POWER_STATE_DEEP_SLEEP
+
+        # Handle state transition
+        if daemon_state is not None:
+            old_state = daemon_state.power_state
+            if old_state != target_state:
+                self._on_power_transition(daemon_state, old_state, target_state)
+
+        # Run phases based on target state
+        if target_state == POWER_STATE_ACTIVE:
+            self.run_background_cycle()
+            return target_state, base_interval
+
+        if target_state == POWER_STATE_IDLE:
+            self._bg_recover_stuck_data()  # Phase 1
+            self._bg_recover_stale_sessions()  # Phase 2
+            self._bg_index_and_title()  # Phase 5 (lightweight, no LLM)
+            return target_state, base_interval
+
+        if target_state == POWER_STATE_SLEEP:
+            self._bg_recover_stuck_data()  # Phase 1
+            self._bg_index_and_title()  # Phase 5 (lightweight, no LLM)
+            return target_state, POWER_SLEEP_INTERVAL
+
+        # DEEP_SLEEP: run nothing, do not reschedule
+        return target_state, 0
+
+    def _on_power_transition(
+        self,
+        daemon_state: "DaemonState",
+        old_state: str,
+        new_state: str,
+    ) -> None:
+        """Handle power state transitions with logging and side effects.
+
+        Side effects on entry:
+        - SLEEP / DEEP_SLEEP: trigger a backup.
+        - DEEP_SLEEP: stop file watcher.
+        - ACTIVE (from DEEP_SLEEP): start file watcher.
+
+        Args:
+            daemon_state: The current daemon state instance.
+            old_state: The power state being left.
+            new_state: The power state being entered.
+        """
+        import time
+
+        last_activity = daemon_state.last_hook_activity or daemon_state.start_time
+        idle_seconds = (time.time() - last_activity) if last_activity else 0.0
+
+        logger.info(f"Power state: {old_state} -> {new_state} (idle {idle_seconds:.0f}s)")
+        daemon_state.power_state = new_state
+
+        # Trigger backup when entering sleep states
+        if new_state in (POWER_STATE_SLEEP, POWER_STATE_DEEP_SLEEP):
+            self._trigger_transition_backup(daemon_state)
+
+        # Stop file watcher on entry to deep sleep
+        if new_state == POWER_STATE_DEEP_SLEEP and daemon_state.file_watcher:
+            daemon_state.file_watcher.stop()
+
+        # Restart file watcher when waking from deep sleep
+        if (
+            new_state == POWER_STATE_ACTIVE
+            and old_state == POWER_STATE_DEEP_SLEEP
+            and daemon_state.file_watcher
+        ):
+            daemon_state.file_watcher.start()
+
+    def _trigger_transition_backup(self, daemon_state: "DaemonState") -> None:
+        """Trigger a backup on power state transition (entering sleep/deep_sleep).
+
+        Reuses the existing activity_store when available to avoid opening
+        a second connection to the same SQLite database.
+
+        Args:
+            daemon_state: The current daemon state instance.
+        """
+        from ..store.backup import create_backup
+
+        try:
+            config = daemon_state.ci_config
+            if not config or not config.backup.auto_enabled:
+                return
+
+            if not daemon_state.project_root:
+                return
+
+            from open_agent_kit.config.paths import OAK_DIR
+            from open_agent_kit.features.codebase_intelligence.constants import (
+                CI_ACTIVITIES_DB_FILENAME,
+                CI_DATA_DIR,
+            )
+
+            db_path = daemon_state.project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
+            if not db_path.exists():
+                return
+
+            result = create_backup(
+                project_root=daemon_state.project_root,
+                db_path=db_path,
+                activity_store=self.activity_store,
+            )
+            if result and result.success:
+                logger.info(f"Transition backup created: {result.record_count} records")
+        except Exception:
+            logger.exception("Failed to create transition backup")
 
     def rebuild_chromadb_from_sqlite(
         self,

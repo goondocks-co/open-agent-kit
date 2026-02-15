@@ -28,7 +28,7 @@ interface BackupStatus {
     all_backups: BackupFileInfo[];
     auto_backup_enabled: boolean;
     last_auto_backup: string | null;
-    next_auto_backup_minutes: number | null;
+    backup_trigger: "manual" | "on_transition";
 }
 
 /** Request to create a backup */

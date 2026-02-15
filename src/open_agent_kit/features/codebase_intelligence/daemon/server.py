@@ -154,22 +154,6 @@ async def _periodic_version_check() -> None:
             logger.debug("Stale install check failed", exc_info=True)
 
 
-async def _periodic_backup_loop(state: "DaemonState") -> None:
-    """Periodically creates backups based on config."""
-    while True:
-        config = state.ci_config
-        if not config or not config.backup.auto_enabled:
-            await asyncio.sleep(60)
-            continue
-        interval = config.backup.interval_minutes * 60
-        await asyncio.sleep(interval)
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _run_auto_backup, state)
-        except (OSError, ValueError, RuntimeError):
-            logger.exception("Auto-backup failed")
-
-
 def _run_auto_backup(state: "DaemonState") -> None:
     """Run a single auto-backup cycle (sync, for use in executor)."""
     import time
@@ -457,23 +441,28 @@ async def _check_and_rebuild_chromadb(state: "DaemonState") -> None:
             logger.warning(f"Session summary sync check failed: {e}")
 
         # --- Plans rebuild ---
-        # If SQLite has plans but ChromaDB doesn't, rebuild them.
+        # Cross-reference actual ChromaDB plan count vs SQLite to detect
+        # mismatches caused by collection recreation (e.g. dimension mismatch)
+        # that doesn't reset SQLite plan_embedded flags.
         try:
-            sqlite_plans_total = (
-                state.activity_store.count_embedded_plans()
-                + state.activity_store.count_unembedded_plans()
-            )
-            if sqlite_plans_total > 0:
-                # Check ChromaDB for plans - they live in the memory collection
-                # with memory_type='plan'. A zero memory count already triggers
-                # a full rebuild above, so only check when memories exist.
-                if chromadb_count > 0 and state.activity_store.count_embedded_plans() == 0:
-                    # Plans exist in SQLite but none are marked embedded → rebuild
-                    logger.warning(
-                        f"SQLite has {sqlite_plans_total} plans but none are embedded. "
-                        "Scheduling background plan rebuild..."
-                    )
-                    loop.run_in_executor(None, _run_plan_index_rebuild_sync, state)
+            sqlite_embedded_plans = state.activity_store.count_embedded_plans()
+            chromadb_plan_count = state.vector_store.count_plans()
+
+            if sqlite_embedded_plans > 0 and chromadb_plan_count == 0:
+                # SQLite thinks plans are embedded but ChromaDB has none
+                logger.warning(
+                    f"SQLite has {sqlite_embedded_plans} plans marked embedded "
+                    "but ChromaDB has 0. Scheduling plan rebuild..."
+                )
+                loop.run_in_executor(None, _run_plan_index_rebuild_sync, state)
+            elif sqlite_embedded_plans > 0 and chromadb_plan_count < sqlite_embedded_plans // 2:
+                # ChromaDB has significantly fewer plans than SQLite claims —
+                # likely a partial collection loss (e.g. recreated mid-session)
+                logger.warning(
+                    f"Plan count mismatch: SQLite has {sqlite_embedded_plans} embedded "
+                    f"but ChromaDB only has {chromadb_plan_count}. Scheduling plan rebuild..."
+                )
+                loop.run_in_executor(None, _run_plan_index_rebuild_sync, state)
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Plan sync check failed: {e}")
 
@@ -817,7 +806,10 @@ async def _init_activity(state: "DaemonState", project_root: Path) -> None:
 
         # Schedule background processing using config interval
         bg_interval = ci_config.agents.background_processing_interval_seconds
-        state.activity_processor.schedule_background_processing(interval_seconds=bg_interval)
+        state.activity_processor.schedule_background_processing(
+            interval_seconds=bg_interval,
+            state_accessor=lambda: state,
+        )
         logger.info(
             f"Activity processor initialized with background scheduling "
             f"(interval={bg_interval}s)"
@@ -1011,10 +1003,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning(f"Failed to initialize: {e}")
         state.vector_store = None
         state.indexer = None
-
-    # Launch periodic auto-backup loop as a background task
-    backup_task = asyncio.create_task(_periodic_backup_loop(state), name="periodic_backup")
-    state.background_tasks.append(backup_task)
 
     # Run one immediate version check, then launch periodic loop
     _check_version(state)
