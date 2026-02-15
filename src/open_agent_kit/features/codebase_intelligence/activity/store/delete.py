@@ -235,6 +235,155 @@ def delete_prompt_batch(store: ActivityStore, batch_id: int) -> dict[str, int]:
     return result
 
 
+def delete_records_by_machine(
+    store: ActivityStore,
+    machine_id: str,
+    vector_store: Any | None = None,
+) -> dict[str, int]:
+    """Delete all records originating from a specific machine.
+
+    Used by replace-mode restore to clear stale data before importing a fresh
+    backup snapshot.  Follows FK cascade order to avoid constraint violations.
+
+    Children are deleted by FK reference to the parent IDs being removed — not
+    solely by ``source_machine_id`` — because prior additive imports can create
+    cross-machine FK references (e.g. an activity from machine A that points to
+    a prompt_batch from machine B).  The self-referential
+    ``prompt_batches.source_plan_batch_id`` FK is NULLed out before the batch
+    rows themselves are deleted.
+
+    Skips ``agent_schedules`` (personal preferences, already filtered during import).
+
+    Args:
+        store: The ActivityStore instance.
+        machine_id: The ``source_machine_id`` value identifying the remote machine.
+        vector_store: Optional vector store for ChromaDB cleanup.
+
+    Returns:
+        Dictionary with per-table deleted counts.
+    """
+    conn = store._get_connection()
+    counts: dict[str, int] = {
+        "session_link_events": 0,
+        "session_relationships": 0,
+        "activities": 0,
+        "memory_observations": 0,
+        "prompt_batches": 0,
+        "sessions": 0,
+        "agent_runs": 0,
+    }
+
+    # Pre-collect parent IDs so children can be deleted by FK reference
+    cursor = conn.execute(
+        "SELECT id FROM prompt_batches WHERE source_machine_id = ?",
+        (machine_id,),
+    )
+    batch_ids = [row[0] for row in cursor.fetchall()]
+
+    cursor = conn.execute(
+        "SELECT id FROM sessions WHERE source_machine_id = ?",
+        (machine_id,),
+    )
+    session_ids = [row[0] for row in cursor.fetchall()]
+
+    # Collect observation IDs for ChromaDB cleanup *before* deleting.
+    # Use UNION to capture both by-machine and by-batch-FK references
+    # (cross-machine FK refs from prior additive imports).
+    observation_ids: list[str] = []
+    if vector_store:
+        if batch_ids:
+            bp = ",".join("?" * len(batch_ids))
+            cursor = conn.execute(
+                f"SELECT id FROM memory_observations WHERE source_machine_id = ? "
+                f"UNION SELECT id FROM memory_observations WHERE prompt_batch_id IN ({bp})",
+                [machine_id, *batch_ids],
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT id FROM memory_observations WHERE source_machine_id = ?",
+                (machine_id,),
+            )
+        observation_ids = [row[0] for row in cursor.fetchall()]
+
+    with store._transaction() as tx:
+        # 1-2. Junction tables (no source_machine_id column, keyed by session_id)
+        if session_ids:
+            sp = ",".join("?" * len(session_ids))
+
+            cursor = tx.execute(
+                f"DELETE FROM session_link_events WHERE session_id IN ({sp})",
+                session_ids,
+            )
+            counts["session_link_events"] = cursor.rowcount
+
+            cursor = tx.execute(
+                f"DELETE FROM session_relationships "
+                f"WHERE session_a_id IN ({sp}) OR session_b_id IN ({sp})",
+                [*session_ids, *session_ids],
+            )
+            counts["session_relationships"] = cursor.rowcount
+
+        # 3. Activities — delete by FK reference to batches being removed,
+        #    then mop up any remaining by source_machine_id (e.g. NULL batch ref).
+        if batch_ids:
+            bp = ",".join("?" * len(batch_ids))
+            cursor = tx.execute(
+                f"DELETE FROM activities WHERE prompt_batch_id IN ({bp})",
+                batch_ids,
+            )
+            counts["activities"] = cursor.rowcount
+        cursor = tx.execute("DELETE FROM activities WHERE source_machine_id = ?", (machine_id,))
+        counts["activities"] += cursor.rowcount
+
+        # 4. Memory observations — same FK-first approach.
+        if batch_ids:
+            cursor = tx.execute(
+                f"DELETE FROM memory_observations WHERE prompt_batch_id IN ({bp})",
+                batch_ids,
+            )
+            counts["memory_observations"] = cursor.rowcount
+        cursor = tx.execute(
+            "DELETE FROM memory_observations WHERE source_machine_id = ?",
+            (machine_id,),
+        )
+        counts["memory_observations"] += cursor.rowcount
+
+        # 5. Prompt batches — clear self-referential FK first, then delete.
+        if batch_ids:
+            tx.execute(
+                f"UPDATE prompt_batches SET source_plan_batch_id = NULL "
+                f"WHERE source_plan_batch_id IN ({bp})",
+                batch_ids,
+            )
+        cursor = tx.execute("DELETE FROM prompt_batches WHERE source_machine_id = ?", (machine_id,))
+        counts["prompt_batches"] = cursor.rowcount
+
+        # 6. Sessions
+        cursor = tx.execute("DELETE FROM sessions WHERE source_machine_id = ?", (machine_id,))
+        counts["sessions"] = cursor.rowcount
+
+        # 7. Agent runs
+        cursor = tx.execute("DELETE FROM agent_runs WHERE source_machine_id = ?", (machine_id,))
+        counts["agent_runs"] = cursor.rowcount
+
+    # ChromaDB cleanup (after SQLite commit)
+    if vector_store and observation_ids:
+        try:
+            vector_store.delete_memories(observation_ids)
+            logger.debug(
+                f"Cleaned up {len(observation_ids)} ChromaDB embeddings for machine {machine_id}"
+            )
+        except (ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to clean up ChromaDB embeddings for machine {machine_id}: {e}")
+
+    total = sum(counts.values())
+    logger.info(
+        f"Deleted {total} records for machine {machine_id}: "
+        + ", ".join(f"{k}={v}" for k, v in counts.items() if v > 0)
+    )
+    return counts
+
+
 def delete_session(
     store: ActivityStore,
     session_id: str,

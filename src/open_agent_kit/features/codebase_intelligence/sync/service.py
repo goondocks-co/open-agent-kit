@@ -240,7 +240,7 @@ class SyncService:
                 return result
             time.sleep(0.5)  # Brief pause
 
-        # Step 2: First restore pass (all team backups)
+        # Step 2: First restore pass (all team backups, drop-and-replace)
         if plan.restore_team_backups and plan.team_backup_files:
             logger.info(f"Restoring {len(plan.team_backup_files)} team backups...")
             try:
@@ -253,10 +253,12 @@ class SyncService:
                     project_root=self.project_root,
                     db_path=self.db_path,
                     backup_files=team_paths,
+                    replace_machine=True,
                 )
                 if restore_result.success:
                     result.records_imported += restore_result.total_imported
                     result.records_skipped += restore_result.total_skipped
+                    result.records_deleted += restore_result.total_deleted
                 result.operations_completed.append(
                     f"First restore pass: {len(plan.team_backup_files)} files"
                 )
@@ -324,10 +326,12 @@ class SyncService:
                     project_root=self.project_root,
                     db_path=self.db_path,
                     backup_files=team_paths,
+                    replace_machine=True,
                 )
                 if restore_result.success:
                     result.records_imported += restore_result.total_imported
                     result.records_skipped += restore_result.total_skipped
+                    result.records_deleted += restore_result.total_deleted
                 result.operations_completed.append(
                     f"Second restore pass: {len(plan.team_backup_files)} files"
                 )

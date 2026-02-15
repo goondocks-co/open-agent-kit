@@ -244,6 +244,7 @@ def ci_restore(
             project_root=project_root,
             db_path=db_path,
             dry_run=dry_run,
+            replace_machine=True,
         )
 
         if not all_result.success:
@@ -255,6 +256,7 @@ def ci_restore(
         # Show summary
         total_imported = sum(r.total_imported for r in results.values())
         total_skipped = sum(r.total_skipped for r in results.values())
+        total_deleted = all_result.total_deleted
         total_errors = sum(r.errors for r in results.values())
 
         console.print()
@@ -284,7 +286,12 @@ def ci_restore(
             print_warning(f"  Errors: {total_errors}")
 
         console.print()
-        print_info(f"  Total: {total_imported} imported, {total_skipped} skipped (duplicates)")
+        parts: list[str] = []
+        if total_deleted > 0:
+            parts.append(f"{total_deleted} replaced")
+        parts.append(f"{total_imported} imported")
+        parts.append(f"{total_skipped} skipped (duplicates)")
+        print_info(f"  Total: {', '.join(parts)}")
 
     else:
         # Restore from single file

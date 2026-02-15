@@ -165,34 +165,56 @@ class ActivityStore:
         except sqlite3.OperationalError:
             return 0
 
-    def optimize_database(self) -> None:
-        """Run database optimization (VACUUM + ANALYZE + FTS optimize).
+    def optimize_database(
+        self,
+        *,
+        vacuum: bool = True,
+        analyze: bool = True,
+        fts_optimize: bool = True,
+        reindex: bool = False,
+    ) -> list[str]:
+        """Run database maintenance operations.
 
         This should be called periodically (weekly/monthly) or after large deletions
         to maintain performance and reclaim space.
 
-        Note: VACUUM can be slow for large databases. Consider running in background.
-        """
-        logger.info("Starting database optimization (VACUUM + ANALYZE + FTS optimize)...")
+        Args:
+            vacuum: Reclaim space and defragment (can be slow for large databases).
+            analyze: Update query planner statistics.
+            fts_optimize: Optimize full-text search index.
+            reindex: Rebuild all indexes (fixes corruption, improves performance).
 
+        Returns:
+            List of operation names that were executed.
+        """
+        ops: list[str] = []
         conn = self._get_connection()
 
-        try:
-            # Analyze to update query planner statistics
+        if reindex:
+            conn.execute("REINDEX")
+            logger.debug("Database maintenance: REINDEX complete")
+            ops.append("reindex")
+
+        if analyze:
             conn.execute("ANALYZE")
-            logger.debug("Database optimization: ANALYZE complete")
+            logger.debug("Database maintenance: ANALYZE complete")
+            ops.append("analyze")
 
-            # Optimize FTS index
+        if fts_optimize:
             conn.execute("INSERT INTO activities_fts(activities_fts) VALUES('optimize')")
-            logger.debug("Database optimization: FTS optimize complete")
+            logger.debug("Database maintenance: FTS optimize complete")
+            ops.append("fts_optimize")
 
-            # Vacuum to reclaim space and defragment
-            # Note: VACUUM requires exclusive lock, can be slow
+        if vacuum:
+            # VACUUM requires exclusive lock and cannot run inside a transaction.
+            # Python's sqlite3 module auto-starts transactions, so commit first.
+            conn.commit()
             conn.execute("VACUUM")
-            logger.info("Database optimization complete (VACUUM + ANALYZE + FTS optimize)")
-        except sqlite3.Error as e:
-            logger.error(f"Database optimization error: {e}", exc_info=True)
-            raise
+            logger.debug("Database maintenance: VACUUM complete")
+            ops.append("vacuum")
+
+        logger.info(f"Database maintenance complete: {', '.join(ops)}")
+        return ops
 
     # Cache helpers (exposed for operation modules)
     def _invalidate_stats_cache(self, session_id: str | None = None) -> None:
@@ -345,6 +367,15 @@ class ActivityStore:
         """Get sessions that need titles generated."""
         return sessions.get_sessions_needing_titles(self, limit)
 
+    def get_completed_sessions(
+        self,
+        *,
+        min_activities: int | None = None,
+        limit: int = 500,
+    ) -> list[Session]:
+        """Get completed sessions, optionally filtered by minimum activity count."""
+        return sessions.get_completed_sessions(self, min_activities=min_activities, limit=limit)
+
     def get_sessions_missing_summaries(
         self, limit: int = 10, min_activities: int | None = None
     ) -> list[Session]:
@@ -482,6 +513,27 @@ class ActivityStore:
     ) -> tuple[int, int]:
         """Recover stuck batches and reset processed flag for reprocessing."""
         return batches.queue_batches_for_reprocessing(self, batch_ids, recover_stuck)
+
+    def get_batch_ids_for_reprocessing(
+        self,
+        machine_id: str,
+        *,
+        mode: str = "all",
+        session_id: str | None = None,
+        start_epoch: float | None = None,
+        end_epoch: float | None = None,
+        importance_threshold: int | None = None,
+    ) -> list[int]:
+        """Get batch IDs eligible for reprocessing, filtered by source machine."""
+        return batches.get_batch_ids_for_reprocessing(
+            self,
+            machine_id,
+            mode=mode,
+            session_id=session_id,
+            start_epoch=start_epoch,
+            end_epoch=end_epoch,
+            importance_threshold=importance_threshold,
+        )
 
     def get_prompt_batch_activities(
         self, batch_id: int, limit: int | None = None
@@ -683,29 +735,57 @@ class ActivityStore:
         return stats.get_bulk_first_prompts(self, session_ids, max_length)
 
     # ==========================================================================
-    # Backup operations - delegate to backup module
+    # Cross-cutting operations
     # ==========================================================================
 
-    def export_to_sql(self, output_path: Path, include_activities: bool = False) -> int:
-        """Export valuable tables to SQL dump file."""
-        return backup.export_to_sql(self, output_path, include_activities)
+    def reset_processing_state(self, *, delete_memories: bool = False) -> dict[str, int]:
+        """Reset processing flags on all completed records.
 
-    def import_from_sql(self, backup_path: Path) -> int:
-        """Import data from SQL backup into existing database."""
-        result = backup.import_from_sql_with_dedup(self, backup_path)
-        return result.total_imported
+        Optionally deletes all memory observations from SQLite.
+        ChromaDB cleanup (if needed) must be handled by the caller,
+        since the store layer doesn't hold the vector store reference.
 
-    def import_from_sql_with_dedup(
-        self, backup_path: Path, dry_run: bool = False
-    ) -> backup.ImportResult:
-        """Import data from SQL backup with deduplication."""
-        return backup.import_from_sql_with_dedup(self, backup_path, dry_run)
+        Args:
+            delete_memories: If True, delete all memory observations.
 
-    def restore_all_backups(
-        self, backup_dir: Path, dry_run: bool = False
-    ) -> dict[str, backup.ImportResult]:
-        """Restore from all backup files in directory."""
-        return backup.restore_all_backups(self, backup_dir, dry_run)
+        Returns:
+            Dict with counts: {observations_deleted, sessions_reset,
+            batches_reset, activities_reset}.
+        """
+        counts: dict[str, int] = {
+            "observations_deleted": 0,
+            "sessions_reset": 0,
+            "batches_reset": 0,
+            "activities_reset": 0,
+        }
+
+        with self._transaction() as conn:
+            if delete_memories:
+                cursor = conn.execute("DELETE FROM memory_observations")
+                counts["observations_deleted"] = cursor.rowcount
+
+            cursor = conn.execute(
+                "UPDATE sessions SET processed = FALSE, summary = NULL "
+                "WHERE status = 'completed'"
+            )
+            counts["sessions_reset"] = cursor.rowcount
+
+            cursor = conn.execute(
+                "UPDATE prompt_batches "
+                "SET processed = FALSE, classification = NULL "
+                "WHERE status = 'completed'"
+            )
+            counts["batches_reset"] = cursor.rowcount
+
+            cursor = conn.execute("UPDATE activities SET processed = FALSE")
+            counts["activities_reset"] = cursor.rowcount
+
+        logger.info("Reset processing state: %s", counts)
+        return counts
+
+    def backfill_content_hashes(self) -> dict[str, int]:
+        """Backfill content_hash for records missing them."""
+        return backup.backfill_content_hashes(self)
 
     # ==========================================================================
     # Hash retrieval for deduplication
@@ -821,6 +901,12 @@ class ActivityStore:
     def delete_session(self, session_id: str) -> dict[str, int]:
         """Delete a session and all related data."""
         return delete.delete_session(self, session_id)
+
+    def delete_records_by_machine(
+        self, machine_id: str, vector_store: Any | None = None
+    ) -> dict[str, int]:
+        """Delete all records originating from a specific machine."""
+        return delete.delete_records_by_machine(self, machine_id, vector_store)
 
     # ==========================================================================
     # Agent run operations - delegate to agent_runs module

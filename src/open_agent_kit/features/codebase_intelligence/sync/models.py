@@ -55,4 +55,5 @@ class SyncResult:
     errors: list[str] = field(default_factory=list)
     records_imported: int = 0
     records_skipped: int = 0
+    records_deleted: int = 0
     migrations_applied: int = 0

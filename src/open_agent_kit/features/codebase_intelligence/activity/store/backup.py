@@ -15,7 +15,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
 
@@ -41,6 +41,73 @@ def compute_hash(*parts: str | int | None) -> str:
     """
     content = "|".join(str(p) if p is not None else "" for p in parts)
     return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def backfill_content_hashes(store: ActivityStore) -> dict[str, int]:
+    """Backfill content_hash for records missing them.
+
+    New records created after the v11 migration don't get content_hash
+    populated at insert time. This computes and stores hashes for all
+    records that are missing them.
+
+    Args:
+        store: The ActivityStore instance.
+
+    Returns:
+        Dict with counts: {prompt_batches, observations, activities}.
+    """
+    counts = {"prompt_batches": 0, "observations": 0, "activities": 0}
+
+    with store._transaction() as conn:
+        # Backfill prompt_batches
+        cursor = conn.execute(
+            "SELECT id, session_id, prompt_number FROM prompt_batches WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            batch_id, session_id, prompt_number = row
+            hash_val = compute_prompt_batch_hash(str(session_id), int(prompt_number))
+            conn.execute(
+                "UPDATE prompt_batches SET content_hash = ? WHERE id = ?",
+                (hash_val, batch_id),
+            )
+            counts["prompt_batches"] += 1
+
+        # Backfill memory_observations
+        cursor = conn.execute(
+            "SELECT id, observation, memory_type, context FROM memory_observations "
+            "WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            obs_id, observation, memory_type, context = row
+            hash_val = compute_observation_hash(str(observation), str(memory_type), context)
+            conn.execute(
+                "UPDATE memory_observations SET content_hash = ? WHERE id = ?",
+                (hash_val, obs_id),
+            )
+            counts["observations"] += 1
+
+        # Backfill activities
+        cursor = conn.execute(
+            "SELECT id, session_id, timestamp_epoch, tool_name FROM activities "
+            "WHERE content_hash IS NULL"
+        )
+        for row in cursor.fetchall():
+            activity_id, session_id, timestamp_epoch, tool_name = row
+            hash_val = compute_activity_hash(str(session_id), int(timestamp_epoch), str(tool_name))
+            conn.execute(
+                "UPDATE activities SET content_hash = ? WHERE id = ?",
+                (hash_val, activity_id),
+            )
+            counts["activities"] += 1
+
+    total = sum(counts.values())
+    if total > 0:
+        logger.info(
+            f"Backfilled content hashes: {counts['prompt_batches']} batches, "
+            f"{counts['observations']} observations, {counts['activities']} activities"
+        )
+
+    return counts
 
 
 def compute_prompt_batch_hash(session_id: str, prompt_number: int) -> str:
@@ -457,6 +524,13 @@ class ImportResult:
     errors: int = 0
     error_messages: list[str] = field(default_factory=list)
 
+    # Deleted counts (populated when replace_machine=True)
+    sessions_deleted: int = 0
+    batches_deleted: int = 0
+    observations_deleted: int = 0
+    activities_deleted: int = 0
+    runs_deleted: int = 0
+
     @property
     def total_imported(self) -> int:
         """Total records imported across all tables."""
@@ -477,6 +551,17 @@ class ImportResult:
             + self.observations_skipped
             + self.activities_skipped
             + self.schedules_skipped
+        )
+
+    @property
+    def total_deleted(self) -> int:
+        """Total records deleted (replace mode) across all tables."""
+        return (
+            self.sessions_deleted
+            + self.batches_deleted
+            + self.observations_deleted
+            + self.activities_deleted
+            + self.runs_deleted
         )
 
 
@@ -526,6 +611,11 @@ class RestoreAllResult:
     def total_skipped(self) -> int:
         """Total records skipped across all files."""
         return sum(r.total_skipped for r in self.per_file.values())
+
+    @property
+    def total_deleted(self) -> int:
+        """Total records deleted (replace mode) across all files."""
+        return sum(r.total_deleted for r in self.per_file.values())
 
 
 def create_backup(
@@ -704,6 +794,8 @@ def restore_all(
     *,
     backup_files: list[Path] | None = None,
     dry_run: bool = False,
+    replace_machine: bool = False,
+    vector_store: Any | None = None,
 ) -> RestoreAllResult:
     """Single entry point for multi-file restore.
 
@@ -715,6 +807,9 @@ def restore_all(
         db_path: Path to the SQLite database.
         backup_files: Explicit list of backup files. None means auto-discover.
         dry_run: If True, preview what would be imported without changes.
+        replace_machine: If True, delete all existing records from the backup's
+            source machine before importing (drop-and-replace semantics).
+        vector_store: Optional vector store for ChromaDB cleanup during replace.
 
     Returns:
         RestoreAllResult with per-file details.
@@ -745,8 +840,24 @@ def restore_all(
         store = ActivityStore(db_path, machine_id)
         per_file: dict[str, ImportResult] = {}
         for backup_file in backup_files:
-            result = import_from_sql_with_dedup(store, backup_file, dry_run=dry_run)
+            result = import_from_sql_with_dedup(
+                store,
+                backup_file,
+                dry_run=dry_run,
+                replace_machine=replace_machine,
+                vector_store=vector_store,
+            )
             per_file[backup_file.name] = result
+
+        # After large delete+insert cycles the query planner statistics go
+        # stale.  ANALYZE is cheap (reads index pages) and keeps subsequent
+        # queries using optimal plans.  Only needed when we actually mutated.
+        if replace_machine and not dry_run and any(r.total_deleted > 0 for r in per_file.values()):
+            try:
+                store._get_connection().execute("ANALYZE")
+                logger.debug("Post-restore ANALYZE complete")
+            except Exception:  # noqa: BLE001
+                logger.debug("Post-restore ANALYZE failed (non-critical)", exc_info=True)
 
         return RestoreAllResult(
             success=True,
@@ -1026,6 +1137,8 @@ def import_from_sql_with_dedup(
     store: ActivityStore,
     backup_path: Path,
     dry_run: bool = False,
+    replace_machine: bool = False,
+    vector_store: Any | None = None,
 ) -> ImportResult:
     """Import data from SQL backup with content-based deduplication.
 
@@ -1043,10 +1156,17 @@ def import_from_sql_with_dedup(
     - prompt_batches: id column removed (auto-generated by SQLite)
     - activities: id column removed, prompt_batch_id remapped to new IDs
 
+    When ``replace_machine=True``, all existing records from the backup's
+    source machine are deleted before importing.  This prevents memory
+    amplification when observations are regenerated with different text.
+
     Args:
         store: The ActivityStore instance.
         backup_path: Path to SQL backup file.
         dry_run: If True, preview what would be imported without making changes.
+        replace_machine: If True, delete existing records from the backup's
+            source machine before importing (drop-and-replace semantics).
+        vector_store: Optional vector store for ChromaDB cleanup during replace.
 
     Returns:
         ImportResult with detailed statistics.
@@ -1072,6 +1192,24 @@ def import_from_sql_with_dedup(
                 f"(current: {SCHEMA_VERSION}). Import may have issues if backup "
                 "contains columns not in current schema."
             )
+
+    # Drop-and-replace: delete existing records from this backup's source machine
+    source_machine_id = extract_machine_id_from_filename(backup_path.name)
+    if replace_machine and source_machine_id != store.machine_id and not dry_run:
+        from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+            delete_records_by_machine,
+        )
+
+        delete_counts = delete_records_by_machine(store, source_machine_id, vector_store)
+        result.sessions_deleted = delete_counts.get("sessions", 0)
+        result.batches_deleted = delete_counts.get("prompt_batches", 0)
+        result.observations_deleted = delete_counts.get("memory_observations", 0)
+        result.activities_deleted = delete_counts.get("activities", 0)
+        result.runs_deleted = delete_counts.get("agent_runs", 0)
+        logger.info(
+            f"Replace mode: deleted {result.total_deleted} existing records "
+            f"for machine {source_machine_id}"
+        )
 
     # Load existing IDs/hashes for deduplication
     existing_session_ids = store.get_all_session_ids()
@@ -2012,46 +2150,3 @@ def _validate_parent_session_ids(
     if fixed > 0:
         logger.info(f"Fixed {fixed} orphaned parent_session_id references")
     return fixed
-
-
-def restore_all_backups(
-    store: ActivityStore,
-    backup_dir: Path,
-    dry_run: bool = False,
-) -> dict[str, ImportResult]:
-    """Restore from all backup files in directory.
-
-    Discovers all *.sql files and imports them with deduplication.
-    Files are processed in order of modification time (oldest first).
-
-    Args:
-        store: The ActivityStore instance.
-        backup_dir: Directory containing backup files.
-        dry_run: If True, preview what would be imported.
-
-    Returns:
-        Dictionary mapping filename to ImportResult.
-    """
-    results: dict[str, ImportResult] = {}
-    backup_files = discover_backup_files(backup_dir)
-
-    if not backup_files:
-        logger.info(f"No backup files found in {backup_dir}")
-        return results
-
-    logger.info(f"Found {len(backup_files)} backup files to restore")
-
-    for backup_file in backup_files:
-        logger.info(f"Processing: {backup_file.name}")
-        result = import_from_sql_with_dedup(store, backup_file, dry_run=dry_run)
-        results[backup_file.name] = result
-
-    # Log summary
-    total_imported = sum(r.total_imported for r in results.values())
-    total_skipped = sum(r.total_skipped for r in results.values())
-    logger.info(
-        f"Restore all complete: {total_imported} imported, "
-        f"{total_skipped} skipped across {len(backup_files)} files"
-    )
-
-    return results
