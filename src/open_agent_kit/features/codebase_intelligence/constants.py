@@ -307,6 +307,26 @@ DEFAULT_LOG_LINES: Final[int] = 50
 MAX_LANGUAGE_DETECTION_FILES: Final[int] = 1000
 
 # =============================================================================
+# Power States (idle performance tuning)
+# =============================================================================
+
+# Power states
+POWER_STATE_ACTIVE: Final[str] = "active"
+POWER_STATE_IDLE: Final[str] = "idle"
+POWER_STATE_SLEEP: Final[str] = "sleep"
+POWER_STATE_DEEP_SLEEP: Final[str] = "deep_sleep"
+
+# Thresholds (seconds since last hook activity)
+POWER_IDLE_THRESHOLD: Final[int] = 300  # 5 minutes
+POWER_SLEEP_THRESHOLD: Final[int] = 1800  # 30 minutes
+POWER_DEEP_SLEEP_THRESHOLD: Final[int] = 5400  # 90 minutes
+
+# Cycle intervals per state (seconds)
+POWER_ACTIVE_INTERVAL: Final[int] = 60  # Normal 60s cycle
+POWER_IDLE_INTERVAL: Final[int] = 60  # Same frequency, reduced work
+POWER_SLEEP_INTERVAL: Final[int] = 300  # 5 min between checks
+
+# =============================================================================
 # Resiliency and Recovery
 # =============================================================================
 
@@ -335,6 +355,10 @@ BACKUP_INTERVAL_MINUTES_MIN: Final[int] = 5
 BACKUP_INTERVAL_MINUTES_MAX: Final[int] = 1440
 BACKUP_ON_UPGRADE_DEFAULT: Final[bool] = True
 BACKUP_CONFIG_KEY: Final[str] = "backup"
+
+# Backup trigger types (how backups are initiated)
+BACKUP_TRIGGER_MANUAL: Final[str] = "manual"
+BACKUP_TRIGGER_ON_TRANSITION: Final[str] = "on_transition"
 
 # Backup file location (in preserved oak/ directory, committed to git)
 CI_HISTORY_BACKUP_DIR: Final[str] = "oak/history"
@@ -1127,8 +1151,8 @@ INJECTION_SESSION_START_REMINDER_TITLE: Final[str] = "## OAK CI Tools"
 INJECTION_SESSION_START_REMINDER_LINES: Final[tuple[str, ...]] = (
     "- MCP tools: `oak_search` (code/memories), `oak_context` (task context), "
     "`oak_remember` (store learnings), `oak_resolve_memory` (mark resolved).",
-    "- After fixing a bug or addressing a gotcha surfaced by `oak_search`, "
-    "call `oak_resolve_memory` with the observation ID to mark it resolved.",
+    "- After fixing a bug or addressing a gotcha, use `oak_search` to find "
+    "the observation's UUID, then call `oak_resolve_memory` with that UUID.",
 )
 INJECTION_SESSION_START_REMINDER_BLOCK: Final[str] = MEMORY_EMBED_LINE_SEPARATOR.join(
     (INJECTION_SESSION_START_REMINDER_TITLE, *INJECTION_SESSION_START_REMINDER_LINES)

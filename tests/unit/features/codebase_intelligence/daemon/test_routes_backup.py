@@ -23,6 +23,8 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
     get_backup_filename,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
+    BACKUP_TRIGGER_MANUAL,
+    BACKUP_TRIGGER_ON_TRANSITION,
     CI_ACTIVITIES_DB_FILENAME,
     CI_BACKUP_PATH_INVALID_ERROR,
     CI_DATA_DIR,
@@ -208,6 +210,79 @@ class TestBackupStatus:
         response = client.get("/api/backup/status")
 
         assert response.status_code == 503
+
+    def test_backup_status_includes_trigger(self, client, temp_project: Path):
+        """Test that backup status response includes backup_trigger field."""
+        state = get_state()
+        state.project_root = temp_project
+        state.activity_store = MagicMock()
+
+        response = client.get("/api/backup/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "backup_trigger" in data
+        assert data["backup_trigger"] in (BACKUP_TRIGGER_MANUAL, BACKUP_TRIGGER_ON_TRANSITION)
+
+    def test_backup_status_trigger_manual_when_disabled(self, client, temp_project: Path):
+        """Test that backup_trigger is 'manual' when auto_enabled is False."""
+        state = get_state()
+        state.project_root = temp_project
+        state.activity_store = MagicMock()
+
+        # Ensure auto backup is disabled via config
+        from open_agent_kit.features.codebase_intelligence.config import CIConfig
+
+        state.ci_config = CIConfig()
+        state.ci_config.backup.auto_enabled = False
+
+        response = client.get("/api/backup/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backup_trigger"] == BACKUP_TRIGGER_MANUAL
+
+    def test_backup_status_trigger_on_transition_when_enabled(self, client, temp_project: Path):
+        """Test that backup_trigger is 'on_transition' when auto_enabled is True."""
+        state = get_state()
+        state.project_root = temp_project
+        state.activity_store = MagicMock()
+
+        # Enable auto backup via config
+        from open_agent_kit.features.codebase_intelligence.config import CIConfig
+
+        state.ci_config = CIConfig()
+        state.ci_config.backup.auto_enabled = True
+
+        response = client.get("/api/backup/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backup_trigger"] == BACKUP_TRIGGER_ON_TRANSITION
+
+    def test_backup_status_no_next_countdown(self, client, temp_project: Path):
+        """Test that response does NOT include next_auto_backup_minutes."""
+        state = get_state()
+        state.project_root = temp_project
+        state.activity_store = MagicMock()
+
+        response = client.get("/api/backup/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "next_auto_backup_minutes" not in data
+
+    def test_create_backup_still_works(self, client, setup_state_with_activity_store):
+        """Test that manual backup creation still works after backup trigger changes."""
+        response = client.post(
+            "/api/backup/create",
+            json={"include_activities": False},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["record_count"] >= 1
 
 
 # =============================================================================

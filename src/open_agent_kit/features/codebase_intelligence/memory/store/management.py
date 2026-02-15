@@ -391,6 +391,31 @@ def count_memories(store: VectorStore) -> int:
     return store._memory_collection.count() if store._memory_collection else 0
 
 
+def count_plans(store: VectorStore) -> int:
+    """Count plan entries in the ChromaDB memory collection.
+
+    Plans are stored in the memory collection with memory_type='plan'.
+    Used by startup sync checks to detect SQLite/ChromaDB mismatches.
+
+    Args:
+        store: The VectorStore instance.
+
+    Returns:
+        Number of plan entries in ChromaDB.
+    """
+    store._ensure_initialized()
+    if not store._memory_collection:
+        return 0
+    try:
+        results = store._memory_collection.get(
+            where={"memory_type": "plan"},
+            include=[],
+        )
+        return len(results["ids"]) if results and results.get("ids") else 0
+    except (RuntimeError, ValueError):
+        return 0
+
+
 def clear_memory_collection(store: VectorStore) -> int:
     """Clear only memory collection, preserving code index.
 

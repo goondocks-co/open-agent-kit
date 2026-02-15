@@ -205,6 +205,8 @@ async def hook_session_start(request: Request) -> dict:
             "status": state.index_status.status,
         }
 
+    state.record_hook_activity()
+
     hook_event_name = body.get("hook_event_name", "SessionStart")
     response = {"status": "ok", "session_id": session_id, "context": context}
     response["hook_output"] = format_hook_output(response, agent, hook_event_name)

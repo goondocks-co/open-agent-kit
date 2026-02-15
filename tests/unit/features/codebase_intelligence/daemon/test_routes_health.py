@@ -22,6 +22,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CORS_SCHEME_HTTP,
     CI_SHARED_PORT_DIR,
     CI_SHARED_PORT_FILE,
+    POWER_STATE_ACTIVE,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.manager import (
     PORT_RANGE_START,
@@ -388,6 +389,23 @@ class TestGetStatus:
         assert "ast_success" in ast_stats
         assert "ast_fallback" in ast_stats
         assert "line_based" in ast_stats
+
+    def test_get_status_includes_power_state(self, client, setup_state_fully_initialized):
+        """Test that status response includes power_state field."""
+        response = client.get("/api/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "power_state" in data
+        assert isinstance(data["power_state"], str)
+
+    def test_get_status_power_state_default_active(self, client, setup_state_fully_initialized):
+        """Test that default power state is active."""
+        response = client.get("/api/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["power_state"] == POWER_STATE_ACTIVE
 
 
 # =============================================================================

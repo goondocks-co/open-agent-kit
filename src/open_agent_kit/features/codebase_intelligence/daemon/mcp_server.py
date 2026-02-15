@@ -304,7 +304,8 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         was tracked as an observation, or when a newer observation replaces an older one.
 
         Args:
-            id: The observation ID to resolve.
+            id: The observation UUID to resolve. Use oak_search to find the ID first
+                (returned in each result's "id" field, e.g. "8430042a-1b01-4c86-8026-6ede46cd93d9").
             status: New status - 'resolved' (default) or 'superseded'.
             reason: Optional reason for resolution.
 

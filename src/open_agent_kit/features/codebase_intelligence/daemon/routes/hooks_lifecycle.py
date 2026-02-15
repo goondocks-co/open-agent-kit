@@ -111,6 +111,8 @@ async def hook_stop(request: Request) -> dict:
     except HOOK_STORE_EXCEPTIONS as e:
         logger.debug(f"Failed to flush activity buffer: {e}")
 
+    state.record_hook_activity()
+
     # End current prompt batch and queue for processing (get batch from SQLite)
     active_batch = state.activity_store.get_active_prompt_batch(session_id)
     prompt_batch_id = active_batch.id if active_batch else None
@@ -403,6 +405,7 @@ async def hook_subagent_start(request: Request) -> dict:
                 success=True,
             )
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(f"Stored subagent-start: {agent_type} (batch={prompt_batch_id})")
 
         except HOOK_STORE_EXCEPTIONS as e:
@@ -478,6 +481,7 @@ async def hook_subagent_stop(request: Request) -> dict:
                 success=True,
             )
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(f"Stored subagent-stop: {agent_type} (batch={prompt_batch_id})")
 
             # Capture subagent response summary from transcript
@@ -575,6 +579,7 @@ async def hook_agent_thought(request: Request) -> dict:
                 success=True,
             )
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(
                 f"Stored agent-thought: {len(thought_text)} chars (batch={prompt_batch_id})"
             )
@@ -664,6 +669,7 @@ async def hook_pre_compact(request: Request) -> dict:
                 success=True,
             )
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(
                 f"Stored pre-compact: {context_usage_percent}% usage (batch={prompt_batch_id})"
             )

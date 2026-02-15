@@ -534,11 +534,16 @@ def create_backup(
     *,
     include_activities: bool | None = None,
     output_path: Path | None = None,
+    activity_store: ActivityStore | None = None,
 ) -> BackupResult:
     """Single entry point for all backup operations.
 
     When include_activities is None, the value is loaded from BackupConfig.
     Explicit True/False overrides the config value.
+
+    When *activity_store* is provided it is used directly instead of
+    creating a new ``ActivityStore``.  The caller retains ownership --
+    the store is **not** closed by this function in that case.
 
     Args:
         project_root: Project root directory.
@@ -547,6 +552,7 @@ def create_backup(
             None means load from config.
         output_path: Custom output path. None means use default
             backup directory with machine-id filename.
+        activity_store: Optional pre-existing ActivityStore to reuse.
 
     Returns:
         BackupResult with operation details.
@@ -582,10 +588,12 @@ def create_backup(
         backup_dir.mkdir(parents=True, exist_ok=True)
         output_path = backup_dir / get_backup_filename(machine_id)
 
-    # Create store, export, close
-    store: ActivityStore | None = None
+    # Reuse existing store or create a new one
+    store_provided = activity_store is not None
+    store: ActivityStore | None = activity_store
     try:
-        store = ActivityStore(db_path, machine_id)
+        if store is None:
+            store = ActivityStore(db_path, machine_id)
         record_count = export_to_sql(store, output_path, include_activities=include_activities)
         return BackupResult(
             success=True,
@@ -603,7 +611,8 @@ def create_backup(
             error=str(exc),
         )
     finally:
-        if store is not None:
+        # Only close if we created the store ourselves
+        if not store_provided and store is not None:
             store.close()
 
 

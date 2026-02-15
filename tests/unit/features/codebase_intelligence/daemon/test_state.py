@@ -14,6 +14,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     INDEX_STATUS_INDEXING,
     INDEX_STATUS_READY,
     INDEX_STATUS_UPDATING,
+    POWER_STATE_ACTIVE,
+    POWER_STATE_DEEP_SLEEP,
+    POWER_STATE_IDLE,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     DaemonState,
@@ -560,3 +563,121 @@ class TestDaemonStateIndexLock:
         """
         assert initialized_daemon_state.index_lock is not None
         assert not initialized_daemon_state.index_lock.locked()
+
+
+# =============================================================================
+# Power State Lifecycle Tests
+# =============================================================================
+
+
+class TestPowerStateLifecycle:
+    """Test power state lifecycle management."""
+
+    def test_power_state_default_is_active(self):
+        """Test that a new DaemonState defaults to ACTIVE power state."""
+        state = DaemonState()
+        assert state.power_state == POWER_STATE_ACTIVE
+
+    def test_last_hook_activity_default_none(self):
+        """Test that last_hook_activity defaults to None."""
+        state = DaemonState()
+        assert state.last_hook_activity is None
+
+    def test_record_hook_activity_sets_timestamp(self):
+        """Test that record_hook_activity sets last_hook_activity to ~now."""
+        import time
+
+        state = DaemonState()
+        before = time.time()
+        state.record_hook_activity()
+        after = time.time()
+
+        assert state.last_hook_activity is not None
+        assert before <= state.last_hook_activity <= after
+
+    def test_record_hook_activity_updates_timestamp(self):
+        """Test that calling record_hook_activity twice updates the timestamp."""
+        import time
+
+        state = DaemonState()
+        state.record_hook_activity()
+        first_ts = state.last_hook_activity
+
+        time.sleep(0.01)  # Small delay to ensure different timestamp
+
+        state.record_hook_activity()
+        second_ts = state.last_hook_activity
+
+        assert second_ts is not None
+        assert first_ts is not None
+        assert second_ts > first_ts
+
+    def test_record_hook_activity_wakes_from_deep_sleep(self):
+        """Test that record_hook_activity wakes from DEEP_SLEEP state."""
+        from unittest.mock import MagicMock
+
+        state = DaemonState()
+        state.power_state = POWER_STATE_DEEP_SLEEP
+
+        mock_processor = MagicMock()
+        state.activity_processor = mock_processor
+
+        mock_watcher = MagicMock()
+        state.file_watcher = mock_watcher
+
+        state.record_hook_activity()
+
+        assert state.power_state == POWER_STATE_ACTIVE
+        mock_processor.schedule_background_processing.assert_called_once()
+        mock_watcher.start.assert_called_once()
+
+    def test_record_hook_activity_no_wake_if_not_deep_sleep(self):
+        """Test that record_hook_activity does not change state if not in DEEP_SLEEP."""
+        state = DaemonState()
+        state.power_state = POWER_STATE_IDLE
+
+        state.record_hook_activity()
+
+        assert state.power_state == POWER_STATE_IDLE
+
+    def test_wake_from_deep_sleep_thread_safe(self):
+        """Test that _wake_from_deep_sleep is thread-safe (only wakes once)."""
+        import threading
+        from unittest.mock import MagicMock
+
+        state = DaemonState()
+        state.power_state = POWER_STATE_DEEP_SLEEP
+
+        mock_processor = MagicMock()
+        state.activity_processor = mock_processor
+
+        mock_watcher = MagicMock()
+        state.file_watcher = mock_watcher
+
+        barrier = threading.Barrier(5)
+
+        def wake():
+            barrier.wait()
+            state._wake_from_deep_sleep()
+
+        threads = [threading.Thread(target=wake) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert state.power_state == POWER_STATE_ACTIVE
+        # Only one thread should have gotten through the lock guard
+        mock_processor.schedule_background_processing.assert_called_once()
+        mock_watcher.start.assert_called_once()
+
+    def test_reset_clears_power_state(self):
+        """Test that reset() restores power state defaults."""
+        state = DaemonState()
+        state.power_state = POWER_STATE_DEEP_SLEEP
+        state.last_hook_activity = 1234567890.0
+
+        state.reset()
+
+        assert state.power_state == POWER_STATE_ACTIVE
+        assert state.last_hook_activity is None

@@ -403,4 +403,6 @@ async def hook_before_prompt(request: Request) -> dict:
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.warning(f"Failed to search for context: {e}")
 
+    state.record_hook_activity()
+
     return {"status": "ok", "context": context}

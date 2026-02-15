@@ -128,6 +128,7 @@ async def hook_pre_tool_use(request: Request) -> dict:
                 success=True,
             )
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(f"Stored pre-tool-use activity: {tool_name} (batch={prompt_batch_id})")
 
         except HOOK_STORE_EXCEPTIONS as e:
@@ -363,6 +364,7 @@ async def hook_post_tool_use(request: Request) -> dict:
             )
             # Use buffered insert for better performance (auto-flushes at batch size)
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(f"Stored activity: {tool_name} (batch={prompt_batch_id})")
 
             # Lifecycle logging to dedicated hooks.log
@@ -679,6 +681,7 @@ async def hook_post_tool_use_failure(request: Request) -> dict:
                 error_message=error_message[:500] if error_message else None,
             )
             state.activity_store.add_activity_buffered(activity)
+            state.record_hook_activity()
             logger.debug(f"Stored failed activity: {tool_name} (batch={prompt_batch_id})")
 
         except HOOK_STORE_EXCEPTIONS as e:

@@ -13,15 +13,9 @@ import { useConfig, useUpdateConfig } from "@/hooks/use-config";
 import type { BackupConfig } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-/** Minimum interval in minutes for automatic backups. */
-const BACKUP_INTERVAL_MIN = 5;
-/** Maximum interval in minutes for automatic backups (24 hours). */
-const BACKUP_INTERVAL_MAX = 1440;
-
 const BACKUP_FORM_DEFAULTS: BackupConfig = {
     auto_enabled: false,
     include_activities: false,
-    interval_minutes: 60,
     on_upgrade: true,
 };
 
@@ -67,7 +61,6 @@ export default function TeamBackups() {
                 setBackupForm({
                     auto_enabled: bkp.auto_enabled ?? BACKUP_FORM_DEFAULTS.auto_enabled,
                     include_activities: bkp.include_activities ?? BACKUP_FORM_DEFAULTS.include_activities,
-                    interval_minutes: bkp.interval_minutes ?? BACKUP_FORM_DEFAULTS.interval_minutes,
                     on_upgrade: bkp.on_upgrade ?? BACKUP_FORM_DEFAULTS.on_upgrade,
                 });
             }
@@ -90,7 +83,6 @@ export default function TeamBackups() {
                 backup: {
                     auto_enabled: backupForm.auto_enabled,
                     include_activities: backupForm.include_activities,
-                    interval_minutes: backupForm.interval_minutes,
                     on_upgrade: backupForm.on_upgrade,
                 },
             } as Record<string, unknown>) as { message?: string };
@@ -287,56 +279,19 @@ export default function TeamBackups() {
                         </div>
                     </div>
 
-                    {/* Interval input - only shown when auto backups are enabled */}
+                    {/* Transition-triggered backup explanation */}
                     {backupForm.auto_enabled && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label htmlFor="backup_interval" className="text-sm font-medium">
-                                    Backup interval (minutes)
-                                </label>
-                                <input
-                                    id="backup_interval"
-                                    type="number"
-                                    min={BACKUP_INTERVAL_MIN}
-                                    max={BACKUP_INTERVAL_MAX}
-                                    value={backupForm.interval_minutes}
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value, 10);
-                                        if (!isNaN(val)) {
-                                            setBackupForm((prev) => ({ ...prev, interval_minutes: val }));
-                                            setIsDirty(true);
-                                            setConfigMessage(null);
-                                        }
-                                    }}
-                                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    {BACKUP_INTERVAL_MIN} min to {BACKUP_INTERVAL_MAX} min (24h)
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Auto-backup status display */}
-                    {backupStatus?.auto_backup_enabled && (
                         <div className="p-3 rounded-lg bg-muted/50 space-y-1">
                             <div className="flex items-center gap-2 text-sm">
                                 <Clock className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-medium">Auto-backup status</span>
+                                <span className="font-medium">Transition-triggered backups</span>
                             </div>
-                            {backupStatus.last_auto_backup && (
+                            <p className="text-xs text-muted-foreground pl-6">
+                                A backup is created automatically when the daemon enters sleep (30 min idle) or deep sleep (90 min idle).
+                            </p>
+                            {backupStatus?.last_auto_backup && (
                                 <p className="text-xs text-muted-foreground pl-6">
                                     Last auto-backup: {formatTimeAgo(backupStatus.last_auto_backup)}
-                                </p>
-                            )}
-                            {backupStatus.next_auto_backup_minutes != null && (
-                                <p className="text-xs text-muted-foreground pl-6">
-                                    Next auto-backup in ~{backupStatus.next_auto_backup_minutes} minute{backupStatus.next_auto_backup_minutes === 1 ? "" : "s"}
-                                </p>
-                            )}
-                            {!backupStatus.last_auto_backup && (
-                                <p className="text-xs text-muted-foreground pl-6">
-                                    No auto-backup has run yet.
                                 </p>
                             )}
                         </div>

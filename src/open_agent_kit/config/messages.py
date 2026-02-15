@@ -144,7 +144,7 @@ INFO_MESSAGES = {
     "force_reinit": "Forcing re-initialization of OAK...",
     "no_agents_selected": "No agents selected. Configuration unchanged.",
     "select_agents_prompt": (
-        "Choose one or more AI agents to assist with RFC generation and code reviews.\n"
+        "Choose one or more AI agents to integrate with oak.\n"
         "You can always add more agents later by running 'oak init' again."
     ),
     "more_info": "For more information, visit: {url}",

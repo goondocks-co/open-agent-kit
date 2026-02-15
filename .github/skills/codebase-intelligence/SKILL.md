@@ -85,7 +85,7 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "SELECT count(*) FROM se
 | `oak_search` | `oak-dev ci search "query"` | Semantic vector search |
 | `oak_remember` | `oak-dev ci remember "observation"` | Store a memory |
 | `oak_context` | `oak-dev ci context "task"` | Get task-relevant context |
-| `oak_resolve_memory` | `oak-dev ci resolve <id>` | Mark observation resolved/superseded |
+| `oak_resolve_memory` | `oak-dev ci resolve <uuid>` | Mark observation resolved/superseded (UUID from `oak_search`) |
 
 ### Direct SQL
 
@@ -154,10 +154,10 @@ The `status` column tracks lifecycle state:
 
 When `oak_search` or `oak_context` surfaces a gotcha, bug_fix, or discovery that you then address during your session, **resolve it** so future sessions don't see stale guidance:
 
-1. Note the observation `id` from the search results.
+1. Note the observation UUID from the `oak_search` results (e.g., `"id": "8430042a-1b01-4c86-8026-6ede46cd93d9"`).
 2. After completing the fix or addressing the issue, call:
-   - **MCP:** `oak_resolve_memory(id="<observation-id>")`
-   - **CLI:** `oak-dev ci resolve <observation-id>`
+   - **MCP:** `oak_resolve_memory(id="8430042a-1b01-4c86-8026-6ede46cd93d9")`
+   - **CLI:** `oak-dev ci resolve 8430042a-1b01-4c86-8026-6ede46cd93d9`
 3. For superseded observations (replaced by a better one), use `status="superseded"`.
 
 **When to resolve:**
