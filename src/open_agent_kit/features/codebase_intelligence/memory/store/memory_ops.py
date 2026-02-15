@@ -6,6 +6,7 @@ Functions for adding and removing memories and plans from ChromaDB.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from open_agent_kit.features.codebase_intelligence.memory.store.constants import MEMORY_COLLECTION
@@ -122,8 +123,18 @@ def add_plan(store: VectorStore, plan: PlanObservation) -> str:
     return plan.id
 
 
+"""Maximum retry attempts for ChromaDB delete operations."""
+CHROMADB_DELETE_MAX_RETRIES = 3
+
+"""Backoff delay in seconds between ChromaDB delete retries."""
+CHROMADB_DELETE_RETRY_DELAY = 0.5
+
+
 def delete_memories(store: VectorStore, observation_ids: list[str]) -> int:
     """Delete memories from ChromaDB by their observation IDs.
+
+    Retries on transient errors to prevent orphaned entries when SQLite
+    deletes succeed but ChromaDB deletes fail.
 
     Args:
         store: The VectorStore instance.
@@ -147,6 +158,23 @@ def delete_memories(store: VectorStore, observation_ids: list[str]) -> int:
     if not existing_ids:
         return 0
 
-    store._memory_collection.delete(ids=existing_ids)
-    logger.info(f"Deleted {len(existing_ids)} memories from ChromaDB")
-    return len(existing_ids)
+    last_error: Exception | None = None
+    for attempt in range(CHROMADB_DELETE_MAX_RETRIES):
+        try:
+            store._memory_collection.delete(ids=existing_ids)
+            logger.info(f"Deleted {len(existing_ids)} memories from ChromaDB")
+            return len(existing_ids)
+        except (RuntimeError, OSError) as e:
+            last_error = e
+            if attempt < CHROMADB_DELETE_MAX_RETRIES - 1:
+                logger.warning(
+                    f"ChromaDB delete attempt {attempt + 1} failed, "
+                    f"retrying in {CHROMADB_DELETE_RETRY_DELAY}s: {e}"
+                )
+                time.sleep(CHROMADB_DELETE_RETRY_DELAY)
+
+    logger.error(
+        f"ChromaDB delete failed after {CHROMADB_DELETE_MAX_RETRIES} attempts "
+        f"({len(existing_ids)} orphaned entries may remain): {last_error}"
+    )
+    raise last_error  # type: ignore[misc]

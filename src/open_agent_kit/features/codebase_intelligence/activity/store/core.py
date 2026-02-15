@@ -509,6 +509,10 @@ class ActivityStore:
         """Count plan batches not yet in ChromaDB."""
         return batches.count_unembedded_plans(self)
 
+    def get_embedded_plan_chromadb_ids(self) -> list[str]:
+        """Get ChromaDB IDs for all embedded plans (format: 'plan-{batch_id}')."""
+        return batches.get_embedded_plan_chromadb_ids(self)
+
     def count_embedded_plans(self) -> int:
         """Count plan batches that are in ChromaDB."""
         return batches.count_embedded_plans(self)
@@ -608,6 +612,10 @@ class ActivityStore:
     def count_embedded_observations(self) -> int:
         """Count observations that are in ChromaDB."""
         return observations.count_embedded_observations(self)
+
+    def get_embedded_observation_ids(self) -> list[str]:
+        """Get all observation IDs that are embedded in ChromaDB."""
+        return observations.get_embedded_observation_ids(self)
 
     def count_unembedded_observations(self) -> int:
         """Count observations not yet in ChromaDB."""

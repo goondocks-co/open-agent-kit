@@ -366,6 +366,10 @@ class VectorStore:
         """Count unique files in the code index."""
         return management.count_unique_files(self)
 
+    def get_all_memory_ids(self) -> list[str]:
+        """Get all IDs from the ChromaDB memory collection."""
+        return management.get_all_memory_ids(self)
+
     def get_stats(self) -> dict:
         """Get collection statistics."""
         return management.get_stats(self)

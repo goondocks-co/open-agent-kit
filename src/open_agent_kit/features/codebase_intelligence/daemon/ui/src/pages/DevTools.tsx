@@ -4,7 +4,7 @@ import { fetchJson, devtoolsHeaders } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { AlertCircle, CheckCircle2, Play, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench, FileCode, HardDrive, Eraser } from "lucide-react";
+import { AlertCircle, CheckCircle2, Play, Trash2, Database, Activity, Brain, AlertTriangle, FileText, RotateCcw, Eye, X, Wrench, FileCode, HardDrive, Eraser, Sparkles } from "lucide-react";
 // Note: Backup functionality moved to Team page
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -263,6 +263,18 @@ export default function DevTools() {
         }
     });
 
+    const cleanupOrphansFn = useMutation({
+        mutationFn: () => fetchJson<{ status: string; message: string; orphaned_count: number; deleted_count: number }>(
+            API_ENDPOINTS.DEVTOOLS_CLEANUP_ORPHANS,
+            { method: "POST", headers: devtoolsHeaders() }
+        ),
+        onSuccess: (data) => {
+            setMessage({ type: MESSAGE_TYPES.SUCCESS, text: data.message });
+            queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
+        },
+        onError: (err: Error) => setMessage({ type: MESSAGE_TYPES.ERROR, text: err.message || "Failed to cleanup orphaned entries" })
+    });
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto p-4">
             <div className="flex flex-col gap-2">
@@ -323,7 +335,7 @@ export default function DevTools() {
                             <CardDescription>
                                 {memoryStats.sync_status === MEMORY_SYNC_STATUS.SYNCED && "All memories are synced."}
                                 {memoryStats.sync_status === MEMORY_SYNC_STATUS.PENDING_EMBED && `${memoryStats.sqlite.unembedded + (memoryStats.sqlite.plans_unembedded || 0)} items pending embedding.`}
-                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.ORPHANED && `ChromaDB has ${memoryStats.sync_difference || 0} orphaned entries. Use 'Clear orphaned entries' below to fix.`}
+                                {memoryStats.sync_status === MEMORY_SYNC_STATUS.ORPHANED && `ChromaDB has ${memoryStats.sync_difference || 0} orphaned entries. Use 'Clear Orphaned Entries' in ChromaDB Maintenance to fix.`}
                                 {memoryStats.sync_status === MEMORY_SYNC_STATUS.MISSING && `ChromaDB is missing ${Math.abs(memoryStats.sync_difference || 0)} entries. Use 'Re-embed Memories' below to fix.`}
                                 {memoryStats.sync_status === MEMORY_SYNC_STATUS.OUT_OF_SYNC && "ChromaDB is out of sync. Use 'Re-embed Memories' below to fix."}
                             </CardDescription>
@@ -370,6 +382,19 @@ export default function DevTools() {
                         </Button>
                         <p className="text-xs text-muted-foreground">
                             Deletes ChromaDB and restarts the daemon. This is the <strong>only way to reclaim disk space</strong> after deletions. All data is rebuilt automatically on restart.
+                        </p>
+
+                        <Button
+                            variant="secondary"
+                            onClick={() => cleanupOrphansFn.mutate()}
+                            disabled={cleanupOrphansFn.isPending || !memoryStats || memoryStats.sync_status !== "orphaned"}
+                            className="w-full justify-start"
+                        >
+                            <Sparkles className={`mr-2 h-4 w-4 ${cleanupOrphansFn.isPending ? "animate-spin" : ""}`} />
+                            {cleanupOrphansFn.isPending ? "Cleaning..." : `Clear Orphaned Entries${memoryStats?.sync_difference && memoryStats.sync_difference > 0 ? ` (${memoryStats.sync_difference})` : ""}`}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Remove ChromaDB entries that have no matching SQLite record. These accumulate when cleanup operations partially fail.
                         </p>
 
                         <div className="h-px bg-border my-4" />

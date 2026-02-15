@@ -238,6 +238,22 @@ def count_embedded_observations(store: ActivityStore) -> int:
     return int(result[0]) if result else 0
 
 
+def get_embedded_observation_ids(store: ActivityStore) -> list[str]:
+    """Get all observation IDs that are embedded in ChromaDB.
+
+    Used by orphan cleanup to diff against ChromaDB IDs.
+
+    Args:
+        store: The ActivityStore instance.
+
+    Returns:
+        List of embedded observation IDs.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute("SELECT id FROM memory_observations WHERE embedded = TRUE")
+    return [row[0] for row in cursor.fetchall()]
+
+
 def count_unembedded_observations(store: ActivityStore) -> int:
     """Count observations not yet in ChromaDB.
 
