@@ -234,6 +234,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         observation: str,
         memory_type: str = "discovery",
         context: str | None = None,
+        session_id: str | None = None,
     ) -> str:
         """Store an observation, decision, or learning for future sessions.
 
@@ -244,6 +245,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
             observation: The observation or learning to store
             memory_type: Type of observation. Options: 'gotcha', 'bug_fix', 'decision', 'discovery', 'trade_off'
             context: Related file path or additional context
+            session_id: Optional session ID for precise session linking (from context)
 
         Returns:
             JSON string confirming storage with observation ID.
@@ -254,6 +256,8 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         }
         if context:
             data["context"] = context
+        if session_id:
+            data["session_id"] = session_id
 
         result = _call_daemon("/api/remember", data)
         return json.dumps(result)

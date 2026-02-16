@@ -185,6 +185,7 @@ class RememberRequest(BaseModel):
     memory_type: MemoryType = MemoryType.DISCOVERY
     context: str | None = None
     tags: list[str] = Field(default_factory=list)
+    session_id: str | None = None
 
 
 class RememberResponse(BaseModel):
@@ -206,6 +207,7 @@ class MemoryListItem(BaseModel):
     created_at: datetime | None = None
     archived: bool = False
     status: str = "active"
+    embedded: bool = False
     session_origin_type: str | None = None
 
 

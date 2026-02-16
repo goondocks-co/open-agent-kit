@@ -314,7 +314,11 @@ async def hook_prompt_submit(request: Request) -> dict:
                 for mem in high_confidence_memories[:5]:  # Cap at 5
                     mem_type = mem.get("memory_type", "note")
                     obs = mem.get("observation", "")
-                    mem_lines.append(f"- [{mem_type}] {obs}")
+                    mem_id = mem.get("id", "")
+                    line = f"- [{mem_type}] {obs}"
+                    if mem_id:
+                        line += f" `[id: {mem_id}]`"
+                    mem_lines.append(line)
 
                 if mem_lines:
                     injected_text = "**Relevant memories for this task:**\n" + "\n".join(mem_lines)

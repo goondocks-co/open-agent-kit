@@ -727,30 +727,72 @@ class RetrievalEngine:
         memory_type: str = "discovery",
         context: str | None = None,
         tags: list[str] | None = None,
+        session_id: str | None = None,
     ) -> str:
         """Store an observation in memory.
 
         This is used by the /api/remember endpoint.
+        Two-phase write: ChromaDB (search index) + SQLite (source of truth).
 
         Args:
             observation: The observation text to store.
             memory_type: Type of memory (gotcha, bug_fix, decision, discovery, trade_off).
             context: Optional context (e.g., related file path).
             tags: Optional tags for categorization.
+            session_id: Optional session ID. If not provided and activity_store
+                is available, the most recent active session is used.
 
         Returns:
             The ID of the stored observation.
         """
+        obs_id = str(uuid4())
+        now = datetime.now()
+
         mem_observation = MemoryObservation(
-            id=str(uuid4()),
+            id=obs_id,
             observation=observation,
             memory_type=memory_type,
             context=context,
             tags=tags,
-            created_at=datetime.now(),
+            created_at=now,
         )
 
-        return self.store.add_memory(mem_observation)
+        # Phase 1: ChromaDB (search index)
+        self.store.add_memory(mem_observation)
+
+        # Phase 2: SQLite (source of truth)
+        if self.activity_store:
+            from open_agent_kit.features.codebase_intelligence.activity.store.models import (
+                StoredObservation,
+            )
+
+            # Resolve session ID: use provided, or find most recent active session
+            resolved_session_id = session_id
+            if not resolved_session_id:
+                try:
+                    recent = self.activity_store.get_recent_sessions(limit=1, status="active")
+                    if recent:
+                        resolved_session_id = recent[0].id
+                except Exception:
+                    logger.debug("Could not resolve active session for remember()")
+
+            if resolved_session_id:
+                stored_obs = StoredObservation(
+                    id=obs_id,
+                    session_id=resolved_session_id,
+                    observation=observation,
+                    memory_type=memory_type,
+                    context=context,
+                    tags=tags,
+                    importance=5,
+                    created_at=now,
+                    embedded=True,  # Already in ChromaDB from phase 1
+                )
+                self.activity_store.store_observation(stored_obs)
+            else:
+                logger.warning("No active session found — observation stored in ChromaDB only")
+
+        return obs_id
 
     def archive_memory(self, memory_id: str, archived: bool = True) -> bool:
         """Archive or unarchive a memory.
@@ -799,7 +841,21 @@ class RetrievalEngine:
             )
 
         # Phase 2: Update ChromaDB (search index)
-        return self.store.update_memory_status(memory_id, status)
+        result = self.store.update_memory_status(memory_id, status)
+
+        # Phase 3: Emit resolution event for cross-machine propagation
+        if status != "active" and self.activity_store:
+            try:
+                self.activity_store.store_resolution_event(
+                    observation_id=memory_id,
+                    action=status,
+                    resolved_by_session_id=resolved_by_session_id,
+                    superseded_by=superseded_by,
+                )
+            except Exception:
+                logger.debug(f"Failed to emit resolution event for {memory_id}", exc_info=True)
+
+        return result
 
     def list_memories(
         self,
@@ -816,7 +872,10 @@ class RetrievalEngine:
     ) -> tuple[list[dict[str, Any]], int]:
         """List stored memories with pagination.
 
+        Reads from SQLite (source of truth) rather than ChromaDB.
         This is used by the /api/memories endpoint.
+
+        Falls back to ChromaDB if activity_store is not available.
 
         Args:
             limit: Maximum memories to return.
@@ -833,6 +892,21 @@ class RetrievalEngine:
         Returns:
             Tuple of (memories list, total count).
         """
+        if self.activity_store:
+            return self.activity_store.list_observations(
+                limit=limit,
+                offset=offset,
+                memory_types=memory_types,
+                exclude_types=exclude_types,
+                tag=tag,
+                start_date=start_date,
+                end_date=end_date,
+                include_archived=include_archived,
+                status=status,
+                include_resolved=include_resolved,
+            )
+
+        # Fallback to ChromaDB if no activity store (shouldn't happen in practice)
         return self.store.list_memories(
             limit=limit,
             offset=offset,

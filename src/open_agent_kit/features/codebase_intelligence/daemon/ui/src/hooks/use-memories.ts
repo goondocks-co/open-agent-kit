@@ -12,6 +12,7 @@ export interface MemoryListItem {
     created_at: string;
     archived?: boolean;
     status?: string;
+    embedded?: boolean;
     session_origin_type?: string;
 }
 

@@ -467,6 +467,33 @@ class TestPromptSubmitHook:
         if "context" in data and "injected_context" in data["context"]:
             assert "bug_fix" in data["context"]["injected_context"]
 
+    def test_prompt_submit_injects_memory_ids(self, client, setup_state_with_mocks):
+        """Test that injected memory context includes observation UUIDs."""
+        # Configure mock to return memories with id field
+        setup_state_with_mocks.vector_store.search_memory.return_value = [
+            {
+                "id": "mem-uuid-456",
+                "observation": "Always check for null",
+                "memory_type": "gotcha",
+                "context": None,
+                "relevance": 0.90,
+                "token_estimate": 10,
+            }
+        ]
+
+        payload = {
+            "prompt": "How should I handle null values?",
+            "session_id": str(uuid4()),
+        }
+        response = client.post("/api/oak/ci/prompt-submit", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        if "context" in data and "injected_context" in data["context"]:
+            injected = data["context"]["injected_context"]
+            assert "gotcha" in injected
+            assert "[id: mem-uuid-456]" in injected
+
     def test_prompt_submit_auto_creates_missing_session(self, client, setup_state_with_mocks):
         """Test that session is auto-created if missing."""
         session_id = str(uuid4())

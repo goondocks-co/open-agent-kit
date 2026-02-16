@@ -647,7 +647,8 @@ class TestRemember:
             memory_type="discovery",
         )
 
-        assert result_id == "new-mem-id"
+        # ID is generated upfront (UUID), not returned by vector store
+        assert len(result_id) == 36  # UUID format
         mock_vector_store.add_memory.assert_called_once()
 
     def test_creates_memory_observation(

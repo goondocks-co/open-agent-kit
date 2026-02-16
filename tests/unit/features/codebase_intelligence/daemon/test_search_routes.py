@@ -298,3 +298,31 @@ class TestSessionSummaryFiltering:
         exclude_types = ["session_summary"] if exclude_sessions else None
 
         assert exclude_types == ["session_summary"]
+
+
+# =============================================================================
+# RememberRequest session_id Tests
+# =============================================================================
+
+
+class TestRememberRequestSessionId:
+    """Test RememberRequest model accepts session_id field."""
+
+    def test_remember_request_with_session_id(self):
+        """Test RememberRequest accepts and stores session_id."""
+        from open_agent_kit.features.codebase_intelligence.daemon.models import RememberRequest
+
+        req = RememberRequest(
+            observation="DB connections leak under load",
+            memory_type="gotcha",
+            session_id="sess-abc-123",
+        )
+        assert req.session_id == "sess-abc-123"
+        assert req.observation == "DB connections leak under load"
+
+    def test_remember_request_without_session_id(self):
+        """Test RememberRequest defaults session_id to None."""
+        from open_agent_kit.features.codebase_intelligence.daemon.models import RememberRequest
+
+        req = RememberRequest(observation="Some discovery")
+        assert req.session_id is None

@@ -19,6 +19,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     batches,
     delete,
     observations,
+    resolution_events,
     schedules,
     sessions,
     stats,
@@ -167,6 +168,12 @@ class ActivityStore:
                     # Run migrations defensively — the schema might be
                     # incomplete despite the version table claiming otherwise
                     apply_migrations(conn, 1)
+
+        # Backfill resolution events for existing resolutions (idempotent)
+        try:
+            resolution_events.backfill_resolution_events(self)
+        except Exception as e:
+            logger.warning(f"Resolution event backfill skipped: {e}")
 
     def get_schema_version(self) -> int:
         """Get current database schema version.
@@ -726,6 +733,34 @@ class ActivityStore:
         """Get active observations ordered oldest-first."""
         return observations.get_active_observations(self, limit)
 
+    def list_observations(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        memory_types: list[str] | None = None,
+        exclude_types: list[str] | None = None,
+        tag: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        include_archived: bool = False,
+        status: str | None = "active",
+        include_resolved: bool = False,
+    ) -> tuple[list[dict], int]:
+        """List observations from SQLite with pagination and filtering."""
+        return observations.list_observations(
+            self,
+            limit=limit,
+            offset=offset,
+            memory_types=memory_types,
+            exclude_types=exclude_types,
+            tag=tag,
+            start_date=start_date,
+            end_date=end_date,
+            include_archived=include_archived,
+            status=status,
+            include_resolved=include_resolved,
+        )
+
     def find_later_edit_session(
         self, file_path: str, after_epoch: float, exclude_session_id: str
     ) -> str | None:
@@ -1184,3 +1219,32 @@ class ActivityStore:
     def get_all_schedule_task_names(self) -> set[str]:
         """Get all schedule task names for dedup checking during import."""
         return schedules.get_all_schedule_task_names(self)
+
+    # ==========================================================================
+    # Resolution event operations - delegate to resolution_events module
+    # ==========================================================================
+
+    def store_resolution_event(
+        self,
+        observation_id: str,
+        action: str,
+        resolved_by_session_id: str | None = None,
+        superseded_by: str | None = None,
+        reason: str | None = None,
+    ) -> str:
+        """Create and store a resolution event."""
+        return resolution_events.store_resolution_event(
+            self, observation_id, action, resolved_by_session_id, superseded_by, reason
+        )
+
+    def replay_unapplied_resolution_events(self, vector_store: Any | None = None) -> int:
+        """Replay unapplied resolution events from imports."""
+        return resolution_events.replay_unapplied_events(self, vector_store)
+
+    def get_all_resolution_event_hashes(self) -> set[str]:
+        """Get all resolution event content_hash values for dedup checking."""
+        return resolution_events.get_all_resolution_event_hashes(self)
+
+    def count_unapplied_resolution_events(self) -> int:
+        """Count resolution events that haven't been applied yet."""
+        return resolution_events.count_unapplied_events(self)

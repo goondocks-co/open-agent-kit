@@ -12,6 +12,7 @@ from typing import Any
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_SESSION_COLUMN_TRANSCRIPT_PATH,
     OBSERVATION_STATUS_ACTIVE,
+    RESOLUTION_EVENT_ACTION_RESOLVED,
 )
 from open_agent_kit.features.codebase_intelligence.utils.redact import redact_secrets
 
@@ -416,4 +417,76 @@ class StoredObservation:
             session_origin_type=(
                 row["session_origin_type"] if "session_origin_type" in row.keys() else None
             ),
+        )
+
+
+@dataclass
+class ResolutionEvent:
+    """A resolution action on an observation, propagated across machines.
+
+    Each resolution (resolve, supersede, reactivate) is recorded as a
+    first-class entity owned by the machine that performed it.  Events
+    flow through the backup pipeline and are replayed on import.
+    """
+
+    id: str = ""
+    observation_id: str = ""
+    action: str = RESOLUTION_EVENT_ACTION_RESOLVED
+    resolved_by_session_id: str | None = None
+    superseded_by: str | None = None
+    reason: str | None = None
+    created_at: datetime = field(default_factory=datetime.now)
+    source_machine_id: str | None = None
+    content_hash: str | None = None
+    applied: bool = True
+
+    def _compute_content_hash(self) -> str:
+        """Compute content hash for deduplication.
+
+        Same machine resolving the same observation deduplicates;
+        different machines resolving the same observation both preserved.
+        """
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            compute_resolution_event_hash,
+        )
+
+        return compute_resolution_event_hash(
+            self.observation_id,
+            self.action,
+            str(self.source_machine_id or ""),
+            str(self.superseded_by or ""),
+        )
+
+    def to_row(self) -> dict[str, Any]:
+        """Convert to database row."""
+        if not self.content_hash:
+            self.content_hash = self._compute_content_hash()
+        return {
+            "id": self.id,
+            "observation_id": self.observation_id,
+            "action": self.action,
+            "resolved_by_session_id": self.resolved_by_session_id,
+            "superseded_by": self.superseded_by,
+            "reason": self.reason,
+            "created_at": self.created_at.isoformat(),
+            "created_at_epoch": int(self.created_at.timestamp()),
+            "source_machine_id": self.source_machine_id,
+            "content_hash": self.content_hash,
+            "applied": self.applied,
+        }
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "ResolutionEvent":
+        """Create from database row."""
+        return cls(
+            id=row["id"],
+            observation_id=row["observation_id"],
+            action=row["action"],
+            resolved_by_session_id=row["resolved_by_session_id"],
+            superseded_by=row["superseded_by"],
+            reason=row["reason"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            source_machine_id=row["source_machine_id"],
+            content_hash=row["content_hash"],
+            applied=bool(row["applied"]),
         )

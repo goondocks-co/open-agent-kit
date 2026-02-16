@@ -318,4 +318,31 @@ CREATE INDEX IF NOT EXISTS idx_agent_schedules_enabled_next
 -- Index for backup filtering by source machine
 CREATE INDEX IF NOT EXISTS idx_agent_schedules_source_machine
     ON agent_schedules(source_machine_id);
+
+-- Resolution events table (cross-machine resolution propagation)
+CREATE TABLE IF NOT EXISTS resolution_events (
+    id TEXT PRIMARY KEY,
+    observation_id TEXT NOT NULL,        -- Target observation (soft FK, no constraint)
+    action TEXT NOT NULL,                -- 'resolved' | 'superseded' | 'reactivated'
+    resolved_by_session_id TEXT,
+    superseded_by TEXT,                  -- New observation ID (for 'superseded')
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    source_machine_id TEXT NOT NULL,
+    content_hash TEXT,
+    applied BOOLEAN DEFAULT TRUE         -- Locally-created = TRUE, imported = FALSE
+);
+
+-- Indexes for resolution_events
+CREATE INDEX IF NOT EXISTS idx_resolution_events_observation
+    ON resolution_events(observation_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_events_source_machine
+    ON resolution_events(source_machine_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_events_applied
+    ON resolution_events(applied);
+CREATE INDEX IF NOT EXISTS idx_resolution_events_epoch
+    ON resolution_events(created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_resolution_events_content_hash
+    ON resolution_events(content_hash);
 """

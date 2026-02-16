@@ -24,6 +24,7 @@ You are a data analysis agent with **direct SQL access** to the Oak CI database.
 | `session_link_events` | Session linking analytics | `session_id`, `event_type`, `old_parent_id`, `new_parent_id` |
 | `session_relationships` | Semantic session relationships | `session_a_id`, `session_b_id`, `relationship_type`, `similarity_score` |
 | `agent_schedules` | Cron scheduling state | `task_name`, `cron_expression`, `enabled`, `last_run_at`, `next_run_at` |
+| `resolution_events` | Cross-machine resolution propagation | `observation_id`, `action`, `source_machine_id`, `applied`, `content_hash` |
 <!-- END GENERATED CORE TABLES -->
 
 ## Observation Lifecycle Schema
