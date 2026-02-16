@@ -223,6 +223,7 @@ async def remember(request: RememberRequest) -> RememberResponse:
         memory_type=request.memory_type.value,
         context=request.context,
         tags=request.tags,
+        session_id=request.session_id,
     )
 
     # Auto-resolve older observations superseded by this one
@@ -236,7 +237,7 @@ async def remember(request: RememberRequest) -> RememberResponse:
             obs_text=request.observation,
             memory_type=request.memory_type.value,
             context=request.context,
-            session_id="",  # No session context for direct remember calls
+            session_id=request.session_id or "",
             vector_store=state.vector_store,
             activity_store=state.activity_store,
             auto_resolve_config=state.ci_config.auto_resolve if state.ci_config else None,

@@ -474,6 +474,18 @@ class TestBuildSessionContext:
         result = build_session_context(mock_state)
         assert result == ""
 
+    def test_includes_session_id_when_provided(self, mock_state):
+        """Includes session_id in context when provided."""
+        result = build_session_context(mock_state, session_id="sess-abc-123")
+        assert "session_id=sess-abc-123" in result
+        assert "Current session:" in result
+
+    def test_no_session_id_when_not_provided(self, mock_state):
+        """Does not include session line when session_id is None."""
+        result = build_session_context(mock_state)
+        assert "Current session:" not in result
+        assert "session_id=" not in result
+
 
 class TestFormatHookOutput:
     """Tests for format_hook_output function."""

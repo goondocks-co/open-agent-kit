@@ -248,7 +248,11 @@ def build_rich_search_query(
 # =============================================================================
 
 
-def build_session_context(state: "DaemonState", include_memories: bool = True) -> str:
+def build_session_context(
+    state: "DaemonState",
+    include_memories: bool = True,
+    session_id: str | None = None,
+) -> str:
     """Build context string for session injection.
 
     Provides status information, MCP tool reminders, and relevant memories
@@ -257,6 +261,8 @@ def build_session_context(state: "DaemonState", include_memories: bool = True) -
     Args:
         state: Daemon state object.
         include_memories: Whether to include recent memories.
+        session_id: Optional session ID to include in context for precise
+            tool call linking (e.g., oak_remember session_id parameter).
 
     Returns:
         Formatted context string for Claude.
@@ -275,7 +281,10 @@ def build_session_context(state: "DaemonState", include_memories: bool = True) -
                 f"{memory_count} memories stored."
             )
 
-            parts.append(INJECTION_SESSION_START_REMINDER_BLOCK)
+            reminder = INJECTION_SESSION_START_REMINDER_BLOCK
+            if session_id:
+                reminder += f"\n- Current session: `session_id={session_id}`"
+            parts.append(reminder)
 
             # Include recent session summaries (provides continuity across sessions)
             if include_memories and state.retrieval_engine:

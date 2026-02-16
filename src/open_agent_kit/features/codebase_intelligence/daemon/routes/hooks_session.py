@@ -183,7 +183,7 @@ async def hook_session_start(request: Request) -> dict:
     inject_full_context = source in ("startup", "clear")
 
     # Build the context string that will be injected into Claude
-    injected = build_session_context(state, include_memories=inject_full_context)
+    injected = build_session_context(state, include_memories=inject_full_context, session_id=session_id)
     if injected:
         context["injected_context"] = injected
         # Summary to hooks.log for easy visibility

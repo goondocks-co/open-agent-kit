@@ -185,6 +185,7 @@ class RememberRequest(BaseModel):
     memory_type: MemoryType = MemoryType.DISCOVERY
     context: str | None = None
     tags: list[str] = Field(default_factory=list)
+    session_id: str | None = None
 
 
 class RememberResponse(BaseModel):
