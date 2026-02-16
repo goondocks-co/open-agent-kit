@@ -121,6 +121,18 @@ def auto_resolve_superseded(
                 superseded_by=new_obs_id,
             )
             vector_store.update_memory_status(result_id, OBSERVATION_STATUS_SUPERSEDED)
+
+            # Emit resolution event for cross-machine propagation
+            try:
+                activity_store.store_resolution_event(
+                    observation_id=result_id,
+                    action=OBSERVATION_STATUS_SUPERSEDED,
+                    resolved_by_session_id=session_id,
+                    superseded_by=new_obs_id,
+                )
+            except Exception:
+                logger.debug(f"Failed to emit resolution event for {result_id}", exc_info=True)
+
             superseded_ids.append(result_id)
             logger.info(
                 f"Auto-superseded observation {result_id[:12]}... "

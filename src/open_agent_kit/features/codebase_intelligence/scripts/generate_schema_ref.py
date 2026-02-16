@@ -136,6 +136,7 @@ def get_table_description(name: str) -> str:
         "agent_schedules": "Cron scheduling runtime state. Database is the sole source of truth.",
         "session_link_events": "Analytics for user-driven session linking.",
         "session_relationships": "Many-to-many semantic relationships between sessions.",
+        "resolution_events": "Cross-machine resolution propagation. Each resolution action (resolve, supersede, reactivate) is recorded as a first-class, machine-owned entity that flows through the backup pipeline.",
         "activities_fts": "Full-text search index over activities (FTS5).",
         "memories_fts": "Full-text search index over memory observations (FTS5).",
     }
@@ -252,6 +253,7 @@ def generate_core_tables_section(tables: dict) -> str:
         "agent_schedules": "`task_name`, `cron_expression`, `enabled`, `last_run_at`, `next_run_at`",
         "session_link_events": "`session_id`, `event_type`, `old_parent_id`, `new_parent_id`",
         "session_relationships": "`session_a_id`, `session_b_id`, `relationship_type`, `similarity_score`",
+        "resolution_events": "`observation_id`, `action`, `source_machine_id`, `applied`, `content_hash`",
     }
 
     # Build table descriptions
@@ -264,6 +266,7 @@ def generate_core_tables_section(tables: dict) -> str:
         "agent_schedules": "Cron scheduling state",
         "session_link_events": "Session linking analytics",
         "session_relationships": "Semantic session relationships",
+        "resolution_events": "Cross-machine resolution propagation",
     }
 
     lines = []

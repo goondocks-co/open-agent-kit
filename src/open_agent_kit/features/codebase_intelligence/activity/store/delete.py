@@ -268,6 +268,7 @@ def delete_records_by_machine(
         "session_relationships": 0,
         "activities": 0,
         "memory_observations": 0,
+        "resolution_events": 0,
         "prompt_batches": 0,
         "sessions": 0,
         "agent_runs": 0,
@@ -350,6 +351,20 @@ def delete_records_by_machine(
             (machine_id,),
         )
         counts["memory_observations"] += cursor.rowcount
+
+        # 4.5 Resolution events — delete by source_machine_id and by observation_id
+        cursor = tx.execute(
+            "DELETE FROM resolution_events WHERE source_machine_id = ?",
+            (machine_id,),
+        )
+        counts["resolution_events"] = cursor.rowcount
+        if observation_ids:
+            op = ",".join("?" * len(observation_ids))
+            cursor = tx.execute(
+                f"DELETE FROM resolution_events WHERE observation_id IN ({op})",
+                observation_ids,
+            )
+            counts["resolution_events"] += cursor.rowcount
 
         # 5. Prompt batches — clear self-referential FK first, then delete.
         if batch_ids:

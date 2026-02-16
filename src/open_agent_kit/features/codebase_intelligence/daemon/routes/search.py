@@ -349,6 +349,7 @@ async def list_memories(
             created_at=mem.get("created_at"),
             archived=mem.get("archived", False),
             status=mem.get("status", "active"),
+            embedded=mem.get("embedded", False),
             session_origin_type=mem.get("session_origin_type"),
         )
         for mem in memories

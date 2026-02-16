@@ -2,7 +2,7 @@
 
 Complete DDL for the Oak CI SQLite database at `.oak/ci/activities.db`.
 
-Current schema version: **2**
+Current schema version: **3**
 
 ## memory_observations
 
@@ -248,6 +248,28 @@ CREATE TABLE IF NOT EXISTS agent_schedules (
 ```
 
 **Key indexes:** `idx_agent_schedules_enabled_next`, `idx_agent_schedules_source_machine`
+
+## resolution_events
+
+Cross-machine resolution propagation. Each resolution action (resolve, supersede, reactivate) is recorded as a first-class, machine-owned entity that flows through the backup pipeline.
+
+```sql
+CREATE TABLE IF NOT EXISTS resolution_events (
+    id TEXT PRIMARY KEY,
+    observation_id TEXT NOT NULL,        -- Target observation (soft FK, no constraint)
+    action TEXT NOT NULL,                -- 'resolved' | 'superseded' | 'reactivated'
+    resolved_by_session_id TEXT,
+    superseded_by TEXT,                  -- New observation ID (for 'superseded')
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    source_machine_id TEXT NOT NULL,
+    content_hash TEXT,
+    applied BOOLEAN DEFAULT TRUE         -- Locally-created = TRUE, imported = FALSE
+);
+```
+
+**Key indexes:** `idx_resolution_events_observation`, `idx_resolution_events_source_machine`, `idx_resolution_events_applied`, `idx_resolution_events_epoch`, `idx_resolution_events_content_hash`
 
 ## Full-Text Search Tables (FTS5)
 

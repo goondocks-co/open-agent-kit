@@ -8,7 +8,7 @@ import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
-import { BrainCircuit, Trash2, Filter, Tag, Calendar, Archive, ArchiveRestore, CheckSquare, Square, X, Plus, Minus, Maximize2, CheckCircle2 } from "lucide-react";
+import { BrainCircuit, Trash2, Filter, Tag, Calendar, Archive, ArchiveRestore, CheckSquare, Square, X, Plus, Minus, Maximize2, CheckCircle2, Circle } from "lucide-react";
 import {
     DELETE_CONFIRMATIONS,
     MEMORY_TYPE_FILTER_OPTIONS,
@@ -548,6 +548,15 @@ export default function MemoriesList() {
                                     {mem.status && mem.status !== "active" && (
                                         <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusBadgeClass(mem.status)}`}>
                                             {mem.status}
+                                        </span>
+                                    )}
+                                    {mem.embedded ? (
+                                        <span className="flex items-center gap-1 text-xs text-green-600" title="Indexed in search">
+                                            <CheckCircle2 className="w-3 h-3" />
+                                        </span>
+                                    ) : (
+                                        <span className="flex items-center gap-1 text-xs text-muted-foreground" title="Not yet indexed">
+                                            <Circle className="w-3 h-3" />
                                         </span>
                                     )}
                                 </span>

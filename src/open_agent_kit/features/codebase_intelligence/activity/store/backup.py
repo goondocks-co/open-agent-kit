@@ -134,6 +134,17 @@ def compute_activity_hash(session_id: str, timestamp_epoch: int, tool_name: str)
     return compute_hash(session_id, timestamp_epoch, tool_name)
 
 
+def compute_resolution_event_hash(
+    observation_id: str, action: str, source_machine_id: str, superseded_by: str
+) -> str:
+    """Hash for resolution_events deduplication.
+
+    Same machine resolving the same observation deduplicates;
+    different machines resolving the same observation both preserved.
+    """
+    return compute_hash(observation_id, action, source_machine_id, superseded_by)
+
+
 # =============================================================================
 # Machine Identification
 # =============================================================================
@@ -521,6 +532,8 @@ class ImportResult:
     activities_skipped: int = 0
     schedules_imported: int = 0
     schedules_skipped: int = 0
+    resolution_events_imported: int = 0
+    resolution_events_skipped: int = 0
     errors: int = 0
     error_messages: list[str] = field(default_factory=list)
 
@@ -540,6 +553,7 @@ class ImportResult:
             + self.observations_imported
             + self.activities_imported
             + self.schedules_imported
+            + self.resolution_events_imported
         )
 
     @property
@@ -551,6 +565,7 @@ class ImportResult:
             + self.observations_skipped
             + self.activities_skipped
             + self.schedules_skipped
+            + self.resolution_events_skipped
         )
 
     @property
@@ -849,6 +864,19 @@ def restore_all(
             )
             per_file[backup_file.name] = result
 
+        # Replay unapplied resolution events from imported backups
+        if not dry_run:
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.store.resolution_events import (
+                    replay_unapplied_events,
+                )
+
+                applied = replay_unapplied_events(store, vector_store)
+                if applied:
+                    logger.info(f"Post-restore: replayed {applied} resolution events")
+            except Exception:  # noqa: BLE001
+                logger.debug("Post-restore resolution event replay failed", exc_info=True)
+
         # After large delete+insert cycles the query planner statistics go
         # stale.  ANALYZE is cheap (reads index pages) and keeps subsequent
         # queries using optimal plans.  Only needed when we actually mutated.
@@ -928,6 +956,7 @@ def export_to_sql(
     if include_activities:
         tables.append("activities")
     tables.append("agent_schedules")
+    tables.append("resolution_events")
 
     # Build set of valid session IDs for FK validation
     # Only include sessions that originated on this machine (will be exported)
@@ -1217,6 +1246,7 @@ def import_from_sql_with_dedup(
     existing_obs_hashes = store.get_all_observation_hashes()
     existing_activity_hashes = store.get_all_activity_hashes()
     existing_schedule_names = store.get_all_schedule_task_names()
+    existing_resolution_hashes = store.get_all_resolution_event_hashes()
 
     # Get current machine ID for schedule filtering
     current_machine_id = store.machine_id
@@ -1224,7 +1254,8 @@ def import_from_sql_with_dedup(
     logger.debug(
         f"Existing records: {len(existing_session_ids)} sessions, "
         f"{len(existing_batch_hashes)} batches, {len(existing_obs_hashes)} observations, "
-        f"{len(existing_activity_hashes)} activities, {len(existing_schedule_names)} schedules"
+        f"{len(existing_activity_hashes)} activities, {len(existing_schedule_names)} schedules, "
+        f"{len(existing_resolution_hashes)} resolution_events"
     )
 
     # Parse INSERT statements - use proper SQL statement extraction for multi-line values
@@ -1234,6 +1265,7 @@ def import_from_sql_with_dedup(
         "memory_observations": [],
         "activities": [],
         "agent_schedules": [],
+        "resolution_events": [],
     }
 
     # Extract complete SQL statements (handles multi-line INSERT with newlines in values)
@@ -1291,6 +1323,7 @@ def import_from_sql_with_dedup(
         "memory_observations",
         "activities",
         "agent_schedules",
+        "resolution_events",
     ]:
         # After importing sessions, validate parent_session_id references
         if table == "prompt_batches" and not dry_run and imported_session_ids:
@@ -1329,6 +1362,7 @@ def import_from_sql_with_dedup(
                     existing_activity_hashes,
                     existing_schedule_names,
                     current_machine_id,
+                    existing_resolution_hashes,
                 )
 
                 if should_skip:
@@ -1365,6 +1399,7 @@ def import_from_sql_with_dedup(
                         existing_obs_hashes,
                         existing_activity_hashes,
                         existing_schedule_names,
+                        existing_resolution_hashes,
                     )
 
                 # Only count as imported if a row was actually inserted
@@ -1567,6 +1602,7 @@ def _should_skip_record(
     existing_activity_hashes: set[str],
     existing_schedule_names: set[str] | None = None,
     current_machine_id: str | None = None,
+    existing_resolution_hashes: set[str] | None = None,
 ) -> tuple[bool, str]:
     """Determine if a record should be skipped due to duplication.
 
@@ -1627,6 +1663,19 @@ def _should_skip_record(
         if existing_schedule_names and task_name in existing_schedule_names:
             return True, f"schedule {task_name} already exists"
 
+    elif table == "resolution_events":
+        content_hash = row_dict.get("content_hash")
+        if not content_hash:
+            observation_id = str(row_dict.get("observation_id", ""))
+            action = str(row_dict.get("action", ""))
+            source_machine_id = str(row_dict.get("source_machine_id", ""))
+            superseded_by = str(row_dict.get("superseded_by", ""))
+            content_hash = compute_resolution_event_hash(
+                observation_id, action, source_machine_id, superseded_by
+            )
+        if existing_resolution_hashes and content_hash in existing_resolution_hashes:
+            return True, f"resolution_event with hash {content_hash} already exists"
+
     return False, ""
 
 
@@ -1638,6 +1687,7 @@ def _update_existing_sets(
     existing_obs_hashes: set[str],
     existing_activity_hashes: set[str],
     existing_schedule_names: set[str] | None = None,
+    existing_resolution_hashes: set[str] | None = None,
 ) -> None:
     """Update existing sets after successful import to prevent duplicates within batch.
 
@@ -1680,6 +1730,19 @@ def _update_existing_sets(
             task_name = str(row_dict.get("task_name", ""))
             existing_schedule_names.add(task_name)
 
+    elif table == "resolution_events":
+        if existing_resolution_hashes is not None:
+            content_hash = row_dict.get("content_hash")
+            if not content_hash:
+                observation_id = str(row_dict.get("observation_id", ""))
+                action = str(row_dict.get("action", ""))
+                source_machine_id = str(row_dict.get("source_machine_id", ""))
+                superseded_by = str(row_dict.get("superseded_by", ""))
+                content_hash = compute_resolution_event_hash(
+                    observation_id, action, source_machine_id, superseded_by
+                )
+            existing_resolution_hashes.add(content_hash)
+
 
 def _prepare_statement_for_import(stmt: str, table: str) -> str:
     """Modify INSERT statement for proper import.
@@ -1720,6 +1783,10 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
         # Use INSERT OR IGNORE for TEXT primary key (task_name)
         # Schedules are already filtered by machine in _should_skip_record
         return stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+    elif table == "resolution_events":
+        # Use INSERT OR IGNORE and mark as unapplied (needs replay)
+        stmt = stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+        return _replace_column_value(stmt, "applied", "0")
     return stmt
 
 
@@ -1941,6 +2008,7 @@ _TABLE_TO_IMPORTED_ATTR: dict[str, str] = {
     "memory_observations": "observations_imported",
     "activities": "activities_imported",
     "agent_schedules": "schedules_imported",
+    "resolution_events": "resolution_events_imported",
 }
 
 _TABLE_TO_SKIPPED_ATTR: dict[str, str] = {
@@ -1949,6 +2017,7 @@ _TABLE_TO_SKIPPED_ATTR: dict[str, str] = {
     "memory_observations": "observations_skipped",
     "activities": "activities_skipped",
     "agent_schedules": "schedules_skipped",
+    "resolution_events": "resolution_events_skipped",
 }
 
 

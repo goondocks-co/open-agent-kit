@@ -429,6 +429,118 @@ def get_active_observations(
     return [StoredObservation.from_row(row) for row in cursor.fetchall()]
 
 
+def list_observations(
+    store: ActivityStore,
+    limit: int = 50,
+    offset: int = 0,
+    memory_types: list[str] | None = None,
+    exclude_types: list[str] | None = None,
+    tag: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    include_archived: bool = False,
+    status: str | None = "active",
+    include_resolved: bool = False,
+) -> tuple[list[dict], int]:
+    """List observations from SQLite with pagination and filtering.
+
+    This is the source-of-truth listing used by the /api/memories endpoint.
+    ChromaDB is only used for semantic search, not for browsing.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum observations to return.
+        offset: Pagination offset.
+        memory_types: Only include these memory types.
+        exclude_types: Exclude these memory types.
+        tag: Filter to observations containing this tag (substring match on CSV).
+        start_date: Filter by start date (ISO YYYY-MM-DD).
+        end_date: Filter by end date (ISO YYYY-MM-DD).
+        include_archived: If True, include archived observations.
+        status: Filter to this observation status. Default "active".
+        include_resolved: If True, include all statuses (overrides status filter).
+
+    Returns:
+        Tuple of (observations list as dicts, total count).
+    """
+    conn = store._get_connection()
+
+    conditions: list[str] = []
+    params: list[str | int] = []
+
+    # Memory type filters
+    if memory_types:
+        placeholders = ",".join("?" * len(memory_types))
+        conditions.append(f"memory_type IN ({placeholders})")
+        params.extend(memory_types)
+    elif exclude_types:
+        placeholders = ",".join("?" * len(exclude_types))
+        conditions.append(f"memory_type NOT IN ({placeholders})")
+        params.extend(exclude_types)
+
+    # Tag filter (CSV substring match, same as ChromaDB post-filter)
+    if tag:
+        conditions.append("tags LIKE ?")
+        params.append(f"%{tag}%")
+
+    # Date range filters
+    if start_date:
+        conditions.append("created_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("created_at <= ?")
+        params.append(end_date + "T23:59:59")
+
+    # Archived filter (archived is stored as a metadata flag — in SQLite
+    # we don't have an explicit column, so skip this filter; ChromaDB-only
+    # concept that doesn't apply to SQLite listing)
+    # Note: if archived column is added later, filter here.
+
+    # Status filter
+    if not include_resolved and status:
+        conditions.append("COALESCE(status, 'active') = ?")
+        params.append(status)
+
+    where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # Get total count
+    count_sql = f"SELECT COUNT(*) FROM memory_observations{where_clause}"
+    cursor = conn.execute(count_sql, params)
+    result = cursor.fetchone()
+    total = int(result[0]) if result else 0
+
+    # Fetch paginated results
+    query_sql = (
+        f"SELECT * FROM memory_observations{where_clause}"
+        f" ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
+    )
+    cursor = conn.execute(query_sql, [*params, limit, offset])
+    rows = cursor.fetchall()
+
+    memories: list[dict] = []
+    for row in rows:
+        obs = StoredObservation.from_row(row)
+        tags_list = obs.tags if obs.tags else []
+        memories.append(
+            {
+                "id": obs.id,
+                "observation": obs.observation,
+                "memory_type": obs.memory_type,
+                "context": obs.context,
+                "tags": tags_list,
+                "created_at": obs.created_at.isoformat() if obs.created_at else None,
+                "status": obs.status or "active",
+                "embedded": obs.embedded,
+                "importance": obs.importance,
+                "session_origin_type": obs.session_origin_type,
+                "file_path": obs.file_path,
+                "session_id": obs.session_id,
+            }
+        )
+
+    return memories, total
+
+
 def find_later_edit_session(
     store: ActivityStore,
     file_path: str,

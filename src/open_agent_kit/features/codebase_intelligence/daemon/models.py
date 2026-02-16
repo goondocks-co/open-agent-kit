@@ -206,6 +206,7 @@ class MemoryListItem(BaseModel):
     created_at: datetime | None = None
     archived: bool = False
     status: str = "active"
+    embedded: bool = False
     session_origin_type: str | None = None
 
 

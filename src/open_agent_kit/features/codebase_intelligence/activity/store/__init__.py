@@ -20,6 +20,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store.core import Ac
 from open_agent_kit.features.codebase_intelligence.activity.store.models import (
     Activity,
     PromptBatch,
+    ResolutionEvent,
     Session,
     StoredObservation,
 )
@@ -34,6 +35,7 @@ __all__ = [
     # Data models
     "Activity",
     "PromptBatch",
+    "ResolutionEvent",
     "Session",
     "StoredObservation",
     # Schema constants
