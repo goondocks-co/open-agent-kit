@@ -67,30 +67,8 @@ oak init
 This will:
 
 1. Prompt you to select one or more AI agents (Claude, Copilot, Codex, Cursor, Gemini, Windsurf)
-2. Prompt you to select which features to install (constitution, rfc, issues)
-3. Create the `.oak` directory structure
-4. Generate configuration file
-5. Install agent command templates for your selected features
-
-**Multi-Agent Support**: Select multiple agents for teams where engineers use different AI tools.
-
-**Features**: Features have dependencies - selecting `rfc` or `issues` will automatically include `constitution`.
-
-**Non-interactive mode**:
-
-```bash
-# Single agent with all default features
-oak init --agent claude
-
-# Specific features only
-oak init --agent claude --feature constitution --feature rfc
-
-# Multiple agents with all features
-oak init --agent claude --agent copilot --agent cursor
-
-# Add more agents later (preserves existing features)
-oak init --agent gemini
-```
+2. Prompt you to select which languages to support (Python, JavaScript, TypeScript)
+3. Installs agent skills and mcp tools for your selected agents
 
 ## Step 2: Create Your Constitution
 
@@ -100,14 +78,13 @@ A **constitution** formalizes your project's engineering standards, architecture
 
 - **Guides all AI agents** - Every agent references the constitution for context
 - **Codifies team conventions** - Makes implicit standards explicit
-- **Required for other workflows** - RFC and issue workflows depend on constitution context
 
 ### Creating Your Constitution
 
 Use your AI agent's command:
 
 ```text
-/oak.constitution-create
+use the project governance skill to create my project's constitution
 ```
 
 The AI will:
@@ -131,13 +108,6 @@ If your team already has agent instruction files (like `.github/copilot-instruct
 ```bash
 # View the constitution
 cat oak/constitution.md
-
-# Validate structure
-# In your AI agent:
-/oak.constitution-validate
-
-# Add amendments as standards evolve
-/oak.constitution-amend
 ```
 
 ## Step 3: Start Codebase Intelligence (Optional)

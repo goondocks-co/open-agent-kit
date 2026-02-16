@@ -49,8 +49,7 @@ prerequisites:
 # Sub-agent commands (specialized expertise available to all agents)
 # Unlike skills (domain knowledge for workflows), commands are sub-agents
 # that provide specialized expertise for specific domains
-commands:
-  - backend-python-expert  # Python development expertise sub-agent
+commands: []
 
 # Skills are installed to agents with has_skills capability (Claude Code)
 # Consolidated skill covering semantic search, impact analysis, and database queries

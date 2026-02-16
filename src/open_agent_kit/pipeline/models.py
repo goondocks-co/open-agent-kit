@@ -73,6 +73,7 @@ UPGRADE_PLAN_KEYS: tuple[str, ...] = (
     "gitignore",
     "migrations",
     "structural_repairs",
+    "legacy_commands_cleanup",
     "version_outdated",
 )
 
@@ -100,7 +101,7 @@ def plan_has_upgrades(plan: dict[str, Any]) -> bool:
 
     # Check skills separately (nested structure)
     skill_plan = plan.get("skills", {})
-    if skill_plan.get("install") or skill_plan.get("upgrade"):
+    if skill_plan.get("install") or skill_plan.get("upgrade") or skill_plan.get("obsolete"):
         return True
 
     return False

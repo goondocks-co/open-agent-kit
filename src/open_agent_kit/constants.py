@@ -193,9 +193,7 @@ FEATURE_CONFIG: dict[str, FeatureConfigEntry] = {
         "description": "AI-powered code analysis and search",
         "default_enabled": True,
         "dependencies": ["rules-management"],
-        "commands": [
-            "backend-python-expert",
-        ],
+        "commands": [],
     },
 }
 
@@ -240,10 +238,7 @@ LANGUAGE_DISPLAY_NAMES = {lang: info["display"] for lang, info in SUPPORTED_LANG
 # =============================================================================
 
 UPGRADE_TEMPLATE_CATEGORIES = ["rules-management", "strategic-planning", "commands"]
-UPGRADE_COMMAND_NAMES = [
-    # Sub-agent commands (codebase-intelligence feature)
-    "backend-python-expert",
-]
+UPGRADE_COMMAND_NAMES: list[str] = []
 
 # =============================================================================
 # Default Configuration Template
