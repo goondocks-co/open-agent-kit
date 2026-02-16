@@ -18,7 +18,7 @@ constitution:
 languages:
   installed: [javascript, python, typescript]
 skills:
-  installed: [project-governance, codebase-intelligence]
+  installed: [project-governance, codebase-intelligence, context-engineering]
   auto_install: true
 codebase_intelligence:
   agents:

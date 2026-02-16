@@ -150,6 +150,7 @@ SUPPORTED_FEATURES = [
     "rules-management",
     "strategic-planning",
     "codebase-intelligence",
+    "context-engineering",
 ]
 
 # Core feature that's always required (has no dependencies)
@@ -160,6 +161,7 @@ FEATURE_DISPLAY_NAMES = {
     "rules-management": "Rules Management",
     "strategic-planning": "Strategic Planning",
     "codebase-intelligence": "Codebase Intelligence",
+    "context-engineering": "Context Engineering",
 }
 
 # Feature configuration metadata
@@ -191,6 +193,13 @@ FEATURE_CONFIG: dict[str, FeatureConfigEntry] = {
     "codebase-intelligence": {
         "name": "Codebase Intelligence",
         "description": "AI-powered code analysis and search",
+        "default_enabled": True,
+        "dependencies": ["rules-management"],
+        "commands": [],
+    },
+    "context-engineering": {
+        "name": "Context Engineering",
+        "description": "Prompt and context engineering for AI models and agents",
         "default_enabled": True,
         "dependencies": ["rules-management"],
         "commands": [],
