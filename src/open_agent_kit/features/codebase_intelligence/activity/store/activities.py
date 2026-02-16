@@ -332,6 +332,9 @@ def get_unprocessed_activities(
 ) -> list[Activity]:
     """Get activities that haven't been processed yet.
 
+    Only returns activities owned by this machine to prevent background
+    processing from touching imported data.
+
     Args:
         store: The ActivityStore instance.
         session_id: Optional session filter.
@@ -347,20 +350,22 @@ def get_unprocessed_activities(
             """
             SELECT * FROM activities
             WHERE processed = FALSE AND session_id = ?
+              AND source_machine_id = ?
             ORDER BY timestamp_epoch ASC
             LIMIT ?
             """,
-            (session_id, limit),
+            (session_id, store.machine_id, limit),
         )
     else:
         cursor = conn.execute(
             """
             SELECT * FROM activities
             WHERE processed = FALSE
+              AND source_machine_id = ?
             ORDER BY timestamp_epoch ASC
             LIMIT ?
             """,
-            (limit,),
+            (store.machine_id, limit),
         )
 
     return [Activity.from_row(row) for row in cursor.fetchall()]

@@ -168,6 +168,7 @@ class ActivityProcessor:
         self._processing_lock = threading.Lock()
         self._is_processing = False
         self._last_process_time: datetime | None = None
+        self._pollution_cleanup_done = False
 
     @staticmethod
     def _summarizer_fingerprint(
@@ -930,6 +931,30 @@ class ActivityProcessor:
     # future parallelization (W5.6).
     # ------------------------------------------------------------------
 
+    def _bg_cleanup_pollution(self) -> None:
+        """Phase 0: One-time cross-machine pollution cleanup.
+
+        Runs only on the first background cycle. Removes observations that
+        were created by the local processor but reference sessions from
+        another machine (a violation of the machine isolation invariant).
+        """
+        if self._pollution_cleanup_done:
+            return
+
+        try:
+            counts = self.activity_store.cleanup_cross_machine_pollution(
+                vector_store=self.vector_store,
+            )
+            if counts["observations_deleted"] > 0:
+                logger.info(
+                    "Cross-machine pollution cleanup: %d observations removed",
+                    counts["observations_deleted"],
+                )
+        except _BG_EXCEPTIONS as e:
+            logger.error(f"Cross-machine pollution cleanup error: {e}", exc_info=True)
+        finally:
+            self._pollution_cleanup_done = True
+
     def _bg_recover_stuck_data(self) -> None:
         """Phase 1: Recover stuck batches, stale runs, and orphaned activities."""
         try:
@@ -1059,12 +1084,14 @@ class ActivityProcessor:
         boundary so a failure in one does not skip the rest.
 
         Phase ordering:
+        0. One-time cross-machine pollution cleanup (first cycle only)
         1. Recover stuck data (batches, runs, orphans)
         2. Recover stale sessions
         3. Cleanup low-quality sessions + generate summaries
         4. Process pending batches/sessions
         5. Index plans + generate titles
         """
+        self._bg_cleanup_pollution()
         self._bg_recover_stuck_data()
         self._bg_recover_stale_sessions()
         self._bg_cleanup_and_summarize()

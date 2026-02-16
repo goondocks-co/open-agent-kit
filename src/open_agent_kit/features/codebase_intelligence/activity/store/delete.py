@@ -287,22 +287,25 @@ def delete_records_by_machine(
     session_ids = [row[0] for row in cursor.fetchall()]
 
     # Collect observation IDs for ChromaDB cleanup *before* deleting.
-    # Use UNION to capture both by-machine and by-batch-FK references
-    # (cross-machine FK refs from prior additive imports).
+    # Must capture three sources of observations:
+    #   1. Same-machine: source_machine_id matches
+    #   2. Batch-FK: prompt_batch_id references a batch from this machine
+    #   3. Session-FK: session_id references a session from this machine but
+    #      source_machine_id differs (created by background processing on
+    #      another machine after an additive import)
     observation_ids: list[str] = []
     if vector_store:
+        parts = ["SELECT id FROM memory_observations WHERE source_machine_id = ?"]
+        params: list[Any] = [machine_id]
         if batch_ids:
             bp = ",".join("?" * len(batch_ids))
-            cursor = conn.execute(
-                f"SELECT id FROM memory_observations WHERE source_machine_id = ? "
-                f"UNION SELECT id FROM memory_observations WHERE prompt_batch_id IN ({bp})",
-                [machine_id, *batch_ids],
-            )
-        else:
-            cursor = conn.execute(
-                "SELECT id FROM memory_observations WHERE source_machine_id = ?",
-                (machine_id,),
-            )
+            parts.append(f"SELECT id FROM memory_observations WHERE prompt_batch_id IN ({bp})")
+            params.extend(batch_ids)
+        if session_ids:
+            sp = ",".join("?" * len(session_ids))
+            parts.append(f"SELECT id FROM memory_observations WHERE session_id IN ({sp})")
+            params.extend(session_ids)
+        cursor = conn.execute(" UNION ".join(parts), params)
         observation_ids = [row[0] for row in cursor.fetchall()]
 
     with store._transaction() as tx:
@@ -358,6 +361,44 @@ def delete_records_by_machine(
         cursor = tx.execute("DELETE FROM prompt_batches WHERE source_machine_id = ?", (machine_id,))
         counts["prompt_batches"] = cursor.rowcount
 
+        # 5.5 Cross-machine cascade sweep — clean up remaining child records
+        # from OTHER machines that reference sessions owned by this machine.
+        # This handles records created by background processing on machine B
+        # after an additive import of machine A's sessions (the observations
+        # get source_machine_id=B but session_id pointing to machine A).
+        if session_ids:
+            sp = ",".join("?" * len(session_ids))
+            cursor = tx.execute(
+                f"DELETE FROM activities WHERE session_id IN ({sp})",
+                session_ids,
+            )
+            counts["activities"] += cursor.rowcount
+
+            cursor = tx.execute(
+                f"DELETE FROM memory_observations WHERE session_id IN ({sp})",
+                session_ids,
+            )
+            counts["memory_observations"] += cursor.rowcount
+
+            # Prompt batches — nullify self-referential FK for remaining, then delete
+            remaining = tx.execute(
+                f"SELECT id FROM prompt_batches WHERE session_id IN ({sp})",
+                session_ids,
+            ).fetchall()
+            remaining_ids = [r[0] for r in remaining]
+            if remaining_ids:
+                rp = ",".join("?" * len(remaining_ids))
+                tx.execute(
+                    f"UPDATE prompt_batches SET source_plan_batch_id = NULL "
+                    f"WHERE source_plan_batch_id IN ({rp})",
+                    remaining_ids,
+                )
+            cursor = tx.execute(
+                f"DELETE FROM prompt_batches WHERE session_id IN ({sp})",
+                session_ids,
+            )
+            counts["prompt_batches"] += cursor.rowcount
+
         # 6. Sessions
         cursor = tx.execute("DELETE FROM sessions WHERE source_machine_id = ?", (machine_id,))
         counts["sessions"] = cursor.rowcount
@@ -411,6 +452,16 @@ def delete_session(
     observation_ids = get_session_observation_ids(store, session_id) if vector_store else []
 
     with store._transaction() as conn:
+        # Delete junction tables first (session_relationships has FK to sessions)
+        conn.execute(
+            "DELETE FROM session_relationships WHERE session_a_id = ? OR session_b_id = ?",
+            (session_id, session_id),
+        )
+        conn.execute(
+            "DELETE FROM session_link_events WHERE session_id = ?",
+            (session_id,),
+        )
+
         # Delete activities for this session
         cursor = conn.execute(
             "DELETE FROM activities WHERE session_id = ?",
@@ -425,7 +476,21 @@ def delete_session(
         )
         result["observations_deleted"] = cursor.rowcount
 
-        # Delete prompt batches for this session
+        # Delete prompt batches — nullify self-referential FK first
+        batch_ids = [
+            r[0]
+            for r in conn.execute(
+                "SELECT id FROM prompt_batches WHERE session_id = ?",
+                (session_id,),
+            ).fetchall()
+        ]
+        if batch_ids:
+            bp = ",".join("?" * len(batch_ids))
+            conn.execute(
+                f"UPDATE prompt_batches SET source_plan_batch_id = NULL "
+                f"WHERE source_plan_batch_id IN ({bp})",
+                batch_ids,
+            )
         cursor = conn.execute(
             "DELETE FROM prompt_batches WHERE session_id = ?",
             (session_id,),

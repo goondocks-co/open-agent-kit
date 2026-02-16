@@ -130,9 +130,12 @@ class ActivityStore:
         with self._transaction() as conn:
             # Check current schema version
             try:
-                cursor = conn.execute("SELECT version FROM schema_version LIMIT 1")
+                cursor = conn.execute(
+                    "SELECT MAX(version) FROM schema_version WHERE version <= ?",
+                    (SCHEMA_VERSION,),
+                )
                 row = cursor.fetchone()
-                current_version = row["version"] if row else 0
+                current_version = row[0] if row and row[0] is not None else 0
             except sqlite3.OperationalError:
                 current_version = 0
 
@@ -144,11 +147,26 @@ class ActivityStore:
                     # Existing database - apply migrations
                     apply_migrations(conn, current_version)
 
+                # Clean up spurious rows and set authoritative version
+                conn.execute("DELETE FROM schema_version")
                 conn.execute(
-                    "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+                    "INSERT INTO schema_version (version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
                 logger.info(f"Activity store schema initialized (v{SCHEMA_VERSION})")
+            else:
+                # Even when up-to-date, clean up any spurious version rows
+                row_count = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+                if row_count != 1:
+                    conn.execute("DELETE FROM schema_version")
+                    conn.execute(
+                        "INSERT INTO schema_version (version) VALUES (?)",
+                        (SCHEMA_VERSION,),
+                    )
+                    logger.info(f"Cleaned up {row_count} spurious schema_version rows")
+                    # Run migrations defensively — the schema might be
+                    # incomplete despite the version table claiming otherwise
+                    apply_migrations(conn, 1)
 
     def get_schema_version(self) -> int:
         """Get current database schema version.
@@ -761,26 +779,95 @@ class ActivityStore:
 
         with self._transaction() as conn:
             if delete_memories:
-                cursor = conn.execute("DELETE FROM memory_observations")
+                cursor = conn.execute(
+                    "DELETE FROM memory_observations WHERE source_machine_id = ?",
+                    (self.machine_id,),
+                )
                 counts["observations_deleted"] = cursor.rowcount
 
             cursor = conn.execute(
                 "UPDATE sessions SET processed = FALSE, summary = NULL "
-                "WHERE status = 'completed'"
+                "WHERE status = 'completed' AND source_machine_id = ?",
+                (self.machine_id,),
             )
             counts["sessions_reset"] = cursor.rowcount
 
             cursor = conn.execute(
                 "UPDATE prompt_batches "
                 "SET processed = FALSE, classification = NULL "
-                "WHERE status = 'completed'"
+                "WHERE status = 'completed' AND source_machine_id = ?",
+                (self.machine_id,),
             )
             counts["batches_reset"] = cursor.rowcount
 
-            cursor = conn.execute("UPDATE activities SET processed = FALSE")
+            cursor = conn.execute(
+                "UPDATE activities SET processed = FALSE WHERE source_machine_id = ?",
+                (self.machine_id,),
+            )
             counts["activities_reset"] = cursor.rowcount
 
         logger.info("Reset processing state: %s", counts)
+        return counts
+
+    def cleanup_cross_machine_pollution(self, vector_store: Any | None = None) -> dict[str, int]:
+        """Remove observations that violate the machine isolation invariant.
+
+        Finds observations where the observation's source_machine_id differs
+        from its session's source_machine_id — i.e., a local processor created
+        observations referencing another machine's imported sessions.
+
+        This is a one-time cleanup for databases that were polluted before
+        machine-scoped filters were added to all background processing paths.
+        Idempotent: returns zeros on subsequent runs.
+
+        Args:
+            vector_store: Optional vector store for ChromaDB cleanup.
+
+        Returns:
+            Dict with cleanup counts: {observations_deleted, chromadb_deleted}.
+        """
+        counts: dict[str, int] = {
+            "observations_deleted": 0,
+            "chromadb_deleted": 0,
+        }
+
+        conn = self._get_connection()
+
+        # Find cross-machine observations: observation created by machine X
+        # referencing a session owned by machine Y
+        cursor = conn.execute("""
+            SELECT mo.id FROM memory_observations mo
+            JOIN sessions s ON mo.session_id = s.id
+            WHERE mo.source_machine_id != s.source_machine_id
+            """)
+        polluted_ids = [row[0] for row in cursor.fetchall()]
+
+        if not polluted_ids:
+            return counts
+
+        # Delete from ChromaDB first (best-effort)
+        if vector_store and polluted_ids:
+            try:
+                vector_store.delete_memories(polluted_ids)
+                counts["chromadb_deleted"] = len(polluted_ids)
+            except (ValueError, RuntimeError) as e:
+                logger.warning(f"ChromaDB cleanup for cross-machine pollution failed: {e}")
+
+        # Delete from SQLite
+        placeholders = ",".join("?" * len(polluted_ids))
+        with self._transaction() as tx_conn:
+            cursor = tx_conn.execute(
+                f"DELETE FROM memory_observations WHERE id IN ({placeholders})",
+                polluted_ids,
+            )
+            counts["observations_deleted"] = cursor.rowcount
+
+        logger.info(
+            "Cleaned up cross-machine pollution: %d observations deleted, "
+            "%d ChromaDB entries removed",
+            counts["observations_deleted"],
+            counts["chromadb_deleted"],
+        )
         return counts
 
     def backfill_content_hashes(self) -> dict[str, int]:
