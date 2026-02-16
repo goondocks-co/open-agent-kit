@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Clear orphan entries functionality in ChromaDB DevTools — UI now provides a dedicated button to identify and remove orphaned embeddings that lack corresponding SQLite records, preventing storage bloat from incomplete cleanup operations — [Add clear orphan entries functionality to ChromaDB DevTools](http://localhost:38388/activity/sessions/697b6645-fcc6-4ff4-b18c-72016c36fec0)
 - Power state aware daemon behavior — daemon now scales background processing based on system activity with four states: ACTIVE (full processing), IDLE (maintenance only), SLEEP (minimal I/O), and DEEP_SLEEP (paused). This reduces resource consumption when the user stops coding, allowing macOS to enter proper sleep states. Background tasks like SQLite queries and backups now respect power state transitions — [Implement power state aware daemon behavior](http://localhost:38388/activity/sessions/01735ec6-438a-4950-8a57-4c630f170b24), [Debug idle resource consumption issue](http://localhost:38388/activity/sessions/618dc82e-46a4-48c3-b3a3-fcab14f5ffd5)
 - Observation lifecycle management — observations now track status (`active`, `resolved`, `superseded`) with session-type awareness (`planning`, `investigation`, `implementation`, `mixed`), enabling agents to distinguish current knowledge from historical context and filter stale observations from context windows — [Implement observation lifecycle management system](http://localhost:38388/activity/sessions/cc6d1209-222c-4d32-9420-011876a7ee61)
 - Personalized session summaries — LLM-generated summaries now use Git/GitHub usernames instead of generic "the user" references, improving searchability and attribution — [Fix date filtering and user identity issues in session summaries](http://localhost:38388/activity/sessions/49e246b5-ded7-483d-abc9-7de56e780caf)
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- DevTools database operations refactored to use store layer — maintenance operations (VACUUM, orphan cleanup) now route through the unified store abstraction instead of raw SQL, improving consistency and testability — [Refactor devtools to use store layer for database operations](http://localhost:38388/activity/sessions/831215be-658e-430c-9077-3fc9e3937441)
 - License updated to 2025-2026 date range with business name as copyright holder — [Update license copyright year and holder name](http://localhost:38388/activity/sessions/d01d958e-e24e-4f1a-a611-91e67f06aeba)
 - Batch processing performance improved — batch sizes increased from 10 to 50 items per cycle with parallel processing, significantly reducing memory processing time — [Optimize batch processing and database performance](http://localhost:38388/activity/sessions/e54fa8e6-6ce9-4141-91e3-8ca5ca51c3dc)
 - Codebase refactored into six parallel build streams for independent testing — core, daemon, indexing, memory, activity, and agents can now be tested and validated separately, reducing CI time and enabling targeted development — [Refactor OAK codebase into six parallel build streams for independent testing](http://localhost:38388/activity/sessions/cebab386-ae4e-4327-8840-15976114029b), [Refactor OAK codebase into six parallel work streams](http://localhost:38388/activity/sessions/666ef8df-666b-482b-a36b-44fa9d63826e)
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix CLI help text listing `rfc` as a primary command when it's agent-only — help output now accurately reflects the command hierarchy with `oak ci` as the primary CI entrypoint — [Fix CLI help text accuracy and command separation](http://localhost:38388/activity/sessions/070bd34e-f98a-4ae7-96d0-62a259bd143d)
 - Fix MCP server plan resolution and tool call handling — plans now show resolved state correctly during polling, and tool call descriptions are clearer for debugging — [Fix plan resolution and tool call handling in MCP server](http://localhost:38388/activity/sessions/399c6996-ffc6-4e91-b8fc-e07ca3639517)
 - Fix "today" filter showing incorrect results due to timezone mismatch — date filtering now correctly handles timezone differences between server and client — [Fix date filtering and user identity issues in session summaries](http://localhost:38388/activity/sessions/49e246b5-ded7-483d-abc9-7de56e780caf)
 - Fix VS Code Copilot hook crashes — centralized hook formatting and fixed schema validation errors that caused the Copilot integration to crash after recent refactors — [Fix VS Code Copilot crash by centralizing hook formatting](http://localhost:38388/activity/sessions/94f771fb-3afd-41f0-80d5-dbf739a0b146), [Fix VS Code Copilot schema crash after refactor](http://localhost:38388/activity/sessions/d6d3ab1f-2f9f-4b7b-9660-319397875362), [Fix undefined hook error in VS Code Co‑Pilot integration](http://localhost:38388/activity/sessions/70d43b82-ebfc-4f1f-aeb4-04a2e0890983)
@@ -45,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix Homebrew formula PyPI CDN propagation race condition — `brew install` could fail if the PyPI simple index hadn't propagated the new version yet. Formula `post_install` now retries `pip install` 5 times with 30s backoff, and the tap workflow uses `pip download --no-deps` with 20 retries over 10 minutes — [Fix Homebrew tap and update Oak CI installation docs](http://localhost:38388/activity/sessions/45cd3a6f-2589-440c-afa3-97fbf337a8a7)
 
 ### Notes
+
+> **Gotcha**: SQLite's VACUUM command cannot run within a transaction context — attempting to do so raises `OperationalError: cannot VACUUM from within a transaction`. DevTools maintenance operations now explicitly close any active transaction before running VACUUM.
+
+> **Gotcha**: ChromaDB delete operations can fail silently and leave orphaned entries. The new "Clear Orphan Entries" button in DevTools identifies embeddings that lack corresponding SQLite records and removes them with retry logic to handle transient failures.
 
 > **Gotcha**: The version mismatch detection writes a stamp file (`.oak/ci/cli_version`) only when the CLI runs, so it adds no overhead to normal operation. However, the `restartDaemon` API call must be awaited before updating the UI — otherwise stale data may be displayed.
 

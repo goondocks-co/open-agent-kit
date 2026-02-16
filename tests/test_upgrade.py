@@ -76,48 +76,14 @@ def test_files_differ_nonexistent_file(initialized_project: Path) -> None:
     assert not service._files_differ(file1, file2)
 
 
-def test_plan_upgrade_detects_modified_command(initialized_project: Path) -> None:
-    """Test that plan_upgrade detects modified agent command files.
-
-    All agents get commands (sub-agents). We use codebase-intelligence which
-    has the backend-python-expert command installed.
-    """
+def test_plan_upgrade_with_no_commands(initialized_project: Path) -> None:
+    """Test that plan_upgrade works when no command templates are configured."""
     from open_agent_kit.commands.init_cmd import init_command
 
     init_command(force=False, agent=["cursor"], no_interactive=True)
-    commands_dir = initialized_project / ".cursor" / "commands"
-    command_file = commands_dir / "oak.backend-python-expert.md"
-    assert command_file.exists()
-    original_content = command_file.read_text(encoding="utf-8")
-    command_file.write_text(original_content + "\n# Modified\n", encoding="utf-8")
     service = UpgradeService(initialized_project)
     plan = service.plan_upgrade(commands=True, templates=False)
-    assert len(plan["commands"]) > 0
-    assert any(cmd["file"] == "oak.backend-python-expert.md" for cmd in plan["commands"])
-
-
-def test_execute_upgrade_restores_command(initialized_project: Path) -> None:
-    """Test that execute_upgrade restores modified command file.
-
-    All agents get commands (sub-agents). We use codebase-intelligence which
-    has the backend-python-expert command installed.
-    """
-    from open_agent_kit.commands.init_cmd import init_command
-
-    init_command(force=False, agent=["cursor"], no_interactive=True)
-    commands_dir = initialized_project / ".cursor" / "commands"
-    command_file = commands_dir / "oak.backend-python-expert.md"
-    original_content = command_file.read_text(encoding="utf-8")
-    modified_content = original_content + "\n# Modified\n"
-    command_file.write_text(modified_content, encoding="utf-8")
-    service = UpgradeService(initialized_project)
-    plan = service.plan_upgrade(commands=True, templates=False)
-    results = service.execute_upgrade(plan)
-    assert len(results["commands"]["upgraded"]) > 0
-    assert "oak.backend-python-expert.md" in results["commands"]["upgraded"]
-    restored_content = command_file.read_text(encoding="utf-8")
-    assert "# Modified" not in restored_content
-    assert restored_content == original_content
+    assert plan["commands"] == []
 
 
 def test_execute_upgrade_with_empty_plan(initialized_project: Path) -> None:
@@ -150,31 +116,14 @@ def test_execute_upgrade_with_empty_plan(initialized_project: Path) -> None:
     assert results["agent_settings"]["failed"] == []
 
 
-def test_plan_upgrade_multiple_agents(initialized_project: Path) -> None:
-    """Test plan_upgrade with multiple agents configured.
-
-    All agents get commands (sub-agents). We use codebase-intelligence which
-    has the backend-python-expert command installed for all agents.
-    """
+def test_plan_upgrade_multiple_agents_no_commands(initialized_project: Path) -> None:
+    """Test plan_upgrade with multiple agents when no commands are configured."""
     from open_agent_kit.commands.init_cmd import init_command
 
     init_command(force=False, agent=["cursor", "windsurf"], no_interactive=True)
-    cursor_dir = initialized_project / ".cursor" / "commands"
-    windsurf_dir = initialized_project / ".windsurf" / "commands"
-    cursor_file = cursor_dir / "oak.backend-python-expert.md"
-    windsurf_file = windsurf_dir / "oak.backend-python-expert.md"
-    cursor_file.write_text(
-        cursor_file.read_text(encoding="utf-8") + "\n# Modified Cursor\n", encoding="utf-8"
-    )
-    windsurf_file.write_text(
-        windsurf_file.read_text(encoding="utf-8") + "\n# Modified Windsurf\n", encoding="utf-8"
-    )
     service = UpgradeService(initialized_project)
     plan = service.plan_upgrade(commands=True, templates=False)
-    assert len(plan["commands"]) >= 2
-    agents = [cmd["agent"] for cmd in plan["commands"]]
-    assert "cursor" in agents
-    assert "windsurf" in agents
+    assert plan["commands"] == []
 
 
 def test_upgrade_service_with_custom_project_root(temp_project_dir: Path) -> None:
@@ -184,11 +133,7 @@ def test_upgrade_service_with_custom_project_root(temp_project_dir: Path) -> Non
 
 
 def test_execute_upgrade_updates_config_version(initialized_project: Path) -> None:
-    """Test that execute_upgrade updates the config version.
-
-    All agents get commands (sub-agents). We use codebase-intelligence which
-    has the backend-python-expert command installed.
-    """
+    """Test that execute_upgrade updates the config version when outdated."""
     from open_agent_kit import __version__
     from open_agent_kit.commands.init_cmd import init_command
     from open_agent_kit.services.config_service import ConfigService
@@ -198,12 +143,8 @@ def test_execute_upgrade_updates_config_version(initialized_project: Path) -> No
     config = config_service.load_config()
     config.version = "0.0.1"
     config_service.save_config(config)
-    commands_dir = initialized_project / ".cursor" / "commands"
-    command_file = commands_dir / "oak.backend-python-expert.md"
-    original_content = command_file.read_text(encoding="utf-8")
-    command_file.write_text(original_content + "\n# Modified\n", encoding="utf-8")
     service = UpgradeService(initialized_project)
-    plan = service.plan_upgrade(commands=True, templates=False)
+    plan = service.plan_upgrade(commands=True, templates=True)
     results = service.execute_upgrade(plan)
     assert results["version_updated"] is True
     config = config_service.load_config()

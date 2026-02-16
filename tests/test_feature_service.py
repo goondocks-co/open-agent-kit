@@ -140,8 +140,7 @@ class TestFeatureInstallation:
     def test_install_feature_basic(self, initialized_project: Path) -> None:
         """Test basic feature installation.
 
-        Commands (sub-agents) are installed for all agents.
-        We test with codebase-intelligence which has the backend-python-expert command.
+        Codebase-intelligence currently has no commands (sub-agents).
         """
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)
@@ -151,12 +150,11 @@ class TestFeatureInstallation:
         config.agents = ["cursor"]
         config_service.save_config(config)
 
-        # Install codebase-intelligence (which has commands)
+        # Install codebase-intelligence
         results = service.install_feature("codebase-intelligence", ["cursor"])
 
         assert "commands_installed" in results
-        assert len(results["commands_installed"]) > 0
-        assert "backend-python-expert" in results["commands_installed"]
+        assert results["commands_installed"] == []
         assert "cursor" in results["agents"]
 
         # All features are always installed
@@ -236,8 +234,8 @@ class TestFeatureRemoval:
     def test_remove_feature_removes_agent_commands(self, initialized_project: Path) -> None:
         """Test that removal cleans up agent command files.
 
-        Commands (sub-agents) are installed for all agents.
-        We test with codebase-intelligence which has the backend-python-expert command.
+        Codebase-intelligence currently has no commands, so we verify the
+        removal flow completes without errors.
         """
         service = FeatureService(initialized_project)
         config_service = ConfigService(initialized_project)
@@ -245,17 +243,11 @@ class TestFeatureRemoval:
         config = config_service.load_config()
         config.agents = ["cursor"]
         config_service.save_config(config)
-        service.install_feature("codebase-intelligence", ["cursor"])
+        results = service.install_feature("codebase-intelligence", ["cursor"])
+        assert results["commands_installed"] == []
 
-        # Verify command file exists before removal
-        command_file = initialized_project / ".cursor" / "commands" / "oak.backend-python-expert.md"
-        assert command_file.exists()
-
-        # Remove
+        # Remove completes without errors
         service.remove_feature("codebase-intelligence", ["cursor"])
-
-        # Verify command file is removed
-        assert not command_file.exists()
 
 
 class TestFeatureRefresh:

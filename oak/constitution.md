@@ -5,9 +5,9 @@
 - **Project:** open-agent-kit
 - **Version:** 3.3.0
 - **Status:** Adopted
-- **Last Updated:** 2026-01-21
+- **Last Updated:** 2026-02-15
 - **Author:** @sirkirby
-- **Tech Stack:** Python 3.13+, Typer, Pydantic, Rich, Jinja2, ChromaDB, SQLite
+- **Tech Stack:** Python 3.13, Typer, Pydantic, Rich, Jinja2, ChromaDB, SQLite
 
 **Purpose:** This document defines the **hard invariants** for designing, building, and maintaining Open Agent Kit (OAK). All agent instruction files must align with this constitution.
 
@@ -204,7 +204,7 @@ Codebase Intelligence manages two databases and stores logs locally. Use these p
 | **SQLite Database** | `.oak/ci/activities.db` | Source of truth for all captured activity data (sessions, prompts, file events) |
 | **ChromaDB** | `.oak/ci/chroma/` | Vector search database for semantic code search and memory retrieval |
 | **Daemon Log** | `.oak/ci/daemon.log` | All CI daemon logs (startup, errors, indexing, API requests) |
-| **User Backups** | `oak/history/` | SQL export files generated from the SQLite database (committed to git) |
+| **User Backups** | `oak/history/` | SQL export files generated from the SQLite database (committed to git, can be overwritten by .env file) |
 | **Agent Configs** | `oak/agents/` | User-created custom agent task overrides (committed to git). Built-in tasks are loaded directly from the package. |
 | **Shared Port** | `oak/daemon.port` | Team-shared daemon port derived from git remote (committed to git) |
 | **Analysis Reports** | `oak/insights/` | Analysis agent output reports (committed to git) |
@@ -215,16 +215,13 @@ Codebase Intelligence manages two databases and stores logs locally. Use these p
 - The SQLite database (`.oak/ci/activities.db`) is the authoritative source; ChromaDB is derived/rebuilt from it.
 - Files in `oak/` (history, agents, insights, docs, daemon.port) are intended for version control and team consistency.
 - The `.oak/ci/` directory is gitignored (user-local state per §1.3).
-- Port resolution priority: `.oak/ci/daemon.port` (local override) > `oak/daemon.port` (team-shared) > auto-derive from git remote.
+- Port resolution: `oak/daemon.port` (team-shared) > auto-derive from git remote.
 
-### Quality gates + docs
+### Quality gates
 
 - `Makefile` (must pass: `make check`)
 - `pyproject.toml`
 - `.github/workflows/pr-check.yml`
-- `docs/development/features.md`
-- `docs/development/migrations.md`
-- `docs/development/releasing.md`
 
 ---
 
@@ -478,20 +475,9 @@ If you deviate because a better pattern is needed:
 
 ### 9.3 Where Decisions Live
 
-- Formal design decisions → RFC
-- Less formal decisions → feature doc or project doc
+- Formal design decisions → oak codebase-intelligence plans
+- Less formal decisions → oak codebase-intelligence memories
 - All deviations should result in clearer future rules (reduce repeat friction)
-
----
-
-## 10. Canonical Project Layout (Reference)
-
-OAK source layout and generated user layout are defined in the project docs.
-This constitution defines invariants; detailed playbooks live in:
-
-- `docs/development/features.md`
-- `docs/development/migrations.md`
-- `docs/issue-workflow.md`
 
 ---
 
