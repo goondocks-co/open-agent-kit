@@ -3082,6 +3082,47 @@ INSERT INTO memory_observations (id, session_id, observation, memory_type, creat
 
         store.close()
 
+    def test_delete_by_machine_cross_machine_session_fk(self, temp_db: Path):
+        """Delete-by-machine must handle cross-machine observations referencing sessions.
+
+        Background processing on machine A can create memory_observations with
+        source_machine_id=A that reference sessions imported from machine B.
+        Deleting machine B must cascade-sweep these cross-machine observations
+        to avoid IntegrityError on the sessions FK.
+        """
+        from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+            delete_records_by_machine,
+        )
+
+        store = ActivityStore(temp_db, machine_id=TEST_MACHINE_ID)
+
+        conn = store._get_connection()
+        # Session owned by OTHER machine (the one being deleted)
+        conn.execute(
+            "INSERT INTO sessions (id, agent, project_root, started_at, created_at_epoch, "
+            "source_machine_id) VALUES ('xm-sess', 'claude', '/p', '2025-01-01T00:00:00', "
+            "1704067200, ?)",
+            (self.OTHER_MACHINE_ID,),
+        )
+        # Observation created by LOCAL machine's background processor,
+        # but referencing the OTHER machine's session
+        conn.execute(
+            "INSERT INTO memory_observations (id, session_id, observation, memory_type, "
+            "created_at, created_at_epoch, source_machine_id) VALUES "
+            "('xm-obs', 'xm-sess', 'cross-machine obs', 'discovery', "
+            "'2025-01-01T00:00:00', 1704067200, ?)",
+            (TEST_MACHINE_ID,),
+        )
+        conn.commit()
+
+        # Must NOT raise sqlite3.IntegrityError: FOREIGN KEY constraint failed
+        counts = delete_records_by_machine(store, self.OTHER_MACHINE_ID)
+
+        assert counts["sessions"] == 1
+        assert counts["memory_observations"] >= 1
+
+        store.close()
+
     def test_replace_import_cleans_chromadb(self, temp_db: Path):
         """Replace import should call vector_store.delete_memories with correct IDs."""
         from unittest.mock import MagicMock

@@ -328,6 +328,9 @@ def increment_prompt_count(store: ActivityStore, session_id: str) -> None:
 def get_unprocessed_sessions(store: ActivityStore, limit: int = 10) -> list[Session]:
     """Get sessions that haven't been processed yet.
 
+    Only returns sessions owned by this machine to prevent background processing
+    from generating summaries/titles for another machine's imported sessions.
+
     Args:
         store: The ActivityStore instance.
         limit: Maximum sessions to return.
@@ -340,10 +343,11 @@ def get_unprocessed_sessions(store: ActivityStore, limit: int = 10) -> list[Sess
         f"""
         SELECT * FROM sessions
         WHERE processed = FALSE AND status = '{SESSION_STATUS_COMPLETED}'
+          AND source_machine_id = ?
         ORDER BY created_at_epoch DESC
         LIMIT ?
         """,
-        (limit,),
+        (store.machine_id, limit),
     )
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -479,12 +483,13 @@ def get_sessions_needing_titles(store: ActivityStore, limit: int = 10) -> list[S
         f"""
         SELECT s.* FROM sessions s
         WHERE s.title IS NULL
+        AND s.source_machine_id = ?
         AND EXISTS (SELECT 1 FROM prompt_batches pb WHERE pb.session_id = s.id)
         AND (s.status = '{SESSION_STATUS_COMPLETED}' OR s.created_at_epoch < ?)
         ORDER BY s.created_at_epoch DESC
         LIMIT ?
         """,
-        (five_minutes_ago, limit),
+        (store.machine_id, five_minutes_ago, limit),
     )
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -514,6 +519,7 @@ def get_sessions_missing_summaries(
         f"""
         SELECT s.* FROM sessions s
         WHERE s.status = '{SESSION_STATUS_COMPLETED}'
+        AND s.source_machine_id = ?
         AND NOT EXISTS (
             SELECT 1 FROM memory_observations m
             WHERE m.session_id = s.id AND m.memory_type = ?
@@ -522,7 +528,7 @@ def get_sessions_missing_summaries(
         ORDER BY s.created_at_epoch DESC
         LIMIT ?
         """,
-        (MemoryType.SESSION_SUMMARY.value, min_activities, limit),
+        (store.machine_id, MemoryType.SESSION_SUMMARY.value, min_activities, limit),
     )
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -555,21 +561,23 @@ def get_completed_sessions(
             f"""
             SELECT s.* FROM sessions s
             WHERE s.status = '{SESSION_STATUS_COMPLETED}'
+            AND s.source_machine_id = ?
             AND (SELECT COUNT(*) FROM activities a WHERE a.session_id = s.id) >= ?
             ORDER BY s.created_at_epoch DESC
             LIMIT ?
             """,
-            (min_activities, limit),
+            (store.machine_id, min_activities, limit),
         )
     else:
         cursor = conn.execute(
             f"""
-            SELECT * FROM sessions
-            WHERE status = '{SESSION_STATUS_COMPLETED}'
-            ORDER BY created_at_epoch DESC
+            SELECT s.* FROM sessions s
+            WHERE s.status = '{SESSION_STATUS_COMPLETED}'
+            AND s.source_machine_id = ?
+            ORDER BY s.created_at_epoch DESC
             LIMIT ?
             """,
-            (limit,),
+            (store.machine_id, limit),
         )
 
     return [Session.from_row(row) for row in cursor.fetchall()]
@@ -635,6 +643,7 @@ def recover_stale_sessions(
         FROM sessions s
         LEFT JOIN activities a ON s.id = a.session_id
         WHERE s.status = '{SESSION_STATUS_ACTIVE}'
+          AND s.source_machine_id = ?
         GROUP BY s.id
         HAVING
             -- Skip sessions with active prompt batches (currently being worked on)
@@ -642,7 +651,7 @@ def recover_stale_sessions(
             -- Check staleness: use the most recent of activity, batch creation, or session creation
             AND COALESCE(last_activity, last_batch_epoch, s.created_at_epoch) < ?
         """,
-        (cutoff_epoch,),
+        (store.machine_id, cutoff_epoch),
     )
     stale_sessions = [(row[0], row[1], row[2], row[3] or 0) for row in cursor.fetchall()]
 

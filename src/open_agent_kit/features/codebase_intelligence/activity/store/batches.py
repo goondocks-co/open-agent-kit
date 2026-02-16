@@ -404,6 +404,10 @@ def update_prompt_batch_response(
 def get_unprocessed_prompt_batches(store: ActivityStore, limit: int = 10) -> list[PromptBatch]:
     """Get prompt batches that haven't been processed yet.
 
+    Only returns batches owned by this machine to prevent background processing
+    from creating cross-machine FK references (observations with this machine's
+    source_machine_id referencing another machine's sessions).
+
     Args:
         store: The ActivityStore instance.
         limit: Maximum batches to return.
@@ -416,10 +420,11 @@ def get_unprocessed_prompt_batches(store: ActivityStore, limit: int = 10) -> lis
         """
         SELECT * FROM prompt_batches
         WHERE processed = FALSE AND status = 'completed'
+          AND source_machine_id = ?
         ORDER BY created_at_epoch ASC
         LIMIT ?
         """,
-        (limit,),
+        (store.machine_id, limit),
     )
     return [PromptBatch.from_row(row) for row in cursor.fetchall()]
 
@@ -847,10 +852,11 @@ def recover_orphaned_activities(store: ActivityStore) -> int:
                 tx_conn.execute(
                     """
                     INSERT INTO prompt_batches
-                    (session_id, prompt_number, user_prompt, started_at, created_at_epoch, status)
-                    VALUES (?, 1, ?, datetime(?, 'unixepoch'), ?, 'completed')
+                    (session_id, prompt_number, user_prompt, started_at, created_at_epoch,
+                     status, source_machine_id)
+                    VALUES (?, 1, ?, datetime(?, 'unixepoch'), ?, 'completed', ?)
                     """,
-                    (session_id, RECOVERY_BATCH_PROMPT, now, now),
+                    (session_id, RECOVERY_BATCH_PROMPT, now, now, store.machine_id),
                 )
                 cursor = tx_conn.execute("SELECT last_insert_rowid()")
                 batch_id = cursor.fetchone()[0]
