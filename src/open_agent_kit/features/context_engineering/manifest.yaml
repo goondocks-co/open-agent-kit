@@ -1,0 +1,14 @@
+# Context Engineering Feature Manifest
+# Prompt and context engineering guidance for AI models and agents
+name: context-engineering
+display_name: "Context Engineering"
+description: "Prompt and context engineering guidance for AI models and agents. Teaches the four strategies (Write, Select, Compress, Isolate) and integrates with CI memory tools."
+version: "1.0.0"
+default_enabled: true
+dependencies:
+  - rules-management
+
+skills:
+  - context-engineering
+
+config_defaults: {}
