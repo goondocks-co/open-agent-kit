@@ -112,9 +112,7 @@ def _unwrap_json_summary(text: str) -> str:
 
     summary = str(summary).strip()
     if summary:
-        logger.debug(
-            f"Unwrapped JSON-wrapped summary ({len(text)} → {len(summary)} chars)"
-        )
+        logger.debug(f"Unwrapped JSON-wrapped summary ({len(text)} → {len(summary)} chars)")
         return summary
 
     # JSON had no usable "summary" field — return original
