@@ -51,6 +51,9 @@ class ScheduleStatusResponse(BaseModel):
     trigger_type: str = Field(
         default=SCHEDULE_TRIGGER_CRON, description="Trigger type: cron or manual"
     )
+    additional_prompt: str | None = Field(
+        default=None, max_length=10000, description="Persistent assignment for each run"
+    )
     enabled: bool | None = Field(default=None, description="Whether schedule is enabled")
     last_run_at: str | None = Field(default=None, description="Last execution time")
     last_run_id: str | None = Field(default=None, description="ID of last run")
@@ -78,6 +81,9 @@ class ScheduleCreateRequest(BaseModel):
         default=SCHEDULE_TRIGGER_CRON,
         description="Trigger type: 'cron' or 'manual'",
     )
+    additional_prompt: str | None = Field(
+        default=None, max_length=10000, description="Persistent assignment for each run"
+    )
 
 
 class ScheduleUpdateRequest(BaseModel):
@@ -87,6 +93,9 @@ class ScheduleUpdateRequest(BaseModel):
     cron_expression: str | None = Field(default=None, description="Cron expression to set")
     description: str | None = Field(default=None, description="Description to set")
     trigger_type: str | None = Field(default=None, description="Trigger type to set")
+    additional_prompt: str | None = Field(
+        default=None, max_length=10000, description="Persistent assignment for each run"
+    )
 
 
 class ScheduleSyncResponse(BaseModel):
@@ -159,6 +168,7 @@ async def list_schedules() -> ScheduleListResponse:
             cron=s.get("cron"),
             description=s.get("description"),
             trigger_type=s.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+            additional_prompt=s.get("additional_prompt"),
             enabled=s.get("enabled"),
             last_run_at=s.get("last_run_at"),
             last_run_id=s.get("last_run_id"),
@@ -199,6 +209,7 @@ async def get_schedule(task_name: str) -> ScheduleStatusResponse:
         cron=status.get("cron"),
         description=status.get("description"),
         trigger_type=status.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+        additional_prompt=status.get("additional_prompt"),
         enabled=status.get("enabled"),
         last_run_at=status.get("last_run_at"),
         last_run_id=status.get("last_run_id"),
@@ -261,6 +272,7 @@ async def create_schedule(request: ScheduleCreateRequest) -> ScheduleStatusRespo
         description=request.description,
         trigger_type=request.trigger_type,
         next_run_at=next_run_at,
+        additional_prompt=request.additional_prompt,
     )
 
     logger.info(f"Created schedule for '{request.task_name}': cron={request.cron_expression}")
@@ -278,6 +290,7 @@ async def create_schedule(request: ScheduleCreateRequest) -> ScheduleStatusRespo
         cron=status.get("cron"),
         description=status.get("description"),
         trigger_type=status.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+        additional_prompt=status.get("additional_prompt"),
         enabled=status.get("enabled"),
         last_run_at=status.get("last_run_at"),
         last_run_id=status.get("last_run_id"),
@@ -341,6 +354,8 @@ async def update_schedule(task_name: str, request: ScheduleUpdateRequest) -> Sch
         update_kwargs["description"] = request.description
     if request.trigger_type is not None:
         update_kwargs["trigger_type"] = request.trigger_type
+    if request.additional_prompt is not None:
+        update_kwargs["additional_prompt"] = request.additional_prompt
     if next_run_at is not None:
         update_kwargs["next_run_at"] = next_run_at
 
@@ -361,6 +376,7 @@ async def update_schedule(task_name: str, request: ScheduleUpdateRequest) -> Sch
         cron=status.get("cron"),
         description=status.get("description"),
         trigger_type=status.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+        additional_prompt=status.get("additional_prompt"),
         enabled=status.get("enabled"),
         last_run_at=status.get("last_run_at"),
         last_run_id=status.get("last_run_id"),

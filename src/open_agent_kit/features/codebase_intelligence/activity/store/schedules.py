@@ -29,6 +29,7 @@ def create_schedule(
     description: str | None = None,
     trigger_type: str = SCHEDULE_TRIGGER_CRON,
     next_run_at: datetime | None = None,
+    additional_prompt: str | None = None,
 ) -> None:
     """Create a new schedule record.
 
@@ -39,6 +40,7 @@ def create_schedule(
         description: Human-readable schedule description.
         trigger_type: Type of trigger ('cron' or 'manual').
         next_run_at: Next scheduled run time.
+        additional_prompt: Persistent assignment prepended to task on each run.
     """
     now = datetime.now()
     now_epoch = int(time.time())
@@ -52,17 +54,19 @@ def create_schedule(
             """
             INSERT INTO agent_schedules (
                 task_name, enabled, cron_expression, description, trigger_type,
+                additional_prompt,
                 next_run_at, next_run_at_epoch,
                 created_at, created_at_epoch, updated_at, updated_at_epoch,
                 source_machine_id
             )
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task_name,
                 cron_expression,
                 description,
                 trigger_type,
+                additional_prompt,
                 next_run_at_str,
                 next_run_at_epoch,
                 now.isoformat(),
@@ -92,6 +96,7 @@ def get_schedule(store: "ActivityStore", task_name: str) -> dict[str, Any] | Non
     cursor = conn.execute(
         """
         SELECT task_name, enabled, cron_expression, description, trigger_type,
+               additional_prompt,
                last_run_at, last_run_at_epoch, last_run_id,
                next_run_at, next_run_at_epoch,
                created_at, created_at_epoch, updated_at, updated_at_epoch,
@@ -111,6 +116,7 @@ def get_schedule(store: "ActivityStore", task_name: str) -> dict[str, Any] | Non
         "cron_expression": row["cron_expression"],
         "description": row["description"],
         "trigger_type": row["trigger_type"] or SCHEDULE_TRIGGER_CRON,
+        "additional_prompt": row["additional_prompt"],
         "last_run_at": row["last_run_at"],
         "last_run_at_epoch": row["last_run_at_epoch"],
         "last_run_id": row["last_run_id"],
@@ -131,6 +137,7 @@ def update_schedule(
     cron_expression: str | None = None,
     description: str | None = None,
     trigger_type: str | None = None,
+    additional_prompt: str | None = None,
     last_run_at: datetime | None = None,
     last_run_id: str | None = None,
     next_run_at: datetime | None = None,
@@ -144,6 +151,7 @@ def update_schedule(
         cron_expression: Cron expression to set.
         description: Description to set.
         trigger_type: Trigger type to set.
+        additional_prompt: Assignment to set. Pass "" to clear.
         last_run_at: When the schedule last ran.
         last_run_id: ID of the last run.
         next_run_at: Next scheduled run time.
@@ -169,6 +177,11 @@ def update_schedule(
     if trigger_type is not None:
         updates.append("trigger_type = ?")
         params.append(trigger_type)
+
+    if additional_prompt is not None:
+        updates.append("additional_prompt = ?")
+        # Store empty string as NULL to keep the column clean
+        params.append(additional_prompt or None)
 
     if last_run_at is not None:
         updates.append("last_run_at = ?")
@@ -222,6 +235,7 @@ def list_schedules(
 
     query = """
         SELECT task_name, enabled, cron_expression, description, trigger_type,
+               additional_prompt,
                last_run_at, last_run_at_epoch, last_run_id,
                next_run_at, next_run_at_epoch,
                created_at, created_at_epoch, updated_at, updated_at_epoch,
@@ -245,6 +259,7 @@ def list_schedules(
             "cron_expression": row["cron_expression"],
             "description": row["description"],
             "trigger_type": row["trigger_type"] or SCHEDULE_TRIGGER_CRON,
+            "additional_prompt": row["additional_prompt"],
             "last_run_at": row["last_run_at"],
             "last_run_at_epoch": row["last_run_at_epoch"],
             "last_run_id": row["last_run_id"],
@@ -280,6 +295,7 @@ def get_due_schedules(store: "ActivityStore") -> list[dict[str, Any]]:
     cursor = conn.execute(
         """
         SELECT task_name, enabled, cron_expression, description, trigger_type,
+               additional_prompt,
                last_run_at, last_run_at_epoch, last_run_id,
                next_run_at, next_run_at_epoch,
                created_at, created_at_epoch, updated_at, updated_at_epoch,
@@ -302,6 +318,7 @@ def get_due_schedules(store: "ActivityStore") -> list[dict[str, Any]]:
             "cron_expression": row["cron_expression"],
             "description": row["description"],
             "trigger_type": row["trigger_type"] or SCHEDULE_TRIGGER_CRON,
+            "additional_prompt": row["additional_prompt"],
             "last_run_at": row["last_run_at"],
             "last_run_at_epoch": row["last_run_at_epoch"],
             "last_run_id": row["last_run_id"],
@@ -345,6 +362,7 @@ def upsert_schedule(
     description: str | None = None,
     trigger_type: str = SCHEDULE_TRIGGER_CRON,
     next_run_at: datetime | None = None,
+    additional_prompt: str | None = None,
 ) -> None:
     """Create or update a schedule record.
 
@@ -355,6 +373,7 @@ def upsert_schedule(
         description: Human-readable schedule description.
         trigger_type: Type of trigger ('cron' or 'manual').
         next_run_at: Next scheduled run time.
+        additional_prompt: Persistent assignment prepended to task on each run.
     """
     existing = get_schedule(store, task_name)
     if existing:
@@ -365,6 +384,7 @@ def upsert_schedule(
             description=description,
             trigger_type=trigger_type,
             next_run_at=next_run_at,
+            additional_prompt=additional_prompt,
         )
     else:
         create_schedule(
@@ -374,6 +394,7 @@ def upsert_schedule(
             description=description,
             trigger_type=trigger_type,
             next_run_at=next_run_at,
+            additional_prompt=additional_prompt,
         )
 
 

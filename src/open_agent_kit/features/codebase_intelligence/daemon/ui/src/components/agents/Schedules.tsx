@@ -40,6 +40,7 @@ import {
     Pencil,
     Trash2,
     X,
+    MessageSquarePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/constants";
@@ -129,6 +130,15 @@ function ScheduleRow({
                         <div className="flex items-center gap-2">
                             <span className="font-medium">{schedule.task_name}</span>
                             <ScheduleStatusBadge schedule={schedule} />
+                            {schedule.additional_prompt && (
+                                <span
+                                    className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-blue-500/10 text-blue-600"
+                                    title={`Assignment: ${schedule.additional_prompt.slice(0, 100)}${schedule.additional_prompt.length > 100 ? "..." : ""}`}
+                                >
+                                    <MessageSquarePlus className="w-3 h-3" />
+                                    Assignment
+                                </span>
+                            )}
                         </div>
                         {schedule.description && (
                             <p className="text-sm text-muted-foreground mt-0.5">
@@ -266,6 +276,7 @@ function ScheduleFormDialog({
     const [cronPreset, setCronPreset] = useState("");
     const [cronExpression, setCronExpression] = useState("");
     const [description, setDescription] = useState("");
+    const [additionalPrompt, setAdditionalPrompt] = useState("");
     const [error, setError] = useState<string | null>(null);
 
     const createSchedule = useCreateSchedule();
@@ -286,11 +297,13 @@ function ScheduleFormDialog({
                 setCronPreset(matchingPreset ? schedule.cron || "" : "custom");
                 setCronExpression(schedule.cron || "");
                 setDescription(schedule.description || "");
+                setAdditionalPrompt(schedule.additional_prompt || "");
                 setTaskName(schedule.task_name);
             } else {
                 setCronPreset("");
                 setCronExpression("");
                 setDescription("");
+                setAdditionalPrompt("");
                 setTaskName("");
             }
             setError(null);
@@ -317,12 +330,14 @@ function ScheduleFormDialog({
                     task_name: taskName,
                     cron_expression: cronExpression || undefined,
                     description: description || undefined,
+                    additional_prompt: additionalPrompt.trim() || undefined,
                 });
             } else if (schedule) {
                 await updateSchedule.mutateAsync({
                     taskName: schedule.task_name,
                     cron_expression: cronExpression || undefined,
                     description: description || undefined,
+                    additional_prompt: additionalPrompt.trim() || "",
                 });
             }
             onOpenChange(false);
@@ -442,6 +457,26 @@ function ScheduleFormDialog({
                             className="w-full px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                             disabled={isLoading}
                         />
+                    </div>
+
+                    {/* Assignment (additional_prompt) */}
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium flex items-center gap-1.5">
+                            <MessageSquarePlus className="w-4 h-4" />
+                            Assignment (optional)
+                        </label>
+                        <textarea
+                            value={additionalPrompt}
+                            onChange={(e) => setAdditionalPrompt(e.target.value)}
+                            placeholder="Tell the agent what to focus on each run..."
+                            rows={4}
+                            maxLength={10000}
+                            className="w-full px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+                            disabled={isLoading}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Prepended to the task prompt as an assignment on every run.
+                        </p>
                     </div>
 
                     {/* Error */}

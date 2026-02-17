@@ -331,6 +331,18 @@ class AgentExecution(BaseModel):
     )
 
 
+class McpServerConfig(BaseModel):
+    """Configuration for an external MCP server an agent can use.
+
+    External MCP servers (e.g., GitHub, GitLab) can be injected into
+    agent execution via the executor's _get_external_mcp_servers() hook.
+    This config declares which servers the agent expects.
+    """
+
+    enabled: bool = Field(default=True, description="Whether the server should be connected")
+    required: bool = Field(default=False, description="Fail execution if server is unavailable")
+
+
 class AgentDefinition(BaseModel):
     """Definition of an agent loaded from YAML.
 
@@ -368,6 +380,12 @@ class AgentDefinition(BaseModel):
 
     # CI data access
     ci_access: AgentCIAccess = Field(default_factory=AgentCIAccess)
+
+    # External MCP servers (e.g., GitHub, GitLab SDLC providers)
+    mcp_servers: dict[str, McpServerConfig] = Field(
+        default_factory=dict,
+        description="External MCP servers keyed by server name",
+    )
 
     # System prompt (loaded from file or inline)
     system_prompt: str | None = Field(default=None, description="System prompt for the agent")

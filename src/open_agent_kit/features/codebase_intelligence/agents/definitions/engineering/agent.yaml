@@ -1,0 +1,75 @@
+# Engineering Team Agent
+#
+# An engineering team powered by Codebase Intelligence. Each task defines
+# a team role (Senior Engineer, Product Manager, etc.) with its own
+# perspective and methodology. The template provides shared capabilities
+# — CI access, tools, safety rules — while tasks provide identity.
+#
+# Bash is NOT allowed at the template level. Each task opts into Bash
+# via additional_tools with the appropriate scope, keeping the template
+# safe by default.
+
+name: engineering
+display_name: "Engineering Team"
+description: >
+  An engineering team powered by Codebase Intelligence. Tasks define
+  team roles (Senior Engineer, Product Manager, etc.) with role-specific
+  perspectives and methodologies. Uses CI for full project context.
+
+execution:
+  max_turns: 200
+  timeout_seconds: 1800
+  permission_mode: bypassPermissions
+
+# Tools the agent can use (Bash is NOT here — tasks opt in via additional_tools)
+allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+
+# Never allow sub-agents
+disallowed_tools:
+  - Task
+
+# Path restrictions — broad access for engineering work
+allowed_paths:
+  - "src/**"
+  - "tests/**"
+  - "oak/**"
+  - "docs/**"
+  - "*.md"
+  - "*.yaml"
+  - "*.yml"
+  - "*.json"
+  - "*.toml"
+  - "*.cfg"
+  - "*.txt"
+  - "Makefile"
+  - "pyproject.toml"
+
+# Security: never touch sensitive files
+disallowed_paths:
+  - ".env"
+  - ".env.*"
+  - "*.pem"
+  - "*.key"
+  - "*.crt"
+  - "**/credentials*"
+  - "**/secrets*"
+  - ".oak/ci/**"
+
+# CI data access — full access including SQL queries
+ci_access:
+  code_search: true
+  memory_search: true
+  session_history: true
+  project_stats: true
+  sql_query: true
+
+# External MCP servers (Phase 2 injection point)
+mcp_servers:
+  github:
+    enabled: true
+    required: false

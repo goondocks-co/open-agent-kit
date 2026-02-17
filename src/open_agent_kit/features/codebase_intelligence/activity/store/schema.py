@@ -293,6 +293,7 @@ CREATE TABLE IF NOT EXISTS agent_schedules (
     cron_expression TEXT,           -- Cron expression (e.g., '0 0 * * MON')
     description TEXT,               -- Human-readable schedule description
     trigger_type TEXT DEFAULT 'cron', -- 'cron' or 'manual' (future: 'git_commit', 'file_change')
+    additional_prompt TEXT,          -- Persistent assignment prepended to task on each run
 
     -- Runtime state
     last_run_at TEXT,

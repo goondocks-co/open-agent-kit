@@ -223,13 +223,18 @@ export function useRunAgent() {
     });
 }
 
-/** Run a task (no task input - uses configured default_task) */
+/** Run a task with optional runtime direction (additional_prompt) */
 export function useRunTask() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (taskName: string) =>
-            postJson<AgentRunResponse>(`${API_ENDPOINTS.AGENTS}/tasks/${taskName}/run`, {}),
+        mutationFn: ({ taskName, additionalPrompt }: { taskName: string; additionalPrompt?: string }) => {
+            const body: { additional_prompt?: string } = {};
+            if (additionalPrompt?.trim()) {
+                body.additional_prompt = additionalPrompt.trim();
+            }
+            return postJson<AgentRunResponse>(`${API_ENDPOINTS.AGENTS}/tasks/${taskName}/run`, body);
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
             queryClient.invalidateQueries({ queryKey: ["agent-runs"] });

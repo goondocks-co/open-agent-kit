@@ -73,6 +73,52 @@ def _is_recovery_prompt(prompt: str | None) -> bool:
     return prompt.startswith("[Recovery batch") or prompt == RECOVERY_BATCH_PROMPT
 
 
+def _unwrap_json_summary(text: str) -> str:
+    """Unwrap summary from JSON if the model ignored the plain-text instruction.
+
+    Some models (e.g. gpt-oss via Ollama) return JSON like:
+        {"summary": "..."}  or  {"summary": ["paragraph 1", "paragraph 2"]}
+    despite the prompt asking for plain text only.
+
+    Args:
+        text: Raw summary text, possibly JSON-wrapped.
+
+    Returns:
+        Extracted plain-text summary, or original text if not JSON.
+    """
+    import json
+
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return text
+
+    try:
+        data = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return text
+
+    if not isinstance(data, dict):
+        return text
+
+    summary = data.get("summary", "")
+
+    # Handle "summary": ["paragraph 1", "paragraph 2", ...]
+    if isinstance(summary, list):
+        summary = " ".join(str(item) for item in summary if item)
+
+    # Handle "summary": {"text": "..."} or other nested objects
+    if isinstance(summary, dict):
+        summary = summary.get("text", "") or str(summary)
+
+    summary = str(summary).strip()
+    if summary:
+        logger.debug(f"Unwrapped JSON-wrapped summary ({len(text)} → {len(summary)} chars)")
+        return summary
+
+    # JSON had no usable "summary" field — return original
+    return text
+
+
 def _get_plan_context_for_summary(batches: list) -> str:
     """Get plan content to include in summary prompt.
 
@@ -299,6 +345,10 @@ def process_session_summary(
     # Clean up common LLM artifacts
     if summary.startswith('"') and summary.endswith('"'):
         summary = summary[1:-1]
+
+    # Defensive: some models return JSON despite being told to return plain text.
+    # Unwrap the summary field if the response is a JSON object.
+    summary = _unwrap_json_summary(summary)
 
     # Store as session_summary memory using dual-write: SQLite + ChromaDB
     # Use deterministic ID so session reopens replace existing summary (upsert)

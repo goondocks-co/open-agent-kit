@@ -41,6 +41,7 @@ import {
     Settings2,
     Copy,
     Package,
+    MessageSquarePlus,
 } from "lucide-react";
 import { FALLBACK_MESSAGES } from "@/lib/constants";
 
@@ -57,7 +58,7 @@ function TaskCard({
     tasksDir,
 }: {
     task: AgentTask;
-    onRun: (taskName: string) => void;
+    onRun: (task: AgentTask) => void;
     onCopy: (taskName: string) => void;
     isRunning: boolean;
     isCopying: boolean;
@@ -143,7 +144,7 @@ function TaskCard({
 
             <CardFooter className="pt-0 gap-2">
                 <Button
-                    onClick={() => onRun(task.name)}
+                    onClick={() => onRun(task)}
                     disabled={isRunning}
                     className="flex-1"
                     title="Run this task"
@@ -241,6 +242,110 @@ function AgentTemplateCard({
                 </Button>
             </CardFooter>
         </Card>
+    );
+}
+
+// =============================================================================
+// Run Task Modal
+// =============================================================================
+
+function RunTaskModal({
+    open,
+    onOpenChange,
+    task,
+    onSubmit,
+    isPending,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    task: AgentTask | null;
+    onSubmit: (taskName: string, additionalPrompt?: string) => void;
+    isPending: boolean;
+}) {
+    const [additionalPrompt, setAdditionalPrompt] = useState("");
+
+    if (!open || !task) return null;
+
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        onSubmit(task.name, additionalPrompt || undefined);
+    };
+
+    const handleClose = () => {
+        if (!isPending) {
+            setAdditionalPrompt("");
+            onOpenChange(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+                onClick={handleClose}
+            />
+
+            {/* Dialog */}
+            <div className="relative z-50 w-full max-w-lg rounded-lg border bg-background p-6 shadow-lg animate-in fade-in-0 zoom-in-95">
+                {/* Close button */}
+                <button
+                    onClick={handleClose}
+                    className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+                    disabled={isPending}
+                >
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Close</span>
+                </button>
+
+                {/* Header */}
+                <div className="mb-4">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Play className="w-4 h-4" />
+                        Run {task.display_name}
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        {task.description}
+                    </p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="additionalPrompt" className="flex items-center gap-1.5">
+                            <MessageSquarePlus className="w-3.5 h-3.5" />
+                            Assignment
+                            <span className="text-muted-foreground font-normal">(optional)</span>
+                        </Label>
+                        <textarea
+                            id="additionalPrompt"
+                            value={additionalPrompt}
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAdditionalPrompt(e.target.value)}
+                            placeholder="Tell the agent what to focus on..."
+                            rows={8}
+                            maxLength={10000}
+                            className="w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Leave empty to run with the default task, or provide specific direction.
+                        </p>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={isPending}>
+                            {isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : (
+                                <Play className="w-4 h-4 mr-2" />
+                            )}
+                            Run
+                        </Button>
+                    </div>
+                </form>
+            </div>
+        </div>
     );
 }
 
@@ -403,16 +508,25 @@ export default function AgentsList() {
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const [createModalOpen, setCreateModalOpen] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+    const [runModalOpen, setRunModalOpen] = useState(false);
+    const [selectedTask, setSelectedTask] = useState<AgentTask | null>(null);
 
     const templates = agentsData?.templates || [];
     const tasks = agentsData?.tasks || [];
     const tasksDir = agentsData?.tasks_dir || "oak/agents";
 
-    const handleRunTask = async (taskName: string) => {
+    const handleRunTask = (task: AgentTask) => {
+        setSelectedTask(task);
+        setRunModalOpen(true);
+    };
+
+    const handleRunTaskSubmit = async (taskName: string, additionalPrompt?: string) => {
         setMessage(null);
         try {
-            const result = await runTask.mutateAsync(taskName);
+            const result = await runTask.mutateAsync({ taskName, additionalPrompt });
             setMessage({ type: "success", text: result.message });
+            setRunModalOpen(false);
+            setSelectedTask(null);
         } catch (error) {
             setMessage({
                 type: "error",
@@ -580,6 +694,15 @@ export default function AgentsList() {
                     </section>
                 </>
             )}
+
+            {/* Run Task Modal */}
+            <RunTaskModal
+                open={runModalOpen}
+                onOpenChange={setRunModalOpen}
+                task={selectedTask}
+                onSubmit={handleRunTaskSubmit}
+                isPending={runTask.isPending}
+            />
 
             {/* Create Task Modal */}
             <CreateTaskModal

@@ -287,8 +287,11 @@ HTTP_TIMEOUT_LONG: Final[float] = 30.0
 # Health check timeout (very quick, just checking if daemon is alive)
 HTTP_TIMEOUT_HEALTH_CHECK: Final[float] = 2.0
 
-# Daemon start timeout (subprocess)
-DAEMON_START_TIMEOUT_SECONDS: Final[int] = 10
+# Daemon start timeout (max time to wait for health after triggering start)
+DAEMON_START_TIMEOUT_SECONDS: Final[int] = 30
+
+# Health poll interval during daemon startup (seconds between checks)
+DAEMON_HEALTH_POLL_INTERVAL: Final[float] = 0.5
 
 # Daemon restart delay
 DAEMON_RESTART_DELAY_SECONDS: Final[float] = 1.0
@@ -714,7 +717,7 @@ TUNNEL_URL_PARSE_TIMEOUT_SECONDS: Final[float] = 15.0
 TUNNEL_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Activity store schema version
-CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 3
+CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 4
 
 # Observation Lifecycle
 OBSERVATION_STATUS_ACTIVE: Final[str] = "active"
@@ -1290,6 +1293,11 @@ CI_QUERY_FORBIDDEN_KEYWORDS: Final[tuple[str, ...]] = (
     "VACUUM",
     "REINDEX",
 )
+
+# Engineering Agent
+AGENT_ENGINEERING_NAME: Final[str] = "engineering"
+AGENT_ENGINEERING_MAX_TURNS: Final[int] = 200
+AGENT_ENGINEERING_TIMEOUT_SECONDS: Final[int] = 1800
 
 # Agent insights output directory (git-tracked, team-shareable)
 AGENT_INSIGHTS_DIR: Final[str] = "oak/insights"

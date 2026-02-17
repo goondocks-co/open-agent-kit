@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDetailResponse,
@@ -406,18 +407,31 @@ async def reload_agents() -> dict:
 # =============================================================================
 
 
+class TaskRunRequest(BaseModel):
+    """Request body for running a task with optional runtime direction."""
+
+    additional_prompt: str | None = Field(
+        default=None,
+        max_length=10000,
+        description="Optional runtime direction for the task (what to work on)",
+    )
+
+
 @router.post("/tasks/{task_name}/run", response_model=AgentRunResponse)
 async def run_task(
     task_name: str,
     background_tasks: BackgroundTasks,
+    request: TaskRunRequest | None = None,
 ) -> AgentRunResponse:
     """Run a task using its configured default_task.
 
     Tasks are the preferred way to run agents - they have a pre-configured
-    task so no task input is required.
+    task so no task input is required. Optionally accepts an additional_prompt
+    to provide runtime direction (e.g., "Focus on the backup system").
 
     Args:
         task_name: Name of the task to run.
+        request: Optional request body with additional_prompt.
 
     Returns:
         Run ID and initial status.
@@ -437,15 +451,20 @@ async def run_task(
             detail=f"Template '{task.agent_type}' not found for task '{task_name}'",
         )
 
+    # Compose task prompt: prepend assignment if provided
+    task_prompt = task.default_task
+    if request and request.additional_prompt:
+        task_prompt = f"## Assignment\n{request.additional_prompt}\n\n---\n\n{task.default_task}"
+
     # Create run record with task
-    run = executor.create_run(template, task.default_task, task)
+    run = executor.create_run(template, task_prompt, task)
 
     logger.info(f"Starting task run: {run.id} for {task_name}")
 
     # Execute in background
     async def _execute_task() -> None:
         try:
-            await executor.execute(template, task.default_task, run, task)
+            await executor.execute(template, task_prompt, run, task)
         except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"Task run {run.id} failed: {e}")
             run.status = AgentRunStatus.FAILED

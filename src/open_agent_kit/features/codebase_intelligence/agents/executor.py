@@ -167,6 +167,24 @@ class AgentExecutor:
         self._ci_mcp_servers[cache_key] = server
         return server
 
+    def _get_external_mcp_servers(self, agent: AgentDefinition) -> dict[str, Any]:
+        """Get external MCP servers for an agent.
+
+        This is the injection point for Phase 2 (SDLC provider capability).
+        Currently returns an empty dict. When the SDLC provider is implemented,
+        this method will resolve agent.mcp_servers declarations into live
+        McpSdkServerConfig instances.
+
+        Args:
+            agent: Agent definition with mcp_servers declarations.
+
+        Returns:
+            Dictionary of server name -> McpSdkServerConfig (empty for now).
+        """
+        # Phase 2 will populate this based on agent.mcp_servers declarations
+        # and the configured SDLC provider (GitHub, GitLab, etc.)
+        return {}
+
     def _cleanup_old_runs(self) -> None:
         """Remove old runs from in-memory cache when it exceeds threshold.
 
@@ -276,18 +294,32 @@ class AgentExecutor:
         # Use provided execution config or template default
         effective_execution = execution or agent.execution
 
+        # Check if additional_tools contains a Bash override pattern.
+        # When a task declares additional_tools: ["Bash"] or ["Bash(git *)"],
+        # the Bash restriction is lifted for that execution only.
+        # Task remains permanently forbidden regardless.
+        has_bash_override = any(
+            t == "Bash" or t.startswith("Bash(") for t in (additional_tools or [])
+        )
+        forbidden = AGENT_FORBIDDEN_TOOLS
+        if has_bash_override:
+            forbidden = tuple(t for t in AGENT_FORBIDDEN_TOOLS if t != "Bash")
+
         # Build allowed tools list, filtering forbidden tools
-        allowed_tools = [t for t in agent.get_effective_tools() if t not in AGENT_FORBIDDEN_TOOLS]
+        allowed_tools = [t for t in agent.get_effective_tools() if t not in forbidden]
 
         # Merge task-level additional tools (e.g., scoped Bash patterns)
-        # These are additive and still filtered through AGENT_FORBIDDEN_TOOLS
         if additional_tools:
             for tool in additional_tools:
-                if tool not in AGENT_FORBIDDEN_TOOLS and tool not in allowed_tools:
+                if tool not in forbidden and tool not in allowed_tools:
                     allowed_tools.append(tool)
 
-        # Build enabled CI tools set from ci_access flags
+        # Inject external MCP servers declared by the agent (Phase 2 hook)
         mcp_servers: dict[str, Any] = {}
+        external_servers = self._get_external_mcp_servers(agent)
+        mcp_servers.update(external_servers)
+
+        # Build enabled CI tools set from ci_access flags
         ci_access = agent.ci_access
         has_any_ci_access = (
             ci_access.code_search

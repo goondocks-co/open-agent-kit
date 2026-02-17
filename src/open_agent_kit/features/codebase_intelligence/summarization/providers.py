@@ -502,9 +502,15 @@ def _parse_llm_response(raw_response: str) -> SummarizationResult:
                     }
                 )
 
+        # Normalize summary to string — some models return a list of strings
+        raw_summary = data.get("summary", "")
+        if isinstance(raw_summary, list):
+            raw_summary = " ".join(str(item) for item in raw_summary if item)
+        session_summary = str(raw_summary).strip()
+
         return SummarizationResult(
             observations=observations,
-            session_summary=data.get("summary", ""),
+            session_summary=session_summary,
             success=True,
         )
 
