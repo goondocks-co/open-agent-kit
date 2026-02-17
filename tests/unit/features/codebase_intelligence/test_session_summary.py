@@ -196,6 +196,108 @@ class TestFormatSessionSummaries:
         assert "Work without tags" in result
 
 
+class TestUnwrapJsonSummary:
+    """Test _unwrap_json_summary defensive parsing for misbehaving models."""
+
+    def test_plain_text_passthrough(self):
+        """Plain text is returned unchanged."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = "Chris implemented JWT authentication and fixed the login bug."
+        assert _unwrap_json_summary(text) == text
+
+    def test_json_with_string_summary(self):
+        """JSON with a string summary field is unwrapped."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = '{"summary": "Implemented dark mode support."}'
+        assert _unwrap_json_summary(text) == "Implemented dark mode support."
+
+    def test_json_with_array_summary(self):
+        """JSON with an array summary field is joined into a string."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = '{"summary": ["First paragraph.", "Second paragraph."]}'
+        assert _unwrap_json_summary(text) == "First paragraph. Second paragraph."
+
+    def test_json_with_observations_and_summary(self):
+        """JSON with both observations and summary extracts just the summary."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = '{"observations": [], "summary": "Fixed the auth bug."}'
+        assert _unwrap_json_summary(text) == "Fixed the auth bug."
+
+    def test_json_without_summary_key_returns_original(self):
+        """JSON without a summary key returns original text."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = '{"observations": [{"type": "gotcha"}]}'
+        assert _unwrap_json_summary(text) == text
+
+    def test_json_with_empty_summary_returns_original(self):
+        """JSON with empty summary returns original text."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = '{"summary": ""}'
+        assert _unwrap_json_summary(text) == text
+
+    def test_invalid_json_passthrough(self):
+        """Text that starts with { but isn't valid JSON passes through."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = "{not valid json at all"
+        assert _unwrap_json_summary(text) == text
+
+    def test_json_with_whitespace(self):
+        """JSON with leading/trailing whitespace is still detected."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.summaries import (
+            _unwrap_json_summary,
+        )
+
+        text = '  \n{"summary": "Cleaned up tests."}\n  '
+        assert _unwrap_json_summary(text) == "Cleaned up tests."
+
+
+class TestParseLlmResponseSummaryNormalization:
+    """Test that _parse_llm_response normalizes summary to string."""
+
+    def test_summary_as_list_is_joined(self):
+        """When model returns summary as a list, it should be joined."""
+        from open_agent_kit.features.codebase_intelligence.summarization.providers import (
+            _parse_llm_response,
+        )
+
+        raw = '{"observations": [], "summary": ["Part one.", "Part two."]}'
+        result = _parse_llm_response(raw)
+        assert result.success is True
+        assert result.session_summary == "Part one. Part two."
+
+    def test_summary_as_string_unchanged(self):
+        """When model returns summary as a string, it stays as-is."""
+        from open_agent_kit.features.codebase_intelligence.summarization.providers import (
+            _parse_llm_response,
+        )
+
+        raw = '{"observations": [], "summary": "Simple summary."}'
+        result = _parse_llm_response(raw)
+        assert result.success is True
+        assert result.session_summary == "Simple summary."
+
+
 class TestProcessSessionSummary:
     """Test the ActivityProcessor.process_session_summary method."""
 
