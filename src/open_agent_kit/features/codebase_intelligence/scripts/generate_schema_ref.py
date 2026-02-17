@@ -250,7 +250,7 @@ def generate_core_tables_section(tables: dict) -> str:
         "activities": "`session_id`, `tool_name`, `file_path`, `success`, `error_message`",
         "memory_observations": "`observation`, `memory_type`, `status`, `context`, `tags`, `importance`, `session_origin_type`",
         "agent_runs": "`agent_name`, `task`, `status`, `result`, `cost_usd`, `turns_used`",
-        "agent_schedules": "`task_name`, `cron_expression`, `enabled`, `last_run_at`, `next_run_at`",
+        "agent_schedules": "`task_name`, `cron_expression`, `enabled`, `additional_prompt`, `last_run_at`, `next_run_at`",
         "session_link_events": "`session_id`, `event_type`, `old_parent_id`, `new_parent_id`",
         "session_relationships": "`session_a_id`, `session_b_id`, `relationship_type`, `similarity_score`",
         "resolution_events": "`observation_id`, `action`, `source_machine_id`, `applied`, `content_hash`",

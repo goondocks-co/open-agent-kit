@@ -20,6 +20,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         _migrate_v1_to_v2(conn)
     if from_version < 3:
         _migrate_v2_to_v3(conn)
+    if from_version < 4:
+        _migrate_v3_to_v4(conn)
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -115,3 +117,23 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
     )
 
     logger.info("Migration v2 -> v3 complete: resolution_events table created")
+
+
+def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v3 to v4: add additional_prompt to agent_schedules.
+
+    Adds an optional additional_prompt column to agent_schedules for persistent
+    assignments that are prepended to the task prompt on each scheduled run.
+
+    Idempotent: skips column if it already exists.
+    """
+    logger.info("Migrating activity store schema v3 -> v4 (schedule additional_prompt)")
+
+    existing_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(agent_schedules)").fetchall()
+    }
+
+    if "additional_prompt" not in existing_columns:
+        conn.execute("ALTER TABLE agent_schedules ADD COLUMN additional_prompt TEXT")
+
+    logger.info("Migration v3 -> v4 complete: additional_prompt column added to agent_schedules")

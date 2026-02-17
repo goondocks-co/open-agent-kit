@@ -5,12 +5,15 @@ from datetime import datetime, timedelta
 import pytest
 
 from open_agent_kit.features.codebase_intelligence.agents.models import (
+    AgentDefinition,
     AgentListItem,
     AgentListResponse,
     AgentRun,
     AgentRunRequest,
     AgentRunResponse,
     AgentRunStatus,
+    AgentTask,
+    McpServerConfig,
 )
 
 
@@ -222,3 +225,88 @@ class TestAgentListModels:
 
         assert len(response.agents) == 1
         assert response.total == 1
+
+
+class TestMcpServerConfig:
+    """Tests for McpServerConfig model."""
+
+    def test_defaults(self) -> None:
+        """McpServerConfig should default to enabled=True, required=False."""
+        config = McpServerConfig()
+
+        assert config.enabled is True
+        assert config.required is False
+
+    def test_explicit_values(self) -> None:
+        """McpServerConfig should accept explicit values."""
+        config = McpServerConfig(enabled=False, required=True)
+
+        assert config.enabled is False
+        assert config.required is True
+
+    def test_agent_definition_mcp_servers_default_empty(self) -> None:
+        """AgentDefinition.mcp_servers should default to empty dict."""
+        agent = AgentDefinition(
+            name="test",
+            display_name="Test",
+            description="Test",
+        )
+
+        assert agent.mcp_servers == {}
+
+    def test_agent_definition_mcp_servers_populated(self) -> None:
+        """AgentDefinition should accept mcp_servers configuration."""
+        agent = AgentDefinition(
+            name="test",
+            display_name="Test",
+            description="Test",
+            mcp_servers={
+                "github": McpServerConfig(enabled=True, required=False),
+                "gitlab": McpServerConfig(enabled=False, required=True),
+            },
+        )
+
+        assert len(agent.mcp_servers) == 2
+        assert agent.mcp_servers["github"].enabled is True
+        assert agent.mcp_servers["github"].required is False
+        assert agent.mcp_servers["gitlab"].enabled is False
+        assert agent.mcp_servers["gitlab"].required is True
+
+
+class TestAgentTaskAdditionalTools:
+    """Tests for AgentTask.additional_tools field."""
+
+    def test_additional_tools_default_empty(self) -> None:
+        """AgentTask.additional_tools should default to empty list."""
+        task = AgentTask(
+            name="test",
+            display_name="Test",
+            agent_type="documentation",
+            default_task="Do something",
+        )
+
+        assert task.additional_tools == []
+
+    def test_additional_tools_with_bash(self) -> None:
+        """AgentTask should accept Bash in additional_tools."""
+        task = AgentTask(
+            name="test",
+            display_name="Test",
+            agent_type="engineering",
+            default_task="Implement feature",
+            additional_tools=["Bash"],
+        )
+
+        assert task.additional_tools == ["Bash"]
+
+    def test_additional_tools_with_scoped_bash(self) -> None:
+        """AgentTask should accept scoped Bash patterns."""
+        task = AgentTask(
+            name="test",
+            display_name="Test",
+            agent_type="engineering",
+            default_task="Implement feature",
+            additional_tools=["Bash(git *)"],
+        )
+
+        assert task.additional_tools == ["Bash(git *)"]

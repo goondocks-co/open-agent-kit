@@ -240,10 +240,16 @@ class AgentScheduler:
         logger.info(f"Running scheduled agent: {task_name}")
 
         try:
+            # Compose task prompt with optional assignment (same pattern as manual run)
+            task_prompt = task.default_task
+            additional_prompt = schedule.get("additional_prompt")
+            if additional_prompt:
+                task_prompt = f"## Assignment\n{additional_prompt}\n\n---\n\n{task.default_task}"
+
             # Execute the agent
             run = await self._agent_executor.execute(
                 agent=template,
-                task=task.default_task,
+                task=task_prompt,
                 agent_task=task,
             )
 
@@ -415,6 +421,7 @@ class AgentScheduler:
             "cron": db_schedule.get("cron_expression"),
             "description": db_schedule.get("description"),
             "trigger_type": db_schedule.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+            "additional_prompt": db_schedule.get("additional_prompt"),
             "enabled": db_schedule.get("enabled"),
             "last_run_at": db_schedule.get("last_run_at"),
             "last_run_id": db_schedule.get("last_run_id"),
@@ -445,6 +452,7 @@ class AgentScheduler:
                     "cron": db_schedule.get("cron_expression"),
                     "description": db_schedule.get("description"),
                     "trigger_type": db_schedule.get("trigger_type", SCHEDULE_TRIGGER_CRON),
+                    "additional_prompt": db_schedule.get("additional_prompt"),
                     "enabled": db_schedule.get("enabled"),
                     "last_run_at": db_schedule.get("last_run_at"),
                     "last_run_id": db_schedule.get("last_run_id"),

@@ -9,9 +9,13 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
     AgentExecution,
     AgentPermissionMode,
+    McpServerConfig,
 )
 from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
-from open_agent_kit.features.codebase_intelligence.constants import AGENT_PROJECT_CONFIG_DIR
+from open_agent_kit.features.codebase_intelligence.constants import (
+    AGENT_ENGINEERING_NAME,
+    AGENT_PROJECT_CONFIG_DIR,
+)
 
 
 class TestAgentRegistry:
@@ -370,6 +374,140 @@ default_task: Do something
         # Should skip the bad user task (but may still have built-ins)
         bad_task = next((t for t in tasks if t.name == "bad-task"), None)
         assert bad_task is None
+
+
+class TestEngineeringAgent:
+    """Tests for the engineering agent template and tasks."""
+
+    def test_engineering_agent_loads(self) -> None:
+        """Engineering agent template should be discovered by the registry."""
+        registry = AgentRegistry()
+        agent = registry.get(AGENT_ENGINEERING_NAME)
+
+        assert agent is not None
+        assert agent.name == AGENT_ENGINEERING_NAME
+        assert agent.display_name == "Engineering Team"
+
+    def test_engineering_agent_structure(self) -> None:
+        """Engineering agent should have expected configuration."""
+        registry = AgentRegistry()
+        agent = registry.get(AGENT_ENGINEERING_NAME)
+        assert agent is not None
+
+        # Execution: bypassPermissions, higher limits than documentation
+        assert agent.execution.max_turns == 200
+        assert agent.execution.timeout_seconds == 1800
+        assert agent.execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS
+
+        # Allowed tools — Bash is NOT at template level
+        assert "Read" in agent.allowed_tools
+        assert "Write" in agent.allowed_tools
+        assert "Edit" in agent.allowed_tools
+        assert "Glob" in agent.allowed_tools
+        assert "Grep" in agent.allowed_tools
+        assert "Bash" not in agent.allowed_tools
+
+        # Disallowed tools
+        assert "Task" in agent.disallowed_tools
+
+        # Full CI access including sql_query
+        assert agent.ci_access.code_search is True
+        assert agent.ci_access.memory_search is True
+        assert agent.ci_access.session_history is True
+        assert agent.ci_access.project_stats is True
+        assert agent.ci_access.sql_query is True
+
+        # Security: disallowed paths
+        assert ".env" in agent.disallowed_paths
+
+        # External MCP servers declared
+        assert "github" in agent.mcp_servers
+        assert agent.mcp_servers["github"].enabled is True
+        assert agent.mcp_servers["github"].required is False
+
+    def test_engineering_agent_system_prompt(self) -> None:
+        """Engineering agent should have a system prompt loaded from file."""
+        registry = AgentRegistry()
+        agent = registry.get(AGENT_ENGINEERING_NAME)
+        assert agent is not None
+
+        assert agent.system_prompt is not None
+        assert len(agent.system_prompt) > 100
+        assert "Engineering Team Agent" in agent.system_prompt
+        assert "ci_search" in agent.system_prompt
+        assert "ci_memories" in agent.system_prompt
+
+    def test_engineering_tasks_discovered(self) -> None:
+        """Both engineering built-in tasks should be discovered."""
+        registry = AgentRegistry()
+        tasks = registry.list_tasks()
+
+        engineering_tasks = [t for t in tasks if t.agent_type == AGENT_ENGINEERING_NAME]
+        engineering_names = {t.name for t in engineering_tasks}
+
+        assert len(engineering_tasks) == 2
+        assert "engineer" in engineering_names
+        assert "product-manager" in engineering_names
+
+        # All should be built-in
+        for task in engineering_tasks:
+            assert task.is_builtin is True
+
+    def test_engineer_has_bash_additional_tools(self) -> None:
+        """Engineer task should declare Bash in additional_tools."""
+        registry = AgentRegistry()
+        task = registry.get_task("engineer")
+
+        assert task is not None
+        assert task.agent_type == AGENT_ENGINEERING_NAME
+        assert "Bash" in task.additional_tools
+
+    def test_product_manager_has_no_bash(self) -> None:
+        """Product manager task should not have Bash in additional_tools."""
+        registry = AgentRegistry()
+        task = registry.get_task("product-manager")
+
+        assert task is not None
+        assert "Bash" not in task.additional_tools
+
+    def test_product_manager_has_maintained_files(self) -> None:
+        """Product manager should declare maintained_files for its report."""
+        registry = AgentRegistry()
+        task = registry.get_task("product-manager")
+
+        assert task is not None
+        assert len(task.maintained_files) >= 1
+
+
+class TestMcpServersParsing:
+    """Tests for mcp_servers field parsing from YAML."""
+
+    def test_mcp_servers_parsed_from_agent_yaml(self) -> None:
+        """Engineering agent should have mcp_servers parsed from YAML."""
+        registry = AgentRegistry()
+        agent = registry.get(AGENT_ENGINEERING_NAME)
+        assert agent is not None
+
+        assert isinstance(agent.mcp_servers, dict)
+        assert "github" in agent.mcp_servers
+        assert isinstance(agent.mcp_servers["github"], McpServerConfig)
+
+    def test_documentation_agent_has_no_mcp_servers(self) -> None:
+        """Documentation agent (no mcp_servers in YAML) should have empty dict."""
+        registry = AgentRegistry()
+        agent = registry.get("documentation")
+        assert agent is not None
+
+        assert agent.mcp_servers == {}
+
+    def test_additional_tools_parsed_from_task_yaml(self) -> None:
+        """Tasks with additional_tools in YAML should have them parsed."""
+        registry = AgentRegistry()
+        task = registry.get_task("engineer")
+        assert task is not None
+
+        assert isinstance(task.additional_tools, list)
+        assert "Bash" in task.additional_tools
 
 
 class TestAgentModels:

@@ -20,6 +20,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_AUTH_SCHEME_BEARER,
     CI_DATA_DIR,
     CI_TOKEN_FILE,
+    DAEMON_HEALTH_POLL_INTERVAL,
     DAEMON_START_TIMEOUT_SECONDS,
     HOOK_STDIN_TIMEOUT_SECONDS,
     HTTP_TIMEOUT_HEALTH_CHECK,
@@ -201,27 +202,40 @@ def ci_hook(
         except Exception:
             pass
 
-        # Try to start daemon
+        # Start daemon in background. Using Popen instead of subprocess.run
+        # so we can poll health directly — this returns as soon as the daemon
+        # is healthy rather than waiting for `oak ci start` to fully exit.
+        from open_agent_kit.features.codebase_intelligence.cli_command import (
+            resolve_ci_cli_command,
+        )
+
+        cli_bin = resolve_ci_cli_command(project_root)
         try:
             import subprocess
 
-            if blocking:
-                subprocess.run(
-                    ["oak", "ci", "start", "--quiet"],
-                    capture_output=True,
-                    timeout=DAEMON_START_TIMEOUT_SECONDS,
-                )
-            else:
-                # Fire-and-forget: start daemon in background without blocking.
-                # The current API call may fail, but the daemon will be ready
-                # for subsequent hooks.
-                subprocess.Popen(
-                    ["oak", "ci", "start", "--quiet"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+            subprocess.Popen(
+                [cli_bin, "ci", "start", "--quiet"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except Exception:
-            pass
+            return  # Can't start daemon, nothing more to do
+
+        if not blocking:
+            return
+
+        # Poll health endpoint until the daemon is ready or we hit the timeout.
+        # On warm starts this returns in ~2s; cold starts (ChromaDB init,
+        # embedding model load) may take 15-20s.
+        import time
+
+        deadline = time.monotonic() + DAEMON_START_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen(health_url, timeout=HTTP_TIMEOUT_HEALTH_CHECK):
+                    return  # Daemon is ready
+            except Exception:
+                time.sleep(DAEMON_HEALTH_POLL_INTERVAL)
 
     # Map events to their handlers (normalized to handle different casing)
     event_lower = event.lower()

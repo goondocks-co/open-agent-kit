@@ -1157,10 +1157,17 @@ class ActivityStore:
         description: str | None = None,
         trigger_type: str = "cron",
         next_run_at: Any | None = None,
+        additional_prompt: str | None = None,
     ) -> None:
         """Create a new schedule record."""
         schedules.create_schedule(
-            self, task_name, cron_expression, description, trigger_type, next_run_at
+            self,
+            task_name,
+            cron_expression,
+            description,
+            trigger_type,
+            next_run_at,
+            additional_prompt=additional_prompt,
         )
 
     def get_schedule(self, task_name: str) -> dict[str, Any] | None:
@@ -1174,6 +1181,7 @@ class ActivityStore:
         cron_expression: str | None = None,
         description: str | None = None,
         trigger_type: str | None = None,
+        additional_prompt: str | None = None,
         last_run_at: Any | None = None,
         last_run_id: str | None = None,
         next_run_at: Any | None = None,
@@ -1182,13 +1190,14 @@ class ActivityStore:
         schedules.update_schedule(
             self,
             task_name,
-            enabled,
-            cron_expression,
-            description,
-            trigger_type,
-            last_run_at,
-            last_run_id,
-            next_run_at,
+            enabled=enabled,
+            cron_expression=cron_expression,
+            description=description,
+            trigger_type=trigger_type,
+            additional_prompt=additional_prompt,
+            last_run_at=last_run_at,
+            last_run_id=last_run_id,
+            next_run_at=next_run_at,
         )
 
     def list_schedules(self, enabled_only: bool = False) -> list[dict[str, Any]]:

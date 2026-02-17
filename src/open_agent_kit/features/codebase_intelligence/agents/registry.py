@@ -26,6 +26,7 @@ from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentTask,
     CIQueryTemplate,
     MaintainedFile,
+    McpServerConfig,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_DEFINITION_FILENAME,
@@ -380,6 +381,7 @@ class AgentRegistry:
             output_requirements=data.get("output_requirements", {}),
             style=data.get("style", {}),
             extra=data.get("extra", {}),
+            additional_tools=data.get("additional_tools", []),
             task_path=str(yaml_file),
             is_builtin=data.get("is_builtin", is_builtin),
             schema_version=data.get("schema_version", AGENT_TASK_SCHEMA_VERSION),
@@ -469,6 +471,15 @@ class AgentRegistry:
         # Load project-specific config if available
         project_config = self.load_project_config(agent_name)
 
+        # Parse external MCP server declarations
+        mcp_servers: dict[str, McpServerConfig] = {}
+        for server_name, server_data in data.get("mcp_servers", {}).items():
+            if isinstance(server_data, dict):
+                mcp_servers[server_name] = McpServerConfig(**server_data)
+            else:
+                # Simple boolean or bare entry — treat as enabled
+                mcp_servers[server_name] = McpServerConfig(enabled=bool(server_data))
+
         return AgentDefinition(
             name=agent_name,
             display_name=data.get("display_name", agent_name),
@@ -479,6 +490,7 @@ class AgentRegistry:
             allowed_paths=data.get("allowed_paths", []),
             disallowed_paths=data.get("disallowed_paths", [".env", ".env.*", "*.pem", "*.key"]),
             ci_access=ci_access,
+            mcp_servers=mcp_servers,
             system_prompt=system_prompt,
             definition_path=str(definition_file),
             project_config=project_config,

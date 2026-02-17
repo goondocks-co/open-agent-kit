@@ -27,6 +27,7 @@ export interface ScheduleStatus {
     cron: string | null;
     description: string | null;
     trigger_type: string;
+    additional_prompt: string | null;
     enabled: boolean | null;
     last_run_at: string | null;
     last_run_id: string | null;
@@ -44,6 +45,7 @@ export interface ScheduleCreateRequest {
     cron_expression?: string;
     description?: string;
     trigger_type?: string;
+    additional_prompt?: string;
 }
 
 export interface ScheduleUpdateRequest {
@@ -51,6 +53,7 @@ export interface ScheduleUpdateRequest {
     cron_expression?: string;
     description?: string;
     trigger_type?: string;
+    additional_prompt?: string;
 }
 
 export interface ScheduleSyncResponse {
