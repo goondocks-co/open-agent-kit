@@ -53,6 +53,7 @@ dependencies = [
     "croniter>=2.0.0",
     "tomli>=2.0.0",
     "tomli-w>=1.0.0",
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]
@@ -140,6 +141,10 @@ artifacts = [
     "src/open_agent_kit/features/codebase_intelligence/skills/**/*.md",
     # Agent settings JSON
     "src/open_agent_kit/features/core/agent-settings/*.json",
+    # Cloud relay worker template (TypeScript source + config files bundled for scaffold)
+    "src/open_agent_kit/features/codebase_intelligence/cloud_relay/worker_template/**/*.ts",
+    "src/open_agent_kit/features/codebase_intelligence/cloud_relay/worker_template/**/*.json",
+    "src/open_agent_kit/features/codebase_intelligence/cloud_relay/worker_template/**/*.j2",
     # CI daemon UI static files (built by vite, not node_modules)
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.html",
     "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.css",

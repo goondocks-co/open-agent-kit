@@ -27,19 +27,12 @@ For details on what each agent's hooks actually provide (context injection, acti
 
 OAK deploys **[skills](/open-agent-kit/agents/skills/)** and commands into each agent's native directories. Skills are the primary way OAK extends your agent — invoke them with slash commands like `/project-governance` or `/codebase-intelligence`.
 
-After `oak init`, **2 skills** are available across two domains:
+After `oak init`, **3 skills** are available across three domains:
 - **Rules Management** — `/project-governance` (constitutions, agent files, RFCs)
 - **Codebase Intelligence** — `/codebase-intelligence` (semantic search, impact analysis, database queries)
+- **Context Engineering** — `/context-engineering` (prompt design, context optimization, the four strategies)
 
 See the **[Skills](/open-agent-kit/agents/skills/)** page for full details on each skill.
-
-## Commands
-
-OAK also deploys expert commands into each agent's commands directory. These act as specialized sub-agents with deep domain knowledge:
-
-- **`/oak.backend-python-expert`** — A senior Python backend expert covering modern Python 3.12+ patterns, type hints, async programming, FastAPI, Pydantic V2, SQLAlchemy 2.0, and testing with pytest.
-
-More expert commands may be added in future releases.
 
 ## Agent Instruction Files
 

@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Copy, Check, ExternalLink, Terminal, BookOpen, Wrench, RefreshCw, Share2 } from "lucide-react";
+import { ExternalLink, BookOpen, Wrench, RefreshCw, Share2, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CommandBlock } from "@/components/ui/command-block";
 
 // =============================================================================
 // Tab Constants
@@ -13,68 +13,11 @@ const HELP_TABS = {
     SETUP: "setup",
     TEAM_SYNC: "team-sync",
     SHARING: "sharing",
+    CLOUD_RELAY: "cloud-relay",
     TROUBLESHOOTING: "troubleshooting",
 } as const;
 
 type HelpTab = typeof HELP_TABS[keyof typeof HELP_TABS];
-
-// =============================================================================
-// Copy Button Component
-// =============================================================================
-
-interface CopyButtonProps {
-    text: string;
-    className?: string;
-}
-
-function CopyButton({ text, className }: CopyButtonProps) {
-    const [copied, setCopied] = useState(false);
-
-    const handleCopy = async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    return (
-        <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCopy}
-            className={cn("h-8 w-8 p-0", className)}
-        >
-            {copied ? (
-                <Check className="h-4 w-4 text-green-500" />
-            ) : (
-                <Copy className="h-4 w-4" />
-            )}
-        </Button>
-    );
-}
-
-// =============================================================================
-// Command Block Component
-// =============================================================================
-
-interface CommandBlockProps {
-    command: string;
-    label?: string;
-}
-
-function CommandBlock({ command, label }: CommandBlockProps) {
-    return (
-        <div className="relative group">
-            {label && (
-                <div className="text-xs text-muted-foreground mb-1">{label}</div>
-            )}
-            <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
-                <Terminal className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <code className="flex-1">{command}</code>
-                <CopyButton text={command} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-        </div>
-    );
-}
 
 // =============================================================================
 // Tab Button Component
@@ -768,6 +711,106 @@ function SharingContent() {
 }
 
 // =============================================================================
+// Cloud Relay Tab Content
+// =============================================================================
+
+function CloudRelayContent() {
+    return (
+        <div className="space-y-6">
+            {/* Getting Started */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Cloud className="w-5 h-5" />
+                        Getting Started
+                    </CardTitle>
+                    <CardDescription>
+                        The Cloud Relay lets cloud AI agents (Claude.ai, ChatGPT, etc.) access your local Oak CI instance
+                        through a Cloudflare Worker.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">One-Click Start</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Click <strong>Start Relay</strong> on the <Link to="/cloud" className="text-primary hover:underline">Cloud</Link> page.
+                            Oak CI will automatically scaffold, deploy, and connect a Cloudflare Worker for you.
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h3 className="font-semibold">Prerequisites</h3>
+                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-2">
+                            <li>
+                                A <a
+                                    href="https://dash.cloudflare.com/sign-up"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline inline-flex items-center gap-1"
+                                >
+                                    Cloudflare account <ExternalLink className="h-3 w-3" />
+                                </a> (free tier is sufficient)
+                            </li>
+                            <li>Node.js / npm installed</li>
+                            <li>Wrangler CLI authenticated</li>
+                        </ul>
+                        <CommandBlock command="npm install -g wrangler && wrangler login" label="Install and authenticate Wrangler" />
+                    </div>
+
+                    <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                            The <Link to="/cloud" className="font-medium underline">Cloud</Link> page shows a prerequisites checklist
+                            and will guide you through any missing steps before starting.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Troubleshooting */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Troubleshooting</CardTitle>
+                    <CardDescription>
+                        Common issues with the cloud relay.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div>
+                        <h3 className="font-semibold text-sm">"wrangler: command not found"</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Install Wrangler globally with <code className="bg-muted px-1 rounded">npm install -g wrangler</code>.
+                            Make sure Node.js is installed and npm is on your PATH.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Wrangler authentication failed</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Re-run <code className="bg-muted px-1 rounded">wrangler login</code> and complete the browser
+                            authorization flow. Check that your Cloudflare account is active.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Deploy errors</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            The error detail shown on the Cloud page includes the full output from the deploy step.
+                            Common causes: expired Wrangler auth, account limits, or network issues.
+                            Try <code className="bg-muted px-1 rounded">wrangler whoami</code> to verify your auth status.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm">Cloud agent can't reach the relay</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Verify the agent token matches, the MCP URL includes the <code className="bg-muted px-1 rounded">/mcp</code> path,
+                            and test with the curl command shown on the <Link to="/cloud" className="text-primary hover:underline">Cloud</Link> page.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// =============================================================================
 // Help Page Component
 // =============================================================================
 
@@ -782,6 +825,8 @@ export default function Help() {
             setActiveTab(HELP_TABS.TEAM_SYNC);
         } else if (state?.tab === "sharing") {
             setActiveTab(HELP_TABS.SHARING);
+        } else if (state?.tab === "cloud-relay") {
+            setActiveTab(HELP_TABS.CLOUD_RELAY);
         }
     }, [location.state]);
 
@@ -816,6 +861,12 @@ export default function Help() {
                     label="Sharing"
                 />
                 <TabButton
+                    active={activeTab === HELP_TABS.CLOUD_RELAY}
+                    onClick={() => setActiveTab(HELP_TABS.CLOUD_RELAY)}
+                    icon={<Cloud className="h-4 w-4" />}
+                    label="Cloud Relay"
+                />
+                <TabButton
                     active={activeTab === HELP_TABS.TROUBLESHOOTING}
                     onClick={() => setActiveTab(HELP_TABS.TROUBLESHOOTING)}
                     icon={<Wrench className="h-4 w-4" />}
@@ -827,6 +878,7 @@ export default function Help() {
             {activeTab === HELP_TABS.SETUP && <SetupGuideContent />}
             {activeTab === HELP_TABS.TEAM_SYNC && <SyncGuideContent />}
             {activeTab === HELP_TABS.SHARING && <SharingContent />}
+            {activeTab === HELP_TABS.CLOUD_RELAY && <CloudRelayContent />}
             {activeTab === HELP_TABS.TROUBLESHOOTING && <TroubleshootingContent />}
         </div>
     );

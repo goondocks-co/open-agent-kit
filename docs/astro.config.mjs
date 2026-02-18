@@ -89,6 +89,38 @@ export default defineConfig({
               label: "Analysis Agent",
               slug: "features/codebase-intelligence/analysis-agent",
             },
+            {
+              label: "Engineering Agent",
+              slug: "features/codebase-intelligence/engineering-agent",
+            },
+          ],
+        },
+        {
+          label: "Cloud Relay",
+          items: [
+            { label: "Overview", slug: "features/cloud-relay" },
+            {
+              label: "Getting Started",
+              slug: "features/cloud-relay/getting-started",
+            },
+            {
+              label: "Cloudflare Setup",
+              slug: "features/cloud-relay/cloudflare-setup",
+            },
+            { label: "Deployment", slug: "features/cloud-relay/deployment" },
+            { label: "Connecting", slug: "features/cloud-relay/connecting" },
+            {
+              label: "Cloud Agents",
+              slug: "features/cloud-relay/cloud-agents",
+            },
+            {
+              label: "Authentication",
+              slug: "features/cloud-relay/authentication",
+            },
+            {
+              label: "Troubleshooting",
+              slug: "features/cloud-relay/troubleshooting",
+            },
           ],
         },
         {

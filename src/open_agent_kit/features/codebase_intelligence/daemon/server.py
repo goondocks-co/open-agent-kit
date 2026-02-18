@@ -26,6 +26,10 @@ from open_agent_kit.features.codebase_intelligence.cli_command import (
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
+    CI_CLOUD_RELAY_ERROR_CONNECT_FAILED,
+    CI_CLOUD_RELAY_LOG_AUTO_CONNECT,
+    CI_CLOUD_RELAY_LOG_AUTO_CONNECT_FAILED,
+    CI_CLOUD_RELAY_LOG_CONNECTED,
     CI_CORS_ALLOWED_HEADERS,
     CI_CORS_ALLOWED_METHODS,
     CI_CORS_HOST_LOCALHOST,
@@ -627,6 +631,54 @@ def _init_tunnel(state: "DaemonState", project_root: Path) -> None:
         logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=e))
 
 
+async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
+    """Auto-connect cloud relay if configured.
+
+    Non-critical: failures are logged but do not prevent startup.
+    """
+    ci_config = state.ci_config
+    if not ci_config or not ci_config.cloud_relay.auto_connect:
+        return
+
+    relay_config = ci_config.cloud_relay
+    if not relay_config.worker_url:
+        logger.debug("Cloud relay auto-connect skipped: no worker_url configured")
+        return
+    if not relay_config.token:
+        logger.debug("Cloud relay auto-connect skipped: no token configured")
+        return
+
+    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+        get_project_port,
+    )
+
+    logger.info(CI_CLOUD_RELAY_LOG_AUTO_CONNECT)
+    try:
+        from open_agent_kit.features.codebase_intelligence.cloud_relay.client import (
+            CloudRelayClient,
+        )
+
+        ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+        port = get_project_port(project_root, ci_data_dir)
+
+        client = CloudRelayClient(
+            tool_timeout_seconds=relay_config.tool_timeout_seconds,
+            reconnect_max_seconds=relay_config.reconnect_max_seconds,
+        )
+        relay_status = await client.connect(relay_config.worker_url, relay_config.token, port)
+        state.cloud_relay_client = client
+
+        if relay_status.connected:
+            logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=relay_config.worker_url))
+        else:
+            error_detail = relay_status.error or CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(
+                error="unknown"
+            )
+            logger.warning(CI_CLOUD_RELAY_LOG_AUTO_CONNECT_FAILED.format(error=error_detail))
+    except (OSError, ValueError, RuntimeError, ConnectionError) as e:
+        logger.warning(CI_CLOUD_RELAY_LOG_AUTO_CONNECT_FAILED.format(error=e))
+
+
 def _init_embedding(state: "DaemonState", project_root: Path) -> bool:
     """Create and verify the embedding provider.
 
@@ -920,6 +972,16 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.tunnel_provider = None
 
+    # 4b. Disconnect cloud relay if connected
+    if state.cloud_relay_client:
+        logger.info("Disconnecting cloud relay...")
+        try:
+            await state.cloud_relay_client.disconnect()
+        except (RuntimeError, OSError) as e:
+            logger.warning(f"Error disconnecting cloud relay: {e}")
+        finally:
+            state.cloud_relay_client = None
+
     # 5. Stop file watcher and wait for thread cleanup
     if state.file_watcher:
         logger.info("Stopping file watcher...")
@@ -976,6 +1038,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # --- Subsystem init (order matters: embedding → vector store → activity → agents) ---
     _init_tunnel(state, project_root)
+    await _init_cloud_relay(state, project_root)
 
     provider_available = _init_embedding(state, project_root)
 
@@ -1101,6 +1164,7 @@ def create_app(
         activity_sessions,
         agents,
         backup,
+        cloud_relay,
         devtools,
         health,
         hooks,
@@ -1137,6 +1201,7 @@ def create_app(
     app.include_router(devtools.router)
     app.include_router(backup.router)
     app.include_router(tunnel.router)
+    app.include_router(cloud_relay.router)
     app.include_router(restart.router)
 
     # UI router must be last to catch fallback routes
