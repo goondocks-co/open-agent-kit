@@ -159,15 +159,12 @@ def _mcp_endpoint(
 ) -> str:
     """Derive the public MCP endpoint URL.
 
-    Always uses the workers.dev *worker_url* — this is guaranteed to
-    resolve immediately after deploy.  Custom-domain DNS provisioning
-    can take minutes, so using it here would break the MCP Inspector
-    and any agent that copies the endpoint right after deploy.
-
-    The custom domain URL is still visible in the UI via the
-    ``custom_domain`` + ``worker_name`` fields so users can switch
-    once propagation completes.
+    Prefers the custom domain when both ``custom_domain`` and
+    ``worker_name`` are available (e.g. ``oak-relay-foo.example.com``).
+    Falls back to the workers.dev *worker_url* otherwise.
     """
+    if custom_domain and worker_name:
+        return f"https://{worker_name}.{custom_domain}" + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
     return worker_url + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
 
 
