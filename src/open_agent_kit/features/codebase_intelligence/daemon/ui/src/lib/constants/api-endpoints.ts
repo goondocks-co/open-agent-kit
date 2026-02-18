@@ -82,6 +82,13 @@ export const API_ENDPOINTS = {
     TUNNEL_START: "/api/tunnel/start",
     TUNNEL_STOP: "/api/tunnel/stop",
     TUNNEL_STATUS: "/api/tunnel/status",
+
+    // Cloud relay endpoints
+    CLOUD_RELAY_STATUS: "/api/cloud/status",
+    CLOUD_RELAY_START: "/api/cloud/start",
+    CLOUD_RELAY_STOP: "/api/cloud/stop",
+    CLOUD_RELAY_PREFLIGHT: "/api/cloud/preflight",
+    CLOUD_RELAY_SETTINGS: "/api/cloud/settings",
 } as const;
 
 // =============================================================================

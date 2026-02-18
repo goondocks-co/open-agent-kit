@@ -19,6 +19,7 @@ import AgentsList from "@/components/agents/AgentsList";
 import RunHistory from "@/components/agents/RunHistory";
 import Schedules from "@/components/agents/Schedules";
 import AgentSettings from "@/pages/AgentSettings";
+import CloudRelay from "@/pages/CloudRelay";
 
 export const router = createBrowserRouter([
     {
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
                     { path: "settings", element: <AgentSettings /> },
                 ]
             },
+            { path: "cloud", element: <CloudRelay /> },
             {
                 path: "team",
                 element: <Team />,

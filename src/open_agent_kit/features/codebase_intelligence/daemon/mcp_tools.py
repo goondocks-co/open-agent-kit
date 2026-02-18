@@ -4,6 +4,7 @@ Exposes tools that AI agents can call via MCP protocol:
 - oak_search: Search code and memories semantically
 - oak_remember: Store observations for future retrieval
 - oak_context: Get relevant context for current task
+- oak_resolve_memory: Mark observations as resolved or superseded
 
 These tools delegate to shared ToolOperations for actual implementation.
 """
@@ -117,6 +118,38 @@ MCP_TOOLS = [
             "required": ["task"],
         },
     },
+    {
+        "name": "oak_resolve_memory",
+        "description": (
+            "Mark a memory observation as resolved or superseded. "
+            "Use this after completing work that addresses a gotcha, fixing a bug that "
+            "was tracked as an observation, or when a newer observation replaces an older one."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": (
+                        "The observation UUID to resolve. Use oak_search to find the ID first "
+                        '(returned in each result\'s "id" field, '
+                        'e.g. "8430042a-1b01-4c86-8026-6ede46cd93d9").'
+                    ),
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["resolved", "superseded"],
+                    "default": "resolved",
+                    "description": "New status - 'resolved' (default) or 'superseded'.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional reason for resolution.",
+                },
+            },
+            "required": ["id"],
+        },
+    },
 ]
 
 
@@ -150,6 +183,7 @@ class MCPToolHandler:
             "oak_search": self.ops.search,
             "oak_remember": self.ops.remember,
             "oak_context": self.ops.get_context,
+            "oak_resolve_memory": self.ops.resolve_memory,
         }
 
         handler = handlers.get(tool_name)

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.agents.executor import AgentExecutor
     from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
     from open_agent_kit.features.codebase_intelligence.agents.scheduler import AgentScheduler
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
     from open_agent_kit.features.codebase_intelligence.config import CIConfig
     from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
     from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
@@ -183,6 +184,9 @@ class DaemonState:
     auth_token: str | None = None
     # Tunnel sharing
     tunnel_provider: "TunnelProvider | None" = None
+    # Cloud MCP Relay
+    cloud_relay_client: "RelayClient | None" = None
+    cf_account_name: str | None = None
     _dynamic_cors_origins: set[str] = field(default_factory=set, init=False, repr=False)
     _cors_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     # Version detection
@@ -507,6 +511,8 @@ class DaemonState:
         self.last_auto_backup = None
         self.auth_token = None
         self.tunnel_provider = None
+        self.cloud_relay_client = None
+        self.cf_account_name = None
         self._dynamic_cors_origins = set()
         self.installed_version = None
         self.update_available = False

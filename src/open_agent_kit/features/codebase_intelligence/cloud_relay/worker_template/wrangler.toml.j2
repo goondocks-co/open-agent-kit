@@ -1,0 +1,21 @@
+name = "{{ worker_name }}"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+[durable_objects]
+bindings = [{ name = "RELAY", class_name = "RelayObject" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayObject"]
+
+[vars]
+AGENT_TOKEN = "{{ agent_token }}"
+RELAY_TOKEN = "{{ relay_token }}"
+{% if custom_domain %}
+
+[[routes]]
+pattern = "{{ worker_name }}.{{ custom_domain }}"
+custom_domain = true
+{% endif %}

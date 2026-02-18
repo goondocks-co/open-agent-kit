@@ -54,6 +54,7 @@ async def favicon() -> Response:
 @router.get("/activity", response_class=HTMLResponse)
 @router.get("/devtools", response_class=HTMLResponse)
 @router.get("/team", response_class=HTMLResponse)
+@router.get("/cloud", response_class=HTMLResponse)
 @router.get("/agents", response_class=HTMLResponse)
 # Catch-all for activity sub-routes (e.g., /activity/sessions/123)
 @router.get("/activity/{rest:path}", response_class=HTMLResponse)

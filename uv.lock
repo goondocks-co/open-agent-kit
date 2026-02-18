@@ -1034,6 +1034,7 @@ dependencies = [
     { name = "typer" },
     { name = "uvicorn" },
     { name = "watchdog" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1165,6 +1166,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "uvicorn", specifier = ">=0.27.0" },
     { name = "watchdog", specifier = ">=4.0.0" },
+    { name = "websockets", specifier = ">=13.0" },
 ]
 provides-extras = ["dev", "parser-c", "parser-cpp", "parser-csharp", "parser-go", "parser-java", "parser-javascript", "parser-kotlin", "parser-php", "parser-python", "parser-ruby", "parser-rust", "parser-scala", "parser-typescript", "parsers-all", "parsers-common"]
 

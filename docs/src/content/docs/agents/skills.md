@@ -104,6 +104,52 @@ oak rules sync-agents
 
 **Reference docs included:** constitution creation guide, good/bad constitution examples, agent file guide, good/bad agent file examples, RFC creation workflow, RFC review checklist.
 
+## Context Engineering
+
+### `/context-engineering`
+
+Design effective prompts and optimize the full context window for AI models and agents. Covers prompt engineering foundations (clarity, examples, chain of thought, XML structure), the four context engineering strategies (Write, Select, Compress, Isolate), agent memory and session patterns, and before/after examples showing measurable improvement.
+
+**When to use:**
+- Writing or improving system prompts
+- Designing agent workflows with optimal context
+- Optimizing context windows for better output
+- Building prompt templates with clear structure
+- Structuring few-shot examples effectively
+- Reducing context rot in long conversations
+- Improving AI output quality with better prompting
+
+**The Four Strategies:**
+
+| Strategy | Action | Example |
+|----------|--------|---------|
+| **Write** | Craft persistent instructions | System prompt with altitude-appropriate rules |
+| **Select** | Choose what enters context | Use `oak_search` to retrieve only relevant code |
+| **Compress** | Reduce tokens, preserve signal | Summarize prior conversation turns |
+| **Isolate** | Move information out of context | Store reference docs externally, load just-in-time |
+
+**Examples:**
+```
+# Improve a vague prompt
+/context-engineering Help me improve this prompt: "Review this code and give feedback"
+
+# Design a system prompt
+/context-engineering I need to write a system prompt for a code review agent
+
+# Understand context rot
+/context-engineering My agent is losing track of instructions — how do I fix this?
+
+# Optimize context usage
+/context-engineering The context window is filling up too fast — what strategies help?
+```
+
+**Key concepts:**
+- **Altitude concept** — Write instructions at the right level of abstraction (not too high like "be helpful", not too low like "always use 4 spaces")
+- **Context rot** — Output quality degradation as conversations grow longer; mitigate with Compress and Isolate strategies
+- **Memory-as-a-tool** — Store information externally with `oak_remember`, retrieve just-in-time with `oak_search`
+
+**Reference docs included:** prompt foundations, context engineering framework, agent context patterns, system prompt design templates, memory and sessions guide, before/after examples gallery.
+
 ## Refreshing Skills
 
 After upgrading OAK, refresh skills to get the latest content:
