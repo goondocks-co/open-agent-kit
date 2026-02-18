@@ -683,8 +683,8 @@ class TestCloudRelayStatusEnriched:
 class TestCloudRelayCustomDomainInStatus:
     """Tests for custom_domain in GET /api/cloud/status."""
 
-    def test_status_uses_worker_url_even_with_custom_domain(self, client: TestClient) -> None:
-        """mcp_endpoint always uses workers.dev URL (custom domain DNS may lag)."""
+    def test_status_uses_custom_domain_when_configured(self, client: TestClient) -> None:
+        """mcp_endpoint prefers custom domain URL when custom_domain is set."""
         state = get_state()
         state.cf_account_name = "My Account"
         state.project_root = FAKE_PROJECT_ROOT
@@ -707,12 +707,10 @@ class TestCloudRelayCustomDomainInStatus:
         response = client.get(CI_CLOUD_RELAY_API_PATH_STATUS)
         assert response.status_code == HTTPStatus.OK
         data = response.json()
-        # mcp_endpoint uses workers.dev URL, not custom domain
         assert (
             data[CLOUD_RELAY_RESPONSE_KEY_MCP_ENDPOINT]
-            == TEST_WORKER_URL + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
+            == "https://oak-relay-myproject.example.com" + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
         )
-        # custom_domain and worker_name are still in the response for UI display
         assert data[CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN] == "example.com"
         assert data[CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME] == "oak-relay-myproject"
 
@@ -952,13 +950,12 @@ class TestCloudRelayWorkerNameInResponse:
 class TestMcpEndpointDerivation:
     """Tests for _mcp_endpoint() via status API.
 
-    mcp_endpoint always uses the workers.dev URL because custom-domain
-    DNS provisioning can lag behind deploy.  The custom domain info is
-    returned separately so the UI can show it once propagation completes.
+    mcp_endpoint prefers the custom domain URL when custom_domain and
+    worker_name are both set; falls back to workers.dev otherwise.
     """
 
-    def test_always_uses_worker_url_even_with_custom_domain(self, client: TestClient) -> None:
-        """mcp_endpoint uses workers.dev URL regardless of custom_domain."""
+    def test_custom_domain_derives_subdomain_endpoint(self, client: TestClient) -> None:
+        """mcp_endpoint uses custom domain when configured."""
         state = get_state()
         state.project_root = FAKE_PROJECT_ROOT
         state.ci_config = CIConfig()
@@ -979,9 +976,8 @@ class TestMcpEndpointDerivation:
         data = response.json()
         assert (
             data[CLOUD_RELAY_RESPONSE_KEY_MCP_ENDPOINT]
-            == TEST_WORKER_URL + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
+            == "https://oak-relay-myproject.goondocks.co" + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
         )
-        # Custom domain info still present for UI display
         assert data[CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN] == "goondocks.co"
         assert data[CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME] == "oak-relay-myproject"
 
