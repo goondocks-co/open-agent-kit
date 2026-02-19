@@ -210,7 +210,7 @@ Then upgrade project templates: `oak upgrade --dry-run` to preview, `oak upgrade
 
 ## Next Steps
 
-- [Full documentation](https://oak.goondocks.co/) — features, CLI reference, workflows
-- [RFC workflow](https://oak.goondocks.co/features/strategic-planning/) — technical decision documentation
+- [Full documentation](https://openagentkit.app/) — features, CLI reference, workflows
+- [RFC workflow](https://openagentkit.app/features/strategic-planning/) — technical decision documentation
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribute to the project
 - [README.md](README.md) — project overview

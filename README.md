@@ -53,7 +53,7 @@ Start coding!
 claude
 ```
 
-> **[Full documentation](https://oak.goondocks.co/)** | **[Quick Start](QUICKSTART.md)** | **[Contributing](CONTRIBUTING.md)**
+> **[Full documentation](https://openagentkit.app/)** | **[Quick Start](QUICKSTART.md)** | **[Contributing](CONTRIBUTING.md)**
 
 ## Supported Agents
 

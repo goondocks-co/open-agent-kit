@@ -96,7 +96,7 @@ Provide:
 
 | Topic | Documentation |
 |-------|---------------|
-| Full documentation | [oak.goondocks.co](https://oak.goondocks.co/) |
+| Full documentation | [openagentkit.app](https://openagentkit.app/) |
 | Coding standards | [Constitution](oak/constitution.md) |
 
 ## Questions?

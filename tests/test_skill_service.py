@@ -320,7 +320,7 @@ description: test
 
 Run {oak-cli-command} ci status
 Run {oak-cli-command} ci sessions
-Docs URL: https://oak.goondocks.co
+Docs URL: https://openagentkit.app
 Path: oak/daemon.port
 """,
             encoding="utf-8",
@@ -355,7 +355,7 @@ Path: oak/daemon.port
 
         assert "oak-dev ci status" in installed_manifest
         assert "oak-dev ci sessions" in installed_manifest
-        assert "https://oak.goondocks.co" in installed_manifest
+        assert "https://openagentkit.app" in installed_manifest
         assert "oak/daemon.port" in installed_manifest
         assert "oak-dev ci search" in installed_reference
         assert "oak-dev ci restart" in installed_script

@@ -12,7 +12,7 @@ This module consolidates all user-facing messages including:
 # =============================================================================
 
 PROJECT_TAGLINE = "Your Team's Memory in the Age of AI-Written Code"
-PROJECT_URL = "https://oak.goondocks.co"
+PROJECT_URL = "https://openagentkit.app"
 
 # =============================================================================
 # Banner and Help

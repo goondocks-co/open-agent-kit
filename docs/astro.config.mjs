@@ -3,7 +3,7 @@ import starlight from "@astrojs/starlight";
 import starlightClientMermaid from "@pasqal-io/starlight-client-mermaid";
 
 export default defineConfig({
-  site: "https://oak.goondocks.co",
+  site: "https://openagentkit.app",
   integrations: [
     starlight({
       title: "Open Agent Kit",
@@ -51,6 +51,10 @@ export default defineConfig({
             {
               label: "Configuration",
               slug: "features/codebase-intelligence/configuration",
+            },
+            {
+              label: "Governance",
+              slug: "features/codebase-intelligence/governance",
             },
             {
               label: "DevTools",

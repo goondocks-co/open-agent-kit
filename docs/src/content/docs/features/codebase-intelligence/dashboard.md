@@ -40,6 +40,7 @@ Each major dashboard feature has its own dedicated page in the sidebar. Here's a
 | **[Logs](/open-agent-kit/features/codebase-intelligence/logs/)** | Live log viewer for daemon and hooks activity |
 | **[Teams](/open-agent-kit/features/codebase-intelligence/teams/)** | Backup, restore, sync, and share with teammates |
 | **[Configuration](/open-agent-kit/features/codebase-intelligence/configuration/)** | Models, session quality, logging, exclusions |
+| **[Governance](/open-agent-kit/features/codebase-intelligence/governance/)** | Rules, audit logging, and enforcement for agent tool calls |
 | **[DevTools](/open-agent-kit/features/codebase-intelligence/devtools/)** | Stats, maintenance, index rebuilds, cleanup |
 
 ## UI Features

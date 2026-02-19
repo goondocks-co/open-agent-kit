@@ -173,7 +173,7 @@ def main(
         oak init              # Initialize project
         oak ci start --open   # Start Codebase Intelligence
 
-    For more information, visit: https://oak.goondocks.co
+    For more information, visit: https://openagentkit.app
     """
     _stamp_cli_version()
     _check_daemon_version_hint()
