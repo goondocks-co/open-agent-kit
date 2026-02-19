@@ -66,6 +66,12 @@ ci:
       - resume       # Session resumed after pause
       - new_context  # New context window started
 
+# Governance capabilities
+governance:
+  supports_observe: true
+  supports_deny: true
+  deny_format: "cursor_permission"
+
 settings:
   # Auto-approval settings for oak commands
   # Note: Cursor's agent settings use the same file as IDE settings

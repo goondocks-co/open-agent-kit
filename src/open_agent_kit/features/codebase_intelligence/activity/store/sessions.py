@@ -812,6 +812,9 @@ def find_linkable_parent_session(
 
     # =========================================================================
     # Tier 1: Look for session that JUST ended (within max_gap_seconds)
+    # Order by ended_at DESC to find the most recently ENDED session,
+    # not the most recently created one (they can differ when multiple
+    # sessions overlap).
     # =========================================================================
     cursor = conn.execute(
         f"""
@@ -822,7 +825,7 @@ def find_linkable_parent_session(
           AND project_root = ?
           AND ended_at IS NOT NULL
           AND status = '{SESSION_STATUS_COMPLETED}'
-        ORDER BY created_at_epoch DESC
+        ORDER BY ended_at DESC
         LIMIT 1
         """,
         (exclude_session_id, agent, project_root),
@@ -881,33 +884,46 @@ def find_linkable_parent_session(
 
     # =========================================================================
     # Tier 3: Fallback to most recent completed session within fallback window
-    # This handles the "next day resume" scenario where planning session went stale
+    # This handles the "next day resume" scenario where planning session went stale.
+    # Uses its own query ordered by ended_at DESC to find the most recently
+    # ended session, rather than reusing the Tier 1 candidate which may have
+    # been the wrong session entirely (e.g. a newer-created but earlier-ended
+    # session that failed the gap check).
     # =========================================================================
-    if candidate:
-        # We already have the most recent completed session from tier 1
-        parent_id = candidate[0]
-        created_at_cursor = conn.execute(
-            "SELECT created_at_epoch FROM sessions WHERE id = ?",
-            (parent_id,),
-        )
-        created_row = created_at_cursor.fetchone()
-        if created_row:
-            created_at_epoch = created_row[0]
-            now_epoch = new_session_started_at.timestamp()
-            hours_since_created = (now_epoch - created_at_epoch) / 3600
+    now_epoch = new_session_started_at.timestamp()
+    fallback_cursor = conn.execute(
+        f"""
+        SELECT id, created_at_epoch
+        FROM sessions
+        WHERE id != ?
+          AND agent = ?
+          AND project_root = ?
+          AND ended_at IS NOT NULL
+          AND status = '{SESSION_STATUS_COMPLETED}'
+        ORDER BY ended_at DESC
+        LIMIT 1
+        """,
+        (exclude_session_id, agent, project_root),
+    )
+    fallback_candidate = fallback_cursor.fetchone()
 
-            if hours_since_created <= fallback_max_hours:
-                logger.info(
-                    f"[Tier 3] Linking to recent session {parent_id[:8]}... "
-                    f"(created {hours_since_created:.1f}h ago, "
-                    f"reason={SESSION_LINK_REASON_INFERRED})"
-                )
-                return (parent_id, SESSION_LINK_REASON_INFERRED)
-            else:
-                logger.debug(
-                    f"[Tier 3] Session {parent_id[:8]}... too old "
-                    f"({hours_since_created:.1f}h > {fallback_max_hours}h)"
-                )
+    if fallback_candidate:
+        fallback_parent_id: str = fallback_candidate[0]
+        created_at_epoch = fallback_candidate[1]
+        hours_since_created = (now_epoch - created_at_epoch) / 3600
+
+        if hours_since_created <= fallback_max_hours:
+            logger.info(
+                f"[Tier 3] Linking to recent session {fallback_parent_id[:8]}... "
+                f"(created {hours_since_created:.1f}h ago, "
+                f"reason={SESSION_LINK_REASON_INFERRED})"
+            )
+            return (fallback_parent_id, SESSION_LINK_REASON_INFERRED)
+        else:
+            logger.debug(
+                f"[Tier 3] Session {fallback_parent_id[:8]}... too old "
+                f"({hours_since_created:.1f}h > {fallback_max_hours}h)"
+            )
 
     logger.debug("No suitable parent session found for linking")
     return None

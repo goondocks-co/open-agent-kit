@@ -49,6 +49,12 @@ ci:
     - "^#+\\s*Plan\\b"      # "# Plan: ..." or "## Plan ..."
     - "^Plan:\\s"            # "Plan: Some title"
 
+# Governance capabilities
+governance:
+  supports_observe: true
+  supports_deny: true
+  deny_format: "hookSpecificOutput"
+
 settings:
   # Auto-approval settings for oak commands
   # GitHub Copilot uses chat.tools.terminal.autoApprove in VSCode settings (1.99+)

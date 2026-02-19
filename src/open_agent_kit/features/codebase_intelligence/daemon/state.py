@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
     from open_agent_kit.features.codebase_intelligence.config import CIConfig
     from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
+    from open_agent_kit.features.codebase_intelligence.governance.engine import GovernanceEngine
     from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
         CodebaseIndexer,
         IndexStats,
@@ -171,6 +172,9 @@ class DaemonState:
     index_lock: "asyncio.Lock | None" = None
     # Cached retrieval engine instance
     _retrieval_engine: "RetrievalEngine | None" = field(default=None, init=False, repr=False)
+    # Cached governance engine instance (recreated when config changes)
+    _governance_engine: "GovernanceEngine | None" = field(default=None, init=False, repr=False)
+    _governance_config_id: int = field(default=0, init=False, repr=False)
     # Hook deduplication cache (key -> None, insertion ordered)
     hook_event_cache: "OrderedDict[str, None]" = field(default_factory=OrderedDict)
     _hook_event_lock: RLock = field(default_factory=RLock, init=False, repr=False)
@@ -253,6 +257,39 @@ class DaemonState:
             activity_store=self.activity_store,
         )
         return self._retrieval_engine
+
+    @property
+    def governance_engine(self) -> "GovernanceEngine | None":
+        """Get the governance engine, lazily created from config.
+
+        Returns None if governance is disabled. Automatically recreates
+        the engine when the GovernanceConfig changes (detected via
+        config object identity).
+
+        Returns:
+            GovernanceEngine instance, or None if governance is disabled.
+        """
+        config = self.ci_config
+        if config is None:
+            return None
+
+        gov_config = config.governance
+        if not gov_config.enabled:
+            self._governance_engine = None
+            return None
+
+        # Recreate engine if config object changed (identity check)
+        config_id = id(gov_config)
+        if self._governance_engine is not None and self._governance_config_id == config_id:
+            return self._governance_engine
+
+        from open_agent_kit.features.codebase_intelligence.governance.engine import (
+            GovernanceEngine,
+        )
+
+        self._governance_engine = GovernanceEngine(gov_config)
+        self._governance_config_id = config_id
+        return self._governance_engine
 
     @property
     def ci_config(self) -> "CIConfig | None":
@@ -504,6 +541,8 @@ class DaemonState:
         self.background_tasks = []
         self.index_lock = None
         self._retrieval_engine = None
+        self._governance_engine = None
+        self._governance_config_id = 0
         self.hook_event_cache = OrderedDict()
         self.agent_registry = None
         self.agent_executor = None

@@ -149,6 +149,9 @@ export default function TeamBackups() {
                         observations_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.observations_skipped, 0),
                         activities_imported: Object.values(data.per_file).reduce((sum, r) => sum + r.activities_imported, 0),
                         activities_skipped: Object.values(data.per_file).reduce((sum, r) => sum + r.activities_skipped, 0),
+                        gov_audit_imported: Object.values(data.per_file).reduce((sum, r) => sum + (r.gov_audit_imported || 0), 0),
+                        gov_audit_skipped: Object.values(data.per_file).reduce((sum, r) => sum + (r.gov_audit_skipped || 0), 0),
+                        gov_audit_deleted: Object.values(data.per_file).reduce((sum, r) => sum + (r.gov_audit_deleted || 0), 0),
                         errors: data.total_errors,
                         error_messages: allErrorMessages,
                     };
@@ -498,6 +501,12 @@ export default function TeamBackups() {
                                         <>
                                             <div>Activities imported: <strong>{restoreResult.activities_imported}</strong></div>
                                             <div>Activities skipped: {restoreResult.activities_skipped}</div>
+                                        </>
+                                    )}
+                                    {(restoreResult.gov_audit_imported > 0 || restoreResult.gov_audit_skipped > 0 || restoreResult.gov_audit_deleted > 0) && (
+                                        <>
+                                            <div>Governance events imported: <strong>{restoreResult.gov_audit_imported}</strong></div>
+                                            <div>Governance events skipped: {restoreResult.gov_audit_skipped}{restoreResult.gov_audit_deleted > 0 ? ` (${restoreResult.gov_audit_deleted} replaced)` : ''}</div>
                                         </>
                                     )}
                                     {restoreResult.errors > 0 && (

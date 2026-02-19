@@ -123,3 +123,9 @@ config_defaults:
     include_activities: true
     interval_minutes: 30
     on_upgrade: true
+  governance:
+    enabled: false
+    enforcement_mode: observe
+    log_allowed: false
+    retention_days: 30
+    rules: []

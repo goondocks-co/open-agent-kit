@@ -83,6 +83,13 @@ export const API_ENDPOINTS = {
     TUNNEL_STOP: "/api/tunnel/stop",
     TUNNEL_STATUS: "/api/tunnel/status",
 
+    // Governance endpoints
+    GOVERNANCE_CONFIG: "/api/governance/config",
+    GOVERNANCE_AUDIT: "/api/governance/audit",
+    GOVERNANCE_AUDIT_SUMMARY: "/api/governance/audit/summary",
+    GOVERNANCE_TEST: "/api/governance/test",
+    GOVERNANCE_AUDIT_PRUNE: "/api/governance/audit/prune",
+
     // Cloud relay endpoints
     CLOUD_RELAY_STATUS: "/api/cloud/status",
     CLOUD_RELAY_START: "/api/cloud/start",

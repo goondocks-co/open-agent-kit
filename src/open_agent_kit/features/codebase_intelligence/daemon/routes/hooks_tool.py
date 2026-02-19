@@ -110,33 +110,55 @@ async def hook_pre_tool_use(request: Request) -> dict:
 
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[PRE-TOOL-USE] {tool_name} session={session_id}")
-
-    # Store activity in SQLite for tracking
-    if state.activity_store and session_id:
-        try:
-            from open_agent_kit.features.codebase_intelligence.activity import Activity
-
-            # Get current prompt batch ID from SQLite
-            prompt_batch_id = get_active_batch_id(state.activity_store, session_id)
-
-            activity = Activity(
-                session_id=session_id,
-                prompt_batch_id=prompt_batch_id,
-                tool_name=tool_name,
-                tool_input=tool_input if isinstance(tool_input, dict) else None,
-                tool_output_summary="",
-                success=True,
-            )
-            state.activity_store.add_activity_buffered(activity)
-            state.record_hook_activity()
-            logger.debug(f"Stored pre-tool-use activity: {tool_name} (batch={prompt_batch_id})")
-
-        except HOOK_STORE_EXCEPTIONS as e:
-            logger.debug(f"Failed to store pre-tool-use activity: {e}")
+    state.record_hook_activity()
 
     hook_event_name = body.get("hook_event_name", "PreToolUse")
     result: dict[str, Any] = {"status": "ok", "context": {}}
     result["hook_output"] = format_hook_output(result, agent, hook_event_name)
+
+    # --- Governance evaluation ---
+    engine = state.governance_engine
+    if engine is not None:
+        import time as _time
+
+        t0 = _time.monotonic()
+        governance_decision = engine.evaluate(tool_name, tool_input)
+        eval_ms = int((_time.monotonic() - t0) * 1000)
+
+        # Record audit event (fire-and-forget)
+        if state.activity_store:
+            try:
+                from open_agent_kit.features.codebase_intelligence.governance.audit import (
+                    GovernanceAuditWriter,
+                )
+
+                writer = GovernanceAuditWriter(state.activity_store)
+                input_summary = json.dumps(tool_input, default=str)[:500]
+                writer.record(
+                    session_id=session_id,
+                    agent=agent,
+                    tool_name=tool_name,
+                    tool_use_id=tool_use_id,
+                    decision=governance_decision,
+                    enforcement_mode=engine._config.enforcement_mode,
+                    evaluation_ms=eval_ms,
+                    tool_input_summary=input_summary,
+                )
+            except HOOK_STORE_EXCEPTIONS as e:
+                logger.debug("Failed to record governance audit: %s", e)
+
+        # Merge deny fields into hook_output (governance module owns the format)
+        from open_agent_kit.features.codebase_intelligence.governance.output import (
+            apply_governance_decision,
+        )
+
+        result["hook_output"] = apply_governance_decision(
+            result["hook_output"],
+            governance_decision,
+            agent,
+            hook_event_name,
+        )
+
     return result
 
 

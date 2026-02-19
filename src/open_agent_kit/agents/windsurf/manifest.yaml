@@ -45,6 +45,11 @@ ci:
   plan_execution_prefix: null
   exit_plan_tool: null
 
+# Governance capabilities
+governance:
+  supports_observe: true
+  supports_deny: false
+
 # Hooks configuration for Codebase Intelligence
 # Windsurf uses a standalone hooks.json with flat structure (same as Cursor)
 hooks:

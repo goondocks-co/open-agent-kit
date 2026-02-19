@@ -188,6 +188,22 @@ def _run_auto_backup(state: "DaemonState") -> None:
         logger.warning(f"Auto-backup failed: {result.error}")
 
 
+def _run_governance_prune(state: "DaemonState") -> None:
+    """Run a single governance audit retention prune cycle (sync)."""
+    if not state.activity_store:
+        return
+
+    config = state.ci_config
+    if config is None or not config.governance.enabled:
+        return
+
+    from open_agent_kit.features.codebase_intelligence.governance.audit import (
+        prune_old_events,
+    )
+
+    prune_old_events(state.activity_store, config.governance.retention_days)
+
+
 async def _background_index() -> None:
     """Run initial indexing in background."""
     state = get_state()
@@ -1072,6 +1088,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     version_check_task = asyncio.create_task(_periodic_version_check(), name="version_check")
     state.background_tasks.append(version_check_task)
 
+    # Run one immediate governance audit prune (ongoing pruning is power-aware via ActivityProcessor)
+    _run_governance_prune(state)
+
     yield
 
     await _shutdown(state)
@@ -1166,6 +1185,7 @@ def create_app(
         backup,
         cloud_relay,
         devtools,
+        governance,
         health,
         hooks,
         index,
@@ -1203,6 +1223,7 @@ def create_app(
     app.include_router(tunnel.router)
     app.include_router(cloud_relay.router)
     app.include_router(restart.router)
+    app.include_router(governance.router)
 
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)

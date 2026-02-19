@@ -269,6 +269,7 @@ def delete_records_by_machine(
         "activities": 0,
         "memory_observations": 0,
         "resolution_events": 0,
+        "governance_audit_events": 0,
         "prompt_batches": 0,
         "sessions": 0,
         "agent_runs": 0,
@@ -365,6 +366,19 @@ def delete_records_by_machine(
                 observation_ids,
             )
             counts["resolution_events"] += cursor.rowcount
+
+        # 4.6 Governance audit events — leaf table, FK to sessions only
+        if session_ids:
+            cursor = tx.execute(
+                f"DELETE FROM governance_audit_events WHERE session_id IN ({sp})",
+                session_ids,
+            )
+            counts["governance_audit_events"] = cursor.rowcount
+        cursor = tx.execute(
+            "DELETE FROM governance_audit_events WHERE source_machine_id = ?",
+            (machine_id,),
+        )
+        counts["governance_audit_events"] += cursor.rowcount
 
         # 5. Prompt batches — clear self-referential FK first, then delete.
         if batch_ids:

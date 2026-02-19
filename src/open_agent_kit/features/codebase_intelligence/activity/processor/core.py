@@ -1219,7 +1219,7 @@ class ActivityProcessor:
         """Handle power state transitions with logging and side effects.
 
         Side effects on entry:
-        - SLEEP / DEEP_SLEEP: trigger a backup.
+        - SLEEP / DEEP_SLEEP: trigger a backup, prune governance audit events.
         - DEEP_SLEEP: stop file watcher.
         - ACTIVE (from DEEP_SLEEP): start file watcher.
 
@@ -1236,9 +1236,10 @@ class ActivityProcessor:
         logger.info(f"Power state: {old_state} -> {new_state} (idle {idle_seconds:.0f}s)")
         daemon_state.power_state = new_state
 
-        # Trigger backup when entering sleep states
+        # Trigger backup and governance audit pruning when entering sleep states
         if new_state in (POWER_STATE_SLEEP, POWER_STATE_DEEP_SLEEP):
             self._trigger_transition_backup(daemon_state)
+            self._trigger_governance_prune(daemon_state)
 
         # Stop file watcher on entry to deep sleep
         if new_state == POWER_STATE_DEEP_SLEEP and daemon_state.file_watcher:
@@ -1290,6 +1291,31 @@ class ActivityProcessor:
                 logger.info(f"Transition backup created: {result.record_count} records")
         except Exception:
             logger.exception("Failed to create transition backup")
+
+    def _trigger_governance_prune(self, daemon_state: "DaemonState") -> None:
+        """Prune old governance audit events on power transition.
+
+        Runs alongside backup when entering sleep/deep_sleep states.
+        Uses the governance retention_days config to determine the cutoff.
+
+        Args:
+            daemon_state: The current daemon state instance.
+        """
+        try:
+            config = daemon_state.ci_config
+            if not config or not config.governance.enabled:
+                return
+
+            if not self.activity_store:
+                return
+
+            from open_agent_kit.features.codebase_intelligence.governance.audit import (
+                prune_old_events,
+            )
+
+            prune_old_events(self.activity_store, config.governance.retention_days)
+        except Exception:
+            logger.debug("Failed to prune governance audit events", exc_info=True)
 
     def rebuild_chromadb_from_sqlite(
         self,

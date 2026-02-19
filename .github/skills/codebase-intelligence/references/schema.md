@@ -2,7 +2,7 @@
 
 Complete DDL for the Oak CI SQLite database at `.oak/ci/activities.db`.
 
-Current schema version: **6**
+Current schema version: **7**
 
 ## memory_observations
 
@@ -274,6 +274,33 @@ CREATE TABLE IF NOT EXISTS resolution_events (
 ```
 
 **Key indexes:** `idx_resolution_events_observation`, `idx_resolution_events_source_machine`, `idx_resolution_events_applied`, `idx_resolution_events_epoch`, `idx_resolution_events_content_hash`
+
+## governance_audit_events
+
+```sql
+CREATE TABLE IF NOT EXISTS governance_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    tool_use_id TEXT,
+    tool_category TEXT,
+    rule_id TEXT,
+    rule_description TEXT,
+    action TEXT NOT NULL,
+    reason TEXT,
+    matched_pattern TEXT,
+    tool_input_summary TEXT,
+    enforcement_mode TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    evaluation_ms INTEGER,
+    source_machine_id TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+```
+
+**Key indexes:** `idx_gov_audit_session`, `idx_gov_audit_action`, `idx_gov_audit_created`, `idx_gov_audit_tool`, `idx_gov_audit_rule`
 
 ## Full-Text Search Tables (FTS5)
 
