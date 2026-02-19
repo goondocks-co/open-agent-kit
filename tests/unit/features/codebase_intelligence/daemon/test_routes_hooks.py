@@ -1380,8 +1380,6 @@ class TestPromptPlanDiskResolution:
 
         # Create a transcript JSONL that references the plan file
         transcript_file = tmp_path / "transcript.jsonl"
-        import json
-
         transcript_lines = [
             json.dumps(
                 {
