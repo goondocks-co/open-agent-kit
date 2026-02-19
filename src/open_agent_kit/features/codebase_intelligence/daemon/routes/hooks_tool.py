@@ -495,21 +495,75 @@ async def hook_post_tool_use(request: Request) -> dict:
                 except HOOK_STORE_EXCEPTIONS as e:
                     logger.warning(f"[EXIT-PLAN-MODE] Failed to update plan content: {e}")
 
-            # Detect plan file reads - may signal plan execution is starting
-            # This helps discover patterns for agents without known plan execution prefixes
-            if tool_name == "Read" and prompt_batch_id:
+            # Detect plan file reads/edits — agents like Cursor create plan files
+            # internally (IDE) and use Read/Edit to refine them. This mirrors the
+            # Write handler's consolidation pattern: tag the batch with plan metadata
+            # and read content from disk (source of truth).
+            if tool_name in ("Read", "Edit") and prompt_batch_id:
                 file_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
                 if file_path:
                     detection = detect_plan(file_path)
                     if detection.is_plan:
-                        location = "global" if detection.is_global else "project"
+                        # Read plan content from disk (source of truth)
+                        plan_content = ""
+                        plan_path = Path(file_path)
+                        if not plan_path.is_absolute() and state.project_root:
+                            plan_path = state.project_root / plan_path
+
+                        try:
+                            if plan_path.exists():
+                                plan_content = plan_path.read_text(encoding="utf-8")
+                            else:
+                                logger.debug(f"Plan file not on disk for {tool_name}: {file_path}")
+                        except (OSError, ValueError) as e:
+                            logger.warning(f"Failed to read plan file {plan_path}: {e}")
+
+                        # Only tag the batch if we got content from disk
+                        if plan_content:
+                            # Consolidate: if session already has a plan batch for
+                            # this file, update that batch instead of tagging a new one.
+                            existing_plan = (
+                                state.activity_store.get_session_plan_batch(
+                                    session_id, plan_file_path=file_path
+                                )
+                                if session_id
+                                else None
+                            )
+
+                            if existing_plan and existing_plan.id:
+                                target_batch_id = existing_plan.id
+                                state.activity_store.update_prompt_batch_source_type(
+                                    target_batch_id,
+                                    PROMPT_SOURCE_PLAN,
+                                    plan_file_path=file_path,
+                                    plan_content=plan_content,
+                                )
+                                state.activity_store.mark_plan_unembedded(target_batch_id)
+                                logger.info(
+                                    f"Updated existing plan batch {target_batch_id} "
+                                    f"via {tool_name} of {file_path} "
+                                    f"({len(plan_content)} chars)"
+                                )
+                            else:
+                                target_batch_id = prompt_batch_id
+                                state.activity_store.update_prompt_batch_source_type(
+                                    target_batch_id,
+                                    PROMPT_SOURCE_PLAN,
+                                    plan_file_path=file_path,
+                                    plan_content=plan_content,
+                                )
+                                location = "global" if detection.is_global else "project"
+                                logger.info(
+                                    f"Detected {location} plan via {tool_name} for "
+                                    f"{detection.agent_type}, batch {target_batch_id} "
+                                    f"marked as plan with file {file_path} "
+                                    f"({len(plan_content)} chars stored)"
+                                )
+
                         hooks_logger.info(
-                            f"[PLAN-READ] {detection.agent_type} plan read: {file_path} "
-                            f"location={location} session={session_id}"
-                        )
-                        logger.info(
-                            f"Detected {location} plan file read for {detection.agent_type}: "
-                            f"{file_path} (may signal plan execution)"
+                            f"[PLAN-{tool_name.upper()}] {detection.agent_type} plan "
+                            f"{'captured' if plan_content else 'detected'}: {file_path} "
+                            f"session={session_id}"
                         )
 
         except HOOK_STORE_EXCEPTIONS as e:

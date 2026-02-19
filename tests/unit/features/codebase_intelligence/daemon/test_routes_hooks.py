@@ -1125,3 +1125,379 @@ class TestHookIntegration:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
+
+
+# =============================================================================
+# Plan Detection via Read/Edit Tests
+# =============================================================================
+
+
+class TestPlanDetectionReadEdit:
+    """Test that Read/Edit of plan files triggers plan detection and capture."""
+
+    def test_post_tool_use_read_plan_detected(self, client, setup_state_with_mocks, tmp_path):
+        """Read of a .cursor/plans/ file stores plan_file_path + plan_content."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        plan_file = tmp_path / ".cursor" / "plans" / "my_plan.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# My Plan\n\nStep 1: Do the thing\nStep 2: Profit")
+
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+        client.post(
+            "/api/oak/ci/prompt-submit",
+            json={"session_id": session_id, "prompt": "Working on plan"},
+        )
+
+        # No existing plan batch in session
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = None
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_tool.detect_plan",
+        ) as mock_detect:
+            from open_agent_kit.features.codebase_intelligence.plan_detector import (
+                PlanDetectionResult,
+            )
+
+            mock_detect.return_value = PlanDetectionResult(
+                is_plan=True, agent_type="cursor", is_global=False
+            )
+
+            response = client.post(
+                "/api/oak/ci/post-tool-use",
+                json={
+                    "session_id": session_id,
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": str(plan_file)},
+                    "tool_output": "file contents",
+                },
+            )
+
+        assert response.status_code == 200
+        # Verify update_prompt_batch_source_type was called with plan metadata
+        setup_state_with_mocks.activity_store.update_prompt_batch_source_type.assert_called_once()
+        call_args = setup_state_with_mocks.activity_store.update_prompt_batch_source_type.call_args
+        assert call_args[0][1] == PROMPT_SOURCE_PLAN
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "My Plan" in call_args[1]["plan_content"]
+
+    def test_post_tool_use_edit_plan_detected(self, client, setup_state_with_mocks, tmp_path):
+        """Edit of a plan file stores plan_file_path + plan_content."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        plan_file = tmp_path / ".cursor" / "plans" / "edited_plan.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Edited Plan\n\nUpdated step 1")
+
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+        client.post(
+            "/api/oak/ci/prompt-submit",
+            json={"session_id": session_id, "prompt": "Working on plan"},
+        )
+
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = None
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_tool.detect_plan",
+        ) as mock_detect:
+            from open_agent_kit.features.codebase_intelligence.plan_detector import (
+                PlanDetectionResult,
+            )
+
+            mock_detect.return_value = PlanDetectionResult(
+                is_plan=True, agent_type="cursor", is_global=False
+            )
+
+            response = client.post(
+                "/api/oak/ci/post-tool-use",
+                json={
+                    "session_id": session_id,
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": str(plan_file)},
+                    "tool_output": "edit applied",
+                },
+            )
+
+        assert response.status_code == 200
+        setup_state_with_mocks.activity_store.update_prompt_batch_source_type.assert_called_once()
+        call_args = setup_state_with_mocks.activity_store.update_prompt_batch_source_type.call_args
+        assert call_args[0][1] == PROMPT_SOURCE_PLAN
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "Edited Plan" in call_args[1]["plan_content"]
+
+    def test_post_tool_use_read_plan_consolidates(self, client, setup_state_with_mocks, tmp_path):
+        """Multiple Reads of the same plan file update the same batch (no duplicates)."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        plan_file = tmp_path / ".cursor" / "plans" / "iterated.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Iterated Plan v2")
+
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+        client.post(
+            "/api/oak/ci/prompt-submit",
+            json={"session_id": session_id, "prompt": "Working on plan"},
+        )
+
+        # Simulate existing plan batch from a previous Read
+        existing_batch = MagicMock(id=42)
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = existing_batch
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_tool.detect_plan",
+        ) as mock_detect:
+            from open_agent_kit.features.codebase_intelligence.plan_detector import (
+                PlanDetectionResult,
+            )
+
+            mock_detect.return_value = PlanDetectionResult(
+                is_plan=True, agent_type="cursor", is_global=False
+            )
+
+            response = client.post(
+                "/api/oak/ci/post-tool-use",
+                json={
+                    "session_id": session_id,
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": str(plan_file)},
+                    "tool_output": "file contents",
+                },
+            )
+
+        assert response.status_code == 200
+        # Should update the existing batch (42), not the current one
+        call_args = setup_state_with_mocks.activity_store.update_prompt_batch_source_type.call_args
+        assert call_args[0][0] == 42  # target_batch_id is the existing one
+        # mark_plan_unembedded should also target the existing batch
+        setup_state_with_mocks.activity_store.mark_plan_unembedded.assert_called_once_with(42)
+
+
+class TestPromptPlanDiskResolution:
+    """Test that plan execution prompts resolve content from disk."""
+
+    def test_prompt_submit_plan_resolves_from_disk(self, client, setup_state_with_mocks, tmp_path):
+        """Execution prompt resolves full content from disk when session has plan_file_path."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        plan_file = tmp_path / ".cursor" / "plans" / "big_plan.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Big Plan\n\n" + "Detailed step\n" * 500)  # ~7KB
+
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+
+        # Simulate an existing plan batch with plan_file_path from a Read
+        existing_batch = MagicMock(
+            id=10, plan_file_path=str(plan_file), source_type=PROMPT_SOURCE_PLAN
+        )
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = existing_batch
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_prompt.classify_prompt",
+        ) as mock_classify:
+            mock_classify.return_value = MagicMock(
+                source_type=PROMPT_SOURCE_PLAN,
+                matched_prefix="Implement the following plan:\n\n",
+                agent_type="cursor",
+            )
+
+            response = client.post(
+                "/api/oak/ci/prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": "Implement the following plan:\n\nImplement the plan as specified in the file.",
+                },
+            )
+
+        assert response.status_code == 200
+        # Verify create_prompt_batch was called with the disk content and file path
+        call_args = setup_state_with_mocks.activity_store.create_prompt_batch.call_args
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "Big Plan" in call_args[1]["plan_content"]
+        assert (
+            len(call_args[1]["plan_content"]) > 5000
+        )  # Full disk content, not 50-char instruction
+
+    def test_prompt_submit_plan_claude_not_regressed(self, client, setup_state_with_mocks):
+        """Claude's flow unchanged — prompt content used when no substantially larger disk file."""
+        from unittest.mock import patch
+
+        session_id = str(uuid4())
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+
+        # No existing plan batch (Claude embeds plan in prompt)
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = None
+
+        large_plan = "# Claude Plan\n\n" + "Step detail\n" * 200
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_prompt.classify_prompt",
+            ) as mock_classify,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.get_plan_detector",
+            ) as mock_detector,
+        ):
+            mock_classify.return_value = MagicMock(
+                source_type=PROMPT_SOURCE_PLAN,
+                matched_prefix="Implement the following plan:\n\n",
+                agent_type="claude",
+            )
+            # No recent plan files on disk for Claude (plans are in the prompt)
+            mock_detector.return_value.find_recent_plan_file.return_value = None
+
+            response = client.post(
+                "/api/oak/ci/prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": f"Implement the following plan:\n\n{large_plan}",
+                },
+            )
+
+        assert response.status_code == 200
+        # Verify create_prompt_batch was called with content from prompt (no disk override)
+        call_args = setup_state_with_mocks.activity_store.create_prompt_batch.call_args
+        assert call_args[1]["plan_file_path"] is None
+        assert "Claude Plan" in call_args[1]["plan_content"]
+
+    def test_prompt_submit_plan_resolves_from_transcript(
+        self, client, setup_state_with_mocks, tmp_path
+    ):
+        """Transcript parsing discovers plan file from <code_selection> tags."""
+        from unittest.mock import patch
+
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            PlanDetectionResult,
+        )
+
+        session_id = str(uuid4())
+        plan_file = tmp_path / ".cursor" / "plans" / "transcript_plan.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Transcript Plan\n\n" + "Detail line\n" * 500)  # ~6KB
+
+        # Create a transcript JSONL that references the plan file
+        transcript_file = tmp_path / "transcript.jsonl"
+        import json
+
+        transcript_lines = [
+            json.dumps(
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "<attached_files>\n"
+                                    f'<code_selection path="file://{plan_file}" lines="1-149">\n'
+                                    "# Plan content\n"
+                                    "</code_selection>\n"
+                                    "</attached_files>\n"
+                                    "Implement the plan."
+                                ),
+                            }
+                        ]
+                    },
+                }
+            )
+        ]
+        transcript_file.write_text("\n".join(transcript_lines), encoding="utf-8")
+
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+
+        # No existing plan batch (Cursor never uses Read/Edit on plan files)
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = None
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_prompt.classify_prompt",
+            ) as mock_classify,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+            ) as mock_detect,
+        ):
+            mock_classify.return_value = MagicMock(
+                source_type=PROMPT_SOURCE_PLAN,
+                matched_prefix="Implement the plan as specified",
+                agent_type="cursor",
+            )
+            # detect_plan returns True for paths in .cursor/plans/
+            mock_detect.return_value = PlanDetectionResult(
+                is_plan=True,
+                agent_type="cursor",
+                plans_dir=str(plan_file.parent),
+                is_global=False,
+            )
+
+            response = client.post(
+                "/api/oak/ci/prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": "Implement the plan as specified, it is attached for your reference.",
+                    "transcript_path": str(transcript_file),
+                },
+            )
+
+        assert response.status_code == 200
+        call_args = setup_state_with_mocks.activity_store.create_prompt_batch.call_args
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "Transcript Plan" in call_args[1]["plan_content"]
+        assert len(call_args[1]["plan_content"]) > 5000
+
+    def test_prompt_submit_plan_resolves_from_filesystem_scan(
+        self, client, setup_state_with_mocks, tmp_path
+    ):
+        """Filesystem scan discovers plan file when no tool detection occurred."""
+        from unittest.mock import patch
+
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            PlanDetectionResult,
+        )
+
+        session_id = str(uuid4())
+        plan_file = tmp_path / ".cursor" / "plans" / "scanned_plan.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Scanned Plan\n\n" + "Full detail\n" * 400)  # ~5KB
+
+        client.post("/api/oak/ci/session-start", json={"session_id": session_id})
+
+        # No existing plan batch (Cursor never uses Read/Edit on plan file)
+        setup_state_with_mocks.activity_store.get_session_plan_batch.return_value = None
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_prompt.classify_prompt",
+            ) as mock_classify,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.get_plan_detector",
+            ) as mock_detector,
+        ):
+            mock_classify.return_value = MagicMock(
+                source_type=PROMPT_SOURCE_PLAN,
+                matched_prefix="Implement the plan as specified",
+                agent_type="cursor",
+            )
+            # Filesystem scan finds the recently-modified plan file
+            mock_detector.return_value.find_recent_plan_file.return_value = PlanDetectionResult(
+                is_plan=True,
+                agent_type="cursor",
+                plans_dir=str(plan_file),
+                is_global=True,
+            )
+
+            response = client.post(
+                "/api/oak/ci/prompt-submit",
+                json={
+                    "session_id": session_id,
+                    "prompt": "Implement the plan as specified, it is attached for your reference.",
+                },
+            )
+
+        assert response.status_code == 200
+        call_args = setup_state_with_mocks.activity_store.create_prompt_batch.call_args
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "Scanned Plan" in call_args[1]["plan_content"]
+        assert len(call_args[1]["plan_content"]) > 4000

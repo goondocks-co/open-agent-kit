@@ -725,13 +725,18 @@ class TestRefreshPlan:
         return url
 
     def _make_plan_batch(
-        self, batch_id=None, source_type=PROMPT_SOURCE_PLAN, plan_file_path="/tmp/plan.md"
+        self,
+        batch_id=None,
+        source_type=PROMPT_SOURCE_PLAN,
+        plan_file_path="/tmp/plan.md",
+        session_id="test-session-123",
     ):
         """Helper to create a mock plan batch."""
         batch = MagicMock()
         batch.id = batch_id if batch_id is not None else self.DEFAULT_BATCH_ID
         batch.source_type = source_type
         batch.plan_file_path = plan_file_path
+        batch.session_id = session_id
         return batch
 
     def test_refresh_graceful_batch_not_found(self, client, setup_state_with_activity_store):
@@ -759,10 +764,30 @@ class TestRefreshPlan:
 
     def test_refresh_graceful_no_file_path(self, client, setup_state_with_activity_store):
         """Graceful mode returns success=False when plan has no file path."""
+        from unittest.mock import patch
+
         batch = self._make_plan_batch(plan_file_path=None)
         setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
 
-        response = client.post(self._refresh_url(graceful=True))
+        # Return empty activities so fallback scan finds nothing
+        setup_state_with_activity_store.activity_store.get_prompt_batch_activities.return_value = []
+
+        # Mock transcript resolver and filesystem scan to return nothing
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.get_plan_detector",
+            ) as mock_detector,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.transcript.extract_attached_file_paths",
+                return_value=[],
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.transcript_resolver.get_transcript_resolver",
+            ) as mock_resolver,
+        ):
+            mock_detector.return_value.find_recent_plan_file.return_value = None
+            mock_resolver.return_value.resolve.return_value = MagicMock(path=None)
+            response = client.post(self._refresh_url(graceful=True))
 
         assert response.status_code == 200
         data = response.json()
@@ -817,9 +842,161 @@ class TestRefreshPlan:
 
     def test_refresh_strict_no_file_path_raises_400(self, client, setup_state_with_activity_store):
         """Without graceful, missing file path raises HTTP 400."""
+        from unittest.mock import patch
+
         batch = self._make_plan_batch(plan_file_path=None)
         setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
 
-        response = client.post(self._refresh_url())
+        # Return empty activities so fallback scan finds nothing
+        setup_state_with_activity_store.activity_store.get_prompt_batch_activities.return_value = []
+
+        # Mock transcript resolver and filesystem scan to return nothing
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.get_plan_detector",
+            ) as mock_detector,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.transcript.extract_attached_file_paths",
+                return_value=[],
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.transcript_resolver.get_transcript_resolver",
+            ) as mock_resolver,
+        ):
+            mock_detector.return_value.find_recent_plan_file.return_value = None
+            mock_resolver.return_value.resolve.return_value = MagicMock(path=None)
+            response = client.post(self._refresh_url())
 
         assert response.status_code == 400
+
+    def test_refresh_discovers_plan_file_from_transcript(
+        self, client, setup_state_with_activity_store, tmp_path
+    ):
+        """Refresh discovers plan file from transcript <code_selection> tags."""
+        import json
+        from unittest.mock import patch
+
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            PlanDetectionResult,
+        )
+
+        # Create a plan file on disk
+        plan_file = tmp_path / ".cursor" / "plans" / "transcript_plan.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Transcript Plan\n\nFull plan content from disk")
+
+        # Create a transcript that references the plan file
+        transcript_file = tmp_path / "transcript.jsonl"
+        transcript_lines = [
+            json.dumps(
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    f'<code_selection path="file://{plan_file}" lines="1-5">'
+                                    "# Plan\n"
+                                    "</code_selection>"
+                                ),
+                            }
+                        ]
+                    },
+                }
+            )
+        ]
+        transcript_file.write_text("\n".join(transcript_lines), encoding="utf-8")
+
+        # Batch has no plan_file_path and no activities with plan files
+        batch = self._make_plan_batch(plan_file_path=None, session_id="cursor-session-abc")
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+        setup_state_with_activity_store.activity_store.get_prompt_batch_activities.return_value = []
+
+        # Mock session for transcript resolver
+        mock_session = MagicMock()
+        mock_session.project_root = str(tmp_path)
+        mock_session.agent = "cursor"
+        setup_state_with_activity_store.activity_store.get_session.return_value = mock_session
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+            ) as mock_detect,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.transcript_resolver.get_transcript_resolver",
+            ) as mock_resolver,
+        ):
+            mock_detect.return_value = PlanDetectionResult(
+                is_plan=True, agent_type="cursor", is_global=True
+            )
+            mock_resolver.return_value.resolve.return_value = MagicMock(path=transcript_file)
+
+            response = client.post(self._refresh_url(graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["plan_file_path"] == str(plan_file)
+        assert data["content_length"] > 0
+        assert "transcript" in data["message"].lower()
+
+        # Verify DB was updated
+        setup_state_with_activity_store.activity_store.update_prompt_batch_source_type.assert_called_once()
+        call_args = (
+            setup_state_with_activity_store.activity_store.update_prompt_batch_source_type.call_args
+        )
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "Transcript Plan" in call_args[1]["plan_content"]
+
+    def test_refresh_discovers_plan_file_from_activities(
+        self, client, setup_state_with_activity_store, tmp_path
+    ):
+        """Refresh scans activities to discover plan_file_path when batch has none."""
+        from unittest.mock import patch
+
+        # Create a plan file on disk
+        plan_file = tmp_path / ".cursor" / "plans" / "discovered.md"
+        plan_file.parent.mkdir(parents=True)
+        plan_file.write_text("# Discovered Plan\n\nFull content from disk")
+
+        # Batch has no plan_file_path (the bug scenario)
+        batch = self._make_plan_batch(plan_file_path=None)
+        setup_state_with_activity_store.activity_store.get_prompt_batch.return_value = batch
+
+        # Simulate activities that include a Read of the plan file
+        mock_activity = MagicMock()
+        mock_activity.tool_name = "Read"
+        mock_activity.file_path = str(plan_file)
+        setup_state_with_activity_store.activity_store.get_prompt_batch_activities.return_value = [
+            mock_activity
+        ]
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+        ) as mock_detect:
+            from open_agent_kit.features.codebase_intelligence.plan_detector import (
+                PlanDetectionResult,
+            )
+
+            mock_detect.return_value = PlanDetectionResult(
+                is_plan=True, agent_type="cursor", is_global=False
+            )
+
+            response = client.post(self._refresh_url(graceful=True))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["plan_file_path"] == str(plan_file)
+        assert data["content_length"] > 0
+        assert "Discovered" in data["message"]
+
+        # Verify DB was updated
+        setup_state_with_activity_store.activity_store.update_prompt_batch_source_type.assert_called_once()
+        call_args = (
+            setup_state_with_activity_store.activity_store.update_prompt_batch_source_type.call_args
+        )
+        assert call_args[1]["plan_file_path"] == str(plan_file)
+        assert "Discovered Plan" in call_args[1]["plan_content"]
+        setup_state_with_activity_store.activity_store.mark_plan_unembedded.assert_called_once()

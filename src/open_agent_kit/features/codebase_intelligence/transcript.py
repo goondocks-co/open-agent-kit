@@ -167,6 +167,75 @@ def _parse_plaintext_transcript(content: str, max_length: int) -> str | None:
     return None
 
 
+# Regex to extract file paths from Cursor's <code_selection path="file://..."> tags.
+# Example: <code_selection path="file:///Users/chris/.cursor/plans/foo.plan.md" lines="1-149">
+_CODE_SELECTION_PATH_RE = re.compile(r'<code_selection\s+[^>]*path="file://([^"]+)"', re.IGNORECASE)
+
+
+def extract_attached_file_paths(transcript_path: str) -> list[str]:
+    """Extract file paths from ``<code_selection>`` tags in a transcript.
+
+    Cursor attaches plan files (and other context) to user messages as
+    ``<attached_files><code_selection path="file:///abs/path">`` XML blocks.
+    This function parses the transcript JSONL and extracts all such paths,
+    returning them in chronological order (most recent last).
+
+    Args:
+        transcript_path: Path to the JSONL transcript file.
+
+    Returns:
+        List of absolute file paths referenced in code_selection tags.
+        Empty list if none found or on any error.
+    """
+    path = Path(transcript_path)
+    if not path.exists() or not path.is_file():
+        return []
+
+    try:
+        content = path.read_text(encoding="utf-8").strip()
+    except OSError as e:
+        logger.debug(f"Error reading transcript {transcript_path}: {e}")
+        return []
+
+    if not content:
+        return []
+
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for line in content.split("\n"):
+        if not line.strip():
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if not isinstance(msg, dict):
+            continue
+
+        # Extract text from all known message formats
+        text = ""
+        # Cursor JSONL: {"role":"user","message":{"content":[{"type":"text","text":"..."}]}}
+        inner_msg = msg.get("message", {})
+        if isinstance(inner_msg, dict):
+            text = _extract_text_from_content(inner_msg.get("content", ""))
+        if not text:
+            text = _extract_text_from_content(msg.get("content", ""))
+
+        if not text:
+            continue
+
+        # Find all <code_selection path="file://..."> references
+        for match in _CODE_SELECTION_PATH_RE.finditer(text):
+            file_path = match.group(1)
+            if file_path and file_path not in seen:
+                seen.add(file_path)
+                result.append(file_path)
+
+    return result
+
+
 def _extract_text_from_content(content: str | list | dict) -> str:
     """Extract text from various content formats.
 

@@ -922,7 +922,7 @@ def _detect_plans_in_recovered_activities(
     from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
 
     for tool_name, tool_input_str in activities:
-        if tool_name != "Write":
+        if tool_name not in ("Write", "Read", "Edit"):
             continue
 
         # Parse tool_input JSON

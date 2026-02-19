@@ -343,6 +343,76 @@ async def refresh_plan_from_source(
         )
 
     if not batch.plan_file_path:
+        # Discover plan file using centralized resolver.
+        # Tries: candidate paths → transcript → filesystem scan.
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        # Gather candidate paths from batch activities
+        candidate_paths: list[str] = []
+        try:
+            activities = state.activity_store.get_prompt_batch_activities(batch_id, limit=50)
+            for act in activities:
+                if act.tool_name in ("Read", "Edit", "Write") and act.file_path:
+                    candidate_paths.append(act.file_path)
+        except Exception as e:
+            logger.warning(f"Failed to gather candidate paths from activities: {e}")
+
+        # Resolve transcript_path via transcript resolver
+        transcript_path: str | None = None
+        if batch.session_id:
+            try:
+                from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
+                    get_transcript_resolver,
+                )
+
+                session = state.activity_store.get_session(batch.session_id)
+                if session and session.project_root:
+                    resolver = get_transcript_resolver(Path(session.project_root))
+                    transcript_result = resolver.resolve(
+                        session_id=batch.session_id,
+                        agent_type=(session.agent if session.agent != "unknown" else None),
+                        project_root=session.project_root,
+                    )
+                    if transcript_result.path:
+                        transcript_path = str(transcript_result.path)
+            except Exception as e:
+                logger.warning(f"Failed to resolve transcript_path: {e}")
+
+        resolution = resolve_plan_content(
+            candidate_paths=candidate_paths or None,
+            transcript_path=transcript_path,
+            max_age_seconds=86400,  # Generous window for retroactive refresh
+            project_root=state.project_root,
+        )
+
+        if resolution:
+            state.activity_store.update_prompt_batch_source_type(
+                batch_id,
+                PROMPT_SOURCE_PLAN,
+                plan_file_path=resolution.file_path,
+                plan_content=resolution.content,
+            )
+            state.activity_store.mark_plan_unembedded(batch_id)
+
+            logger.info(
+                f"Discovered plan via {resolution.strategy}: "
+                f"{resolution.file_path} -> batch {batch_id} "
+                f"({len(resolution.content)} chars)"
+            )
+
+            return RefreshPlanResponse(
+                success=True,
+                batch_id=batch_id,
+                plan_file_path=resolution.file_path,
+                content_length=len(resolution.content),
+                message=(
+                    f"Discovered plan via {resolution.strategy} "
+                    f"and refreshed ({len(resolution.content)} chars)"
+                ),
+            )
+
         if graceful:
             return RefreshPlanResponse(
                 success=False,

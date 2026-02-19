@@ -210,17 +210,74 @@ async def hook_prompt_submit(request: Request) -> dict:
             # Extract plan content if this is a plan prompt (plan embedded in prompt)
             # The plan content is after the prefix (e.g., "Implement the following plan:\n\n")
             plan_content = None
+            plan_file_path = None
             if source_type == PROMPT_SOURCE_PLAN and classification.matched_prefix:
                 # Strip the prefix and any leading whitespace to get the actual plan
                 prefix_len = len(classification.matched_prefix)
                 plan_content = prompt[prefix_len:].lstrip()
                 logger.debug(f"Extracted plan content from prompt ({len(plan_content)} chars)")
 
+            # Resolve plan content from disk when the execution prompt
+            # is just instructions and the actual plan is in a file.
+            # Delegates to resolve_plan_content() which tries:
+            # known_path → candidate → transcript → filesystem.
+            if source_type == PROMPT_SOURCE_PLAN and session_id:
+                try:
+                    from open_agent_kit.features.codebase_intelligence.plan_detector import (
+                        resolve_plan_content,
+                    )
+
+                    # Get known plan file path from existing batch
+                    known_plan_file_path = None
+                    existing_plan = state.activity_store.get_session_plan_batch(session_id)
+                    if existing_plan and existing_plan.plan_file_path:
+                        known_plan_file_path = existing_plan.plan_file_path
+
+                    # Resolve transcript_path (only needed when no known path)
+                    transcript_path_for_plan = None
+                    if not known_plan_file_path:
+                        transcript_path_for_plan = body.get("transcript_path", "") or None
+                        if not transcript_path_for_plan:
+                            try:
+                                from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
+                                    get_transcript_resolver,
+                                )
+
+                                session = state.activity_store.get_session(session_id)
+                                if session and session.project_root:
+                                    resolver = get_transcript_resolver(Path(session.project_root))
+                                    transcript_result = resolver.resolve(
+                                        session_id=session_id,
+                                        agent_type=(
+                                            session.agent if session.agent != "unknown" else None
+                                        ),
+                                        project_root=session.project_root,
+                                    )
+                                    if transcript_result.path:
+                                        transcript_path_for_plan = str(transcript_result.path)
+                            except HOOK_STORE_EXCEPTIONS as e:
+                                logger.debug(f"Failed to resolve transcript_path for plan: {e}")
+
+                    resolution = resolve_plan_content(
+                        known_plan_file_path=known_plan_file_path,
+                        transcript_path=transcript_path_for_plan,
+                        agent_type=classification.agent_type,
+                        project_root=state.project_root,
+                        min_content_length=500,
+                        existing_content_length=(len(plan_content) if plan_content else 0),
+                    )
+                    if resolution:
+                        plan_file_path = resolution.file_path
+                        plan_content = resolution.content
+                except HOOK_STORE_EXCEPTIONS as e:
+                    logger.warning(f"Failed to resolve plan content: {e}")
+
             # Create new prompt batch with full user prompt and source type
             batch = state.activity_store.create_prompt_batch(
                 session_id=session_id,
                 user_prompt=prompt,  # Full prompt, truncated to 10K in store
                 source_type=source_type,
+                plan_file_path=plan_file_path,  # Carry forward from Read/Edit detection
                 plan_content=plan_content,  # Plan content if extracted from prompt
                 agent=agent,  # For session recreation if previously deleted
             )

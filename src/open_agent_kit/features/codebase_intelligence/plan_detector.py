@@ -195,6 +195,88 @@ class PlanDetector:
         """
         return list(self._get_plan_patterns().values())
 
+    def find_recent_plan_file(
+        self,
+        max_age_seconds: int = 300,
+        agent_type: str | None = None,
+    ) -> PlanDetectionResult | None:
+        """Find the most recently modified plan file on disk.
+
+        Scans both project-local and global plan directories for all agents
+        (or a specific agent). Returns the newest file modified within the
+        time window.
+
+        This handles agents like Cursor that create plan files internally
+        (IDE-side) without using Read/Edit/Write tools, so the file never
+        appears in hook activity.
+
+        Args:
+            max_age_seconds: Maximum file age in seconds (default 5 minutes).
+            agent_type: Optional agent to restrict search to.
+
+        Returns:
+            PlanDetectionResult with ``plans_dir`` set to the file path,
+            or None if no recent plan file found.
+        """
+        import time
+
+        patterns = self._get_plan_patterns()
+        if not patterns:
+            return None
+
+        now = time.time()
+        best_path: Path | None = None
+        best_mtime: float = 0.0
+        best_agent: str | None = None
+        best_is_global = False
+
+        for pattern, pat_agent in patterns.items():
+            if agent_type and pat_agent != agent_type:
+                continue
+
+            # Derive directory name from pattern (e.g. ".cursor/plans/" -> ".cursor/plans")
+            dir_rel = pattern.rstrip("/")
+
+            # Check both project-local and global (home) locations
+            candidates: list[tuple[Path, bool]] = []
+            if self._project_root:
+                candidates.append((self._project_root / dir_rel, False))
+            candidates.append((self._home_dir / dir_rel, True))
+
+            for plans_dir, is_global in candidates:
+                if not plans_dir.is_dir():
+                    continue
+                try:
+                    for child in plans_dir.iterdir():
+                        if not child.is_file():
+                            continue
+                        try:
+                            mtime = child.stat().st_mtime
+                        except OSError:
+                            continue
+                        age = now - mtime
+                        if age <= max_age_seconds and mtime > best_mtime:
+                            best_path = child
+                            best_mtime = mtime
+                            best_agent = pat_agent
+                            best_is_global = is_global
+                except OSError:
+                    continue
+
+        if best_path is None:
+            return None
+
+        logger.info(
+            f"Found recent plan file: {best_path} "
+            f"(agent={best_agent}, age={now - best_mtime:.0f}s)"
+        )
+        return PlanDetectionResult(
+            is_plan=True,
+            agent_type=best_agent,
+            plans_dir=str(best_path),
+            is_global=best_is_global,
+        )
+
 
 # Module-level singleton for convenience
 _detector: PlanDetector | None = None
@@ -239,6 +321,22 @@ def is_plan_file(file_path: str | None) -> bool:
     return get_plan_detector().is_plan_file(file_path)
 
 
+def find_recent_plan_file(
+    max_age_seconds: int = 300,
+    agent_type: str | None = None,
+) -> PlanDetectionResult | None:
+    """Convenience function: find the most recently modified plan file.
+
+    Args:
+        max_age_seconds: Maximum file age in seconds.
+        agent_type: Optional agent to restrict search to.
+
+    Returns:
+        PlanDetectionResult with plans_dir set to the file path, or None.
+    """
+    return get_plan_detector().find_recent_plan_file(max_age_seconds, agent_type)
+
+
 def detect_plan(file_path: str | None) -> PlanDetectionResult:
     """Convenience function to detect plan file with full details.
 
@@ -249,6 +347,180 @@ def detect_plan(file_path: str | None) -> PlanDetectionResult:
         PlanDetectionResult with agent info
     """
     return get_plan_detector().detect(file_path)
+
+
+@dataclass
+class PlanResolution:
+    """Result of resolving plan content from a file on disk.
+
+    Returned by :func:`resolve_plan_content` when a plan file is found
+    and its content passes the size threshold.
+
+    Attributes:
+        file_path: Absolute path to the plan file.
+        content: Full text content read from disk.
+        strategy: Which strategy found the file — for logging/debugging.
+            One of ``"known_path"``, ``"candidate"``, ``"transcript"``,
+            ``"filesystem"``.
+    """
+
+    file_path: str
+    content: str
+    strategy: str
+
+
+def _read_plan_file(file_path: str, project_root: Path | None = None) -> str | None:
+    """Read a plan file from disk, resolving relative paths."""
+    path = Path(file_path)
+    if not path.is_absolute() and project_root:
+        path = project_root / path
+    try:
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+    except (OSError, ValueError) as e:
+        logger.warning("Failed to read plan file %s: %s", path, e)
+    return None
+
+
+def _content_passes_threshold(
+    content: str,
+    min_content_length: int,
+    existing_content_length: int,
+) -> bool:
+    """Check if resolved content is large enough to be useful.
+
+    When ``existing_content_length > 0``, the resolved content must be at
+    least twice as large — this prevents overriding Claude's prompt-embedded
+    plans with a stale file that happens to match.
+    """
+    if min_content_length > 0 and len(content) < min_content_length:
+        return False
+    if existing_content_length > 0 and len(content) <= existing_content_length * 2:
+        return False
+    return True
+
+
+def resolve_plan_content(
+    *,
+    known_plan_file_path: str | None = None,
+    candidate_paths: list[str] | None = None,
+    transcript_path: str | None = None,
+    agent_type: str | None = None,
+    max_age_seconds: int = 300,
+    project_root: Path | None = None,
+    min_content_length: int = 0,
+    existing_content_length: int = 0,
+) -> PlanResolution | None:
+    """Resolve plan file path and content using multiple strategies.
+
+    Strategies are tried in order until one succeeds:
+
+    1. **known_plan_file_path** — direct file path from an existing plan
+       batch (set via Read/Edit/Write tool detection).
+    2. **candidate_paths** — file paths from batch activities, filtered
+       through :func:`detect_plan` to confirm they are plan files.
+    3. **transcript_path** — parse a transcript JSONL for
+       ``<code_selection path="file://...">`` references (Cursor attaches
+       plan files this way).
+    4. **Filesystem scan** — search plan directories for recently-modified
+       files within *max_age_seconds*.
+
+    Content filtering (applied to every strategy):
+
+    - *min_content_length*: skip files smaller than this (0 = no minimum).
+    - *existing_content_length*: only accept if content is > 2x this value.
+
+    Args:
+        known_plan_file_path: A file path already known to be a plan.
+        candidate_paths: File paths to check via ``detect_plan()``.
+        transcript_path: Path to a JSONL transcript to parse.
+        agent_type: Restrict filesystem scan to this agent.
+        max_age_seconds: Age window for the filesystem scan.
+        project_root: For resolving relative paths.
+        min_content_length: Minimum content length to accept.
+        existing_content_length: Existing content length for 2x comparison.
+
+    Returns:
+        :class:`PlanResolution` or ``None`` if no suitable plan found.
+    """
+    # Strategy 1: Known plan file path (from existing batch)
+    if known_plan_file_path:
+        content = _read_plan_file(known_plan_file_path, project_root)
+        if content and _content_passes_threshold(
+            content, min_content_length, existing_content_length
+        ):
+            logger.info(
+                "Resolved plan from known path: %s (%d chars)",
+                known_plan_file_path,
+                len(content),
+            )
+            return PlanResolution(
+                file_path=known_plan_file_path,
+                content=content,
+                strategy="known_path",
+            )
+
+    # Strategy 2: Candidate paths from batch activities
+    if candidate_paths:
+        for cpath in candidate_paths:
+            detection = detect_plan(cpath)
+            if detection.is_plan:
+                content = _read_plan_file(cpath, project_root)
+                if content and _content_passes_threshold(
+                    content, min_content_length, existing_content_length
+                ):
+                    logger.info(
+                        "Resolved plan from activity path: %s (%d chars)", cpath, len(content)
+                    )
+                    return PlanResolution(file_path=cpath, content=content, strategy="candidate")
+
+    # Strategy 3: Parse transcript for attached plan files
+    if transcript_path:
+        try:
+            from open_agent_kit.features.codebase_intelligence.transcript import (
+                extract_attached_file_paths,
+            )
+
+            attached_paths = extract_attached_file_paths(transcript_path)
+            for attached_path in reversed(attached_paths):
+                detection = detect_plan(attached_path)
+                if detection.is_plan:
+                    content = _read_plan_file(attached_path, project_root)
+                    if content and _content_passes_threshold(
+                        content, min_content_length, existing_content_length
+                    ):
+                        logger.info(
+                            "Resolved plan from transcript: %s (%d chars)",
+                            attached_path,
+                            len(content),
+                        )
+                        return PlanResolution(
+                            file_path=attached_path, content=content, strategy="transcript"
+                        )
+        except Exception as e:
+            logger.warning("Failed to extract plan from transcript: %s", e)
+
+    # Strategy 4: Filesystem scan for recently-modified plan files
+    try:
+        recent = find_recent_plan_file(max_age_seconds=max_age_seconds, agent_type=agent_type)
+        if recent and recent.plans_dir:
+            content = _read_plan_file(recent.plans_dir, project_root)
+            if content and _content_passes_threshold(
+                content, min_content_length, existing_content_length
+            ):
+                logger.info(
+                    "Resolved plan from filesystem: %s (%d chars, agent=%s)",
+                    recent.plans_dir,
+                    len(content),
+                    recent.agent_type,
+                )
+                return PlanResolution(
+                    file_path=recent.plans_dir, content=content, strategy="filesystem"
+                )
+    except Exception as e:
+        logger.warning("Failed filesystem scan for plan: %s", e)
+
+    return None
 
 
 def detect_plan_in_response(
