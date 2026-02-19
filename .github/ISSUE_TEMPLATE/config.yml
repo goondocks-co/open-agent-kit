@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://oak.goondocks.co/
+    url: https://openagentkit.app/
     about: Read setup, CLI, and feature docs before opening an issue
   - name: Contributing Guide
     url: https://github.com/goondocks-co/open-agent-kit/blob/main/CONTRIBUTING.md

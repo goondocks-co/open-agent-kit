@@ -206,6 +206,27 @@ Add your own patterns from the Configuration page. Patterns use glob syntax (e.g
 
 If you've added patterns you no longer need, use the **Reset to Defaults** button to restore the built-in exclusion list.
 
+## Governance
+
+Governance settings control what AI agents are allowed to do. Enable rules-based policy enforcement and audit logging from the [Governance](/open-agent-kit/features/codebase-intelligence/governance/) page.
+
+| Setting | Config Key | Default | Description |
+|---------|-----------|---------|-------------|
+| Enabled | `governance.enabled` | `false` | Whether governance evaluation is active |
+| Enforcement mode | `governance.enforcement_mode` | `observe` | `observe` (log only) or `enforce` (can block) |
+| Retention days | `governance.retention_days` | `30` | Days to keep audit events (1–365) |
+
+```yaml
+codebase_intelligence:
+  governance:
+    enabled: true
+    enforcement_mode: observe
+    retention_days: 30
+    rules: []  # See Governance docs for rule syntax
+```
+
+See the [Governance](/open-agent-kit/features/codebase-intelligence/governance/) page for full documentation on rules, audit logging, and enforcement modes.
+
 ## Test & Detect
 
 The **Test & Detect** buttons on the Configuration page let you verify your provider setup:
