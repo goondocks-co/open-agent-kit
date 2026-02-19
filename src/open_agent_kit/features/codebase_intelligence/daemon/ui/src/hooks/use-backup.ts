@@ -70,6 +70,9 @@ interface RestoreResponse {
     observations_skipped: number;
     activities_imported: number;
     activities_skipped: number;
+    gov_audit_imported: number;
+    gov_audit_skipped: number;
+    gov_audit_deleted: number;
     errors: number;
     error_messages?: string[];  // Detailed error messages for debugging
 }

@@ -26,6 +26,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         _migrate_v4_to_v5(conn)
     if from_version < 6:
         _migrate_v5_to_v6(conn)
+    if from_version < 7:
+        _migrate_v6_to_v7(conn)
 
     # Always run idempotent column checks for the current version.
     # This catches columns added mid-development after a version was
@@ -224,6 +226,52 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM memory_observations WHERE memory_type = 'session_summary'")
 
     logger.info("Migration v5 -> v6 complete: session summaries moved to sessions table")
+
+
+def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
+    """Migrate schema v6 -> v7: add governance audit events table."""
+    logger.info("Migrating activity store schema v6 -> v7 (governance audit events)")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS governance_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            agent TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            tool_use_id TEXT,
+            tool_category TEXT,
+            rule_id TEXT,
+            rule_description TEXT,
+            action TEXT NOT NULL,
+            reason TEXT,
+            matched_pattern TEXT,
+            tool_input_summary TEXT,
+            enforcement_mode TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_at_epoch INTEGER NOT NULL,
+            evaluation_ms INTEGER,
+            source_machine_id TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        )
+    """)
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gov_audit_session ON governance_audit_events(session_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gov_audit_action ON governance_audit_events(action)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gov_audit_created ON governance_audit_events(created_at_epoch DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gov_audit_tool ON governance_audit_events(tool_name)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gov_audit_rule ON governance_audit_events(rule_id)"
+    )
+
+    logger.info("Migration v6 -> v7 complete: governance_audit_events table created")
 
 
 def _ensure_v6_columns(conn: sqlite3.Connection) -> None:

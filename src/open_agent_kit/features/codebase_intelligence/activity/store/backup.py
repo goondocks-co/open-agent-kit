@@ -534,15 +534,18 @@ class ImportResult:
     schedules_skipped: int = 0
     resolution_events_imported: int = 0
     resolution_events_skipped: int = 0
+    gov_audit_imported: int = 0
+    gov_audit_skipped: int = 0
     errors: int = 0
     error_messages: list[str] = field(default_factory=list)
 
-    # Deleted counts (populated when replace_machine=True)
+    # Deleted counts (populated when replace_machine=True or delete-then-import)
     sessions_deleted: int = 0
     batches_deleted: int = 0
     observations_deleted: int = 0
     activities_deleted: int = 0
     runs_deleted: int = 0
+    gov_audit_deleted: int = 0
 
     @property
     def total_imported(self) -> int:
@@ -554,6 +557,7 @@ class ImportResult:
             + self.activities_imported
             + self.schedules_imported
             + self.resolution_events_imported
+            + self.gov_audit_imported
         )
 
     @property
@@ -566,6 +570,7 @@ class ImportResult:
             + self.activities_skipped
             + self.schedules_skipped
             + self.resolution_events_skipped
+            + self.gov_audit_skipped
         )
 
     @property
@@ -577,6 +582,7 @@ class ImportResult:
             + self.observations_deleted
             + self.activities_deleted
             + self.runs_deleted
+            + self.gov_audit_deleted
         )
 
 
@@ -957,6 +963,7 @@ def export_to_sql(
         tables.append("activities")
     tables.append("agent_schedules")
     tables.append("resolution_events")
+    tables.append("governance_audit_events")
 
     # Build set of valid session IDs for FK validation
     # Only include sessions that originated on this machine (will be exported)
@@ -1038,6 +1045,11 @@ def export_to_sql(
                         table_skipped += 1
                         continue
                     if batch_id is not None and batch_id not in valid_batch_ids:
+                        table_skipped += 1
+                        continue
+                elif table == "governance_audit_events":
+                    session_id = row_dict.get("session_id")
+                    if session_id and session_id not in valid_session_ids:
                         table_skipped += 1
                         continue
 
@@ -1235,6 +1247,7 @@ def import_from_sql_with_dedup(
         result.observations_deleted = delete_counts.get("memory_observations", 0)
         result.activities_deleted = delete_counts.get("activities", 0)
         result.runs_deleted = delete_counts.get("agent_runs", 0)
+        result.gov_audit_deleted = delete_counts.get("governance_audit_events", 0)
         logger.info(
             f"Replace mode: deleted {result.total_deleted} existing records "
             f"for machine {source_machine_id}"
@@ -1266,6 +1279,7 @@ def import_from_sql_with_dedup(
         "activities": [],
         "agent_schedules": [],
         "resolution_events": [],
+        "governance_audit_events": [],
     }
 
     # Extract complete SQL statements (handles multi-line INSERT with newlines in values)
@@ -1324,6 +1338,7 @@ def import_from_sql_with_dedup(
         "activities",
         "agent_schedules",
         "resolution_events",
+        "governance_audit_events",
     ]:
         # After importing sessions, validate parent_session_id references
         if table == "prompt_batches" and not dry_run and imported_session_ids:
@@ -1344,6 +1359,19 @@ def import_from_sql_with_dedup(
 
             # Remap source_plan_batch_id self-references in prompt_batches
             _remap_source_plan_batch_id(conn, old_to_new_batch_id)
+
+        # Governance audit events use delete-then-import (no hashing needed).
+        # Delete existing events from the backup's source machine before importing.
+        if table == "governance_audit_events" and source_machine_id and not dry_run:
+            deleted = conn.execute(
+                "DELETE FROM governance_audit_events WHERE source_machine_id = ?",
+                (source_machine_id,),
+            ).rowcount
+            if deleted > 0:
+                result.gov_audit_deleted = deleted
+                logger.debug(
+                    f"Cleared {deleted} governance audit events from machine {source_machine_id}"
+                )
 
         for stmt, row_dict in statements_by_table[table]:
             try:
@@ -1792,6 +1820,9 @@ def _prepare_statement_for_import(stmt: str, table: str) -> str:
         # Use INSERT OR IGNORE and mark as unapplied (needs replay)
         stmt = stmt.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
         return _replace_column_value(stmt, "applied", "0")
+    elif table == "governance_audit_events":
+        # Remove auto-increment id to let SQLite generate new IDs
+        return _remove_column_from_insert(stmt, "id")
     return stmt
 
 
@@ -2014,6 +2045,7 @@ _TABLE_TO_IMPORTED_ATTR: dict[str, str] = {
     "activities": "activities_imported",
     "agent_schedules": "schedules_imported",
     "resolution_events": "resolution_events_imported",
+    "governance_audit_events": "gov_audit_imported",
 }
 
 _TABLE_TO_SKIPPED_ATTR: dict[str, str] = {
@@ -2023,6 +2055,7 @@ _TABLE_TO_SKIPPED_ATTR: dict[str, str] = {
     "activities": "activities_skipped",
     "agent_schedules": "schedules_skipped",
     "resolution_events": "resolution_events_skipped",
+    "governance_audit_events": "gov_audit_skipped",
 }
 
 

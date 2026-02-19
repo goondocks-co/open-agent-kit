@@ -175,6 +175,9 @@ class RestoreResponse(BaseModel):
     activities_skipped: int = 0
     resolution_events_imported: int = 0
     resolution_events_skipped: int = 0
+    gov_audit_imported: int = 0
+    gov_audit_skipped: int = 0
+    gov_audit_deleted: int = 0
     sessions_deleted: int = 0
     batches_deleted: int = 0
     observations_deleted: int = 0
@@ -215,6 +218,9 @@ class RestoreResponse(BaseModel):
             activities_skipped=result.activities_skipped,
             resolution_events_imported=result.resolution_events_imported,
             resolution_events_skipped=result.resolution_events_skipped,
+            gov_audit_imported=result.gov_audit_imported,
+            gov_audit_skipped=result.gov_audit_skipped,
+            gov_audit_deleted=result.gov_audit_deleted,
             sessions_deleted=result.sessions_deleted,
             batches_deleted=result.batches_deleted,
             observations_deleted=result.observations_deleted,

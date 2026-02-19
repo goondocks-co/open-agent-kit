@@ -183,6 +183,28 @@ class AgentCIConfig(BaseModel):
     )
 
 
+class AgentGovernanceConfig(BaseModel):
+    """Governance capabilities for an agent.
+
+    Declares whether the agent supports governance features like
+    observe-mode logging and deny-mode tool blocking, and the
+    format used for deny responses.
+    """
+
+    supports_observe: bool = Field(
+        default=True,
+        description="Whether agent supports observe-mode governance logging",
+    )
+    supports_deny: bool = Field(
+        default=False,
+        description="Whether agent supports deny-mode tool blocking",
+    )
+    deny_format: str | None = Field(
+        default=None,
+        description="Deny response format: 'hookSpecificOutput' (Claude/Copilot), 'cursor_permission' (Cursor), or None if deny not supported",
+    )
+
+
 class AgentInstallation(BaseModel):
     """Agent installation configuration.
 
@@ -526,6 +548,12 @@ class AgentManifest(BaseModel):
     ci: AgentCIConfig = Field(
         default_factory=AgentCIConfig,
         description="Codebase Intelligence configuration for plan mode detection",
+    )
+
+    # Governance capabilities
+    governance: AgentGovernanceConfig = Field(
+        default_factory=AgentGovernanceConfig,
+        description="Governance capabilities (observe/deny support and deny format)",
     )
 
     @classmethod

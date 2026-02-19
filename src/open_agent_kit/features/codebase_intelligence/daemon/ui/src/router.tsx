@@ -20,6 +20,9 @@ import RunHistory from "@/components/agents/RunHistory";
 import Schedules from "@/components/agents/Schedules";
 import AgentSettings from "@/pages/AgentSettings";
 import CloudRelay from "@/pages/CloudRelay";
+import Governance from "@/pages/Governance";
+import GovernanceAudit from "@/components/governance/GovernanceAudit";
+import GovernanceRules from "@/components/governance/GovernanceRules";
 
 export const router = createBrowserRouter([
     {
@@ -52,6 +55,15 @@ export const router = createBrowserRouter([
                 ]
             },
             { path: "cloud", element: <CloudRelay /> },
+            {
+                path: "governance",
+                element: <Governance />,
+                children: [
+                    { index: true, element: <Navigate to="audit" replace /> },
+                    { path: "audit", element: <GovernanceAudit /> },
+                    { path: "rules", element: <GovernanceRules /> },
+                ],
+            },
             {
                 path: "team",
                 element: <Team />,

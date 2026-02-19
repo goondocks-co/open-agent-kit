@@ -440,11 +440,14 @@ class TestResolvePlanContent:
             resolve_plan_content,
         )
 
-        result = resolve_plan_content(
-            known_plan_file_path=str(tmp_path / "nonexistent.md"),
-        )
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.find_recent_plan_file",
+            return_value=None,
+        ):
+            result = resolve_plan_content(
+                known_plan_file_path=str(tmp_path / "nonexistent.md"),
+            )
 
-        # Falls through to strategy 4 (filesystem), which also finds nothing
         assert result is None
 
     def test_strategy_candidate_paths(self, plan_file):
@@ -472,16 +475,21 @@ class TestResolvePlanContent:
             resolve_plan_content,
         )
 
-        with patch(
-            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
-        ) as mock_detect:
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+            ) as mock_detect,
+            patch(
+                "open_agent_kit.features.codebase_intelligence.plan_detector.find_recent_plan_file",
+                return_value=None,
+            ),
+        ):
             mock_detect.return_value = PlanDetectionResult(is_plan=False)
 
             result = resolve_plan_content(
                 candidate_paths=[str(plan_file)],
             )
 
-        # Candidate rejected → falls through to filesystem (also nothing)
         assert result is None
 
     def test_strategy_transcript(self, plan_file, tmp_path):
@@ -566,13 +574,16 @@ class TestResolvePlanContent:
             resolve_plan_content,
         )
 
-        result = resolve_plan_content(
-            known_plan_file_path=str(small_plan_file),
-            min_content_length=500,
-        )
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.find_recent_plan_file",
+            return_value=None,
+        ):
+            result = resolve_plan_content(
+                known_plan_file_path=str(small_plan_file),
+                min_content_length=500,
+            )
 
         # "Short" is only 5 chars, below 500 threshold
-        # Falls through to filesystem scan (also nothing)
         assert result is None
 
     def test_existing_content_length_filter(self, plan_file, tmp_path):
@@ -582,10 +593,14 @@ class TestResolvePlanContent:
         )
 
         # existing_content_length is very large — disk content won't be 2x
-        result = resolve_plan_content(
-            known_plan_file_path=str(plan_file),
-            existing_content_length=999999,
-        )
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.find_recent_plan_file",
+            return_value=None,
+        ):
+            result = resolve_plan_content(
+                known_plan_file_path=str(plan_file),
+                existing_content_length=999999,
+            )
 
         assert result is None
 

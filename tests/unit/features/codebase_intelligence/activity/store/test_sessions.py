@@ -3,10 +3,12 @@
 Covers:
 - would_create_cycle(): recursive CTE cycle detection
 - cleanup_low_quality_sessions(): batch deletion of low-quality sessions
+- find_linkable_parent_session(): tiered parent session discovery
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -22,6 +24,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store.sessions impor
     cleanup_low_quality_sessions,
     create_session,
     end_session,
+    find_linkable_parent_session,
     would_create_cycle,
 )
 
@@ -317,3 +320,248 @@ class TestCleanupLowQualitySessions:
         assert deleted == ["low"]
         assert store.get_session("borderline") is not None
         assert store.get_session("high") is not None
+
+
+# ==========================================================================
+# find_linkable_parent_session()
+# ==========================================================================
+
+
+def _set_session_timestamps(
+    store: ActivityStore,
+    session_id: str,
+    created_at_epoch: float,
+    ended_at: datetime | None = None,
+    status: str = "active",
+) -> None:
+    """Override session timestamps directly in the DB for controlled testing."""
+    conn = store._get_connection()
+    started_at = datetime.fromtimestamp(created_at_epoch).isoformat()
+    conn.execute(
+        """
+        UPDATE sessions
+        SET created_at_epoch = ?, started_at = ?, status = ?,
+            ended_at = ?
+        WHERE id = ?
+        """,
+        (
+            created_at_epoch,
+            started_at,
+            status,
+            ended_at.isoformat() if ended_at else None,
+            session_id,
+        ),
+    )
+    conn.commit()
+
+
+class TestFindLinkableParentSession:
+    """Verify tiered parent session discovery for auto-linking."""
+
+    def test_tier1_picks_most_recently_ended_not_created(self, store: ActivityStore) -> None:
+        """Regression: Tier 1 must order by ended_at, not created_at_epoch.
+
+        Scenario (the actual bug):
+        - Session A created at T+0, ended at T+120min (plan session, long-running)
+        - Session B created at T+10min, ended at T+15min (unrelated, short-lived)
+        - Session C starts at T+120min (continuation after clearing A)
+
+        Old behavior: picked B (newer created_at_epoch) -> wrong parent
+        Fixed behavior: picks A (most recently ended_at) -> correct parent
+        """
+        now = datetime.now()
+        t0 = now - timedelta(minutes=120)
+        t10 = now - timedelta(minutes=110)
+        t15 = now - timedelta(minutes=105)
+        t120 = now  # session A ends, session C starts
+
+        # Create both sessions
+        _make_session(store, "plan-session-A")
+        _make_session(store, "unrelated-session-B")
+        _make_session(store, "continuation-C")
+
+        # A: created first, ended last (the real parent)
+        _set_session_timestamps(
+            store,
+            "plan-session-A",
+            created_at_epoch=t0.timestamp(),
+            ended_at=t120,
+            status="completed",
+        )
+        # B: created second, ended much earlier (not the parent)
+        _set_session_timestamps(
+            store,
+            "unrelated-session-B",
+            created_at_epoch=t10.timestamp(),
+            ended_at=t15,
+            status="completed",
+        )
+        # C: the new continuation session (not yet ended)
+        _set_session_timestamps(
+            store,
+            "continuation-C",
+            created_at_epoch=t120.timestamp(),
+        )
+
+        result = find_linkable_parent_session(
+            store=store,
+            agent=AGENT_NAME,
+            project_root=PROJECT_ROOT,
+            exclude_session_id="continuation-C",
+            new_session_started_at=t120,
+            max_gap_seconds=5,
+        )
+
+        assert result is not None
+        parent_id, reason = result
+        assert parent_id == "plan-session-A", (
+            f"Expected plan-session-A (most recently ended) "
+            f"but got {parent_id} — Tier 1 is still ordering by created_at_epoch"
+        )
+        assert reason == "clear"  # SESSION_LINK_REASON_CLEAR (within 5s gap)
+
+    def test_tier2_finds_active_session_race_condition(self, store: ActivityStore) -> None:
+        """Tier 2 should find an active session when SessionEnd hasn't fired yet."""
+        now = datetime.now()
+        t0 = now - timedelta(minutes=60)
+
+        _make_session(store, "active-parent")
+        _add_activities(store, "active-parent", count=3)
+        # Tier 2 checks prompt_count > 0; _add_activities doesn't touch it
+        conn = store._get_connection()
+        conn.execute("UPDATE sessions SET prompt_count = 3 WHERE id = 'active-parent'")
+        conn.commit()
+        _set_session_timestamps(
+            store,
+            "active-parent",
+            created_at_epoch=t0.timestamp(),
+            status="active",  # Not yet ended
+        )
+
+        _make_session(store, "new-child")
+        _set_session_timestamps(store, "new-child", created_at_epoch=now.timestamp())
+
+        result = find_linkable_parent_session(
+            store=store,
+            agent=AGENT_NAME,
+            project_root=PROJECT_ROOT,
+            exclude_session_id="new-child",
+            new_session_started_at=now,
+        )
+
+        assert result is not None
+        parent_id, reason = result
+        assert parent_id == "active-parent"
+        assert reason == "clear_active"
+
+    def test_tier3_fallback_picks_most_recently_ended(self, store: ActivityStore) -> None:
+        """Tier 3 fallback must independently find the most recently ended session.
+
+        Regression: Tier 3 previously reused the wrong candidate from Tier 1.
+        """
+        now = datetime.now()
+        t0 = now - timedelta(hours=2)
+        t30 = now - timedelta(hours=1, minutes=30)
+        t60 = now - timedelta(hours=1)
+
+        # A: created first, ended more recently (correct parent)
+        _make_session(store, "correct-parent-A")
+        _set_session_timestamps(
+            store,
+            "correct-parent-A",
+            created_at_epoch=t0.timestamp(),
+            ended_at=t60,  # ended 1 hour ago
+            status="completed",
+        )
+        # B: created later, ended earlier (wrong parent)
+        _make_session(store, "wrong-parent-B")
+        _set_session_timestamps(
+            store,
+            "wrong-parent-B",
+            created_at_epoch=t30.timestamp(),
+            ended_at=t30,  # ended 1.5 hours ago
+            status="completed",
+        )
+
+        _make_session(store, "new-session")
+        _set_session_timestamps(store, "new-session", created_at_epoch=now.timestamp())
+
+        # Both sessions ended >5s ago, so Tier 1 won't match.
+        # Tier 2 won't match (no active sessions).
+        # Tier 3 should pick A (most recently ended).
+        result = find_linkable_parent_session(
+            store=store,
+            agent=AGENT_NAME,
+            project_root=PROJECT_ROOT,
+            exclude_session_id="new-session",
+            new_session_started_at=now,
+            max_gap_seconds=5,
+        )
+
+        assert result is not None
+        parent_id, reason = result
+        assert parent_id == "correct-parent-A", (
+            f"Expected correct-parent-A (ended more recently) "
+            f"but got {parent_id} — Tier 3 is reusing wrong Tier 1 candidate"
+        )
+        assert reason == "inferred"
+
+    def test_no_match_when_all_sessions_too_old(self, store: ActivityStore) -> None:
+        """No link should be returned when all candidates exceed the fallback window."""
+        now = datetime.now()
+        old = now - timedelta(hours=48)
+
+        _make_session(store, "ancient")
+        _set_session_timestamps(
+            store,
+            "ancient",
+            created_at_epoch=old.timestamp(),
+            ended_at=old,
+            status="completed",
+        )
+
+        _make_session(store, "new-session")
+        _set_session_timestamps(store, "new-session", created_at_epoch=now.timestamp())
+
+        result = find_linkable_parent_session(
+            store=store,
+            agent=AGENT_NAME,
+            project_root=PROJECT_ROOT,
+            exclude_session_id="new-session",
+            new_session_started_at=now,
+            fallback_max_hours=24,
+        )
+
+        assert result is None
+
+    def test_different_agent_not_linked(self, store: ActivityStore) -> None:
+        """Sessions from a different agent should never be linked."""
+        now = datetime.now()
+
+        # Create a session for a different agent
+        create_session(
+            store,
+            session_id="cursor-session",
+            agent="cursor",
+            project_root=PROJECT_ROOT,
+        )
+        _set_session_timestamps(
+            store,
+            "cursor-session",
+            created_at_epoch=(now - timedelta(seconds=1)).timestamp(),
+            ended_at=now - timedelta(seconds=1),
+            status="completed",
+        )
+
+        _make_session(store, "claude-new")
+        _set_session_timestamps(store, "claude-new", created_at_epoch=now.timestamp())
+
+        result = find_linkable_parent_session(
+            store=store,
+            agent=AGENT_NAME,  # "claude"
+            project_root=PROJECT_ROOT,
+            exclude_session_id="claude-new",
+            new_session_started_at=now,
+        )
+
+        assert result is None

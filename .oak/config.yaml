@@ -143,3 +143,10 @@ codebase_intelligence:
     similarity_threshold: 0.85
     similarity_threshold_no_context: 0.92
     search_limit: 5
+  governance:
+    enabled: true
+    log_allowed: false
+    rules: [{id: no-destructive-bash, description: Block destructive shell commands,
+        enabled: true, tool: Bash, pattern: rm\s+-rf, path_pattern: '', action: deny,
+        message: Destructive commands are blocked by governance policy.}]
+    retention_days: 30

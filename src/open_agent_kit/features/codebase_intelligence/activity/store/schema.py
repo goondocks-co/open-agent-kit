@@ -349,4 +349,37 @@ CREATE INDEX IF NOT EXISTS idx_resolution_events_epoch
     ON resolution_events(created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_resolution_events_content_hash
     ON resolution_events(content_hash);
+
+-- Governance audit events table (tool call policy evaluation log)
+CREATE TABLE IF NOT EXISTS governance_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    tool_use_id TEXT,
+    tool_category TEXT,
+    rule_id TEXT,
+    rule_description TEXT,
+    action TEXT NOT NULL,
+    reason TEXT,
+    matched_pattern TEXT,
+    tool_input_summary TEXT,
+    enforcement_mode TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    evaluation_ms INTEGER,
+    source_machine_id TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gov_audit_session
+    ON governance_audit_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_gov_audit_action
+    ON governance_audit_events(action);
+CREATE INDEX IF NOT EXISTS idx_gov_audit_created
+    ON governance_audit_events(created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_gov_audit_tool
+    ON governance_audit_events(tool_name);
+CREATE INDEX IF NOT EXISTS idx_gov_audit_rule
+    ON governance_audit_events(rule_id);
 """

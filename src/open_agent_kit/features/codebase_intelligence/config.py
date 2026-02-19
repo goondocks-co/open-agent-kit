@@ -49,6 +49,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_CLOUD_RELAY,
     CI_CONFIG_KEY_EMBEDDING,
     CI_CONFIG_KEY_EXCLUDE_PATTERNS,
+    CI_CONFIG_KEY_GOVERNANCE,
     CI_CONFIG_KEY_INDEX_ON_STARTUP,
     CI_CONFIG_KEY_LOG_LEVEL,
     CI_CONFIG_KEY_LOG_ROTATION,
@@ -81,6 +82,13 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_SUMMARIZATION_PROVIDER,
     DEFAULT_SUMMARIZATION_TIMEOUT,
     DEFAULT_TUNNEL_PROVIDER,
+    GOVERNANCE_ACTION_OBSERVE,
+    GOVERNANCE_ACTIONS,
+    GOVERNANCE_MODE_OBSERVE,
+    GOVERNANCE_MODES,
+    GOVERNANCE_RETENTION_DAYS_DEFAULT,
+    GOVERNANCE_RETENTION_DAYS_MAX,
+    GOVERNANCE_RETENTION_DAYS_MIN,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
     MAX_AGENT_MAX_TURNS,
@@ -945,6 +953,155 @@ class AutoResolveConfig:
 
 
 @dataclass
+class GovernanceRule:
+    """A single governance policy rule.
+
+    Attributes:
+        id: Unique rule identifier (e.g., "no-env-edit").
+        description: Human-readable description.
+        enabled: Whether this rule is active.
+        tool: Tool name or glob pattern (e.g., "Bash", "Write", "*").
+        pattern: Regex for tool_input matching.
+        path_pattern: fnmatch pattern for file path matching.
+        action: Action when matched: allow | deny | warn | observe.
+        message: Message shown to agent on deny/warn.
+    """
+
+    id: str = ""
+    description: str = ""
+    enabled: bool = True
+    tool: str = "*"
+    pattern: str = ""
+    path_pattern: str = ""
+    action: str = GOVERNANCE_ACTION_OBSERVE
+    message: str = ""
+
+    def __post_init__(self) -> None:
+        self._validate()
+
+    def _validate(self) -> None:
+        if not self.id:
+            raise ValidationError(
+                "Rule id is required", field="id", value=self.id, expected="non-empty string"
+            )
+        if self.action not in GOVERNANCE_ACTIONS:
+            raise ValidationError(
+                f"Invalid governance action: {self.action}",
+                field="action",
+                value=self.action,
+                expected=f"one of {GOVERNANCE_ACTIONS}",
+            )
+        if self.pattern:
+            try:
+                re.compile(self.pattern)
+            except re.error as e:
+                raise ValidationError(
+                    f"Invalid regex pattern: {e}",
+                    field="pattern",
+                    value=self.pattern,
+                    expected="valid regex",
+                ) from e
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GovernanceRule":
+        return cls(
+            id=data.get("id", ""),
+            description=data.get("description", ""),
+            enabled=data.get("enabled", True),
+            tool=data.get("tool", "*"),
+            pattern=data.get("pattern", ""),
+            path_pattern=data.get("path_pattern", ""),
+            action=data.get("action", GOVERNANCE_ACTION_OBSERVE),
+            message=data.get("message", ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "description": self.description,
+            "enabled": self.enabled,
+            "tool": self.tool,
+            "pattern": self.pattern,
+            "path_pattern": self.path_pattern,
+            "action": self.action,
+            "message": self.message,
+        }
+
+
+@dataclass
+class GovernanceConfig:
+    """Configuration for agent governance (observability and enforcement).
+
+    Attributes:
+        enabled: Whether governance evaluation is active.
+        enforcement_mode: "observe" (log only) or "enforce" (can deny).
+        log_allowed: If true, log allow decisions too (verbose).
+        retention_days: Number of days to keep audit events before pruning.
+        rules: List of governance policy rules.
+    """
+
+    enabled: bool = False
+    enforcement_mode: str = GOVERNANCE_MODE_OBSERVE
+    log_allowed: bool = False
+    retention_days: int = GOVERNANCE_RETENTION_DAYS_DEFAULT
+    rules: list[GovernanceRule] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self._validate()
+
+    def _validate(self) -> None:
+        if self.enforcement_mode not in GOVERNANCE_MODES:
+            raise ValidationError(
+                f"Invalid enforcement mode: {self.enforcement_mode}",
+                field="enforcement_mode",
+                value=self.enforcement_mode,
+                expected=f"one of {GOVERNANCE_MODES}",
+            )
+        # Validate retention_days bounds
+        if not (
+            GOVERNANCE_RETENTION_DAYS_MIN <= self.retention_days <= GOVERNANCE_RETENTION_DAYS_MAX
+        ):
+            raise ValidationError(
+                f"retention_days must be between {GOVERNANCE_RETENTION_DAYS_MIN} "
+                f"and {GOVERNANCE_RETENTION_DAYS_MAX}",
+                field="retention_days",
+                value=self.retention_days,
+                expected=f">= {GOVERNANCE_RETENTION_DAYS_MIN} and <= {GOVERNANCE_RETENTION_DAYS_MAX}",
+            )
+        # Validate rule IDs are unique
+        rule_ids = [r.id for r in self.rules]
+        if len(rule_ids) != len(set(rule_ids)):
+            dupes = [rid for rid in rule_ids if rule_ids.count(rid) > 1]
+            raise ValidationError(
+                f"Duplicate rule IDs: {set(dupes)}",
+                field="rules",
+                value=dupes,
+                expected="unique rule IDs",
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GovernanceConfig":
+        rules_data = data.get("rules", [])
+        rules = [GovernanceRule.from_dict(r) if isinstance(r, dict) else r for r in rules_data]
+        return cls(
+            enabled=data.get("enabled", False),
+            enforcement_mode=data.get("enforcement_mode", GOVERNANCE_MODE_OBSERVE),
+            log_allowed=data.get("log_allowed", False),
+            retention_days=data.get("retention_days", GOVERNANCE_RETENTION_DAYS_DEFAULT),
+            rules=rules,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "enforcement_mode": self.enforcement_mode,
+            "log_allowed": self.log_allowed,
+            "retention_days": self.retention_days,
+            "rules": [r.to_dict() for r in self.rules],
+        }
+
+
+@dataclass
 class LogRotationConfig:
     """Configuration for log file rotation.
 
@@ -1306,6 +1463,7 @@ class CIConfig:
         cloud_relay: Cloud MCP Relay configuration.
         backup: Backup behavior configuration.
         auto_resolve: Auto-resolve (supersession) configuration.
+        governance: Agent governance (observability and enforcement) configuration.
         index_on_startup: Whether to build index when daemon starts.
         watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
@@ -1322,6 +1480,7 @@ class CIConfig:
     cloud_relay: CloudRelayConfig = field(default_factory=CloudRelayConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
     auto_resolve: AutoResolveConfig = field(default_factory=AutoResolveConfig)
+    governance: GovernanceConfig = field(default_factory=GovernanceConfig)
     index_on_startup: bool = True
     watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
@@ -1385,6 +1544,7 @@ class CIConfig:
         cloud_relay_data = data.get(CI_CONFIG_KEY_CLOUD_RELAY, {})
         backup_data = data.get(BACKUP_CONFIG_KEY, {})
         auto_resolve_data = data.get(AUTO_RESOLVE_CONFIG_KEY, {})
+        governance_data = data.get(CI_CONFIG_KEY_GOVERNANCE, {})
         log_rotation_data = data.get(CI_CONFIG_KEY_LOG_ROTATION, {})
         return cls(
             embedding=EmbeddingConfig.from_dict(embedding_data),
@@ -1395,6 +1555,7 @@ class CIConfig:
             cloud_relay=CloudRelayConfig.from_dict(cloud_relay_data),
             backup=BackupConfig.from_dict(backup_data),
             auto_resolve=AutoResolveConfig.from_dict(auto_resolve_data),
+            governance=GovernanceConfig.from_dict(governance_data),
             index_on_startup=data.get(CI_CONFIG_KEY_INDEX_ON_STARTUP, True),
             watch_files=data.get(CI_CONFIG_KEY_WATCH_FILES, True),
             exclude_patterns=data.get(
@@ -1416,6 +1577,7 @@ class CIConfig:
             CI_CONFIG_KEY_CLOUD_RELAY: self.cloud_relay.to_dict(),
             BACKUP_CONFIG_KEY: self.backup.to_dict(),
             AUTO_RESOLVE_CONFIG_KEY: self.auto_resolve.to_dict(),
+            CI_CONFIG_KEY_GOVERNANCE: self.governance.to_dict(),
             CI_CONFIG_KEY_INDEX_ON_STARTUP: self.index_on_startup,
             CI_CONFIG_KEY_WATCH_FILES: self.watch_files,
             CI_CONFIG_KEY_EXCLUDE_PATTERNS: self.exclude_patterns,
@@ -1492,6 +1654,7 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{BACKUP_CONFIG_KEY}.auto_enabled",  # Personal preference for auto-backup
         f"{BACKUP_CONFIG_KEY}.include_activities",  # Personal preference for backup scope
         f"{BACKUP_CONFIG_KEY}.interval_minutes",  # Personal preference for backup frequency
+        f"{CI_CONFIG_KEY_GOVERNANCE}.enforcement_mode",  # Enforcement mode is machine-local
     }
 )
 
@@ -1793,6 +1956,7 @@ def get_config_origins(project_root: Path) -> dict[str, str]:
         CI_CONFIG_KEY_CLOUD_RELAY,
         BACKUP_CONFIG_KEY,
         AUTO_RESOLVE_CONFIG_KEY,
+        CI_CONFIG_KEY_GOVERNANCE,
         CI_CONFIG_KEY_INDEX_ON_STARTUP,
         CI_CONFIG_KEY_WATCH_FILES,
         CI_CONFIG_KEY_EXCLUDE_PATTERNS,

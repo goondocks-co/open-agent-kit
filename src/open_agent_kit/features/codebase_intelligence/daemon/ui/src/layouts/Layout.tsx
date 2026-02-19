@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Activity, FileTerminal, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, Cloud, PanelLeft, PanelLeftClose, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, Cloud, PanelLeft, PanelLeftClose, RefreshCw, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { useStatus } from "@/hooks/use-status";
@@ -55,10 +55,10 @@ export function Layout() {
         { to: "/", icon: LayoutDashboard, label: "Dashboard" },
         { to: "/search", icon: Search, label: "Search" },
         { to: "/activity", icon: Activity, label: "Activity" },
+        { to: "/team", icon: Users, label: "Team" },
         { to: "/agents", icon: Bot, label: "Agents" },
         { to: "/cloud", icon: Cloud, label: "Cloud" },
-        { to: "/logs", icon: FileTerminal, label: "Logs" },
-        { to: "/team", icon: Users, label: "Team" },
+        { to: "/governance", icon: Shield, label: "Governance" },
         { to: "/config", icon: Settings, label: "Configuration" },
         { to: "/devtools", icon: Wrench, label: "DevTools" },
         { to: "/help", icon: HelpCircle, label: "Help" },

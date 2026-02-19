@@ -68,6 +68,12 @@ ci:
       - clear    # User cleared context to continue in new session
       - compact  # Automatic context compaction mid-session
 
+# Governance capabilities
+governance:
+  supports_observe: true
+  supports_deny: true
+  deny_format: "hookSpecificOutput"
+
 settings:
   # Auto-approval settings for oak commands
   auto_approve:
