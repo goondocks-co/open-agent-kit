@@ -30,6 +30,7 @@ export interface SessionItem {
     status: string;
     summary: string | null;
     title: string | null;
+    title_manually_edited?: boolean;
     first_prompt_preview: string | null;
     prompt_batch_count: number;
     activity_count: number;
@@ -39,6 +40,8 @@ export interface SessionItem {
     child_session_count: number;
     // Resume command (from agent manifest)
     resume_command: string | null;
+    // Summary embedding status
+    summary_embedded: boolean;
 }
 
 export interface PromptBatchItem {

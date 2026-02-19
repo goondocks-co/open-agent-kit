@@ -25,7 +25,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     MEMORY_EMBED_LABEL_TEMPLATE,
     MEMORY_EMBED_LINE_SEPARATOR,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.daemon.state import DaemonState
@@ -287,25 +286,19 @@ def build_session_context(
             parts.append(reminder)
 
             # Include recent session summaries (provides continuity across sessions)
-            if include_memories and state.retrieval_engine:
+            if include_memories and state.activity_store:
                 try:
-                    session_summaries, _ = state.retrieval_engine.list_memories(
-                        limit=INJECTION_MAX_SESSION_SUMMARIES,
-                        memory_types=[MemoryType.SESSION_SUMMARY.value],
+                    recent_sessions = state.activity_store.list_sessions_with_summaries(
+                        limit=INJECTION_MAX_SESSION_SUMMARIES
                     )
-                    if not session_summaries and state.activity_store:
-                        sqlite_summaries = state.activity_store.list_session_summaries(
-                            limit=INJECTION_MAX_SESSION_SUMMARIES
-                        )
+                    if recent_sessions:
                         session_summaries = [
                             {
-                                "observation": summary.observation,
-                                "tags": summary.tags or [],
-                                "memory_type": MemoryType.SESSION_SUMMARY.value,
+                                "observation": s.summary,
+                                "tags": [s.agent],
                             }
-                            for summary in sqlite_summaries
+                            for s in recent_sessions
                         ]
-                    if session_summaries:
                         session_text = format_session_summaries(session_summaries)
                         if session_text:
                             parts.append(session_text)

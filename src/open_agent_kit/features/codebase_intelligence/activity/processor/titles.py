@@ -92,6 +92,11 @@ def generate_session_title(
         logger.debug(f"Session {session_id} not found, skipping title")
         return None
 
+    # Skip sessions with manually edited titles
+    if session.title_manually_edited:
+        logger.debug(f"Session {session_id} has manually edited title, skipping generation")
+        return None
+
     # Get prompt batches for this session
     batches = activity_store.get_session_prompt_batches(session_id, limit=10)
     if not batches:
@@ -145,9 +150,21 @@ def generate_session_title(
 
     prompt_batches_text = "\n".join(batch_lines)
 
+    # Inject parent context for child sessions so the LLM differentiates titles
+    parent_context = ""
+    if session.parent_session_id:
+        parent_title = _get_parent_session_title(session, activity_store)
+        if parent_title:
+            parent_context = (
+                f"\n\n## Parent Session\n"
+                f'This is a continuation of: "{parent_title}"\n'
+                f"Generate a DIFFERENT title that captures what THIS specific session accomplished."
+            )
+
     # Build prompt
     prompt = title_template.prompt
     prompt = prompt.replace("{{prompt_batches}}", prompt_batches_text)
+    prompt = prompt.replace("{{parent_context}}", parent_context)
 
     # Call LLM
     result = call_llm(prompt)
@@ -209,6 +226,12 @@ def generate_title_from_summary(
         logger.debug(f"Summary too short for session {session_id}, skipping title from summary")
         return None
 
+    # Skip sessions with manually edited titles
+    session = activity_store.get_session(session_id)
+    if session and session.title_manually_edited:
+        logger.debug(f"Session {session_id} has manually edited title, skipping generation")
+        return None
+
     # Get title-from-summary template
     title_template = prompt_config.get_template("session-title-from-summary")
     if not title_template:
@@ -220,6 +243,18 @@ def generate_title_from_summary(
     # Truncate very long summaries
     truncated_summary = summary[:2000] if len(summary) > 2000 else summary
     prompt = prompt.replace("{{session_summary}}", truncated_summary)
+
+    # Inject parent context for child sessions so the LLM differentiates titles
+    parent_context = ""
+    if session and session.parent_session_id:
+        parent_title = _get_parent_session_title(session, activity_store)
+        if parent_title:
+            parent_context = (
+                f"\n\n## Parent Session\n"
+                f'This is a continuation of: "{parent_title}"\n'
+                f"Generate a DIFFERENT title that captures what THIS specific session accomplished."
+            )
+    prompt = prompt.replace("{{parent_context}}", parent_context)
 
     # Call LLM
     result = call_llm(prompt)

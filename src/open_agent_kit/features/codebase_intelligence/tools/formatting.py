@@ -190,9 +190,25 @@ def format_session_search_results(sessions: list[dict[str, Any]]) -> str:
             title = title[:77] + "..."
         confidence = s.get("confidence", "medium")
         preview = s.get("preview", "")
+        parent_session_id = s.get("parent_session_id")
+        chain_position = s.get("chain_position")
+        created_at_epoch = s.get("created_at_epoch")
 
         lines.append(f"{i}. **{title}** [{confidence}]")
-        lines.append(f"   ID: {session_id}")
+
+        # Build metadata line with session ID and optional lineage info
+        meta_parts = [f"ID: {session_id}"]
+        if chain_position:
+            meta_parts.append(f"chain: {chain_position}")
+        if parent_session_id:
+            meta_parts.append(f"parent: {parent_session_id[:12]}")
+        if created_at_epoch:
+            from datetime import UTC, datetime
+
+            created_dt = datetime.fromtimestamp(created_at_epoch, tz=UTC)
+            meta_parts.append(f"created: {created_dt.strftime('%Y-%m-%d %H:%M')}")
+        lines.append(f"   {' | '.join(meta_parts)}")
+
         if preview:
             # Truncate and indent preview
             preview_text = preview[:200] + "..." if len(preview) > 200 else preview

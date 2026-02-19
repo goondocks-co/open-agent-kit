@@ -15,7 +15,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     DEFAULT_SUMMARIZATION_MODEL,
     MIN_SESSION_ACTIVITIES,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 logger = logging.getLogger(__name__)
@@ -331,9 +330,7 @@ async def get_memory_stats() -> dict[str, Any]:
     sqlite_total = state.activity_store.count_observations()
     sqlite_embedded = state.activity_store.count_embedded_observations()
     sqlite_unembedded = state.activity_store.count_unembedded_observations()
-    sqlite_session_summaries = state.activity_store.count_observations_by_type(
-        MemoryType.SESSION_SUMMARY.value
-    )
+    sqlite_session_summaries = state.activity_store.count_sessions_with_summaries()
 
     # Plans are also stored in ChromaDB memory collection (with memory_type='plan')
     # but tracked in prompt_batches table, not memory_observations

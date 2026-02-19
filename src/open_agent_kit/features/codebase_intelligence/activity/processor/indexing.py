@@ -245,6 +245,14 @@ def rebuild_chromadb_from_sqlite(
         )
 
         for stored_obs in observations:
+            # Session summaries belong in the session_summaries collection,
+            # not the memory collection. They are handled by
+            # backfill_session_summaries / reembed_session_summaries instead.
+            if stored_obs.memory_type == "session_summary":
+                activity_store.mark_observation_embedded(stored_obs.id)
+                stats["skipped"] += 1
+                continue
+
             try:
                 # Create MemoryObservation for ChromaDB
                 memory = MemoryObservation(

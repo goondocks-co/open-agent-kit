@@ -26,7 +26,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     SESSION_STATUS_ACTIVE,
     SESSION_STATUS_COMPLETED,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -205,18 +204,22 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
     logger.debug(f"Ended session {session_id}")
 
 
-def update_session_title(store: ActivityStore, session_id: str, title: str) -> None:
+def update_session_title(
+    store: ActivityStore, session_id: str, title: str, manually_edited: bool = False
+) -> None:
     """Update the session title.
 
     Args:
         store: The ActivityStore instance.
         session_id: Session to update.
-        title: LLM-generated short title for the session.
+        title: Short title for the session.
+        manually_edited: If True, marks the title as manually edited to protect
+            it from being overwritten by LLM-generated titles.
     """
     with store._transaction() as conn:
         conn.execute(
-            "UPDATE sessions SET title = ? WHERE id = ?",
-            (title, session_id),
+            "UPDATE sessions SET title = ?, title_manually_edited = ? WHERE id = ?",
+            (title, manually_edited, session_id),
         )
     logger.debug(f"Updated session {session_id} title: {title[:50]}...")
 
@@ -229,12 +232,30 @@ def update_session_summary(store: ActivityStore, session_id: str, summary: str) 
         session_id: Session to update.
         summary: LLM-generated session summary.
     """
+    now_epoch = int(time.time())
     with store._transaction() as conn:
         conn.execute(
-            "UPDATE sessions SET summary = ? WHERE id = ?",
-            (summary, session_id),
+            "UPDATE sessions SET summary = ?, summary_updated_at = ? WHERE id = ?",
+            (summary, now_epoch, session_id),
         )
     logger.debug(f"Updated session {session_id} summary: {summary[:50]}...")
+
+
+def mark_session_summary_embedded(
+    store: ActivityStore, session_id: str, embedded: bool = True
+) -> None:
+    """Mark whether a session summary has been embedded in ChromaDB.
+
+    Args:
+        store: The ActivityStore instance.
+        session_id: Session to update.
+        embedded: True if embedded, False to clear the flag.
+    """
+    with store._transaction() as conn:
+        conn.execute(
+            "UPDATE sessions SET summary_embedded = ? WHERE id = ?",
+            (int(embedded), session_id),
+        )
 
 
 def update_session_transcript_path(
@@ -483,6 +504,7 @@ def get_sessions_needing_titles(store: ActivityStore, limit: int = 10) -> list[S
         f"""
         SELECT s.* FROM sessions s
         WHERE s.title IS NULL
+        AND (s.title_manually_edited IS NULL OR s.title_manually_edited = FALSE)
         AND s.source_machine_id = ?
         AND EXISTS (SELECT 1 FROM prompt_batches pb WHERE pb.session_id = s.id)
         AND (s.status = '{SESSION_STATUS_COMPLETED}' OR s.created_at_epoch < ?)
@@ -497,7 +519,7 @@ def get_sessions_needing_titles(store: ActivityStore, limit: int = 10) -> list[S
 def get_sessions_missing_summaries(
     store: ActivityStore, limit: int = 10, min_activities: int | None = None
 ) -> list[Session]:
-    """Get completed sessions missing a session_summary memory.
+    """Get completed sessions missing a summary.
 
     Only returns sessions that meet the quality threshold (>= min_activities),
     since low-quality sessions will never be summarized and would otherwise
@@ -520,15 +542,12 @@ def get_sessions_missing_summaries(
         SELECT s.* FROM sessions s
         WHERE s.status = '{SESSION_STATUS_COMPLETED}'
         AND s.source_machine_id = ?
-        AND NOT EXISTS (
-            SELECT 1 FROM memory_observations m
-            WHERE m.session_id = s.id AND m.memory_type = ?
-        )
+        AND s.summary IS NULL
         AND (SELECT COUNT(*) FROM activities a WHERE a.session_id = s.id) >= ?
         ORDER BY s.created_at_epoch DESC
         LIMIT ?
         """,
-        (store.machine_id, MemoryType.SESSION_SUMMARY.value, min_activities, limit),
+        (store.machine_id, min_activities, limit),
     )
     return [Session.from_row(row) for row in cursor.fetchall()]
 
@@ -1128,6 +1147,30 @@ def get_child_session_count(store: ActivityStore, session_id: str) -> int:
     return row[0] if row else 0
 
 
+def get_bulk_child_session_counts(store: ActivityStore, session_ids: list[str]) -> dict[str, int]:
+    """Count child sessions for multiple parent sessions in a single query.
+
+    Args:
+        store: The ActivityStore instance.
+        session_ids: List of session IDs to check for children.
+
+    Returns:
+        Dictionary mapping session_id -> child count (only includes non-zero counts).
+    """
+    if not session_ids:
+        return {}
+
+    conn = store._get_connection()
+    placeholders = ",".join("?" * len(session_ids))
+    cursor = conn.execute(
+        f"SELECT parent_session_id, COUNT(*) as cnt "
+        f"FROM sessions WHERE parent_session_id IN ({placeholders}) "
+        f"GROUP BY parent_session_id",
+        session_ids,
+    )
+    return {row["parent_session_id"]: row["cnt"] for row in cursor.fetchall()}
+
+
 def would_create_cycle(
     store: ActivityStore,
     session_id: str,
@@ -1403,7 +1446,7 @@ def is_suggestion_dismissed(store: ActivityStore, session_id: str) -> bool:
 
 
 def count_sessions_with_summaries(store: ActivityStore) -> int:
-    """Count distinct sessions that have a session_summary observation.
+    """Count sessions that have a summary.
 
     Used to report how many sessions will be re-embedded.
 
@@ -1411,14 +1454,39 @@ def count_sessions_with_summaries(store: ActivityStore) -> int:
         store: The ActivityStore instance.
 
     Returns:
-        Number of sessions with at least one session_summary observation.
+        Number of sessions with a non-NULL summary.
     """
     conn = store._get_connection()
-    cursor = conn.execute("""
-        SELECT COUNT(DISTINCT s.id)
-        FROM sessions s
-        INNER JOIN memory_observations m ON m.session_id = s.id
-        WHERE m.memory_type = 'session_summary'
-        """)
+    cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE summary IS NOT NULL")
     result = cursor.fetchone()
     return result[0] or 0 if result else 0
+
+
+def list_sessions_with_summaries(
+    store: ActivityStore, limit: int = 5, source_machine_id: str | None = None
+) -> list[Session]:
+    """List recent sessions that have a non-NULL summary.
+
+    Used by context injection to provide recent session summaries to agents.
+
+    Args:
+        store: The ActivityStore instance.
+        limit: Maximum sessions to return.
+        source_machine_id: Optional machine filter. Defaults to store.machine_id.
+
+    Returns:
+        List of Session objects with summaries, most recent first.
+    """
+    machine_id = source_machine_id or store.machine_id
+    conn = store._get_connection()
+    cursor = conn.execute(
+        """
+        SELECT * FROM sessions
+        WHERE summary IS NOT NULL
+          AND source_machine_id = ?
+        ORDER BY summary_updated_at DESC, created_at_epoch DESC
+        LIMIT ?
+        """,
+        (machine_id, limit),
+    )
+    return [Session.from_row(row) for row in cursor.fetchall()]

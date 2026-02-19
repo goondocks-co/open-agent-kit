@@ -260,10 +260,13 @@ class Session:
     processed: bool = False
     summary: str | None = None
     title: str | None = None
+    title_manually_edited: bool = False  # Protect manual edits from LLM overwrite (v5)
     parent_session_id: str | None = None  # Session this was derived from (v12)
     parent_session_reason: str | None = None  # Why linked: 'clear', 'compact', 'inferred' (v12)
     source_machine_id: str | None = None  # Machine that originated this record (v13)
     transcript_path: str | None = None  # Path to session transcript file (v26)
+    summary_updated_at: int | None = None  # Epoch when summary was last generated (v6)
+    summary_embedded: bool = False  # Has summary been indexed in ChromaDB? (v6)
 
     def to_row(self) -> dict[str, Any]:
         """Convert to database row."""
@@ -279,11 +282,14 @@ class Session:
             "processed": self.processed,
             "summary": self.summary,
             "title": self.title,
+            "title_manually_edited": self.title_manually_edited,
             "created_at_epoch": int(self.started_at.timestamp()),
             "parent_session_id": self.parent_session_id,
             "parent_session_reason": self.parent_session_reason,
             "source_machine_id": self.source_machine_id,
             CI_SESSION_COLUMN_TRANSCRIPT_PATH: self.transcript_path,
+            "summary_updated_at": self.summary_updated_at,
+            "summary_embedded": int(self.summary_embedded),
         }
 
     @classmethod
@@ -292,6 +298,11 @@ class Session:
         # Handle columns which may not exist in older databases
         row_keys = row.keys()
         title = row["title"] if "title" in row_keys else None
+        title_manually_edited = (
+            bool(row["title_manually_edited"])
+            if "title_manually_edited" in row_keys and row["title_manually_edited"] is not None
+            else False
+        )
         parent_session_id = row["parent_session_id"] if "parent_session_id" in row_keys else None
         parent_session_reason = (
             row["parent_session_reason"] if "parent_session_reason" in row_keys else None
@@ -301,6 +312,12 @@ class Session:
             row[CI_SESSION_COLUMN_TRANSCRIPT_PATH]
             if CI_SESSION_COLUMN_TRANSCRIPT_PATH in row_keys
             else None
+        )
+        summary_updated_at = row["summary_updated_at"] if "summary_updated_at" in row_keys else None
+        summary_embedded = (
+            bool(row["summary_embedded"])
+            if "summary_embedded" in row_keys and row["summary_embedded"] is not None
+            else False
         )
         return cls(
             id=row["id"],
@@ -314,10 +331,13 @@ class Session:
             processed=bool(row["processed"]),
             summary=row["summary"],
             title=title,
+            title_manually_edited=title_manually_edited,
             parent_session_id=parent_session_id,
             parent_session_reason=parent_session_reason,
             source_machine_id=source_machine_id,
             transcript_path=transcript_path,
+            summary_updated_at=summary_updated_at,
+            summary_embedded=summary_embedded,
         )
 
 

@@ -248,6 +248,24 @@ def search_session_summaries(
     return search_results
 
 
+def has_session_summary(store: VectorStore, session_id: str) -> bool:
+    """Check if a session summary embedding exists in the vector store.
+
+    Args:
+        store: The VectorStore instance.
+        session_id: Session to check.
+
+    Returns:
+        True if the session summary is embedded, False otherwise.
+    """
+    store._ensure_initialized()
+    try:
+        result = store._session_summaries_collection.get(ids=[session_id])
+        return bool(result and result.get("ids"))
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def delete_session_summary(store: VectorStore, session_id: str) -> bool:
     """Delete a session summary from the vector store.
 

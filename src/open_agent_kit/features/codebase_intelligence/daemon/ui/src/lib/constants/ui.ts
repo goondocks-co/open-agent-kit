@@ -88,7 +88,7 @@ export const RUN_TASK_TRUNCATION_LIMIT = 300;
 export const RUN_RESULT_TRUNCATION_LIMIT = 500;
 
 /** Maximum length for session title display */
-export const SESSION_TITLE_MAX_LENGTH = 60;
+export const SESSION_TITLE_MAX_LENGTH = 120;
 
 // =============================================================================
 // Pagination Defaults

@@ -248,7 +248,8 @@ CHUNK_TYPE_UNKNOWN: Final[str] = "unknown"
 # Special memory type for plans (indexed from prompt_batches, not memory_observations)
 MEMORY_TYPE_PLAN: Final[str] = "plan"
 
-# Deterministic ID prefix for session summaries (enables upsert on session reopen)
+# DEPRECATED: summaries now stored in sessions.summary column.
+# Kept for backup compatibility (old backups may contain session_summary observations).
 SESSION_SUMMARY_OBS_ID_PREFIX: Final[str] = "session_summary:"
 
 # =============================================================================
@@ -717,7 +718,7 @@ TUNNEL_URL_PARSE_TIMEOUT_SECONDS: Final[float] = 15.0
 TUNNEL_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Activity store schema version
-CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 4
+CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 6
 
 # Observation Lifecycle
 OBSERVATION_STATUS_ACTIVE: Final[str] = "active"

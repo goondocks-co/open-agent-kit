@@ -245,7 +245,7 @@ def generate_core_tables_section(tables: dict) -> str:
     # Build a concise overview table
     # Map table name to key columns (manually curated for readability)
     table_info = {
-        "sessions": "`id`, `agent`, `status`, `summary`, `title`, `started_at`, `created_at_epoch`",
+        "sessions": "`id`, `agent`, `status`, `summary`, `title`, `title_manually_edited`, `started_at`, `created_at_epoch`",
         "prompt_batches": "`session_id`, `user_prompt`, `classification`, `response_summary`",
         "activities": "`session_id`, `tool_name`, `file_path`, `success`, `error_message`",
         "memory_observations": "`observation`, `memory_type`, `status`, `context`, `tags`, `importance`, `session_origin_type`",

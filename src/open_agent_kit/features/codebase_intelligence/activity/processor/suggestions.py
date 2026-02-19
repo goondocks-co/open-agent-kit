@@ -118,12 +118,11 @@ def compute_suggested_parent(
         return None
 
     # Get session's summary for similarity search
-    summary_obs = activity_store.get_latest_session_summary(session_id)
-    if not summary_obs:
+    if not session.summary:
         logger.debug(f"Session {session_id} has no summary, cannot compute suggestion")
         return None
 
-    query_text = f"{session.title or ''}\n\n{summary_obs.observation}"
+    query_text = f"{session.title or ''}\n\n{session.summary}"
 
     # Get already-related sessions to exclude from suggestions
     from open_agent_kit.features.codebase_intelligence.activity.store.relationships import (
@@ -161,8 +160,7 @@ def compute_suggested_parent(
             continue
 
         # Get candidate's summary
-        candidate_summary_obs = activity_store.get_latest_session_summary(candidate_id)
-        candidate_summary = candidate_summary_obs.observation if candidate_summary_obs else None
+        candidate_summary = candidate_session.summary
 
         # Calculate time gap
         time_gap_seconds: float | None = None
@@ -188,7 +186,7 @@ def compute_suggested_parent(
     # LLM refinement if available
     if call_llm:
         _compute_llm_scores(
-            current_summary=summary_obs.observation,
+            current_summary=session.summary,
             candidates=candidates,
             call_llm=call_llm,
         )
@@ -522,12 +520,11 @@ def compute_related_sessions(
         return []
 
     # Get session's summary for similarity search
-    summary_obs = activity_store.get_latest_session_summary(session_id)
-    if not summary_obs:
+    if not session.summary:
         logger.debug(f"Session {session_id} has no summary, cannot compute related suggestions")
         return []
 
-    query_text = f"{session.title or ''}\n\n{summary_obs.observation}"
+    query_text = f"{session.title or ''}\n\n{session.summary}"
 
     # Build exclusion set
     exclude_ids: set[str] = {session_id}
@@ -578,8 +575,7 @@ def compute_related_sessions(
             continue
 
         # Get candidate's summary
-        candidate_summary_obs = activity_store.get_latest_session_summary(candidate_id)
-        candidate_summary = candidate_summary_obs.observation if candidate_summary_obs else None
+        candidate_summary = candidate_session.summary
 
         # Calculate time gap (for display, not scoring - related doesn't prioritize recent)
         time_gap_seconds: float | None = None

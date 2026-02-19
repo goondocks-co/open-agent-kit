@@ -415,19 +415,18 @@ class TestBuildSessionContext:
 
     def test_includes_session_summaries_when_requested(self, mock_state):
         """Includes session summaries when include_memories=True."""
-        mock_state.retrieval_engine.list_memories.return_value = (
-            [
-                {
-                    "observation": "Added authentication feature",
-                    "tags": ["claude", "session-summary"],
-                }
-            ],
-            1,
+        from open_agent_kit.features.codebase_intelligence.activity.store.models import (
+            Session,
         )
-        result = build_session_context(mock_state, include_memories=True)
         from open_agent_kit.features.codebase_intelligence.constants import (
             INJECTION_SESSION_SUMMARIES_TITLE,
         )
+
+        mock_session = MagicMock(spec=Session)
+        mock_session.summary = "Added authentication feature"
+        mock_session.agent = "claude"
+        mock_state.activity_store.list_sessions_with_summaries.return_value = [mock_session]
+        result = build_session_context(mock_state, include_memories=True)
 
         assert INJECTION_SESSION_SUMMARIES_TITLE in result or "Session 1" in result
 

@@ -22,6 +22,15 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         _migrate_v2_to_v3(conn)
     if from_version < 4:
         _migrate_v3_to_v4(conn)
+    if from_version < 5:
+        _migrate_v4_to_v5(conn)
+    if from_version < 6:
+        _migrate_v5_to_v6(conn)
+
+    # Always run idempotent column checks for the current version.
+    # This catches columns added mid-development after a version was
+    # first bumped (e.g. summary_embedded added to v6 after initial release).
+    _ensure_v6_columns(conn)
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -137,3 +146,94 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE agent_schedules ADD COLUMN additional_prompt TEXT")
 
     logger.info("Migration v3 -> v4 complete: additional_prompt column added to agent_schedules")
+
+
+def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v4 to v5: add title_manually_edited to sessions.
+
+    Adds a boolean flag to protect manually edited session titles from
+    being overwritten by LLM-generated titles.
+
+    Idempotent: skips column if it already exists.
+    """
+    logger.info("Migrating activity store schema v4 -> v5 (title_manually_edited)")
+
+    existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+
+    if "title_manually_edited" not in existing_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN title_manually_edited BOOLEAN DEFAULT FALSE")
+
+    logger.info("Migration v4 -> v5 complete: title_manually_edited column added to sessions")
+
+
+def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
+    """Migrate schema from v5 to v6: move session summaries to sessions table.
+
+    Moves session_summary observations from memory_observations into the
+    sessions.summary column (and new summary_updated_at column), then
+    deletes the migrated rows from memory_observations.
+
+    This corrects an architectural misplacement where session summaries
+    were stored as observations rather than as session metadata.
+
+    Idempotent: skips column if it already exists; backfill and delete
+    use WHERE clauses that are safe to re-run.
+    """
+    logger.info("Migrating activity store schema v5 -> v6 (session summary column)")
+
+    # 1. Add summary_updated_at column to sessions (if missing)
+    existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+
+    if "summary_updated_at" not in existing_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN summary_updated_at INTEGER")
+
+    if "summary_embedded" not in existing_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN summary_embedded INTEGER DEFAULT 0")
+
+    # 2. Backfill sessions.summary and summary_updated_at from memory_observations.
+    #    For each session, pick the most recent session_summary observation.
+    #    Only overwrite if sessions.summary is currently NULL (don't clobber
+    #    summaries that were already written via the new path).
+    conn.execute("""
+        UPDATE sessions
+        SET summary = (
+                SELECT m.observation
+                FROM memory_observations m
+                WHERE m.session_id = sessions.id
+                  AND m.memory_type = 'session_summary'
+                ORDER BY m.created_at_epoch DESC
+                LIMIT 1
+            ),
+            summary_updated_at = (
+                SELECT m.created_at_epoch
+                FROM memory_observations m
+                WHERE m.session_id = sessions.id
+                  AND m.memory_type = 'session_summary'
+                ORDER BY m.created_at_epoch DESC
+                LIMIT 1
+            )
+        WHERE summary IS NULL
+          AND EXISTS (
+                SELECT 1 FROM memory_observations m
+                WHERE m.session_id = sessions.id
+                  AND m.memory_type = 'session_summary'
+          )
+    """)
+
+    # 3. Delete migrated session_summary rows from memory_observations
+    conn.execute("DELETE FROM memory_observations WHERE memory_type = 'session_summary'")
+
+    logger.info("Migration v5 -> v6 complete: session summaries moved to sessions table")
+
+
+def _ensure_v6_columns(conn: sqlite3.Connection) -> None:
+    """Ensure v6 columns exist even if the migration ran before they were added.
+
+    This handles databases that ran v5→v6 from an earlier version of the code
+    that didn't include summary_embedded. Runs unconditionally (cheap PRAGMA check).
+    """
+    existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+
+    if "summary_embedded" not in existing_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN summary_embedded INTEGER DEFAULT 0")
+        logger.info("Added missing summary_embedded column to sessions table")

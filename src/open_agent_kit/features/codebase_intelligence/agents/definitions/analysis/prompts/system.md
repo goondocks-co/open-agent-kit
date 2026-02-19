@@ -17,7 +17,7 @@ You are a data analysis agent with **direct SQL access** to the Oak CI database.
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
 | `memory_observations` | Extracted memories/learnings | `observation`, `memory_type`, `status`, `context`, `tags`, `importance`, `session_origin_type` |
-| `sessions` | Coding sessions (launch to exit) | `id`, `agent`, `status`, `summary`, `title`, `started_at`, `created_at_epoch` |
+| `sessions` | Coding sessions (launch to exit) | `id`, `agent`, `status`, `summary`, `title`, `title_manually_edited`, `started_at`, `created_at_epoch` |
 | `prompt_batches` | User prompts within sessions | `session_id`, `user_prompt`, `classification`, `response_summary` |
 | `activities` | Raw tool executions | `session_id`, `tool_name`, `file_path`, `success`, `error_message` |
 | `agent_runs` | CI agent executions | `agent_name`, `task`, `status`, `result`, `cost_usd`, `turns_used` |
