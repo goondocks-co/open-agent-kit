@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchJson, postJson, deleteJson } from "@/lib/api";
+import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/api";
 import {
     getSessionLineageEndpoint,
     getLinkSessionEndpoint,
@@ -11,6 +11,7 @@ import {
     getAddRelatedEndpoint,
     getRemoveRelatedEndpoint,
     getSuggestedRelatedEndpoint,
+    getUpdateSessionTitleEndpoint,
 } from "@/lib/constants";
 
 // =============================================================================
@@ -422,6 +423,38 @@ export function useRemoveRelated() {
             // Invalidate related sessions for both sides
             queryClient.invalidateQueries({ queryKey: ["session_related", sessionId] });
             queryClient.invalidateQueries({ queryKey: ["session_related", relatedSessionId] });
+        },
+    });
+}
+
+
+// ============================================================================
+// Session Title Update
+// ============================================================================
+
+export interface UpdateSessionTitleResponse {
+    success: boolean;
+    session_id: string;
+    title: string;
+    message: string;
+}
+
+export function useUpdateSessionTitle() {
+    const queryClient = useQueryClient();
+
+    return useMutation<
+        UpdateSessionTitleResponse,
+        Error,
+        { sessionId: string; title: string }
+    >({
+        mutationFn: ({ sessionId, title }) =>
+            patchJson<UpdateSessionTitleResponse>(
+                getUpdateSessionTitleEndpoint(sessionId),
+                { title }
+            ),
+        onSuccess: (_data, { sessionId }) => {
+            queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["sessions"] });
         },
     });
 }

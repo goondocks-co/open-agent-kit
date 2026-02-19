@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Inline session title editing with lineage indicators — session detail page now supports editable titles with a `title_manually_edited` flag to prevent LLM overwrites, plus visual indicators showing parent/child relationships in the session list — [Implement session title editing and lineage indicators](http://localhost:38388/activity/sessions/fee603dd-5009-4fc6-a270-c2cad3f62ac3)
 - Cloud MCP Relay with one-click Cloudflare Workers deployment — enables remote MCP server access via WebSocket proxy with automatic worker scaffolding, Wrangler deployment, and in-browser connection status UI — [Implement Cloud MCP Relay with WebSocket proxy on Cloudflare Workers](http://localhost:38388/activity/sessions/442283b6-636c-4994-ad57-6bc941eba4b1), [Implement one-click Cloud MCP Relay deployment](http://localhost:38388/activity/sessions/31ca132b-7ce8-4494-995f-b8431d7196b5)
+- Automated custom domain provisioning for Cloud Relay — users can now specify a base domain and Oak automatically generates a subdomain, configures `wrangler.toml` with a `[[routes]]` section, and lets Cloudflare handle DNS and SSL provisioning during deployment (domain zone must be in user's Cloudflare account) — [Implement automated custom domain provisioning for Cloud MCP Relay](http://localhost:38388/activity/sessions/6f574be5-0ab0-40cc-b90f-db430cbf566c), [Implement automated custom domain provisioning with Cloudflare](http://localhost:38388/activity/sessions/70337198-b5cb-44a4-ba4b-7166dc85622c)
 - Dynamic session summarization with multi-model support — summaries now adapt to different model providers (Ollama, LM Studio, cloud APIs) with defensive JSON unwrapping to handle context window truncation — [Implement dynamic session summarization for multiple models](http://localhost:38388/activity/sessions/ecd780e8-5f8f-4e0e-a69e-61ecc8cabb19)
 - Agent auto-start with daemon readiness polling — agents can now be configured to start automatically when the daemon becomes ready, with polling to detect daemon availability — [Configure Oak agent auto‑start and daemon readiness polling](http://localhost:38388/activity/sessions/fbc5cb52-096f-42f0-ba24-a961373b027c)
 - Local Engineering Team Agent with four integrated tasks (build, test, lint, deploy) — unified local-first agent replaces multiple separate agent configurations with a single promptable interface and modal-based task selection — [Implement local Engineering Team Agent with four tasks](http://localhost:38388/activity/sessions/79e5ee7d-4734-4df4-815d-450491e5039a), [Refactor Engineering Agent into unified local-first agent and add prompt modal](http://localhost:38388/activity/sessions/fc959d78-24f0-4692-80b4-922332c0a704)
@@ -97,6 +99,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: Ollama often uses a smaller default context window than LM Studio for the same model, causing output format instructions at the end of long prompts to be truncated. This leads models to return JSON (e.g., `{"summary": [...]}`) instead of plain text. The `_unwrap_json_summary()` function in `summaries.py` handles this defensively.
 
 > **Gotcha**: Cloud relay WebSocket connections require an active worker deployment to validate. The connection handler checks for worker availability before establishing the WebSocket, and errors are shown only when new actual errors occur rather than showing transient states.
+
+> **Gotcha**: The `title_manually_edited` flag prevents LLM-generated titles from overwriting user edits. However, if a user clears the title field and saves, the flag remains set — the title won't auto-regenerate until the flag is explicitly cleared.
+
+> **Gotcha**: Custom domain provisioning for Cloud Relay requires the domain zone to reside in the user's Cloudflare account. If the zone is managed elsewhere, automatic DNS/SSL provisioning will fail silently and the worker will fall back to the default `workers.dev` URL.
+
+> **Gotcha**: UI state for saved custom domains is not persisted across page refreshes — users may need to re-save the domain after refreshing the Cloud Relay settings page.
 
 ## [1.0.3] - 2026-02-10
 

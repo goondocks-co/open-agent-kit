@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { useSession } from "@/hooks/use-activity";
 import { useAutoRefreshPlans } from "@/hooks/use-auto-refresh-plans";
 import { useDeleteSession, useDeletePromptBatch, usePromoteBatch } from "@/hooks/use-delete";
-import { useLinkSession, useUnlinkSession, useRegenerateSummary, useCompleteSession, useSessionRelated } from "@/hooks/use-session-link";
+import { useLinkSession, useUnlinkSession, useRegenerateSummary, useCompleteSession, useSessionRelated, useUpdateSessionTitle } from "@/hooks/use-session-link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PromptBatchActivities } from "@/components/data/PromptBatchActivities";
 import { SessionLineage, SessionLineageBadge } from "@/components/data/SessionLineage";
@@ -12,7 +12,7 @@ import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog"
 import { SessionPickerDialog, useSessionPickerDialog } from "@/components/ui/session-picker-dialog";
 import { Markdown } from "@/components/ui/markdown";
 import { formatDate, getSessionTitle } from "@/lib/utils";
-import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check, Share2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check, Share2, CheckCircle2, Circle, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DELETE_CONFIRMATIONS, type SessionLinkReason } from "@/lib/constants";
@@ -52,6 +52,7 @@ export default function SessionDetail() {
     const unlinkSession = useUnlinkSession();
     const regenerateSummary = useRegenerateSummary();
     const completeSession = useCompleteSession();
+    const updateTitle = useUpdateSessionTitle();
     const { data: relatedData } = useSessionRelated(id);
 
     // Track which batch is being promoted (for loading state)
@@ -64,6 +65,9 @@ export default function SessionDetail() {
     const [copiedResume, setCopiedResume] = useState(false);
     // Track copy feedback for share URL
     const [copiedShare, setCopiedShare] = useState(false);
+    // Inline title editing
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editTitleValue, setEditTitleValue] = useState("");
     // Tunnel status for share button
     const { data: tunnelStatus } = useTunnelStatus();
 
@@ -242,11 +246,52 @@ export default function SessionDetail() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Link to="/activity/sessions" className="p-2 hover:bg-accent rounded-full" aria-label="Back to sessions">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <Link to="/activity/sessions" className="p-2 hover:bg-accent rounded-full flex-shrink-0" aria-label="Back to sessions">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
-                    <h1 className="text-2xl font-bold tracking-tight">{sessionTitle}</h1>
+                    {isEditingTitle ? (
+                        <input
+                            type="text"
+                            value={editTitleValue}
+                            onChange={(e) => setEditTitleValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && editTitleValue.trim()) {
+                                    updateTitle.mutate(
+                                        { sessionId: session.id, title: editTitleValue.trim() },
+                                        { onSuccess: () => setIsEditingTitle(false) }
+                                    );
+                                } else if (e.key === "Escape") {
+                                    setIsEditingTitle(false);
+                                }
+                            }}
+                            onBlur={() => {
+                                if (editTitleValue.trim() && editTitleValue.trim() !== sessionTitle) {
+                                    updateTitle.mutate(
+                                        { sessionId: session.id, title: editTitleValue.trim() },
+                                        { onSuccess: () => setIsEditingTitle(false) }
+                                    );
+                                } else {
+                                    setIsEditingTitle(false);
+                                }
+                            }}
+                            className="text-2xl font-bold tracking-tight bg-transparent border-b-2 border-primary outline-none w-full"
+                            autoFocus
+                            maxLength={200}
+                        />
+                    ) : (
+                        <h1
+                            className="text-2xl font-bold tracking-tight group/title cursor-pointer flex items-center gap-2"
+                            onClick={() => {
+                                setEditTitleValue(session.title || sessionTitle);
+                                setIsEditingTitle(true);
+                            }}
+                            title="Click to edit title"
+                        >
+                            {sessionTitle}
+                            <Pencil className="w-4 h-4 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                        </h1>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     {tunnelStatus?.active && tunnelStatus.public_url && (
@@ -429,6 +474,17 @@ export default function SessionDetail() {
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <FileDigit className="w-5 h-5 text-green-500" />
                             Session Summary
+                            {session.summary && (
+                                session.summary_embedded ? (
+                                    <span className="flex items-center text-xs text-green-600" title="Indexed in search">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center text-xs text-muted-foreground" title="Not yet indexed">
+                                        <Circle className="w-3.5 h-3.5" />
+                                    </span>
+                                )
+                            )}
                         </CardTitle>
                         <Button
                             variant="outline"

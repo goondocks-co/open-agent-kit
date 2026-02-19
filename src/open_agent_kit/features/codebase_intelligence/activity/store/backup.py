@@ -1419,6 +1419,11 @@ def import_from_sql_with_dedup(
     if not dry_run:
         conn.commit()
 
+        # Backfill sessions.summary from imported session_summary observations.
+        # Old backups store summaries as memory_observations with memory_type='session_summary'.
+        # New schema stores them directly in sessions.summary. Migrate on import.
+        _backfill_session_summaries_from_observations(conn)
+
     # Log summary of filtered columns (schema compatibility)
     for table, removed in all_removed_columns.items():
         if removed:
@@ -2219,3 +2224,45 @@ def _validate_parent_session_ids(
     if fixed > 0:
         logger.info(f"Fixed {fixed} orphaned parent_session_id references")
     return fixed
+
+
+def _backfill_session_summaries_from_observations(conn: sqlite3.Connection) -> int:
+    """Backfill sessions.summary from imported session_summary observations.
+
+    Old backups store summaries as memory_observations with memory_type='session_summary'.
+    New schema stores them directly in sessions.summary column. This migrates
+    the data on import: copies the most recent session_summary observation into
+    sessions.summary/summary_updated_at, then removes the migrated observations.
+
+    Args:
+        conn: SQLite connection (already committed after import).
+
+    Returns:
+        Number of sessions backfilled.
+    """
+    cursor = conn.execute("""
+        UPDATE sessions SET
+          summary = (SELECT observation FROM memory_observations
+                     WHERE memory_observations.session_id = sessions.id
+                     AND memory_observations.memory_type = 'session_summary'
+                     ORDER BY created_at_epoch DESC LIMIT 1),
+          summary_updated_at = (SELECT created_at_epoch FROM memory_observations
+                     WHERE memory_observations.session_id = sessions.id
+                     AND memory_observations.memory_type = 'session_summary'
+                     ORDER BY created_at_epoch DESC LIMIT 1)
+        WHERE summary IS NULL AND EXISTS (
+          SELECT 1 FROM memory_observations
+          WHERE memory_observations.session_id = sessions.id
+          AND memory_observations.memory_type = 'session_summary'
+        )
+        """)
+    backfilled = cursor.rowcount
+
+    if backfilled > 0:
+        conn.execute("DELETE FROM memory_observations WHERE memory_type = 'session_summary'")
+        conn.commit()
+        logger.info(
+            f"Backfilled {backfilled} session summaries from legacy " "session_summary observations"
+        )
+
+    return backfilled

@@ -35,6 +35,8 @@ class MemoryType(str, Enum):
     DECISION = "decision"
     DISCOVERY = "discovery"
     TRADE_OFF = "trade_off"
+    # DEPRECATED: summaries now stored in sessions.summary column.
+    # Kept for backup compatibility (old backups may contain session_summary observations).
     SESSION_SUMMARY = "session_summary"
     # Special type for indexed plans (from prompt_batches, not memory_observations)
     PLAN = "plan"
@@ -144,6 +146,9 @@ class SessionResult(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     prompt_batch_count: int = 0
+    parent_session_id: str | None = None
+    created_at_epoch: int = 0
+    chain_position: str | None = None  # e.g. "2 of 5"
 
 
 class SearchResponse(BaseModel):
@@ -451,6 +456,7 @@ class SessionItem(BaseModel):
     status: str = "active"
     summary: str | None = None
     title: str | None = None
+    title_manually_edited: bool = False
     first_prompt_preview: str | None = None
     prompt_batch_count: int = 0
     activity_count: int = 0
@@ -458,6 +464,8 @@ class SessionItem(BaseModel):
     parent_session_id: str | None = None
     parent_session_reason: str | None = None
     child_session_count: int = 0
+    # Summary embedding status
+    summary_embedded: bool = False
     # Resume command (populated from agent manifest)
     resume_command: str | None = None
 
@@ -650,6 +658,21 @@ class RegenerateSummaryResponse(BaseModel):
     session_id: str
     summary: str | None = None
     title: str | None = None
+    message: str = ""
+
+
+class UpdateSessionTitleRequest(BaseModel):
+    """Request to update a session title."""
+
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class UpdateSessionTitleResponse(BaseModel):
+    """Response after updating a session title."""
+
+    success: bool = True
+    session_id: str
+    title: str
     message: str = ""
 
 

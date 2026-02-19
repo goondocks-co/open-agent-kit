@@ -6,7 +6,6 @@ import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
-import { Markdown } from "@/components/ui/markdown";
 import { formatDate } from "@/lib/utils";
 import { BrainCircuit, Trash2, Filter, Tag, Calendar, Archive, ArchiveRestore, CheckSquare, Square, X, Plus, Minus, Maximize2, CheckCircle2, Circle } from "lucide-react";
 import {
@@ -18,7 +17,6 @@ import {
     getDateRangeStart,
     BULK_ACTIONS,
     MEMORY_OBSERVATION_TRUNCATION_LIMIT,
-    MEMORY_TYPES,
     OBSERVATION_STATUS_FILTER_OPTIONS,
     OBSERVATION_STATUS_BADGE_CLASSES,
 } from "@/lib/constants";
@@ -606,20 +604,16 @@ export default function MemoriesList() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-4 text-sm">
-                            {mem.memory_type === MEMORY_TYPES.SESSION_SUMMARY ? (
-                                <Markdown content={getTruncatedObservation(mem.observation)} />
-                            ) : (
-                                <div className="whitespace-pre-wrap">
-                                    {getTruncatedObservation(mem.observation)}
-                                </div>
-                            )}
+                            <div className="whitespace-pre-wrap">
+                                {getTruncatedObservation(mem.observation)}
+                            </div>
                             {isContentTruncated(mem.observation) && (
                                 <button
                                     onClick={() => openContentDialog(
                                         `${getMemoryTypeLabel(mem.memory_type)} Memory`,
                                         mem.observation,
                                         mem.context || undefined,
-                                        mem.memory_type === MEMORY_TYPES.SESSION_SUMMARY
+                                        false
                                     )}
                                     className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
                                 >

@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 from open_agent_kit.features.codebase_intelligence.constants import (
     MACHINE_ID_SUBPROCESS_TIMEOUT,
     RECOVERY_BATCH_PROMPT,
-    SESSION_SUMMARY_OBS_ID_PREFIX,
     SUMMARY_MAX_PLAN_CONTEXT_LENGTH,
 )
 
@@ -165,11 +164,8 @@ def _get_parent_context_for_summary(
         if not parent:
             return ""
 
-        # Get parent's summary from observations if available
-        parent_summary = None
-        summary_obs = activity_store.get_latest_session_summary(session.parent_session_id)
-        if summary_obs:
-            parent_summary = summary_obs.observation
+        # Get parent's summary from session column
+        parent_summary = parent.summary
 
         if not parent.title and not parent_summary:
             return ""
@@ -218,14 +214,6 @@ def process_session_summary(
     Returns:
         Tuple of (summary text, title text) if generated, (None, None) otherwise.
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store import (
-        StoredObservation,
-    )
-    from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
-    from open_agent_kit.features.codebase_intelligence.memory.store import (
-        MemoryObservation,
-    )
-
     # Get session from activity store
     session = activity_store.get_session(session_id)
     if not session:
@@ -241,23 +229,29 @@ def process_session_summary(
     # Check for existing session summary (handles resumed sessions)
     # Only re-summarize if there are new batches since last summary,
     # unless we're explicitly regenerating (regenerate_title implies force regeneration)
-    existing_summary = activity_store.get_latest_session_summary(session_id)
-    if existing_summary and not regenerate_title:
-        summary_time = existing_summary.created_at
-        new_batches = [b for b in batches if b.started_at and b.started_at > summary_time]
-        if not new_batches:
-            logger.debug(
-                f"Session {session_id} already summarized at {summary_time}, "
-                "no new batches since then"
+    has_existing_summary = bool(session.summary)
+    if has_existing_summary and not regenerate_title:
+        summary_epoch = session.summary_updated_at
+        if summary_epoch:
+            summary_time = datetime.fromtimestamp(summary_epoch)
+            new_batches = [b for b in batches if b.started_at and b.started_at > summary_time]
+            if not new_batches:
+                logger.debug(
+                    f"Session {session_id} already summarized at {summary_time}, "
+                    "no new batches since then"
+                )
+                return None, None
+            # Note: We summarize ALL batches (not just new ones) so the replacement
+            # summary has full session context.
+            logger.info(
+                f"Session {session_id} resumed: re-summarizing all {len(batches)} batches "
+                f"({len(new_batches)} new since last summary)"
             )
+        else:
+            # Summary exists but no timestamp — skip (already summarized, timestamp unknown)
+            logger.debug(f"Session {session_id} already has summary, no updated_at to compare")
             return None, None
-        # Note: We summarize ALL batches (not just new ones) so the replacement
-        # summary has full session context. The deterministic ID ensures upsert.
-        logger.info(
-            f"Session {session_id} resumed: re-summarizing all {len(batches)} batches "
-            f"({len(new_batches)} new since last summary)"
-        )
-    elif regenerate_title and existing_summary:
+    elif regenerate_title and has_existing_summary:
         logger.info(f"Force regenerating summary and title for session {session_id}")
 
     # Get session stats
@@ -350,80 +344,56 @@ def process_session_summary(
     # Unwrap the summary field if the response is a JSON object.
     summary = _unwrap_json_summary(summary)
 
-    # Store as session_summary memory using dual-write: SQLite + ChromaDB
-    # Use deterministic ID so session reopens replace existing summary (upsert)
-    obs_id = f"{SESSION_SUMMARY_OBS_ID_PREFIX}{session_id}"
+    # Store summary to sessions.summary column (source of truth)
     created_at = datetime.now()
-    tags = ["session-summary", session.agent or "unknown"]
-
-    # Step 1: Store to SQLite (source of truth)
-    stored_obs = StoredObservation(
-        id=obs_id,
-        session_id=session_id,
-        observation=summary,
-        memory_type=MemoryType.SESSION_SUMMARY.value,
-        context=f"session:{session_id}",
-        tags=tags,
-        importance=7,  # Session summaries are moderately important
-        created_at=created_at,
-        embedded=False,
-        session_origin_type=session_origin_type,
-    )
 
     try:
-        activity_store.store_observation(stored_obs)
+        activity_store.update_session_summary(session_id, summary)
     except (OSError, ValueError, TypeError) as e:
         logger.error(f"Failed to store session summary to SQLite: {e}", exc_info=True)
         return None, None
 
-    # Step 2: Embed and store in ChromaDB
-    memory = MemoryObservation(
-        id=obs_id,
-        observation=summary,
-        memory_type=MemoryType.SESSION_SUMMARY.value,
-        context=f"session:{session_id}",
-        tags=tags,
-        created_at=created_at,
-        session_origin_type=session_origin_type,
-    )
-
-    try:
-        vector_store.add_memory(memory)
-        activity_store.mark_observation_embedded(obs_id)
-        logger.info(f"Stored session summary for {session_id}: {summary[:80]}...")
-    except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
-        # ChromaDB failed but SQLite has the data - can retry later
-        logger.warning(f"Failed to embed session summary in ChromaDB: {e}")
-
-    # Step 3: Embed to session summaries collection for similarity search
-    # This enables the user-driven session linking suggestion system
+    # Embed to session summaries ChromaDB collection for similarity search.
+    # Session summaries belong ONLY in the session_summaries collection (not memory).
+    # This prevents them from polluting semantic search results alongside
+    # discoveries/decisions/gotchas in the memory collection.
     from open_agent_kit.features.codebase_intelligence.activity.processor.session_index import (
         embed_session_summary,
     )
 
-    embed_session_summary(
-        vector_store=vector_store,
-        session_id=session_id,
-        title=session.title,
-        summary=summary,
-        agent=session.agent or "unknown",
-        project_root=session.project_root or "",
-        created_at_epoch=int(created_at.timestamp()),
-    )
+    try:
+        embed_session_summary(
+            vector_store=vector_store,
+            session_id=session_id,
+            title=session.title,
+            summary=summary,
+            agent=session.agent or "unknown",
+            project_root=session.project_root or "",
+            created_at_epoch=int(created_at.timestamp()),
+        )
+        logger.info(f"Stored session summary for {session_id}: {summary[:80]}...")
+        activity_store.mark_session_summary_embedded(session_id, True)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+        # ChromaDB failed but SQLite has the data - can retry later
+        logger.warning(f"Failed to embed session summary in ChromaDB: {e}")
 
     # Generate or regenerate title from the summary (more accurate than prompt-based)
     # Since we just generated a summary, we have good context to create a descriptive title
+    # Skip title generation entirely if the user has manually edited the title
     title: str | None = None
 
-    if generate_title_from_summary:
-        # Prefer title from summary - it's more accurate than prompt-based
-        title = generate_title_from_summary(session_id, summary)
+    if not session.title_manually_edited:
+        if generate_title_from_summary:
+            # Prefer title from summary - it's more accurate than prompt-based
+            title = generate_title_from_summary(session_id, summary)
 
-    if not title:
-        # Fallback to prompt-based title generation if summary-based failed
-        # or if generate_title_from_summary wasn't provided
-        if regenerate_title or not session.title:
-            title = generate_title(session_id)
+        if not title:
+            # Fallback to prompt-based title generation if summary-based failed
+            # or if generate_title_from_summary wasn't provided
+            if regenerate_title or not session.title:
+                title = generate_title(session_id)
+    else:
+        logger.debug(f"Session {session_id} has manually edited title, skipping title generation")
 
     if title:
         action = "Regenerated" if session.title else "Generated"

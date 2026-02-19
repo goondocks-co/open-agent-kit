@@ -8,6 +8,7 @@ Generate a short, descriptive title (6-12 words) for this coding session based o
 ## Session Summary
 
 {{session_summary}}
+{{parent_context}}
 
 ## Task
 
@@ -16,6 +17,8 @@ Create a brief title that captures the main accomplishment or focus of this sess
 - Start with an action verb when appropriate (Add, Fix, Implement, Refactor, Debug, Update, Configure, etc.)
 - Capture the primary task or feature worked on
 - Be specific enough to distinguish from other sessions
+- If this is a continuation session, emphasize what THIS session specifically did, not the overall goal
+- Include a differentiator like the specific sub-task or outcome
 
 ## Output Format
 

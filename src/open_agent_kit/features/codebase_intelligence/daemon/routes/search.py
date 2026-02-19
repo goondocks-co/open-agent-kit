@@ -169,6 +169,9 @@ async def search_post(request: SearchRequest) -> SearchResponse:
             confidence=Confidence(r.get("confidence", "medium")),
             title=r.get("title"),
             preview=r.get("preview", ""),
+            parent_session_id=r.get("parent_session_id"),
+            created_at_epoch=r.get("created_at_epoch", 0),
+            chain_position=r.get("chain_position"),
         )
         for r in result.sessions
     ]
@@ -305,7 +308,6 @@ async def list_memories(
     start_date: str | None = Query(default=None, description="Filter by start date (YYYY-MM-DD)"),
     end_date: str | None = Query(default=None, description="Filter by end date (YYYY-MM-DD)"),
     include_archived: bool = Query(default=False, description="Include archived memories"),
-    exclude_sessions: bool = Query(default=False, description="Exclude session summaries"),
     status: str | None = Query(default="active", description="Filter by observation status"),
     include_resolved: bool = Query(
         default=False, description="Include resolved/superseded observations"
@@ -320,17 +322,12 @@ async def list_memories(
 
     # Build filter parameters
     memory_types = [memory_type] if memory_type else None
-    # Always exclude plans from memories view - they have their own dedicated tab
-    exclude_types = ["plan"]
-    if exclude_sessions:
-        exclude_types.append("session_summary")
 
     # Use engine for listing
     memories, total = engine.list_memories(
         limit=limit,
         offset=offset,
         memory_types=memory_types,
-        exclude_types=exclude_types,
         tag=tag,
         start_date=start_date,
         end_date=end_date,

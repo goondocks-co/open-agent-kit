@@ -9,7 +9,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from open_agent_kit.features.codebase_intelligence.activity.store.models import StoredObservation
-from open_agent_kit.features.codebase_intelligence.daemon.models import MemoryType
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
@@ -68,33 +67,6 @@ def get_observation(store: ActivityStore, observation_id: str) -> StoredObservat
     cursor = conn.execute(
         "SELECT * FROM memory_observations WHERE id = ?",
         (observation_id,),
-    )
-    row = cursor.fetchone()
-    return StoredObservation.from_row(row) if row else None
-
-
-def get_latest_session_summary(store: ActivityStore, session_id: str) -> StoredObservation | None:
-    """Get the most recent session_summary observation for a session.
-
-    Used to check if a session has already been summarized, and when,
-    so we can avoid duplicate summaries on session resume.
-
-    Args:
-        store: The ActivityStore instance.
-        session_id: The session ID.
-
-    Returns:
-        The most recent session_summary observation or None if none exists.
-    """
-    conn = store._get_connection()
-    cursor = conn.execute(
-        """
-        SELECT * FROM memory_observations
-        WHERE session_id = ? AND memory_type = 'session_summary'
-        ORDER BY created_at_epoch DESC
-        LIMIT 1
-        """,
-        (session_id,),
     )
     row = cursor.fetchone()
     return StoredObservation.from_row(row) if row else None
@@ -267,29 +239,6 @@ def count_unembedded_observations(store: ActivityStore) -> int:
     cursor = conn.execute("SELECT COUNT(*) FROM memory_observations WHERE embedded = FALSE")
     result = cursor.fetchone()
     return int(result[0]) if result else 0
-
-
-def list_session_summaries(store: ActivityStore, limit: int = 10) -> list[StoredObservation]:
-    """List recent session_summary observations from SQLite.
-
-    Args:
-        store: The ActivityStore instance.
-        limit: Maximum number of session summaries to return.
-
-    Returns:
-        List of StoredObservation entries, most recent first.
-    """
-    conn = store._get_connection()
-    cursor = conn.execute(
-        """
-        SELECT * FROM memory_observations
-        WHERE memory_type = ?
-        ORDER BY created_at_epoch DESC
-        LIMIT ?
-        """,
-        (MemoryType.SESSION_SUMMARY.value, limit),
-    )
-    return [StoredObservation.from_row(row) for row in cursor.fetchall()]
 
 
 def count_observations_by_type(store: ActivityStore, memory_type: str) -> int:

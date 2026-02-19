@@ -28,6 +28,8 @@ from open_agent_kit.features.codebase_intelligence.daemon.models import (
     SessionLineageResponse,
     SuggestedParentResponse,
     UnlinkSessionResponse,
+    UpdateSessionTitleRequest,
+    UpdateSessionTitleResponse,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes._utils import (
     handle_route_errors,
@@ -556,3 +558,38 @@ async def regenerate_session_summary(session_id: str) -> RegenerateSummaryRespon
             title=None,
             message="Failed to generate summary - check logs for details",
         )
+
+
+@router.patch(
+    "/api/activity/sessions/{session_id}/title",
+    response_model=UpdateSessionTitleResponse,
+)
+@handle_route_errors("update session title")
+async def update_session_title(
+    session_id: str, request: UpdateSessionTitleRequest
+) -> UpdateSessionTitleResponse:
+    """Update a session's title and mark it as manually edited.
+
+    Manually edited titles are protected from being overwritten by
+    LLM-generated titles during background processing.
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ERROR_MSG_ACTIVITY_STORE_NOT_INITIALIZED)
+
+    session = state.activity_store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=ERROR_MSG_SESSION_NOT_FOUND)
+
+    title = request.title.strip()
+    state.activity_store.update_session_title(session_id, title, manually_edited=True)
+
+    logger.info(f"Manually updated title for session {session_id[:8]}: {title[:50]}")
+
+    return UpdateSessionTitleResponse(
+        success=True,
+        session_id=session_id,
+        title=title,
+        message="Title updated successfully",
+    )

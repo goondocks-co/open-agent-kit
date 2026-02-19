@@ -122,15 +122,13 @@ def reembed_session_summaries(
         cleared = vector_store.clear_session_summaries()
         logger.info(f"Cleared {cleared} existing session summary embeddings")
 
-    # Get all completed sessions with summaries
-    # We need to query sessions that have summary observations
+    # Get all sessions with summaries stored in the sessions table
     conn = activity_store._get_connection()
     cursor = conn.execute("""
         SELECT s.id, s.title, s.agent, s.project_root, s.created_at_epoch,
-               m.observation as summary
+               s.summary
         FROM sessions s
-        INNER JOIN memory_observations m ON m.session_id = s.id
-        WHERE m.memory_type = 'session_summary'
+        WHERE s.summary IS NOT NULL
         ORDER BY s.created_at_epoch DESC
         """)
 
@@ -159,6 +157,7 @@ def reembed_session_summaries(
             )
             if success:
                 sessions_embedded += 1
+                activity_store.mark_session_summary_embedded(session_id, True)
 
     logger.info(f"Re-embedded session summaries: {sessions_embedded}/{sessions_processed} sessions")
     return sessions_processed, sessions_embedded
@@ -184,14 +183,13 @@ def backfill_session_summaries(
     existing_count = vector_store.count_session_summaries()
     logger.debug(f"Session summaries in ChromaDB: {existing_count}")
 
-    # Get all sessions with summaries from SQLite
+    # Get all sessions with summaries from the sessions table
     conn = activity_store._get_connection()
     cursor = conn.execute("""
         SELECT s.id, s.title, s.agent, s.project_root, s.created_at_epoch,
-               m.observation as summary
+               s.summary
         FROM sessions s
-        INNER JOIN memory_observations m ON m.session_id = s.id
-        WHERE m.memory_type = 'session_summary'
+        WHERE s.summary IS NOT NULL
         ORDER BY s.created_at_epoch DESC
         """)
 
@@ -221,6 +219,7 @@ def backfill_session_summaries(
             )
             if success:
                 sessions_embedded += 1
+                activity_store.mark_session_summary_embedded(session_id, True)
 
     if sessions_embedded > 0:
         logger.info(f"Backfilled {sessions_embedded} session summary embeddings")

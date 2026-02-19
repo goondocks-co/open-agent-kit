@@ -584,7 +584,90 @@ class RetrievalEngine:
                     }
                 )
 
+            # Enrich with lineage metadata from SQLite
+            self._enrich_sessions_with_lineage(result.sessions)
+
         return result
+
+    # =========================================================================
+    # Session Lineage Enrichment
+    # =========================================================================
+
+    def _enrich_sessions_with_lineage(self, sessions: list[dict[str, Any]]) -> None:
+        """Enrich session search results with parent_session_id and chain_position.
+
+        Adds lineage metadata from SQLite so agents can navigate multi-session
+        feature chains. chain_position is like "1 of 5" (root) or "3 of 5".
+        Only set when the session belongs to a chain of 2+ sessions.
+
+        Operates in-place on the session dicts.
+        """
+        if not self.activity_store or not sessions:
+            return
+
+        session_ids = [s["id"] for s in sessions]
+        conn = self.activity_store._get_connection()
+
+        # Batch-fetch parent_session_id for all result sessions
+        placeholders = ",".join("?" * len(session_ids))
+        cursor = conn.execute(
+            f"SELECT id, parent_session_id FROM sessions WHERE id IN ({placeholders})",  # noqa: S608
+            session_ids,
+        )
+        parent_map: dict[str, str | None] = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # For each session, walk up to find root and count ancestors
+        root_for: dict[str, str] = {}
+        ancestors_for: dict[str, int] = {}
+
+        for sid in session_ids:
+            ancestors = 0
+            current = sid
+            seen: set[str] = {sid}
+            while parent_map.get(current):
+                parent = parent_map[current]
+                if parent is None or parent in seen:
+                    break
+                seen.add(parent)
+                ancestors += 1
+                # Fetch parent's parent if not already known
+                if parent not in parent_map:
+                    row = conn.execute(
+                        "SELECT parent_session_id FROM sessions WHERE id = ?",
+                        (parent,),
+                    ).fetchone()
+                    parent_map[parent] = row[0] if row else None
+                current = parent
+            root_for[sid] = current
+            ancestors_for[sid] = ancestors
+
+        # Count chain size per unique root (one recursive CTE each, cached)
+        chain_size_cache: dict[str, int] = {}
+        for root_id in set(root_for.values()):
+            if root_id in chain_size_cache:
+                continue
+            cursor = conn.execute(
+                """
+                WITH RECURSIVE chain AS (
+                    SELECT id FROM sessions WHERE id = ?
+                    UNION ALL
+                    SELECT s.id FROM sessions s
+                    JOIN chain c ON s.parent_session_id = c.id
+                )
+                SELECT COUNT(*) FROM chain
+                """,
+                (root_id,),
+            )
+            chain_size_cache[root_id] = cursor.fetchone()[0]
+
+        # Write enrichment back into session dicts
+        for s in sessions:
+            sid = s["id"]
+            s["parent_session_id"] = parent_map.get(sid)
+            root_id = root_for[sid]
+            total = chain_size_cache[root_id]
+            position = ancestors_for[sid] + 1
+            s["chain_position"] = f"{position} of {total}" if total > 1 else None
 
     def fetch(self, ids: list[str]) -> FetchResult:
         """Fetch full content for chunk IDs.

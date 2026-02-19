@@ -165,9 +165,12 @@ class ActivityStore:
                         (SCHEMA_VERSION,),
                     )
                     logger.info(f"Cleaned up {row_count} spurious schema_version rows")
-                    # Run migrations defensively — the schema might be
-                    # incomplete despite the version table claiming otherwise
-                    apply_migrations(conn, 1)
+
+                # Always run migrations defensively — all migrations are
+                # idempotent (check column existence before ALTER), so this
+                # safely catches columns added mid-development that were
+                # missed when the version was first bumped.
+                apply_migrations(conn, current_version)
 
         # Backfill resolution events for existing resolutions (idempotent)
         try:
@@ -345,13 +348,19 @@ class ActivityStore:
         """Mark session as completed."""
         sessions.end_session(self, session_id, summary)
 
-    def update_session_title(self, session_id: str, title: str) -> None:
+    def update_session_title(
+        self, session_id: str, title: str, manually_edited: bool = False
+    ) -> None:
         """Update the session title."""
-        sessions.update_session_title(self, session_id, title)
+        sessions.update_session_title(self, session_id, title, manually_edited=manually_edited)
 
     def update_session_summary(self, session_id: str, summary: str) -> None:
         """Update the session summary."""
         sessions.update_session_summary(self, session_id, summary)
+
+    def mark_session_summary_embedded(self, session_id: str, embedded: bool = True) -> None:
+        """Mark whether a session summary has been embedded in ChromaDB."""
+        sessions.mark_session_summary_embedded(self, session_id, embedded)
 
     def update_session_transcript_path(self, session_id: str, transcript_path: str) -> None:
         """Store the transcript file path for a session."""
@@ -437,8 +446,16 @@ class ActivityStore:
         return sessions.count_session_activities(self, session_id)
 
     def count_sessions_with_summaries(self) -> int:
-        """Count sessions that have a session_summary observation."""
+        """Count sessions that have a summary."""
         return sessions.count_sessions_with_summaries(self)
+
+    def list_sessions_with_summaries(
+        self, limit: int = 5, source_machine_id: str | None = None
+    ) -> list[Session]:
+        """List recent sessions with non-NULL summaries."""
+        return sessions.list_sessions_with_summaries(
+            self, limit=limit, source_machine_id=source_machine_id
+        )
 
     # ==========================================================================
     # Prompt batch operations - delegate to batches module
@@ -658,10 +675,6 @@ class ActivityStore:
         """Get an observation by ID."""
         return observations.get_observation(self, observation_id)
 
-    def get_latest_session_summary(self, session_id: str) -> StoredObservation | None:
-        """Get the most recent session_summary observation for a session."""
-        return observations.get_latest_session_summary(self, session_id)
-
     def get_unembedded_observations(self, limit: int = 100) -> list[StoredObservation]:
         """Get observations that haven't been added to ChromaDB."""
         return observations.get_unembedded_observations(self, limit)
@@ -697,10 +710,6 @@ class ActivityStore:
     def count_unembedded_observations(self) -> int:
         """Count observations not yet in ChromaDB."""
         return observations.count_unembedded_observations(self)
-
-    def list_session_summaries(self, limit: int = 10) -> list[StoredObservation]:
-        """List recent session_summary observations."""
-        return observations.list_session_summaries(self, limit)
 
     def count_observations_by_type(self, memory_type: str) -> int:
         """Count observations by memory_type."""
@@ -786,6 +795,10 @@ class ActivityStore:
     ) -> dict[str, str | None]:
         """Get the first user prompt preview for multiple sessions."""
         return stats.get_bulk_first_prompts(self, session_ids, max_length)
+
+    def get_bulk_child_session_counts(self, session_ids: list[str]) -> dict[str, int]:
+        """Get child session counts for multiple sessions."""
+        return sessions.get_bulk_child_session_counts(self, session_ids)
 
     # ==========================================================================
     # Cross-cutting operations

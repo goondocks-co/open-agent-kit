@@ -96,7 +96,6 @@ export const MEMORY_TYPES = {
     BUG_FIX: "bug_fix",
     DECISION: "decision",
     TRADE_OFF: "trade_off",
-    SESSION_SUMMARY: "session_summary",
     PLAN: "plan",
 } as const;
 
@@ -109,7 +108,6 @@ export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
     [MEMORY_TYPES.BUG_FIX]: "Bug Fix",
     [MEMORY_TYPES.DECISION]: "Decision",
     [MEMORY_TYPES.TRADE_OFF]: "Trade-off",
-    [MEMORY_TYPES.SESSION_SUMMARY]: "Session Summary",
     [MEMORY_TYPES.PLAN]: "Plan",
 } as const;
 
@@ -120,7 +118,6 @@ export const MEMORY_TYPE_BADGE_CLASSES: Record<MemoryType, string> = {
     [MEMORY_TYPES.BUG_FIX]: "bg-green-500/10 text-green-600",
     [MEMORY_TYPES.DECISION]: "bg-purple-500/10 text-purple-600",
     [MEMORY_TYPES.TRADE_OFF]: "bg-orange-500/10 text-orange-600",
-    [MEMORY_TYPES.SESSION_SUMMARY]: "bg-gray-500/10 text-gray-600",
     [MEMORY_TYPES.PLAN]: "bg-amber-500/10 text-amber-600",
 } as const;
 
@@ -132,7 +129,6 @@ export const MEMORY_TYPE_FILTER_OPTIONS = [
     { value: MEMORY_TYPES.BUG_FIX, label: MEMORY_TYPE_LABELS.bug_fix },
     { value: MEMORY_TYPES.DECISION, label: MEMORY_TYPE_LABELS.decision },
     { value: MEMORY_TYPES.TRADE_OFF, label: MEMORY_TYPE_LABELS.trade_off },
-    { value: MEMORY_TYPES.SESSION_SUMMARY, label: MEMORY_TYPE_LABELS.session_summary },
 ] as const;
 
 export type MemoryTypeFilter = "all" | MemoryType;

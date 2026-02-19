@@ -305,8 +305,6 @@ class TestProcessSessionSummary:
     def mock_activity_store(self):
         """Create a mock activity store."""
         mock = MagicMock()
-        # Default: no existing session summary (handles resumed session logic)
-        mock.get_latest_session_summary.return_value = None
         return mock
 
     @pytest.fixture
@@ -502,14 +500,15 @@ class TestProcessSessionSummary:
             summary, _title = processor.process_session_summary_with_title("session-123")
 
         assert summary == "Implemented JWT authentication and fixed login bug"
-        mock_vector_store.add_memory.assert_called_once()
 
-        # Verify the memory was created with correct type
-        call_args = mock_vector_store.add_memory.call_args
-        memory = call_args[0][0]
-        assert memory.memory_type == "session_summary"
-        assert "session-summary" in memory.tags
-        assert "claude" in memory.tags
+        # Session summaries should NOT be written to the memory collection
+        # (they belong exclusively in the session_summaries collection)
+        mock_vector_store.add_memory.assert_not_called()
+
+        # Summary should be written to sessions.summary column
+        mock_activity_store.update_session_summary.assert_called_once_with(
+            "session-123", "Implemented JWT authentication and fixed login bug"
+        )
 
     def test_process_session_summary_llm_failure(
         self, mock_activity_store, mock_vector_store, mock_summarizer
@@ -633,7 +632,6 @@ class TestProcessSessionSummary:
         from open_agent_kit.features.codebase_intelligence.activity.store import (
             PromptBatch,
             Session,
-            StoredObservation,
         )
 
         now = datetime.now()
@@ -645,15 +643,8 @@ class TestProcessSessionSummary:
             project_root="/test/project",
             started_at=now - timedelta(hours=2),
             ended_at=now,
-        )
-
-        # Existing summary from before
-        existing_summary = StoredObservation(
-            id="summary-old",
-            session_id="session-123",
-            observation="Previous session summary",
-            memory_type="session_summary",
-            created_at=summary_time,
+            summary="Previous session summary",
+            summary_updated_at=int(summary_time.timestamp()),
         )
 
         # Batch that's older than the summary (already covered)
@@ -667,7 +658,6 @@ class TestProcessSessionSummary:
 
         mock_activity_store.get_session.return_value = mock_session
         mock_activity_store.get_session_prompt_batches.return_value = [old_batch]
-        mock_activity_store.get_latest_session_summary.return_value = existing_summary
 
         processor = ActivityProcessor(
             activity_store=mock_activity_store,
@@ -689,7 +679,7 @@ class TestProcessSessionSummary:
 
         When a session is resumed and completed again, the new summary should
         include all batches (not just new ones) so that the replacement summary
-        has full session context. The deterministic ID ensures upsert behavior.
+        has full session context.
         """
         from unittest.mock import patch
 
@@ -699,7 +689,6 @@ class TestProcessSessionSummary:
         from open_agent_kit.features.codebase_intelligence.activity.store import (
             PromptBatch,
             Session,
-            StoredObservation,
         )
 
         now = datetime.now()
@@ -711,15 +700,8 @@ class TestProcessSessionSummary:
             project_root="/test/project",
             started_at=now - timedelta(hours=2),
             ended_at=now,
-        )
-
-        # Existing summary from first session leg
-        existing_summary = StoredObservation(
-            id="summary-old",
-            session_id="session-123",
-            observation="Previous session summary",
-            memory_type="session_summary",
-            created_at=summary_time,
+            summary="Previous session summary",
+            summary_updated_at=int(summary_time.timestamp()),
         )
 
         # Old batch (before summary - from first session leg)
@@ -744,7 +726,6 @@ class TestProcessSessionSummary:
 
         mock_activity_store.get_session.return_value = mock_session
         mock_activity_store.get_session_prompt_batches.return_value = [old_batch, new_batch]
-        mock_activity_store.get_latest_session_summary.return_value = existing_summary
         mock_activity_store.get_session_stats.return_value = {
             "activity_count": 10,
             "files_read": ["test.py"],
@@ -772,8 +753,10 @@ class TestProcessSessionSummary:
 
         # Should generate summary
         assert summary == "Full session: implemented feature and fixed bugs"
-        # Verify it was stored
-        mock_activity_store.store_observation.assert_called_once()
+        # Verify it was stored in sessions.summary column
+        mock_activity_store.update_session_summary.assert_called_once_with(
+            "session-123", "Full session: implemented feature and fixed bugs"
+        )
 
         # Verify LLM received ALL batches in the SUMMARY call (first call)
         # Note: There may be 2 calls total (summary + title generation)

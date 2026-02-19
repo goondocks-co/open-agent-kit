@@ -151,6 +151,7 @@ def _session_to_item(
         status=session.status,
         summary=summary,
         title=session.title,
+        title_manually_edited=session.title_manually_edited,
         first_prompt_preview=first_prompt_preview,
         prompt_batch_count=stats.get("prompt_batch_count", 0) if stats else 0,
         activity_count=stats.get("activity_count", 0) if stats else 0,
@@ -158,6 +159,7 @@ def _session_to_item(
         parent_session_reason=session.parent_session_reason,
         child_session_count=child_session_count,
         resume_command=resume_command,
+        summary_embedded=session.summary_embedded,
     )
 
 
@@ -444,12 +446,19 @@ async def list_sessions(
     except (OSError, ValueError, RuntimeError):
         first_prompts_map = {}
 
-    # Build response with stats and first prompts for each session
+    # Get child session counts in bulk for lineage indicators
+    try:
+        child_counts_map = state.activity_store.get_bulk_child_session_counts(session_ids)
+    except (OSError, ValueError, RuntimeError):
+        child_counts_map = {}
+
+    # Build response with stats, first prompts, and child counts for each session
     items = []
     for session in sessions:
         stats = stats_map.get(session.id, {})
         first_prompt = first_prompts_map.get(session.id)
-        items.append(_session_to_item(session, stats, first_prompt))
+        child_count = child_counts_map.get(session.id, 0)
+        items.append(_session_to_item(session, stats, first_prompt, child_count))
 
     # Get accurate total count
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
@@ -503,9 +512,8 @@ async def get_session(session_id: str) -> SessionDetailResponse:
     # Get child session count for lineage info
     child_count = get_child_session_count(state.activity_store, session_id)
 
-    # Get session summary from observations (source of truth)
-    summary_obs = state.activity_store.get_latest_session_summary(session_id)
-    summary_text = summary_obs.observation if summary_obs else None
+    # Session summary lives on the session object (source of truth)
+    summary_text = session.summary
 
     # Get recent activities
     activities = state.activity_store.get_session_activities(

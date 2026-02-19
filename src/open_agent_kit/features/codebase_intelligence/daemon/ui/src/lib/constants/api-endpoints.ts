@@ -176,6 +176,11 @@ export function getRegenerateSummaryEndpoint(sessionId: string): string {
     return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/regenerate-summary`;
 }
 
+/** Build update session title endpoint */
+export function getUpdateSessionTitleEndpoint(sessionId: string): string {
+    return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/title`;
+}
+
 /** Build suggested parent endpoint */
 export function getSuggestedParentEndpoint(sessionId: string): string {
     return `${API_ENDPOINTS.ACTIVITY_SESSIONS}/${sessionId}/suggested-parent`;

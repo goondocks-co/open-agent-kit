@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { useSessionAgents, useSessions } from "@/hooks/use-activity";
 import { useDeleteSession } from "@/hooks/use-delete";
 import { usePaginatedList } from "@/hooks/use-paginated-list";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDate, getSessionTitle } from "@/lib/utils";
-import { Terminal, Activity, Calendar, ArrowRight, Trash2, ArrowUpDown } from "lucide-react";
+import { Terminal, Activity, Calendar, ArrowRight, Trash2, ArrowUpDown, CornerLeftUp, GitFork } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     DELETE_CONFIRMATIONS,
@@ -21,6 +21,7 @@ import type { SessionSortOption } from "@/lib/constants";
 import type { SessionItem } from "@/hooks/use-activity";
 
 export default function SessionList() {
+    const navigate = useNavigate();
     const { offset, loadedItems: allSessions, handleLoadMore, reset } = usePaginatedList<SessionItem>(PAGINATION.DEFAULT_LIMIT);
     const [sortBy, setSortBy] = useState<SessionSortOption>(DEFAULT_SESSION_SORT);
     const [agentFilter, setAgentFilter] = useState<string>(SESSION_AGENT_FILTER.ALL);
@@ -124,7 +125,7 @@ export default function SessionList() {
                                             <CardTitle className="text-base font-medium flex items-center gap-2">
                                                 <span className="text-sm font-semibold text-primary/80">{session.agent || DEFAULT_AGENT_NAME}</span>
                                                 <span className="text-muted-foreground font-normal">·</span>
-                                                <span className="font-normal truncate max-w-[400px]">{sessionTitle}</span>
+                                                <span className="font-normal truncate max-w-[600px]">{sessionTitle}</span>
                                                 <span className={cn("text-xs px-2 py-0.5 rounded-full border flex-shrink-0",
                                                     session.status === "active" ? "border-green-500/50 text-green-500" : "border-muted-foreground/30 text-muted-foreground")}>
                                                     {session.status}
@@ -133,6 +134,32 @@ export default function SessionList() {
                                             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
                                                 <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(session.started_at)}</span>
                                                 <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {session.activity_count} activities</span>
+                                                {session.parent_session_id && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            navigate(`/activity/sessions/${session.parent_session_id}`);
+                                                        }}
+                                                        className="flex items-center gap-1 text-blue-500 hover:text-blue-400 hover:bg-blue-500/10 rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors"
+                                                        title="Go to parent session"
+                                                    >
+                                                        <CornerLeftUp className="w-3 h-3" /> parent
+                                                    </button>
+                                                )}
+                                                {session.child_session_count > 0 && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            navigate(`/activity/sessions/${session.id}`);
+                                                        }}
+                                                        className="flex items-center gap-1 text-violet-500 hover:text-violet-400 hover:bg-violet-500/10 rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors"
+                                                        title="View child sessions"
+                                                    >
+                                                        <GitFork className="w-3 h-3" /> {session.child_session_count} {session.child_session_count === 1 ? "child" : "children"}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
