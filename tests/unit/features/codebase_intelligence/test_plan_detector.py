@@ -388,3 +388,247 @@ class TestDetectPlanInResponse:
         """Test graceful handling when AgentService raises."""
         self._mock_service.get_agent_manifest.side_effect = ValueError("Service error")
         assert detect_plan_in_response("# Plan: Something", "vscode-copilot") is False
+
+
+# =============================================================================
+# resolve_plan_content Tests
+# =============================================================================
+
+
+class TestResolvePlanContent:
+    """Test centralized plan content resolution (resolve_plan_content).
+
+    This function is the single entry point used by both hooks_prompt.py and
+    activity.py to resolve plan file path + content from disk. It tries
+    four strategies in order: known_path → candidate → transcript → filesystem.
+    """
+
+    @pytest.fixture
+    def plan_file(self, tmp_path):
+        """Create a plan file with substantial content."""
+        plan_dir = tmp_path / ".cursor" / "plans"
+        plan_dir.mkdir(parents=True)
+        f = plan_dir / "feature.plan.md"
+        f.write_text("# Feature Plan\n\n" + "Step detail\n" * 200)
+        return f
+
+    @pytest.fixture
+    def small_plan_file(self, tmp_path):
+        """Create a plan file with very little content."""
+        plan_dir = tmp_path / ".cursor" / "plans"
+        plan_dir.mkdir(parents=True)
+        f = plan_dir / "tiny.plan.md"
+        f.write_text("Short")
+        return f
+
+    def test_strategy_known_path(self, plan_file):
+        """Strategy 1: resolves from a known plan file path."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        result = resolve_plan_content(known_plan_file_path=str(plan_file))
+
+        assert result is not None
+        assert result.file_path == str(plan_file)
+        assert "Feature Plan" in result.content
+        assert result.strategy == "known_path"
+
+    def test_strategy_known_path_missing_file(self, tmp_path):
+        """Strategy 1: returns None when file doesn't exist on disk."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        result = resolve_plan_content(
+            known_plan_file_path=str(tmp_path / "nonexistent.md"),
+        )
+
+        # Falls through to strategy 4 (filesystem), which also finds nothing
+        assert result is None
+
+    def test_strategy_candidate_paths(self, plan_file):
+        """Strategy 2: resolves from candidate paths filtered by detect_plan."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+        ) as mock_detect:
+            mock_detect.return_value = PlanDetectionResult(is_plan=True, agent_type="cursor")
+
+            result = resolve_plan_content(
+                candidate_paths=[str(plan_file)],
+            )
+
+        assert result is not None
+        assert result.file_path == str(plan_file)
+        assert result.strategy == "candidate"
+
+    def test_strategy_candidate_skips_non_plan(self, plan_file):
+        """Strategy 2: skips candidates that aren't detected as plan files."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+        ) as mock_detect:
+            mock_detect.return_value = PlanDetectionResult(is_plan=False)
+
+            result = resolve_plan_content(
+                candidate_paths=[str(plan_file)],
+            )
+
+        # Candidate rejected → falls through to filesystem (also nothing)
+        assert result is None
+
+    def test_strategy_transcript(self, plan_file, tmp_path):
+        """Strategy 3: resolves from transcript <code_selection> tags."""
+        import json
+
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        # Create a transcript that references the plan file
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    f'<code_selection path="file://{plan_file}">'
+                                    "content</code_selection>"
+                                ),
+                            }
+                        ]
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.detect_plan",
+        ) as mock_detect:
+            mock_detect.return_value = PlanDetectionResult(is_plan=True, agent_type="cursor")
+
+            result = resolve_plan_content(transcript_path=str(transcript))
+
+        assert result is not None
+        assert result.file_path == str(plan_file)
+        assert result.strategy == "transcript"
+
+    def test_strategy_filesystem(self, plan_file):
+        """Strategy 4: resolves via filesystem scan for recent files."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.find_recent_plan_file",
+        ) as mock_find:
+            mock_find.return_value = PlanDetectionResult(
+                is_plan=True,
+                agent_type="cursor",
+                plans_dir=str(plan_file),
+            )
+
+            result = resolve_plan_content()
+
+        assert result is not None
+        assert result.file_path == str(plan_file)
+        assert result.strategy == "filesystem"
+
+    def test_returns_none_when_nothing_found(self):
+        """Returns None when all strategies fail."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.plan_detector.find_recent_plan_file",
+            return_value=None,
+        ):
+            result = resolve_plan_content()
+
+        assert result is None
+
+    def test_min_content_length_filter(self, small_plan_file):
+        """Content below min_content_length is rejected."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        result = resolve_plan_content(
+            known_plan_file_path=str(small_plan_file),
+            min_content_length=500,
+        )
+
+        # "Short" is only 5 chars, below 500 threshold
+        # Falls through to filesystem scan (also nothing)
+        assert result is None
+
+    def test_existing_content_length_filter(self, plan_file, tmp_path):
+        """Content not 2x larger than existing is rejected."""
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        # existing_content_length is very large — disk content won't be 2x
+        result = resolve_plan_content(
+            known_plan_file_path=str(plan_file),
+            existing_content_length=999999,
+        )
+
+        assert result is None
+
+    def test_priority_order(self, plan_file, tmp_path):
+        """Earlier strategies take precedence over later ones."""
+        import json
+
+        from open_agent_kit.features.codebase_intelligence.plan_detector import (
+            resolve_plan_content,
+        )
+
+        # Create a second plan file for transcript strategy
+        other_plan = tmp_path / ".cursor" / "plans" / "other.md"
+        other_plan.write_text("# Other Plan\n\n" + "Other detail\n" * 100)
+
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    f'<code_selection path="file://{other_plan}">'
+                                    "content</code_selection>"
+                                ),
+                            }
+                        ]
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        # Provide both known_path AND transcript — known_path should win
+        result = resolve_plan_content(
+            known_plan_file_path=str(plan_file),
+            transcript_path=str(transcript),
+        )
+
+        assert result is not None
+        assert result.file_path == str(plan_file)
+        assert result.strategy == "known_path"
+        assert "Feature Plan" in result.content

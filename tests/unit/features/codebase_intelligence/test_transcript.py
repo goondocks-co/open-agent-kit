@@ -15,6 +15,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     RESPONSE_SUMMARY_MAX_LENGTH,
 )
 from open_agent_kit.features.codebase_intelligence.transcript import (
+    extract_attached_file_paths,
     parse_transcript_response,
 )
 
@@ -239,3 +240,132 @@ class TestEdgeCases:
         )
         result = parse_transcript_response(str(path))
         assert result == "Valid"
+
+
+class TestExtractAttachedFilePaths:
+    """Tests for extract_attached_file_paths — Cursor plan file extraction."""
+
+    def test_extracts_cursor_plan_file_path(self, transcript_file):
+        """Extracts plan file path from Cursor's <code_selection> tag."""
+        plan_path = "/Users/chris/.cursor/plans/.my_plan_abc123.plan.md"
+        path = transcript_file(
+            [
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "<attached_files>\n"
+                                    f'<code_selection path="file://{plan_path}" lines="1-50">\n'
+                                    "# Plan content here\n"
+                                    "</code_selection>\n"
+                                    "</attached_files>\n"
+                                    "Implement the plan."
+                                ),
+                            }
+                        ]
+                    },
+                }
+            ]
+        )
+        result = extract_attached_file_paths(str(path))
+        assert result == [plan_path]
+
+    def test_extracts_multiple_paths(self, transcript_file):
+        """Extracts multiple file paths from different messages."""
+        path_a = "/Users/chris/.cursor/plans/plan_a.plan.md"
+        path_b = "/Users/chris/project/src/main.py"
+        path = transcript_file(
+            [
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f'<code_selection path="file://{path_a}" lines="1-10">content</code_selection>',
+                            }
+                        ]
+                    },
+                },
+                {
+                    "role": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f'<code_selection path="file://{path_b}" lines="1-5">code</code_selection>',
+                            }
+                        ]
+                    },
+                },
+            ]
+        )
+        result = extract_attached_file_paths(str(path))
+        assert result == [path_a, path_b]
+
+    def test_deduplicates_same_path(self, transcript_file):
+        """Same file path referenced twice is only returned once."""
+        plan_path = "/Users/chris/.cursor/plans/plan.plan.md"
+        text = f'<code_selection path="file://{plan_path}" lines="1-10">plan</code_selection>'
+        path = transcript_file(
+            [
+                {"role": "user", "message": {"content": [{"type": "text", "text": text}]}},
+                {"role": "user", "message": {"content": [{"type": "text", "text": text}]}},
+            ]
+        )
+        result = extract_attached_file_paths(str(path))
+        assert result == [plan_path]
+
+    def test_returns_empty_for_no_code_selections(self, transcript_file):
+        """Returns empty list when no code_selection tags exist."""
+        path = transcript_file(
+            [
+                {"role": "user", "message": {"content": [{"type": "text", "text": "Hello"}]}},
+                {"role": "assistant", "message": {"content": [{"type": "text", "text": "Hi"}]}},
+            ]
+        )
+        result = extract_attached_file_paths(str(path))
+        assert result == []
+
+    def test_returns_empty_for_nonexistent_file(self):
+        """Returns empty list for nonexistent transcript file."""
+        result = extract_attached_file_paths("/nonexistent/transcript.jsonl")
+        assert result == []
+
+    def test_returns_empty_for_empty_file(self, tmp_path):
+        """Returns empty list for empty transcript file."""
+        path = tmp_path / "empty.jsonl"
+        path.write_text("", encoding="utf-8")
+        result = extract_attached_file_paths(str(path))
+        assert result == []
+
+    def test_handles_simple_role_content_format(self, transcript_file):
+        """Handles simple {"role":"user","content":"..."} format."""
+        plan_path = "/home/user/.cursor/plans/test.plan.md"
+        path = transcript_file(
+            [
+                {
+                    "role": "user",
+                    "content": f'<code_selection path="file://{plan_path}" lines="1-5">plan</code_selection>',
+                }
+            ]
+        )
+        result = extract_attached_file_paths(str(path))
+        assert result == [plan_path]
+
+    def test_skips_invalid_json_lines(self, tmp_path):
+        """Invalid JSON lines are skipped without error."""
+        plan_path = "/Users/chris/.cursor/plans/plan.md"
+        path = tmp_path / "mixed.jsonl"
+        content_line = json.dumps(
+            {
+                "role": "user",
+                "content": f'<code_selection path="file://{plan_path}">x</code_selection>',
+            }
+        )
+        path.write_text(f"not valid json\n{content_line}\n", encoding="utf-8")
+        result = extract_attached_file_paths(str(path))
+        assert result == [plan_path]
