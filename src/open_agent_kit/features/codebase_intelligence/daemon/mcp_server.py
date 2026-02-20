@@ -1,7 +1,7 @@
 """MCP Protocol Server for Codebase Intelligence.
 
 Provides native MCP protocol support for AI agents to discover and use
-CI tools (oak_search, oak_remember, oak_context) via stdio or HTTP transport.
+CI tools (oak_search, oak_remember, oak_context, oak_sessions, oak_memories, oak_stats, oak_activity) via stdio or HTTP transport.
 
 The MCP server automatically starts the CI daemon if it's not running,
 providing seamless integration with AI agents like Claude Code.
@@ -320,6 +320,115 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         if reason:
             data["reason"] = reason
         result = _call_daemon(f"/api/memories/{id}/status", data=data, method="PUT")
+        return json.dumps(result)
+
+    @mcp.tool()
+    def oak_sessions(
+        limit: int = 10,
+        include_summary: bool = True,
+    ) -> str:
+        """List recent coding sessions with their status and summaries.
+
+        Use this to understand what work has been done recently and find
+        session IDs for deeper investigation with oak_activity.
+
+        Args:
+            limit: Maximum number of sessions to return (1-20)
+            include_summary: Include session summaries in output
+
+        Returns:
+            Formatted list of recent sessions.
+        """
+        data: dict[str, Any] = {
+            "limit": min(max(1, limit), 20),
+            "include_summary": include_summary,
+        }
+        result = _call_daemon(
+            "/api/mcp/call?tool_name=oak_sessions",
+            data,
+        )
+        return json.dumps(result)
+
+    @mcp.tool()
+    def oak_memories(
+        memory_type: str | None = None,
+        limit: int = 20,
+        status: str = "active",
+        include_resolved: bool = False,
+    ) -> str:
+        """Browse stored memories and observations.
+
+        Use this to review what the system has learned about the codebase,
+        including gotchas, bug fixes, decisions, discoveries, and trade-offs.
+
+        Args:
+            memory_type: Filter by type: 'gotcha', 'bug_fix', 'decision', 'discovery', 'trade_off'
+            limit: Maximum results to return (1-100)
+            status: Filter by status: 'active', 'resolved', 'superseded'
+            include_resolved: If True, include all statuses regardless of status filter
+
+        Returns:
+            Formatted list of memories.
+        """
+        data: dict[str, Any] = {
+            "limit": min(max(1, limit), 100),
+            "status": status,
+            "include_resolved": include_resolved,
+        }
+        if memory_type:
+            data["memory_type"] = memory_type
+        result = _call_daemon(
+            "/api/mcp/call?tool_name=oak_memories",
+            data,
+        )
+        return json.dumps(result)
+
+    @mcp.tool()
+    def oak_stats() -> str:
+        """Get project intelligence statistics.
+
+        Returns indexed code chunks, unique files, memory count, and
+        observation status breakdown. Use for a quick health check of
+        the codebase intelligence system.
+
+        Returns:
+            Formatted project statistics.
+        """
+        result = _call_daemon(
+            "/api/mcp/call?tool_name=oak_stats",
+            {},
+        )
+        return json.dumps(result)
+
+    @mcp.tool()
+    def oak_activity(
+        session_id: str,
+        tool_name: str | None = None,
+        limit: int = 50,
+    ) -> str:
+        """View tool execution history for a specific session.
+
+        Shows what tools were used, which files were affected, success/failure
+        status, and output summaries. Use oak_sessions first to find session IDs.
+
+        Args:
+            session_id: The session ID to get activities for
+            tool_name: Filter activities by tool name (optional)
+            limit: Maximum number of activities to return (1-200)
+
+        Returns:
+            Formatted list of tool activities for the session.
+        """
+        data: dict[str, Any] = {
+            "session_id": session_id,
+            "limit": min(max(1, limit), 200),
+        }
+        if tool_name:
+            data["tool_name"] = tool_name
+        result = _call_daemon(
+            "/api/mcp/call?tool_name=oak_activity",
+            data,
+        )
         return json.dumps(result)
 
     # Note: oak_status is available via CLI (oak ci status) but not exposed as MCP tool

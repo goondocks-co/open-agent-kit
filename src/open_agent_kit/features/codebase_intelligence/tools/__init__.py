@@ -10,6 +10,7 @@ actual tool logic.
 """
 
 from open_agent_kit.features.codebase_intelligence.tools.formatting import (
+    format_activity_results,
     format_code_results,
     format_context_results,
     format_memory_results,
@@ -21,6 +22,7 @@ from open_agent_kit.features.codebase_intelligence.tools.operations import (
     ToolOperations,
 )
 from open_agent_kit.features.codebase_intelligence.tools.schemas import (
+    ActivityInput,
     ContextInput,
     MemoriesInput,
     RememberInput,
@@ -31,6 +33,7 @@ from open_agent_kit.features.codebase_intelligence.tools.schemas import (
 
 __all__ = [
     # Formatting
+    "format_activity_results",
     "format_code_results",
     "format_memory_results",
     "format_plan_results",
@@ -40,6 +43,7 @@ __all__ = [
     # Operations
     "ToolOperations",
     # Schemas
+    "ActivityInput",
     "SearchInput",
     "RememberInput",
     "ContextInput",

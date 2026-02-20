@@ -125,3 +125,19 @@ class QueryInput(BaseModel):
         ge=1,
         le=500,
     )
+
+
+class ActivityInput(BaseModel):
+    """Input for activity listing tool (oak_activity)."""
+
+    session_id: str = Field(..., description="Session ID to get activities for")
+    tool_name: str | None = Field(
+        default=None,
+        description="Filter by tool name (optional)",
+    )
+    limit: int = Field(
+        default=50,
+        description="Maximum number of activities to return",
+        ge=1,
+        le=200,
+    )

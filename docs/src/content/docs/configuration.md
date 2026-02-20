@@ -89,13 +89,17 @@ If your team already has these files, OAK will **append** constitution reference
 
 ## MCP Tools
 
-The daemon exposes tools for agents via the Model Context Protocol:
+The daemon exposes eight tools for agents via the Model Context Protocol:
 
 | Tool | Description |
 |------|-------------|
-| `oak_search` | Semantic search over code, memories, and plans |
+| `oak_search` | Semantic search over code, memories, plans, and sessions |
 | `oak_remember` | Store observations for future sessions |
 | `oak_context` | Get relevant context for the current task |
 | `oak_resolve_memory` | Mark observations as resolved or superseded |
+| `oak_sessions` | List recent coding sessions |
+| `oak_memories` | Browse stored memories/observations |
+| `oak_stats` | Get project intelligence statistics |
+| `oak_activity` | View tool execution history for a session |
 
 See the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for full parameter documentation.

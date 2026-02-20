@@ -1,9 +1,20 @@
 ---
 title: MCP Tools Reference
-description: Reference documentation for the oak_search, oak_remember, oak_context, and oak_resolve_memory MCP tools.
+description: Reference documentation for the MCP tools exposed by the Codebase Intelligence daemon.
 ---
 
-The Codebase Intelligence daemon exposes four tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
+The Codebase Intelligence daemon exposes eight tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
+
+| Tool | Purpose |
+|------|---------|
+| [`oak_search`](#oak_search) | Semantic search across code, memories, plans, and sessions |
+| [`oak_remember`](#oak_remember) | Store observations for future sessions |
+| [`oak_context`](#oak_context) | Get task-relevant context |
+| [`oak_resolve_memory`](#oak_resolve_memory) | Mark observations as resolved |
+| [`oak_sessions`](#oak_sessions) | List recent coding sessions |
+| [`oak_memories`](#oak_memories) | Browse stored memories |
+| [`oak_stats`](#oak_stats) | Get project intelligence statistics |
+| [`oak_activity`](#oak_activity) | View tool execution history |
 
 ## oak_search
 
@@ -14,7 +25,8 @@ Search the codebase, project memories, and past implementation plans using seman
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `query` | string | Yes | — | Natural language search query (e.g., "authentication middleware") |
-| `search_type` | string | No | `"all"` | What to search: `"all"`, `"code"`, `"memory"`, or `"plans"` |
+| `search_type` | string | No | `"all"` | What to search: `"all"`, `"code"`, `"memory"`, `"plans"`, or `"sessions"` |
+| `include_resolved` | boolean | No | `false` | Include resolved/superseded memories in results |
 | `limit` | integer | No | `10` | Maximum results to return (1–50) |
 
 ### Response
@@ -161,3 +173,146 @@ Returns confirmation of the status update.
 :::tip
 Observation IDs are included in search results and injected context, so agents have what they need to call `oak_resolve_memory` without extra lookups.
 :::
+
+---
+
+## oak_sessions
+
+List recent coding sessions with their status and summaries. Use this to understand what work has been done recently and find session IDs for deeper investigation with `oak_activity`.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | integer | No | `10` | Maximum sessions to return (1–20) |
+| `include_summary` | boolean | No | `true` | Include session summaries in output |
+
+### Response
+
+Returns a list of recent sessions with:
+- Session ID (UUID)
+- Status (active, completed, stale)
+- Agent type (claude, cursor, gemini, etc.)
+- Start time and last activity
+- Summary (if `include_summary` is true)
+
+### Examples
+
+```json
+{
+  "limit": 5,
+  "include_summary": true
+}
+```
+
+```json
+{
+  "limit": 20,
+  "include_summary": false
+}
+```
+
+---
+
+## oak_memories
+
+Browse stored memories and observations. Use this to review what the system has learned about the codebase, including gotchas, bug fixes, decisions, discoveries, and trade-offs.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `memory_type` | string | No | — | Filter by type: `"gotcha"`, `"bug_fix"`, `"decision"`, `"discovery"`, `"trade_off"` |
+| `limit` | integer | No | `20` | Maximum memories to return (1–100) |
+| `status` | string | No | `"active"` | Filter by status: `"active"`, `"resolved"`, `"superseded"` |
+| `include_resolved` | boolean | No | `false` | Include all statuses regardless of status filter |
+
+### Response
+
+Returns a list of memories with:
+- Observation ID
+- Memory type
+- Observation text
+- Context (file path, if any)
+- Status
+- Created timestamp
+
+### Examples
+
+```json
+{
+  "memory_type": "gotcha",
+  "limit": 15
+}
+```
+
+```json
+{
+  "memory_type": "decision",
+  "status": "active",
+  "limit": 30
+}
+```
+
+---
+
+## oak_stats
+
+Get project intelligence statistics including indexed code chunks, unique files, memory count, and observation status breakdown. Use this for a quick health check of the codebase intelligence system.
+
+### Parameters
+
+This tool takes no parameters.
+
+### Response
+
+Returns project statistics including:
+- Total indexed code chunks
+- Unique files indexed
+- Total memory observations
+- Observation breakdown by status (active, resolved, superseded)
+
+### Example
+
+```json
+{}
+```
+
+---
+
+## oak_activity
+
+View tool execution history for a specific session. Shows what tools were used, which files were affected, success/failure status, and output summaries. Use `oak_sessions` first to find session IDs.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `session_id` | string | Yes | — | The session ID to get activities for |
+| `tool_name` | string | No | — | Filter activities by tool name |
+| `limit` | integer | No | `50` | Maximum activities to return (1–200) |
+
+### Response
+
+Returns a list of tool executions with:
+- Tool name (Read, Edit, Write, Bash, etc.)
+- File path (if applicable)
+- Success/failure status
+- Timestamp
+- Output summary
+
+### Examples
+
+```json
+{
+  "session_id": "8430042a-1b01-4c86-8026-6ede46cd93d9",
+  "limit": 100
+}
+```
+
+```json
+{
+  "session_id": "8430042a-1b01-4c86-8026-6ede46cd93d9",
+  "tool_name": "Bash",
+  "limit": 20
+}

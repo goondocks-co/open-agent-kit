@@ -312,7 +312,7 @@ def get_session_activities(
     params: list[Any] = [session_id]
 
     if tool_name:
-        query += " AND tool_name = ?"
+        query += " AND tool_name = ? COLLATE NOCASE"
         params.append(tool_name)
 
     query += " ORDER BY timestamp_epoch ASC"

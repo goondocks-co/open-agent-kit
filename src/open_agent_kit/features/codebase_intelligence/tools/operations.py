@@ -18,6 +18,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     VALID_OBSERVATION_STATUSES,
 )
 from open_agent_kit.features.codebase_intelligence.tools.formatting import (
+    format_activity_results,
     format_context_results,
     format_memory_results,
     format_search_results,
@@ -25,6 +26,7 @@ from open_agent_kit.features.codebase_intelligence.tools.formatting import (
     format_stats_results,
 )
 from open_agent_kit.features.codebase_intelligence.tools.schemas import (
+    ActivityInput,
     ContextInput,
     MemoriesInput,
     QueryInput,
@@ -280,6 +282,49 @@ class ToolOperations:
             observation_count=observation_count,
             status_breakdown=status_breakdown,
         )
+
+    def list_activities(self, args: dict[str, Any]) -> str:
+        """Execute activity listing operation.
+
+        Args:
+            args: Activity arguments (session_id, tool_name, limit).
+
+        Returns:
+            Formatted activity list as markdown string.
+
+        Raises:
+            ValueError: If activity store is not available.
+        """
+        if not self.activity_store:
+            raise ValueError("Activity history not available.")
+
+        input_data = ActivityInput(**args)
+
+        activities = self.activity_store.get_session_activities(
+            session_id=input_data.session_id,
+            tool_name=input_data.tool_name,
+            limit=input_data.limit,
+        )
+
+        if not activities:
+            return "No activities found."
+
+        # Convert Activity dataclasses to dicts for formatting
+        activity_dicts = [
+            {
+                "tool_name": a.tool_name,
+                "success": a.success,
+                "file_path": a.file_path,
+                "timestamp": str(a.timestamp) if a.timestamp else "",
+                "error_message": a.error_message,
+                "tool_output_summary": a.tool_output_summary,
+            }
+            for a in activities
+        ]
+
+        output = format_activity_results(activity_dicts)
+        output += f"\n(Showing {len(activities)} activities for session {input_data.session_id})"
+        return output
 
     def execute_query(self, args: dict[str, Any]) -> str:
         """Execute a read-only SQL query against the activities database.
