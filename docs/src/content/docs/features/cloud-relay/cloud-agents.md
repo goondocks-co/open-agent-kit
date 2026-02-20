@@ -117,12 +117,16 @@ Cloud Relay exposes all MCP tools registered with your local Oak CI daemon. The 
 
 | Tool | Description |
 |------|-------------|
-| `oak_search` | Semantic code search across your codebase |
+| `oak_search` | Semantic search across code, memories, plans, and sessions |
 | `oak_context` | Task-relevant context aggregation |
 | `oak_remember` | Store observations and learnings |
 | `oak_resolve_memory` | Mark observations as resolved |
+| `oak_sessions` | List recent coding sessions |
+| `oak_memories` | Browse stored memories |
+| `oak_stats` | Get project intelligence statistics |
+| `oak_activity` | View tool execution history |
 
-These are the same tools available to local agents — cloud agents get identical capabilities through the relay.
+These are the same tools available to local agents — cloud agents get identical capabilities through the relay. See the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for full parameter documentation.
 
 ## Multiple Agents
 

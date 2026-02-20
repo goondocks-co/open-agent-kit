@@ -1,10 +1,14 @@
 """MCP tool handlers for Codebase Intelligence.
 
 Exposes tools that AI agents can call via MCP protocol:
-- oak_search: Search code and memories semantically
+- oak_search: Search code, memories, plans, and sessions semantically
 - oak_remember: Store observations for future retrieval
 - oak_context: Get relevant context for current task
 - oak_resolve_memory: Mark observations as resolved or superseded
+- oak_sessions: List recent coding sessions
+- oak_memories: Browse stored memories/observations
+- oak_stats: Get project intelligence statistics
+- oak_activity: View tool execution history for a session
 
 These tools delegate to shared ToolOperations for actual implementation.
 """
@@ -27,9 +31,9 @@ MCP_TOOLS = [
     {
         "name": "oak_search",
         "description": (
-            "Search the codebase, project memories, and past implementation plans using "
+            "Search the codebase, project memories, sessions, and past implementation plans using "
             "semantic similarity. Use this to find relevant code implementations, past "
-            "decisions, gotchas, learnings, and plans. Returns ranked results with "
+            "decisions, gotchas, learnings, plans, and session history. Returns ranked results with "
             "relevance scores. Use search_type='plans' to find past implementation plans."
         ),
         "inputSchema": {
@@ -44,9 +48,9 @@ MCP_TOOLS = [
                 },
                 "search_type": {
                     "type": "string",
-                    "enum": ["all", "code", "memory", "plans"],
+                    "enum": ["all", "code", "memory", "plans", "sessions"],
                     "default": "all",
-                    "description": "Search code, memories, plans, or all",
+                    "description": "Search code, memories, plans, sessions, or all",
                 },
                 "limit": {
                     "type": "integer",
@@ -54,6 +58,11 @@ MCP_TOOLS = [
                     "minimum": 1,
                     "maximum": 50,
                     "description": "Maximum results to return",
+                },
+                "include_resolved": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If True, include resolved/superseded memories in results",
                 },
             },
             "required": ["query"],
@@ -150,6 +159,108 @@ MCP_TOOLS = [
             "required": ["id"],
         },
     },
+    {
+        "name": "oak_sessions",
+        "description": (
+            "List recent coding sessions with their status and summaries. "
+            "Use this to understand what work has been done recently and find "
+            "session IDs for deeper investigation with oak_activity."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 20,
+                    "description": "Maximum number of sessions to return",
+                },
+                "include_summary": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include session summaries in output",
+                },
+            },
+        },
+    },
+    {
+        "name": "oak_memories",
+        "description": (
+            "Browse stored memories and observations. Use this to review what "
+            "the system has learned about the codebase, including gotchas, "
+            "bug fixes, decisions, discoveries, and trade-offs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["gotcha", "bug_fix", "decision", "discovery", "trade_off"],
+                    "description": "Filter by memory type (optional)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Maximum number of memories to return",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "resolved", "superseded"],
+                    "default": "active",
+                    "description": "Filter by observation status",
+                },
+                "include_resolved": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If True, include all statuses regardless of status filter",
+                },
+            },
+        },
+    },
+    {
+        "name": "oak_stats",
+        "description": (
+            "Get project intelligence statistics including indexed code chunks, "
+            "unique files, memory count, and observation status breakdown. "
+            "Use this for a quick health check of the codebase intelligence system."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "oak_activity",
+        "description": (
+            "View tool execution history for a specific session. Shows what tools "
+            "were used, which files were affected, success/failure status, and "
+            "output summaries. Use oak_sessions first to find session IDs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "The session ID to get activities for",
+                },
+                "tool_name": {
+                    "type": "string",
+                    "description": "Filter activities by tool name (optional)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "Maximum number of activities to return",
+                },
+            },
+            "required": ["session_id"],
+        },
+    },
 ]
 
 
@@ -167,7 +278,11 @@ class MCPToolHandler:
         """
         from open_agent_kit.features.codebase_intelligence.tools import ToolOperations
 
-        self.ops = ToolOperations(retrieval_engine)
+        self.ops = ToolOperations(
+            retrieval_engine,
+            activity_store=getattr(retrieval_engine, "activity_store", None),
+            vector_store=getattr(retrieval_engine, "store", None),
+        )
 
     def handle_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle an MCP tool call.
@@ -184,6 +299,10 @@ class MCPToolHandler:
             "oak_remember": self.ops.remember,
             "oak_context": self.ops.get_context,
             "oak_resolve_memory": self.ops.resolve_memory,
+            "oak_sessions": self.ops.list_sessions,
+            "oak_memories": self.ops.list_memories,
+            "oak_stats": lambda args: self.ops.get_stats(args),
+            "oak_activity": self.ops.list_activities,
         }
 
         handler = handlers.get(tool_name)

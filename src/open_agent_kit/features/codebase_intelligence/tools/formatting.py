@@ -296,6 +296,47 @@ def format_context_results(
     return "\n".join(parts)
 
 
+def format_activity_results(activities: list[dict[str, Any]]) -> str:
+    """Format activity list for agent consumption.
+
+    Args:
+        activities: Activity records from ActivityStore.
+
+    Returns:
+        Formatted markdown string with activity details.
+    """
+    if not activities:
+        return "No activities found."
+
+    lines = [f"Found {len(activities)} activities:\n"]
+    for i, a in enumerate(activities, 1):
+        tool_name = a.get("tool_name", "unknown")
+        success = a.get("success", True)
+        status_icon = "+" if success else "x"
+        file_path = a.get("file_path", "")
+        timestamp = a.get("timestamp", "")
+        error_message = a.get("error_message", "")
+        output_summary = a.get("tool_output_summary", "")
+
+        lines.append(f"{i}. [{status_icon}] {tool_name}")
+        meta_parts = []
+        if file_path:
+            meta_parts.append(f"file: {file_path}")
+        if timestamp:
+            meta_parts.append(f"at: {timestamp}")
+        if meta_parts:
+            lines.append(f"   {' | '.join(meta_parts)}")
+        if not success and error_message:
+            preview = error_message[:200] + "..." if len(error_message) > 200 else error_message
+            lines.append(f"   Error: {preview}")
+        elif output_summary:
+            preview = output_summary[:200] + "..." if len(output_summary) > 200 else output_summary
+            lines.append(f"   Output: {preview}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def format_stats_results(
     code_chunks: int = 0,
     unique_files: int = 0,
