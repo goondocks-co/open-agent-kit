@@ -51,6 +51,12 @@ export interface VersionInfo {
     update_available: boolean;
 }
 
+export interface UpgradeInfo {
+    needed: boolean;
+    config_version_outdated: boolean;
+    pending_migrations: number;
+}
+
 export interface DaemonStatus {
     status: string;
     indexing: boolean;
@@ -74,6 +80,7 @@ export interface DaemonStatus {
         started_at: string | null;
     };
     version: VersionInfo;
+    upgrade: UpgradeInfo;
 }
 
 export function useStatus() {

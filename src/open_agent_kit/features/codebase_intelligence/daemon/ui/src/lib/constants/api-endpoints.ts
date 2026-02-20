@@ -35,6 +35,7 @@ export const API_ENDPOINTS = {
     HEALTH: "/api/health",
     RESTART: "/api/restart",
     SELF_RESTART: "/api/self-restart",
+    UPGRADE_AND_RESTART: "/api/upgrade-and-restart",
     LOGS: "/api/logs",
 
     // Activity endpoints

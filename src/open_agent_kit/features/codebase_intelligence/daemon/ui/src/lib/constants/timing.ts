@@ -24,6 +24,9 @@ export const RESTART_POLL_INTERVAL_MS = 2000;
 /** Maximum time to wait for daemon restart before showing fallback (60 seconds) */
 export const RESTART_TIMEOUT_MS = 60000;
 
+/** Duration to show "Copied!" feedback after clipboard copy (2 seconds) */
+export const COPIED_FEEDBACK_DURATION_MS = 2000;
+
 // =============================================================================
 // Time Constants
 // =============================================================================
