@@ -20,9 +20,7 @@ description: >
 default_task: |
   Generate a prompt quality analysis report.
 
-  Use ci_query against the prompt_batches table for all data gathering.
-  Refer to the database schema in your system prompt for column names
-  and types — do not assume column names from these instructions.
+  Query primarily against the prompt_batches table.
 
   ## 1. Prompt Overview
 
@@ -76,6 +74,7 @@ execution:
   timeout_seconds: 180
   max_turns: 50
   permission_mode: acceptEdits
+  model: claude-sonnet-4-6
 
 maintained_files:
   - path: "{project_root}/oak/insights/prompt-analysis.md"

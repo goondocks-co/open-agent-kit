@@ -394,10 +394,10 @@ class TestEngineeringAgent:
         agent = registry.get(AGENT_ENGINEERING_NAME)
         assert agent is not None
 
-        # Execution: bypassPermissions, higher limits than documentation
+        # Execution: acceptEdits (safe default), higher limits than documentation
         assert agent.execution.max_turns == 200
         assert agent.execution.timeout_seconds == 1800
-        assert agent.execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS
+        assert agent.execution.permission_mode == AgentPermissionMode.ACCEPT_EDITS
 
         # Allowed tools — Bash is NOT at template level
         assert "Read" in agent.allowed_tools

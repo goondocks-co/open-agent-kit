@@ -46,6 +46,28 @@ Focus on:
 
 Prefer **decision**, **trade_off**, and **gotcha** types for implementation sessions.
 
+## Examples
+
+**Good observation** (clear rationale — extract this):
+```json
+{
+  "type": "decision",
+  "observation": "Chose Pydantic over dataclasses for agent config models because agent YAML definitions need runtime validation (type coercion, range checks, defaults). Pydantic's validator decorators handle this; dataclasses would need manual __post_init__ validation.",
+  "context": "agents/models.py",
+  "importance": "medium"
+}
+```
+
+**Bad observation** (no rationale — skip this):
+```json
+{
+  "type": "decision",
+  "observation": "Used Pydantic for the config model",
+  "context": "agents/models.py",
+  "importance": "low"
+}
+```
+
 ## Output Format
 
 ```json

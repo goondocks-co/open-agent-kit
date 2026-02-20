@@ -47,6 +47,28 @@ Consider the session's activity pattern when rating observation importance:
 When in doubt, prefer a conservative (lower) importance rating — observations can be
 promoted later but high-importance noise is harder to filter.
 
+## Examples
+
+**Good observation** (specific, actionable — extract this):
+```json
+{
+  "type": "gotcha",
+  "observation": "SQLite WAL mode must be enabled before concurrent reads work. Without WAL, readers block writers and vice versa. Enabled via PRAGMA journal_mode=WAL at connection time.",
+  "context": "activity/store/database.py",
+  "importance": "high"
+}
+```
+
+**Bad observation** (too generic — skip this):
+```json
+{
+  "type": "discovery",
+  "observation": "The project uses SQLite for storage",
+  "context": "activity/store",
+  "importance": "low"
+}
+```
+
 ## Output Format
 
 Respond with a JSON object:

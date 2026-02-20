@@ -69,6 +69,29 @@ default_task: |
   Focus on user-facing changes and significant internal improvements.
   Skip trivial refactors unless they affect behavior.
 
+  ## Reference: Good Changelog Entry
+
+  ```markdown
+  ## [2024-01-15]
+
+  ### Added
+  - **Codebase Intelligence search** — Semantic search across code and memories
+    — [Add CI search feature]({daemon_url}/activity/sessions/abc123-full-uuid)
+
+  ### Fixed
+  - Email classification silent failures when subject contains special characters
+    — [Fix email classification]({daemon_url}/activity/sessions/def456-full-uuid)
+
+  > **Gotcha**: The classifier regex was too greedy. Now validates input length first.
+
+  ### Changed
+  - Migrated session storage from JSON files to SQLite for better performance
+    — [Migrate session storage]({daemon_url}/activity/sessions/ghi789-full-uuid)
+
+  ### Developer Notes
+  - The search index now supports plans/SDDs as a searchable type
+  ```
+
 # Schedule for weekly execution (optional - uncomment to enable)
 # schedule:
 #   cron: "0 0 * * MON"
@@ -79,6 +102,7 @@ execution:
   timeout_seconds: 300
   max_turns: 50
   permission_mode: acceptEdits
+  model: claude-sonnet-4-6
 
 # Files this task maintains
 maintained_files:

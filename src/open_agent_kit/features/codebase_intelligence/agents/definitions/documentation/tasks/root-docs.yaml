@@ -136,6 +136,7 @@ execution:
   timeout_seconds: 480
   max_turns: 80
   permission_mode: acceptEdits
+  model: claude-sonnet-4-6
 
 # Files this task maintains
 maintained_files:

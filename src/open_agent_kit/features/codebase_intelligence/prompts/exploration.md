@@ -44,6 +44,28 @@ Focus on:
 
 Prefer **discovery** and **gotcha** types for exploration sessions.
 
+## Examples
+
+**Good observation** (non-obvious behavior — extract this):
+```json
+{
+  "type": "discovery",
+  "observation": "Jinja2 template variables fail silently when undefined — no error, just empty string. The template_service uses undefined=StrictUndefined to catch this, but only for user-facing templates. Internal templates still use default (silent) mode.",
+  "context": "services/template_service.py",
+  "importance": "high"
+}
+```
+
+**Bad observation** (obvious from code structure — skip this):
+```json
+{
+  "type": "discovery",
+  "observation": "The project has a services directory with service files",
+  "context": "src/services",
+  "importance": "low"
+}
+```
+
 ## Output Format
 
 ```json

@@ -19,7 +19,7 @@ description: >
 execution:
   max_turns: 200
   timeout_seconds: 1800
-  permission_mode: bypassPermissions
+  permission_mode: acceptEdits
 
 # Tools the agent can use (Bash is NOT here — tasks opt in via additional_tools)
 allowed_tools:
