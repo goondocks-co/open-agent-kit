@@ -32,10 +32,11 @@ capabilities:
 
   # Skills support (Agent Skills standard)
   # Compatible with Claude Code SKILL.md format
-  # Gemini CLI uses .gemini/skills/ for workspace skills
+  # Gemini CLI reads .agents/skills/ with higher precedence
   # See: https://geminicli.com/docs/cli/skills/
   has_skills: true
-  skills_directory: "skills"    # .gemini/skills/
+  skills_folder: ".agents"      # Shared folder — reads .agents/skills/
+  skills_directory: "skills"    # .agents/skills/
 
 # Codebase Intelligence configuration
 ci:

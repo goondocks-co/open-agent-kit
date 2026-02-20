@@ -875,6 +875,277 @@ class TestManifestSkillsConsistency:
         )
 
 
+class TestGetUniqueSkillsPaths:
+    """Tests for _get_unique_skills_paths() deduplication."""
+
+    def test_groups_shared_agents_into_one_entry(self, temp_project):
+        """Agents sharing .agents/skills/ should be grouped into one entry."""
+        service = SkillService(temp_project)
+
+        shared_path = temp_project / ".agents" / "skills"
+        claude_path = temp_project / ".claude" / "skills"
+        cursor_path = temp_project / ".cursor" / "skills"
+
+        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+            mock_agents.return_value = [
+                ("codex", shared_path, "skills"),
+                ("gemini", shared_path, "skills"),
+                ("vscode-copilot", shared_path, "skills"),
+                ("windsurf", shared_path, "skills"),
+                ("opencode", shared_path, "skills"),
+                ("claude", claude_path, "skills"),
+                ("cursor", cursor_path, "skills"),
+            ]
+
+            unique = service._get_unique_skills_paths()
+
+        assert len(unique) == 3
+
+        # Find the shared entry
+        shared_entry = [e for e in unique if e[1] == shared_path]
+        assert len(shared_entry) == 1
+        shared_agents = shared_entry[0][0]
+        assert set(shared_agents) == {"codex", "gemini", "vscode-copilot", "windsurf", "opencode"}
+
+        # Claude and cursor are separate
+        claude_entry = [e for e in unique if e[1] == claude_path]
+        assert len(claude_entry) == 1
+        assert claude_entry[0][0] == ["claude"]
+
+        cursor_entry = [e for e in unique if e[1] == cursor_path]
+        assert len(cursor_entry) == 1
+        assert cursor_entry[0][0] == ["cursor"]
+
+    def test_install_skill_copies_to_three_paths(self, temp_project, package_skills_dir):
+        """install_skill() should copy to 3 unique paths, not 7."""
+        service = SkillService(temp_project)
+        service.package_features_dir = package_skills_dir
+
+        shared_path = temp_project / ".agents" / "skills"
+        claude_path = temp_project / ".claude" / "skills"
+        cursor_path = temp_project / ".cursor" / "skills"
+
+        with patch.object(service, "_get_unique_skills_paths") as mock_unique:
+            mock_unique.return_value = [
+                (
+                    ["codex", "gemini", "vscode-copilot", "windsurf", "opencode"],
+                    shared_path,
+                    "skills",
+                ),
+                (["claude"], claude_path, "skills"),
+                (["cursor"], cursor_path, "skills"),
+            ]
+
+            result = service.install_skill("test-skill")
+
+        assert len(result["installed_to"]) == 3
+        assert len(result["agents"]) == 7
+
+        # Verify skill was written to all 3 paths
+        assert (shared_path / "test-skill" / "SKILL.md").exists()
+        assert (claude_path / "test-skill" / "SKILL.md").exists()
+        assert (cursor_path / "test-skill" / "SKILL.md").exists()
+
+    def test_cleanup_preserves_shared_dir_when_one_agent_removed(self, temp_project):
+        """Removing codex should NOT delete .agents/skills/ if gemini still uses it."""
+        from open_agent_kit.services.agent_service import AgentService
+
+        service = SkillService(temp_project)
+
+        # Create shared skills directory with a skill
+        shared_skills = temp_project / ".agents" / "skills" / "test-skill"
+        shared_skills.mkdir(parents=True)
+        (shared_skills / "SKILL.md").write_text("---\nname: test-skill\n---\n")
+
+        # Create manifests for the agents
+        codex_manifest = AgentManifest(
+            name="codex",
+            display_name="Codex CLI",
+            description="Codex",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True, skills_folder=".agents", skills_directory="skills"
+            ),
+            installation=AgentInstallation(folder=".codex/"),
+        )
+        gemini_manifest = AgentManifest(
+            name="gemini",
+            display_name="Gemini CLI",
+            description="Gemini",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True, skills_folder=".agents", skills_directory="skills"
+            ),
+            installation=AgentInstallation(folder=".gemini/"),
+        )
+
+        # Gemini is still configured — _get_agents_with_skills_support returns it
+        shared_path = temp_project / ".agents" / "skills"
+        with (
+            patch.object(AgentService, "get_agent_manifest") as mock_get,
+            patch.object(service, "_get_agents_with_skills_support") as mock_remaining,
+        ):
+            mock_get.side_effect = lambda name: {
+                "codex": codex_manifest,
+                "gemini": gemini_manifest,
+            }.get(name)
+            # Gemini still configured, so shared path is still in use
+            mock_remaining.return_value = [("gemini", shared_path, "skills")]
+
+            result = service.cleanup_skills_for_removed_agents(["codex"])
+
+        # Shared dir should be preserved
+        assert shared_skills.exists()
+        assert result["agents_cleaned"] == []
+
+    def test_cleanup_removes_shared_dir_when_all_agents_removed(self, temp_project):
+        """Removing ALL shared agents should delete .agents/skills/."""
+        from open_agent_kit.services.agent_service import AgentService
+
+        service = SkillService(temp_project)
+
+        # Create shared skills directory with a skill
+        shared_skills = temp_project / ".agents" / "skills" / "test-skill"
+        shared_skills.mkdir(parents=True)
+        (shared_skills / "SKILL.md").write_text("---\nname: test-skill\n---\n")
+
+        codex_manifest = AgentManifest(
+            name="codex",
+            display_name="Codex CLI",
+            description="Codex",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True, skills_folder=".agents", skills_directory="skills"
+            ),
+            installation=AgentInstallation(folder=".codex/"),
+        )
+
+        # No agents remain — _get_agents_with_skills_support returns empty
+        with (
+            patch.object(AgentService, "get_agent_manifest") as mock_get,
+            patch.object(service, "_get_agents_with_skills_support") as mock_remaining,
+        ):
+            mock_get.return_value = codex_manifest
+            mock_remaining.return_value = []  # No remaining agents use shared path
+
+            result = service.cleanup_skills_for_removed_agents(["codex"])
+
+        # Shared dir should be removed
+        assert not shared_skills.exists()
+        assert "codex" in result["agents_cleaned"]
+
+
+class TestMigrateSkillsToSharedAgentsDir:
+    """Tests for the shared agents dir migration."""
+
+    def test_migration_moves_skills(self, tmp_path):
+        """Migration should copy skills from old dirs to .agents/skills/ and clean up."""
+        from open_agent_kit.services.agent_service import AgentService
+        from open_agent_kit.services.migrations import _migrate_skills_to_shared_agents_dir
+
+        # Setup config
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        (oak_dir / "config.yaml").write_text(
+            "version: '1.0'\nagents: [codex, gemini]\n"
+            "skills:\n  installed: [test-skill]\n  auto_install: true\n"
+        )
+
+        # Create old skill in .codex/skills/
+        old_skill = tmp_path / ".codex" / "skills" / "test-skill"
+        old_skill.mkdir(parents=True)
+        (old_skill / "SKILL.md").write_text("---\nname: test-skill\n---\nOld content\n")
+
+        # Also create in .gemini/skills/
+        old_gemini_skill = tmp_path / ".gemini" / "skills" / "test-skill"
+        old_gemini_skill.mkdir(parents=True)
+        (old_gemini_skill / "SKILL.md").write_text("---\nname: test-skill\n---\nOld content\n")
+
+        # Create manifests that match real agents
+        codex_manifest = AgentManifest(
+            name="codex",
+            display_name="Codex CLI",
+            description="Codex",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True, skills_folder=".agents", skills_directory="skills"
+            ),
+            installation=AgentInstallation(folder=".codex/"),
+        )
+        gemini_manifest = AgentManifest(
+            name="gemini",
+            display_name="Gemini CLI",
+            description="Gemini",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True, skills_folder=".agents", skills_directory="skills"
+            ),
+            installation=AgentInstallation(folder=".gemini/"),
+        )
+
+        with patch.object(AgentService, "get_agent_manifest") as mock_get:
+            mock_get.side_effect = lambda name: {
+                "codex": codex_manifest,
+                "gemini": gemini_manifest,
+            }.get(name)
+
+            _migrate_skills_to_shared_agents_dir(tmp_path)
+
+        # Skill should now be in .agents/skills/
+        new_skill = tmp_path / ".agents" / "skills" / "test-skill" / "SKILL.md"
+        assert new_skill.exists()
+        assert "Old content" in new_skill.read_text()
+
+        # Old dirs should be removed
+        assert not (tmp_path / ".codex" / "skills").exists()
+        assert not (tmp_path / ".gemini" / "skills").exists()
+
+    def test_migration_skips_existing_shared_skills(self, tmp_path):
+        """Migration should not overwrite skills already in .agents/skills/."""
+        from open_agent_kit.services.agent_service import AgentService
+        from open_agent_kit.services.migrations import _migrate_skills_to_shared_agents_dir
+
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        (oak_dir / "config.yaml").write_text(
+            "version: '1.0'\nagents: [codex]\n"
+            "skills:\n  installed: [test-skill]\n  auto_install: true\n"
+        )
+
+        # Create existing shared skill
+        shared_skill = tmp_path / ".agents" / "skills" / "test-skill"
+        shared_skill.mkdir(parents=True)
+        (shared_skill / "SKILL.md").write_text("---\nname: test-skill\n---\nNew content\n")
+
+        # Create old skill in .codex/skills/
+        old_skill = tmp_path / ".codex" / "skills" / "test-skill"
+        old_skill.mkdir(parents=True)
+        (old_skill / "SKILL.md").write_text("---\nname: test-skill\n---\nOld content\n")
+
+        codex_manifest = AgentManifest(
+            name="codex",
+            display_name="Codex CLI",
+            description="Codex",
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                has_skills=True, skills_folder=".agents", skills_directory="skills"
+            ),
+            installation=AgentInstallation(folder=".codex/"),
+        )
+
+        with patch.object(AgentService, "get_agent_manifest") as mock_get:
+            mock_get.return_value = codex_manifest
+
+            _migrate_skills_to_shared_agents_dir(tmp_path)
+
+        # Shared skill should retain new content (not overwritten)
+        content = (shared_skill / "SKILL.md").read_text()
+        assert "New content" in content
+
+        # Old dir should still be cleaned up
+        assert not (tmp_path / ".codex" / "skills").exists()
+
+
 class TestCodebaseIntelligenceSkillSync:
     """Verify the codebase-intelligence skill stays in sync with the actual schema.
 

@@ -1,4 +1,4 @@
-version: 1.1.7.dev1+g0c8e6b51a.d20260218
+version: 1.2.1.dev0+g16e5aa273.d20260220
 agents:
 - vscode-copilot
 - opencode
@@ -148,5 +148,7 @@ codebase_intelligence:
     log_allowed: false
     rules: [{id: no-destructive-bash, description: Block destructive shell commands,
         enabled: true, tool: Bash, pattern: rm\s+-rf, path_pattern: '', action: deny,
-        message: Destructive commands are blocked by governance policy.}]
+        message: Destructive commands are blocked by governance policy.}, {id: warn-env-access,
+        description: Warn when agent reads or writes to env file, enabled: true, tool: '*',
+        pattern: '', path_pattern: '*.env', action: warn, message: ''}]
     retention_days: 30
