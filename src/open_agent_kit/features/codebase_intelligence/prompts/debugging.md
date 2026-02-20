@@ -47,6 +47,28 @@ Focus on:
 
 Prefer **bug_fix** and **gotcha** types for debugging sessions.
 
+## Examples
+
+**Good observation** (specific root cause and fix — extract this):
+```json
+{
+  "type": "bug_fix",
+  "observation": "ChromaDB dimension mismatch error when switching embedding models. Old collection had 384-dim vectors but new model produces 768-dim. Fix: delete and recreate the collection when embedding model changes, detected via stored metadata.",
+  "context": "memory/store/chroma.py",
+  "importance": "high"
+}
+```
+
+**Bad observation** (too vague — skip this):
+```json
+{
+  "type": "bug_fix",
+  "observation": "Fixed a database error",
+  "context": "memory/store",
+  "importance": "medium"
+}
+```
+
 ## Output Format
 
 ```json

@@ -1302,6 +1302,9 @@ AGENT_STATUS_TIMEOUT: Final[str] = "timeout"
 AGENT_RUNS_MAX_HISTORY: Final[int] = 100
 AGENT_RUNS_CLEANUP_THRESHOLD: Final[int] = 150
 
+# Default model for agent tasks (cost-effective for routine work)
+AGENT_DEFAULT_TASK_MODEL: Final[str] = "claude-sonnet-4-6"
+
 # Default tools allowed for agents
 AGENT_DEFAULT_ALLOWED_TOOLS: Final[tuple[str, ...]] = (
     "Read",

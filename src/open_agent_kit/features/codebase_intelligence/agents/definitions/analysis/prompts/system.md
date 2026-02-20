@@ -122,6 +122,14 @@ WHERE created_at_epoch > strftime('%s', 'now', '-30 days')
 json_extract(files_created, '$[0]') -- First item from JSON array
 ```
 
+## Default Task Instructions
+
+For all analysis tasks:
+- Use ci_query as your primary tool for querying CI metrics and statistics
+- Use Read/Glob/Grep for file operations (reading existing reports, cross-referencing code)
+- Refer to the database schema above for column names and types — do not assume column names from task instructions
+- Query against specific tables as directed by each task section
+
 ## Report Writing Standards
 
 When writing reports to `oak/insights/`:

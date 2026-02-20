@@ -202,35 +202,12 @@ Follow the specified tone and conventions.
   - The `daemon_url` is automatically injected into Instance Configuration — use it for all links
 
 **Link formatting rules:**
-- **NEVER wrap links in parentheses** — `(from [title](url))` breaks markdown rendering
-- Use em-dash (—) to separate content from source links
-- Place source links at the end of the line
-
-**Link formatting examples:**
-```markdown
-<!-- Use daemon_url from Task Configuration for all links -->
-
-<!-- Session links - use em-dash, session TITLE as link text -->
-- Added user authentication — [Add user authentication]({daemon_url}/activity/sessions/abc12345-full-uuid)
-- Fixed email processing bug — [Fix email processing bug]({daemon_url}/activity/sessions/def67890-full-uuid)
-
-<!-- Code file links (relative paths, no daemon_url needed) -->
-Fixed in [`processor.py`](src/services/processor.py)
-See [`handler.py:87`](src/handlers/handler.py) for the implementation
-
-<!-- Memory references - use em-dash -->
-- Email classification can fail silently — [gotcha]({daemon_url}/search?q=email+classification)
-```
-
-### Stale Link Maintenance
-
-The daemon port can change between runs. When updating an existing file:
-
-1. Get the current `daemon_url` from your Task Configuration
-2. Check if the file contains any `http://localhost:PORT/` links where PORT differs from the current daemon port
-3. If stale links exist, update ALL of them to use the current `daemon_url` before adding new content
-
-This ensures all links in maintained files always point to the running daemon.
+- Use em-dash (—) to separate content from source links: `- Added auth — [Session Title](url)`
+- NEVER wrap links in parentheses — `(from [title](url))` breaks markdown
+- Session links: `[Session Title]({daemon_url}/activity/sessions/{session_id})`
+- Code links: `[filename](relative/path)` or `[filename:line](relative/path:42)`
+- Get `daemon_url` from Task Configuration
+- When updating existing files, replace stale `localhost:PORT` links with current daemon_url
 
 ## Output Quality Standards
 
@@ -290,168 +267,10 @@ various email formats and can be configured through environment variables.
 
 **Key insight**: The plan gives you the "why", the code gives you the "what", and the memories give you the "watch out for". A cold Claude Code session only has the "what".
 
-## Example Outputs
-
-These examples show what CI-native documentation looks like in practice.
-
-### Good Changelog Entry
-
-```markdown
-## [2024-01-15]
-
-### Added
-- **Codebase Intelligence search** — Semantic search across code and memories
-  — [Add CI search feature]({daemon_url}/activity/sessions/abc123-full-uuid)
-
-### Fixed
-- Email classification silent failures when subject contains special characters
-  — [Fix email classification]({daemon_url}/activity/sessions/def456-full-uuid)
-
-> **Gotcha**: The classifier regex was too greedy. Now validates input length first.
-
-### Changed
-- Migrated session storage from JSON files to SQLite for better performance
-  — [Migrate session storage]({daemon_url}/activity/sessions/ghi789-full-uuid)
-
-### Developer Notes
-- The search index now supports plans/SDDs as a searchable type
-- Consider running `oak ci sync` after schema migrations to rebuild the index
-```
-
-**What makes this good:**
-- Each entry links to the session where the work was done
-- Gotchas from memories are surfaced as warnings
-- Uses em-dash to separate content from source links
-- Groups changes by category (Added, Fixed, Changed)
-- Includes developer-relevant notes from discoveries
-
-### Bad Changelog Entry (avoid this)
-
-```markdown
-## Changes
-- Added new feature
-- Fixed bug
-- Made improvements
-```
-
-**What makes this bad:**
-- No specifics about what was added or fixed
-- No links to sessions or code
-- No gotchas or developer notes
-- Generic descriptions that add no value
-
-### Good Feature Documentation
-
-```markdown
-## Email Processing
-
-The [`EmailProcessor`](src/services/email_processor.py) handles incoming mail
-parsing and classification for the brief generation system.
-
-### How It Works
-
-1. Emails arrive via IMAP sync — [Initial email sync]({daemon_url}/activity/sessions/sync-session-uuid)
-2. The [`classify_email()`](src/services/email_processor.py:87) function
-   determines email type based on subject and sender patterns
-3. Classified emails are queued for brief inclusion
-
-### ⚠️ Known Issues & Gotchas
-
-> **Gotcha**: Email classification can fail silently when the subject contains
-> special characters (< > & " '). Always validate `subject_line` before
-> passing to the classifier.
->
-> Fixed in [`processor.py:42`](src/services/processor.py:42)
-> — [Fix silent classification failures]({daemon_url}/activity/sessions/fix-uuid)
-
-> **Gotcha**: Gmail labels are case-sensitive but our matcher was not. This
-> caused duplicate processing. Now uses exact case matching.
-
-### Design Decisions
-
-- **Synchronous processing**: We chose to process emails synchronously rather
-  than in a background job because brief generation needs immediate access to
-  email content. See the original plan "Brief Generation Architecture" for
-  the full trade-off analysis.
-
-- **SQLite over JSON**: Session history moved from JSON files to SQLite after
-  performance issues with large history files (>10MB). The migration preserves
-  all existing sessions — [Migrate to SQLite]({daemon_url}/activity/sessions/migrate-uuid)
-```
-
-**What makes this good:**
-- Links to code files with line numbers
-- Gotchas prominently displayed with warnings
-- Design decisions explain "why" not just "what"
-- Session links provide full context for changes
-- Accurate implementation details from code search
-
 ## Handling Sparse CI Data
 
-New projects or projects that recently enabled CI may have limited indexed data. When your CI queries return few or no results, adapt your approach:
-
-### What to Do
-
-1. **Acknowledge the limitation**: Note in documentation that limited historical data is available
-   ```markdown
-   > **Note**: This documentation reflects current code state. Historical context
-   > will be enriched as the project accumulates CI data from future sessions.
-   ```
-
-2. **Fall back to code exploration**: Use Read/Glob/Grep to understand the codebase directly
-   - Search for patterns: `Glob("**/*.py")` to find Python files
-   - Read entry points: main.py, cli.py, __init__.py files
-   - Look for docstrings and inline comments
-
-3. **Don't fabricate history**: If you don't have session data or memories for something, don't make them up. Document what you can verify from code.
-
-4. **Suggest where CI would help**: Point out areas where accumulated CI data would be valuable
-   ```markdown
-   ### Future Documentation Opportunities
-
-   Once CI data accumulates, this section will include:
-   - Gotchas discovered during development
-   - Design decisions and their rationale
-   - Links to implementation sessions
-   ```
-
-### Example: Sparse Data Documentation
-
-```markdown
-## Authentication System
-
-*Note: Limited CI history available. Documentation based on code analysis.*
-
-### Overview
-
-The authentication system uses JWT tokens for session management.
-See [`auth/jwt_handler.py`](src/auth/jwt_handler.py).
-
-### Key Components
-
-- `JWTHandler` — Token creation and validation
-- `AuthMiddleware` — Request authentication
-
-### Configuration
-
-| Env Variable | Purpose |
-|--------------|---------|
-| `JWT_SECRET` | Token signing key |
-| `JWT_EXPIRY` | Token lifetime (seconds) |
-
-### Areas for Future Documentation
-
-As CI data accumulates, watch for:
-- Gotchas around token expiration edge cases
-- Decisions about refresh token strategy
-- Session-linked implementation history
-```
-
-### What NOT to Do
-
-- ❌ Invent sessions or memories that don't exist
-- ❌ Claim design decisions without evidence
-- ❌ Skip documentation because CI data is sparse
-- ❌ Write generic documentation without exploring the code
-
-**Key insight**: Even without rich CI data, you can still write valuable documentation by exploring the code directly. CI data enriches documentation; it doesn't replace code understanding.
+When CI queries return few or no results (new projects or recently enabled CI):
+1. **Acknowledge** with a note: "Documentation reflects current code. Historical context will be enriched as CI data accumulates."
+2. **Fall back to code exploration** using Read/Glob/Grep directly
+3. **Never fabricate** sessions, memories, or history that doesn't exist
+4. **Suggest future value** — note where CI data would enrich the documentation

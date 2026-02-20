@@ -230,6 +230,8 @@ class AgentExecutor:
                 timeout_seconds=task_exec.timeout_seconds or base.timeout_seconds,
                 max_turns=task_exec.max_turns or base.max_turns,
                 permission_mode=task_exec.permission_mode or base.permission_mode,
+                model=task_exec.model,
+                provider=task_exec.provider,
             )
 
         return base
@@ -792,6 +794,13 @@ class AgentExecutor:
                 execution,
                 additional_tools=agent_task.additional_tools if agent_task else None,
             )
+
+            # Global provider model takes priority over task-level model defaults.
+            # Task models are cloud defaults (e.g., sonnet-4-6); when the user has
+            # configured a local provider (lmstudio/ollama) with their own model,
+            # that choice must win.
+            if effective_provider and effective_provider.model:
+                options.model = effective_provider.model
 
             # Build task prompt with config injection
             task_prompt = self._build_task_prompt(agent, task, agent_task)

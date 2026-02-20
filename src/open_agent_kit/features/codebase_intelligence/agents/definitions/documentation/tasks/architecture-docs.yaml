@@ -56,6 +56,17 @@ default_task: |
   - ci_search(type="plans") → Original design documents if they exist
   - Default to active observations only (omit `include_resolved`) — architecture docs should reflect current state
 
+  ## 2.5 Deduplicate Against Existing ADRs
+
+  Before creating new documentation:
+  - For each CI memory decision, check if an existing ADR already covers the same
+    topic (compare the decision's core subject, not just exact wording)
+  - If an existing ADR covers it: skip, or UPDATE the existing ADR if CI memory
+    has newer/more detailed context
+  - If partially covered: add new information to the existing ADR's Consequences
+    or Gotchas section rather than creating a duplicate
+  - Only CREATE a new ADR for genuinely undocumented decisions
+
   ## 3. Write Architecture Documentation (Incremental)
 
   **Update strategy:**
@@ -104,6 +115,7 @@ execution:
   timeout_seconds: 600
   max_turns: 100
   permission_mode: acceptEdits
+  model: claude-sonnet-4-6
 
 # Files this task maintains
 maintained_files:

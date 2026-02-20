@@ -105,11 +105,37 @@ default_task: |
   - Don't document features that don't exist
   - All file paths in maintained_files are relative to project_root
 
+  ## Reference: Good Feature Documentation
+
+  ```markdown
+  ## Email Processing
+
+  The [`EmailProcessor`](src/services/email_processor.py) handles incoming mail
+  parsing and classification for the brief generation system.
+
+  ### How It Works
+
+  1. Emails arrive via IMAP sync — [Initial email sync]({daemon_url}/activity/sessions/sync-uuid)
+  2. The [`classify_email()`](src/services/email_processor.py:87) function
+     determines email type based on subject and sender patterns
+
+  ### Known Issues & Gotchas
+
+  > **Gotcha**: Email classification can fail silently when the subject contains
+  > special characters. Always validate `subject_line` before passing to the classifier.
+
+  ### Design Decisions
+
+  - **Synchronous processing**: Chosen because brief generation needs immediate
+    access to email content. See the original plan for the full trade-off analysis.
+  ```
+
 # Execution limits (longer for thorough docs)
 execution:
   timeout_seconds: 600
   max_turns: 100
   permission_mode: acceptEdits
+  model: claude-sonnet-4-6
 
 # Files this task maintains
 maintained_files:

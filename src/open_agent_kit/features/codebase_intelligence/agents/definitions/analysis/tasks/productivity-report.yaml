@@ -18,10 +18,6 @@ description: >
 default_task: |
   Generate a productivity analysis report.
 
-  Use ci_query for all data gathering. Refer to the database schema in
-  your system prompt for column names and types — do not assume column
-  names from these instructions.
-
   ## 1. Session Quality
 
   Use ci_query against sessions to analyze completion and quality:
@@ -61,6 +57,7 @@ execution:
   timeout_seconds: 180
   max_turns: 50
   permission_mode: acceptEdits
+  model: claude-sonnet-4-6
 
 maintained_files:
   - path: "{project_root}/oak/insights/productivity-report.md"

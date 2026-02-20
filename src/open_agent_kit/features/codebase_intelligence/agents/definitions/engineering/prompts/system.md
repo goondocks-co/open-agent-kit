@@ -117,12 +117,6 @@ it's within the backup directory. This could allow path traversal.
 > test at line 156.
 ```
 
-## SDLC Actions (Future)
-
-If external SDLC tools are available (GitHub issues, PRs, labels), use them as directed
-in the task's `extra.sdlc_actions` configuration. If SDLC tools are unavailable, write
-all output to `maintained_files` instead.
-
 ## Safety Rules
 
 - **NEVER** force-push or rebase shared branches

@@ -11,6 +11,7 @@ from open_agent_kit.features.codebase_intelligence.agents.executor import (
 )
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
+    AgentExecution,
     AgentProvider,
     AgentTask,
     MaintainedFile,
@@ -295,6 +296,91 @@ class TestExternalMcpServers:
         result = executor._get_external_mcp_servers(agent)
 
         assert result == {}
+
+
+class TestEffectiveExecution:
+    """Tests for _get_effective_execution merging logic."""
+
+    def test_model_propagates_from_task(self, tmp_path: Path) -> None:
+        """Task execution model must survive the merge into effective execution."""
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
+        agent = AgentDefinition(
+            name="test",
+            display_name="Test",
+            description="Test",
+        )
+        task = AgentTask(
+            name="test-task",
+            display_name="Test Task",
+            agent_type="test",
+            default_task="Do the thing",
+            execution=AgentExecution(model="claude-sonnet-4-6"),
+        )
+
+        result = executor._get_effective_execution(agent, task)
+
+        assert result.model == "claude-sonnet-4-6"
+
+    def test_provider_propagates_from_task(self, tmp_path: Path) -> None:
+        """Task execution provider must survive the merge into effective execution."""
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
+        agent = AgentDefinition(
+            name="test",
+            display_name="Test",
+            description="Test",
+        )
+        provider = AgentProvider(
+            type="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        task = AgentTask(
+            name="test-task",
+            display_name="Test Task",
+            agent_type="test",
+            default_task="Do the thing",
+            execution=AgentExecution(provider=provider),
+        )
+
+        result = executor._get_effective_execution(agent, task)
+
+        assert result.provider is not None
+        assert result.provider.type == "openrouter"
+
+    def test_no_task_returns_base_execution(self, tmp_path: Path) -> None:
+        """Without a task, should return the agent's base execution config."""
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
+        agent = AgentDefinition(
+            name="test",
+            display_name="Test",
+            description="Test",
+            execution=AgentExecution(max_turns=99),
+        )
+
+        result = executor._get_effective_execution(agent, task=None)
+
+        assert result.max_turns == 99
+
+    def test_task_without_model_returns_none(self, tmp_path: Path) -> None:
+        """Task with no model set should pass None through (not inherit template model)."""
+        executor = AgentExecutor(project_root=tmp_path, agent_config=AgentConfig())
+        agent = AgentDefinition(
+            name="test",
+            display_name="Test",
+            description="Test",
+            execution=AgentExecution(model="claude-opus-4-5-20251101"),
+        )
+        task = AgentTask(
+            name="test-task",
+            display_name="Test Task",
+            agent_type="test",
+            default_task="Do the thing",
+            execution=AgentExecution(max_turns=30),
+        )
+
+        result = executor._get_effective_execution(agent, task)
+
+        # Task model is None — should NOT inherit template's opus model
+        assert result.model is None
 
 
 class TestApplyProviderEnv:
