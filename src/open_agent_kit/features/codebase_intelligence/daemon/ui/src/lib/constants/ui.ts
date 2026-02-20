@@ -142,13 +142,22 @@ export const FALLBACK_MESSAGES = {
 // Version Banner
 // =============================================================================
 
-/** Update banner messages */
-export const VERSION_BANNER = {
-    UPDATE_MESSAGE: "A newer version of Oak is installed",
-    VERSION_CHANGE: "v{running} → v{installed}",
-    RESTART_BUTTON: "Restart Now",
-    RESTARTING: "Restarting...",
-    RESTART_FAILED: "Restart failed. Try: oak ci restart",
+/** Unified update/upgrade banner constants */
+export const UPDATE_BANNER = {
+    // Messages
+    UPDATE_MESSAGE: "A new version of OAK is available!",
+    UPGRADE_MESSAGE: "Your project needs an upgrade.",
+    FAILED_MESSAGE: "Automatic upgrade couldn't complete. Run from your terminal:",
+    COMMAND: "oak upgrade",
+    // Version display
+    VERSION_PREFIX: "v",
+    // Button labels
+    UPGRADE_BUTTON: "Upgrade & Restart",
+    UPGRADING: "Upgrading...",
+    COPIED_LABEL: "Copied!",
+    COPY_LABEL: "Copy",
     DISMISS_LABEL: "Dismiss",
+    // Storage keys
     SESSION_STORAGE_KEY: "oak-ci-update-dismissed",
+    UPGRADE_ATTEMPTED_KEY: "oak-ci-upgrade-attempted",
 } as const;

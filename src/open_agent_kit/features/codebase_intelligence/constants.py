@@ -1452,6 +1452,20 @@ CI_RESTART_ERROR_NO_PROJECT_ROOT: Final[str] = "Project root not set"
 CI_RESTART_LOG_SPAWNING: Final[str] = "Spawning restart subprocess: {command}"
 CI_RESTART_LOG_SCHEDULING_SHUTDOWN: Final[str] = "Scheduling graceful shutdown in {delay}s"
 
+# Upgrade-and-restart route constants
+CI_UPGRADE_AND_RESTART_API_PATH: Final[str] = "/api/upgrade-and-restart"
+CI_UPGRADE_AND_RESTART_STATUS: Final[str] = "upgrading"
+CI_UPGRADE_AND_RESTART_LOG_SPAWNING: Final[str] = "Upgrade-and-restart: spawning '{command}'"
+CI_UPGRADE_AND_RESTART_ERROR_SPAWN_FAILED: Final[str] = (
+    "Failed to spawn upgrade-and-restart subprocess: {error}"
+)
+CI_UPGRADE_AND_RESTART_ERROR_SPAWN_DETAIL: Final[str] = (
+    "Failed to spawn upgrade-and-restart process: {error}"
+)
+
+# Shared shutdown constants
+CI_SHUTDOWN_LOG_SIGTERM: Final[str] = "Sending SIGTERM for graceful shutdown"
+
 # CLI hint constants
 CI_CLI_HINT_VERSION_MISMATCH: Final[str] = (
     "Hint: Daemon running v{running}, installed v{installed}. "

@@ -196,6 +196,10 @@ class DaemonState:
     # Version detection
     installed_version: str | None = None
     update_available: bool = False
+    # Project upgrade detection (config version + pending migrations)
+    upgrade_needed: bool = False
+    config_version_outdated: bool = False
+    pending_migration_count: int = 0
     # Power state lifecycle
     last_hook_activity: float | None = None  # epoch of last hook event
     power_state: str = POWER_STATE_ACTIVE  # current power state
@@ -555,6 +559,9 @@ class DaemonState:
         self._dynamic_cors_origins = set()
         self.installed_version = None
         self.update_available = False
+        self.upgrade_needed = False
+        self.config_version_outdated = False
+        self.pending_migration_count = 0
         self.last_hook_activity = None
         self.power_state = POWER_STATE_ACTIVE
 

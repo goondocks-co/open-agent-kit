@@ -171,6 +171,11 @@ async def get_status() -> dict:
             "installed": state.installed_version,
             "update_available": state.update_available,
         },
+        "upgrade": {
+            "needed": state.upgrade_needed,
+            "config_version_outdated": state.config_version_outdated,
+            "pending_migrations": state.pending_migration_count,
+        },
     }
 
 

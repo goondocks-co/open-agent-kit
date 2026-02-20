@@ -2,13 +2,18 @@ import { useState, useCallback, useRef } from "react";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
 
+interface UseRestartOptions {
+    endpoint?: string;
+}
+
 interface UseRestartReturn {
     restart: () => Promise<void>;
     isRestarting: boolean;
     error: string | null;
 }
 
-export function useRestart(): UseRestartReturn {
+export function useRestart(options?: UseRestartOptions): UseRestartReturn {
+    const endpoint = options?.endpoint ?? API_ENDPOINTS.SELF_RESTART;
     const [isRestarting, setIsRestarting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -20,8 +25,8 @@ export function useRestart(): UseRestartReturn {
         setError(null);
 
         try {
-            // Trigger restart
-            await fetchJson(API_ENDPOINTS.SELF_RESTART, { method: "POST" });
+            // Trigger restart (or upgrade-and-restart)
+            await fetchJson(endpoint, { method: "POST" });
 
             // Poll health endpoint until daemon is back
             const deadline = Date.now() + RESTART_TIMEOUT_MS;
@@ -58,7 +63,7 @@ export function useRestart(): UseRestartReturn {
             );
             setIsRestarting(false);
         }
-    }, [isRestarting]);
+    }, [isRestarting, endpoint]);
 
     return { restart, isRestarting, error };
 }

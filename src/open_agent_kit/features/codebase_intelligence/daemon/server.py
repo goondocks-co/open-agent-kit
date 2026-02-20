@@ -103,6 +103,40 @@ def _check_version(state: "DaemonState") -> None:
     state.update_available = installed is not None and is_meaningful_upgrade(VERSION, installed)
 
 
+def _check_upgrade_needed(state: "DaemonState") -> None:
+    """Check if the project needs ``oak upgrade`` (sync).
+
+    Two lightweight signals:
+    1. Config version differs from package VERSION — the package was updated
+       but ``oak upgrade`` hasn't been run yet (covers commands, skills,
+       hooks, MCP servers, settings, gitignore, structural repairs).
+    2. Pending migrations exist.
+    """
+    if not state.project_root:
+        return
+
+    from open_agent_kit.constants import VERSION
+    from open_agent_kit.services.config_service import ConfigService
+    from open_agent_kit.services.migrations import get_migrations
+    from open_agent_kit.services.state_service import StateService
+
+    # Signal 1: config version vs package version
+    try:
+        config = ConfigService(state.project_root).load_config()
+        config_version_outdated = config.version != VERSION
+    except (OSError, ValueError):
+        config_version_outdated = False
+
+    # Signal 2: pending migrations
+    all_ids = {m[0] for m in get_migrations()}
+    applied = set(StateService(state.project_root).get_applied_migrations())
+    pending = all_ids - applied
+
+    state.config_version_outdated = config_version_outdated
+    state.pending_migration_count = len(pending)
+    state.upgrade_needed = config_version_outdated or len(pending) > 0
+
+
 def _is_install_stale() -> bool:
     """Check if the running daemon's package installation was removed from disk."""
     if not Path(sys.executable).exists():
@@ -135,18 +169,30 @@ async def _trigger_stale_restart() -> None:
 
 
 async def _periodic_version_check() -> None:
-    """Periodically check for version mismatch between daemon and CLI."""
+    """Periodically check for version/upgrade issues (power-state-aware)."""
     from open_agent_kit.features.codebase_intelligence.constants import (
         CI_VERSION_CHECK_INTERVAL_SECONDS,
+        POWER_STATE_DEEP_SLEEP,
     )
 
     state = get_state()
     while True:
         await asyncio.sleep(CI_VERSION_CHECK_INTERVAL_SECONDS)
+
+        # Skip all checks in deep sleep — daemon is dormant, no UI viewers.
+        # Checks resume when hook activity wakes the daemon back to ACTIVE.
+        if state.power_state == POWER_STATE_DEEP_SLEEP:
+            continue
+
         try:
             _check_version(state)
         except (OSError, ValueError, RuntimeError):
             logger.debug("Version check failed", exc_info=True)
+
+        try:
+            _check_upgrade_needed(state)
+        except (OSError, ValueError, RuntimeError):
+            logger.debug("Upgrade check failed", exc_info=True)
 
         # Detect stale installation (e.g. package upgraded, old cellar deleted)
         try:
@@ -1083,8 +1129,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state.vector_store = None
         state.indexer = None
 
-    # Run one immediate version check, then launch periodic loop
+    # Run one immediate version + upgrade check, then launch periodic loop
     _check_version(state)
+    _check_upgrade_needed(state)
     version_check_task = asyncio.create_task(_periodic_version_check(), name="version_check")
     state.background_tasks.append(version_check_task)
 
