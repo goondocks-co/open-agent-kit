@@ -10,6 +10,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson, postJson, deleteJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 // =============================================================================
 // Types
@@ -173,19 +174,19 @@ export function useAgentRuns(limit = 20, offset = 0, agentName?: string, status?
     if (agentName) params.set("agent_name", agentName);
     if (status) params.set("status", status);
 
-    const query = useQuery({
+    const query = usePowerQuery({
         queryKey: ["agent-runs", limit, offset, agentName, status],
         queryFn: ({ signal }) => fetchJson<AgentRunListResponse>(`${API_ENDPOINTS.AGENT_RUNS}?${params}`, { signal }),
-        staleTime: 5000, // Consider data fresh for 5 seconds
-        placeholderData: (previousData) => previousData, // Keep showing previous data while loading
-        // Smart polling: only poll when there are active runs
+        staleTime: 5000,
+        placeholderData: (previousData: AgentRunListResponse | undefined) => previousData,
+        pollCategory: "self_managing",
         refetchInterval: (query) => {
             const data = query.state.data;
             if (!data) return false;
             const hasActiveRuns = data.runs.some(
                 (run) => run.status === "pending" || run.status === "running"
             );
-            return hasActiveRuns ? 3000 : false; // Poll only when active runs exist
+            return hasActiveRuns ? 3000 : false;
         },
     });
 
@@ -194,12 +195,12 @@ export function useAgentRuns(limit = 20, offset = 0, agentName?: string, status?
 
 /** Fetch single agent run by ID with smart polling */
 export function useAgentRun(runId: string | null) {
-    return useQuery({
+    return usePowerQuery({
         queryKey: ["agent-runs", runId],
         queryFn: ({ signal }) => fetchJson<{ run: AgentRun }>(`${API_ENDPOINTS.AGENT_RUNS}/${runId}`, { signal }),
         enabled: !!runId,
         staleTime: 2000,
-        // Smart polling: only poll when run is active
+        pollCategory: "self_managing",
         refetchInterval: (query) => {
             const run = query.state.data?.run;
             if (!run) return false;

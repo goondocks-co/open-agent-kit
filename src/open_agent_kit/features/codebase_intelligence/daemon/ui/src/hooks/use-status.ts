@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, STATUS_POLL_ACTIVE_MS, STATUS_POLL_IDLE_MS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 export interface IndexStats {
     files_indexed: number;
@@ -84,7 +84,7 @@ export interface DaemonStatus {
 }
 
 export function useStatus() {
-    return useQuery<DaemonStatus>({
+    return usePowerQuery<DaemonStatus>({
         queryKey: ["status"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.STATUS, { signal }),
         refetchInterval: (query) => {
@@ -93,5 +93,6 @@ export function useStatus() {
             const isActive = data.indexing || data.file_watcher?.pending_changes > 0;
             return isActive ? STATUS_POLL_ACTIVE_MS : STATUS_POLL_IDLE_MS;
         },
+        pollCategory: "heartbeat",
     });
 }

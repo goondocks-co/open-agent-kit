@@ -12,6 +12,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson, postJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 // =============================================================================
 // Types
@@ -181,20 +182,22 @@ export function useSaveGovernanceConfig() {
 
 /** Fetch audit events with filters. */
 export function useGovernanceAudit(params: AuditQueryParams) {
-    return useQuery({
+    return usePowerQuery({
         queryKey: governanceKeys.audit(params),
         queryFn: ({ signal }) => fetchAuditEvents(params, signal),
         refetchInterval: 15000,
-        placeholderData: (previousData) => previousData,
+        pollCategory: "realtime",
+        placeholderData: (previousData: AuditListResponse | undefined) => previousData,
     });
 }
 
 /** Fetch audit summary stats for dashboard. */
 export function useGovernanceAuditSummary(days = 7) {
-    return useQuery({
+    return usePowerQuery({
         queryKey: governanceKeys.auditSummary(days),
         queryFn: ({ signal }) => fetchAuditSummary(days, signal),
         refetchInterval: 30000,
+        pollCategory: "standard",
     });
 }
 

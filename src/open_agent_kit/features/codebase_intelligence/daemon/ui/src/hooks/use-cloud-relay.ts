@@ -5,6 +5,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson, postJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 // =============================================================================
 // Interfaces
@@ -73,10 +74,11 @@ const CLOUD_RELAY_STATUS_REFETCH_INTERVAL_MS = 30_000;
  * Hook to get current cloud relay status.
  */
 export function useCloudRelayStatus() {
-    return useQuery<CloudRelayStatus>({
+    return usePowerQuery<CloudRelayStatus>({
         queryKey: ["cloud-relay-status"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.CLOUD_RELAY_STATUS, { signal }),
         refetchInterval: CLOUD_RELAY_STATUS_REFETCH_INTERVAL_MS,
+        pollCategory: "standard",
     });
 }
 
