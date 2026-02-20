@@ -287,6 +287,90 @@ def _migrate_copilot_to_vscode_copilot(project_root: Path) -> None:
             logger.warning(f"Failed to check/remove old hooks file: {e}")
 
 
+def _migrate_skills_to_shared_agents_dir(project_root: Path) -> None:
+    """Move skills from agent-specific dirs to shared .agents/skills/ for supported agents.
+
+    Agents that now read .agents/skills/ (codex, gemini, vscode-copilot, windsurf, opencode)
+    previously had skills in their own folders (e.g., .codex/skills/, .gemini/skills/).
+    This migration copies skills to .agents/skills/ and removes the old directories.
+    """
+    import shutil
+
+    from open_agent_kit.config.paths import SHARED_SKILLS_FOLDER
+    from open_agent_kit.services.agent_service import AgentService
+    from open_agent_kit.services.config_service import ConfigService
+
+    try:
+        config_service = ConfigService(project_root)
+        config = config_service.load_config()
+    except (OSError, ValueError):
+        return
+
+    installed_skills = config.skills.installed
+    if not installed_skills:
+        return
+
+    agent_service = AgentService(project_root)
+
+    # Identify agents that now use .agents/ but previously used their own folder
+    shared_agents: list[str] = []
+    for agent_name in config.agents:
+        try:
+            manifest = agent_service.get_agent_manifest(agent_name)
+        except ValueError:
+            continue
+        if not manifest or not manifest.capabilities.has_skills:
+            continue
+        if manifest.capabilities.skills_folder == SHARED_SKILLS_FOLDER:
+            shared_agents.append(agent_name)
+
+    if not shared_agents:
+        return
+
+    shared_skills_dir = project_root / SHARED_SKILLS_FOLDER / "skills"
+
+    for skill_name in installed_skills:
+        dest = shared_skills_dir / skill_name
+        if dest.exists():
+            continue  # Already present in shared location
+
+        # Try to copy from any old agent-specific location
+        for agent_name in shared_agents:
+            try:
+                manifest = agent_service.get_agent_manifest(agent_name)
+            except ValueError:
+                continue
+            old_dir = (
+                project_root
+                / manifest.installation.folder.rstrip("/")
+                / manifest.capabilities.skills_directory
+                / skill_name
+            )
+            if old_dir.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(old_dir, dest)
+                logger.info(
+                    f"Copied skill '{skill_name}' from {old_dir.relative_to(project_root)} "
+                    f"to {dest.relative_to(project_root)}"
+                )
+                break
+
+    # Clean up old agent-specific skill directories for shared agents
+    for agent_name in shared_agents:
+        try:
+            manifest = agent_service.get_agent_manifest(agent_name)
+        except ValueError:
+            continue
+        old_skills_dir = (
+            project_root
+            / manifest.installation.folder.rstrip("/")
+            / manifest.capabilities.skills_directory
+        )
+        if old_skills_dir.exists():
+            shutil.rmtree(old_skills_dir)
+            logger.info(f"Removed old skills directory: {old_skills_dir.relative_to(project_root)}")
+
+
 def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
     """Get all available migrations.
 
@@ -314,6 +398,11 @@ def get_migrations() -> list[tuple[str, str, Callable[[Path], None]]]:
             "rename-copilot-to-vscode-copilot",
             "Rename copilot agent to vscode-copilot and remove old-format hooks",
             _migrate_copilot_to_vscode_copilot,
+        ),
+        (
+            "migrate-skills-to-shared-agents-dir",
+            "Move skills from agent-specific dirs to shared .agents/skills/",
+            _migrate_skills_to_shared_agents_dir,
         ),
     ]
 

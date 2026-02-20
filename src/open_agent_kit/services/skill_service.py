@@ -167,6 +167,21 @@ class SkillService:
 
         return agents_with_skills
 
+    def _get_unique_skills_paths(self) -> list[tuple[list[str], Path, str]]:
+        """Deduplicate skills paths, grouping agents that share the same directory.
+
+        Returns:
+            List of (agent_names, skills_dir_path, skills_directory_name)
+            deduplicated by skills_dir_path.
+        """
+        agents_with_skills = self._get_agents_with_skills_support()
+        path_to_agents: dict[Path, tuple[list[str], str]] = {}
+        for agent_name, skills_path, skills_subdir in agents_with_skills:
+            if skills_path not in path_to_agents:
+                path_to_agents[skills_path] = ([], skills_subdir)
+            path_to_agents[skills_path][0].append(agent_name)
+        return [(names, path, sub) for path, (names, sub) in path_to_agents.items()]
+
     def _has_skills_capable_agent(self) -> bool:
         """Check if any configured agent supports skills.
 
@@ -369,9 +384,9 @@ class SkillService:
             "skipped": False,
         }
 
-        # Get agents that support skills
-        agents_with_skills = self._get_agents_with_skills_support()
-        if not agents_with_skills:
+        # Get unique skills paths (deduped across agents sharing the same dir)
+        unique_paths = self._get_unique_skills_paths()
+        if not unique_paths:
             results["skipped"] = True
             results["reason"] = "No configured agents support skills"
             return results
@@ -387,8 +402,8 @@ class SkillService:
             results["error"] = f"Skill not found: {skill_name}"
             return results
 
-        # Install to each agent's skills directory (copy entire directory)
-        for agent_name, skills_dir, _ in agents_with_skills:
+        # Install once per unique skills directory (copy entire directory)
+        for agent_names, skills_dir, _ in unique_paths:
             dest_skill_dir = skills_dir / skill_name
             # Remove existing directory if present (clean install)
             if dest_skill_dir.exists():
@@ -396,7 +411,7 @@ class SkillService:
             # Copy and render markdown content with configured CLI command
             self._copy_skill_dir(source_skill_dir, dest_skill_dir)
             results["installed_to"].append(str(dest_skill_dir.relative_to(self.project_root)))
-            results["agents"].append(agent_name)
+            results["agents"].extend(agent_names)
 
         # Update config to mark skill as installed
         config = self.config_service.load_config()
@@ -487,14 +502,14 @@ class SkillService:
             results["not_installed"] = True
             return results
 
-        # Remove from all agents with skills support
-        agents_with_skills = self._get_agents_with_skills_support()
-        for agent_name, skills_dir, _ in agents_with_skills:
+        # Remove once per unique skills directory
+        unique_paths = self._get_unique_skills_paths()
+        for agent_names, skills_dir, _ in unique_paths:
             skill_dir = skills_dir / skill_name
             if skill_dir.exists():
                 shutil.rmtree(skill_dir)
                 results["removed_from"].append(str(skill_dir.relative_to(self.project_root)))
-                results["agents"].append(agent_name)
+                results["agents"].extend(agent_names)
 
         # Update config to mark skill as uninstalled
         config = self.config_service.load_config()
@@ -566,6 +581,9 @@ class SkillService:
 
         agent_service = AgentService(self.project_root)
 
+        # Collect paths still in use by remaining configured agents
+        remaining_paths = {p for _, p, _ in self._get_agents_with_skills_support()}
+
         for agent_type in removed_agents:
             # Get agent manifest to find skills directory
             manifest = agent_service.get_agent_manifest(agent_type)
@@ -584,6 +602,10 @@ class SkillService:
             skills_dir = self.project_root / skills_base / skills_subdir
 
             if not skills_dir.exists():
+                continue
+
+            # If other agents still use this shared path, skip cleanup
+            if skills_dir in remaining_paths:
                 continue
 
             # Remove all skill subdirectories
@@ -623,9 +645,9 @@ class SkillService:
             "errors": [],
         }
 
-        # Get agents with skills support
-        agents_with_skills = self._get_agents_with_skills_support()
-        if not agents_with_skills:
+        # Get unique skills paths (deduped across agents sharing the same dir)
+        unique_paths = self._get_unique_skills_paths()
+        if not unique_paths:
             results["skipped"] = True
             results["reason"] = "No configured agents support skills"
             return results
@@ -640,15 +662,16 @@ class SkillService:
                 results["errors"].append(f"Skill not found in package: {skill_name}")
                 continue
 
-            # Re-install to all agents with skills support (copy entire directory)
-            for agent_name, skills_dir, _ in agents_with_skills:
+            # Re-install once per unique skills directory
+            for agent_names, skills_dir, _ in unique_paths:
                 dest_skill_dir = skills_dir / skill_name
                 # Remove existing directory and copy fresh (handles subdirectory changes)
                 if dest_skill_dir.exists():
                     shutil.rmtree(dest_skill_dir)
                 self._copy_skill_dir(source_skill_dir, dest_skill_dir)
-                if agent_name not in results["agents"]:
-                    results["agents"].append(agent_name)
+                for agent_name in agent_names:
+                    if agent_name not in results["agents"]:
+                        results["agents"].append(agent_name)
 
             results["skills_refreshed"].append(skill_name)
 
@@ -681,14 +704,14 @@ class SkillService:
             results["error"] = f"Skill not installed: {skill_name}"
             return results
 
-        # Get agents with skills support
-        agents_with_skills = self._get_agents_with_skills_support()
-        if not agents_with_skills:
+        # Get unique skills paths (deduped across agents sharing the same dir)
+        unique_paths = self._get_unique_skills_paths()
+        if not unique_paths:
             results["error"] = "No configured agents support skills"
             return results
 
-        # Get current version from first agent's installed skill
-        first_agent_name, first_skills_dir, _ = agents_with_skills[0]
+        # Get current version from first unique path's installed skill
+        first_agent_names, first_skills_dir, _ = unique_paths[0]
         skill_file = first_skills_dir / skill_name / SKILL_MANIFEST_FILE
         if skill_file.exists():
             try:
@@ -712,14 +735,14 @@ class SkillService:
         else:
             results["new_version"] = "unknown"
 
-        # Re-install to all agents with skills support (copy entire directory)
-        for agent_name, skills_dir, _ in agents_with_skills:
+        # Re-install once per unique skills directory
+        for agent_names, skills_dir, _ in unique_paths:
             dest_skill_dir = skills_dir / skill_name
             # Remove existing directory and copy fresh (handles subdirectory changes)
             if dest_skill_dir.exists():
                 shutil.rmtree(dest_skill_dir)
             self._copy_skill_dir(source_skill_dir, dest_skill_dir)
-            results["agents"].append(agent_name)
+            results["agents"].extend(agent_names)
 
         results["upgraded"] = True
         return results

@@ -40,6 +40,7 @@ FEATURE_TEMPLATES_SUBDIR = "templates"
 
 SKILLS_DIR = "skills"
 SKILL_MANIFEST_FILE = "SKILL.md"
+SHARED_SKILLS_FOLDER = ".agents"
 
 # =============================================================================
 # Agent Settings (command auto-approval)

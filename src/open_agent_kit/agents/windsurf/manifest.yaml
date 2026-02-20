@@ -31,9 +31,10 @@ capabilities:
   model_consistency: variable   # high | medium | variable - user can switch models
 
   # Skills support (Agent Skills standard)
-  # Windsurf uses .windsurf/skills/ for project-level skills
+  # Windsurf reads .agents/skills/ (since Feb 2026)
   has_skills: true
-  skills_directory: "skills"    # .windsurf/skills/
+  skills_folder: ".agents"      # Shared folder — reads .agents/skills/
+  skills_directory: "skills"    # .agents/skills/
 
 # Codebase Intelligence configuration
 ci:

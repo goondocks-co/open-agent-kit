@@ -746,12 +746,12 @@ class UpgradeService:
         if not package_skill_dir:
             return False
 
-        # Check ALL agents with skills support, not just the first one
-        agents_with_skills = skill_service._get_agents_with_skills_support()
-        if not agents_with_skills:
+        # Check all unique skills paths (deduped across agents sharing the same dir)
+        unique_paths = skill_service._get_unique_skills_paths()
+        if not unique_paths:
             return False
 
-        for _, skills_dir, _ in agents_with_skills:
+        for _, skills_dir, _ in unique_paths:
             installed_skill_dir = skills_dir / skill_name
 
             if not installed_skill_dir.exists():

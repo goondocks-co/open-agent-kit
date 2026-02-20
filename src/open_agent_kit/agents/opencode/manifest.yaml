@@ -34,10 +34,11 @@ capabilities:
   model_consistency: variable   # high | medium | variable - user can switch models
 
   # Skills support (Agent Skills standard)
-  # OpenCode supports .opencode/skills/ and .claude/skills/ (Claude-compatible)
+  # OpenCode reads .agents/skills/
   # See: https://opencode.ai/docs/skills/
   has_skills: true
-  skills_directory: "skills"    # .opencode/skills/
+  skills_folder: ".agents"      # Shared folder — reads .agents/skills/
+  skills_directory: "skills"    # .agents/skills/
 
 # Codebase Intelligence configuration
 ci:

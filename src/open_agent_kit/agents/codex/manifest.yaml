@@ -30,9 +30,10 @@ capabilities:
   context_handling: large       # large | medium | small - good context window
   model_consistency: high       # high | medium | variable - first-party models are consistent
 
-  # Skills support (Codex supports SKILL.md files in .codex/skills/)
+  # Skills support (Codex supports SKILL.md files via .agents/skills/)
   has_skills: true
-  skills_directory: "skills"    # .codex/skills/
+  skills_folder: ".agents"      # Shared folder — reads .agents/skills/
+  skills_directory: "skills"    # .agents/skills/
 
 # Codebase Intelligence configuration
 ci:
