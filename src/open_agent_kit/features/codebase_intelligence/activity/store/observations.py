@@ -16,6 +16,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def has_observation_with_hash(store: ActivityStore, content_hash: str) -> bool:
+    """Check if any observation (active, resolved, or superseded) has this content hash.
+
+    Used as a dedup guard before inserting new observations. Checks ALL statuses
+    so that resolved/superseded content is not re-extracted during reprocessing.
+
+    Args:
+        store: The ActivityStore instance.
+        content_hash: The content hash to check.
+
+    Returns:
+        True if an observation with this hash exists (any status).
+    """
+    try:
+        conn = store._get_connection()
+        cursor = conn.execute(
+            "SELECT 1 FROM memory_observations WHERE content_hash = ? LIMIT 1",
+            (content_hash,),
+        )
+        return cursor.fetchone() is not None
+    except Exception:
+        # Fail-open: if the check fails, allow the insert to proceed
+        logger.debug("Content-hash dedup check failed, proceeding with insert", exc_info=True)
+        return False
+
+
 def store_observation(store: ActivityStore, observation: StoredObservation) -> str:
     """Store a memory observation in SQLite.
 

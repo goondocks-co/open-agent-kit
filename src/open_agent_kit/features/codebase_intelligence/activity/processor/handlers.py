@@ -454,8 +454,12 @@ def process_user_batch(
             prompt_batch_id=batch_id,
         )
 
-    # Store observations
-    observations = result.get("observations", [])
+    # Store observations (truncated to hard cap)
+    from open_agent_kit.features.codebase_intelligence.activity.processor.observation import (
+        truncate_observations,
+    )
+
+    observations = truncate_observations(result.get("observations", []))
     stored_count = 0
 
     for obs in observations:

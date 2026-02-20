@@ -84,4 +84,7 @@ Prefer **decision**, **trade_off**, and **gotcha** types for implementation sess
 }
 ```
 
+Guidelines:
+- Extract at most 5 observations per session. Prefer fewer, higher-quality observations over many low-value ones.
+
 Respond ONLY with valid JSON.

@@ -755,15 +755,19 @@ VALID_SESSION_ORIGIN_TYPES: Final[tuple[str, ...]] = (
 # Planning importance cap
 SESSION_ORIGIN_PLANNING_IMPORTANCE_CAP: Final[int] = 5
 
+# Maximum observations per batch (hard cap enforced after LLM extraction).
+# The extraction prompts ask for "at most 5" (soft limit); this is the hard cap.
+MAX_OBSERVATIONS_PER_BATCH: Final[int] = 8
+
 # Session origin classification thresholds
 SESSION_ORIGIN_READ_EDIT_RATIO_THRESHOLD: Final[float] = 5.0
 SESSION_ORIGIN_MAX_EDITS_FOR_PLANNING: Final[int] = 2
 SESSION_ORIGIN_MIN_EDITS_FOR_IMPLEMENTATION: Final[int] = 3
 
 # Auto-resolve: supersede older observations when a new one is semantically equivalent
-AUTO_RESOLVE_SIMILARITY_THRESHOLD: Final[float] = 0.85
-AUTO_RESOLVE_SIMILARITY_THRESHOLD_NO_CONTEXT: Final[float] = 0.92
-AUTO_RESOLVE_SEARCH_LIMIT: Final[int] = 5
+AUTO_RESOLVE_SIMILARITY_THRESHOLD: Final[float] = 0.80
+AUTO_RESOLVE_SIMILARITY_THRESHOLD_NO_CONTEXT: Final[float] = 0.88
+AUTO_RESOLVE_SEARCH_LIMIT: Final[int] = 10
 AUTO_RESOLVE_SKIP_TYPES: Final[tuple[str, ...]] = ("session_summary",)
 
 # Auto-resolve validation limits
@@ -1249,7 +1253,7 @@ MAX_EXECUTOR_CACHE_SIZE: Final[int] = 1000
 
 # Background processing: batch size, parallelism, and interval
 DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE: Final[int] = 50
-DEFAULT_BACKGROUND_PROCESSING_WORKERS: Final[int] = 4
+DEFAULT_BACKGROUND_PROCESSING_WORKERS: Final[int] = 2
 MIN_BACKGROUND_PROCESSING_WORKERS: Final[int] = 1
 MAX_BACKGROUND_PROCESSING_WORKERS: Final[int] = 16
 
