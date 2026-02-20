@@ -85,4 +85,7 @@ Prefer **bug_fix** and **gotcha** types for debugging sessions.
 }
 ```
 
+Guidelines:
+- Extract at most 5 observations per session. Prefer fewer, higher-quality observations over many low-value ones.
+
 Respond ONLY with valid JSON.

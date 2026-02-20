@@ -82,4 +82,7 @@ Prefer **discovery** and **gotcha** types for exploration sessions.
 }
 ```
 
+Guidelines:
+- Extract at most 5 observations per session. Prefer fewer, higher-quality observations over many low-value ones.
+
 Respond ONLY with valid JSON.

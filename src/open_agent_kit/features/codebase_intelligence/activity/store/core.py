@@ -667,6 +667,10 @@ class ActivityStore:
     # Observation operations - delegate to observations module
     # ==========================================================================
 
+    def has_observation_with_hash(self, content_hash: str) -> bool:
+        """Check if any observation with this content hash exists (any status)."""
+        return observations.has_observation_with_hash(self, content_hash)
+
     def store_observation(self, observation: StoredObservation) -> str:
         """Store a memory observation in SQLite."""
         return observations.store_observation(self, observation)

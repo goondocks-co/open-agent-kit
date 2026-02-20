@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Module-level flag: set to True after the first 400 from json_object format.
+# Avoids wasting a failed request on every extraction call when the provider
+# (e.g. LM Studio) doesn't support response_format.
+_json_format_unsupported = False
+
 # Patterns for reasoning model chain-of-thought tokens.
 # These models embed their thinking process in the content field.
 # Order matters: try the most specific patterns first.
@@ -107,9 +112,11 @@ def call_llm(
             "max_tokens": max_output_tokens,
         }
 
-        # Request JSON format for extraction prompts (OpenAI compatible)
-        # Some providers don't support this, so we'll retry without it if needed
-        use_json_format = is_extraction
+        # Request JSON format for extraction prompts (OpenAI compatible).
+        # Skip if we already know the provider doesn't support it (cached
+        # after first 400) to avoid a wasted round-trip on every call.
+        global _json_format_unsupported  # noqa: PLW0603
+        use_json_format = is_extraction and not _json_format_unsupported
 
         if use_json_format:
             request_body["response_format"] = {"type": "json_object"}
@@ -122,12 +129,14 @@ def call_llm(
         response = summarizer.post_chat_completion(request_body)
         logger.debug(f"[LLM] Response status: {response.status_code}")
 
-        # If response_format is not supported, retry without it
+        # If response_format is not supported, cache that fact and retry without it
         if response.status_code == 400 and use_json_format:
             error_text = response.text.lower()
             if "response_format" in error_text or "json_object" in error_text:
-                logger.debug(
-                    "[LLM] Provider doesn't support json_object format, retrying without it"
+                _json_format_unsupported = True
+                logger.info(
+                    "[LLM] Provider doesn't support json_object format — "
+                    "caching for future calls and retrying without it"
                 )
                 del request_body["response_format"]
                 response = summarizer.post_chat_completion(request_body)

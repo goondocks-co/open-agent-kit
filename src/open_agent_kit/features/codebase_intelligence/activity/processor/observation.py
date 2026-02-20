@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    compute_observation_hash,
+)
 from open_agent_kit.utils.file_utils import get_relative_path
 
 if TYPE_CHECKING:
@@ -83,6 +86,16 @@ def store_observation(
 
     obs_text = observation.get("observation", "")
     if not obs_text:
+        return None
+
+    # Content-hash dedup guard: skip if identical observation already exists (any status)
+    obs_type_raw = observation.get("type", "discovery")
+    context_raw = observation.get("context")
+    content_hash = compute_observation_hash(obs_text, obs_type_raw, context_raw)
+    if activity_store.has_observation_with_hash(content_hash):
+        logger.debug(
+            f"Skipping duplicate observation (hash={content_hash[:8]}): {obs_text[:50]}..."
+        )
         return None
 
     # Map observation type
@@ -187,3 +200,35 @@ def store_observation(
         )
 
     return obs_id
+
+
+def truncate_observations(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Truncate observations to the per-batch maximum, keeping highest importance first.
+
+    The extraction prompts ask for "at most 5" (soft limit); this function
+    enforces a hard cap defined by MAX_OBSERVATIONS_PER_BATCH.
+
+    Args:
+        observations: Raw observation dicts from LLM response.
+
+    Returns:
+        Truncated list sorted by importance (high > medium > low).
+    """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        MAX_OBSERVATIONS_PER_BATCH,
+    )
+
+    if len(observations) <= MAX_OBSERVATIONS_PER_BATCH:
+        return observations
+
+    importance_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    sorted_obs = sorted(
+        observations,
+        key=lambda o: importance_order.get(o.get("importance", "medium"), 2),
+    )
+
+    logger.info(
+        f"Truncating {len(observations)} observations to {MAX_OBSERVATIONS_PER_BATCH} "
+        f"(dropped {len(observations) - MAX_OBSERVATIONS_PER_BATCH} lowest-importance)"
+    )
+    return sorted_obs[:MAX_OBSERVATIONS_PER_BATCH]

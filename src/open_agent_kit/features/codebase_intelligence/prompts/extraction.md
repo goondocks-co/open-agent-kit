@@ -88,6 +88,7 @@ Respond with a JSON object:
 ```
 
 Guidelines:
+- Extract at most 5 observations per session. Prefer fewer, higher-quality observations over many low-value ones.
 - Only include genuinely useful observations that would help in future sessions
 - Be specific - mention file names, function names, actual values
 - If the session was just exploration without meaningful learnings, return empty observations
