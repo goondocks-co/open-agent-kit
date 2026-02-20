@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Content-hash deduplication for CI memory observations — exact-duplicate observations are now detected and discarded before storage, reducing index bloat and improving semantic search signal-to-noise ratio — [Implement content-hash deduplication for OAK CI memory system](http://localhost:38388/activity/sessions/c4eac3cd-97e8-47fc-88cd-9ee8c33a73b9), [Implement content-hash deduplication and model performance tuning](http://localhost:38388/activity/sessions/3223b319-c068-446d-b2b4-8545f48ce6a8)
+- MCP tool parity for Cloud Relay — `list_memories`, `list_sessions`, `get_session`, and `search_code` tools are now exposed to cloud-connected agents via the Cloudflare Relay, giving remote agents the same tool surface as local agents — [Add missing MCP tools to Cloudflare Relay](http://localhost:38388/activity/sessions/4ebcd98d-d628-4c88-b332-c4c7ec8009ac), [Update MCP tool wrappers and Oak Activity handling](http://localhost:38388/activity/sessions/4d1948d1-940e-46d2-8616-eab9c12c7074)
 - Shared skills directory integration across 7 agents — a `.agents/skills/` folder reduces per-agent skill duplication and minimizes installation footprint — [Implement shared skills folder for 7 agents reducing duplication](http://localhost:38388/activity/sessions/b9f83540-7692-4761-9c19-7eafc132d3d6), [Implement shared skills directory integration across 7 agents](http://localhost:38388/activity/sessions/20869a9d-72d8-4bca-bb4b-df144fab86cf)
 - Upgrade-needed banner with migration detection — daemon UI now surfaces a persistent banner when pending `oak upgrade` migrations are detected, distinct from the version-mismatch restart banner — [Implement upgrade-needed banner with migration detection](http://localhost:38388/activity/sessions/745d7520-f42f-4052-a902-afa4f607aabd), [Implement unified upgrade and restart banner functionality](http://localhost:38388/activity/sessions/423b1723-4e22-4fb3-b111-b1c7138396d1), [Implement unified banner component for upgrade and restart states](http://localhost:38388/activity/sessions/74f81baa-0f11-4566-865e-7ab19173b1a2)
 - Power management state machine for daemon UI — centralized controller with dynamic polling adjusts background activity based on system power state, preventing unnecessary resource use and host machine sleep interference — [Implement power management state machine for daemon UI](http://localhost:38388/activity/sessions/829f71e4-df07-4ff8-9991-3fae915c9252), [Implement power state machine with centralized controller and dynamic polling](http://localhost:38388/activity/sessions/4478e833-8d83-4590-bdb0-f5b673da2cde)
@@ -41,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Agent prompts and model configurations standardized across the agent system — analysis task prompts now follow a consistent structure and model assignments are explicit, reducing ambiguity during task dispatch — [Refactor and standardize agent prompts and model configurations](http://localhost:38388/activity/sessions/f0cc98ec-9cb9-4d2b-850c-d244edd102da)
 - Team backups page UI layout and messaging updated for clarity — [Update team backups page UI layout and messaging](http://localhost:38388/activity/sessions/c069d146-1c7f-4fd5-9dc5-b81ecdfb8851)
 - Documentation site domain migrated from `oak.goondocks.co` to `openagentkit.app` — updated all domain references in Astro config, README, QUICKSTART, and issue templates — [Map all domain references for Astro docs migration](http://localhost:38388/activity/sessions/83a6665d-d7e5-4c70-85f8-17f5a4235efa), [Update domain references and fix backup restore logic](http://localhost:38388/activity/sessions/48b3ab26-e06c-44e4-9c86-a7ee72b11531)
 - Activity detection logic refactored across 56 files — improved hook activity pattern recognition and file change detection strategies — [Refactor activity detection logic across 56 files](http://localhost:38388/activity/sessions/d83040f9-4bad-4b09-b3e2-dbf8ed2183aa)
@@ -73,6 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix Homebrew tap build failures and update installation documentation to reflect `brew install goondocks-co/oak/oak-ci` as the recommended macOS install method — [Fix Homebrew tap and update Oak CI installation docs](http://localhost:38388/activity/sessions/45cd3a6f-2589-440c-afa3-97fbf337a8a7)
 - Fix daemon self-restart failing after Homebrew upgrade — `sys.executable` pointed to the old deleted Cellar path, causing `FileNotFoundError`. Now uses `/bin/sh -c "sleep N && oak ci restart"` which always resolves to the current version on `$PATH` — [Implement daemon version mismatch detection and recovery](http://localhost:38388/activity/sessions/2b06d520-1f5e-455a-9dd8-84f14348d627)
 - Fix Homebrew formula PyPI CDN propagation race condition — `brew install` could fail if the PyPI simple index hadn't propagated the new version yet. Formula `post_install` now retries `pip install` 5 times with 30s backoff, and the tap workflow uses `pip download --no-deps` with 20 retries over 10 minutes — [Fix Homebrew tap and update Oak CI installation docs](http://localhost:38388/activity/sessions/45cd3a6f-2589-440c-afa3-97fbf337a8a7)
+- Fix session auto-linking selecting stale parent — `find_linkable_parent_session` now filters by project ID and returns the most recent eligible session, preventing child sessions from linking to unrelated older sessions across projects
+- Fix Cloud Relay page losing custom domain on refresh — the `/api/cloud/status` endpoint now includes `custom_domain` in its payload so the UI consistently uses the saved domain after page reload
+- Fix Cloud Relay spurious error toast on WebSocket connect — the `onError` handler now only sets error state when the event payload contains an actual error message, suppressing false toasts on normal connection establishment
+- Fix `plan_detector.py` default argument causing `FileNotFoundError` — `known_plan_file_path` now defaults to an empty string with a guard that skips file I/O on empty input, preventing test-suite failures
+- Fix Cloud Relay worker deployment missing `wrangler.jsonc` — scaffolding now generates a minimal `wrangler.jsonc` with worker name, compatibility date, and main script path so `npx wrangler deploy` can locate the entry point automatically
 
 ### Notes
 
@@ -131,6 +139,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: Custom domain provisioning for Cloud Relay requires the domain zone to reside in the user's Cloudflare account. If the zone is managed elsewhere, automatic DNS/SSL provisioning will fail silently and the worker will fall back to the default `workers.dev` URL.
 
 > **Gotcha**: UI state for saved custom domains is not persisted across page refreshes — users may need to re-save the domain after refreshing the Cloud Relay settings page.
+
+> **Gotcha**: Content-hash deduplication compares the full text of observations before insertion. Two observations with identical content but different metadata (e.g., different `session_id` or `memory_type`) are treated as duplicates — only the first is stored. If you need to record the same insight across multiple sessions, vary the observation text slightly or rely on session-level attribution via the `session_id` metadata.
+
+> **Gotcha**: Session-linking microsecond precision — `SESSION_LINK_IMMEDIATE_GAP_SECONDS` and `SESSION_LINK_STALE_GAP_SECONDS` thresholds are defined in whole seconds, but timestamp comparisons include microseconds. Sessions that end within the same second as a new one starts may be misclassified as stale or immediate depending on microsecond ordering. This is most visible under rapid "clear context and continue" operations.
+
+> **Gotcha**: The restore API does not automatically generate governance audit entries for restored data. If your workflow requires a full audit trail across restores, trigger audit logging manually after a successful restore.
 
 ## [1.0.3] - 2026-02-10
 
