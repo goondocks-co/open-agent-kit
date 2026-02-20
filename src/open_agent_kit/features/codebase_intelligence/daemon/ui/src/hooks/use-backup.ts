@@ -4,9 +4,10 @@
  * Supports multi-machine/multi-user backups with content-based deduplication.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 /** Info about a single backup file */
 interface BackupFileInfo {
@@ -95,10 +96,11 @@ const BACKUP_STATUS_REFETCH_INTERVAL_MS = 60000;
  * Hook to get current backup file status including all team backups.
  */
 export function useBackupStatus() {
-    return useQuery<BackupStatus>({
+    return usePowerQuery<BackupStatus>({
         queryKey: ["backup-status"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.BACKUP_STATUS, { signal }),
         refetchInterval: BACKUP_STATUS_REFETCH_INTERVAL_MS,
+        pollCategory: "standard",
     });
 }
 

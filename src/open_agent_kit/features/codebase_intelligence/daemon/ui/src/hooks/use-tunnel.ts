@@ -2,9 +2,10 @@
  * React Query hooks for tunnel sharing operations.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 /** Tunnel status response from API */
 export interface TunnelStatus {
@@ -37,10 +38,11 @@ const TUNNEL_STATUS_REFETCH_INTERVAL_MS = 30000;
  * Hook to get current tunnel status.
  */
 export function useTunnelStatus() {
-    return useQuery<TunnelStatus>({
+    return usePowerQuery<TunnelStatus>({
         queryKey: ["tunnel-status"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.TUNNEL_STATUS, { signal }),
         refetchInterval: TUNNEL_STATUS_REFETCH_INTERVAL_MS,
+        pollCategory: "standard",
     });
 }
 

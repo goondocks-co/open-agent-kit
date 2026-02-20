@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, LOGS_POLL_INTERVAL_MS, LOG_FILES } from "@/lib/constants";
 import type { LogFileType } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 export interface LogResponse {
     log_file: string | null;
@@ -19,9 +19,10 @@ export const DEFAULT_LOG_LINES = 500;
 export const DEFAULT_LOG_FILE = LOG_FILES.DAEMON;
 
 export function useLogs(lines: number = DEFAULT_LOG_LINES, file: LogFileType = DEFAULT_LOG_FILE, enabled: boolean = true) {
-    return useQuery<LogResponse>({
+    return usePowerQuery<LogResponse>({
         queryKey: ["logs", lines, file],
         queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.LOGS}?lines=${lines}&file=${file}`, { signal }),
         refetchInterval: enabled ? LOGS_POLL_INTERVAL_MS : false,
+        pollCategory: "realtime",
     });
 }

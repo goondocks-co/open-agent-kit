@@ -7,6 +7,7 @@ import {
     DEFAULT_SESSION_SORT,
 } from "@/lib/constants";
 import type { SessionSortOption } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 export interface ActivityItem {
     id: string;
@@ -104,19 +105,21 @@ export function useSessions(
         params.set("agent", agent);
     }
 
-    return useQuery<SessionListResponse>({
+    return usePowerQuery<SessionListResponse>({
         queryKey: ["sessions", limit, offset, sort, agent],
         queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?${params.toString()}`, { signal }),
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
+        pollCategory: "standard",
     });
 }
 
 export function useSession(sessionId: string | undefined) {
-    return useQuery<SessionDetailResponse>({
+    return usePowerQuery<SessionDetailResponse>({
         queryKey: ["session", sessionId],
         queryFn: ({ signal }) => fetchJson(getSessionDetailEndpoint(sessionId!), { signal }),
         enabled: !!sessionId,
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
+        pollCategory: "standard",
     });
 }
 
@@ -135,9 +138,10 @@ export interface ActivityStats {
 }
 
 export function useActivityStats() {
-    return useQuery<ActivityStats>({
+    return usePowerQuery<ActivityStats>({
         queryKey: ["activity_stats"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.ACTIVITY_STATS, { signal }),
         refetchInterval: STATS_REFETCH_INTERVAL_MS,
+        pollCategory: "standard",
     });
 }

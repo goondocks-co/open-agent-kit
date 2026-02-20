@@ -168,34 +168,6 @@ export default function TeamBackups() {
 
     return (
         <div className="space-y-6">
-            {/* CLI Sync Callout */}
-            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
-                <CardContent className="pt-6">
-                    <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                            <Terminal className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-blue-900 dark:text-blue-100">
-                                Recommended: Use CLI for Team Sync
-                            </h3>
-                            <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
-                                For the best experience, use <code className="bg-blue-100 dark:bg-blue-900 px-1.5 py-0.5 rounded text-xs font-mono">oak ci sync --team</code> from the command line.
-                                It handles version detection, schema migrations, and backup ordering automatically.
-                            </p>
-                            <Link
-                                to="/help"
-                                state={{ tab: "team-sync" }}
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline mt-2"
-                            >
-                                Learn more about Team Sync
-                                <span aria-hidden="true">&rarr;</span>
-                            </Link>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
             {message && (
                 <Alert variant={message.type === MESSAGE_TYPES.ERROR ? "destructive" : "default"} className={message.type === MESSAGE_TYPES.SUCCESS ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400" : ""}>
                     {message.type === MESSAGE_TYPES.SUCCESS ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -539,6 +511,22 @@ export default function TeamBackups() {
                     </p>
                 </CardContent>
             </Card>
+
+            {/* CLI Tip */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+                <Terminal className="h-3.5 w-3.5 flex-shrink-0" />
+                <p>
+                    For advanced workflows (version detection, schema migrations after OAK updates), you can also use{" "}
+                    <code className="bg-muted px-1 py-0.5 rounded font-mono">oak ci sync --team</code> from the CLI.{" "}
+                    <Link
+                        to="/help"
+                        state={{ tab: "team-sync" }}
+                        className="text-blue-500 hover:underline"
+                    >
+                        Learn more &rarr;
+                    </Link>
+                </p>
+            </div>
 
             {/* Custom Backup Directory Help */}
             <Card id="custom-backup-dir" className="border-dashed scroll-mt-6">

@@ -14,6 +14,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
+import { usePowerQuery } from "./use-power-query";
 
 // =============================================================================
 // Types
@@ -131,10 +132,11 @@ async function syncSchedules(): Promise<ScheduleSyncResponse> {
  * Hook to fetch all schedules with their status.
  */
 export function useSchedules() {
-    return useQuery({
+    return usePowerQuery({
         queryKey: scheduleKeys.list(),
         queryFn: ({ signal }) => fetchSchedules(signal),
-        refetchInterval: 30000, // Refresh every 30 seconds
+        refetchInterval: 30000,
+        pollCategory: "standard",
     });
 }
 

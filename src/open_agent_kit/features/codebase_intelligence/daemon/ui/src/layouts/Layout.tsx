@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, Cloud, PanelLeft, PanelLeftClose, RefreshCw, Shield } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, Cloud, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
+import { usePowerState } from "@/hooks/use-power-state";
+import type { PowerState } from "@/hooks/use-power-state";
 import { useStatus } from "@/hooks/use-status";
 import { useRestart } from "@/hooks/use-restart";
 import { UpdateBanner } from "@/components/ui/update-banner";
@@ -33,6 +36,31 @@ export function Layout() {
     const { setTheme, theme } = useTheme();
     const { data: status } = useStatus();
     const { restart, isRestarting } = useRestart();
+    const queryClient = useQueryClient();
+    const { state: powerState, reportActivity } = usePowerState();
+    const prevPowerStateRef = useRef<PowerState>(powerState);
+
+    // Wake invalidation: refresh all queries when returning from hidden/deep_sleep
+    useEffect(() => {
+        const prev = prevPowerStateRef.current;
+        prevPowerStateRef.current = powerState;
+
+        if (powerState === "active" && (prev === "hidden" || prev === "deep_sleep")) {
+            queryClient.invalidateQueries();
+        }
+    }, [powerState, queryClient]);
+
+    // Daemon wake: if status shows daemon activity while user is idle/deep_sleep, wake up.
+    // Skips "hidden" — no point waking polls the user can't see; wake invalidation
+    // handles the refresh when the tab becomes visible again.
+    useEffect(() => {
+        if (powerState !== "active" && powerState !== "hidden") {
+            const daemonBusy = status?.indexing || (status?.file_watcher?.pending_changes ?? 0) > 0;
+            if (daemonBusy) {
+                reportActivity();
+            }
+        }
+    }, [powerState, status?.indexing, status?.file_watcher?.pending_changes, reportActivity]);
 
     const [collapsed, setCollapsed] = useState(() => {
         const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -60,6 +88,7 @@ export function Layout() {
         { to: "/cloud", icon: Cloud, label: "Cloud" },
         { to: "/governance", icon: Shield, label: "Governance" },
         { to: "/config", icon: Settings, label: "Configuration" },
+        { to: "/logs", icon: ScrollText, label: "Logs" },
         { to: "/devtools", icon: Wrench, label: "DevTools" },
         { to: "/help", icon: HelpCircle, label: "Help" },
     ];

@@ -58,6 +58,37 @@ export function formatRelativeTime(dateString: string): string {
     return `${diffDays}d ago`;
 }
 
+// =============================================================================
+// Power Management
+// =============================================================================
+
+/** How long without user activity before entering idle state (1 minute) */
+export const POWER_IDLE_THRESHOLD_MS = 60_000;
+
+/** How long without user activity before entering deep sleep (5 minutes) */
+export const POWER_DEEP_SLEEP_THRESHOLD_MS = 300_000;
+
+/** Debounce interval for user activity events to avoid thrash (1 second) */
+export const POWER_ACTIVITY_DEBOUNCE_MS = 1_000;
+
+/** Poll rate multipliers per power state */
+export const POWER_MULTIPLIERS = {
+    active: 1,
+    idle: 2,
+    deep_sleep: Infinity, // stops polling (except heartbeat)
+    hidden: Infinity,     // stops polling (except heartbeat)
+} as const;
+
+/** Maximum heartbeat poll interval when tab is hidden (60 seconds) */
+export const HEARTBEAT_HIDDEN_CAP_MS = 60_000;
+
+/** Maximum heartbeat poll interval in deep sleep (120 seconds) */
+export const HEARTBEAT_DEEP_SLEEP_CAP_MS = 120_000;
+
+// =============================================================================
+// Formatting
+// =============================================================================
+
 /**
  * Format uptime in seconds to a human-readable string.
  */
