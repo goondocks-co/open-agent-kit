@@ -282,8 +282,8 @@ class TestMCPToolDefinitions:
     """Validates MCP_TOOLS schema definitions."""
 
     def test_tool_count(self) -> None:
-        """There are exactly 8 tools defined."""
-        assert len(MCP_TOOLS) == 8
+        """There are exactly 9 tools defined."""
+        assert len(MCP_TOOLS) == 9
 
     def test_all_tools_have_required_fields(self) -> None:
         """Each tool definition has name, description, and inputSchema."""

@@ -1,0 +1,50 @@
+# Brain Maintenance Agent
+#
+# Manages the health and quality of OAK's memory store. This agent
+# periodically consolidates duplicates, resolves stale observations,
+# synthesizes cross-session wisdom, and maintains data hygiene.
+#
+# Key distinction: This is the only agent with memory_write access,
+# allowing it to create, resolve, and archive observations.
+
+name: maintenance
+display_name: "Brain Maintenance Agent"
+description: >
+  Manages the health and quality of OAK's memory store. Consolidates
+  duplicate observations, resolves stale memories, synthesizes wisdom
+  from cross-session patterns, and maintains data hygiene between
+  ChromaDB and SQLite.
+
+execution:
+  max_turns: 100
+  timeout_seconds: 600
+  permission_mode: acceptEdits
+
+# Read-only file tools for checking if referenced files still exist
+allowed_tools:
+  - Read
+  - Glob
+  - Grep
+
+# No file writes, no shell, no sub-agents
+disallowed_tools:
+  - Bash
+  - Task
+  - Write
+  - Edit
+
+# Security: never touch sensitive files
+disallowed_paths:
+  - ".env"
+  - ".env.*"
+  - "*.pem"
+  - "*.key"
+
+# Full CI access including memory_write for mutations
+ci_access:
+  code_search: true
+  memory_search: true
+  session_history: true
+  project_stats: true
+  sql_query: true
+  memory_write: true

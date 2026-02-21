@@ -1,0 +1,124 @@
+# =============================================================================
+# Built-in Task: Memory Consolidation
+# =============================================================================
+# Task for: maintenance agent
+#
+# The "sleep cycle" for OAK's brain. Consolidates duplicate observations,
+# resolves irrelevant memories, and synthesizes cross-session patterns.
+#
+# Output is captured in agent_runs.result — no files written to project.
+# =============================================================================
+
+name: memory-consolidation
+display_name: "Memory Consolidation"
+agent_type: maintenance
+is_builtin: true
+description: >
+  Consolidates duplicate and similar observations, resolves irrelevant
+  memories, and synthesizes cross-session patterns into new wisdom.
+  The "sleep cycle" for OAK's brain.
+
+default_task: |
+  Perform a memory consolidation cycle on the project's observation store.
+  Your output serves as the decisions report — it will be captured in the
+  run record. Do NOT write any files.
+
+  ## Phase 1 — Inventory
+
+  Use `ci_project_stats` to get baseline counts and `ci_query` for detailed
+  breakdown:
+  - Total observations by type (discovery, gotcha, decision, bug_fix, trade_off)
+  - Total observations by status (active, resolved, superseded)
+  - Total sessions and recent activity volume
+  - Record these numbers — you will compare before/after at the end
+
+  ## Phase 2 — Duplicate Detection
+
+  For each memory type (discovery, gotcha, decision, bug_fix, trade_off):
+  1. Use `ci_memories(memory_type=TYPE, limit=100)` to list active observations
+  2. For each observation, use `ci_search(query=OBSERVATION_TEXT, search_type="memory")`
+     to find semantically similar ones
+  3. Group observations with high similarity into consolidation clusters
+  4. Skip clusters with only 1 member — these are unique
+
+  Be thorough but efficient: focus on the types with the most observations first.
+
+  ## Phase 3 — Consolidation
+
+  For each cluster of similar observations:
+  1. Read all observations in the cluster carefully
+  2. If truly redundant (same insight, different wording):
+     - Keep the most comprehensive version
+     - Supersede the rest via `ci_resolve(id=ID, status="superseded",
+       reason="Consolidated: duplicate of [kept_id]")`
+  3. If complementary (different facets of the same insight):
+     - Create a new merged observation via `ci_remember(observation=MERGED_TEXT,
+       memory_type=TYPE, context=CONTEXT)`
+     - Supersede the originals, referencing the new merged observation
+  4. Record each decision and your reasoning
+
+  ## Phase 4 — Relevance Review
+
+  Find active observations with stale context:
+  1. Use `ci_query` to find observations referencing specific files
+  2. Cross-reference with the code index — use `Glob` or `Read` to check
+     if referenced files still exist
+  3. For observations about files that no longer exist or have substantially
+     changed: resolve via `ci_resolve(id=ID, status="resolved",
+     reason="Referenced file no longer exists/has changed significantly")`
+  4. For observations that are clearly outdated based on recent session
+     activity: resolve with appropriate reasoning
+
+  ## Phase 5 — Cross-Session Pattern Recognition
+
+  Analyze recent sessions for recurring themes:
+  1. Use `ci_sessions(limit=20)` to review recent sessions
+  2. Use `ci_query` to find patterns:
+     - Same files touched repeatedly across sessions
+     - Same error patterns or gotchas encountered
+     - Consistent workflow patterns
+  3. If a strong pattern exists and is NOT already captured as an observation:
+     - Create a new observation via `ci_remember()` with synthesized wisdom
+     - Use memory_type="discovery" for patterns, "gotcha" for recurring issues
+
+  ## Phase 6 — Decisions Summary
+
+  End with a structured decisions report. This is your final output and will
+  be stored in the run record.
+
+  Structure your report as:
+
+  ### Consolidation Decisions
+  For each consolidation action:
+  - What observations were consolidated
+  - WHY they were consolidated (not just "they were similar")
+  - What was kept/created vs superseded
+
+  ### Relevance Decisions
+  For each resolution:
+  - What observation was resolved
+  - WHY it was no longer relevant
+  - What evidence supported the decision
+
+  ### New Wisdom Created
+  For each new observation:
+  - The synthesized insight
+  - What sources contributed to it
+  - WHY this pattern is worth capturing
+
+  ### Before/After Metrics
+  - Observations before: N (by type and status)
+  - Observations after: N (by type and status)
+  - Net change: +N created, -N superseded, -N resolved
+
+# Schedule: uncomment to enable periodic consolidation
+# schedule:
+#   cron: "0 3 * * SUN"
+#   description: "Weekly memory consolidation every Sunday at 3 AM"
+
+execution:
+  timeout_seconds: 600
+  max_turns: 100
+  model: claude-sonnet-4-6
+
+schema_version: 1

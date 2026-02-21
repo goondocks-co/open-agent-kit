@@ -180,6 +180,21 @@ Agent commands are installed in their native directories (`.claude/commands/`, `
 oak ci stop && oak ci start
 ```
 
+> ⚠️ **Gotcha**: The daemon returns `401 Missing Authorization header` when the `.oak/ci/.daemon_token` file is absent or the `OAK_CI_TOKEN` environment variable was never set. The client reads the token file unconditionally and crashes if it doesn't exist.
+
+**Daemon returns 401 on every request:**
+
+```bash
+# Stop the daemon, then restart — it will regenerate the token file
+oak ci stop && oak ci start
+```
+
+If the problem persists, verify the token file exists:
+
+```bash
+ls -la .oak/ci/.daemon_token
+```
+
 > ⚠️ **Gotcha**: The port file contents must be purely numeric. If the file contains whitespace or non-numeric characters, the daemon may fail to start with a ValueError.
 
 **Daemon fails to start with port error:**

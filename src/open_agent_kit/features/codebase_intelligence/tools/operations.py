@@ -10,11 +10,15 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    ARCHIVE_FILTER_BOTH,
+    OBSERVATION_STATUS_RESOLVED,
+    OBSERVATION_STATUS_SUPERSEDED,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
+    VALID_ARCHIVE_FILTERS,
     VALID_OBSERVATION_STATUSES,
 )
 from open_agent_kit.features.codebase_intelligence.tools.formatting import (
@@ -27,6 +31,7 @@ from open_agent_kit.features.codebase_intelligence.tools.formatting import (
 )
 from open_agent_kit.features.codebase_intelligence.tools.schemas import (
     ActivityInput,
+    ArchiveInput,
     ContextInput,
     MemoriesInput,
     QueryInput,
@@ -382,3 +387,104 @@ class ToolOperations:
             )
 
         return result
+
+    def archive_memories(self, args: dict[str, Any]) -> str:
+        """Archive observations from ChromaDB search index (keeps them in SQLite).
+
+        Supports archiving by specific IDs or by status filter + age.
+        Archived observations stop appearing in vector search results
+        but remain in SQLite for historical queries.
+
+        Args:
+            args: Archive arguments (ids, status_filter, older_than_days, dry_run).
+
+        Returns:
+            Formatted summary of archival results.
+
+        Raises:
+            ValueError: If neither ids nor status_filter is provided,
+                or if required stores are unavailable.
+        """
+        if not self.vector_store:
+            raise ValueError("Vector store not available for archiving.")
+
+        # Defensive: LLMs may send ids as a JSON-encoded string instead of a list
+        raw_ids = args.get("ids")
+        if isinstance(raw_ids, str):
+            import json
+
+            try:
+                parsed = json.loads(raw_ids)
+                if isinstance(parsed, list):
+                    args = {**args, "ids": parsed}
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        input_data = ArchiveInput(**args)
+
+        # Must provide either specific IDs or a filter
+        if not input_data.ids and not input_data.status_filter:
+            raise ValueError(
+                "Provide either 'ids' (specific observations) or "
+                "'status_filter' + optional 'older_than_days' to select observations."
+            )
+
+        ids_to_archive: list[str] = []
+
+        if input_data.ids:
+            ids_to_archive = input_data.ids
+        elif input_data.status_filter and self.activity_store:
+            # Validate status_filter
+            if input_data.status_filter not in VALID_ARCHIVE_FILTERS:
+                raise ValueError(
+                    f"Invalid status_filter '{input_data.status_filter}'. "
+                    f"Must be one of: {', '.join(VALID_ARCHIVE_FILTERS)}"
+                )
+
+            # Calculate cutoff date if older_than_days is set
+            end_date: str | None = None
+            if input_data.older_than_days:
+                from datetime import datetime, timedelta
+
+                cutoff = datetime.now() - timedelta(days=input_data.older_than_days)
+                end_date = cutoff.strftime("%Y-%m-%d")
+
+            # Query for each status in the filter
+            statuses = (
+                [OBSERVATION_STATUS_RESOLVED, OBSERVATION_STATUS_SUPERSEDED]
+                if input_data.status_filter == ARCHIVE_FILTER_BOTH
+                else [input_data.status_filter]
+            )
+
+            for status in statuses:
+                obs_list, _ = self.activity_store.list_observations(
+                    limit=10000,
+                    status=status,
+                    end_date=end_date,
+                )
+                ids_to_archive.extend(obs["id"] for obs in obs_list if obs.get("id"))
+        elif input_data.status_filter and not self.activity_store:
+            raise ValueError(
+                "Activity store not available — cannot filter by status. "
+                "Provide specific 'ids' instead."
+            )
+
+        if not ids_to_archive:
+            return "No observations matched the criteria. Nothing to archive."
+
+        if input_data.dry_run:
+            return (
+                f"**Dry run**: {len(ids_to_archive)} observation(s) would be archived.\n"
+                f"IDs: {', '.join(ids_to_archive[:20])}"
+                + (f"\n... and {len(ids_to_archive) - 20} more" if len(ids_to_archive) > 20 else "")
+            )
+
+        # Perform archival via VectorStore
+        archived_count = self.vector_store.bulk_archive_memories(ids_to_archive)
+
+        return (
+            f"Archived {archived_count} of {len(ids_to_archive)} observation(s) "
+            f"from the search index.\n"
+            f"These observations remain in SQLite for historical queries "
+            f"but will no longer appear in vector search results."
+        )

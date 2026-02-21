@@ -28,6 +28,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         _migrate_v5_to_v6(conn)
     if from_version < 7:
         _migrate_v6_to_v7(conn)
+    if from_version < 8:
+        _migrate_v7_to_v8(conn)
 
     # Always run idempotent column checks for the current version.
     # This catches columns added mid-development after a version was
@@ -272,6 +274,38 @@ def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
     )
 
     logger.info("Migration v6 -> v7 complete: governance_audit_events table created")
+
+
+def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
+    """Migrate schema v7 -> v8: add origin_type to memory_observations.
+
+    Adds an origin_type column to distinguish auto-extracted observations
+    (created by background processing) from agent-created observations
+    (created via ci_remember / oak_remember). Devtools operations that
+    delete or rebuild observations will exclude agent_created entries.
+
+    Existing observations default to 'auto_extracted' since they were all
+    created by the background processor before this migration.
+
+    Idempotent: skips column if it already exists.
+    """
+    logger.info("Migrating activity store schema v7 -> v8 (observation origin_type)")
+
+    existing_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(memory_observations)").fetchall()
+    }
+
+    if "origin_type" not in existing_columns:
+        conn.execute(
+            "ALTER TABLE memory_observations ADD COLUMN origin_type TEXT DEFAULT 'auto_extracted'"
+        )
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_observations_origin_type "
+        "ON memory_observations(origin_type)"
+    )
+
+    logger.info("Migration v7 -> v8 complete: origin_type column added to memory_observations")
 
 
 def _ensure_v6_columns(conn: sqlite3.Connection) -> None:

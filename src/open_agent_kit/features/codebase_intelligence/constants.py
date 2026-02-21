@@ -718,7 +718,7 @@ TUNNEL_URL_PARSE_TIMEOUT_SECONDS: Final[float] = 15.0
 TUNNEL_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Activity store schema version
-CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 7
+CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 8
 
 # Observation Lifecycle
 OBSERVATION_STATUS_ACTIVE: Final[str] = "active"
@@ -728,6 +728,18 @@ VALID_OBSERVATION_STATUSES: Final[tuple[str, ...]] = (
     OBSERVATION_STATUS_ACTIVE,
     OBSERVATION_STATUS_RESOLVED,
     OBSERVATION_STATUS_SUPERSEDED,
+)
+
+# Observation Origin Types (distinguishes how observations were created)
+ORIGIN_TYPE_AUTO_EXTRACTED: Final[str] = "auto_extracted"
+ORIGIN_TYPE_AGENT_CREATED: Final[str] = "agent_created"
+
+# Archive status filters (for ci_archive / oak_archive_memories)
+ARCHIVE_FILTER_BOTH: Final[str] = "both"
+VALID_ARCHIVE_FILTERS: Final[tuple[str, ...]] = (
+    OBSERVATION_STATUS_RESOLVED,
+    OBSERVATION_STATUS_SUPERSEDED,
+    ARCHIVE_FILTER_BOTH,
 )
 
 # Resolution Event Actions
@@ -1341,6 +1353,9 @@ CI_TOOL_MEMORIES: Final[str] = "ci_memories"
 CI_TOOL_SESSIONS: Final[str] = "ci_sessions"
 CI_TOOL_PROJECT_STATS: Final[str] = "ci_project_stats"
 CI_TOOL_QUERY: Final[str] = "ci_query"
+CI_TOOL_REMEMBER: Final[str] = "ci_remember"
+CI_TOOL_RESOLVE: Final[str] = "ci_resolve"
+CI_TOOL_ARCHIVE: Final[str] = "ci_archive"
 CI_MCP_SERVER_NAME: Final[str] = "oak-ci"
 CI_MCP_SERVER_VERSION: Final[str] = "1.0.0"
 

@@ -31,9 +31,10 @@ Run `make help` to see all available commands:
 | Command | Description |
 |---------|-------------|
 | `make setup` | Install all dependencies |
+| `make sync` | Re-sync dependencies after `git pull` |
 | `make check` | Run all CI checks (format, typecheck, test) |
 | `make test` | Run tests with coverage |
-| `make test-fast` | Run tests without coverage |
+| `make test-fast` | Run tests in parallel without coverage (fastest) |
 | `make format` | Auto-format code |
 | `make lint` | Run linter |
 | `make typecheck` | Run type checking |

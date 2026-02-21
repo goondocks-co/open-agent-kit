@@ -12,6 +12,9 @@ from uuid import uuid4
 from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
     compute_observation_hash,
 )
+from open_agent_kit.features.codebase_intelligence.constants import (
+    ORIGIN_TYPE_AUTO_EXTRACTED,
+)
 from open_agent_kit.utils.file_utils import get_relative_path
 
 if TYPE_CHECKING:
@@ -147,6 +150,7 @@ def store_observation(
         created_at=created_at,
         embedded=False,  # Not yet in ChromaDB
         session_origin_type=session_origin_type,
+        origin_type=ORIGIN_TYPE_AUTO_EXTRACTED,
     )
 
     try:

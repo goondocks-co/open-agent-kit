@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     resolved_at TEXT,                          -- ISO timestamp of resolution
     superseded_by TEXT,                        -- Observation ID that supersedes this
     session_origin_type TEXT,                  -- planning | investigation | implementation | mixed
+    origin_type TEXT DEFAULT 'auto_extracted', -- auto_extracted | agent_created
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     FOREIGN KEY (prompt_batch_id) REFERENCES prompt_batches(id)
 );
@@ -46,6 +47,9 @@ CREATE TABLE IF NOT EXISTS memory_observations (
 CREATE INDEX IF NOT EXISTS idx_memory_observations_embedded ON memory_observations(embedded);
 CREATE INDEX IF NOT EXISTS idx_memory_observations_session ON memory_observations(session_id);
 CREATE INDEX IF NOT EXISTS idx_memory_observations_hash ON memory_observations(content_hash);
+
+-- Index for filtering by observation origin (auto_extracted vs agent_created)
+CREATE INDEX IF NOT EXISTS idx_memory_observations_origin_type ON memory_observations(origin_type);
 
 -- Indexes for memory filtering and browsing
 CREATE INDEX IF NOT EXISTS idx_memory_observations_type ON memory_observations(memory_type);

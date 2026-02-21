@@ -9,6 +9,7 @@ Exposes tools that AI agents can call via MCP protocol:
 - oak_memories: Browse stored memories/observations
 - oak_stats: Get project intelligence statistics
 - oak_activity: View tool execution history for a session
+- oak_archive_memories: Archive observations from search index
 
 These tools delegate to shared ToolOperations for actual implementation.
 """
@@ -261,6 +262,42 @@ MCP_TOOLS = [
             "required": ["session_id"],
         },
     },
+    {
+        "name": "oak_archive_memories",
+        "description": (
+            "Archive observations from the ChromaDB search index. Archived observations "
+            "remain in SQLite for historical queries but stop appearing in vector search "
+            "results. Provide specific IDs or use status_filter + older_than_days to "
+            "bulk archive stale resolved/superseded observations."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Specific observation IDs to archive",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "enum": ["resolved", "superseded", "both"],
+                    "description": (
+                        "Archive observations by status: 'resolved', 'superseded', or 'both'"
+                    ),
+                },
+                "older_than_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Only archive observations older than this many days",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If True, return count without actually archiving",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -303,6 +340,7 @@ class MCPToolHandler:
             "oak_memories": self.ops.list_memories,
             "oak_stats": lambda args: self.ops.get_stats(args),
             "oak_activity": self.ops.list_activities,
+            "oak_archive_memories": self.ops.archive_memories,
         }
 
         handler = handlers.get(tool_name)

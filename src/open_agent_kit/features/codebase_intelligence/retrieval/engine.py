@@ -860,6 +860,10 @@ class RetrievalEngine:
                     logger.debug("Could not resolve active session for remember()")
 
             if resolved_session_id:
+                from open_agent_kit.features.codebase_intelligence.constants import (
+                    ORIGIN_TYPE_AGENT_CREATED,
+                )
+
                 stored_obs = StoredObservation(
                     id=obs_id,
                     session_id=resolved_session_id,
@@ -870,6 +874,7 @@ class RetrievalEngine:
                     importance=5,
                     created_at=now,
                     embedded=True,  # Already in ChromaDB from phase 1
+                    origin_type=ORIGIN_TYPE_AGENT_CREATED,
                 )
                 self.activity_store.store_observation(stored_obs)
             else:

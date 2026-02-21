@@ -49,7 +49,8 @@ def get_batch_observation_ids(store: ActivityStore, batch_id: int) -> list[str]:
     conn = store._get_connection()
     cursor = conn.execute(
         "SELECT id FROM memory_observations WHERE prompt_batch_id = ? "
-        "AND COALESCE(status, 'active') = 'active'",
+        "AND COALESCE(status, 'active') = 'active' "
+        "AND COALESCE(origin_type, 'auto_extracted') != 'agent_created'",
         (batch_id,),
     )
     return [row[0] for row in cursor.fetchall()]
@@ -116,13 +117,16 @@ def delete_observations_for_batches(
     conn = store._get_connection()
     batch_placeholders = ",".join("?" * len(batch_ids))
 
-    # Collect active IDs before deleting (for ChromaDB cleanup by caller)
+    # Collect active, auto-extracted IDs before deleting (for ChromaDB cleanup by caller).
+    # Agent-created observations are preserved — they were created by the maintenance
+    # agent and should not be destroyed by devtools reprocessing.
     cursor = conn.execute(
         f"""
         SELECT id FROM memory_observations
         WHERE prompt_batch_id IN ({batch_placeholders})
           AND source_machine_id = ?
           AND COALESCE(status, 'active') = 'active'
+          AND COALESCE(origin_type, 'auto_extracted') != 'agent_created'
         """,
         (*batch_ids, machine_id),
     )
