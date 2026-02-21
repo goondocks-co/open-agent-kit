@@ -97,6 +97,10 @@ export default defineConfig({
               label: "Engineering Agent",
               slug: "features/codebase-intelligence/engineering-agent",
             },
+            {
+              label: "Maintenance Agent",
+              slug: "features/codebase-intelligence/maintenance-agent",
+            },
           ],
         },
         {

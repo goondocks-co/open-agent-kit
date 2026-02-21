@@ -27,6 +27,7 @@ Each agent has:
 | **[Documentation Agent](/open-agent-kit/features/codebase-intelligence/documentation-agent/)** | Maintains project documentation using the full CI knowledge base | Root Documentation, Feature Docs, Changelog, Architecture Docs |
 | **[Analysis Agent](/open-agent-kit/features/codebase-intelligence/analysis-agent/)** | Turns CI data into actionable insights about productivity, costs, and codebase health | Usage & Cost Report, Productivity Analysis, Codebase Activity, Prompt Quality |
 | **[Engineering Agent](/open-agent-kit/features/codebase-intelligence/engineering-agent/)** | An engineering team with role-based tasks for code review, implementation, and issue triage | Senior Engineer, Product Manager |
+| **[Maintenance Agent](/open-agent-kit/features/codebase-intelligence/maintenance-agent/)** | Keeps OAK's memory store healthy — consolidates duplicates, resolves stale observations, and maintains data hygiene | Memory Consolidation, Data Hygiene |
 
 ## Provider Configuration
 

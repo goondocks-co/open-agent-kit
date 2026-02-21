@@ -366,6 +366,7 @@ class StoredObservation:
     resolved_at: datetime | None = None
     superseded_by: str | None = None
     session_origin_type: str | None = None
+    origin_type: str | None = None  # 'auto_extracted' or 'agent_created'
 
     def _compute_content_hash(self) -> str:
         """Compute content hash for deduplication."""
@@ -396,6 +397,7 @@ class StoredObservation:
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
             "superseded_by": self.superseded_by,
             "session_origin_type": self.session_origin_type,
+            "origin_type": self.origin_type,
             "content_hash": self._compute_content_hash(),
         }
         # Redact secrets from free-text fields before persistence
@@ -437,6 +439,7 @@ class StoredObservation:
             session_origin_type=(
                 row["session_origin_type"] if "session_origin_type" in row.keys() else None
             ),
+            origin_type=(row["origin_type"] if "origin_type" in row.keys() else None),
         )
 
 

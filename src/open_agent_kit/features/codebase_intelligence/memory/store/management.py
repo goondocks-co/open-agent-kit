@@ -371,8 +371,21 @@ def get_stats(store: VectorStore) -> dict:
     except (ValueError, RuntimeError, OSError, AttributeError):
         memory_count = 0
 
+    # Count unique files from code collection metadata
+    unique_files = 0
+    try:
+        results = store._code_collection.get(include=["metadatas"])
+        if results and results["metadatas"]:
+            unique_files = len(
+                {m.get("filepath") for m in results["metadatas"] if m.get("filepath")}
+            )
+    except (OSError, RuntimeError, AttributeError, TypeError) as e:
+        logger.debug(f"Failed to count unique files in get_stats: {e}")
+
     return {
         "code_chunks": code_count,
+        "unique_files": unique_files,
+        "memory_count": memory_count,
         "memory_observations": memory_count,
         "persist_directory": str(store.persist_directory),
     }

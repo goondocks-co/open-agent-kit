@@ -141,3 +141,25 @@ class ActivityInput(BaseModel):
         ge=1,
         le=200,
     )
+
+
+class ArchiveInput(BaseModel):
+    """Input for archive tool (ci_archive / oak_archive_memories)."""
+
+    ids: list[str] | None = Field(
+        default=None,
+        description="Specific observation IDs to archive",
+    )
+    status_filter: str | None = Field(
+        default=None,
+        description="Archive by status: 'resolved', 'superseded', or 'both'",
+    )
+    older_than_days: int | None = Field(
+        default=None,
+        description="Only archive observations older than this many days",
+        ge=1,
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="If True, return count without actually archiving",
+    )

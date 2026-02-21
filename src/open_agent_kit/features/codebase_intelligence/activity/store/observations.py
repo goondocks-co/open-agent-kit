@@ -66,11 +66,13 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
             (id, session_id, prompt_batch_id, observation, memory_type,
              context, tags, importance, file_path, created_at, created_at_epoch, embedded,
              source_machine_id, content_hash,
-             status, resolved_by_session_id, resolved_at, superseded_by, session_origin_type)
+             status, resolved_by_session_id, resolved_at, superseded_by, session_origin_type,
+             origin_type)
             VALUES (:id, :session_id, :prompt_batch_id, :observation, :memory_type,
                     :context, :tags, :importance, :file_path, :created_at,
                     :created_at_epoch, :embedded, :source_machine_id, :content_hash,
-                    :status, :resolved_by_session_id, :resolved_at, :superseded_by, :session_origin_type)
+                    :status, :resolved_by_session_id, :resolved_at, :superseded_by,
+                    :session_origin_type, :origin_type)
             """,
             row,
         )

@@ -1329,25 +1329,30 @@ def cleanup_low_quality_sessions(
     if not low_quality_sessions:
         return []
 
-    # Collect ChromaDB observation IDs before SQL deletion (if vector store provided)
+    # Collect non-agent ChromaDB observation IDs before SQL deletion
+    # (agent-created observations are preserved even when their session is cleaned up)
     all_observation_ids: list[str] = []
+    placeholders = ",".join("?" * len(low_quality_sessions))
     if vector_store:
-        placeholders = ",".join("?" * len(low_quality_sessions))
         obs_cursor = conn.execute(
-            f"SELECT id FROM memory_observations WHERE session_id IN ({placeholders})",
+            f"SELECT id FROM memory_observations "
+            f"WHERE session_id IN ({placeholders}) "
+            f"AND COALESCE(origin_type, 'auto_extracted') != 'agent_created'",
             low_quality_sessions,
         )
         all_observation_ids = [row[0] for row in obs_cursor.fetchall()]
 
-    # Bulk delete all related data in a single transaction
-    placeholders = ",".join("?" * len(low_quality_sessions))
+    # Bulk delete all related data in a single transaction.
+    # Agent-created observations are preserved — they were created by the
+    # maintenance agent and should survive low-quality session cleanup.
     with store._transaction() as tx_conn:
         tx_conn.execute(
             f"DELETE FROM activities WHERE session_id IN ({placeholders})",
             low_quality_sessions,
         )
         tx_conn.execute(
-            f"DELETE FROM memory_observations WHERE session_id IN ({placeholders})",
+            f"DELETE FROM memory_observations WHERE session_id IN ({placeholders}) "
+            f"AND COALESCE(origin_type, 'auto_extracted') != 'agent_created'",
             low_quality_sessions,
         )
         tx_conn.execute(

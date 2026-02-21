@@ -157,6 +157,10 @@ class AgentCIAccess(BaseModel):
     session_history: bool = Field(default=True, description="Allow accessing session history")
     project_stats: bool = Field(default=True, description="Allow accessing project stats")
     sql_query: bool = Field(default=False, description="Allow direct read-only SQL queries")
+    memory_write: bool = Field(
+        default=False,
+        description="Allow creating, resolving, and archiving observations",
+    )
 
 
 class AgentProvider(BaseModel):

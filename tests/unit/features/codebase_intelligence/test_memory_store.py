@@ -984,6 +984,8 @@ class TestGetStats:
                 stats = vector_store.get_stats()
 
         assert "code_chunks" in stats
+        assert "unique_files" in stats
+        assert "memory_count" in stats
         assert "memory_observations" in stats
         assert "persist_directory" in stats
 

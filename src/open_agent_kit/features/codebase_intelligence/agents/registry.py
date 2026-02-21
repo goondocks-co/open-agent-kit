@@ -463,6 +463,7 @@ class AgentRegistry:
             session_history=ci_access_data.get("session_history", True),
             project_stats=ci_access_data.get("project_stats", True),
             sql_query=ci_access_data.get("sql_query", False),
+            memory_write=ci_access_data.get("memory_write", False),
         )
 
         # Get agent name for project config lookup

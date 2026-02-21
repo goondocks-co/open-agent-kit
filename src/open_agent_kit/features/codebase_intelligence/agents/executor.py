@@ -35,9 +35,12 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_RETRY_BASE_DELAY,
     AGENT_RETRY_MAX_ATTEMPTS,
     CI_MCP_SERVER_NAME,
+    CI_TOOL_ARCHIVE,
     CI_TOOL_MEMORIES,
     CI_TOOL_PROJECT_STATS,
     CI_TOOL_QUERY,
+    CI_TOOL_REMEMBER,
+    CI_TOOL_RESOLVE,
     CI_TOOL_SEARCH,
     CI_TOOL_SESSIONS,
 )
@@ -329,6 +332,7 @@ class AgentExecutor:
             or ci_access.session_history
             or ci_access.project_stats
             or ci_access.sql_query
+            or ci_access.memory_write
         )
         if has_any_ci_access:
             enabled_ci_tools: set[str] = set()
@@ -342,6 +346,10 @@ class AgentExecutor:
                 enabled_ci_tools.add(CI_TOOL_PROJECT_STATS)
             if ci_access.sql_query:
                 enabled_ci_tools.add(CI_TOOL_QUERY)
+            if ci_access.memory_write:
+                enabled_ci_tools.add(CI_TOOL_REMEMBER)
+                enabled_ci_tools.add(CI_TOOL_RESOLVE)
+                enabled_ci_tools.add(CI_TOOL_ARCHIVE)
 
             ci_server = self._get_ci_mcp_server(enabled_ci_tools)
             if ci_server:

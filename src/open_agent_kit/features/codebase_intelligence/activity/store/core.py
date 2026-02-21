@@ -831,8 +831,12 @@ class ActivityStore:
 
         with self._transaction() as conn:
             if delete_memories:
+                # Preserve agent-created observations — they were created by
+                # the maintenance agent and should survive devtools resets.
                 cursor = conn.execute(
-                    "DELETE FROM memory_observations WHERE source_machine_id = ?",
+                    "DELETE FROM memory_observations "
+                    "WHERE source_machine_id = ? "
+                    "AND COALESCE(origin_type, 'auto_extracted') != 'agent_created'",
                     (self.machine_id,),
                 )
                 counts["observations_deleted"] = cursor.rowcount

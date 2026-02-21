@@ -18,9 +18,12 @@ from typing import TYPE_CHECKING, Any
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_MCP_SERVER_NAME,
     CI_MCP_SERVER_VERSION,
+    CI_TOOL_ARCHIVE,
     CI_TOOL_MEMORIES,
     CI_TOOL_PROJECT_STATS,
     CI_TOOL_QUERY,
+    CI_TOOL_REMEMBER,
+    CI_TOOL_RESOLVE,
     CI_TOOL_SEARCH,
     CI_TOOL_SESSIONS,
 )
@@ -224,6 +227,122 @@ def create_ci_tools(
                 }
 
         tools.append(ci_query)
+
+    # Tool: ci_remember - Create a new observation (opt-in via memory_write)
+    if CI_TOOL_REMEMBER in active_tools:
+
+        @tool(
+            CI_TOOL_REMEMBER,
+            "Create a new observation/memory. Use this to record discoveries, "
+            "gotchas, decisions, bug fixes, or trade-offs for future reference.",
+            {
+                "observation": str,  # The observation text (required)
+                "memory_type": str,  # 'discovery', 'gotcha', 'bug_fix', 'decision', 'trade_off'
+                "context": str,  # Related file path or additional context
+            },
+        )
+        async def ci_remember(args: dict[str, Any]) -> dict[str, Any]:
+            """Create a new observation."""
+            try:
+                result = ops.remember(args)
+                return {"content": [{"type": "text", "text": result}]}
+            except (ValueError, TypeError) as e:
+                return {
+                    "content": [{"type": "text", "text": f"Error: {e}"}],
+                    "is_error": True,
+                }
+            except (OSError, RuntimeError) as e:
+                logger.error(f"CI remember failed: {e}")
+                return {
+                    "content": [{"type": "text", "text": f"Remember error: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(ci_remember)
+
+    # Tool: ci_resolve - Mark observation as resolved/superseded (opt-in via memory_write)
+    if CI_TOOL_RESOLVE in active_tools:
+
+        @tool(
+            CI_TOOL_RESOLVE,
+            "Mark an observation as resolved or superseded. Use after fixing a bug, "
+            "addressing a gotcha, or when a newer observation replaces an older one.",
+            {
+                "id": str,  # Observation UUID (required)
+                "status": str,  # 'resolved' or 'superseded'
+                "reason": str,  # Optional reason for resolution
+            },
+        )
+        async def ci_resolve(args: dict[str, Any]) -> dict[str, Any]:
+            """Resolve an observation."""
+            try:
+                result = ops.resolve_memory(args)
+                return {"content": [{"type": "text", "text": result}]}
+            except ValueError as e:
+                return {
+                    "content": [{"type": "text", "text": f"Error: {e}"}],
+                    "is_error": True,
+                }
+            except (OSError, RuntimeError) as e:
+                logger.error(f"CI resolve failed: {e}")
+                return {
+                    "content": [{"type": "text", "text": f"Resolve error: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(ci_resolve)
+
+    # Tool: ci_archive - Remove observations from search index (opt-in via memory_write)
+    if CI_TOOL_ARCHIVE in active_tools:
+
+        @tool(
+            CI_TOOL_ARCHIVE,
+            "Archive observations from the ChromaDB search index. Archived observations "
+            "remain in SQLite for historical queries but stop polluting vector search results. "
+            "Provide specific IDs or use status_filter + older_than_days to bulk archive.",
+            {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific observation IDs to archive",
+                    },
+                    "status_filter": {
+                        "type": "string",
+                        "enum": ["resolved", "superseded", "both"],
+                        "description": "Archive by status: 'resolved', 'superseded', or 'both'",
+                    },
+                    "older_than_days": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Only archive observations older than this many days",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, return count without actually archiving",
+                    },
+                },
+            },
+        )
+        async def ci_archive(args: dict[str, Any]) -> dict[str, Any]:
+            """Archive observations from search index."""
+            try:
+                result = ops.archive_memories(args)
+                return {"content": [{"type": "text", "text": result}]}
+            except ValueError as e:
+                return {
+                    "content": [{"type": "text", "text": f"Error: {e}"}],
+                    "is_error": True,
+                }
+            except (OSError, RuntimeError) as e:
+                logger.error(f"CI archive failed: {e}")
+                return {
+                    "content": [{"type": "text", "text": f"Archive error: {e}"}],
+                    "is_error": True,
+                }
+
+        tools.append(ci_archive)
 
     return tools
 
