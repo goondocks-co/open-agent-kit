@@ -386,6 +386,10 @@ class ActivityStore:
         """Mark session as processed by background worker."""
         sessions.mark_session_processed(self, session_id)
 
+    def get_session_members(self) -> list[str]:
+        """Get distinct source_machine_id values from sessions."""
+        return sessions.get_session_members(self)
+
     def get_recent_sessions(
         self,
         limit: int = 10,
@@ -393,9 +397,10 @@ class ActivityStore:
         status: str | None = None,
         agent: str | None = None,
         sort: str = "last_activity",
+        member: str | None = None,
     ) -> list[Session]:
         """Get recent sessions with pagination support."""
-        return sessions.get_recent_sessions(self, limit, offset, status, agent, sort)
+        return sessions.get_recent_sessions(self, limit, offset, status, agent, sort, member)
 
     def get_sessions_needing_titles(self, limit: int = 10) -> list[Session]:
         """Get sessions that need titles generated."""
@@ -803,6 +808,10 @@ class ActivityStore:
     def get_bulk_child_session_counts(self, session_ids: list[str]) -> dict[str, int]:
         """Get child session counts for multiple sessions."""
         return sessions.get_bulk_child_session_counts(self, session_ids)
+
+    def get_bulk_plan_counts(self, session_ids: list[str]) -> dict[str, int]:
+        """Get plan counts for multiple sessions."""
+        return batches.get_bulk_plan_counts(self, session_ids)
 
     # ==========================================================================
     # Cross-cutting operations

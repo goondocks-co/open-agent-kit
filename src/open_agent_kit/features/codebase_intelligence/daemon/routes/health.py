@@ -143,6 +143,7 @@ async def get_status() -> dict:
 
     return {
         "status": DAEMON_STATUS_RUNNING,
+        "machine_id": state.machine_id,
         "cli_command": cli_command,
         "power_state": state.power_state,
         "indexing": state.index_status.is_indexing,

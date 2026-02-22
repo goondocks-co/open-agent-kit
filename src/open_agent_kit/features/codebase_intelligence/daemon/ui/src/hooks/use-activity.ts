@@ -43,6 +43,10 @@ export interface SessionItem {
     resume_command: string | null;
     // Summary embedding status
     summary_embedded: boolean;
+    // Multi-machine origin
+    source_machine_id: string | null;
+    // Plan tracking
+    plan_count: number;
 }
 
 export interface PromptBatchItem {
@@ -95,7 +99,9 @@ export function useSessions(
     limit: number = PAGINATION.DEFAULT_LIMIT,
     offset: number = PAGINATION.DEFAULT_OFFSET,
     sort: SessionSortOption = DEFAULT_SESSION_SORT,
-    agent?: string
+    agent?: string,
+    status?: string,
+    member?: string
 ) {
     const params = new URLSearchParams();
     params.set("limit", String(limit));
@@ -104,9 +110,15 @@ export function useSessions(
     if (agent) {
         params.set("agent", agent);
     }
+    if (status) {
+        params.set("status", status);
+    }
+    if (member) {
+        params.set("member", member);
+    }
 
     return usePowerQuery<SessionListResponse>({
-        queryKey: ["sessions", limit, offset, sort, agent],
+        queryKey: ["sessions", limit, offset, sort, agent, status, member],
         queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.ACTIVITY_SESSIONS}?${params.toString()}`, { signal }),
         refetchInterval: SESSION_REFETCH_INTERVAL_MS,
         pollCategory: "standard",
@@ -127,6 +139,23 @@ export function useSessionAgents() {
     return useQuery<SessionAgentsResponse>({
         queryKey: ["session-agents"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.ACTIVITY_SESSION_AGENTS, { signal }),
+    });
+}
+
+export interface SessionMember {
+    username: string;
+    machine_id: string;
+}
+
+export interface SessionMembersResponse {
+    members: SessionMember[];
+    current_machine_id: string | null;
+}
+
+export function useSessionMembers() {
+    return useQuery<SessionMembersResponse>({
+        queryKey: ["session-members"],
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.ACTIVITY_SESSION_MEMBERS, { signal }),
     });
 }
 

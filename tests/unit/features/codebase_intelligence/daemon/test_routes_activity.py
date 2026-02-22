@@ -59,6 +59,9 @@ def mock_activity_store():
     session1.title = "Add user authentication feature"
     session1.parent_session_id = None
     session1.parent_session_reason = None
+    session1.source_machine_id = None
+    session1.title_manually_edited = False
+    session1.summary_embedded = False
 
     session2 = MagicMock()
     session2.id = "session-002"
@@ -71,10 +74,15 @@ def mock_activity_store():
     session2.title = None
     session2.parent_session_id = None
     session2.parent_session_reason = None
+    session2.source_machine_id = None
+    session2.title_manually_edited = False
+    session2.summary_embedded = False
 
     mock.get_recent_sessions.return_value = [session1, session2]
     mock.get_session.return_value = session1
     mock.get_child_session_count.return_value = 0
+    mock.get_bulk_child_session_counts.return_value = {}
+    mock.get_bulk_plan_counts.return_value = {}
     mock.get_latest_session_summary.return_value = None  # No summary observation by default
 
     # Session stats (for individual queries)
@@ -236,6 +244,7 @@ class TestListSessions:
             status=None,
             agent="codex",
             sort="last_activity",
+            member=None,
         )
 
 
@@ -390,6 +399,9 @@ class TestGetSessionDetail:
         active_session.title = None
         active_session.parent_session_id = None
         active_session.parent_session_reason = None
+        active_session.source_machine_id = None
+        active_session.title_manually_edited = False
+        active_session.summary_embedded = False
         setup_state_with_activity_store.activity_store.get_session.return_value = active_session
 
         response = client.get("/api/activity/sessions/active-session")
@@ -414,6 +426,9 @@ class TestGetSessionDetail:
         codex_session.title = None
         codex_session.parent_session_id = None
         codex_session.parent_session_reason = None
+        codex_session.source_machine_id = None
+        codex_session.title_manually_edited = False
+        codex_session.summary_embedded = False
         setup_state_with_activity_store.activity_store.get_session.return_value = codex_session
 
         response = client.get(f"/api/activity/sessions/{session_id}")
@@ -438,6 +453,9 @@ class TestGetSessionDetail:
         codex_session.title = None
         codex_session.parent_session_id = None
         codex_session.parent_session_reason = None
+        codex_session.source_machine_id = None
+        codex_session.title_manually_edited = False
+        codex_session.summary_embedded = False
         setup_state_with_activity_store.activity_store.get_session.return_value = codex_session
 
         response = client.get(f"/api/activity/sessions/{session_id}")
@@ -462,6 +480,9 @@ class TestGetSessionDetail:
         gemini_session.title = None
         gemini_session.parent_session_id = None
         gemini_session.parent_session_reason = None
+        gemini_session.source_machine_id = None
+        gemini_session.title_manually_edited = False
+        gemini_session.summary_embedded = False
         setup_state_with_activity_store.activity_store.get_session.return_value = gemini_session
 
         response = client.get(f"/api/activity/sessions/{session_id}")
@@ -486,6 +507,9 @@ class TestGetSessionDetail:
         gemini_session.title = None
         gemini_session.parent_session_id = None
         gemini_session.parent_session_reason = None
+        gemini_session.source_machine_id = None
+        gemini_session.title_manually_edited = False
+        gemini_session.summary_embedded = False
         setup_state_with_activity_store.activity_store.get_session.return_value = gemini_session
 
         response = client.get(f"/api/activity/sessions/{session_id}")

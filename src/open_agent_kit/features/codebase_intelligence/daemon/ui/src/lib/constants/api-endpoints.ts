@@ -41,6 +41,7 @@ export const API_ENDPOINTS = {
     // Activity endpoints
     ACTIVITY_SESSIONS: "/api/activity/sessions",
     ACTIVITY_SESSION_AGENTS: "/api/activity/session-agents",
+    ACTIVITY_SESSION_MEMBERS: "/api/activity/session-members",
     ACTIVITY_PLANS: "/api/activity/plans",
     ACTIVITY_STATS: "/api/activity/stats",
     ACTIVITY_SEARCH: "/api/activity/search",

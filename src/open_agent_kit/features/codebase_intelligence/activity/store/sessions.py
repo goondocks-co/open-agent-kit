@@ -382,8 +382,26 @@ def mark_session_processed(store: ActivityStore, session_id: str) -> None:
         )
 
 
+def get_session_members(store: ActivityStore) -> list[str]:
+    """Get distinct source_machine_id values from sessions.
+
+    Returns:
+        List of unique source_machine_id strings, ordered alphabetically.
+    """
+    conn = store._get_connection()
+    cursor = conn.execute(
+        "SELECT DISTINCT source_machine_id FROM sessions "
+        "WHERE source_machine_id IS NOT NULL "
+        "ORDER BY source_machine_id"
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
 def count_sessions(
-    store: ActivityStore, status: str | None = None, agent: str | None = None
+    store: ActivityStore,
+    status: str | None = None,
+    agent: str | None = None,
+    member: str | None = None,
 ) -> int:
     """Count total sessions with optional status filter.
 
@@ -392,6 +410,9 @@ def count_sessions(
         status: Optional status filter (e.g., 'active', 'completed').
         agent: Optional agent filter. Matches exact and model-agent labels
             containing the agent (e.g., ``gpt-5.3-codex`` matches ``codex``).
+        member: Optional team member username filter. Matches all machine IDs
+            for that username by extracting the username portion (everything
+            before the last 7 characters: ``_`` + 6-char hash).
 
     Returns:
         Total number of sessions matching the filter.
@@ -409,6 +430,13 @@ def count_sessions(
         conditions.append("(LOWER(agent) = ? OR LOWER(agent) LIKE ?)")
         params.extend([normalized_agent, f"%{normalized_agent}%"])
 
+    if member:
+        conditions.append(
+            "source_machine_id IS NOT NULL "
+            "AND SUBSTR(source_machine_id, 1, LENGTH(source_machine_id) - 7) = ?"
+        )
+        params.append(member)
+
     query = "SELECT COUNT(*) FROM sessions"
     if conditions:
         query += f" WHERE {' AND '.join(conditions)}"
@@ -425,6 +453,7 @@ def get_recent_sessions(
     status: str | None = None,
     agent: str | None = None,
     sort: str = "last_activity",
+    member: str | None = None,
 ) -> list[Session]:
     """Get recent sessions with pagination support.
 
@@ -436,6 +465,9 @@ def get_recent_sessions(
         agent: Optional agent filter. Matches exact and model-agent labels
             containing the agent (e.g., ``gpt-5.3-codex`` matches ``codex``).
         sort: Sort order - 'last_activity' (default), 'created', or 'status'.
+        member: Optional team member username filter. Matches all machine IDs
+            for that username by extracting the username portion (everything
+            before the last 7 characters: ``_`` + 6-char hash).
 
     Returns:
         List of recent Session objects.
@@ -450,6 +482,12 @@ def get_recent_sessions(
         normalized_agent = agent.strip().lower()
         conditions.append("(LOWER(s.agent) = ? OR LOWER(s.agent) LIKE ?)")
         params.extend([normalized_agent, f"%{normalized_agent}%"])
+    if member:
+        conditions.append(
+            "s.source_machine_id IS NOT NULL "
+            "AND SUBSTR(s.source_machine_id, 1, LENGTH(s.source_machine_id) - 7) = ?"
+        )
+        params.append(member)
 
     if sort == "last_activity":
         # Sort by most recent activity, falling back to session start time

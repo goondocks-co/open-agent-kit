@@ -468,6 +468,10 @@ class SessionItem(BaseModel):
     summary_embedded: bool = False
     # Resume command (populated from agent manifest)
     resume_command: str | None = None
+    # Multi-machine origin
+    source_machine_id: str | None = None
+    # Plan tracking
+    plan_count: int = 0
 
 
 class ActivityListResponse(BaseModel):

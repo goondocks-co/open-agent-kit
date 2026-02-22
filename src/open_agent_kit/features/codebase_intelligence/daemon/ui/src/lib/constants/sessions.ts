@@ -107,10 +107,36 @@ export const SESSION_SORT_DROPDOWN_OPTIONS = [
 export const DEFAULT_SESSION_SORT = SESSION_SORT_OPTIONS.LAST_ACTIVITY;
 
 // =============================================================================
+// Session Status Filters (for dropdown)
+// =============================================================================
+
+export const SESSION_STATUS_FILTER = {
+    ALL: "all",
+    ACTIVE: "active",
+    COMPLETED: "completed",
+} as const;
+
+export type SessionStatusFilter = typeof SESSION_STATUS_FILTER[keyof typeof SESSION_STATUS_FILTER];
+
+export const SESSION_STATUS_FILTER_OPTIONS = [
+    { value: SESSION_STATUS_FILTER.ALL, label: "All Status" },
+    { value: SESSION_STATUS_FILTER.ACTIVE, label: "Active" },
+    { value: SESSION_STATUS_FILTER.COMPLETED, label: "Completed" },
+] as const;
+
+// =============================================================================
 // Session Agent Filters
 // =============================================================================
 
 export const SESSION_AGENT_FILTER = {
+    ALL: "all",
+} as const;
+
+// =============================================================================
+// Session Member Filters (dynamic, populated from API)
+// =============================================================================
+
+export const SESSION_MEMBER_FILTER = {
     ALL: "all",
 } as const;
 

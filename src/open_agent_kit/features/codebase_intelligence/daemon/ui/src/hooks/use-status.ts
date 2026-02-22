@@ -59,6 +59,7 @@ export interface UpgradeInfo {
 
 export interface DaemonStatus {
     status: string;
+    machine_id: string | null;
     cli_command: string;
     indexing: boolean;
     embedding_provider: string | null;

@@ -23,6 +23,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def get_bulk_plan_counts(store: ActivityStore, session_ids: list[str]) -> dict[str, int]:
+    """Count plan batches for multiple sessions in a single query.
+
+    Args:
+        store: The ActivityStore instance.
+        session_ids: List of session IDs to count plans for.
+
+    Returns:
+        Dictionary mapping session_id -> plan count (only includes non-zero counts).
+    """
+    if not session_ids:
+        return {}
+
+    conn = store._get_connection()
+    placeholders = ",".join("?" * len(session_ids))
+    cursor = conn.execute(
+        f"SELECT session_id, COUNT(*) as cnt "
+        f"FROM prompt_batches "
+        f"WHERE session_id IN ({placeholders}) "
+        f"AND source_type = 'plan' AND plan_content IS NOT NULL "
+        f"GROUP BY session_id",
+        session_ids,
+    )
+    return {row["session_id"]: row["cnt"] for row in cursor.fetchall()}
+
+
 def get_batch_ids_for_reprocessing(
     store: ActivityStore,
     machine_id: str,

@@ -129,6 +129,7 @@ def _session_to_item(
     child_session_count: int = 0,
     summary_text: str | None = None,
     resume_command: str | None = None,
+    plan_count: int = 0,
 ) -> SessionItem:
     """Convert Session dataclass to SessionItem Pydantic model.
 
@@ -139,6 +140,7 @@ def _session_to_item(
         child_session_count: Number of child sessions.
         summary_text: Optional summary text from observations (overrides session.summary).
         resume_command: Resolved resume command for this session (from agent manifest).
+        plan_count: Number of plan batches in this session.
     """
     # Use summary_text from observations if provided, otherwise fall back to session.summary
     summary = summary_text if summary_text is not None else session.summary
@@ -160,6 +162,8 @@ def _session_to_item(
         child_session_count=child_session_count,
         resume_command=resume_command,
         summary_embedded=session.summary_embedded,
+        source_machine_id=session.source_machine_id,
+        plan_count=plan_count,
     )
 
 
@@ -479,6 +483,7 @@ async def list_sessions(
     offset: int = Query(default=PAGINATION_DEFAULT_OFFSET, ge=0),
     status: str | None = Query(default=None, description="Filter by status (active, completed)"),
     agent: str | None = Query(default=None, description="Filter by agent (claude, codex, etc.)"),
+    member: str | None = Query(default=None, description="Filter by team member username"),
     sort: str = Query(
         default="last_activity",
         description="Sort order: last_activity (default), created, or status",
@@ -495,12 +500,17 @@ async def list_sessions(
 
     logger.debug(
         f"Listing sessions: limit={limit}, offset={offset}, status={status}, "
-        f"agent={agent}, sort={sort}"
+        f"agent={agent}, member={member}, sort={sort}"
     )
 
     # Get sessions from activity store with SQL-level pagination and status filter
     sessions = state.activity_store.get_recent_sessions(
-        limit=limit, offset=offset, status=status, agent=agent, sort=sort
+        limit=limit,
+        offset=offset,
+        status=status,
+        agent=agent,
+        sort=sort,
+        member=member,
     )
 
     # Get stats in bulk (1 query instead of N queries) - eliminates N+1 pattern
@@ -522,20 +532,34 @@ async def list_sessions(
     except (OSError, ValueError, RuntimeError):
         child_counts_map = {}
 
-    # Build response with stats, first prompts, and child counts for each session
+    # Get plan counts in bulk for inline plan access
+    try:
+        plan_counts_map = state.activity_store.get_bulk_plan_counts(session_ids)
+    except (OSError, ValueError, RuntimeError):
+        plan_counts_map = {}
+
+    # Build response with stats, first prompts, child counts, and plan counts
     items = []
     for session in sessions:
         stats = stats_map.get(session.id, {})
         first_prompt = first_prompts_map.get(session.id)
         child_count = child_counts_map.get(session.id, 0)
-        items.append(_session_to_item(session, stats, first_prompt, child_count))
+        plan_count = plan_counts_map.get(session.id, 0)
+        items.append(
+            _session_to_item(session, stats, first_prompt, child_count, plan_count=plan_count)
+        )
 
     # Get accurate total count
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
         count_sessions,
     )
 
-    total = count_sessions(state.activity_store, status=status, agent=agent)
+    total = count_sessions(
+        state.activity_store,
+        status=status,
+        agent=agent,
+        member=member,
+    )
 
     return SessionListResponse(
         sessions=items,
@@ -554,6 +578,33 @@ async def list_session_agents() -> dict[str, list[str]]:
     agent_service = AgentService()
     agents = sorted(agent_service.list_available_agents())
     return {"agents": agents}
+
+
+@router.get("/api/activity/session-members")
+@handle_route_errors("list session members")
+async def list_session_members() -> dict:
+    """List team members who have sessions (extracted from source_machine_id).
+
+    The source_machine_id format is ``{github_username}_{6char_hash}``.
+    This endpoint extracts unique usernames and returns them alongside
+    the current machine's ID so the frontend can identify "me".
+    """
+    state = get_state()
+
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail=ERROR_MSG_ACTIVITY_STORE_NOT_INITIALIZED)
+
+    machine_ids = state.activity_store.get_session_members()
+
+    # Extract unique usernames: drop last 7 chars (separator + 6-char hash)
+    seen: dict[str, str] = {}
+    for mid in machine_ids:
+        username = mid[:-7] if len(mid) > 7 else mid
+        if username not in seen:
+            seen[username] = mid
+
+    members = [{"username": u, "machine_id": m} for u, m in sorted(seen.items())]
+    return {"members": members, "current_machine_id": state.machine_id}
 
 
 @router.get("/api/activity/sessions/{session_id}", response_model=SessionDetailResponse)
