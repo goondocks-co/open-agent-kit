@@ -21,7 +21,9 @@ from open_agent_kit.features.codebase_intelligence.cli_command import (
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_RESTART_API_PATH,
     CI_RESTART_ERROR_NO_PROJECT_ROOT,
+    CI_RESTART_ERROR_SPAWN_DETAIL,
     CI_RESTART_LOG_SCHEDULING_SHUTDOWN,
+    CI_RESTART_LOG_SPAWN_FAILED,
     CI_RESTART_LOG_SPAWNING,
     CI_RESTART_ROUTE_TAG,
     CI_RESTART_SHUTDOWN_DELAY_SECONDS,
@@ -29,10 +31,15 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_RESTART_SUBPROCESS_DELAY_SECONDS,
     CI_SHUTDOWN_LOG_SIGTERM,
     CI_UPGRADE_AND_RESTART_API_PATH,
-    CI_UPGRADE_AND_RESTART_ERROR_SPAWN_DETAIL,
+    CI_UPGRADE_AND_RESTART_DETAIL_RESTART_FAILED,
+    CI_UPGRADE_AND_RESTART_ERROR_FAILED,
+    CI_UPGRADE_AND_RESTART_ERROR_PARTIAL_FAILURE,
     CI_UPGRADE_AND_RESTART_ERROR_SPAWN_FAILED,
-    CI_UPGRADE_AND_RESTART_LOG_SPAWNING,
+    CI_UPGRADE_AND_RESTART_LOG_FAILED,
+    CI_UPGRADE_AND_RESTART_LOG_PARTIAL_FAILURE,
     CI_UPGRADE_AND_RESTART_STATUS,
+    CI_UPGRADE_AND_RESTART_STATUS_UP_TO_DATE,
+    CI_UPGRADE_AND_RESTART_STATUS_UPGRADED,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.utils.platform import get_process_detach_kwargs
@@ -90,10 +97,10 @@ async def self_restart() -> dict:
             **detach_kwargs,
         )
     except OSError as exc:
-        logger.error("Failed to spawn restart subprocess: %s", exc)
+        logger.error(CI_RESTART_LOG_SPAWN_FAILED, exc)
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=f"Failed to spawn restart process: {exc}",
+            detail=CI_RESTART_ERROR_SPAWN_DETAIL.format(error=exc),
         ) from exc
 
     # Schedule graceful shutdown
@@ -105,11 +112,11 @@ async def self_restart() -> dict:
 
 @router.post(CI_UPGRADE_AND_RESTART_API_PATH)
 async def upgrade_and_restart() -> dict:
-    """Run ``oak upgrade --force`` then restart the daemon.
+    """Run project upgrade in-process, then restart the daemon.
 
-    Spawns a detached subprocess that runs ``oak upgrade --force ; oak ci restart``.
-    The semicolon ensures the restart happens regardless of upgrade exit code —
-    if upgrade truly failed the banner will reappear with a fallback message.
+    Unlike the previous fire-and-forget subprocess approach, this runs the
+    upgrade synchronously so errors are reported back to the UI immediately.
+    A daemon restart is triggered only after a successful upgrade.
     """
     state = get_state()
     if not state.project_root:
@@ -118,37 +125,85 @@ async def upgrade_and_restart() -> dict:
             detail=CI_RESTART_ERROR_NO_PROJECT_ROOT,
         )
 
-    project_root = str(state.project_root)
-    cli_command = resolve_ci_cli_command(state.project_root)
-    quoted_cli = shlex.quote(cli_command)
+    project_root = state.project_root
 
-    # Use ; so restart happens even if upgrade exits non-zero
-    upgrade_restart_cmd = (
-        f"sleep {CI_RESTART_SUBPROCESS_DELAY_SECONDS} && "
-        f"{quoted_cli} upgrade --force ; "
-        f"{quoted_cli} ci restart"
+    # --- Run upgrade in-process for proper error visibility ---
+    try:
+        from typing import Any, cast
+
+        from open_agent_kit.pipeline.models import plan_has_upgrades
+        from open_agent_kit.services.upgrade_service import UpgradeService
+
+        upgrade_service = UpgradeService(project_root)
+        plan = upgrade_service.plan_upgrade()
+
+        if not plan_has_upgrades(cast(dict[str, Any], plan)):
+            return {"status": CI_UPGRADE_AND_RESTART_STATUS_UP_TO_DATE}
+
+        # Run synchronously in a thread to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, upgrade_service.execute_upgrade, plan)
+
+        # Collect any failures across all upgrade categories
+        failed_items: list[str] = []
+        for key in (
+            "commands",
+            "templates",
+            "skills",
+            "hooks",
+            "migrations",
+            "mcp_servers",
+            "gitignore",
+            "agent_settings",
+        ):
+            category = results.get(key)
+            if isinstance(category, dict):
+                failed_items.extend(category.get("failed", []))
+
+        if failed_items:
+            detail = "; ".join(failed_items[:5])
+            if len(failed_items) > 5:
+                detail += f" (+{len(failed_items) - 5} more)"
+            logger.warning(CI_UPGRADE_AND_RESTART_LOG_PARTIAL_FAILURE, detail)
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=CI_UPGRADE_AND_RESTART_ERROR_PARTIAL_FAILURE.format(detail=detail),
+            )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(CI_UPGRADE_AND_RESTART_LOG_FAILED, exc, exc_info=True)
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=CI_UPGRADE_AND_RESTART_ERROR_FAILED.format(error=exc),
+        ) from exc
+
+    # --- Upgrade succeeded — restart daemon to reload config ---
+    cli_command = resolve_ci_cli_command(project_root)
+    restart_cmd = (
+        f"sleep {CI_RESTART_SUBPROCESS_DELAY_SECONDS} && {shlex.quote(cli_command)} ci restart"
     )
 
     detach_kwargs = get_process_detach_kwargs()
-    full_command = f"{cli_command} upgrade --force ; {cli_command} ci restart"
-    logger.info(CI_UPGRADE_AND_RESTART_LOG_SPAWNING.format(command=full_command))
+    logger.info(CI_RESTART_LOG_SPAWNING.format(command=f"{cli_command} ci restart"))
     try:
         subprocess.Popen(
-            [_SHELL, "-c", upgrade_restart_cmd],
-            cwd=project_root,
+            [_SHELL, "-c", restart_cmd],
+            cwd=str(project_root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
             **detach_kwargs,
         )
     except OSError as exc:
-        logger.error(CI_UPGRADE_AND_RESTART_ERROR_SPAWN_FAILED.format(error=exc))
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=CI_UPGRADE_AND_RESTART_ERROR_SPAWN_DETAIL.format(error=exc),
-        ) from exc
+        logger.error(CI_UPGRADE_AND_RESTART_ERROR_SPAWN_FAILED, exc)
+        # Upgrade succeeded but restart couldn't be spawned — tell the user
+        return {
+            "status": CI_UPGRADE_AND_RESTART_STATUS_UPGRADED,
+            "detail": CI_UPGRADE_AND_RESTART_DETAIL_RESTART_FAILED.format(cli_command=cli_command),
+        }
 
-    # Same shutdown pattern as self_restart
     logger.info(CI_RESTART_LOG_SCHEDULING_SHUTDOWN.format(delay=CI_RESTART_SHUTDOWN_DELAY_SECONDS))
     asyncio.create_task(_delayed_shutdown(), name="upgrade_restart_shutdown")
 

@@ -184,6 +184,61 @@ class TestPeriodicVersionCheck:
         mock_restart.assert_called_once()
 
     @pytest.mark.anyio
+    async def test_triggers_restart_on_version_mismatch(self) -> None:
+        """Version check loop auto-restarts when installed version is newer."""
+        call_count = 0
+
+        async def mock_sleep(seconds: float) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError
+
+        def fake_check_version(s):
+            # Simulate a meaningful upgrade detected
+            s.installed_version = "99.0.0"
+            s.update_available = True
+
+        with (
+            patch(f"{_SERVER_MODULE}._is_install_stale", return_value=False),
+            patch(
+                f"{_SERVER_MODULE}._trigger_stale_restart", new_callable=AsyncMock
+            ) as mock_restart,
+            patch(f"{_SERVER_MODULE}._check_version", side_effect=fake_check_version),
+            patch("asyncio.sleep", side_effect=mock_sleep),
+        ):
+            await _periodic_version_check()
+
+        mock_restart.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_no_restart_when_version_matches(self) -> None:
+        """Version check loop does NOT restart when versions match."""
+        call_count = 0
+
+        async def mock_sleep(seconds: float) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count > 2:
+                raise asyncio.CancelledError
+
+        def fake_check_version(s):
+            s.update_available = False
+
+        with (
+            patch(f"{_SERVER_MODULE}._is_install_stale", return_value=False),
+            patch(
+                f"{_SERVER_MODULE}._trigger_stale_restart", new_callable=AsyncMock
+            ) as mock_restart,
+            patch(f"{_SERVER_MODULE}._check_version", side_effect=fake_check_version),
+            patch("asyncio.sleep", side_effect=mock_sleep),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await _periodic_version_check()
+
+        mock_restart.assert_not_called()
+
+    @pytest.mark.anyio
     async def test_continues_when_not_stale(self) -> None:
         """Version check loop continues normally when install is healthy."""
         call_count = 0
@@ -229,7 +284,7 @@ class TestDashboardFallback:
             response = client.get("/")
 
         assert response.status_code == 200
-        assert "Restart Required" in response.text
+        assert "Restarting" in response.text
         assert "oak ci restart" in response.text
 
     def test_logo_returns_404_on_missing_file(self, client) -> None:

@@ -12,6 +12,9 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
     get_backup_dir,
 )
 from open_agent_kit.features.codebase_intelligence.activity.store.schema import SCHEMA_VERSION
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    resolve_ci_cli_command,
+)
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
@@ -130,8 +133,17 @@ async def get_status() -> dict:
         files_indexed = state.vector_store.count_unique_files()
         state.index_status.file_count = files_indexed
 
+    # Resolve CLI command alias (e.g. "oak-dev") for UI display
+    cli_command = "oak"
+    if state.project_root:
+        try:
+            cli_command = resolve_ci_cli_command(state.project_root)
+        except (OSError, ValueError):
+            pass
+
     return {
         "status": DAEMON_STATUS_RUNNING,
+        "cli_command": cli_command,
         "power_state": state.power_state,
         "indexing": state.index_status.is_indexing,
         "embedding_provider": embedding_provider,

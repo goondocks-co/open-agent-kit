@@ -206,6 +206,7 @@ export function Layout() {
                             <UpdateBanner
                                 version={status.version}
                                 upgrade={status.upgrade}
+                                cliCommand={status.cli_command}
                             />
                         )}
                         <Outlet />

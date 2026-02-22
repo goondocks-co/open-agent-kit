@@ -1472,17 +1472,25 @@ CI_RESTART_SUBPROCESS_DELAY_SECONDS: Final[int] = 2
 CI_RESTART_STATUS_RESTARTING: Final[str] = "restarting"
 CI_RESTART_ERROR_NO_PROJECT_ROOT: Final[str] = "Project root not set"
 CI_RESTART_LOG_SPAWNING: Final[str] = "Spawning restart subprocess: {command}"
+CI_RESTART_LOG_SPAWN_FAILED: Final[str] = "Failed to spawn restart subprocess: %s"
+CI_RESTART_ERROR_SPAWN_DETAIL: Final[str] = "Failed to spawn restart process: {error}"
 CI_RESTART_LOG_SCHEDULING_SHUTDOWN: Final[str] = "Scheduling graceful shutdown in {delay}s"
 
 # Upgrade-and-restart route constants
 CI_UPGRADE_AND_RESTART_API_PATH: Final[str] = "/api/upgrade-and-restart"
 CI_UPGRADE_AND_RESTART_STATUS: Final[str] = "upgrading"
+CI_UPGRADE_AND_RESTART_STATUS_UP_TO_DATE: Final[str] = "up_to_date"
+CI_UPGRADE_AND_RESTART_STATUS_UPGRADED: Final[str] = "upgraded"
 CI_UPGRADE_AND_RESTART_LOG_SPAWNING: Final[str] = "Upgrade-and-restart: spawning '{command}'"
+CI_UPGRADE_AND_RESTART_LOG_PARTIAL_FAILURE: Final[str] = "Upgrade partially failed: %s"
+CI_UPGRADE_AND_RESTART_LOG_FAILED: Final[str] = "In-process upgrade failed: %s"
+CI_UPGRADE_AND_RESTART_ERROR_PARTIAL_FAILURE: Final[str] = "Upgrade partially failed: {detail}"
+CI_UPGRADE_AND_RESTART_ERROR_FAILED: Final[str] = "Upgrade failed: {error}"
 CI_UPGRADE_AND_RESTART_ERROR_SPAWN_FAILED: Final[str] = (
-    "Failed to spawn upgrade-and-restart subprocess: {error}"
+    "Restart spawn failed after successful upgrade: %s"
 )
-CI_UPGRADE_AND_RESTART_ERROR_SPAWN_DETAIL: Final[str] = (
-    "Failed to spawn upgrade-and-restart process: {error}"
+CI_UPGRADE_AND_RESTART_DETAIL_RESTART_FAILED: Final[str] = (
+    "Upgrade succeeded but daemon restart failed. Run: {cli_command} ci restart"
 )
 
 # Shared shutdown constants

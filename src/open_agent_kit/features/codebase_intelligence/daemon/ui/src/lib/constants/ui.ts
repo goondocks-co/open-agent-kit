@@ -148,7 +148,6 @@ export const UPDATE_BANNER = {
     UPDATE_MESSAGE: "A new version of OAK is available!",
     UPGRADE_MESSAGE: "Your project needs an upgrade.",
     FAILED_MESSAGE: "Automatic upgrade couldn't complete. Run from your terminal:",
-    COMMAND: "oak upgrade",
     // Version display
     VERSION_PREFIX: "v",
     // Button labels
@@ -160,4 +159,6 @@ export const UPDATE_BANNER = {
     // Storage keys
     SESSION_STORAGE_KEY: "oak-ci-update-dismissed",
     UPGRADE_ATTEMPTED_KEY: "oak-ci-upgrade-attempted",
+    // API response status values (must match backend constants)
+    STATUS_UP_TO_DATE: "up_to_date",
 } as const;

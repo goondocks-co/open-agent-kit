@@ -116,14 +116,17 @@ def _check_upgrade_needed(state: "DaemonState") -> None:
         return
 
     from open_agent_kit.constants import VERSION
+    from open_agent_kit.features.codebase_intelligence.constants import parse_base_release
     from open_agent_kit.services.config_service import ConfigService
     from open_agent_kit.services.migrations import get_migrations
     from open_agent_kit.services.state_service import StateService
 
-    # Signal 1: config version vs package version
+    # Signal 1: config version vs package version (base release only).
+    # Compare base release tuples so dev suffixes (e.g. 1.2.6.dev0+ghash)
+    # don't cause false "upgrade needed" in development environments.
     try:
         config = ConfigService(state.project_root).load_config()
-        config_version_outdated = config.version != VERSION
+        config_version_outdated = parse_base_release(config.version) != parse_base_release(VERSION)
     except (OSError, ValueError):
         config_version_outdated = False
 
@@ -193,6 +196,23 @@ async def _periodic_version_check() -> None:
             _check_upgrade_needed(state)
         except (OSError, ValueError, RuntimeError):
             logger.debug("Upgrade check failed", exc_info=True)
+
+        # Auto-restart when installed package version is newer than running
+        # version.  This handles in-place package upgrades where the daemon's
+        # Python process still runs old bytecode but the on-disk package has
+        # already been replaced.  File-existence checks (_is_install_stale)
+        # miss this case because the files still exist — just with new content.
+        if state.update_available:
+            from open_agent_kit.constants import VERSION
+
+            logger.warning(
+                "Package version mismatch (running=%s, installed=%s) "
+                "— auto-restarting daemon to pick up new code",
+                VERSION,
+                state.installed_version,
+            )
+            await _trigger_stale_restart()
+            return  # Stop loop — process is about to exit
 
         # Detect stale installation (e.g. package upgraded, old cellar deleted)
         try:

@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef } from "react";
 import { fetchJson } from "@/lib/api";
-import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
+import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS, UPDATE_BANNER } from "@/lib/constants";
 
 interface UseRestartOptions {
     endpoint?: string;
+    onSuccess?: () => void;
+    cliCommand?: string;
 }
 
 interface UseRestartReturn {
@@ -14,6 +16,8 @@ interface UseRestartReturn {
 
 export function useRestart(options?: UseRestartOptions): UseRestartReturn {
     const endpoint = options?.endpoint ?? API_ENDPOINTS.SELF_RESTART;
+    const onSuccess = options?.onSuccess;
+    const cliCommand = options?.cliCommand || "oak";
     const [isRestarting, setIsRestarting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -25,8 +29,19 @@ export function useRestart(options?: UseRestartOptions): UseRestartReturn {
         setError(null);
 
         try {
-            // Trigger restart (or upgrade-and-restart)
-            await fetchJson(endpoint, { method: "POST" });
+            // Trigger upgrade-and-restart (or plain restart).
+            // The server now runs the upgrade in-process and returns
+            // success/failure before initiating the restart.
+            const result = await fetchJson<{ status: string; detail?: string }>(
+                endpoint,
+                { method: "POST" },
+            );
+
+            // If already up to date, just reload
+            if (result?.status === UPDATE_BANNER.STATUS_UP_TO_DATE) {
+                window.location.reload();
+                return;
+            }
 
             // Poll health endpoint until daemon is back
             const deadline = Date.now() + RESTART_TIMEOUT_MS;
@@ -53,17 +68,21 @@ export function useRestart(options?: UseRestartOptions): UseRestartReturn {
                 });
 
             await pollHealth();
-            // Daemon is back — reload to pick up new auth token
+            // Upgrade succeeded and daemon is back — notify caller before reload
+            onSuccess?.();
             window.location.reload();
         } catch (err) {
-            setError(
-                err instanceof Error && err.message === "timeout"
-                    ? "Restart timed out. Try: oak ci restart"
-                    : "Restart failed. Try: oak ci restart"
-            );
+            // Show the server's error detail when available (e.g. upgrade
+            // failure reasons), otherwise fall back to generic messages.
+            const message = err instanceof Error ? err.message : "Unknown error";
+            if (message === "timeout") {
+                setError(`Restart timed out. Try: ${cliCommand} ci restart`);
+            } else {
+                setError(message);
+            }
             setIsRestarting(false);
         }
-    }, [isRestarting, endpoint]);
+    }, [isRestarting, endpoint, onSuccess, cliCommand]);
 
     return { restart, isRestarting, error };
 }

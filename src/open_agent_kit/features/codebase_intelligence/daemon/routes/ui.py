@@ -1,24 +1,45 @@
+from html import escape
 from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
+from open_agent_kit.features.codebase_intelligence.cli_command import (
+    resolve_ci_cli_command,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 router = APIRouter(tags=["ui"])
 
 static_path = Path(__file__).parent.parent / "static"
 
-_STALE_INSTALL_HTML = """\
+_STALE_INSTALL_HTML_TEMPLATE = """\
 <!DOCTYPE html>
-<html><head><title>OAK CI - Restart Required</title>
-<style>body{font-family:system-ui;max-width:600px;margin:80px auto;padding:0 20px}
-code{background:#f0f0f0;padding:2px 6px;border-radius:3px}</style></head>
-<body><h1>Daemon Restart Required</h1>
-<p>The OAK package was upgraded but this daemon is still running from the old installation.</p>
-<p>Run <code>oak ci restart</code> to pick up the new version.</p>
-<p><small>The daemon will also auto-restart within 60 seconds.</small></p>
+<html><head><title>OAK CI - Restarting</title>
+<meta http-equiv="refresh" content="10">
+<style>body{{font-family:system-ui;max-width:600px;margin:80px auto;padding:0 20px}}
+code{{background:#f0f0f0;padding:2px 6px;border-radius:3px}}
+.spinner{{display:inline-block;width:16px;height:16px;border:2px solid #ccc;
+border-top-color:#333;border-radius:50%;animation:spin 1s linear infinite;
+vertical-align:middle;margin-right:8px}}
+@keyframes spin{{to{{transform:rotate(360deg)}}}}</style></head>
+<body><h1>Daemon Restarting</h1>
+<p>The OAK package was upgraded. The daemon is restarting to pick up the new version.</p>
+<p><span class="spinner"></span>This page will refresh automatically.</p>
+<p><small>If this takes more than a minute, run <code>{cli_command} ci restart</code> manually.</small></p>
 </body></html>"""
+
+
+def _render_stale_install_html() -> str:
+    """Render stale install HTML with the configured CLI command."""
+    state = get_state()
+    cli_command = "oak"
+    if state.project_root:
+        try:
+            cli_command = resolve_ci_cli_command(state.project_root)
+        except (OSError, ValueError):
+            pass
+    return _STALE_INSTALL_HTML_TEMPLATE.format(cli_command=escape(cli_command))
 
 
 def _get_cache_version() -> str:
@@ -74,7 +95,7 @@ async def dashboard(rest: str | None = None) -> HTMLResponse:
     try:
         content = index_path.read_text()
     except (FileNotFoundError, OSError):
-        return HTMLResponse(content=_STALE_INSTALL_HTML)
+        return HTMLResponse(content=_render_stale_install_html())
 
     # Inject auth token as meta tag so the UI JS can read it
     state = get_state()

@@ -8,11 +8,17 @@ import type { VersionInfo, UpgradeInfo } from "@/hooks/use-status";
 interface UpdateBannerProps {
     version: VersionInfo;
     upgrade: UpgradeInfo;
+    cliCommand?: string;
 }
 
-export function UpdateBanner({ version, upgrade }: UpdateBannerProps) {
+export function UpdateBanner({ version, upgrade, cliCommand }: UpdateBannerProps) {
+    const upgradeCommand = `${cliCommand || "oak"} upgrade`;
     const { restart, isRestarting, error } = useRestart({
         endpoint: API_ENDPOINTS.UPGRADE_AND_RESTART,
+        cliCommand,
+        onSuccess: () => {
+            sessionStorage.removeItem(UPDATE_BANNER.UPGRADE_ATTEMPTED_KEY);
+        },
     });
     const [copied, setCopied] = useState(false);
 
@@ -47,7 +53,7 @@ export function UpdateBanner({ version, upgrade }: UpdateBannerProps) {
     };
 
     const handleCopy = async () => {
-        await navigator.clipboard.writeText(UPDATE_BANNER.COMMAND);
+        await navigator.clipboard.writeText(upgradeCommand);
         setCopied(true);
         setTimeout(() => setCopied(false), COPIED_FEEDBACK_DURATION_MS);
     };
@@ -71,14 +77,29 @@ export function UpdateBanner({ version, upgrade }: UpdateBannerProps) {
                 <span className="flex-1">
                     {UPDATE_BANNER.FAILED_MESSAGE}{" "}
                     <code className="px-1.5 py-0.5 rounded bg-amber-500/10 font-mono text-xs">
-                        {UPDATE_BANNER.COMMAND}
+                        {upgradeCommand}
                     </code>
                 </span>
+                {error && (
+                    <span className="text-red-600 dark:text-red-400 text-xs">{error}</span>
+                )}
+                <button
+                    onClick={handleUpgrade}
+                    disabled={isRestarting}
+                    className={cn(
+                        "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                        "bg-amber-600 text-white hover:bg-amber-700",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                >
+                    <RefreshCw className={cn("w-3 h-3", isRestarting && "animate-spin")} />
+                    {isRestarting ? UPDATE_BANNER.UPGRADING : "Retry"}
+                </button>
                 <button
                     onClick={handleCopy}
                     className={cn(
                         "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
-                        "bg-amber-600 text-white hover:bg-amber-700"
+                        "border border-amber-500/30 hover:bg-amber-500/10"
                     )}
                 >
                     {copied ? (
