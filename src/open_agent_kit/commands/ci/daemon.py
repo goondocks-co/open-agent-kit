@@ -28,6 +28,7 @@ from . import (
     console,
     get_daemon_manager,
     logger,
+    resolve_ci_data_dir,
 )
 
 
@@ -331,7 +332,7 @@ def ci_reset(
     check_oak_initialized(project_root)
     check_ci_enabled(project_root)
 
-    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+    ci_data_dir = resolve_ci_data_dir(project_root)
     chroma_dir = ci_data_dir / "chroma"
 
     if not force:

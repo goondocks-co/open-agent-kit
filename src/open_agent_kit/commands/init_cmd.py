@@ -32,6 +32,7 @@ from open_agent_kit.utils import (
     print_info,
     print_panel,
 )
+from open_agent_kit.utils.file_utils import is_git_worktree, resolve_main_repo_root
 
 
 def init_command(
@@ -66,6 +67,23 @@ def init_command(
     """
     project_root = Path.cwd()
     oak_dir = project_root / OAK_DIR
+
+    # Guard: detect if we're in a git worktree
+    if is_git_worktree(project_root):
+        main_root = resolve_main_repo_root(project_root)
+        if main_root is not None:
+            main_oak = main_root / OAK_DIR
+            if dir_exists(main_oak):
+                print_info(
+                    f"OAK is initialized in the main repo at {main_root}.\n"
+                    "Commands from this worktree will use it automatically."
+                )
+                return
+            else:
+                print_error(
+                    f"This is a git worktree. Run 'oak init' from the main repo at {main_root}."
+                )
+                raise typer.Exit(code=1)
 
     # Detect if already initialized
     is_existing = dir_exists(oak_dir)

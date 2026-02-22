@@ -1,5 +1,7 @@
 {
-  "$comment": "Codebase Intelligence hooks for Gemini CLI. Uses `{oak-cli-command} ci hook` command for cross-platform compatibility. OAK hooks are identified by the {oak-cli-command} ci hook command pattern.",
+  "coreTools": [
+    "ShellTool(oak-dev *)"
+  ],
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +10,7 @@
           {
             "name": "oak-ci-context",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook SessionStart --agent gemini || true",
+            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook SessionStart --agent gemini || true",
             "timeout": 60000
           }
         ]
@@ -21,7 +23,7 @@
           {
             "name": "oak-ci-prompt",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook BeforeAgent --agent gemini || true",
+            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook BeforeAgent --agent gemini || true",
             "timeout": 15000
           }
         ]
@@ -34,7 +36,7 @@
           {
             "name": "oak-ci-observe",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook PostToolUse --agent gemini || true",
+            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook PostToolUse --agent gemini || true",
             "timeout": 15000
           }
         ]
@@ -47,7 +49,7 @@
           {
             "name": "oak-ci-stop",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook AfterAgent --agent gemini || true",
+            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook AfterAgent --agent gemini || true",
             "timeout": 15000
           }
         ]
@@ -60,7 +62,7 @@
           {
             "name": "oak-ci-pre-compact",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook PreCompress --agent gemini || true",
+            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook PreCompress --agent gemini || true",
             "timeout": 15000
           }
         ]
@@ -73,11 +75,20 @@
           {
             "name": "oak-ci-session-end",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook SessionEnd --agent gemini || true",
+            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook SessionEnd --agent gemini || true",
             "timeout": 15000
           }
         ]
       }
     ]
+  },
+  "mcpServers": {
+    "oak-ci": {
+      "command": "oak-dev",
+      "args": [
+        "ci",
+        "mcp"
+      ]
+    }
   }
 }

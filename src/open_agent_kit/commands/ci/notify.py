@@ -8,7 +8,6 @@ from typing import Any, cast
 
 import typer
 
-from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_CODEX,
     AGENT_NOTIFY_ENDPOINT,
@@ -18,7 +17,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_NOTIFY_PAYLOAD_JOIN_SEPARATOR,
     CI_AUTH_SCHEME_BEARER,
     CI_CORS_HOST_LOCALHOST,
-    CI_DATA_DIR,
     CI_TOKEN_FILE,
     DAEMON_START_TIMEOUT_SECONDS,
     ENCODING_UTF8,
@@ -29,7 +27,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     OTLP_CONTENT_TYPE_JSON,
 )
 
-from . import ci_app
+from . import ci_app, resolve_ci_data_dir
 
 
 @ci_app.command("notify", hidden=True)
@@ -67,7 +65,7 @@ def ci_notify(
 
     project_root = Path.cwd()
 
-    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+    ci_data_dir = resolve_ci_data_dir(project_root)
     port = get_project_port(project_root, ci_data_dir)
 
     def _coalesce_payload(payload_parts: list[str] | None) -> str:

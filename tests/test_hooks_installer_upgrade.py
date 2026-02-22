@@ -560,10 +560,13 @@ class TestHooksInstallerGitignore:
 
         assert installer._get_hook_gitignore_pattern() is None
 
-    def test_json_install_creates_gitignore_entry(self, tmp_path: Path):
-        """Installing JSON hooks should add a .gitignore entry."""
+    def test_json_install_removes_legacy_gitignore_entry(self, tmp_path: Path):
+        """Installing JSON hooks should remove legacy .gitignore entries (worktree support)."""
         cfg = _json_hooks_config()
         installer = _make_installer(tmp_path, "claude", cfg)
+
+        # Pre-populate a legacy gitignore entry
+        (tmp_path / ".gitignore").write_text(".claude/settings.local.json\n")
 
         template = {
             "hooks": {
@@ -577,7 +580,7 @@ class TestHooksInstallerGitignore:
 
         assert result.success
         gitignore = (tmp_path / ".gitignore").read_text()
-        assert ".claude/settings.local.json" in gitignore
+        assert ".claude/settings.local.json" not in gitignore
 
     def test_json_remove_removes_gitignore_entry(self, tmp_path: Path):
         """Removing JSON hooks should remove the .gitignore entry."""
@@ -606,10 +609,13 @@ class TestHooksInstallerGitignore:
         gitignore = (tmp_path / ".gitignore").read_text()
         assert ".claude/settings.local.json" not in gitignore
 
-    def test_plugin_install_creates_gitignore_entry(self, tmp_path: Path):
-        """Installing plugin hooks should add a .gitignore entry."""
+    def test_plugin_install_removes_legacy_gitignore_entry(self, tmp_path: Path):
+        """Installing plugin hooks should remove legacy .gitignore entries (worktree support)."""
         cfg = _plugin_hooks_config()
         installer = _make_installer(tmp_path, "opencode", cfg)
+
+        # Pre-populate a legacy gitignore entry
+        (tmp_path / ".gitignore").write_text(".opencode/plugins/oak-ci.ts\n")
 
         with patch(
             "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
@@ -623,4 +629,4 @@ class TestHooksInstallerGitignore:
 
         assert result.success
         gitignore = (tmp_path / ".gitignore").read_text()
-        assert ".opencode/plugins/oak-ci.ts" in gitignore
+        assert ".opencode/plugins/oak-ci.ts" not in gitignore

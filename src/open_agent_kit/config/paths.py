@@ -52,7 +52,7 @@ SHARED_SKILLS_FOLDER = ".agents"
 AGENT_SETTINGS_TEMPLATES_DIR = "agent-settings"
 
 # Agent settings file paths (for reference - actual paths come from manifests)
-CLAUDE_SETTINGS_FILE = ".claude/settings.local.json"
+CLAUDE_SETTINGS_FILE = ".claude/settings.json"
 COPILOT_SETTINGS_FILE = ".vscode/settings.json"  # VS Code Copilot uses VSCode settings
 CURSOR_SETTINGS_FILE = ".cursor/settings.json"
 GEMINI_SETTINGS_FILE = ".gemini/settings.json"

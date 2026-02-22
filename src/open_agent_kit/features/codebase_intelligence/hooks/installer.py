@@ -385,7 +385,8 @@ class HooksInstaller:
         return content.replace(HOOK_CLI_COMMAND_PLACEHOLDER, self.cli_command)
 
     # ------------------------------------------------------------------
-    # Gitignore helpers (hook files are local-only, never committed)
+    # Gitignore helpers (hook files are now committed to git for worktree
+    # support; cleanup removes legacy gitignore entries from older installs)
     # ------------------------------------------------------------------
 
     def _get_hook_gitignore_pattern(self) -> str | None:
@@ -497,8 +498,8 @@ class HooksInstaller:
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 
-            # Hook files are local-only — ensure gitignored
-            self._ensure_hook_file_gitignored()
+            # Hook files are now committed to git — clean up legacy gitignore entries
+            self._remove_hook_file_gitignore()
 
             return HooksInstallResult(
                 success=True,
@@ -650,8 +651,8 @@ class HooksInstaller:
             rendered_plugin = self._rewrite_plugin_content(template_file.read_text())
             plugin_path.write_text(rendered_plugin)
 
-            # Hook files are local-only — ensure gitignored
-            self._ensure_hook_file_gitignored()
+            # Hook files are now committed to git — clean up legacy gitignore entries
+            self._remove_hook_file_gitignore()
 
             return HooksInstallResult(
                 success=True,
@@ -827,8 +828,8 @@ class HooksInstaller:
             # Write the merged config
             config_path.write_text(tomli_w.dumps(existing_config))
 
-            # Hook files are local-only — ensure gitignored
-            self._ensure_hook_file_gitignored()
+            # Hook files are now committed to git — clean up legacy gitignore entries
+            self._remove_hook_file_gitignore()
 
             return HooksInstallResult(
                 success=True,

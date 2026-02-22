@@ -14,6 +14,7 @@ from rich.console import Console
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
 from open_agent_kit.utils import dir_exists, print_error
+from open_agent_kit.utils.file_utils import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.daemon.manager import DaemonManager
@@ -28,6 +29,27 @@ ci_app = typer.Typer(
 )
 
 
+def resolve_ci_data_dir(project_root: Path) -> Path:
+    """Resolve the CI data directory, looking through worktrees if needed.
+
+    In a normal repo: returns ``project_root/.oak/ci/`` (the usual path).
+    In a worktree: ``.oak/ci/`` doesn't exist locally (gitignored), so
+    resolve to the main repo's ``.oak/ci/`` via git plumbing.
+    """
+    local_ci = project_root / OAK_DIR / CI_DATA_DIR
+    if local_ci.is_dir():
+        return local_ci
+
+    # Not found locally — check if we're in a worktree
+    main_root = resolve_main_repo_root(project_root)
+    if main_root is not None and main_root.resolve() != project_root.resolve():
+        remote_ci = main_root / OAK_DIR / CI_DATA_DIR
+        if remote_ci.is_dir():
+            return remote_ci
+
+    return local_ci  # Return local path (may not exist — callers handle this)
+
+
 def check_oak_initialized(project_root: Path) -> None:
     """Check if OAK is initialized in the project."""
     if not dir_exists(project_root / OAK_DIR):
@@ -37,7 +59,7 @@ def check_oak_initialized(project_root: Path) -> None:
 
 def check_ci_enabled(project_root: Path) -> None:
     """Check if Codebase Intelligence feature is enabled."""
-    ci_dir = project_root / OAK_DIR / CI_DATA_DIR
+    ci_dir = resolve_ci_data_dir(project_root)
     if not dir_exists(ci_dir):
         print_error(
             "Codebase Intelligence is not enabled. "
@@ -53,7 +75,7 @@ def get_daemon_manager(project_root: Path) -> "DaemonManager":
         get_project_port,
     )
 
-    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+    ci_data_dir = resolve_ci_data_dir(project_root)
     port = get_project_port(project_root, ci_data_dir)
     return DaemonManager(project_root=project_root, port=port, ci_data_dir=ci_data_dir)
 
@@ -65,4 +87,5 @@ __all__ = [
     "check_oak_initialized",
     "check_ci_enabled",
     "get_daemon_manager",
+    "resolve_ci_data_dir",
 ]

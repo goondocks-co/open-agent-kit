@@ -1,6 +1,7 @@
 """File system utilities for open-agent-kit."""
 
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -483,3 +484,69 @@ def get_git_root(path: Path | None = None) -> Path | None:
             return parent
 
     return None
+
+
+def resolve_main_repo_root(path: Path | None = None) -> Path | None:
+    """Find the main git repository root, resolving through worktrees.
+
+    In a normal repo, returns the same as ``get_git_root()``.
+    In a worktree, returns the MAIN repo root (where ``.oak/ci/`` lives)
+    by using ``git rev-parse --git-common-dir``.
+
+    Args:
+        path: Path to start searching from (defaults to current directory).
+
+    Returns:
+        Main repository root path, or None if git is unavailable.
+    """
+    if path is None:
+        path = Path.cwd()
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            cwd=str(path),
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+
+        # --git-common-dir returns the path to the shared .git directory.
+        # In a normal repo: ".git" (relative) or "/abs/path/.git"
+        # In a worktree:    "/abs/path/to/main-repo/.git" (absolute)
+        git_common = Path(result.stdout.strip())
+        if not git_common.is_absolute():
+            git_common = (path / git_common).resolve()
+        else:
+            git_common = git_common.resolve()
+
+        # The main repo root is the parent of the .git directory
+        return git_common.parent
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def is_git_worktree(path: Path | None = None) -> bool:
+    """Check if the given path is inside a git worktree (not the main repo).
+
+    A worktree has a ``.git`` *file* (not directory) that points to the
+    main repo's ``.git/worktrees/<name>`` directory.
+
+    Args:
+        path: Path to check (defaults to current directory).
+
+    Returns:
+        True if inside a worktree, False otherwise.
+    """
+    if path is None:
+        path = Path.cwd()
+
+    git_root = get_git_root(path)
+    if git_root is None:
+        return False
+
+    git_entry = git_root / ".git"
+    # In a worktree, .git is a file containing "gitdir: /path/to/main/.git/worktrees/<name>"
+    return git_entry.is_file()

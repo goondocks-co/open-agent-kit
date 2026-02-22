@@ -18,7 +18,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_CLAUDE,
     AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT,
     CI_AUTH_SCHEME_BEARER,
-    CI_DATA_DIR,
     CI_TOKEN_FILE,
     DAEMON_HEALTH_POLL_INTERVAL,
     DAEMON_START_TIMEOUT_SECONDS,
@@ -27,7 +26,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HTTP_TIMEOUT_LONG,
 )
 
-from . import ci_app
+from . import ci_app, resolve_ci_data_dir
 
 
 def _find_project_root() -> Path:
@@ -85,8 +84,18 @@ def ci_hook(
     # find the .oak/ or .git/ marker ensures we always reach the real root.
     project_root = _find_project_root()
 
+    # Resolve CI data dir — looks through worktrees to the main repo if needed.
+    ci_data_dir = resolve_ci_data_dir(project_root)
+
+    # Fast-fail: if OAK CI is not initialized anywhere (not locally,
+    # not in main repo), exit silently. This makes committed hooks
+    # harmless for users who have oak installed but haven't initialized
+    # it in this project.
+    if not ci_data_dir.is_dir():
+        print(json_module.dumps({}))
+        raise typer.Exit(code=0)
+
     # Get daemon port (same priority as shell scripts)
-    ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
     port = get_project_port(project_root, ci_data_dir)
 
     # Read input from stdin with timeout to prevent blocking

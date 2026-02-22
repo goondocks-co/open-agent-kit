@@ -4,10 +4,8 @@ from pathlib import Path
 
 import typer
 
-from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_ACTIVITIES_DB_FILENAME,
-    CI_DATA_DIR,
 )
 from open_agent_kit.utils import (
     print_error,
@@ -21,6 +19,7 @@ from . import (
     check_oak_initialized,
     ci_app,
     console,
+    resolve_ci_data_dir,
 )
 
 
@@ -139,7 +138,7 @@ def ci_backup(
         _show_backup_info(project_root, machine_id)
         return
 
-    db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
+    db_path = resolve_ci_data_dir(project_root) / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)
@@ -212,7 +211,7 @@ def ci_restore(
     check_oak_initialized(project_root)
     check_ci_enabled(project_root)
 
-    db_path = project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
+    db_path = resolve_ci_data_dir(project_root) / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
         print_error("No CI database found. Start the daemon first: oak ci start")
         raise typer.Exit(code=1)

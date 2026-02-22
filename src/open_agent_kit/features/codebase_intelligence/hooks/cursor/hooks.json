@@ -4,62 +4,62 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "{oak-cli-command} ci hook sessionStart --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook sessionStart --agent cursor || true"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "{oak-cli-command} ci hook beforeSubmitPrompt --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook beforeSubmitPrompt --agent cursor || true"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "{oak-cli-command} ci hook afterFileEdit --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook afterFileEdit --agent cursor || true"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "{oak-cli-command} ci hook afterAgentResponse --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook afterAgentResponse --agent cursor || true"
       }
     ],
     "afterAgentThought": [
       {
-        "command": "{oak-cli-command} ci hook afterAgentThought --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook afterAgentThought --agent cursor || true"
       }
     ],
     "postToolUse": [
       {
-        "command": "{oak-cli-command} ci hook postToolUse --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook postToolUse --agent cursor || true"
       }
     ],
     "preCompact": [
       {
-        "command": "{oak-cli-command} ci hook preCompact --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook preCompact --agent cursor || true"
       }
     ],
     "stop": [
       {
-        "command": "{oak-cli-command} ci hook stop --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook stop --agent cursor || true"
       }
     ],
     "sessionEnd": [
       {
-        "command": "{oak-cli-command} ci hook sessionEnd --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook sessionEnd --agent cursor || true"
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "{oak-cli-command} ci hook postToolUseFailure --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook postToolUseFailure --agent cursor || true"
       }
     ],
     "subagentStart": [
       {
-        "command": "{oak-cli-command} ci hook subagentStart --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook subagentStart --agent cursor || true"
       }
     ],
     "subagentStop": [
       {
-        "command": "{oak-cli-command} ci hook subagentStop --agent cursor"
+        "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook subagentStop --agent cursor || true"
       }
     ]
   }
