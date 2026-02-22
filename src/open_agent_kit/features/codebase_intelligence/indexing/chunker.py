@@ -34,7 +34,6 @@ LANGUAGE_MAP = {
     ".h": "c",
     ".hpp": "cpp",
     ".cs": "csharp",
-    ".swift": "swift",
     ".kt": "kotlin",
     ".scala": "scala",
     ".md": "markdown",
@@ -85,7 +84,6 @@ TREE_SITTER_PACKAGES = {
     "kotlin": "tree_sitter_kotlin",
     "scala": "tree_sitter_scala",
     "php": "tree_sitter_php",
-    "swift": "tree_sitter_swift",
 }
 
 # Declarative AST configuration for each language
