@@ -1,3 +1,4 @@
+import logging
 from html import escape
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from open_agent_kit.features.codebase_intelligence.cli_command import (
     resolve_ci_cli_command,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["ui"])
 
@@ -38,7 +41,7 @@ def _render_stale_install_html() -> str:
         try:
             cli_command = resolve_ci_cli_command(state.project_root)
         except (OSError, ValueError):
-            pass
+            logger.debug("Could not resolve CLI command, using default", exc_info=True)
     return _STALE_INSTALL_HTML_TEMPLATE.format(cli_command=escape(cli_command))
 
 

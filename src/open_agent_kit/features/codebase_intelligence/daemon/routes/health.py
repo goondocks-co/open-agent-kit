@@ -139,7 +139,7 @@ async def get_status() -> dict:
         try:
             cli_command = resolve_ci_cli_command(state.project_root)
         except (OSError, ValueError):
-            pass
+            logger.debug("Could not resolve CLI command, using default", exc_info=True)
 
     return {
         "status": DAEMON_STATUS_RUNNING,
