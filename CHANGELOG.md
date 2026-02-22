@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-22]
+
+### Added
+
+- Git worktree support — Oak hooks, daemon lookup, and repo-root resolution now work correctly inside `git worktree` checkouts; a dedicated `WorktreeManager` class wraps Git subprocess calls and maintains an in-memory registry of active worktrees — [Add shell guard to OAK hook templates and enable worktree support](http://localhost:38388/activity/sessions/836996b7-6a5a-4ffc-accd-b63fdd23eda6), [Implement smoke‑test harness for OAK worktree initialization](http://localhost:38388/activity/sessions/5bc4e8b6-932e-4264-8782-d3271a275cf9)
+- Team Member filter on session activity page — replaces the Machine filter with a member-based grouping that treats all sessions from the same user as one group regardless of machine; `source_machine_id` and `plan_count` fields added to the `SessionItem` model to support the new display — [Add source_machine_id and plan_count to SessionItem model](http://localhost:38388/activity/sessions/a9f6e105-1c7e-4175-8d6e-6d3a86c7e397), [Update session activity filter to display by team member](http://localhost:38388/activity/sessions/45633407-b3dd-4eb5-950d-3bce0dfbe622), [Update session activity page with Team Member filter and badge logic](http://localhost:38388/activity/sessions/358ad3f1-460a-4d10-876d-905c287ac51f)
+- Swift language support via Treesitter parser — adds a Treesitter-based parser for Swift and refactors config to allow Oak to reliably search Swift codebases — [Add Treesitter parser for Swift and refactor config](http://localhost:38388/activity/sessions/b9271ccb-13f3-4d00-947b-bf010ba73060)
+
+### Changed
+
+- Upgrade banner now reads the CLI command name from runtime config (`config.command_alias`) instead of the hard-coded `"oak"` constant, so users running a custom alias (e.g., `oak-dev`) see the correct command in the banner — [Configure daemon banner to use command from config](http://localhost:38388/activity/sessions/2dc0d4c0-fffa-4cfd-bec3-3e19547668d3)
+- Project Governance skill updated to focus on amending existing constitutions, with RFC/ADR generation demoted to an optional step rather than the default output — [Update Project Governance Skill to Optional RFC Generation](http://localhost:38388/activity/sessions/6e7db7a6-14c4-438c-ba24-6f1b311207da)
+
+### Fixed
+
+- Fix `resolve_main_repo_root()` failing inside git worktrees — `.git` is a file (not a directory) in worktrees; the function now detects this, reads the target path, and resolves the root correctly — [Add shell guard to OAK hook templates and enable worktree support](http://localhost:38388/activity/sessions/836996b7-6a5a-4ffc-accd-b63fdd23eda6)
+- Fix upgrade banner persisting after daemon restart — `use-status` hook cached the running version in localStorage; cleared on restart so the banner reflects the actual running version — [Configure daemon banner to use command from config](http://localhost:38388/activity/sessions/2dc0d4c0-fffa-4cfd-bec3-3e19547668d3)
+
+### Notes
+
+> **Gotcha**: `resolve_main_repo_root()` previously assumed `.git` was a directory. Inside a worktree it is a plain file containing `gitdir: <path>`. Any code that calls this helper must be tested in both regular checkout and worktree contexts; imports also require the repository root on `PYTHONPATH` since worktrees do not automatically inherit the parent repo's module search path.
+
+> **Gotcha**: The Team Member filter groups sessions by user identity, not by machine. If two developers share the same Git username the filter will merge their sessions into one group. The machine-level `source_machine_id` field is still available in the `SessionItem` payload for tooling that needs it.
+
+> **Gotcha**: The upgrade banner's hard-coded `UI_COMMAND` constant caused it to show `"oak"` even when users ran `"oak-dev"` or another alias. After the fix the banner reads `config.command_alias` at render time — ensure the daemon is restarted after changing your CLI alias so the config propagates.
+
 ## [2026-02-21]
 
 ### Added
