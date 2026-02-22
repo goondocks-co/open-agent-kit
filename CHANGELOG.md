@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-21]
+
+### Added
+
+- Documentation agent prioritizes newer Python versions — root-docs agent now selects the latest available Python interpreter when generating documentation, improving output quality for Python-version-sensitive content — [Refactor documentation agent to prioritize newer Python versions](http://localhost:38388/activity/sessions/993e6f41-a448-41a0-9a55-4a1ce3087239)
+
+### Fixed
+
+- Fix `ci_project_stats` always reporting zero unique files and zero memory count — `get_stats()` was missing `unique_files` and `memory_count` keys in its return dict; `count_unique_files` also skipped counting when commits had no files. Both fixed in `management.py` and `operations.py` — [Fix CI projects stats agent project count bug](http://localhost:38388/activity/sessions/624df25e-b64c-4a68-b6fd-3a7e14ed6dbf)
+- Fix hover styles disappearing on navigation bar components — Tailwind `group-hover` utilities were not triggering because parent elements were missing the `group` class after a recent refactor — [Debug missing hover styles in navigation bar components](http://localhost:38388/activity/sessions/269ecaf8-1da1-4585-84ce-0d18564ca5b1)
+- Fix governance plugin error caused by missing or misconfigured Oak governance settings — security guidance plugin hook was loading unconditionally at startup and failing when governance was not enabled in the target project — [Configure Oak governance settings to fix plugin error](http://localhost:38388/activity/sessions/bf77c105-152a-4e42-80fc-f191926bea52)
+
+### Notes
+
+> **Gotcha**: The Tailwind `group-hover` utility requires the parent element to carry the `group` class. Navigation components that lost this class during a refactor will silently drop all hover effects — check the rendered DOM if hover styles stop working after restructuring layout components.
+
+> **Gotcha**: The security guidance plugin registers its hook via `hooks.json` and loads unconditionally at agent startup, regardless of whether governance is enabled in the host project. Projects without Oak governance configured will see a runtime error. Set `governance.enabled: false` in the project's Oak config, or ensure the plugin is only installed in governed projects.
+
+## [2026-02-19/20]
+
 ### Added
 
 - Brain Maintenance Agent with writable CI tools — autonomous agent that periodically cleans OAK's memory store: deduplicates observations, archives superseded ones, synthesizes cross-session insights, and emits structured health reports to `oak/insights/data-hygiene.jsonl` and `brain-maintenance-decisions.jsonl`. Includes a `memory_write` flag gating write access and a `memory-consolidation.yaml` task for orchestrated cleanup workflows — [Implement Brain Maintenance Agent with Writable CI Tools](http://localhost:38388/activity/sessions/08bea3d4-7ae7-421a-b8fc-a724f3c111f8), [Implement Brain Maintenance Agent system prompt and memory_write flag](http://localhost:38388/activity/sessions/0a9179bf-cdf6-4d19-98c8-2201d6d3c09b)
