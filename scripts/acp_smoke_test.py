@@ -11,8 +11,8 @@ Prerequisites:
 Exercises all ACP session routes and verifies results in the activity store.
 Sessions are self-cleaning — each scenario creates and closes its own session.
 
-Scenarios 1-7: HTTP plumbing validation (session lifecycle, prompts, tools, modes)
-Scenarios 8-11: OAK intelligence pipeline validation (activity recording, batch
+Scenarios 1-8: HTTP plumbing validation (session lifecycle, prompts, tools, modes, focus)
+Scenarios 9-12: OAK intelligence pipeline validation (activity recording, batch
 finalization, session summaries, multi-turn activity accumulation)
 """
 
@@ -169,6 +169,16 @@ class SmokeTestRunner:
         r = httpx.put(
             self._url(f"/api/acp/sessions/{session_id}/mode"),
             json={"mode": mode},
+            headers=self.headers,
+            timeout=DEFAULT_TIMEOUT,
+        )
+        return r.status_code
+
+    def _set_focus(self, session_id: str, focus: str) -> int:
+        """Set session focus, return HTTP status code."""
+        r = httpx.put(
+            self._url(f"/api/acp/sessions/{session_id}/focus"),
+            json={"focus": focus},
             headers=self.headers,
             timeout=DEFAULT_TIMEOUT,
         )
@@ -613,10 +623,56 @@ class SmokeTestRunner:
             details.append(f"Error: {e}")
             self._report(name, False, details)
 
+    def test_focus_switching(self) -> None:
+        """Scenario 8: Cycle through agent focus values."""
+        name = "Focus switching"
+        details: list[str] = []
+        session_id = None
+
+        try:
+            session_id = self._create_session()
+            details.append(f"Created session: {session_id}")
+
+            focuses = ["documentation", "analysis", "engineering", "maintenance", "oak"]
+            all_ok = True
+            for focus in focuses:
+                status = self._set_focus(session_id, focus)
+                if status != 200:
+                    details.append(f"Focus '{focus}' returned {status}")
+                    all_ok = False
+
+            if all_ok:
+                details.append(f"All {len(focuses)} focuses accepted (200)")
+
+            # Invalid focus should return 422
+            invalid_status = self._set_focus(session_id, "nonexistent-agent")
+            if invalid_status == 422:
+                details.append("Invalid focus correctly rejected (422)")
+            else:
+                details.append(f"Invalid focus returned {invalid_status}, expected 422")
+                all_ok = False
+
+            # Verify session exists in activity store
+            detail = self._get_session_detail(session_id)
+            if detail:
+                details.append("Session verified in activity store")
+            else:
+                details.append("Session not found in activity store")
+                all_ok = False
+
+            self._report(name, all_ok, details)
+
+        except Exception as e:
+            details.append(f"Error: {e}")
+            self._report(name, False, details)
+        finally:
+            if session_id:
+                self._close_session(session_id)
+
     # -- Intelligence pipeline scenarios ----------------------------------
 
     def test_activity_recording(self) -> None:
-        """Scenario 8: Activity recording via SDK hooks.
+        """Scenario 9: Activity recording via SDK hooks.
 
         Send a prompt that forces specific tool use, verify activities are
         recorded with correct fields in the activity store.
@@ -692,7 +748,7 @@ class SmokeTestRunner:
                 self._close_session(session_id)
 
     def test_batch_finalization(self) -> None:
-        """Scenario 9: Batch finalization and response summary.
+        """Scenario 10: Batch finalization and response summary.
 
         Send a prompt, verify the batch has response_summary and ended_at set.
         """
@@ -748,7 +804,7 @@ class SmokeTestRunner:
                 self._close_session(session_id)
 
     def test_session_close_summary(self) -> None:
-        """Scenario 10: Session close and summary generation.
+        """Scenario 11: Session close and summary generation.
 
         Create session, send prompt, close, wait for async summary.
         """
@@ -827,7 +883,7 @@ class SmokeTestRunner:
                 self._close_session(session_id)
 
     def test_multi_turn_activity_accumulation(self) -> None:
-        """Scenario 11: Multi-turn activity accumulation.
+        """Scenario 12: Multi-turn activity accumulation.
 
         Two prompts on one session, each triggering tool use. Verify each
         batch has its own activities and they don't cross-contaminate.
@@ -911,6 +967,7 @@ class SmokeTestRunner:
         self.test_multi_turn()
         self.test_cancellation()
         self.test_error_handling()
+        self.test_focus_switching()
 
         # Intelligence pipeline scenarios
         self.test_activity_recording()

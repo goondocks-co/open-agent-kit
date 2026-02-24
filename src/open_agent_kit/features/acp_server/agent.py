@@ -32,6 +32,9 @@ from acp.schema import (
     ListSessionsResponse,
     McpServerStdio,
     ResumeSessionResponse,
+    SessionConfigOption,
+    SessionConfigOptionSelect,
+    SessionConfigSelectOption,
     SessionMode,
     SessionModeState,
     SetSessionConfigOptionResponse,
@@ -44,8 +47,16 @@ from acp.schema import (
 from open_agent_kit.features.acp_server.bridge import AcpBridge
 from open_agent_kit.features.acp_server.constants import (
     ACP_AGENT_NAME,
+    ACP_CONFIG_CATEGORY_FOCUS,
+    ACP_CONFIG_ID_FOCUS,
+    ACP_CONFIG_ID_MODE,
     ACP_ERROR_DAEMON_PROMPT_FAILED,
     ACP_ERROR_DAEMON_SESSION_FAILED,
+    ACP_FOCUS_ANALYSIS,
+    ACP_FOCUS_DOCUMENTATION,
+    ACP_FOCUS_ENGINEERING,
+    ACP_FOCUS_MAINTENANCE,
+    ACP_FOCUS_OAK,
     ACP_LOG_PROMPT_RECEIVED,
     ACP_LOG_SESSION_CANCELLED,
     ACP_LOG_SESSION_CREATED,
@@ -55,6 +66,7 @@ from open_agent_kit.features.acp_server.constants import (
     ACP_SESSION_MODE_ARCHITECT,
     ACP_SESSION_MODE_ASK,
     ACP_SESSION_MODE_CODE,
+    ACP_VALID_FOCUSES,
 )
 from open_agent_kit.features.acp_server.daemon_client import DaemonClient, discover_daemon
 from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
@@ -85,6 +97,9 @@ class OakAcpAgent:
         self._daemon_client: DaemonClient | None = None
         # Track pending plan approvals per session
         self._pending_plans: dict[str, bool] = {}
+        # Track current mode and focus per session for config state
+        self._session_modes: dict[str, str] = {}
+        self._session_focuses: dict[str, str] = {}
 
     def _ensure_daemon_client(self) -> DaemonClient:
         """Lazily create daemon client."""
@@ -92,6 +107,90 @@ class OakAcpAgent:
             base_url, auth_token = discover_daemon(self._project_root)
             self._daemon_client = DaemonClient(base_url, auth_token)
         return self._daemon_client
+
+    # -- Config options helpers -----------------------------------------------
+
+    @staticmethod
+    def _build_config_options(
+        current_mode: str = ACP_SESSION_MODE_CODE,
+        current_focus: str = ACP_FOCUS_OAK,
+    ) -> list[SessionConfigOption]:
+        """Build the full set of ACP config options with current values.
+
+        Args:
+            current_mode: Current session mode value.
+            current_focus: Current agent focus value.
+
+        Returns:
+            List of SessionConfigOption for the ACP response.
+        """
+        mode_option = SessionConfigOption(
+            root=SessionConfigOptionSelect(
+                id=ACP_CONFIG_ID_MODE,
+                name="Session Mode",
+                description="Controls agent permission level",
+                category="mode",
+                type="select",
+                current_value=current_mode,
+                options=[
+                    SessionConfigSelectOption(
+                        value=ACP_SESSION_MODE_CODE,
+                        name="Code",
+                        description="Full tool access, auto-accept edits",
+                    ),
+                    SessionConfigSelectOption(
+                        value=ACP_SESSION_MODE_ARCHITECT,
+                        name="Architect",
+                        description="Plan changes before executing",
+                    ),
+                    SessionConfigSelectOption(
+                        value=ACP_SESSION_MODE_ASK,
+                        name="Ask",
+                        description="Ask permission for each action",
+                    ),
+                ],
+            ),
+        )
+
+        focus_option = SessionConfigOption(
+            root=SessionConfigOptionSelect(
+                id=ACP_CONFIG_ID_FOCUS,
+                name="Agent Focus",
+                description="Specialize the agent for specific types of work",
+                category=ACP_CONFIG_CATEGORY_FOCUS,
+                type="select",
+                current_value=current_focus,
+                options=[
+                    SessionConfigSelectOption(
+                        value=ACP_FOCUS_OAK,
+                        name="Oak",
+                        description="Interactive coding with full CI context",
+                    ),
+                    SessionConfigSelectOption(
+                        value=ACP_FOCUS_DOCUMENTATION,
+                        name="Documentation",
+                        description="Project documentation with CI enrichment",
+                    ),
+                    SessionConfigSelectOption(
+                        value=ACP_FOCUS_ANALYSIS,
+                        name="Analysis",
+                        description="CI data analysis and project insights",
+                    ),
+                    SessionConfigSelectOption(
+                        value=ACP_FOCUS_ENGINEERING,
+                        name="Engineering",
+                        description="Engineering tasks with full tool access",
+                    ),
+                    SessionConfigSelectOption(
+                        value=ACP_FOCUS_MAINTENANCE,
+                        name="Maintenance",
+                        description="CI memory and data health",
+                    ),
+                ],
+            ),
+        )
+
+        return [mode_option, focus_option]
 
     # -- ACP lifecycle --------------------------------------------------------
 
@@ -131,6 +230,10 @@ class OakAcpAgent:
 
         logger.info(ACP_LOG_SESSION_CREATED.format(session_id=session_id, cwd=session_cwd))
 
+        # Track initial state for this session
+        self._session_modes[session_id] = ACP_SESSION_MODE_CODE
+        self._session_focuses[session_id] = ACP_FOCUS_OAK
+
         modes = SessionModeState(
             available_modes=[
                 SessionMode(
@@ -151,7 +254,17 @@ class OakAcpAgent:
             ],
             current_mode_id=ACP_SESSION_MODE_CODE,
         )
-        return NewSessionResponse(session_id=session_id, modes=modes)
+
+        config_options = self._build_config_options(
+            current_mode=ACP_SESSION_MODE_CODE,
+            current_focus=ACP_FOCUS_OAK,
+        )
+
+        return NewSessionResponse(
+            session_id=session_id,
+            modes=modes,
+            config_options=config_options,
+        )
 
     async def prompt(
         self,
@@ -224,6 +337,7 @@ class OakAcpAgent:
         try:
             client = self._ensure_daemon_client()
             await client.set_mode(session_id, daemon_mode)
+            self._session_modes[session_id] = mode_id
         except Exception:
             logger.exception("Failed to set mode %s for session %s", mode_id, session_id)
         return None
@@ -258,8 +372,50 @@ class OakAcpAgent:
     async def set_config_option(
         self, config_id: str, session_id: str, value: str, **kwargs: Any
     ) -> SetSessionConfigOptionResponse | None:
-        """Not yet implemented."""
-        return None
+        """Set a config option (mode or focus) for a session.
+
+        Delegates to the daemon for both mode and focus changes, then returns
+        the complete config state per the ACP spec.
+        """
+        client = self._ensure_daemon_client()
+
+        if config_id == ACP_CONFIG_ID_MODE:
+            daemon_mode = _MODE_MAP.get(value)
+            if daemon_mode:
+                try:
+                    await client.set_mode(session_id, daemon_mode)
+                    self._session_modes[session_id] = value
+                except Exception:
+                    logger.exception(
+                        "Failed to set mode %s for session %s via config option",
+                        value,
+                        session_id,
+                    )
+
+        elif config_id == ACP_CONFIG_ID_FOCUS:
+            if value in ACP_VALID_FOCUSES:
+                try:
+                    await client.set_focus(session_id, value)
+                    self._session_focuses[session_id] = value
+                except Exception:
+                    logger.exception(
+                        "Failed to set focus %s for session %s",
+                        value,
+                        session_id,
+                    )
+            else:
+                logger.warning("Invalid focus value: %s", value)
+
+        # Return complete config state (per ACP spec)
+        current_mode = self._session_modes.get(session_id, ACP_SESSION_MODE_CODE)
+        current_focus = self._session_focuses.get(session_id, ACP_FOCUS_OAK)
+
+        return SetSessionConfigOptionResponse(
+            config_options=self._build_config_options(
+                current_mode=current_mode,
+                current_focus=current_focus,
+            ),
+        )
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> AuthenticateResponse | None:
         """Not yet implemented."""

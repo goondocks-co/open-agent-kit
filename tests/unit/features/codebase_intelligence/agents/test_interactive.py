@@ -145,6 +145,7 @@ class TestInteractiveSession:
         assert session.session_id == "s1"
         assert session.cwd == Path("/tmp")
         assert session.permission_mode == "default"
+        assert session.focus == "oak"
         assert session.cancelled is False
         assert session.pending_plan is False
         assert session.pending_plan_content is None
@@ -156,6 +157,12 @@ class TestInteractiveSession:
         )
 
         assert session.permission_mode == "acceptEdits"
+
+    def test_custom_focus(self) -> None:
+        """InteractiveSession should accept custom focus."""
+        session = InteractiveSession(session_id="s3", cwd=Path("/tmp"), focus="documentation")
+
+        assert session.focus == "documentation"
 
 
 # =============================================================================
@@ -339,6 +346,193 @@ class TestSetMode:
             manager.set_mode("nonexistent", "default")
 
 
+class TestSetFocus:
+    """Tests for InteractiveSessionManager.set_focus."""
+
+    def test_sets_focus(self, manager: InteractiveSessionManager) -> None:
+        """set_focus should update the session's focus."""
+        manager.create_session(session_id="s1")
+
+        manager.set_focus("s1", "documentation")
+
+        assert manager._sessions["s1"].focus == "documentation"
+
+    def test_set_focus_unknown_session_raises(self, manager: InteractiveSessionManager) -> None:
+        """set_focus should raise KeyError for unknown session."""
+        with pytest.raises(KeyError, match="Session not found"):
+            manager.set_focus("nonexistent", "documentation")
+
+    def test_set_focus_invalid_template_raises(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """set_focus should raise ValueError for unknown template."""
+        manager.create_session(session_id="s1")
+        mock_registry.get_template.return_value = None
+
+        with pytest.raises(ValueError, match="Unknown agent focus"):
+            manager.set_focus("s1", "nonexistent-agent")
+
+    def test_set_focus_oak_looks_up_oak_template(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """set_focus('oak') should look up 'oak' template in registry."""
+        manager.create_session(session_id="s1")
+        mock_registry.get_template.return_value = MagicMock()
+
+        manager.set_focus("s1", "oak")
+
+        mock_registry.get_template.assert_called_with("oak")
+        assert manager._sessions["s1"].focus == "oak"
+
+    def test_set_focus_documentation_looks_up_documentation_template(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """set_focus('documentation') should look up 'documentation' template."""
+        manager.create_session(session_id="s1")
+        mock_registry.get_template.return_value = MagicMock()
+
+        manager.set_focus("s1", "documentation")
+
+        mock_registry.get_template.assert_called_with("documentation")
+        assert manager._sessions["s1"].focus == "documentation"
+
+
+class TestBuildTaskContext:
+    """Tests for InteractiveSessionManager._build_task_context."""
+
+    def test_returns_empty_for_no_registry(
+        self, tmp_path: Path, mock_activity_store: MagicMock, mock_activity_processor: MagicMock
+    ) -> None:
+        """Should return empty string when no registry is set."""
+        mgr = InteractiveSessionManager(
+            project_root=tmp_path,
+            activity_store=mock_activity_store,
+            retrieval_engine=None,
+            vector_store=None,
+            agent_registry=None,
+            activity_processor=mock_activity_processor,
+        )
+        assert mgr._build_task_context("documentation") == ""
+
+    def test_returns_empty_for_no_matching_tasks(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """Should return empty string when focus has no tasks."""
+        mock_registry.list_tasks.return_value = []
+        assert manager._build_task_context("documentation") == ""
+
+    def test_includes_task_display_name_and_description(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """Should include task display name and description."""
+        task = MagicMock()
+        task.agent_type = "documentation"
+        task.name = "root-docs"
+        task.display_name = "Root Documentation"
+        task.description = "Maintains root-level documentation files."
+        task.maintained_files = []
+        task.output_requirements = {}
+        task.style = {}
+        mock_registry.list_tasks.return_value = [task]
+
+        result = manager._build_task_context("documentation")
+
+        assert "Root Documentation" in result
+        assert "`root-docs`" in result
+        assert "Maintains root-level documentation files." in result
+
+    def test_includes_maintained_files(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """Should list maintained files with purposes."""
+        mf = MagicMock()
+        mf.path = "{project_root}/README.md"
+        mf.purpose = "Landing page"
+        task = MagicMock()
+        task.agent_type = "documentation"
+        task.name = "root-docs"
+        task.display_name = "Root Documentation"
+        task.description = ""
+        task.maintained_files = [mf]
+        task.output_requirements = {}
+        task.style = {}
+        mock_registry.list_tasks.return_value = [task]
+
+        result = manager._build_task_context("documentation")
+
+        assert "`README.md`" in result
+        assert "Landing page" in result
+
+    def test_includes_conventions(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """Should list style conventions."""
+        task = MagicMock()
+        task.agent_type = "documentation"
+        task.name = "changelog"
+        task.display_name = "Changelog"
+        task.description = ""
+        task.maintained_files = []
+        task.output_requirements = {}
+        task.style = {"conventions": ["Use imperative mood", "Link every entry"]}
+        mock_registry.list_tasks.return_value = [task]
+
+        result = manager._build_task_context("documentation")
+
+        assert "Use imperative mood" in result
+        assert "Link every entry" in result
+
+    def test_filters_tasks_by_focus(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """Should only include tasks matching the focus template."""
+        doc_task = MagicMock()
+        doc_task.agent_type = "documentation"
+        doc_task.name = "root-docs"
+        doc_task.display_name = "Root Documentation"
+        doc_task.description = ""
+        doc_task.maintained_files = []
+        doc_task.output_requirements = {}
+        doc_task.style = {}
+
+        analysis_task = MagicMock()
+        analysis_task.agent_type = "analysis"
+        analysis_task.name = "usage-report"
+        analysis_task.display_name = "Usage Report"
+
+        mock_registry.list_tasks.return_value = [doc_task, analysis_task]
+
+        result = manager._build_task_context("documentation")
+
+        assert "Root Documentation" in result
+        assert "Usage Report" not in result
+
+    def test_includes_required_sections(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """Should include output requirements sections."""
+        task = MagicMock()
+        task.agent_type = "documentation"
+        task.name = "root-docs"
+        task.display_name = "Root Documentation"
+        task.description = ""
+        task.maintained_files = []
+        task.output_requirements = {
+            "required_sections": [
+                {"name": "README.md", "description": "Tagline, install, example"},
+                {"name": "QUICKSTART.md", "description": "Prerequisites, walkthrough"},
+            ]
+        }
+        task.style = {}
+        mock_registry.list_tasks.return_value = [task]
+
+        result = manager._build_task_context("documentation")
+
+        assert "README.md" in result
+        assert "Tagline, install, example" in result
+        assert "QUICKSTART.md" in result
+
+
 class TestCancel:
     """Tests for InteractiveSessionManager.cancel."""
 
@@ -488,6 +682,36 @@ class TestBuildOptions:
         }
         assert CI_TOOL_QUERY not in default_tools
         assert CI_TOOL_REMEMBER not in default_tools
+
+    def test_focus_determines_registry_lookup(
+        self, manager: InteractiveSessionManager, mock_registry: MagicMock
+    ) -> None:
+        """_build_options should look up agent def based on session focus."""
+        manager.create_session(session_id="s1")
+
+        # Set focus to documentation
+        mock_registry.get_template.return_value = MagicMock()
+        manager.set_focus("s1", "documentation")
+
+        # Verify the session's focus is set
+        session = manager._sessions["s1"]
+        assert session.focus == "documentation"
+
+        # When _build_options is called, it should look up "documentation" template
+        # (We can't call _build_options directly without SDK, but verify the focus
+        # is correctly stored and would be used by _build_options)
+        expected_template = "documentation"  # focus != "oak", so maps directly
+        assert session.focus == expected_template
+
+    def test_focus_oak_is_default_in_build_options(
+        self, manager: InteractiveSessionManager
+    ) -> None:
+        """Default focus 'oak' should match the ACP agent template name in registry."""
+        manager.create_session(session_id="s1")
+        session = manager._sessions["s1"]
+
+        # Default focus is "oak" which matches the ACP agent template's YAML name
+        assert session.focus == "oak"
 
     def test_ci_tool_constants_are_consistent(self) -> None:
         """All CI tool constants used in interactive.py should be valid strings."""

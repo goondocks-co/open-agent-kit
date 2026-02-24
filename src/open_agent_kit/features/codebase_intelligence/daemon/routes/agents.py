@@ -81,7 +81,7 @@ async def list_agents() -> AgentListResponse:
     """
     registry, _executor, _state = _get_agent_components()
 
-    templates = registry.list_templates()
+    templates = [t for t in registry.list_templates() if not t.internal]
     tasks = registry.list_tasks()
 
     # Build template list items
@@ -129,14 +129,14 @@ async def list_agents() -> AgentListResponse:
     # Legacy: also return agents list for backwards compatibility
     legacy_items = [
         AgentListItem(
-            name=a.name,
-            display_name=a.display_name,
-            description=a.description,
-            max_turns=a.execution.max_turns,
-            timeout_seconds=a.execution.timeout_seconds,
-            project_config=a.project_config,
+            name=t.name,
+            display_name=t.display_name,
+            description=t.description,
+            max_turns=t.execution.max_turns,
+            timeout_seconds=t.execution.timeout_seconds,
+            project_config=t.project_config,
         )
-        for a in templates
+        for t in templates
     ]
 
     return AgentListResponse(

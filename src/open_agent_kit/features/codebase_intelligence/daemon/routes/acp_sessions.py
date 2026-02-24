@@ -62,6 +62,16 @@ class SetModeRequest(BaseModel):
     )
 
 
+class SetFocusRequest(BaseModel):
+    """Request body for setting session agent focus."""
+
+    focus: str = Field(
+        ...,
+        min_length=1,
+        description="Agent template name to focus on",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -163,6 +173,32 @@ async def set_session_mode(session_id: str, request: SetModeRequest) -> dict:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}") from None
 
     return {"success": True, "session_id": session_id, "mode": request.mode}
+
+
+@router.put("/{session_id}/focus")
+async def set_session_focus(session_id: str, request: SetFocusRequest) -> dict:
+    """Set the agent focus for a session.
+
+    Switches the agent template used for subsequent prompts. Conversation
+    history is preserved across focus changes.
+
+    Args:
+        session_id: Session identifier.
+        request: Focus request.
+
+    Returns:
+        Confirmation with new focus.
+    """
+    manager = _get_session_manager()
+
+    try:
+        manager.set_focus(session_id, request.focus)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    return {"success": True, "session_id": session_id, "focus": request.focus}
 
 
 @router.post("/{session_id}/approve-plan")

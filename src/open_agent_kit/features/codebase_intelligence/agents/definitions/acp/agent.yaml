@@ -6,6 +6,7 @@
 
 name: oak
 display_name: "OAK Agent (ACP)"
+internal: true
 description: >
   Interactive coding agent for editor integrations via the Agent Client
   Protocol. Uses CI for full project context including semantic search,

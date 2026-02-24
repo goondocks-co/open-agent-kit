@@ -492,6 +492,7 @@ class AgentRegistry:
             disallowed_paths=data.get("disallowed_paths", [".env", ".env.*", "*.pem", "*.key"]),
             ci_access=ci_access,
             mcp_servers=mcp_servers,
+            internal=data.get("internal", False),
             system_prompt=system_prompt,
             definition_path=str(definition_file),
             project_config=project_config,

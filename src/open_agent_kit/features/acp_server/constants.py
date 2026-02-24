@@ -31,9 +31,35 @@ ACP_SESSION_MODE_CODE = "code"
 ACP_SESSION_MODE_ARCHITECT = "architect"
 ACP_SESSION_MODE_ASK = "ask"
 
+# Config option IDs (ACP configOptions)
+ACP_CONFIG_ID_MODE = "mode"
+ACP_CONFIG_ID_FOCUS = "focus"
+ACP_CONFIG_CATEGORY_FOCUS = "_focus"
+
+# Focus values (match agent template names in the registry)
+ACP_FOCUS_OAK = "oak"
+ACP_FOCUS_DOCUMENTATION = "documentation"
+ACP_FOCUS_ANALYSIS = "analysis"
+ACP_FOCUS_ENGINEERING = "engineering"
+ACP_FOCUS_MAINTENANCE = "maintenance"
+
+ACP_VALID_FOCUSES = frozenset(
+    {
+        ACP_FOCUS_OAK,
+        ACP_FOCUS_DOCUMENTATION,
+        ACP_FOCUS_ANALYSIS,
+        ACP_FOCUS_ENGINEERING,
+        ACP_FOCUS_MAINTENANCE,
+    }
+)
+
+# Daemon API endpoint for focus changes
+ACP_DAEMON_FOCUS_ENDPOINT = "/api/acp/sessions/{session_id}/focus"
+
 # Error messages
 ACP_ERROR_SESSION_NOT_FOUND = "Session not found: {session_id}"
 ACP_ERROR_INVALID_MODE = "Invalid permission mode: {mode}. Valid modes: {valid_modes}"
+ACP_ERROR_INVALID_FOCUS = "Invalid focus: {focus}. Valid focuses: {valid_focuses}"
 ACP_ERROR_NO_PROJECT_ROOT = "OAK is not initialized in the current directory. Run 'oak init' first."
 
 # Daemon communication errors

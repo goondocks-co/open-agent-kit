@@ -19,6 +19,7 @@ Intelligence pipeline integration:
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,6 +88,7 @@ class InteractiveSession:
         session_id: Unique session identifier.
         cwd: Working directory for agent operations.
         permission_mode: Current SDK permission mode.
+        focus: Agent template name controlling specialization.
         cancelled: Whether the session has been cancelled.
         pending_plan: Whether a plan is awaiting approval.
         pending_plan_content: Content of the pending plan.
@@ -95,6 +97,7 @@ class InteractiveSession:
     session_id: str
     cwd: Path
     permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions"] = "default"
+    focus: str = "oak"
     cancelled: bool = False
     pending_plan: bool = False
     pending_plan_content: str | None = None
@@ -496,6 +499,70 @@ class InteractiveSessionManager:
     # Options building
     # =====================================================================
 
+    def _build_task_context(self, focus: str) -> str:
+        """Build a task-awareness section for the system prompt.
+
+        When a non-default focus is active, finds all tasks that use that
+        template and produces a concise reference the agent can use to
+        apply the right guardrails when the user's request matches a task.
+
+        Args:
+            focus: Current agent focus (template name).
+
+        Returns:
+            Markdown block describing available tasks, or empty string.
+        """
+        if self._agent_registry is None:
+            return ""
+
+        tasks = [t for t in self._agent_registry.list_tasks() if t.agent_type == focus]
+        if not tasks:
+            return ""
+
+        lines = [
+            "## Available Tasks",
+            "",
+            "The following pre-configured tasks exist for this focus. When the "
+            "user's request aligns with a task, follow its conventions — maintained "
+            "files, style, and output requirements.",
+            "",
+        ]
+
+        for task in tasks:
+            lines.append(f"### {task.display_name} (`{task.name}`)")
+            if task.description:
+                lines.append(f"{task.description.strip()}")
+            lines.append("")
+
+            if task.maintained_files:
+                lines.append("**Maintained files:**")
+                for mf in task.maintained_files:
+                    path = mf.path.replace("{project_root}/", "")
+                    purpose = f" — {mf.purpose}" if mf.purpose else ""
+                    lines.append(f"- `{path}`{purpose}")
+                lines.append("")
+
+            if task.output_requirements:
+                sections = task.output_requirements.get("required_sections", [])
+                if sections:
+                    lines.append("**Required sections:**")
+                    for section in sections:
+                        if isinstance(section, dict):
+                            name = section.get("name", "")
+                            desc = section.get("description", "")
+                            lines.append(f"- {name}: {desc}" if desc else f"- {name}")
+                    lines.append("")
+
+            if task.style:
+                conventions = task.style.get("conventions", [])
+                if conventions:
+                    lines.append("**Conventions:**")
+                    for conv in conventions:
+                        lines.append(f"- {conv}")
+                    lines.append("")
+
+        return "\n".join(lines)
+
     def _build_options(
         self,
         session: InteractiveSession,
@@ -520,15 +587,23 @@ class InteractiveSessionManager:
         except ImportError as e:
             raise RuntimeError("claude-agent-sdk not installed") from e
 
-        # Load agent definition from registry
+        # Load agent definition based on current focus
         agent_def = None
         if self._agent_registry is not None:
-            agent_def = self._agent_registry.get(ACP_AGENT_NAME)
+            agent_def = self._agent_registry.get_template(session.focus)
+            if agent_def is None:
+                # Fallback to the default ACP agent
+                agent_def = self._agent_registry.get(ACP_AGENT_NAME)
 
         # Determine system prompt
         system_prompt = ACP_DEFAULT_SYSTEM_PROMPT
         if agent_def and agent_def.system_prompt:
             system_prompt = agent_def.system_prompt
+
+        # Inject task awareness for non-default focuses
+        task_context = self._build_task_context(session.focus)
+        if task_context:
+            system_prompt = f"{system_prompt}\n\n{task_context}"
 
         # Append session context (CI status, summaries)
         session_context = self._build_session_context(session.session_id)
@@ -598,11 +673,17 @@ class InteractiveSessionManager:
                 for tool_name in default_ci_tools:
                     allowed_tools.append(f"mcp__{CI_MCP_SERVER_NAME}__{tool_name}")
 
+        # Build a clean env for the SDK subprocess.
+        # Strip CLAUDECODE so the child process doesn't refuse to start
+        # with "cannot be launched inside another Claude Code session".
+        clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=allowed_tools,
             permission_mode=session.permission_mode,
             cwd=str(session.cwd),
+            env=clean_env,
         )
 
         if mcp_servers:
@@ -797,6 +878,33 @@ class InteractiveSessionManager:
             raise KeyError(f"Session not found: {session_id}")
         session.permission_mode = mode
         logger.debug(f"ACP session {session_id} mode set to {mode}")
+
+    def set_focus(self, session_id: str, focus: str) -> None:
+        """Update the agent focus for a session.
+
+        Switches the agent template used by subsequent prompt() calls.
+        Conversation history is preserved across focus changes.
+
+        Args:
+            session_id: Session to update.
+            focus: Agent template name (e.g. "oak", "documentation", "analysis").
+
+        Raises:
+            KeyError: If session not found.
+            ValueError: If focus is not a valid template name.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            raise KeyError(f"Session not found: {session_id}")
+
+        # Validate focus against registry if available
+        if self._agent_registry is not None:
+            template = self._agent_registry.get_template(focus)
+            if template is None:
+                raise ValueError(f"Unknown agent focus: {focus}")
+
+        session.focus = focus
+        logger.info(f"ACP session {session_id} focus set to {focus}")
 
     async def approve_plan(self, session_id: str) -> AsyncIterator[ExecutionEvent]:
         """Approve a pending plan and continue execution.

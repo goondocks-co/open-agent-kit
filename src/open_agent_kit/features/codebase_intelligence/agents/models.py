@@ -394,6 +394,12 @@ class AgentDefinition(BaseModel):
     # System prompt (loaded from file or inline)
     system_prompt: str | None = Field(default=None, description="System prompt for the agent")
 
+    # Visibility
+    internal: bool = Field(
+        default=False,
+        description="Internal templates are hidden from the UI and not user-runnable",
+    )
+
     # Source path (set by registry)
     definition_path: str | None = Field(
         default=None, description="Path to agent.yaml (set by registry)"

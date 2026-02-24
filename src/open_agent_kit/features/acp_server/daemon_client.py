@@ -18,6 +18,7 @@ from open_agent_kit.features.acp_server.constants import (
     ACP_DAEMON_APPROVE_PLAN_ENDPOINT,
     ACP_DAEMON_CANCEL_ENDPOINT,
     ACP_DAEMON_CLOSE_ENDPOINT,
+    ACP_DAEMON_FOCUS_ENDPOINT,
     ACP_DAEMON_MODE_ENDPOINT,
     ACP_DAEMON_PORT_FILE,
     ACP_DAEMON_PORT_FILE_LOCAL,
@@ -185,6 +186,22 @@ class DaemonClient:
                 url,
                 headers=self._headers(),
                 json={"mode": mode},
+            )
+            response.raise_for_status()
+
+    async def set_focus(self, session_id: str, focus: str) -> None:
+        """Set the session's agent focus on the daemon.
+
+        Args:
+            session_id: Active daemon session ID.
+            focus: Agent template name to focus on.
+        """
+        url = ACP_DAEMON_FOCUS_ENDPOINT.format(session_id=session_id)
+        async with httpx.AsyncClient(base_url=self._base_url) as client:
+            response = await client.put(
+                url,
+                headers=self._headers(),
+                json={"focus": focus},
             )
             response.raise_for_status()
 

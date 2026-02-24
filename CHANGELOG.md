@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-24]
+
+### Added
+
+- Dynamic focus switching for Oak ACP agent templates — users can now switch a running ACP agent's focus to one of four specialized templates (documentation, analysis, engineering, maintenance) via session configuration, enabling context-appropriate assistance without restarting the agent — [Implement dynamic focus switching for Oak ACP agent templates](http://localhost:38388/activity/sessions/d4572ed6-0f54-4b7e-8b5d-14099119049d), [Implement focus transition logic for Oak ACP agent templates](http://localhost:38388/activity/sessions/e7747ce2-d140-4a5b-991f-b4ad7e79e85a)
+- Full CI integration for ACP interactive sessions — ACP sessions now trigger Oak tool-usage hooks and generate session summaries, replacing the thin Claude wrapper with a fully OAK-intelligent experience that participates in codebase intelligence like any native session — [Implement tool usage hooks and session summaries for ACP flow](http://localhost:38388/activity/sessions/e16dc2e4-3cb1-4c25-b54f-ed722a9e9fea)
+- "Oak" agent type filter on session activity page — a new filter option lets users isolate sessions originating from the Oak ACP agent, completing end-to-end visibility of the ACP interactive session flow in the daemon UI — [Add Oak agent filter option to session activity page](http://localhost:38388/activity/sessions/32c76bb7-885d-4d4e-ade3-ea5a76a563ee)
+- Automated smoke-test for ACP daemon architecture — HTTP-based smoke-test exercises the running daemon end-to-end including session creation, tool delegation, and activity recording; also unifies agent naming to `oak` across the ACP module and removes leftover scaffolding artifacts — [Implement automated smoke‑test for oak daemon and clean up artifacts](http://localhost:38388/activity/sessions/6071a39b-3982-425d-aa1e-47a4159dec6d)
+
+### Changed
+
+- Upgrade command now launches in a detached subprocess from daemon UI — a new helper spawns `oak upgrade` as a detached process so the daemon UI remains responsive during upgrades rather than blocking on the CLI subprocess — [Implement detached upgrade command helper for daemon UI](http://localhost:38388/activity/sessions/e5c82db0-6d2b-4881-8c8c-c28ae1eea7ea)
+
+### Fixed
+
+- Fix `daemon_client.py` path construction causing `FileNotFoundError` — `discover_daemon` used an unresolved relative `rel_path` when locating the daemon port file; now resolves the full path via `Path(project_root).resolve() / rel_path` and returns `None` gracefully when the file is absent — [Implement automated smoke‑test for oak daemon and clean up artifacts](http://localhost:38388/activity/sessions/6071a39b-3982-425d-aa1e-47a4159dec6d)
+- Fix `_run_upgrade_pipeline` type errors in `restart.py` — `Path` type was not imported and the `run_in_executor` call passed a plain `dict` instead of the required `UpgradePlan` instance; both corrected to resolve Ruff static-analysis errors and prevent runtime type mismatches — [Implement detached upgrade command helper for daemon UI](http://localhost:38388/activity/sessions/e5c82db0-6d2b-4881-8c8c-c28ae1eea7ea)
+- Fix activity route registration typo and missing authentication — `@router.ge` decorator typo prevented the endpoint from registering with FastAPI, and activity routes lacked the shared `Authorization` header dependency used elsewhere in the daemon — [Implement tool usage hooks and session summaries for ACP flow](http://localhost:38388/activity/sessions/e16dc2e4-3cb1-4c25-b54f-ed722a9e9fea)
+
+### Notes
+
+> **Gotcha**: ACP focus switching injects a system-prompt override at session-config time. Mid-conversation agents will not retroactively reinterpret earlier messages under the new template — focus changes take effect on the next message boundary only.
+
+> **Gotcha**: The ACP smoke-test expects the daemon's activity store directory (`~/.oak/activity_store`) to exist and be writable before tests run. If the smoke-test exits with code 1, verify the directory exists with correct permissions and that `daemon/config.py` points to that path.
+
 ## [2026-02-23]
 
 ### Added
