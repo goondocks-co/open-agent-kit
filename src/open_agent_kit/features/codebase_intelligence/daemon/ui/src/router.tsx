@@ -19,6 +19,7 @@ import AgentsList from "@/components/agents/AgentsList";
 import RunHistory from "@/components/agents/RunHistory";
 import Schedules from "@/components/agents/Schedules";
 import AgentSettings from "@/pages/AgentSettings";
+import ACPIntegrations from "@/components/agents/ACPIntegrations";
 import CloudRelay from "@/pages/CloudRelay";
 import Governance from "@/pages/Governance";
 import GovernanceAudit from "@/components/governance/GovernanceAudit";
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
                     { path: "runs", element: <RunHistory /> },
                     { path: "schedules", element: <Schedules /> },
                     { path: "settings", element: <AgentSettings /> },
+                    { path: "integrations", element: <ACPIntegrations /> },
                 ]
             },
             { path: "cloud", element: <CloudRelay /> },

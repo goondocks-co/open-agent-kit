@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-23]
+
+### Added
+
+- ACP (Agent Client Protocol) server for editor integration — OAK can now act as a first-class coding agent that editors communicate with via the ACP pipe; a dedicated `acp_server` feature module exposes agents over ACP with a non-blocking async stdin reader, `AgentSideConnection` wrapper, and Typer-based `serve` CLI command — [Add ACP SDK dependency and constants module for OAK Agent](http://localhost:38388/activity/sessions/1d6517aa-70fd-4b21-9f57-9f648356c86c), [Implement daemon‑delegation architecture for OAK ACP server and session manager](http://localhost:38388/activity/sessions/f70f69e8-672c-4260-9d9e-a31f120c2610), [Implement session manager integration with daemon‑delegation architecture](http://localhost:38388/activity/sessions/3318476c-99cc-4b8b-8fd7-287346104240)
+- ACP integrations UI — new `ACPIntegrations` component in the daemon UI shows per-editor integration cards (Zed, etc.) with enable/disable toggles; configuration is rendered from the ACP JSON schema and reloads CLI config on mount to stay in sync with backend — [Implement daemon‑delegation architecture for OAK ACP server and session manager](http://localhost:38388/activity/sessions/f70f69e8-672c-4260-9d9e-a31f120c2610)
+
+### Changed
+
+- Upgrade banner prompt text made more descriptive — the UI now displays a clearer label when an automatic update is detected and ready to apply, replacing the previous terse restart prompt — [Update Upgrade Prompt Text with Descriptive Label](http://localhost:38388/activity/sessions/864f4d39-ac4d-4a36-b882-c68bb5600863)
+
+### Fixed
+
+- Fix `ModuleNotFoundError` for `acp` package in tests — a lightweight local stub providing the minimal `acp` API surface (`start_tool_call`, `text_block`, `update_age`) was added to the repository and declared in `pyproject.toml`, removing the undeclared external dependency that broke the test suite — [Implement daemon‑delegation architecture for OAK ACP server and session manager](http://localhost:38388/activity/sessions/f70f69e8-672c-4260-9d9e-a31f120c2610)
+- Fix SQL syntax errors in `plan_detector.py` — escaped inequality operator (`\!=`) and reference to non-existent `timestamp_epoch` column caused SQLite parse failures; replaced with standard `!=` and the correct `created_at` column — [Implement daemon‑delegation architecture for OAK ACP server and session manager](http://localhost:38388/activity/sessions/f70f69e8-672c-4260-9d9e-a31f120c2610)
+
+### Notes
+
+> **Note**: The ACP server is shipped as an optional dependency (`acp` extra in `pyproject.toml`). The core OAK distribution remains lightweight; install with `pip install open-agent-kit[acp]` to enable editor ACP integration.
+
+> **Gotcha**: The `acp` package must be installed in the same virtual environment as OAK. If the daemon raises `ModuleNotFoundError: No module named 'acp'` at startup, verify the package is present (`pip show acp`) and that the daemon is running from the correct environment.
+
+> **Gotcha**: The `ACPIntegrations` component context provider (`AcpIntegrationContext`) is created and consumed within the same file and is not exported. Composing ACP integration state into other UI pages requires either lifting state to a shared context or extending the export surface.
+
 ## [2026-02-22]
 
 ### Added

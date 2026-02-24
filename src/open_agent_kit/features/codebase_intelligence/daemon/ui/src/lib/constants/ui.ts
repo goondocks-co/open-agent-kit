@@ -147,7 +147,7 @@ export const UPDATE_BANNER = {
     // Messages
     UPDATE_MESSAGE: "A new version of OAK is available!",
     UPGRADE_MESSAGE: "Your project needs an upgrade.",
-    FAILED_MESSAGE: "Automatic upgrade couldn't complete. Run from your terminal:",
+    FAILED_MESSAGE: "Upgrade may need a manual step. Run from your terminal:",
     // Version display
     VERSION_PREFIX: "v",
     // Button labels

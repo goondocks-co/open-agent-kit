@@ -24,9 +24,10 @@ export function UpdateBanner({ version, upgrade, cliCommand }: UpdateBannerProps
 
     const needsAction = version.update_available || upgrade.needed;
 
-    // Detect if a previous auto-upgrade attempt failed
+    // Detect if a previous auto-upgrade attempt didn't resolve conditions.
+    // While actively upgrading, stay on the normal banner (don't flash the fallback).
     const upgradeAttempted = sessionStorage.getItem(UPDATE_BANNER.UPGRADE_ATTEMPTED_KEY) === "true";
-    const showFallback = upgradeAttempted && needsAction;
+    const showFallback = upgradeAttempted && needsAction && !isRestarting;
 
     // Dismissal key encodes state so banner reappears when conditions change
     const dismissKey = `${UPDATE_BANNER.SESSION_STORAGE_KEY}-${version.installed}-${upgrade.pending_migrations}-${upgrade.config_version_outdated}`;

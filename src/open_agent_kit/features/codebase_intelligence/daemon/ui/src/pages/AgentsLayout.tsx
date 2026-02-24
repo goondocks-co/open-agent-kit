@@ -7,7 +7,7 @@
 
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Bot, Calendar, History, Settings } from "lucide-react";
+import { Bot, Calendar, History, Plug, Settings } from "lucide-react";
 
 export default function AgentsLayout() {
     const location = useLocation();
@@ -18,6 +18,7 @@ export default function AgentsLayout() {
         { id: "runs", label: "Run History", path: "/agents/runs", icon: History },
         { id: "schedules", label: "Schedules", path: "/agents/schedules", icon: Calendar },
         { id: "settings", label: "Settings", path: "/agents/settings", icon: Settings },
+        { id: "integrations", label: "Integrations", path: "/agents/integrations", icon: Plug },
     ];
 
     const isActive = (tab: typeof tabs[0]) => {

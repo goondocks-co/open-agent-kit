@@ -1,4 +1,4 @@
-version: 1.2.6.dev0+g16038bdd6.d20260222
+version: 1.2.8.dev0+ge8bf96258.d20260223
 agents:
 - vscode-copilot
 - opencode

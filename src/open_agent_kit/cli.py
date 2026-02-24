@@ -17,6 +17,7 @@ from open_agent_kit.commands.skill_cmd import skill_app
 from open_agent_kit.commands.upgrade_cmd import upgrade_command
 from open_agent_kit.config.messages import HELP_TEXT, PROJECT_TAGLINE, PROJECT_URL
 from open_agent_kit.constants import VERSION
+from open_agent_kit.features.acp_server.commands.serve_cmd import acp_app
 from open_agent_kit.utils import print_banner, print_error, print_panel
 
 # Load .env file from current directory if it exists
@@ -37,6 +38,7 @@ app.add_typer(rfc_app, name="rfc")
 app.add_typer(languages_app, name="languages")
 app.add_typer(skill_app, name="skill")
 app.add_typer(ci_app, name="ci")
+app.add_typer(acp_app, name="acp")
 
 # Create console for output
 console = Console()

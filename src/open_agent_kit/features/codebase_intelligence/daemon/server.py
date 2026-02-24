@@ -1031,7 +1031,11 @@ async def _shutdown(state: "DaemonState") -> None:
     if state.activity_processor:
         logger.info("Activity processor will terminate with daemon shutdown")
 
-    # 3. Stop agent scheduler
+    # 3. Close any active interactive sessions
+    if state.interactive_session_manager:
+        state.interactive_session_manager = None
+
+    # 4. Stop agent scheduler
     if state.agent_scheduler:
         logger.info("Stopping agent scheduler...")
         try:
@@ -1144,6 +1148,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             state.agent_executor = None
             state.agent_scheduler = None
 
+        # Initialize interactive session manager for ACP
+        try:
+            from open_agent_kit.features.codebase_intelligence.agents.interactive import (
+                InteractiveSessionManager,
+            )
+
+            if state.activity_store is None:
+                logger.warning("Interactive session manager unavailable (no activity store)")
+                return
+            state.interactive_session_manager = InteractiveSessionManager(
+                project_root=project_root,
+                activity_store=state.activity_store,
+                retrieval_engine=state.retrieval_engine,
+                vector_store=state.vector_store,
+                agent_registry=state.agent_registry,
+            )
+            logger.info("Interactive session manager initialized for ACP")
+        except ImportError as e:
+            logger.warning(f"Interactive session manager unavailable (SDK not installed): {e}")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to initialize interactive session manager: {e}")
+
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Failed to initialize: {e}")
         state.vector_store = None
@@ -1244,6 +1270,8 @@ def create_app(
 
     # Include routers
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
+        acp,
+        acp_sessions,
         activity,
         activity_management,
         activity_relationships,
@@ -1291,6 +1319,8 @@ def create_app(
     app.include_router(cloud_relay.router)
     app.include_router(restart.router)
     app.include_router(governance.router)
+    app.include_router(acp.router)
+    app.include_router(acp_sessions.router)
 
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)

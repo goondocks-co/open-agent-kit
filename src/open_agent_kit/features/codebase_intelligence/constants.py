@@ -1819,3 +1819,25 @@ def is_meaningful_upgrade(running: str, installed: str) -> bool:
     if not running_rel or not installed_rel:
         return installed != running
     return installed_rel > running_rel
+
+
+# =============================================================================
+# ACP Management
+# =============================================================================
+
+CI_ACP_ROUTE_TAG: Final[str] = "acp"
+CI_ACP_API_PATH_STATUS: Final[str] = "/api/acp/status"
+CI_ACP_API_PATH_START: Final[str] = "/api/acp/start"
+CI_ACP_API_PATH_STOP: Final[str] = "/api/acp/stop"
+CI_ACP_API_PATH_LOGS: Final[str] = "/api/acp/logs"
+CI_ACP_LOG_FILE: Final[str] = "acp.log"
+CI_ACP_LOG_LINES_DEFAULT: Final[int] = 100
+CI_ACP_STATUS_RUNNING: Final[str] = "running"
+CI_ACP_STATUS_STOPPED: Final[str] = "stopped"
+CI_ACP_ERROR_NOT_RUNNING: Final[str] = "ACP server is not running"
+CI_ACP_ERROR_ALREADY_RUNNING: Final[str] = "ACP server is already running"
+CI_ACP_ERROR_START_FAILED: Final[str] = "Failed to start ACP server: {error}"
+CI_ACP_ERROR_NO_PROJECT_ROOT: Final[str] = "Daemon not initialized: no project root"
+CI_ACP_LOG_STARTING: Final[str] = "Starting ACP server via stdio transport"
+CI_ACP_LOG_STOPPED: Final[str] = "ACP server stopped"
+CI_ACP_LOG_STOP_FAILED: Final[str] = "Failed to stop ACP server: {error}"

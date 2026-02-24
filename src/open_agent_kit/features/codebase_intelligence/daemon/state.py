@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     )
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.agents.executor import AgentExecutor
+    from open_agent_kit.features.codebase_intelligence.agents.interactive import (
+        InteractiveSessionManager,
+    )
     from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
     from open_agent_kit.features.codebase_intelligence.agents.scheduler import AgentScheduler
     from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
@@ -182,6 +185,8 @@ class DaemonState:
     agent_registry: "AgentRegistry | None" = None
     agent_executor: "AgentExecutor | None" = None
     agent_scheduler: "AgentScheduler | None" = None
+    # ACP interactive session manager
+    interactive_session_manager: "InteractiveSessionManager | None" = None
     # Periodic auto-backup tracking
     last_auto_backup: float | None = None
     # Authentication token for API security (set from OAK_CI_TOKEN env var)
@@ -191,6 +196,9 @@ class DaemonState:
     # Cloud MCP Relay
     cloud_relay_client: "RelayClient | None" = None
     cf_account_name: str | None = None
+    # ACP server management
+    acp_server_pid: int | None = None
+    acp_server_transport: str | None = None
     _dynamic_cors_origins: set[str] = field(default_factory=set, init=False, repr=False)
     _cors_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     # Version detection
@@ -551,11 +559,14 @@ class DaemonState:
         self.agent_registry = None
         self.agent_executor = None
         self.agent_scheduler = None
+        self.interactive_session_manager = None
         self.last_auto_backup = None
         self.auth_token = None
         self.tunnel_provider = None
         self.cloud_relay_client = None
         self.cf_account_name = None
+        self.acp_server_pid = None
+        self.acp_server_transport = None
         self._dynamic_cors_origins = set()
         self.installed_version = None
         self.update_available = False

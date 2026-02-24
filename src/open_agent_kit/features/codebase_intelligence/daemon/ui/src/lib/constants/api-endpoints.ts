@@ -98,6 +98,12 @@ export const API_ENDPOINTS = {
     CLOUD_RELAY_STOP: "/api/cloud/stop",
     CLOUD_RELAY_PREFLIGHT: "/api/cloud/preflight",
     CLOUD_RELAY_SETTINGS: "/api/cloud/settings",
+
+    // ACP endpoints
+    ACP_STATUS: "/api/acp/status",
+    ACP_START: "/api/acp/start",
+    ACP_STOP: "/api/acp/stop",
+    ACP_LOGS: "/api/acp/logs",
 } as const;
 
 // =============================================================================
