@@ -198,5 +198,5 @@ async def close_session(session_id: str) -> dict:
         Confirmation of closure.
     """
     manager = _get_session_manager()
-    manager.close_session(session_id)
+    await manager.close_session(session_id)
     return {"success": True, "session_id": session_id}

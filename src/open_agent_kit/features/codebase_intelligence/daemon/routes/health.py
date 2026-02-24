@@ -16,6 +16,7 @@ from open_agent_kit.features.codebase_intelligence.cli_command import (
     resolve_ci_cli_command,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_ACP_LOG_FILE,
     CI_ACTIVITIES_DB_FILENAME,
     CI_CHROMA_DIR,
     CI_DATA_DIR,
@@ -24,6 +25,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_STATUS_KEY_TUNNEL,
     DAEMON_STATUS_HEALTHY,
     DAEMON_STATUS_RUNNING,
+    LOG_FILE_ACP,
     LOG_FILE_DAEMON,
     LOG_FILE_DISPLAY_NAMES,
     LOG_FILE_HOOKS,
@@ -278,7 +280,7 @@ async def get_logs(
     ),
     file: str = Query(
         default=LOG_FILE_DAEMON,
-        description="Log file to retrieve: 'daemon' or 'hooks'",
+        description="Log file to retrieve: 'daemon', 'hooks', or 'acp'",
     ),
 ) -> dict:
     """Get recent logs from specified log file.
@@ -299,6 +301,8 @@ async def get_logs(
         ci_data_dir = state.project_root / OAK_DIR / CI_DATA_DIR
         if file == LOG_FILE_HOOKS:
             log_file = ci_data_dir / CI_HOOKS_LOG_FILE
+        elif file == LOG_FILE_ACP:
+            log_file = ci_data_dir / CI_ACP_LOG_FILE
         else:
             log_file = ci_data_dir / CI_LOG_FILE
 
@@ -313,6 +317,8 @@ async def get_logs(
     else:
         if file == LOG_FILE_HOOKS:
             log_content = "No hook events logged yet. Hook events will appear here when SessionStart, SessionEnd, etc. fire."
+        elif file == LOG_FILE_ACP:
+            log_content = "No ACP log yet. Logs will appear here when an editor connects via ACP."
         else:
             log_content = "No log file found"
 

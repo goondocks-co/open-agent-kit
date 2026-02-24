@@ -49,6 +49,7 @@ export function calculateMaxLogDiskUsage(maxSizeMb: number, backupCount: number)
 export const LOG_FILES = {
     DAEMON: "daemon",
     HOOKS: "hooks",
+    ACP: "acp",
 } as const;
 
 export type LogFileType = typeof LOG_FILES[keyof typeof LOG_FILES];
@@ -57,12 +58,14 @@ export type LogFileType = typeof LOG_FILES[keyof typeof LOG_FILES];
 export const LOG_FILE_DISPLAY_NAMES: Record<LogFileType, string> = {
     [LOG_FILES.DAEMON]: "Daemon Log",
     [LOG_FILES.HOOKS]: "Hook Events",
+    [LOG_FILES.ACP]: "ACP Log",
 } as const;
 
 /** Log file options for Select dropdowns */
 export const LOG_FILE_OPTIONS = [
     { value: LOG_FILES.DAEMON, label: LOG_FILE_DISPLAY_NAMES.daemon },
     { value: LOG_FILES.HOOKS, label: LOG_FILE_DISPLAY_NAMES.hooks },
+    { value: LOG_FILES.ACP, label: LOG_FILE_DISPLAY_NAMES.acp },
 ] as const;
 
 /** Default log file to display */

@@ -1163,6 +1163,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 retrieval_engine=state.retrieval_engine,
                 vector_store=state.vector_store,
                 agent_registry=state.agent_registry,
+                activity_processor=state.activity_processor,
             )
             logger.info("Interactive session manager initialized for ACP")
         except ImportError as e:

@@ -4,7 +4,7 @@
 # The daemon manages the full session lifecycle — prompts, responses,
 # tool usage, observations, activity recording.
 
-name: acp
+name: oak
 display_name: "OAK Agent (ACP)"
 description: >
   Interactive coding agent for editor integrations via the Agent Client

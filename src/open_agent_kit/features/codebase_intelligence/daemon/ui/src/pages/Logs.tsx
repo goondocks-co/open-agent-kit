@@ -214,7 +214,7 @@ export default function Logs() {
                         )
                     )
                 ) : (
-                    /* Daemon log filters - log level tags + debug topics */
+                    /* Daemon / ACP log filters - log level tags + debug topics */
                     (Object.entries(DAEMON_LOG_TAG_CATEGORIES) as [DaemonLogTagCategory, typeof DAEMON_LOG_TAG_CATEGORIES[DaemonLogTagCategory]][]).map(
                         ([category, { tags }], categoryIndex) => (
                             <div key={category} className="flex items-center gap-1">

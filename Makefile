@@ -14,7 +14,7 @@
 #   oak      → uv tool install oak-ci (stable from PyPI, separate venv)
 #   Both can coexist simultaneously.
 
-.PHONY: help setup setup-full sync lock uninstall cli-stable cli-dev cli-dual cli-verify test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset
+.PHONY: help setup setup-full sync lock uninstall cli-stable cli-dev cli-dual cli-verify test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset acp-smoke
 
 # Where uv/pipx put global binaries (respect XDG on Linux)
 USER_BIN_DIR := $(or $(shell uv tool dir --bin 2>/dev/null),$(HOME)/.local/bin)
@@ -73,6 +73,9 @@ help:
 	@echo "    make docs-dev      Run docs site with hot reload (development)"
 	@echo "    make docs-build    Build docs site for production"
 	@echo "    make docs-preview  Preview built docs site locally"
+	@echo ""
+	@echo "  ACP Integration:"
+	@echo "    make acp-smoke     Run live ACP smoke tests against running daemon"
 	@echo ""
 	@echo "  Dogfooding:"
 	@echo "    make dogfood-reset Reset oak environment (reinstall with all features)"
@@ -268,3 +271,7 @@ dogfood-reset:
 	uv run oak feature add strategic-planning
 	@echo ""
 	@echo "Dogfooding environment reset. Run 'make ci-dev' to start daemon with hot reload."
+
+# ACP smoke test - live integration test against running daemon
+acp-smoke:  ## Run live ACP smoke tests against running daemon
+	uv run python scripts/acp_smoke_test.py

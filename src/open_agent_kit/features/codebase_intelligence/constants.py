@@ -211,10 +211,12 @@ LOG_LINES_MAX: Final[int] = 500
 
 LOG_FILE_DAEMON: Final[str] = "daemon"
 LOG_FILE_HOOKS: Final[str] = "hooks"
-VALID_LOG_FILES: Final[tuple[str, ...]] = (LOG_FILE_DAEMON, LOG_FILE_HOOKS)
+LOG_FILE_ACP: Final[str] = "acp"
+VALID_LOG_FILES: Final[tuple[str, ...]] = (LOG_FILE_DAEMON, LOG_FILE_HOOKS, LOG_FILE_ACP)
 LOG_FILE_DISPLAY_NAMES: Final[dict[str, str]] = {
     LOG_FILE_DAEMON: "Daemon Log",
     LOG_FILE_HOOKS: "Hook Events",
+    LOG_FILE_ACP: "ACP Log",
 }
 
 # =============================================================================

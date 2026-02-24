@@ -572,12 +572,32 @@ async def list_sessions(
 @router.get("/api/activity/session-agents")
 @handle_route_errors("list session agents")
 async def list_session_agents() -> dict[str, list[str]]:
-    """List supported coding agents for session filtering."""
+    """List coding agents for session filtering.
+
+    Returns the union of package agents (from manifest.yaml files) and
+    agents that have actual sessions in the activity store. This ensures
+    agents like "oak" (ACP sessions) appear in the filter even though
+    they don't have a package manifest.
+    """
     from open_agent_kit.services.agent_service import AgentService
 
     agent_service = AgentService()
-    agents = sorted(agent_service.list_available_agents())
-    return {"agents": agents}
+    agents: set[str] = set(agent_service.list_available_agents())
+
+    # Also include agents that have sessions in the activity store
+    state = get_state()
+    if state.activity_store is not None:
+        try:
+            _columns, rows = state.activity_store.execute_readonly_query(
+                "SELECT DISTINCT agent FROM sessions"
+            )
+            for row in rows:
+                if row[0]:
+                    agents.add(row[0])
+        except (OSError, ValueError, RuntimeError):
+            pass
+
+    return {"agents": sorted(agents)}
 
 
 @router.get("/api/activity/session-members")

@@ -8,8 +8,16 @@ sessions alive across multiple prompt() calls for multi-turn interaction.
 Each session tracks its own state (cwd, permission_mode, cancellation,
 pending plan) and streams ExecutionEvents back to the caller via
 async iterators.
+
+Intelligence pipeline integration:
+- Session-start context injection (CI status, session summaries)
+- SDK hooks for activity recording (PostToolUse, PostToolUseFailure)
+- Context search on prompt submit (code + memories)
+- Proper batch finalization with response summaries + async observation extraction
+- Session summary generation on close
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -28,6 +36,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_TOOL_RESOLVE,
     CI_TOOL_SEARCH,
     CI_TOOL_SESSIONS,
+    INJECTION_MAX_SESSION_SUMMARIES,
+    INJECTION_SESSION_START_REMINDER_BLOCK,
+    PROMPT_SOURCE_PLAN,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
     CancelledEvent,
@@ -41,6 +52,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
 )
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.activity.processor import (
+        ActivityProcessor,
+    )
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.agents.registry import AgentRegistry
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
@@ -49,7 +63,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Agent name used for ACP sessions in the activity store
-ACP_AGENT_NAME = "acp"
+ACP_AGENT_NAME = "oak"
 
 # Default system prompt when no ACP agent definition is registered
 ACP_DEFAULT_SYSTEM_PROMPT = (
@@ -57,6 +71,12 @@ ACP_DEFAULT_SYSTEM_PROMPT = (
     "codebase intelligence. Use the available tools to search code, "
     "access project memories, and understand the codebase."
 )
+
+# Maximum length for sanitized tool input string values
+_SANITIZED_INPUT_MAX_LENGTH = 500
+
+# Fields in tool_input that contain large content (file bodies, diffs)
+_LARGE_CONTENT_FIELDS = frozenset({"content", "new_source", "old_string", "new_string"})
 
 
 @dataclass
@@ -98,6 +118,7 @@ class InteractiveSessionManager:
         retrieval_engine: "RetrievalEngine | None",
         vector_store: "VectorStore | None",
         agent_registry: "AgentRegistry | None",
+        activity_processor: "ActivityProcessor | None" = None,
     ) -> None:
         """Initialize the interactive session manager.
 
@@ -107,12 +128,14 @@ class InteractiveSessionManager:
             retrieval_engine: RetrievalEngine for CI tools.
             vector_store: VectorStore for CI tools.
             agent_registry: AgentRegistry for loading agent definitions.
+            activity_processor: ActivityProcessor for batch processing and summaries.
         """
         self._project_root = project_root
         self._activity_store = activity_store
         self._retrieval_engine = retrieval_engine
         self._vector_store = vector_store
         self._agent_registry = agent_registry
+        self._activity_processor = activity_processor
         self._sessions: dict[str, InteractiveSession] = {}
 
         # MCP server cache keyed by frozenset of enabled tools
@@ -152,9 +175,332 @@ class InteractiveSessionManager:
         self._ci_mcp_servers[cache_key] = server
         return server
 
+    # =====================================================================
+    # Context injection
+    # =====================================================================
+
+    def _build_session_context(self, session_id: str) -> str:
+        """Build context string for session-start injection.
+
+        Mirrors injection.py:build_session_context() but uses injected
+        dependencies instead of DaemonState.
+
+        Args:
+            session_id: Current session ID for tool call linking.
+
+        Returns:
+            Formatted context string (may be empty).
+        """
+        parts: list[str] = []
+
+        try:
+            if self._vector_store:
+                stats = self._vector_store.get_stats()
+                code_chunks = stats.get("code_chunks", 0)
+                memory_count = stats.get("memory_observations", 0)
+
+                if code_chunks > 0 or memory_count > 0:
+                    parts.append(
+                        f"**Codebase Intelligence Active**: {code_chunks} code chunks indexed, "
+                        f"{memory_count} memories stored."
+                    )
+
+                    reminder = INJECTION_SESSION_START_REMINDER_BLOCK
+                    reminder += f"\n- Current session: `session_id={session_id}`"
+                    parts.append(reminder)
+
+                    # Include recent session summaries for continuity
+                    if self._activity_store:
+                        try:
+                            from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+                                format_session_summaries,
+                            )
+
+                            recent_sessions = self._activity_store.list_sessions_with_summaries(
+                                limit=INJECTION_MAX_SESSION_SUMMARIES
+                            )
+                            if recent_sessions:
+                                session_summaries = [
+                                    {
+                                        "observation": s.summary,
+                                        "tags": [s.agent],
+                                    }
+                                    for s in recent_sessions
+                                ]
+                                session_text = format_session_summaries(session_summaries)
+                                if session_text:
+                                    parts.append(session_text)
+                        except (OSError, ValueError, RuntimeError, AttributeError) as e:
+                            logger.debug(
+                                f"Failed to fetch session summaries for ACP injection: {e}"
+                            )
+        except (OSError, ValueError, RuntimeError, AttributeError) as e:
+            logger.debug(f"Failed to build session context: {e}")
+
+        return "\n\n".join(parts) if parts else ""
+
+    def _search_prompt_context(self, user_text: str, session_id: str) -> str | None:
+        """Search for relevant code and memories based on user prompt.
+
+        Args:
+            user_text: The user's prompt text.
+            session_id: Current session ID.
+
+        Returns:
+            Formatted context string, or None if nothing relevant found.
+        """
+        if not self._retrieval_engine:
+            return None
+
+        try:
+            from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
+                format_code_for_injection,
+                format_memories_for_injection,
+            )
+            from open_agent_kit.features.codebase_intelligence.retrieval.engine import (
+                RetrievalEngine,
+            )
+
+            search_res = self._retrieval_engine.search(
+                query=user_text,
+                search_type="all",
+                limit=10,
+            )
+
+            parts: list[str] = []
+
+            # Filter code by high confidence
+            if search_res.code:
+                confident_code = RetrievalEngine.filter_by_combined_score(
+                    search_res.code, min_combined="high"
+                )
+                if confident_code:
+                    code_text = format_code_for_injection(confident_code[:3])
+                    if code_text:
+                        parts.append(code_text)
+
+            # Filter memories by high combined score
+            if search_res.memory:
+                confident_memories = RetrievalEngine.filter_by_combined_score(
+                    search_res.memory, min_combined="high"
+                )
+                if confident_memories:
+                    mem_text = format_memories_for_injection(confident_memories[:5])
+                    if mem_text:
+                        parts.append(mem_text)
+
+            if parts:
+                return "\n\n".join(parts)
+
+        except (OSError, ValueError, RuntimeError, AttributeError) as e:
+            logger.debug(f"Failed to search prompt context: {e}")
+
+        return None
+
+    # =====================================================================
+    # SDK hooks for activity recording
+    # =====================================================================
+
+    def _build_sdk_hooks(
+        self,
+        session: InteractiveSession,
+        batch_id_ref: list[int | None],
+        response_text_parts: list[str],
+    ) -> dict[str, list[Any]]:
+        """Build SDK hooks dict for activity recording.
+
+        Creates PostToolUse and PostToolUseFailure callbacks that record
+        tool activities in the activity store, mirroring hooks_tool.py.
+
+        Args:
+            session: Current interactive session.
+            batch_id_ref: Mutable reference [batch_id] so hooks see current batch.
+            response_text_parts: Mutable list to accumulate response text.
+
+        Returns:
+            Dict suitable for ClaudeAgentOptions.hooks.
+        """
+        try:
+            from claude_agent_sdk import (
+                HookJSONOutput,
+                HookMatcher,
+            )
+        except ImportError:
+            return {}
+
+        activity_store = self._activity_store
+        project_root = self._project_root
+
+        async def _post_tool_use(
+            input_data: Any,
+            tool_use_id: str | None,
+            context: Any,
+        ) -> HookJSONOutput:
+            """Record successful tool execution as an activity."""
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.store.models import (
+                    Activity,
+                )
+
+                tool_name = input_data.get("tool_name", "")
+                tool_input = input_data.get("tool_input", {})
+                tool_response = input_data.get("tool_response", "")
+
+                # Sanitize tool_input (remove large content fields)
+                sanitized_input = _sanitize_tool_input(tool_input)
+
+                # Build output summary
+                output_summary = _build_output_summary(tool_name, tool_response)
+
+                activity = Activity(
+                    session_id=session.session_id,
+                    prompt_batch_id=batch_id_ref[0],
+                    tool_name=tool_name,
+                    tool_input=sanitized_input,
+                    tool_output_summary=output_summary,
+                    file_path=(
+                        tool_input.get("file_path") if isinstance(tool_input, dict) else None
+                    ),
+                    success=True,
+                )
+                activity_store.add_activity_buffered(activity)
+                logger.debug(f"ACP hook: stored activity {tool_name} (batch={batch_id_ref[0]})")
+
+                # Plan detection for Write tool
+                if tool_name == "Write" and batch_id_ref[0] is not None:
+                    _handle_plan_detection(
+                        activity_store,
+                        session.session_id,
+                        batch_id_ref[0],
+                        tool_input,
+                        project_root,
+                    )
+
+                # Plan capture for ExitPlanMode
+                if tool_name == "ExitPlanMode" and batch_id_ref[0] is not None:
+                    _handle_exit_plan_mode(
+                        activity_store,
+                        session.session_id,
+                        project_root,
+                    )
+
+            except Exception as e:
+                logger.debug(f"ACP post-tool-use hook error: {e}")
+
+            return {}
+
+        async def _post_tool_use_failure(
+            input_data: Any,
+            tool_use_id: str | None,
+            context: Any,
+        ) -> HookJSONOutput:
+            """Record failed tool execution as an activity."""
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.store.models import (
+                    Activity,
+                )
+
+                tool_name = input_data.get("tool_name", "unknown")
+                tool_input = input_data.get("tool_input", {})
+                error_message = str(input_data.get("tool_response", "Tool execution failed"))
+
+                sanitized_input = _sanitize_tool_input(tool_input)
+
+                activity = Activity(
+                    session_id=session.session_id,
+                    prompt_batch_id=batch_id_ref[0],
+                    tool_name=tool_name,
+                    tool_input=sanitized_input,
+                    tool_output_summary=error_message[:_SANITIZED_INPUT_MAX_LENGTH],
+                    file_path=(
+                        tool_input.get("file_path") if isinstance(tool_input, dict) else None
+                    ),
+                    success=False,
+                    error_message=error_message[:_SANITIZED_INPUT_MAX_LENGTH],
+                )
+                activity_store.add_activity_buffered(activity)
+                logger.debug(
+                    f"ACP hook: stored failed activity {tool_name} (batch={batch_id_ref[0]})"
+                )
+
+            except Exception as e:
+                logger.debug(f"ACP post-tool-use-failure hook error: {e}")
+
+            return {}
+
+        return {
+            "PostToolUse": [
+                HookMatcher(matcher=None, hooks=[_post_tool_use]),
+            ],
+            "PostToolUseFailure": [
+                HookMatcher(matcher=None, hooks=[_post_tool_use_failure]),
+            ],
+        }
+
+    # =====================================================================
+    # Batch finalization
+    # =====================================================================
+
+    def _finalize_batch(
+        self,
+        batch_id: int,
+        response_text_parts: list[str],
+    ) -> None:
+        """Finalize a prompt batch with response summary and async processing.
+
+        Uses activity.batches.finalize_prompt_batch when activity_processor is
+        available, otherwise falls back to bare end_prompt_batch.
+
+        Args:
+            batch_id: Prompt batch ID to finalize.
+            response_text_parts: Accumulated response text blocks.
+        """
+        # Flush any buffered activities first
+        try:
+            self._activity_store.flush_activity_buffer()
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to flush activity buffer: {e}")
+
+        # Build response summary from accumulated text
+        response_summary = "".join(response_text_parts).strip() or None
+
+        if self._activity_processor:
+            try:
+                from open_agent_kit.features.codebase_intelligence.activity.batches import (
+                    finalize_prompt_batch,
+                )
+
+                finalize_prompt_batch(
+                    activity_store=self._activity_store,
+                    activity_processor=self._activity_processor,
+                    prompt_batch_id=batch_id,
+                    response_summary=response_summary,
+                )
+                return
+            except (OSError, ValueError, RuntimeError) as e:
+                logger.warning(f"finalize_prompt_batch failed, falling back: {e}")
+
+        # Fallback: bare end_prompt_batch
+        try:
+            if response_summary:
+                self._activity_store.update_prompt_batch_response(batch_id, response_summary)
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to store response summary: {e}")
+
+        try:
+            self._activity_store.end_prompt_batch(batch_id)
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to end prompt batch: {e}")
+
+    # =====================================================================
+    # Options building
+    # =====================================================================
+
     def _build_options(
         self,
         session: InteractiveSession,
+        batch_id_ref: list[int | None] | None = None,
+        response_text_parts: list[str] | None = None,
     ) -> Any:
         """Build ClaudeAgentOptions for a session.
 
@@ -163,6 +509,8 @@ class InteractiveSessionManager:
 
         Args:
             session: Interactive session with current state.
+            batch_id_ref: Mutable reference for SDK hooks (optional).
+            response_text_parts: Mutable list for SDK hooks (optional).
 
         Returns:
             ClaudeAgentOptions instance.
@@ -181,6 +529,11 @@ class InteractiveSessionManager:
         system_prompt = ACP_DEFAULT_SYSTEM_PROMPT
         if agent_def and agent_def.system_prompt:
             system_prompt = agent_def.system_prompt
+
+        # Append session context (CI status, summaries)
+        session_context = self._build_session_context(session.session_id)
+        if session_context:
+            system_prompt = f"{system_prompt}\n\n{session_context}"
 
         # Determine allowed tools
         allowed_tools: list[str] = []
@@ -255,7 +608,17 @@ class InteractiveSessionManager:
         if mcp_servers:
             options.mcp_servers = mcp_servers
 
+        # Wire SDK hooks for activity recording
+        if batch_id_ref is not None and response_text_parts is not None:
+            hooks = self._build_sdk_hooks(session, batch_id_ref, response_text_parts)
+            if hooks:
+                options.hooks = hooks  # type: ignore[assignment]
+
         return options
+
+    # =====================================================================
+    # Session lifecycle
+    # =====================================================================
 
     def create_session(self, session_id: str | None = None, cwd: Path | None = None) -> dict:
         """Create a new interactive session.
@@ -313,6 +676,10 @@ class InteractiveSessionManager:
             session_id, user_text, source_type=ACP_AGENT_NAME
         )
 
+        # Mutable references for SDK hooks
+        batch_id_ref: list[int | None] = [batch.id]
+        response_text_parts: list[str] = []
+
         try:
             # Lazy imports for SDK types
             from claude_agent_sdk import (
@@ -323,12 +690,25 @@ class InteractiveSessionManager:
                 ToolUseBlock,
             )
 
-            options = self._build_options(session)
+            options = self._build_options(session, batch_id_ref, response_text_parts)
+
+            # Search for relevant context based on user prompt
+            prompt_context = self._search_prompt_context(user_text, session_id)
+            effective_text = user_text
+            if prompt_context:
+                effective_text = f"{user_text}\n\n---\n**Relevant context:**\n{prompt_context}"
 
             async with ClaudeSDKClient(options=options) as client:
-                await client.query(user_text)
+                logger.debug(f"ACP session {session_id}: SDK client connected, sending query")
+                await client.query(effective_text)
 
+                msg_count = 0
                 async for msg in client.receive_response():
+                    msg_count += 1
+                    logger.debug(
+                        f"ACP session {session_id}: message {msg_count} "
+                        f"type={type(msg).__name__}"
+                    )
                     # Check for cancellation between messages
                     if session.cancelled:
                         yield CancelledEvent()
@@ -337,6 +717,7 @@ class InteractiveSessionManager:
                     if isinstance(msg, AssistantMessage):
                         for block in msg.content:
                             if isinstance(block, TextBlock):
+                                response_text_parts.append(block.text)
                                 yield TextEvent(text=block.text)
                             elif isinstance(block, ToolUseBlock):
                                 if block.name == "ExitPlanMode":
@@ -346,6 +727,18 @@ class InteractiveSessionManager:
                                         plan_content = block.input.get("plan", "")
                                     session.pending_plan = True
                                     session.pending_plan_content = plan_content
+
+                                    # Store plan in batch metadata
+                                    if batch.id is not None:
+                                        try:
+                                            self._activity_store.update_prompt_batch_source_type(
+                                                batch.id,
+                                                PROMPT_SOURCE_PLAN,
+                                                plan_content=plan_content,
+                                            )
+                                        except (OSError, ValueError, RuntimeError) as e:
+                                            logger.debug(f"Failed to store plan metadata: {e}")
+
                                     yield PlanProposedEvent(plan=plan_content)
                                 else:
                                     yield ToolStartEvent(
@@ -372,9 +765,13 @@ class InteractiveSessionManager:
         except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"ACP session {session_id} prompt failed: {e}")
             yield ErrorEvent(message=str(e))
+        except Exception as e:
+            # Catch SDK-specific errors (ProcessError, ClaudeSDKError, etc.)
+            logger.error(f"ACP session {session_id} prompt failed: {type(e).__name__}: {e}")
+            yield ErrorEvent(message=f"{type(e).__name__}: {e}")
         finally:
             if batch.id is not None:
-                self._activity_store.end_prompt_batch(batch.id)
+                self._finalize_batch(batch.id, response_text_parts)
 
         yield DoneEvent(
             session_id=session_id,
@@ -432,6 +829,10 @@ class InteractiveSessionManager:
             session_id, "[plan approved]", source_type=ACP_AGENT_NAME
         )
 
+        # Mutable references for SDK hooks
+        batch_id_ref: list[int | None] = [batch.id]
+        response_text_parts: list[str] = []
+
         try:
             from claude_agent_sdk import (
                 AssistantMessage,
@@ -442,7 +843,7 @@ class InteractiveSessionManager:
             )
 
             # Build options with acceptEdits for plan execution
-            options = self._build_options(session)
+            options = self._build_options(session, batch_id_ref, response_text_parts)
             options.permission_mode = "acceptEdits"
 
             async with ClaudeSDKClient(options=options) as client:
@@ -459,6 +860,7 @@ class InteractiveSessionManager:
                     if isinstance(msg, AssistantMessage):
                         for block in msg.content:
                             if isinstance(block, TextBlock):
+                                response_text_parts.append(block.text)
                                 yield TextEvent(text=block.text)
                             elif isinstance(block, ToolUseBlock):
                                 yield ToolStartEvent(
@@ -483,9 +885,12 @@ class InteractiveSessionManager:
         except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"ACP session {session_id} plan approval failed: {e}")
             yield ErrorEvent(message=str(e))
+        except Exception as e:
+            logger.error(f"ACP session {session_id} plan approval failed: {type(e).__name__}: {e}")
+            yield ErrorEvent(message=f"{type(e).__name__}: {e}")
         finally:
             if batch.id is not None:
-                self._activity_store.end_prompt_batch(batch.id)
+                self._finalize_batch(batch.id, response_text_parts)
 
         yield DoneEvent(session_id=session_id, needs_plan_approval=False)
 
@@ -504,15 +909,201 @@ class InteractiveSessionManager:
         session.cancelled = True
         logger.info(f"ACP session {session_id} cancelled")
 
-    def close_session(self, session_id: str) -> None:
+    async def close_session(self, session_id: str) -> None:
         """Close a session and clean up resources.
+
+        Flushes buffered activities, finalizes any remaining batch,
+        ends the session, and schedules async summary generation.
 
         Args:
             session_id: Session to close.
         """
         session = self._sessions.pop(session_id, None)
-        if session is not None:
-            self._activity_store.end_session(session_id)
-            logger.info(f"ACP interactive session closed: {session_id}")
-        else:
+        if session is None:
             logger.warning(f"Cannot close unknown session: {session_id}")
+            return
+
+        # Flush any remaining buffered activities
+        try:
+            self._activity_store.flush_activity_buffer()
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.debug(f"Failed to flush activity buffer on close: {e}")
+
+        # Finalize any active batch
+        try:
+            active_batch = self._activity_store.get_active_prompt_batch(session_id)
+            if active_batch and active_batch.id is not None:
+                self._finalize_batch(active_batch.id, [])
+        except (OSError, ValueError, RuntimeError, AttributeError) as e:
+            logger.debug(f"Failed to finalize active batch on close: {e}")
+
+        # End the session in the activity store
+        self._activity_store.end_session(session_id)
+        logger.info(f"ACP interactive session closed: {session_id}")
+
+        # Schedule async summary generation
+        if self._activity_processor:
+            processor = self._activity_processor
+            sid = session_id
+
+            async def _generate_summary() -> None:
+                try:
+                    summary, title = processor.process_session_summary_with_title(sid)
+                    if summary:
+                        logger.info(
+                            f"ACP session summary generated for {sid}: "
+                            f"{len(summary)} chars, title={title!r}"
+                        )
+                except (OSError, ValueError, RuntimeError) as e:
+                    logger.warning(f"Failed to generate session summary for {sid}: {e}")
+
+            asyncio.create_task(_generate_summary())
+
+
+# =========================================================================
+# Module-level helper functions (used by SDK hooks)
+# =========================================================================
+
+
+def _sanitize_tool_input(tool_input: Any) -> dict[str, Any] | None:
+    """Sanitize tool input by truncating large content fields.
+
+    Mirrors the sanitization pattern from hooks_tool.py.
+
+    Args:
+        tool_input: Raw tool input (dict or other).
+
+    Returns:
+        Sanitized dict, or None.
+    """
+    if not isinstance(tool_input, dict):
+        return None
+
+    sanitized: dict[str, Any] = {}
+    for k, v in tool_input.items():
+        if k in _LARGE_CONTENT_FIELDS:
+            sanitized[k] = f"<{len(str(v))} chars>"
+        elif isinstance(v, str) and len(v) > _SANITIZED_INPUT_MAX_LENGTH:
+            sanitized[k] = v[:_SANITIZED_INPUT_MAX_LENGTH] + "..."
+        else:
+            sanitized[k] = v
+    return sanitized
+
+
+def _build_output_summary(tool_name: str, tool_response: Any) -> str:
+    """Build a concise output summary from tool response.
+
+    Args:
+        tool_name: Name of the tool.
+        tool_response: Raw tool response.
+
+    Returns:
+        Truncated summary string.
+    """
+    if not tool_response:
+        return ""
+
+    response_str = str(tool_response)
+
+    # For file reads, just note the length
+    if tool_name == "Read" and len(response_str) > 200:
+        return f"Read {len(response_str)} chars"
+
+    return response_str[:_SANITIZED_INPUT_MAX_LENGTH]
+
+
+def _handle_plan_detection(
+    activity_store: "ActivityStore",
+    session_id: str,
+    batch_id: int,
+    tool_input: Any,
+    project_root: Path,
+) -> None:
+    """Detect and record plan file writes.
+
+    Args:
+        activity_store: Store for batch updates.
+        session_id: Current session.
+        batch_id: Current batch ID.
+        tool_input: Tool input dict from Write tool.
+        project_root: Project root for path resolution.
+    """
+    if not isinstance(tool_input, dict):
+        return
+
+    file_path = tool_input.get("file_path", "")
+    if not file_path:
+        return
+
+    try:
+        from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
+
+        detection = detect_plan(file_path)
+        if not detection.is_plan:
+            return
+
+        # Read plan content from disk (source of truth)
+        plan_content = ""
+        plan_path = Path(file_path)
+        if not plan_path.is_absolute():
+            plan_path = project_root / plan_path
+
+        try:
+            if plan_path.exists():
+                plan_content = plan_path.read_text(encoding="utf-8")
+            else:
+                plan_content = tool_input.get("content", "")
+        except (OSError, ValueError) as e:
+            logger.debug(f"Failed to read plan file {plan_path}: {e}")
+            plan_content = tool_input.get("content", "")
+
+        activity_store.update_prompt_batch_source_type(
+            batch_id,
+            PROMPT_SOURCE_PLAN,
+            plan_file_path=file_path,
+            plan_content=plan_content,
+        )
+        logger.info(
+            f"ACP: detected plan in Write to {file_path}, "
+            f"batch {batch_id} ({len(plan_content)} chars)"
+        )
+
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.debug(f"Plan detection failed: {e}")
+
+
+def _handle_exit_plan_mode(
+    activity_store: "ActivityStore",
+    session_id: str,
+    project_root: Path,
+) -> None:
+    """Re-read and update plan content on ExitPlanMode.
+
+    Args:
+        activity_store: Store for batch updates.
+        session_id: Current session.
+        project_root: Project root for path resolution.
+    """
+    try:
+        plan_batch = activity_store.get_session_plan_batch(session_id)
+        if not (plan_batch and plan_batch.plan_file_path and plan_batch.id):
+            return
+
+        plan_path = Path(plan_batch.plan_file_path)
+        if not plan_path.is_absolute():
+            plan_path = project_root / plan_path
+
+        if plan_path.exists():
+            final_content = plan_path.read_text(encoding="utf-8")
+            activity_store.update_prompt_batch_source_type(
+                plan_batch.id,
+                PROMPT_SOURCE_PLAN,
+                plan_file_path=plan_batch.plan_file_path,
+                plan_content=final_content,
+            )
+            activity_store.mark_plan_unembedded(plan_batch.id)
+            logger.info(
+                f"ACP ExitPlanMode: updated plan {plan_batch.id} ({len(final_content)} chars)"
+            )
+    except (OSError, ValueError, RuntimeError, AttributeError) as e:
+        logger.debug(f"ExitPlanMode handling failed: {e}")
