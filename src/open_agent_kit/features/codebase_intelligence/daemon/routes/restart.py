@@ -12,8 +12,13 @@ import shlex
 import signal
 import subprocess
 from http import HTTPStatus
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
+
+if TYPE_CHECKING:
+    from open_agent_kit.services.upgrade_service import UpgradePlan
 
 from open_agent_kit.features.codebase_intelligence.cli_command import (
     resolve_ci_cli_command,
@@ -52,6 +57,60 @@ router = APIRouter(tags=[CI_RESTART_ROUTE_TAG])
 # sys.executable because after a Homebrew (or similar) upgrade the old Python
 # interpreter path baked into the running process may no longer exist on disk.
 _SHELL = "/bin/sh"
+
+
+def _run_upgrade_pipeline(
+    project_root: Path,
+    plan: "UpgradePlan",
+) -> dict:
+    """Run the full upgrade pipeline (same code path as ``oak upgrade --force``).
+
+    This ensures the daemon upgrade includes both the upgrade stages
+    (migrations, structural repairs, version bump) AND the reconciliation
+    stages (agent commands, settings, skills, hooks, MCP servers) that
+    ``UpgradeService.execute_upgrade()`` alone would skip.
+
+    Args:
+        project_root: Project root directory.
+        plan: Upgrade plan from ``UpgradeService.plan_upgrade()``.
+
+    Returns:
+        Dict with ``success`` bool and optional ``failed`` list of error strings.
+    """
+    from open_agent_kit.pipeline.context import FlowType, PipelineContext, SelectionState
+    from open_agent_kit.pipeline.executor import build_upgrade_pipeline
+    from open_agent_kit.services.config_service import ConfigService
+
+    config_service = ConfigService(project_root)
+    config = config_service.load_config()
+
+    # Build the same pipeline context the CLI constructs in upgrade_cmd.py
+    context = PipelineContext(
+        project_root=Path(project_root),
+        flow_type=FlowType.UPGRADE,
+        dry_run=False,
+        selections=SelectionState(
+            agents=config.agents,
+            languages=config.languages.installed,
+        ),
+    )
+    # Pre-populate the plan so the PlanUpgradeStage is skipped
+    context.set_result("plan_upgrade", {"plan": plan, "has_upgrades": True})
+    context.set_result(
+        "upgrade_options",
+        {"commands": True, "templates": True},
+    )
+
+    pipeline = build_upgrade_pipeline().build()
+    result = pipeline.execute(context)
+
+    # Collect failures from pipeline stages
+    failed_items: list[str] = []
+    if not result.success:
+        for stage_name, error in result.stages_failed:
+            failed_items.append(f"{stage_name}: {error}")
+
+    return {"success": result.success, "failed": failed_items}
 
 
 async def _delayed_shutdown() -> None:
@@ -114,8 +173,12 @@ async def self_restart() -> dict:
 async def upgrade_and_restart() -> dict:
     """Run project upgrade in-process, then restart the daemon.
 
-    Unlike the previous fire-and-forget subprocess approach, this runs the
-    upgrade synchronously so errors are reported back to the UI immediately.
+    Uses the same pipeline as ``oak upgrade --force`` to ensure consistent
+    results.  The pipeline includes both upgrade stages (migrations,
+    structural repairs, version bump) and reconciliation stages (agent
+    commands, settings, skills, hooks, MCP servers).
+
+    Runs synchronously so errors are reported back to the UI immediately.
     A daemon restart is triggered only after a successful upgrade.
     """
     state = get_state()
@@ -127,7 +190,7 @@ async def upgrade_and_restart() -> dict:
 
     project_root = state.project_root
 
-    # --- Run upgrade in-process for proper error visibility ---
+    # --- Run upgrade via the same pipeline as `oak upgrade --force` ---
     try:
         from typing import Any, cast
 
@@ -140,27 +203,14 @@ async def upgrade_and_restart() -> dict:
         if not plan_has_upgrades(cast(dict[str, Any], plan)):
             return {"status": CI_UPGRADE_AND_RESTART_STATUS_UP_TO_DATE}
 
-        # Run synchronously in a thread to avoid blocking the event loop
+        # Build and execute the full upgrade pipeline (same as CLI)
         loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(None, upgrade_service.execute_upgrade, plan)
+        pipeline_result = await loop.run_in_executor(
+            None, _run_upgrade_pipeline, project_root, plan
+        )
 
-        # Collect any failures across all upgrade categories
-        failed_items: list[str] = []
-        for key in (
-            "commands",
-            "templates",
-            "skills",
-            "hooks",
-            "migrations",
-            "mcp_servers",
-            "gitignore",
-            "agent_settings",
-        ):
-            category = results.get(key)
-            if isinstance(category, dict):
-                failed_items.extend(category.get("failed", []))
-
-        if failed_items:
+        if not pipeline_result["success"]:
+            failed_items: list[str] = pipeline_result.get("failed", [])
             detail = "; ".join(failed_items[:5])
             if len(failed_items) > 5:
                 detail += f" (+{len(failed_items) - 5} more)"
