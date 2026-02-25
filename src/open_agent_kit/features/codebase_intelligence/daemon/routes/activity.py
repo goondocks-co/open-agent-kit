@@ -595,7 +595,7 @@ async def list_session_agents() -> dict[str, list[str]]:
                 if row[0]:
                     agents.add(row[0])
         except (OSError, ValueError, RuntimeError):
-            pass
+            logger.debug("Failed to query session agents from DB, using manifests only")
 
     return {"agents": sorted(agents)}
 

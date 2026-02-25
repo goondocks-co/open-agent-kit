@@ -7,7 +7,6 @@ import asyncio
 import logging
 import sys
 import threading
-from asyncio import transports as aio_transports
 from pathlib import Path
 from typing import cast
 
@@ -117,7 +116,7 @@ async def _run_agent_with_safe_stdio(run_agent_fn, agent) -> None:  # type: igno
     write_protocol = _WritePipeProtocol()
     transport = _StdoutTransport()
     writer = asyncio.StreamWriter(
-        cast(aio_transports.WriteTransport, transport),
+        cast(asyncio.transports.WriteTransport, transport),
         write_protocol,
         None,
         loop,

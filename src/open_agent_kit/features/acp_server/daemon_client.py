@@ -83,7 +83,7 @@ def discover_daemon(project_root: Path) -> tuple[str, str]:
             try:
                 auth_token = token_file.read_text().strip()
             except OSError:
-                pass
+                logger.debug("Could not read daemon token file: %s", token_file)
 
     logger.info(ACP_LOG_DAEMON_CONNECTING.format(url=base_url))
     return base_url, auth_token

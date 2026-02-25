@@ -63,7 +63,7 @@ def discover_port(project_root: Path) -> int | None:
                 if 37800 <= port < 37800 + 1000:
                     return port
             except (ValueError, OSError):
-                pass
+                continue  # Invalid or unreadable port file, try next candidate
     return None
 
 
@@ -95,7 +95,7 @@ def parse_ndjson_stream(response: httpx.Response) -> list[dict]:
             try:
                 events.append(json.loads(line))
             except json.JSONDecodeError:
-                pass
+                pass  # Non-JSON lines (e.g. SSE comments) are expected and safely skipped
     return events
 
 
@@ -141,7 +141,7 @@ class SmokeTestRunner:
                 timeout=DEFAULT_TIMEOUT,
             )
         except Exception:
-            pass
+            pass  # Best-effort cleanup; session may already be closed
         try:
             # 2. Delete from activity store (cascade: batches, activities, observations)
             httpx.delete(
@@ -150,7 +150,7 @@ class SmokeTestRunner:
                 timeout=DEFAULT_TIMEOUT,
             )
         except Exception:
-            pass
+            pass  # Best-effort cleanup; don't fail tests on cleanup errors
 
     def _prompt(self, session_id: str, text: str) -> list[dict]:
         """Send a prompt and collect all NDJSON events."""
@@ -552,7 +552,7 @@ class SmokeTestRunner:
                                 try:
                                     collected_events.append(json.loads(line))
                                 except json.JSONDecodeError:
-                                    pass
+                                    pass  # Non-JSON lines expected in NDJSON stream
                 except Exception as e:
                     stream_error.append(e)
 
@@ -872,7 +872,7 @@ class SmokeTestRunner:
                     timeout=DEFAULT_TIMEOUT,
                 )
             except Exception:
-                pass
+                pass  # Best-effort purge; don't fail test on cleanup errors
             session_id = None  # already cleaned up
 
         except Exception as e:

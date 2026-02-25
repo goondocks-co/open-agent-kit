@@ -522,9 +522,11 @@ class InteractiveSessionManager:
         lines = [
             "## Available Tasks",
             "",
-            "The following pre-configured tasks exist for this focus. When the "
-            "user's request aligns with a task, follow its conventions — maintained "
-            "files, style, and output requirements.",
+            (
+                "The following pre-configured tasks exist for this focus. When the "
+                "user's request aligns with a task, follow its conventions — maintained "
+                "files, style, and output requirements."
+            ),
             "",
         ]
 
