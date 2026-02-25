@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-25]
+
+### Added
+
+- Security remediation roadmap for OAK codebase — comprehensive review of security and correctness issues across the codebase produced a phased, prioritized remediation plan organized by severity tier — [Plan OAK codebase security remediation tiers](http://localhost:38388/activity/sessions/4f174509-2169-434d-995f-7b69d12d64e6)
+
 ## [2026-02-24]
 
 ### Added
