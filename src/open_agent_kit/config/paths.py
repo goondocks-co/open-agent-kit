@@ -49,6 +49,8 @@ SHARED_SKILLS_FOLDER = ".agents"
 # Configuration is declared in agent manifests (agents/<agent>/manifest.yaml)
 # and templates are stored in features/core/agent-settings/.
 
+AGENT_SETTINGS_BASENAME = "settings.json"
+AGENT_LOCAL_SETTINGS_BASENAME = "settings.local.json"
 AGENT_SETTINGS_TEMPLATES_DIR = "agent-settings"
 
 # Agent settings file paths (for reference - actual paths come from manifests)

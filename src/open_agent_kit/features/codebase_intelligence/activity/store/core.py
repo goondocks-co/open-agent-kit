@@ -18,6 +18,7 @@ from open_agent_kit.features.codebase_intelligence.activity.store import (
     backup,
     batches,
     delete,
+    governance,
     observations,
     resolution_events,
     schedules,
@@ -1287,3 +1288,34 @@ class ActivityStore:
     def count_unapplied_resolution_events(self) -> int:
         """Count resolution events that haven't been applied yet."""
         return resolution_events.count_unapplied_events(self)
+
+    # ==========================================================================
+    # Governance audit operations - delegate to governance module
+    # ==========================================================================
+
+    def query_governance_audit_events(
+        self,
+        *,
+        since: int | None = None,
+        action: str | None = None,
+        agent: str | None = None,
+        tool: str | None = None,
+        rule_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Query governance audit events with filtering and pagination."""
+        return governance.query_governance_audit_events(
+            self,
+            since=since,
+            action=action,
+            agent=agent,
+            tool=tool,
+            rule_id=rule_id,
+            limit=limit,
+            offset=offset,
+        )
+
+    def get_governance_audit_summary(self, since_epoch: int) -> dict[str, Any]:
+        """Get aggregate governance audit stats for dashboard."""
+        return governance.get_governance_audit_summary(self, since_epoch)

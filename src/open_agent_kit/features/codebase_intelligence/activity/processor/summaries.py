@@ -10,9 +10,11 @@ from datetime import datetime
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from open_agent_kit.features.codebase_intelligence.activity.processor.utils import (
+    is_recovery_prompt,
+)
 from open_agent_kit.features.codebase_intelligence.constants import (
     MACHINE_ID_SUBPROCESS_TIMEOUT,
-    RECOVERY_BATCH_PROMPT,
     SUMMARY_MAX_PLAN_CONTEXT_LENGTH,
 )
 
@@ -63,13 +65,6 @@ def _get_developer_name() -> str:
         return env_user
 
     return _DEVELOPER_NAME_FALLBACK
-
-
-def _is_recovery_prompt(prompt: str | None) -> bool:
-    """Check if a prompt is a continuation placeholder (from session transitions)."""
-    if not prompt:
-        return False
-    return prompt.startswith("[Recovery batch") or prompt == RECOVERY_BATCH_PROMPT
 
 
 def _unwrap_json_summary(text: str) -> str:
@@ -291,7 +286,7 @@ def process_session_summary(
         user_prompt = batch.user_prompt or "(no prompt captured)"
 
         # Skip continuation placeholders - they don't add meaningful context
-        if _is_recovery_prompt(user_prompt):
+        if is_recovery_prompt(user_prompt):
             continue
 
         # Truncate long prompts

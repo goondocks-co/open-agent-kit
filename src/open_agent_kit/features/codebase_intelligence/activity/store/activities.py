@@ -399,6 +399,15 @@ def mark_activities_processed(
         )
 
 
+def _sanitize_fts_query(query: str) -> str:
+    """Sanitize a query string for safe FTS5 matching.
+
+    Strips double-quotes to prevent FTS5 syntax injection, then wraps
+    the result in double-quotes for literal phrase matching.
+    """
+    return '"' + query.replace('"', "") + '"'
+
+
 def search_activities(
     store: ActivityStore,
     query: str,
@@ -417,6 +426,7 @@ def search_activities(
         List of matching Activity objects.
     """
     conn = store._get_connection()
+    safe_query = _sanitize_fts_query(query)
 
     if session_id:
         cursor = conn.execute(
@@ -427,7 +437,7 @@ def search_activities(
             ORDER BY rank
             LIMIT ?
             """,
-            (query, session_id, limit),
+            (safe_query, session_id, limit),
         )
     else:
         cursor = conn.execute(
@@ -438,7 +448,7 @@ def search_activities(
             ORDER BY rank
             LIMIT ?
             """,
-            (query, limit),
+            (safe_query, limit),
         )
 
     return [Activity.from_row(row) for row in cursor.fetchall()]

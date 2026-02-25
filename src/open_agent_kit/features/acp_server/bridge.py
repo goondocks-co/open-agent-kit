@@ -16,6 +16,9 @@ from open_agent_kit.features.acp_server.constants import (
     ACP_COMMAND_TOOLS,
     ACP_EDIT_TOOLS,
     ACP_READ_TOOLS,
+    ACP_TOOL_KIND_COMMAND,
+    ACP_TOOL_KIND_EDIT,
+    ACP_TOOL_KIND_READ,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
     CancelledEvent,
@@ -45,13 +48,13 @@ class AcpBridge:
         Returns one of ``read``, ``edit``, or ``execute``.
         """
         if tool_name in ACP_READ_TOOLS:
-            return "read"
+            return ACP_TOOL_KIND_READ
         if tool_name in ACP_EDIT_TOOLS:
-            return "edit"
+            return ACP_TOOL_KIND_EDIT
         if tool_name in ACP_COMMAND_TOOLS:
-            return "execute"
+            return ACP_TOOL_KIND_COMMAND
         # Default unknown tools to execute (most restrictive)
-        return "execute"
+        return ACP_TOOL_KIND_COMMAND
 
     @staticmethod
     def map_event(event: ExecutionEvent) -> list[Any]:

@@ -107,10 +107,10 @@ def reset_daemon_state():
 
 
 @pytest.fixture
-def client():
-    """FastAPI test client."""
+def client(auth_headers):
+    """FastAPI test client with auth."""
     app = create_app()
-    return TestClient(app)
+    return TestClient(app, headers=auth_headers)
 
 
 def _setup_state_with_config(

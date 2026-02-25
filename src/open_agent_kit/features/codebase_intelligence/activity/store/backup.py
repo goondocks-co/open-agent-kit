@@ -9,9 +9,11 @@ from __future__ import annotations
 import getpass
 import hashlib
 import logging
+import os
 import platform
 import re
 import sqlite3
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -1105,9 +1107,16 @@ def export_to_sql(
         )
         return 0
 
-    # Write to file
+    # Write atomically via temp file + rename
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(output_path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        Path(tmp_path).replace(output_path)
+    except BaseException:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
 
     # Log completion with details about skipped records
     skip_details = []

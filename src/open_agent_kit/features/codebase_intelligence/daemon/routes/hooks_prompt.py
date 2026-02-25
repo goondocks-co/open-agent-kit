@@ -6,7 +6,6 @@ searching for relevant context to inject, and classifying prompt types.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -18,11 +17,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_DEDUP_CACHE_MAX,
     HOOK_DROP_LOG_TAG,
     HOOK_EVENT_PROMPT_SUBMIT,
-    HOOK_FIELD_CONVERSATION_ID,
-    HOOK_FIELD_GENERATION_ID,
-    HOOK_FIELD_HOOK_ORIGIN,
     HOOK_FIELD_PROMPT,
-    HOOK_FIELD_SESSION_ID,
     MEMORY_EMBED_LINE_SEPARATOR,
     PROMPT_SOURCE_PLAN,
 )
@@ -32,6 +27,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common im
     build_dedupe_key,
     hash_value,
     hooks_logger,
+    parse_hook_body,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
     format_code_for_injection,
@@ -58,18 +54,13 @@ async def hook_prompt_submit(request: Request) -> dict:
     The prompt batch tracks all activities until the agent finishes responding.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in prompt-submit")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    prompt = body.get(HOOK_FIELD_PROMPT, "")
-    agent = body.get("agent", "unknown")
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
-    generation_id = body.get(HOOK_FIELD_GENERATION_ID, "")
+    session_id = hook.session_id
+    prompt = hook.raw.get(HOOK_FIELD_PROMPT, "")
+    agent = hook.agent
+    hook_origin = hook.hook_origin
+    generation_id = hook.generation_id
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped prompt-submit: missing session_id")
@@ -119,9 +110,9 @@ async def hook_prompt_submit(request: Request) -> dict:
                 # Capture response_summary as fallback if Stop hook didn't fire
                 # This happens when user queues a new message while agent is responding
                 if not active_batch.response_summary:
-                    transcript_path = body.get("transcript_path", "")
+                    transcript_path = hook.raw.get("transcript_path", "")
 
-                    # If transcript_path not in body, resolve it using TranscriptResolver
+                    # If transcript_path not in hook body, resolve it using TranscriptResolver
                     # Supports all agents with ci.transcript config in their manifests
                     if not transcript_path and session_id:
                         try:
@@ -236,7 +227,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                     # Resolve transcript_path (only needed when no known path)
                     transcript_path_for_plan = None
                     if not known_plan_file_path:
-                        transcript_path_for_plan = body.get("transcript_path", "") or None
+                        transcript_path_for_plan = hook.raw.get("transcript_path", "") or None
                         if not transcript_path_for_plan:
                             try:
                                 from open_agent_kit.features.codebase_intelligence.transcript_resolver import (
@@ -396,7 +387,7 @@ async def hook_prompt_submit(request: Request) -> dict:
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.debug(f"Failed to search for prompt context: {e}")
 
-    hook_event_name = body.get("hook_event_name", "UserPromptSubmit")
+    hook_event_name = hook.raw.get("hook_event_name", "UserPromptSubmit")
     response = {"status": "ok", "context": context, "prompt_batch_id": prompt_batch_id}
     if agent == AGENT_CURSOR:
         response["hook_output"] = {"continue": True}
@@ -409,19 +400,14 @@ async def hook_prompt_submit(request: Request) -> dict:
 async def hook_before_prompt(request: Request) -> dict:
     """Handle before-prompt - inject relevant context."""
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in before-prompt hook")
-        body = {}
-
-    prompt_preview = body.get("prompt", "")[:500]  # First 500 chars of prompt
+    prompt_preview = hook.raw.get("prompt", "")[:500]  # First 500 chars of prompt
 
     context: dict[str, Any] = {}
     search_query = prompt_preview
     if state.activity_store:
-        session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
+        session_id = hook.session_id
         if session_id:
             session_record = state.activity_store.get_session(session_id)
             if session_record and session_record.title:

@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from open_agent_kit.features.acp_server.constants import ACP_ERROR_SESSION_NOT_FOUND
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
 if TYPE_CHECKING:
@@ -149,7 +150,9 @@ async def cancel_session(session_id: str) -> dict:
     try:
         manager.cancel(session_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}") from None
+        raise HTTPException(
+            status_code=404, detail=ACP_ERROR_SESSION_NOT_FOUND.format(session_id=session_id)
+        ) from None
 
     return {"success": True, "session_id": session_id}
 
@@ -170,7 +173,9 @@ async def set_session_mode(session_id: str, request: SetModeRequest) -> dict:
     try:
         manager.set_mode(session_id, request.mode)
     except KeyError:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}") from None
+        raise HTTPException(
+            status_code=404, detail=ACP_ERROR_SESSION_NOT_FOUND.format(session_id=session_id)
+        ) from None
 
     return {"success": True, "session_id": session_id, "mode": request.mode}
 
@@ -194,7 +199,9 @@ async def set_session_focus(session_id: str, request: SetFocusRequest) -> dict:
     try:
         manager.set_focus(session_id, request.focus)
     except KeyError:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}") from None
+        raise HTTPException(
+            status_code=404, detail=ACP_ERROR_SESSION_NOT_FOUND.format(session_id=session_id)
+        ) from None
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 

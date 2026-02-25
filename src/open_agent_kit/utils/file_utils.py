@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from open_agent_kit.config.paths import GIT_DIR, OAK_DIR
+
 
 def ensure_dir(path: Path) -> None:
     """Ensure directory exists, creating it if necessary.
@@ -433,7 +435,7 @@ def get_project_root(start_path: Path | None = None) -> Path | None:
 
     # Search up the directory tree
     for parent in [current] + list(current.parents):
-        oak_dir = parent / ".oak"
+        oak_dir = parent / OAK_DIR
         if oak_dir.exists() and oak_dir.is_dir():
             return parent
 
@@ -456,8 +458,8 @@ def is_git_repo(path: Path | None = None) -> bool:
 
     # Search up the directory tree for .git directory
     for parent in [current] + list(current.parents):
-        git_dir = parent / ".git"
-        if git_dir.exists():
+        git_entry = parent / GIT_DIR
+        if git_entry.exists():
             return True
 
     return False
@@ -479,8 +481,8 @@ def get_git_root(path: Path | None = None) -> Path | None:
 
     # Search up the directory tree for .git directory
     for parent in [current] + list(current.parents):
-        git_dir = parent / ".git"
-        if git_dir.exists():
+        git_entry = parent / GIT_DIR
+        if git_entry.exists():
             return parent
 
     return None
@@ -547,6 +549,6 @@ def is_git_worktree(path: Path | None = None) -> bool:
     if git_root is None:
         return False
 
-    git_entry = git_root / ".git"
+    git_entry = git_root / GIT_DIR
     # In a worktree, .git is a file containing "gitdir: /path/to/main/.git/worktrees/<name>"
     return git_entry.is_file()

@@ -10,6 +10,11 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from open_agent_kit.config.paths import (
+    AGENT_LOCAL_SETTINGS_BASENAME,
+    AGENT_SETTINGS_BASENAME,
+    CONFIG_FILE,
+)
 from open_agent_kit.models.enums import HookType
 
 logger = logging.getLogger(__name__)
@@ -177,8 +182,8 @@ def _migrate_claude_hooks_to_local(project_root: Path, folder: str) -> None:
     import json
     import subprocess
 
-    old_path = project_root / folder / "settings.json"
-    new_path = project_root / folder / "settings.local.json"
+    old_path = project_root / folder / AGENT_SETTINGS_BASENAME
+    new_path = project_root / folder / AGENT_LOCAL_SETTINGS_BASENAME
 
     if not old_path.exists():
         return
@@ -244,7 +249,7 @@ def _migrate_copilot_to_vscode_copilot(project_root: Path) -> None:
 
     import yaml
 
-    config_path = project_root / ".oak" / "config.yaml"
+    config_path = project_root / CONFIG_FILE
     if config_path.is_file():
         try:
             with open(config_path, encoding="utf-8") as f:

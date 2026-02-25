@@ -8,11 +8,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_FORMAT_DATE_DISPLAY,
+    CI_FORMAT_PREVIEW_LENGTH,
+    CI_FORMAT_TITLE_MAX_LENGTH,
+)
+
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import SearchResult
 
 
-def format_code_results(results: list[dict[str, Any]], max_preview: int = 200) -> str:
+def format_code_results(
+    results: list[dict[str, Any]], max_preview: int = CI_FORMAT_PREVIEW_LENGTH
+) -> str:
     """Format code search results for agent consumption.
 
     Args:
@@ -152,8 +160,8 @@ def format_session_results(sessions: list[dict[str, Any]]) -> str:
     for i, s in enumerate(sessions, 1):
         session_id = s.get("id", "unknown")
         title = s.get("title") or s.get("first_prompt_preview", "Untitled")
-        if title and len(title) > 80:
-            title = title[:77] + "..."
+        if title and len(title) > CI_FORMAT_TITLE_MAX_LENGTH:
+            title = title[: CI_FORMAT_TITLE_MAX_LENGTH - 3] + "..."
         status = s.get("status", "unknown")
         started_at = s.get("started_at", "")
         summary = s.get("summary", "")
@@ -161,7 +169,11 @@ def format_session_results(sessions: list[dict[str, Any]]) -> str:
         lines.append(f"{i}. {title}")
         lines.append(f"   ID: {session_id} | Status: {status} | Started: {started_at}")
         if summary:
-            preview = summary[:200] + "..." if len(summary) > 200 else summary
+            preview = (
+                summary[:CI_FORMAT_PREVIEW_LENGTH] + "..."
+                if len(summary) > CI_FORMAT_PREVIEW_LENGTH
+                else summary
+            )
             lines.append(f"   Summary: {preview}")
         lines.append("")
 
@@ -186,8 +198,8 @@ def format_session_search_results(sessions: list[dict[str, Any]]) -> str:
     for i, s in enumerate(sessions, 1):
         session_id = s.get("id", "unknown")
         title = s.get("title") or "Untitled"
-        if title and len(title) > 80:
-            title = title[:77] + "..."
+        if title and len(title) > CI_FORMAT_TITLE_MAX_LENGTH:
+            title = title[: CI_FORMAT_TITLE_MAX_LENGTH - 3] + "..."
         confidence = s.get("confidence", "medium")
         preview = s.get("preview", "")
         parent_session_id = s.get("parent_session_id")
@@ -206,12 +218,16 @@ def format_session_search_results(sessions: list[dict[str, Any]]) -> str:
             from datetime import UTC, datetime
 
             created_dt = datetime.fromtimestamp(created_at_epoch, tz=UTC)
-            meta_parts.append(f"created: {created_dt.strftime('%Y-%m-%d %H:%M')}")
+            meta_parts.append(f"created: {created_dt.strftime(CI_FORMAT_DATE_DISPLAY)}")
         lines.append(f"   {' | '.join(meta_parts)}")
 
         if preview:
             # Truncate and indent preview
-            preview_text = preview[:200] + "..." if len(preview) > 200 else preview
+            preview_text = (
+                preview[:CI_FORMAT_PREVIEW_LENGTH] + "..."
+                if len(preview) > CI_FORMAT_PREVIEW_LENGTH
+                else preview
+            )
             lines.append(f"   {preview_text}")
         lines.append("")
 
@@ -327,10 +343,18 @@ def format_activity_results(activities: list[dict[str, Any]]) -> str:
         if meta_parts:
             lines.append(f"   {' | '.join(meta_parts)}")
         if not success and error_message:
-            preview = error_message[:200] + "..." if len(error_message) > 200 else error_message
+            preview = (
+                error_message[:CI_FORMAT_PREVIEW_LENGTH] + "..."
+                if len(error_message) > CI_FORMAT_PREVIEW_LENGTH
+                else error_message
+            )
             lines.append(f"   Error: {preview}")
         elif output_summary:
-            preview = output_summary[:200] + "..." if len(output_summary) > 200 else output_summary
+            preview = (
+                output_summary[:CI_FORMAT_PREVIEW_LENGTH] + "..."
+                if len(output_summary) > CI_FORMAT_PREVIEW_LENGTH
+                else output_summary
+            )
             lines.append(f"   Output: {preview}")
         lines.append("")
 

@@ -91,8 +91,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Exception types caught by background processing phases.
-# Each phase has its own error boundary so failures are isolated.
-# Exception types caught by background processing phases.
 # Each phase has its own error boundary so failures are isolated —
 # a bug in one phase must not crash the entire processor loop.
 # TypeError/KeyError/AttributeError are intentionally included:
@@ -690,22 +688,6 @@ class ActivityProcessor:
             batches = self.activity_store.get_unprocessed_prompt_batches(limit=max_batches)
 
             if not batches:
-                # Debug: check why no batches - query all recent batches
-                try:
-                    conn = self.activity_store._get_connection()
-                    cursor = conn.execute(
-                        "SELECT id, status, processed, classification FROM prompt_batches "
-                        "ORDER BY created_at_epoch DESC LIMIT 5"
-                    )
-                    recent = cursor.fetchall()
-                    if recent:
-                        batch_info = [
-                            f"id={r[0]} status={r[1]} processed={r[2]} class={r[3]}" for r in recent
-                        ]
-                        logger.debug(f"Recent batches: {batch_info}")
-                except sqlite3.OperationalError as e:
-                    logger.debug(f"Could not query batch state: {e}")
-
                 logger.debug("No pending prompt batches to process")
                 return []
 

@@ -47,6 +47,7 @@ from acp.schema import (
 from open_agent_kit.features.acp_server.bridge import AcpBridge
 from open_agent_kit.features.acp_server.constants import (
     ACP_AGENT_NAME,
+    ACP_AGENT_VERSION,
     ACP_CONFIG_CATEGORY_FOCUS,
     ACP_CONFIG_ID_FOCUS,
     ACP_CONFIG_ID_MODE,
@@ -208,7 +209,7 @@ class OakAcpAgent:
         """Return agent capabilities to the client."""
         return InitializeResponse(
             protocol_version=PROTOCOL_VERSION,
-            agent_info=Implementation(name=ACP_AGENT_NAME, version="0.3.0"),
+            agent_info=Implementation(name=ACP_AGENT_NAME, version=ACP_AGENT_VERSION),
         )
 
     async def new_session(

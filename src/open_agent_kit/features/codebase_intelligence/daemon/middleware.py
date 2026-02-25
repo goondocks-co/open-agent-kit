@@ -6,7 +6,9 @@ Includes:
 - RequestSizeLimitMiddleware: Content-Length enforcement to prevent memory exhaustion.
 """
 
+import hmac
 import logging
+import secrets
 from collections.abc import MutableMapping
 from http import HTTPStatus
 from typing import Any
@@ -16,12 +18,14 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    CI_AUTH_EPHEMERAL_TOKEN_BYTES,
     CI_AUTH_ERROR_INVALID_SCHEME,
     CI_AUTH_ERROR_INVALID_TOKEN,
     CI_AUTH_ERROR_MISSING,
     CI_AUTH_ERROR_PAYLOAD_TOO_LARGE,
     CI_AUTH_HEADER_NAME,
     CI_AUTH_SCHEME_BEARER,
+    CI_AUTH_WARNING_NO_TOKEN,
     CI_CORS_EMPTY_BODY,
     CI_CORS_HEADER_ALLOW_HEADERS,
     CI_CORS_HEADER_ALLOW_METHODS,
@@ -245,10 +249,10 @@ class TokenAuthMiddleware:
 
         state = get_state()
 
-        # No token configured — pass all requests through (dev mode)
+        # No token configured — generate ephemeral token instead of open access
         if state.auth_token is None:
-            await self.app(scope, receive, send)
-            return
+            state.auth_token = secrets.token_hex(CI_AUTH_EPHEMERAL_TOKEN_BYTES)
+            logger.warning(CI_AUTH_WARNING_NO_TOKEN)
 
         path: str = scope.get("path", "")
         method: str = scope.get("method", "GET")
@@ -272,7 +276,7 @@ class TokenAuthMiddleware:
             await _send_json_error(send, HTTPStatus.UNAUTHORIZED, CI_AUTH_ERROR_INVALID_SCHEME)
             return
 
-        if parts[1] != state.auth_token:
+        if not hmac.compare_digest(parts[1], state.auth_token):
             await _send_json_error(send, HTTPStatus.UNAUTHORIZED, CI_AUTH_ERROR_INVALID_TOKEN)
             return
 

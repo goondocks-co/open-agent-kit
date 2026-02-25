@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
+from open_agent_kit.features.acp_server.constants import ACP_AGENT_NAME
 from open_agent_kit.features.codebase_intelligence.agents.tools import create_ci_mcp_server
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_MCP_SERVER_NAME,
@@ -62,9 +63,6 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
-
-# Agent name used for ACP sessions in the activity store
-ACP_AGENT_NAME = "oak"
 
 # Default system prompt when no ACP agent definition is registered
 ACP_DEFAULT_SYSTEM_PROMPT = (

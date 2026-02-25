@@ -23,14 +23,10 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_EVENT_POST_TOOL_USE,
     HOOK_EVENT_POST_TOOL_USE_FAILURE,
     HOOK_EVENT_PRE_TOOL_USE,
-    HOOK_FIELD_CONVERSATION_ID,
     HOOK_FIELD_ERROR_MESSAGE,
-    HOOK_FIELD_HOOK_ORIGIN,
-    HOOK_FIELD_SESSION_ID,
     HOOK_FIELD_TOOL_INPUT,
     HOOK_FIELD_TOOL_NAME,
     HOOK_FIELD_TOOL_OUTPUT_B64,
-    HOOK_FIELD_TOOL_USE_ID,
     PROMPT_SOURCE_PLAN,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common import (
@@ -42,6 +38,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common im
     hooks_logger,
     is_exit_plan_tool,
     normalize_file_path,
+    parse_hook_body,
     parse_tool_output,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
@@ -65,18 +62,14 @@ async def hook_pre_tool_use(request: Request) -> dict:
     but make no permission decisions (always returns ok).
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in pre-tool-use")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    agent = body.get("agent", "unknown")
-    tool_name = body.get(HOOK_FIELD_TOOL_NAME, "")
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
-    tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
+    session_id = hook.session_id
+    agent = hook.agent
+    tool_name = hook.tool_name
+    hook_origin = hook.hook_origin
+    tool_use_id = hook.tool_use_id
+    tool_input = hook.tool_input
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped pre-tool-use: missing session_id")
@@ -98,21 +91,11 @@ async def hook_pre_tool_use(request: Request) -> dict:
             )
             return {"status": "ok", "context": {}}
 
-    # Handle tool_input - could be dict (from JSON) or string
-    tool_input = body.get(HOOK_FIELD_TOOL_INPUT, {})
-    if isinstance(tool_input, str):
-        try:
-            tool_input = json.loads(tool_input)
-        except (ValueError, json.JSONDecodeError):
-            tool_input = {"raw": tool_input}
-    elif tool_input is None:
-        tool_input = {}
-
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[PRE-TOOL-USE] {tool_name} session={session_id}")
     state.record_hook_activity()
 
-    hook_event_name = body.get("hook_event_name", "PreToolUse")
+    hook_event_name = hook.raw.get("hook_event_name", "PreToolUse")
     result: dict[str, Any] = {"status": "ok", "context": {}}
     result["hook_output"] = format_hook_output(result, agent, hook_event_name)
 
@@ -166,34 +149,21 @@ async def hook_pre_tool_use(request: Request) -> dict:
 async def hook_post_tool_use(request: Request) -> dict:
     """Handle post-tool-use - auto-capture observations from tool output."""
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in post-tool-use")
-        body = {}
+    session_id = hook.session_id
+    agent = hook.agent
+    tool_name = hook.tool_name
+    hook_origin = hook.hook_origin
+    tool_use_id = hook.tool_use_id
+    tool_input = hook.tool_input
 
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    agent = body.get("agent", "unknown")
-    tool_name = body.get(HOOK_FIELD_TOOL_NAME, "")
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
-    tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped post-tool-use: missing session_id")
         return {"status": "ok", "observations_captured": 0}
 
-    # Handle tool_input - could be dict (from JSON) or string
-    tool_input = body.get(HOOK_FIELD_TOOL_INPUT, {})
-    if isinstance(tool_input, str):
-        try:
-            tool_input = json.loads(tool_input)
-        except (ValueError, json.JSONDecodeError):
-            tool_input = {"raw": tool_input}
-    elif tool_input is None:
-        tool_input = {}
-
     # Handle tool_output - check for base64-encoded version first
-    tool_output_b64 = body.get(HOOK_FIELD_TOOL_OUTPUT_B64, "")
+    tool_output_b64 = hook.raw.get(HOOK_FIELD_TOOL_OUTPUT_B64, "")
     if tool_output_b64:
         try:
             tool_output = base64.b64decode(tool_output_b64).decode("utf-8", errors="replace")
@@ -201,7 +171,7 @@ async def hook_post_tool_use(request: Request) -> dict:
             logger.debug(f"Failed to decode base64 output: {e}")
             tool_output = ""
     else:
-        tool_output = body.get("tool_output", body.get("output", ""))
+        tool_output = hook.raw.get("tool_output", hook.raw.get("output", ""))
 
     # Log detailed info about what was received (daemon.log debug only)
     has_input = bool(tool_input and tool_input != {})
@@ -675,7 +645,7 @@ async def hook_post_tool_use(request: Request) -> dict:
     if injected_context:
         result["injected_context"] = injected_context
 
-    hook_event_name = body.get("hook_event_name", "PostToolUse")
+    hook_event_name = hook.raw.get("hook_event_name", "PostToolUse")
     result["hook_output"] = format_hook_output(result, agent, hook_event_name)
     return result
 
@@ -688,18 +658,14 @@ async def hook_post_tool_use_failure(request: Request) -> dict:
     but always marks success=False and captures error details.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in post-tool-use-failure")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    tool_name = body.get(HOOK_FIELD_TOOL_NAME, "unknown")
-    error_message = body.get(HOOK_FIELD_ERROR_MESSAGE, "")
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
-    tool_use_id = body.get(HOOK_FIELD_TOOL_USE_ID, "")
+    session_id = hook.session_id
+    tool_name = hook.tool_name or "unknown"
+    error_message = hook.raw.get(HOOK_FIELD_ERROR_MESSAGE, "")
+    hook_origin = hook.hook_origin
+    tool_use_id = hook.tool_use_id
+    tool_input = hook.tool_input
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped post-tool-use-failure: missing session_id")
@@ -725,16 +691,6 @@ async def hook_post_tool_use_failure(request: Request) -> dict:
     logger.warning(
         f"[TOOL-FAILURE] {tool_name} | session={session_id} | error={error_message[:100]}"
     )
-
-    # Handle tool_input - could be dict (from JSON) or string
-    tool_input = body.get(HOOK_FIELD_TOOL_INPUT, {})
-    if isinstance(tool_input, str):
-        try:
-            tool_input = json.loads(tool_input)
-        except (ValueError, json.JSONDecodeError):
-            tool_input = {"raw": tool_input}
-    elif tool_input is None:
-        tool_input = {}
 
     # Store activity in SQLite with success=False
     if state.activity_store and session_id:

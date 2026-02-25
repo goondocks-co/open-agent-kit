@@ -12,6 +12,7 @@ Decomposes the large store.py into focused modules:
 - stats.py: Statistics and caching
 - backup.py: SQL export/import
 - delete.py: Cascade delete operations
+- governance.py: Governance audit event queries
 
 All public APIs are re-exported here for backward compatibility.
 """

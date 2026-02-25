@@ -1075,6 +1075,13 @@ CI_AUTH_ERROR_MISSING: Final[str] = "Missing Authorization header"
 CI_AUTH_ERROR_INVALID_SCHEME: Final[str] = "Invalid authentication scheme. Use: Bearer <token>"
 CI_AUTH_ERROR_INVALID_TOKEN: Final[str] = "Invalid authentication token"
 CI_AUTH_ERROR_PAYLOAD_TOO_LARGE: Final[str] = "Request body too large"
+
+# Auth - ephemeral token generation
+CI_AUTH_EPHEMERAL_TOKEN_BYTES: Final[int] = 32
+CI_AUTH_WARNING_NO_TOKEN: Final[str] = (
+    "No auth_token configured — generated ephemeral token. "
+    "Set OAK_CI_AUTH_TOKEN for stable authentication."
+)
 CI_DEVTOOLS_ERROR_CONFIRM_REQUIRED: Final[str] = (
     "Destructive operation requires X-Devtools-Confirm: true header"
 )
@@ -1843,3 +1850,23 @@ CI_ACP_ERROR_NO_PROJECT_ROOT: Final[str] = "Daemon not initialized: no project r
 CI_ACP_LOG_STARTING: Final[str] = "Starting ACP server via stdio transport"
 CI_ACP_LOG_STOPPED: Final[str] = "ACP server stopped"
 CI_ACP_LOG_STOP_FAILED: Final[str] = "Failed to stop ACP server: {error}"
+
+# =============================================================================
+# Tool Name Constants
+# =============================================================================
+
+TOOL_NAME_READ: Final[str] = "Read"
+TOOL_NAME_EDIT: Final[str] = "Edit"
+TOOL_NAME_WRITE: Final[str] = "Write"
+TOOL_NAME_BASH: Final[str] = "Bash"
+TOOL_NAME_GREP: Final[str] = "Grep"
+TOOL_NAME_GLOB: Final[str] = "Glob"
+
+# =============================================================================
+# Time and Formatting Constants
+# =============================================================================
+
+SECONDS_PER_DAY: Final[int] = 86400
+CI_FORMAT_PREVIEW_LENGTH: Final[int] = 200
+CI_FORMAT_TITLE_MAX_LENGTH: Final[int] = 80
+CI_FORMAT_DATE_DISPLAY: Final[str] = "%Y-%m-%d %H:%M"

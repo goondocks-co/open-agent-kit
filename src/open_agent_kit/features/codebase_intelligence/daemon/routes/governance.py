@@ -8,6 +8,8 @@ from fastapi import APIRouter, Query, Request
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_GOVERNANCE,
+    GOVERNANCE_RETENTION_DAYS_DEFAULT,
+    SECONDS_PER_DAY,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes._utils import (
     handle_route_errors,
@@ -80,47 +82,15 @@ async def get_audit_events(
     if not state.activity_store:
         return {"events": [], "total": 0}
 
-    conn = state.activity_store._get_connection()
-
-    # Build query with filters
-    conditions: list[str] = []
-    params: list[Any] = []
-
-    if since is not None:
-        conditions.append("g.created_at_epoch >= ?")
-        params.append(since)
-    if action:
-        conditions.append("g.action = ?")
-        params.append(action)
-    if agent:
-        conditions.append("g.agent = ?")
-        params.append(agent)
-    if tool:
-        conditions.append("g.tool_name = ?")
-        params.append(tool)
-    if rule_id:
-        conditions.append("g.rule_id = ?")
-        params.append(rule_id)
-
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-
-    # Get total count
-    count_sql = f"SELECT COUNT(*) FROM governance_audit_events g WHERE {where_clause}"
-    total = conn.execute(count_sql, params).fetchone()[0]
-
-    # Get events with session title from sessions table
-    query_sql = (
-        f"SELECT g.*, s.title AS session_title "
-        f"FROM governance_audit_events g "
-        f"LEFT JOIN sessions s ON g.session_id = s.id "
-        f"WHERE {where_clause} "
-        f"ORDER BY g.created_at_epoch DESC LIMIT ? OFFSET ?"
+    total, events = state.activity_store.query_governance_audit_events(
+        since=since,
+        action=action,
+        agent=agent,
+        tool=tool,
+        rule_id=rule_id,
+        limit=limit,
+        offset=offset,
     )
-    cursor = conn.execute(query_sql, params + [limit, offset])
-    columns = [desc[0] for desc in cursor.description or []]
-    rows = cursor.fetchall()
-
-    events = [dict(zip(columns, row, strict=False)) for row in rows]
 
     return {"events": events, "total": total, "limit": limit, "offset": offset}
 
@@ -135,50 +105,10 @@ async def get_audit_summary(
     if not state.activity_store:
         return {"total": 0, "by_action": {}, "by_tool": {}, "by_rule": {}}
 
-    since_epoch = int(time.time()) - (days * 86400)
-    conn = state.activity_store._get_connection()
+    since_epoch = int(time.time()) - (days * SECONDS_PER_DAY)
+    summary = state.activity_store.get_governance_audit_summary(since_epoch)
 
-    # Total events
-    total = conn.execute(
-        "SELECT COUNT(*) FROM governance_audit_events WHERE created_at_epoch >= ?",
-        (since_epoch,),
-    ).fetchone()[0]
-
-    # By action
-    by_action: dict[str, int] = {}
-    for row in conn.execute(
-        "SELECT action, COUNT(*) FROM governance_audit_events "
-        "WHERE created_at_epoch >= ? GROUP BY action",
-        (since_epoch,),
-    ).fetchall():
-        by_action[row[0]] = row[1]
-
-    # By tool (top 10)
-    by_tool: dict[str, int] = {}
-    for row in conn.execute(
-        "SELECT tool_name, COUNT(*) FROM governance_audit_events "
-        "WHERE created_at_epoch >= ? GROUP BY tool_name ORDER BY COUNT(*) DESC LIMIT 10",
-        (since_epoch,),
-    ).fetchall():
-        by_tool[row[0]] = row[1]
-
-    # By rule (top 10)
-    by_rule: dict[str, int] = {}
-    for row in conn.execute(
-        "SELECT rule_id, COUNT(*) FROM governance_audit_events "
-        "WHERE created_at_epoch >= ? AND rule_id IS NOT NULL "
-        "GROUP BY rule_id ORDER BY COUNT(*) DESC LIMIT 10",
-        (since_epoch,),
-    ).fetchall():
-        by_rule[row[0]] = row[1]
-
-    return {
-        "total": total,
-        "by_action": by_action,
-        "by_tool": by_tool,
-        "by_rule": by_rule,
-        "days": days,
-    }
+    return {**summary, "days": days}
 
 
 @router.post("/audit/prune")
@@ -190,7 +120,7 @@ async def prune_audit_events() -> dict[str, Any]:
         return {"deleted": 0, "error": "Activity store not available"}
 
     config = state.ci_config
-    retention_days = 30  # fallback default
+    retention_days = GOVERNANCE_RETENTION_DAYS_DEFAULT
     if config and config.governance:
         retention_days = config.governance.retention_days
 

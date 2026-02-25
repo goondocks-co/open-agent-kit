@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_QUERY_DEFAULT_LIMIT,
+    DEFAULT_MAX_CONTEXT_TOKENS,
     DEFAULT_SEARCH_LIMIT,
     OBSERVATION_STATUS_ACTIVE,
     SEARCH_TYPE_ALL,
@@ -65,7 +66,7 @@ class ContextInput(BaseModel):
         description="Files currently being viewed or edited",
     )
     max_tokens: int = Field(
-        default=2000,
+        default=DEFAULT_MAX_CONTEXT_TOKENS,
         description="Maximum tokens of context to return",
     )
 

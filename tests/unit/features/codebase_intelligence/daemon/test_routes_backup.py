@@ -70,8 +70,8 @@ def _stable_machine_id(monkeypatch):
 
 
 @pytest.fixture
-def client(_stable_machine_id):
-    """FastAPI test client.
+def client(_stable_machine_id, auth_headers):
+    """FastAPI test client with auth.
 
     Depends on _stable_machine_id so get_machine_identifier is monkeypatched
     before the lifespan runs. We re-assert machine_id after TestClient creation
@@ -79,7 +79,7 @@ def client(_stable_machine_id):
     leaving state.machine_id unset.
     """
     app = create_app()
-    tc = TestClient(app)
+    tc = TestClient(app, headers=auth_headers)
     # Re-set after lifespan startup in case _init_activity was skipped
     state = get_state()
     state.machine_id = TEST_MACHINE_ID

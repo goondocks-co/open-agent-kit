@@ -243,7 +243,7 @@ class ToolOperations:
         if not memory_id:
             raise ValueError("Memory ID is required")
 
-        status = args.get("status", "resolved")
+        status = args.get("status", OBSERVATION_STATUS_RESOLVED)
         if status not in VALID_OBSERVATION_STATUSES:
             raise ValueError(
                 f"Invalid status '{status}'. Must be one of: "

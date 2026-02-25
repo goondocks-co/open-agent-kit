@@ -188,15 +188,15 @@ class TestTokenAuthExemptPaths:
 
 
 class TestTokenAuthNoTokenConfigured:
-    """Test that auth is disabled when no token is configured."""
+    """Test ephemeral token generation when no token is configured."""
 
-    def test_api_accessible_without_token_when_not_configured(self, no_auth_client):
-        """Test that /api/status passes when no auth token is set."""
+    def test_ephemeral_token_generated_blocks_unauthenticated(self, no_auth_client):
+        """Test that an ephemeral token is generated, blocking unauthenticated requests."""
         response = no_auth_client.get("/api/status")
-        assert response.status_code == HTTPStatus.OK
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
 
-    def test_health_still_works(self, no_auth_client):
-        """Test that /api/health works when auth is disabled."""
+    def test_health_still_exempt(self, no_auth_client):
+        """Test that /api/health is still exempt even with ephemeral token."""
         response = no_auth_client.get("/api/health")
         assert response.status_code == HTTPStatus.OK
 

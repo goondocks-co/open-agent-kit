@@ -6,7 +6,6 @@ prompt submission or tool execution.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -21,14 +20,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_EVENT_STOP,
     HOOK_EVENT_SUBAGENT_START,
     HOOK_EVENT_SUBAGENT_STOP,
-    HOOK_FIELD_AGENT,
     HOOK_FIELD_AGENT_ID,
     HOOK_FIELD_AGENT_TRANSCRIPT_PATH,
     HOOK_FIELD_AGENT_TYPE,
-    HOOK_FIELD_CONVERSATION_ID,
-    HOOK_FIELD_GENERATION_ID,
-    HOOK_FIELD_HOOK_ORIGIN,
-    HOOK_FIELD_SESSION_ID,
     HOOK_FIELD_STOP_HOOK_ACTIVE,
     PROMPT_SOURCE_PLAN,
     RESPONSE_SUMMARY_MAX_LENGTH,
@@ -40,6 +34,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common im
     get_active_batch_id,
     hash_value,
     hooks_logger,
+    parse_hook_body,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 
@@ -64,16 +59,11 @@ async def hook_stop(request: Request) -> dict:
     Claude Code entirely.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in stop hook")
-        body = {}
-
-    session_id = body.get("session_id") or body.get("conversation_id")
-    transcript_path = body.get("transcript_path", "")
-    agent = body.get(HOOK_FIELD_AGENT, AGENT_UNKNOWN)
+    session_id = hook.session_id
+    transcript_path = hook.raw.get("transcript_path", "")
+    agent = hook.agent
 
     # Debug logging to trace transcript_path flow
     logger.debug(
@@ -81,7 +71,7 @@ async def hook_stop(request: Request) -> dict:
         session_id,
         agent,
         transcript_path[:100] if transcript_path else "(empty)",
-        list(body.keys()),
+        list(hook.raw.keys()),
     )
 
     result: dict[str, Any] = {"status": "ok"}
@@ -131,14 +121,14 @@ async def hook_stop(request: Request) -> dict:
             result["prompt_batch_id"] = prompt_batch_id
             return result
         try:
-            response_summary = _extract_response_summary(transcript_path, body)
+            response_summary = _extract_response_summary(transcript_path, hook.raw)
 
             # Heuristic plan detection: check if response matches plan patterns
             # This is the 4th detection mechanism, only runs if no deterministic
             # mechanism already promoted the batch to plan.
             if response_summary and active_batch and active_batch.source_type != PROMPT_SOURCE_PLAN:
                 _try_promote_to_plan(
-                    state, prompt_batch_id, response_summary, transcript_path, body, agent
+                    state, prompt_batch_id, response_summary, transcript_path, hook.raw, agent
                 )
 
             from open_agent_kit.features.codebase_intelligence.activity import (
@@ -163,7 +153,7 @@ async def hook_stop(request: Request) -> dict:
         except HOOK_STORE_EXCEPTIONS as e:
             logger.warning(f"Failed to end prompt batch: {e}")
 
-    elif transcript_path or body.get("response_summary"):
+    elif transcript_path or hook.raw.get("response_summary"):
         # -----------------------------------------------------------
         # Dual-fire late arrival: the first stop (e.g. --agent claude)
         # already finalized the active batch, so no active batch exists.
@@ -171,7 +161,7 @@ async def hook_stop(request: Request) -> dict:
         # Find the just-completed batch and backfill its response.
         # -----------------------------------------------------------
         try:
-            response_summary = _extract_response_summary(transcript_path, body)
+            response_summary = _extract_response_summary(transcript_path, hook.raw)
             if response_summary:
                 recent_batch = state.activity_store.get_latest_prompt_batch(session_id)
                 if recent_batch and recent_batch.id:
@@ -195,7 +185,7 @@ async def hook_stop(request: Request) -> dict:
                                 recent_batch.id,
                                 response_summary,
                                 transcript_path,
-                                body,
+                                hook.raw,
                                 agent,
                             )
                     else:
@@ -315,17 +305,12 @@ async def hook_subagent_start(request: Request) -> dict:
     Tracks agent_id and agent_type for correlation with subagent-stop.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in subagent-start")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    agent_id = body.get(HOOK_FIELD_AGENT_ID, "")
-    agent_type = body.get(HOOK_FIELD_AGENT_TYPE, AGENT_UNKNOWN)
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    session_id = hook.session_id
+    agent_id = hook.raw.get(HOOK_FIELD_AGENT_ID, "")
+    agent_type = hook.raw.get(HOOK_FIELD_AGENT_TYPE, AGENT_UNKNOWN)
+    hook_origin = hook.hook_origin
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped subagent-start: missing session_id")
@@ -362,7 +347,7 @@ async def hook_subagent_start(request: Request) -> dict:
     #   3. Fall back to most recently started session of the same agent if no
     #      activity data matches
     if state.activity_store and state.project_root and session_id:
-        agent_name = body.get(HOOK_FIELD_AGENT, AGENT_UNKNOWN)
+        agent_name = hook.agent
         existing = state.activity_store.get_session(session_id)
         if not existing:
             try:
@@ -422,19 +407,14 @@ async def hook_subagent_stop(request: Request) -> dict:
     agent_transcript_path if available for potential future parsing.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in subagent-stop")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    agent_id = body.get(HOOK_FIELD_AGENT_ID, "")
-    agent_type = body.get(HOOK_FIELD_AGENT_TYPE, AGENT_UNKNOWN)
-    agent_transcript_path = body.get(HOOK_FIELD_AGENT_TRANSCRIPT_PATH, "")
-    stop_hook_active = body.get(HOOK_FIELD_STOP_HOOK_ACTIVE, False)
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
+    session_id = hook.session_id
+    agent_id = hook.raw.get(HOOK_FIELD_AGENT_ID, "")
+    agent_type = hook.raw.get(HOOK_FIELD_AGENT_TYPE, AGENT_UNKNOWN)
+    agent_transcript_path = hook.raw.get(HOOK_FIELD_AGENT_TRANSCRIPT_PATH, "")
+    stop_hook_active = hook.raw.get(HOOK_FIELD_STOP_HOOK_ACTIVE, False)
+    hook_origin = hook.hook_origin
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped subagent-stop: missing session_id")
@@ -521,18 +501,13 @@ async def hook_agent_thought(request: Request) -> dict:
     thinking text as an activity for potential analysis of agent reasoning.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in agent-thought")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    thought_text = body.get("text", "")
-    duration_ms = body.get("duration_ms", 0)
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
-    generation_id = body.get(HOOK_FIELD_GENERATION_ID, "")
+    session_id = hook.session_id
+    thought_text = hook.raw.get("text", "")
+    duration_ms = hook.raw.get("duration_ms", 0)
+    hook_origin = hook.hook_origin
+    generation_id = hook.generation_id
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped agent-thought: missing session_id")
@@ -603,23 +578,18 @@ async def hook_pre_compact(request: Request) -> dict:
     Useful for understanding context pressure and debugging memory issues.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in pre-compact")
-        body = {}
-
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    trigger = body.get("trigger", "auto")
-    context_usage_percent = body.get("context_usage_percent", 0)
-    context_tokens = body.get("context_tokens", 0)
-    context_window_size = body.get("context_window_size", 0)
-    message_count = body.get("message_count", 0)
-    messages_to_compact = body.get("messages_to_compact", 0)
-    is_first_compaction = body.get("is_first_compaction", False)
-    hook_origin = body.get(HOOK_FIELD_HOOK_ORIGIN, "")
-    generation_id = body.get(HOOK_FIELD_GENERATION_ID, "")
+    session_id = hook.session_id
+    trigger = hook.raw.get("trigger", "auto")
+    context_usage_percent = hook.raw.get("context_usage_percent", 0)
+    context_tokens = hook.raw.get("context_tokens", 0)
+    context_window_size = hook.raw.get("context_window_size", 0)
+    message_count = hook.raw.get("message_count", 0)
+    messages_to_compact = hook.raw.get("messages_to_compact", 0)
+    is_first_compaction = hook.raw.get("is_first_compaction", False)
+    hook_origin = hook.hook_origin
+    generation_id = hook.generation_id
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped pre-compact: missing session_id")

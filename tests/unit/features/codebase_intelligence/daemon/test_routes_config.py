@@ -30,10 +30,10 @@ def reset_daemon_state():
 
 
 @pytest.fixture
-def client():
-    """FastAPI test client."""
+def client(auth_headers):
+    """FastAPI test client with auth."""
     app = create_app()
-    return TestClient(app)
+    return TestClient(app, headers=auth_headers)
 
 
 @pytest.fixture
@@ -140,8 +140,9 @@ class TestGetConfig:
 
     def test_get_config_no_project_root(self, client):
         """Test get config fails when project root not set."""
-        # Reset state AFTER client creation (client fixture sets project_root)
-        reset_state()
+        # Clear only project_root (not auth_token) so the request authenticates
+        state = get_state()
+        state.project_root = None
         response = client.get("/api/config")
 
         # Should fail gracefully
@@ -279,8 +280,8 @@ class TestUpdateConfig:
 
     def test_update_config_no_project_root(self, client):
         """Test update config fails without project root."""
-        # Reset state AFTER client creation (client fixture sets project_root)
-        reset_state()
+        # Clear only project_root (not auth_token) so the request authenticates
+        get_state().project_root = None
         response = client.put("/api/config", json={"embedding": {"provider": "openai"}})
 
         assert response.status_code == 500
@@ -526,8 +527,8 @@ class TestRestartDaemon:
 
     def test_restart_no_project_root(self, client):
         """Test restart fails without project root."""
-        # Reset state AFTER client creation (client fixture sets project_root)
-        reset_state()
+        # Clear only project_root (not auth_token) so the request authenticates
+        get_state().project_root = None
         response = client.post("/api/restart")
 
         assert response.status_code == 500

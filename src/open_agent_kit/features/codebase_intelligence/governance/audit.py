@@ -13,6 +13,8 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from open_agent_kit.features.codebase_intelligence.constants import SECONDS_PER_DAY
+
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.governance.engine import (
@@ -32,7 +34,7 @@ def prune_old_events(activity_store: ActivityStore, retention_days: int) -> int:
     Returns:
         Number of rows deleted.
     """
-    cutoff_epoch = int(time.time()) - (retention_days * 86400)
+    cutoff_epoch = int(time.time()) - (retention_days * SECONDS_PER_DAY)
     try:
         conn = activity_store._get_connection()
         cursor = conn.execute(

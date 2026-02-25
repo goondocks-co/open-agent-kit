@@ -3,7 +3,7 @@
 name: acp-server
 display_name: "ACP Server"
 description: "Agent Client Protocol (ACP) server integration for stateful editor interactions and multi-agent orchestration."
-version: "0.2.0"
+version: "0.3.0"
 default_enabled: true
 author: OAK Core Team
 tags:

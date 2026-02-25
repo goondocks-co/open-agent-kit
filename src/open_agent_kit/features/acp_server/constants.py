@@ -4,6 +4,8 @@ All string literals and configuration values are centralized here
 per OAK's zero-magic-strings rule.
 """
 
+from typing import Final
+
 # Agent identity
 ACP_AGENT_NAME = "oak"
 ACP_AGENT_DISPLAY_NAME = "OAK Agent"
@@ -16,9 +18,9 @@ ACP_READ_TOOLS = frozenset({"Read", "Glob", "Grep", "LS", "NotebookRead"})
 ACP_EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 ACP_COMMAND_TOOLS = frozenset({"Bash", "Task"})
 # These values must match acp.schema.ToolKind literals
-ACP_TOOL_KIND_READ = "read"
-ACP_TOOL_KIND_EDIT = "edit"
-ACP_TOOL_KIND_COMMAND = "execute"
+ACP_TOOL_KIND_READ: Final = "read"
+ACP_TOOL_KIND_EDIT: Final = "edit"
+ACP_TOOL_KIND_COMMAND: Final = "execute"
 
 # Session modes (advertised to editor via ACP)
 ACP_MODE_DEFAULT = "default"
@@ -80,6 +82,12 @@ ACP_DAEMON_PORT_FILE = "oak/daemon.port"
 ACP_DAEMON_PORT_FILE_LOCAL = ".oak/ci/daemon.port"
 
 # Logging
+# Agent version (keep in sync with manifest.yaml)
+ACP_AGENT_VERSION = "0.3.0"
+
+# Permission modes
+ACP_MODE_BYPASS_PERMISSIONS: Final = "bypassPermissions"
+
 ACP_LOG_FILE = "acp.log"
 ACP_LOG_SERVER_STARTING = "ACP server starting via stdio transport"
 ACP_LOG_SESSION_CREATED = "ACP session created: {session_id} (cwd={cwd})"

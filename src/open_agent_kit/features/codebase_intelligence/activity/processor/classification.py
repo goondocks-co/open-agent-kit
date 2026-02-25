@@ -9,6 +9,14 @@ import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
+from open_agent_kit.features.codebase_intelligence.constants import (
+    TOOL_NAME_EDIT,
+    TOOL_NAME_GLOB,
+    TOOL_NAME_GREP,
+    TOOL_NAME_READ,
+    TOOL_NAME_WRITE,
+)
+
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.prompts import (
         PromptTemplate,
@@ -119,13 +127,15 @@ def classify_heuristic(
     if has_errors:
         return "debugging"
 
-    edit_count = sum(1 for t in tool_names if t in ("Write", "Edit"))
+    edit_count = sum(1 for t in tool_names if t in (TOOL_NAME_WRITE, TOOL_NAME_EDIT))
     if files_created:
         return "implementation"
     if edit_count > len(tool_names) * 0.3:
         return "refactoring" if not files_created else "implementation"
 
-    explore_count = sum(1 for t in tool_names if t in ("Read", "Grep", "Glob"))
+    explore_count = sum(
+        1 for t in tool_names if t in (TOOL_NAME_READ, TOOL_NAME_GREP, TOOL_NAME_GLOB)
+    )
     if explore_count > len(tool_names) * 0.5:
         return "exploration"
 

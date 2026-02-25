@@ -6,7 +6,6 @@ injecting context, finalizing batches, and generating summaries.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -18,8 +17,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_DROP_LOG_TAG,
     HOOK_EVENT_SESSION_END,
     HOOK_EVENT_SESSION_START,
-    HOOK_FIELD_CONVERSATION_ID,
-    HOOK_FIELD_SESSION_ID,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common import (
     HOOK_STORE_EXCEPTIONS,
@@ -28,6 +25,7 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common im
     get_continuation_label,
     get_continuation_sources,
     hooks_logger,
+    parse_hook_body,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
     build_session_context,
@@ -48,16 +46,11 @@ async def hook_session_start(request: Request) -> dict:
     the additionalContext mechanism in the hook output.
     """
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body")
-        body = {}
-
-    agent = body.get("agent", "unknown")
-    session_id = body.get(HOOK_FIELD_SESSION_ID) or body.get(HOOK_FIELD_CONVERSATION_ID)
-    source = body.get("source", "startup")  # startup, resume, clear, compact
+    agent = hook.agent
+    session_id = hook.session_id
+    source = hook.raw.get("source", "startup")  # startup, resume, clear, compact
 
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped session-start: missing session_id")
@@ -80,11 +73,11 @@ async def hook_session_start(request: Request) -> dict:
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[SESSION-START] session={session_id} agent={agent} source={source}")
     # Detailed logging to daemon.log (debug mode only)
-    logger.debug(f"[SESSION-START] Raw request body: {body}")
+    logger.debug(f"[SESSION-START] Raw request body: {hook.raw}")
 
     # Create or resume session in activity store (SQLite) - idempotent
     # Parent linking: prefer explicit parent_session_id from body, fall back to heuristic
-    parent_session_id = body.get("parent_session_id") or None
+    parent_session_id = hook.raw.get("parent_session_id") or None
     parent_session_reason = None
 
     if parent_session_id:
@@ -209,7 +202,7 @@ async def hook_session_start(request: Request) -> dict:
 
     state.record_hook_activity()
 
-    hook_event_name = body.get("hook_event_name", "SessionStart")
+    hook_event_name = hook.raw.get("hook_event_name", "SessionStart")
     response = {"status": "ok", "session_id": session_id, "context": context}
     response["hook_output"] = format_hook_output(response, agent, hook_event_name)
     return response
@@ -225,15 +218,10 @@ async def hook_session_end(request: Request) -> dict:
     import asyncio
 
     state = get_state()
+    hook = await parse_hook_body(request)
 
-    try:
-        body = await request.json()
-    except (ValueError, json.JSONDecodeError):
-        logger.debug("Failed to parse JSON body in session-end hook")
-        body = {}
-
-    session_id = body.get("session_id") or body.get("conversation_id")
-    agent = body.get("agent", "unknown")
+    session_id = hook.session_id
+    agent = hook.agent
     if not session_id:
         logger.info(f"{HOOK_DROP_LOG_TAG} Dropped session-end: missing session_id")
         return {"status": "ok"}
@@ -241,7 +229,7 @@ async def hook_session_end(request: Request) -> dict:
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(f"[SESSION-END] session={session_id} agent={agent}")
     # Detailed logging to daemon.log (debug mode only)
-    logger.debug(f"[SESSION-END] Raw request body: {body}")
+    logger.debug(f"[SESSION-END] Raw request body: {hook.raw}")
 
     # Flush any buffered activities before ending the session
     if state.activity_store:

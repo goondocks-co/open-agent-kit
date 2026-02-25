@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import yaml
 
+from open_agent_kit.features.acp_server.constants import ACP_MODE_BYPASS_PERMISSIONS
 from open_agent_kit.features.codebase_intelligence.agents.models import (
     AgentDefinition,
     AgentExecution,
@@ -43,6 +44,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_TOOL_RESOLVE,
     CI_TOOL_SEARCH,
     CI_TOOL_SESSIONS,
+    TOOL_NAME_BASH,
+    TOOL_NAME_EDIT,
+    TOOL_NAME_WRITE,
 )
 
 if TYPE_CHECKING:
@@ -304,11 +308,12 @@ class AgentExecutor:
         # the Bash restriction is lifted for that execution only.
         # Task remains permanently forbidden regardless.
         has_bash_override = any(
-            t == "Bash" or t.startswith("Bash(") for t in (additional_tools or [])
+            t == TOOL_NAME_BASH or t.startswith(TOOL_NAME_BASH + "(")
+            for t in (additional_tools or [])
         )
         forbidden = AGENT_FORBIDDEN_TOOLS
         if has_bash_override:
-            forbidden = tuple(t for t in AGENT_FORBIDDEN_TOOLS if t != "Bash")
+            forbidden = tuple(t for t in AGENT_FORBIDDEN_TOOLS if t != TOOL_NAME_BASH)
 
         # Build allowed tools list, filtering forbidden tools
         allowed_tools = [t for t in agent.get_effective_tools() if t not in forbidden]
@@ -367,7 +372,7 @@ class AgentExecutor:
         if effective_execution.permission_mode == AgentPermissionMode.ACCEPT_EDITS:
             permission_mode = "acceptEdits"
         elif effective_execution.permission_mode == AgentPermissionMode.BYPASS_PERMISSIONS:
-            permission_mode = "bypassPermissions"
+            permission_mode = ACP_MODE_BYPASS_PERMISSIONS
 
         # Determine model to use (execution config or provider fallback)
         model = effective_execution.model
@@ -861,11 +866,11 @@ class AgentExecutor:
                                                 tool_name = block.name
                                                 tool_input = block.input or {}
 
-                                                if tool_name == "Write":
+                                                if tool_name == TOOL_NAME_WRITE:
                                                     file_path = tool_input.get("file_path", "")
                                                     if file_path:
                                                         run.files_created.append(file_path)
-                                                elif tool_name == "Edit":
+                                                elif tool_name == TOOL_NAME_EDIT:
                                                     file_path = tool_input.get("file_path", "")
                                                     if (
                                                         file_path

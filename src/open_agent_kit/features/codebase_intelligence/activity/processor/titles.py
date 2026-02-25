@@ -7,10 +7,12 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from open_agent_kit.features.codebase_intelligence.activity.processor.utils import (
+    is_recovery_prompt,
+)
 from open_agent_kit.features.codebase_intelligence.activity.store.sessions import (
     is_session_sufficient,
 )
-from open_agent_kit.features.codebase_intelligence.constants import RECOVERY_BATCH_PROMPT
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.prompts import (
@@ -24,13 +26,6 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
-
-
-def _is_recovery_prompt(prompt: str | None) -> bool:
-    """Check if a prompt is a continuation placeholder (from session transitions)."""
-    if not prompt:
-        return False
-    return prompt.startswith("[Recovery batch") or prompt == RECOVERY_BATCH_PROMPT
 
 
 def _get_parent_session_title(
@@ -115,7 +110,7 @@ def generate_session_title(
         user_prompt = batch.user_prompt or "(no prompt captured)"
 
         # Skip continuation placeholders (from session transitions)
-        if _is_recovery_prompt(user_prompt):
+        if is_recovery_prompt(user_prompt):
             continue
 
         # Truncate long prompts
