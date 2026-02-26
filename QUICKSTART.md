@@ -223,6 +223,8 @@ pipx upgrade oak-ci   # or: uv tool upgrade oak-ci
 
 Then upgrade project templates: `oak upgrade --dry-run` to preview, `oak upgrade` to apply.
 
+> ⚠️ **Gotcha**: Do not run `oak upgrade` concurrently in multiple terminals. The upgrade process writes to a shared temp file without an atomic lock — a second concurrent run can overwrite the first's download, resulting in a corrupted binary and a crash on next start. If this happens, reinstall via your original install method (Homebrew, pipx, or the install script).
+
 ## Next Steps
 
 - [Full documentation](https://openagentkit.app/) — features, CLI reference, workflows

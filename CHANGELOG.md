@@ -11,7 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Security remediation roadmap for OAK codebase — comprehensive review of security and correctness issues across the codebase produced a phased, prioritized remediation plan organized by severity tier — [Plan OAK codebase security remediation tiers](http://localhost:38388/activity/sessions/4f174509-2169-434d-995f-7b69d12d64e6)
+- Security remediation roadmap for OAK codebase — comprehensive review of security and correctness issues produced a phased, prioritized remediation plan organized by severity tier — [Plan OAK codebase security remediation tiers](http://localhost:38388/activity/sessions/4f174509-2169-434d-995f-7b69d12d64e6)
+- JWT authentication hardening and FTS input sanitization — implements tier-1 items from the security remediation plan; adds robust token validation and sanitizes full-text search queries to prevent injection and authentication bypass — [Implement secure search and JWT authentication with sanitization](http://localhost:38388/activity/sessions/c550a515-9285-4164-8b20-870c6f96f1a3)
+- SearchBar component for daemon UI — new search widget for in-UI search across sessions and activity — [Refactor utilities, add SearchBar, improve CI and tests](http://localhost:38388/activity/sessions/f53e0953-a76f-41b9-8858-cdc386156d14)
+- Quick-start guide — new onboarding documentation for first-time users — [Refactor utilities, add SearchBar, improve CI and tests](http://localhost:38388/activity/sessions/f53e0953-a76f-41b9-8858-cdc386156d14)
+
+### Changed
+
+- Utility refactoring with expanded CI test coverage — shared utility modules reorganised with additional unit tests to support the security hardening work — [Refactor utilities, add SearchBar, improve CI and tests](http://localhost:38388/activity/sessions/f53e0953-a76f-41b9-8858-cdc386156d14)
+
+### Notes
+
+> **Note**: The JWT hardening and FTS sanitization in this entry are the first concrete implementation output from the security remediation roadmap planned earlier in the day. Remaining tiers are tracked in the roadmap produced by the planning session.
 
 ## [2026-02-24]
 

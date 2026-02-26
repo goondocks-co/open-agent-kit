@@ -16,7 +16,7 @@ make check      # Runs all CI checks
 
 ## Prerequisites
 
-- Python 3.12+ (3.13 recommended for development)
+- Python 3.12 or 3.13 (3.14+ not yet supported — see [QUICKSTART.md](QUICKSTART.md))
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (package manager)
 - Git
 

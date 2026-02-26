@@ -10,6 +10,7 @@ lifecycle including:
 
 import asyncio
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
@@ -141,8 +142,6 @@ class AgentExecutor:
 
     def _apply_provider_env(self, provider: AgentProvider | None) -> dict[str, str | None]:
         """Apply provider env vars, returning originals for restoration."""
-        import os
-
         if provider is None:
             return {}
 
@@ -156,8 +155,6 @@ class AgentExecutor:
 
     def _restore_provider_env(self, original_values: dict[str, str | None]) -> None:
         """Restore original environment variables after provider execution."""
-        import os
-
         for key, original_value in original_values.items():
             if original_value is None:
                 os.environ.pop(key, None)
@@ -231,12 +228,18 @@ class AgentExecutor:
         if model is None and effective_execution.provider:
             model = effective_execution.provider.model
 
+        # Build a clean env for the SDK subprocess.
+        # Strip CLAUDECODE so the child process doesn't refuse to start
+        # with "cannot be launched inside another Claude Code session".
+        clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
         options = ClaudeAgentOptions(
             system_prompt=agent.system_prompt,
             allowed_tools=allowed_tools,
             max_turns=effective_execution.max_turns,
             permission_mode=permission_mode,
             cwd=str(self._project_root),
+            env=clean_env,
         )
 
         # Set model if specified
