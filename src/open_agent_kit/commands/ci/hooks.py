@@ -116,7 +116,9 @@ def ci_hook(
             try:
                 result_holder[0] = sys.stdin.read()
             except Exception:
-                pass
+                # Best-effort: if the agent closes the stream unexpectedly,
+                # treat as no input — the outer logic falls back to {}.
+                result_holder[0] = ""
 
         reader_thread = threading.Thread(target=_stdin_reader, daemon=True)
         reader_thread.start()
