@@ -3,8 +3,8 @@
 import base64
 import json as json_module
 import os
-import select
 import sys
+import threading
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -99,26 +99,36 @@ def ci_hook(
     # Get daemon port (same priority as shell scripts)
     port = get_project_port(project_root, ci_data_dir)
 
-    # Read input from stdin with timeout to prevent blocking
-    # Claude sends hook data as a single JSON line, so we use readline()
-    # instead of read() which would block waiting for EOF
+    # Read input from stdin with timeout to prevent blocking.
+    #
+    # Uses a background thread with sys.stdin.read() instead of
+    # select.select() + os.read(). The previous approach failed for
+    # Cursor, which delivers stdin data in a way that os.read() on the
+    # raw fd returns empty bytes (EOF) even though data is available in
+    # the Python buffered I/O layer. sys.stdin.read() handles all agents:
+    #   - Claude Code: pipes JSON, closes stdin → read() returns immediately
+    #   - Cursor: pipes JSON, closes stdin → read() returns immediately
+    #   - Windsurf: pipes JSON, keeps stdin open → thread times out after
+    #     HOOK_STDIN_TIMEOUT_SECONDS, we use whatever was read so far
     try:
-        # Wait up to 2 seconds for stdin to be readable
-        if select.select([sys.stdin], [], [], HOOK_STDIN_TIMEOUT_SECONDS)[0]:
-            # Use os.read() on the raw fd instead of readline().
-            # readline() blocks until it sees '\n' or EOF — if an agent sends
-            # JSON without a trailing newline and keeps stdin open (as Windsurf
-            # does), readline() hangs indefinitely, freezing the agent's UI.
-            # os.read() returns immediately with available bytes after select()
-            # confirms readability.
-            raw_bytes = os.read(sys.stdin.fileno(), 65536)
-            input_data = raw_bytes.decode("utf-8", errors="replace").strip()
-            if input_data:
-                input_json = cast(dict[str, Any], json_module.loads(input_data))
-            else:
-                input_json = {}
+        result_holder: list[str] = [""]
+
+        def _stdin_reader() -> None:
+            try:
+                result_holder[0] = sys.stdin.read()
+            except Exception:
+                # Best-effort: if the agent closes the stream unexpectedly,
+                # treat as no input — the outer logic falls back to {}.
+                result_holder[0] = ""
+
+        reader_thread = threading.Thread(target=_stdin_reader, daemon=True)
+        reader_thread.start()
+        reader_thread.join(timeout=HOOK_STDIN_TIMEOUT_SECONDS)
+
+        input_data = result_holder[0].strip()
+        if input_data:
+            input_json = cast(dict[str, Any], json_module.loads(input_data))
         else:
-            # No stdin available within timeout
             input_json = {}
     except Exception:
         input_json = {}
