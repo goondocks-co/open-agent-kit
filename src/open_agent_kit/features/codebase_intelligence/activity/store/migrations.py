@@ -95,8 +95,7 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
     """
     logger.info("Migrating activity store schema v2 -> v3 (resolution events)")
 
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS resolution_events (
             id TEXT PRIMARY KEY,
             observation_id TEXT NOT NULL,
@@ -110,8 +109,7 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
             content_hash TEXT,
             applied BOOLEAN DEFAULT TRUE
         )
-        """
-    )
+        """)
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_resolution_events_observation "
@@ -202,8 +200,7 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
     #    For each session, pick the most recent session_summary observation.
     #    Only overwrite if sessions.summary is currently NULL (don't clobber
     #    summaries that were already written via the new path).
-    conn.execute(
-        """
+    conn.execute("""
         UPDATE sessions
         SET summary = (
                 SELECT m.observation
@@ -227,8 +224,7 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
                 WHERE m.session_id = sessions.id
                   AND m.memory_type = 'session_summary'
           )
-    """
-    )
+    """)
 
     # 3. Delete migrated session_summary rows from memory_observations
     conn.execute("DELETE FROM memory_observations WHERE memory_type = 'session_summary'")
@@ -240,8 +236,7 @@ def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
     """Migrate schema v6 -> v7: add governance audit events table."""
     logger.info("Migrating activity store schema v6 -> v7 (governance audit events)")
 
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS governance_audit_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
@@ -262,8 +257,7 @@ def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
             source_machine_id TEXT,
             FOREIGN KEY (session_id) REFERENCES sessions(id)
         )
-    """
-    )
+    """)
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_gov_audit_session ON governance_audit_events(session_id)"
@@ -320,8 +314,7 @@ def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
     """Migrate schema v8 -> v9: add team sync outbox tables."""
     logger.info("Migrating activity store schema v8 -> v9 (team sync outbox)")
 
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS team_outbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_type TEXT NOT NULL,
@@ -334,21 +327,18 @@ def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
             retry_count INTEGER DEFAULT 0,
             error_message TEXT
         )
-    """
-    )
+    """)
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_team_outbox_status ON team_outbox(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_team_outbox_created ON team_outbox(created_at)")
 
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS team_pull_cursor (
             server_url TEXT PRIMARY KEY,
             cursor_value TEXT,
             updated_at TEXT NOT NULL
         )
-    """
-    )
+    """)
 
     logger.info("Migration v8 -> v9 complete: team sync outbox tables created")
 

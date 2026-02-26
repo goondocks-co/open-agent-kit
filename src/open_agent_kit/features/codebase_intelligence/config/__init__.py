@@ -27,6 +27,7 @@ from open_agent_kit.features.codebase_intelligence.config.embedding import (
 
 # --- Governance ---
 from open_agent_kit.features.codebase_intelligence.config.governance import (
+    DataCollectionPolicy,
     GovernanceConfig,
     GovernanceRule,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "BackupConfig",
     "CIConfig",
     "CloudRelayConfig",
+    "DataCollectionPolicy",
     "EmbeddingConfig",
     "GovernanceConfig",
     "GovernanceRule",

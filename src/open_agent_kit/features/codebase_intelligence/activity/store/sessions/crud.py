@@ -71,6 +71,24 @@ def create_session(
             row,
         )
 
+        # Enqueue team sync event in the same transaction
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_SESSION_UPSERT,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            enqueue_team_event(
+                conn=conn,
+                event_type=TEAM_EVENT_SESSION_UPSERT,
+                payload=row,
+                source_machine_id=session.source_machine_id or store.machine_id,
+                content_hash=session.id,
+                schema_version=store.get_schema_version(),
+            )
+
     if parent_session_id:
         logger.debug(
             f"Created session {session_id} for agent {agent} "
@@ -231,6 +249,29 @@ def update_session_summary(store: ActivityStore, session_id: str, summary: str) 
             "UPDATE sessions SET summary = ?, summary_updated_at = ? WHERE id = ?",
             (summary, now_epoch, session_id),
         )
+
+        # Enqueue team sync event in the same transaction
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            enqueue_team_event(
+                conn=conn,
+                event_type=TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+                payload={
+                    "session_id": session_id,
+                    "summary": summary,
+                    "summary_updated_at": now_epoch,
+                },
+                source_machine_id=store.machine_id,
+                content_hash=f"{session_id}:summary:{now_epoch}",
+                schema_version=store.get_schema_version(),
+            )
+
     logger.debug(f"Updated session {session_id} summary: {summary[:50]}...")
 
 

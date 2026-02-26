@@ -46,6 +46,11 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.indexing.watcher import FileWatcher
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
+    from open_agent_kit.features.codebase_intelligence.team.outbox.worker import TeamSyncWorker
+    from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+        MembershipService,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
     from open_agent_kit.features.codebase_intelligence.tunnel.base import TunnelProvider
 
 
@@ -212,6 +217,10 @@ class DaemonState:
     last_hook_activity: float | None = None  # epoch of last hook event
     power_state: str = POWER_STATE_ACTIVE  # current power state
     _power_state_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    # Team sync (client mode)
+    team_transport: "TeamTransport | None" = None
+    team_membership_service: "MembershipService | None" = None
+    team_sync_worker: "TeamSyncWorker | None" = None
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -575,6 +584,9 @@ class DaemonState:
         self.pending_migration_count = 0
         self.last_hook_activity = None
         self.power_state = POWER_STATE_ACTIVE
+        self.team_transport = None
+        self.team_membership_service = None
+        self.team_sync_worker = None
 
 
 # Global daemon state instance

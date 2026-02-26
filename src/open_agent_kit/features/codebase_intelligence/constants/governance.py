@@ -60,3 +60,14 @@ GOVERNANCE_AGENT_TOOLS: Final[frozenset[str]] = frozenset({"Task", "SendMessage"
 GOVERNANCE_RETENTION_DAYS_DEFAULT: Final[int] = 30
 GOVERNANCE_RETENTION_DAYS_MIN: Final[int] = 1
 GOVERNANCE_RETENTION_DAYS_MAX: Final[int] = 365
+
+# =============================================================================
+# Data Collection Policy Defaults
+# =============================================================================
+
+DATA_COLLECTION_COLLECT_ACTIVITIES_DEFAULT: Final[bool] = True
+DATA_COLLECTION_COLLECT_PROMPTS_DEFAULT: Final[bool] = True
+DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT: Final[bool] = True
+DATA_COLLECTION_SYNC_ACTIVITIES_DEFAULT: Final[bool] = False
+DATA_COLLECTION_SYNC_PROMPTS_DEFAULT: Final[bool] = False
+DATA_COLLECTION_ALLOW_SERVER_LLM_DEFAULT: Final[bool] = False

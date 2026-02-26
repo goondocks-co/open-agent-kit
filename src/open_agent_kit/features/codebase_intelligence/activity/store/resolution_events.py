@@ -83,6 +83,24 @@ def store_resolution_event(
             row,
         )
 
+        # Enqueue team sync event in the same transaction
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_OBSERVATION_RESOLVED,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            enqueue_team_event(
+                conn=conn,
+                event_type=TEAM_EVENT_OBSERVATION_RESOLVED,
+                payload=row,
+                source_machine_id=event.source_machine_id or store.machine_id,
+                content_hash=event.content_hash or "",
+                schema_version=store.get_schema_version(),
+            )
+
     logger.debug(f"Stored resolution event {event.id}: {action} on observation {observation_id}")
     return event.id
 

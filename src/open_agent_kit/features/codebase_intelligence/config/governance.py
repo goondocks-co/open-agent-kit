@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    DATA_COLLECTION_ALLOW_SERVER_LLM_DEFAULT,
+    DATA_COLLECTION_COLLECT_ACTIVITIES_DEFAULT,
+    DATA_COLLECTION_COLLECT_PROMPTS_DEFAULT,
+    DATA_COLLECTION_SYNC_ACTIVITIES_DEFAULT,
+    DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT,
+    DATA_COLLECTION_SYNC_PROMPTS_DEFAULT,
     GOVERNANCE_ACTION_OBSERVE,
     GOVERNANCE_ACTIONS,
     GOVERNANCE_MODE_OBSERVE,
@@ -16,6 +22,49 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 from open_agent_kit.features.codebase_intelligence.exceptions import (
     ValidationError,
 )
+
+
+@dataclass
+class DataCollectionPolicy:
+    """Policy for what data is collected and synced.
+
+    Controls:
+    - Local collection: what gets recorded in the local ActivityStore
+    - Team sync: what flows through the outbox to the team server
+    - Server processing: whether the server can run LLM on your data
+    """
+
+    collect_activities: bool = DATA_COLLECTION_COLLECT_ACTIVITIES_DEFAULT
+    collect_prompts: bool = DATA_COLLECTION_COLLECT_PROMPTS_DEFAULT
+    sync_observations: bool = DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT
+    sync_activities: bool = DATA_COLLECTION_SYNC_ACTIVITIES_DEFAULT
+    sync_prompts: bool = DATA_COLLECTION_SYNC_PROMPTS_DEFAULT
+    allow_server_llm: bool = DATA_COLLECTION_ALLOW_SERVER_LLM_DEFAULT
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DataCollectionPolicy":
+        return cls(
+            collect_activities=data.get(
+                "collect_activities", DATA_COLLECTION_COLLECT_ACTIVITIES_DEFAULT
+            ),
+            collect_prompts=data.get("collect_prompts", DATA_COLLECTION_COLLECT_PROMPTS_DEFAULT),
+            sync_observations=data.get(
+                "sync_observations", DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT
+            ),
+            sync_activities=data.get("sync_activities", DATA_COLLECTION_SYNC_ACTIVITIES_DEFAULT),
+            sync_prompts=data.get("sync_prompts", DATA_COLLECTION_SYNC_PROMPTS_DEFAULT),
+            allow_server_llm=data.get("allow_server_llm", DATA_COLLECTION_ALLOW_SERVER_LLM_DEFAULT),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "collect_activities": self.collect_activities,
+            "collect_prompts": self.collect_prompts,
+            "sync_observations": self.sync_observations,
+            "sync_activities": self.sync_activities,
+            "sync_prompts": self.sync_prompts,
+            "allow_server_llm": self.allow_server_llm,
+        }
 
 
 @dataclass
@@ -111,6 +160,7 @@ class GovernanceConfig:
     log_allowed: bool = False
     retention_days: int = GOVERNANCE_RETENTION_DAYS_DEFAULT
     rules: list[GovernanceRule] = field(default_factory=list)
+    data_collection: DataCollectionPolicy = field(default_factory=DataCollectionPolicy)
 
     def __post_init__(self) -> None:
         self._validate()
@@ -149,12 +199,17 @@ class GovernanceConfig:
     def from_dict(cls, data: dict[str, Any]) -> "GovernanceConfig":
         rules_data = data.get("rules", [])
         rules = [GovernanceRule.from_dict(r) if isinstance(r, dict) else r for r in rules_data]
+        dc_data = data.get("data_collection", {})
+        data_collection = (
+            DataCollectionPolicy.from_dict(dc_data) if isinstance(dc_data, dict) else dc_data
+        )
         return cls(
             enabled=data.get("enabled", False),
             enforcement_mode=data.get("enforcement_mode", GOVERNANCE_MODE_OBSERVE),
             log_allowed=data.get("log_allowed", False),
             retention_days=data.get("retention_days", GOVERNANCE_RETENTION_DAYS_DEFAULT),
             rules=rules,
+            data_collection=data_collection,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -164,4 +219,5 @@ class GovernanceConfig:
             "log_allowed": self.log_allowed,
             "retention_days": self.retention_days,
             "rules": [r.to_dict() for r in self.rules],
+            "data_collection": self.data_collection.to_dict(),
         }

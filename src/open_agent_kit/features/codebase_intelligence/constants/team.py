@@ -118,3 +118,38 @@ TEAM_ERROR_PULL_INTERVAL_RANGE: Final[str] = "pull_interval_seconds must be betw
 
 # Server mode env var
 TEAM_SERVER_MODE_ENV_VAR: Final[str] = "OAK_CI_TEAM_SERVER"
+
+# =============================================================================
+# Server-side constants
+# =============================================================================
+
+# Auth error messages
+TEAM_AUTH_ERROR_MISSING: Final[str] = "Missing Authorization header"
+TEAM_AUTH_ERROR_INVALID_SCHEME: Final[str] = "Invalid authorization scheme, expected Bearer"
+TEAM_AUTH_ERROR_INVALID_KEY: Final[str] = "Invalid or revoked API key"
+TEAM_AUTH_HEADER_NAME: Final[str] = "authorization"
+TEAM_AUTH_SCHEME_BEARER: Final[str] = "Bearer"
+
+# Server log messages
+TEAM_SERVER_LOG_INIT: Final[str] = "Team server tables initialized"
+TEAM_SERVER_LOG_EVENT_STORED: Final[str] = "Stored {count} events from {machine_id}"
+TEAM_SERVER_LOG_EVENT_DEDUP: Final[str] = "Deduplicated {count} events (already received)"
+TEAM_SERVER_LOG_MEMBER_REGISTERED: Final[str] = "Member registered: {machine_id} ({display_name})"
+
+# Server status
+TEAM_SERVER_STATUS_OK: Final[str] = "ok"
+TEAM_SERVER_STATUS_KEY_SERVER_MODE: Final[str] = "server_mode"
+
+# Router prefix
+TEAM_ROUTER_PREFIX: Final[str] = "/api/team"
+
+# Transport error messages
+TEAM_TRANSPORT_ERROR_NOT_IMPLEMENTED: Final[str] = "Relay transport not yet implemented"
+TEAM_TRANSPORT_ERROR_CONNECTION: Final[str] = "Failed to connect to team server: {error}"
+TEAM_TRANSPORT_ERROR_PUSH: Final[str] = "Failed to push events: {error}"
+TEAM_TRANSPORT_ERROR_PULL: Final[str] = "Failed to pull events: {error}"
+
+# HTTP transport paths (relative, without prefix — used by HttpTransport)
+TEAM_HTTP_PUSH_PATH: Final[str] = "/events/push"
+TEAM_HTTP_PULL_PATH: Final[str] = "/events/pull"
+TEAM_HTTP_STATUS_PATH: Final[str] = "/status"

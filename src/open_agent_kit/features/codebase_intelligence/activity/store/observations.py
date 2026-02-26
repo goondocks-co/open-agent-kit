@@ -77,6 +77,24 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
             row,
         )
 
+        # Enqueue team sync event in the same transaction (atomic with data write)
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_OBSERVATION_UPSERT,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            enqueue_team_event(
+                conn=conn,
+                event_type=TEAM_EVENT_OBSERVATION_UPSERT,
+                payload=row,
+                source_machine_id=observation.source_machine_id or store.machine_id,
+                content_hash=observation._compute_content_hash(),
+                schema_version=store.get_schema_version(),
+            )
+
     logger.debug(f"Stored observation {observation.id} for session {observation.session_id}")
     return observation.id
 

@@ -183,6 +183,14 @@ def create_app(
     app.include_router(acp.router)
     app.include_router(acp_sessions.router)
 
+    # Team server routes (only when running as team server)
+    if os.environ.get("OAK_CI_TEAM_SERVER"):
+        from open_agent_kit.features.codebase_intelligence.team.server.routes import (
+            router as team_server_router,
+        )
+
+        app.include_router(team_server_router)
+
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)
 

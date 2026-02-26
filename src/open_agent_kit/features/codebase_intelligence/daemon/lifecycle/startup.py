@@ -7,6 +7,7 @@ orchestrator. Init order is load-bearing:
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -384,6 +385,80 @@ def _init_agents(state: "DaemonState", project_root: Path) -> None:
         state.agent_scheduler.start()
 
 
+def _init_team_sync(state: "DaemonState") -> None:
+    """Initialize team outbox sync if configured.
+
+    Enables outbox writes in the activity store and starts the background
+    sync worker. Non-critical: failures are logged but do not prevent startup.
+    """
+    ci_config = state.ci_config
+    if not ci_config or not ci_config.team.auto_sync:
+        return
+    if not ci_config.team.server_url:
+        return
+    if not state.activity_store:
+        logger.debug("Team sync skipped: no activity store")
+        return
+
+    # Enable outbox writes in the store (atomic with data writes)
+    state.activity_store.team_outbox_enabled = True
+
+    # Create and start the sync worker
+    from open_agent_kit.features.codebase_intelligence.team.identity import (
+        get_project_identity,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.outbox.worker import (
+        TeamSyncWorker,
+    )
+
+    project_id = (
+        get_project_identity(state.project_root).full_id if state.project_root else "unknown"
+    )
+    worker = TeamSyncWorker(
+        store=state.activity_store,
+        config=ci_config.team,
+        project_id=project_id,
+    )
+
+    # Wire transport if already available (Phase 2 may have set it)
+    if state.team_transport:
+        worker.set_transport(state.team_transport)  # type: ignore[arg-type]
+
+    worker.start()
+    state.team_sync_worker = worker
+    logger.info("Team sync worker started")
+
+
+def _init_team_server(state: "DaemonState") -> None:
+    """Create server-side tables for team server mode.
+
+    Only called when OAK_CI_TEAM_SERVER env var is set.
+    Tables are created idempotently (IF NOT EXISTS).
+    """
+    from open_agent_kit.features.codebase_intelligence.constants.team import (
+        TEAM_SERVER_LOG_INIT,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
+        TEAM_API_KEYS_DDL,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
+        TEAM_EVENTS_DDL,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+        TEAM_MEMBERS_DDL,
+    )
+
+    if state.activity_store is None:
+        logger.warning("Cannot init team server tables: activity store not available")
+        return
+
+    conn = state.activity_store._get_connection()
+    conn.executescript(TEAM_API_KEYS_DDL)
+    conn.executescript(TEAM_MEMBERS_DDL)
+    conn.executescript(TEAM_EVENTS_DDL)
+    logger.info(TEAM_SERVER_LOG_INIT)
+
+
 async def _shutdown(state: "DaemonState") -> None:
     """Graceful shutdown sequence for all subsystems."""
     logger.info("Initiating graceful shutdown...")
@@ -436,7 +511,17 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.tunnel_provider = None
 
-    # 4b. Disconnect cloud relay if connected
+    # 4b. Stop team sync worker
+    if state.team_sync_worker:
+        logger.info("Stopping team sync worker...")
+        try:
+            state.team_sync_worker.stop()
+        except (RuntimeError, OSError) as e:
+            logger.warning(f"Error stopping team sync worker: {e}")
+        finally:
+            state.team_sync_worker = None
+
+    # 4c. Disconnect cloud relay if connected
     if state.cloud_relay_client:
         logger.info("Disconnecting cloud relay...")
         try:
@@ -564,6 +649,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning(f"Failed to initialize: {e}")
         state.vector_store = None
         state.indexer = None
+
+    # Team server mode: create server-side tables
+    if os.environ.get("OAK_CI_TEAM_SERVER"):
+        try:
+            _init_team_server(state)
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to initialize team server: {e}")
+
+    # Team client mode: start outbox sync worker
+    try:
+        _init_team_sync(state)
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.warning(f"Failed to initialize team sync: {e}")
 
     # Run one immediate version + upgrade check, then launch periodic loop
     check_version(state)

@@ -257,6 +257,8 @@ class ActivityStore:
         self._activity_buffer: list[Activity] = []
         self._buffer_lock = threading.Lock()
         self._buffer_size = 10  # Flush when buffer reaches this size
+        # Team outbox: when enabled, data writes enqueue sync events atomically
+        self.team_outbox_enabled: bool = False
         self._ensure_schema()
 
     # ==========================================================================

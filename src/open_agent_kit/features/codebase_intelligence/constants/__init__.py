@@ -496,6 +496,12 @@ from open_agent_kit.features.codebase_intelligence.constants.daemon import (
 
 # --- governance ---
 from open_agent_kit.features.codebase_intelligence.constants.governance import (
+    DATA_COLLECTION_ALLOW_SERVER_LLM_DEFAULT,
+    DATA_COLLECTION_COLLECT_ACTIVITIES_DEFAULT,
+    DATA_COLLECTION_COLLECT_PROMPTS_DEFAULT,
+    DATA_COLLECTION_SYNC_ACTIVITIES_DEFAULT,
+    DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT,
+    DATA_COLLECTION_SYNC_PROMPTS_DEFAULT,
     GOVERNANCE_ACTION_ALLOW,
     GOVERNANCE_ACTION_DENY,
     GOVERNANCE_ACTION_OBSERVE,
