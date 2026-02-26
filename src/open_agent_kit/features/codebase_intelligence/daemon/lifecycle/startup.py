@@ -428,6 +428,21 @@ def _init_team_sync(state: "DaemonState") -> None:
     state.team_sync_worker = worker
     logger.info("Team sync worker started")
 
+    # Start pull worker (polls server for new events from teammates)
+    from open_agent_kit.features.codebase_intelligence.team.pull.worker import TeamPullWorker
+
+    pull_worker = TeamPullWorker(
+        store=state.activity_store,
+        config=ci_config.team,
+        project_id=project_id,
+        machine_id=state.machine_id or "unknown",
+    )
+    if state.team_transport:
+        pull_worker.set_transport(state.team_transport)
+    pull_worker.start()
+    state.team_pull_worker = pull_worker
+    logger.info("Team pull worker started")
+
 
 def _init_team_server(state: "DaemonState") -> None:
     """Create server-side tables for team server mode.
@@ -520,6 +535,16 @@ async def _shutdown(state: "DaemonState") -> None:
             logger.warning(f"Error stopping team sync worker: {e}")
         finally:
             state.team_sync_worker = None
+
+    # 4b2. Stop team pull worker
+    if state.team_pull_worker:
+        logger.info("Stopping team pull worker...")
+        try:
+            state.team_pull_worker.stop()
+        except (RuntimeError, OSError) as e:
+            logger.warning(f"Error stopping team pull worker: {e}")
+        finally:
+            state.team_pull_worker = None
 
     # 4c. Disconnect cloud relay if connected
     if state.cloud_relay_client:
