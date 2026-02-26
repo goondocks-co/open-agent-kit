@@ -191,6 +191,7 @@ async def get_status() -> dict:
             "config_version_outdated": state.config_version_outdated,
             "pending_migrations": state.pending_migration_count,
         },
+        "team": _get_team_status(state),
     }
 
 
@@ -269,6 +270,35 @@ def _get_tunnel_status(state: object) -> dict:
         TUNNEL_RESPONSE_KEY_PROVIDER: status.provider_name,
         TUNNEL_RESPONSE_KEY_STARTED_AT: status.started_at,
     }
+
+
+def _get_team_status(state: object) -> dict | None:
+    """Get team sync status for the status endpoint.
+
+    Args:
+        state: DaemonState instance.
+
+    Returns:
+        Team status dictionary, or None if not configured.
+    """
+    ci_config = getattr(state, "ci_config", None)
+    if ci_config is None:
+        return None
+    team_cfg = getattr(ci_config, "team", None)
+    if team_cfg is None or not team_cfg.server_url:
+        return None
+
+    team_status: dict = {
+        "configured": True,
+        "server_url": team_cfg.server_url,
+        "connected": getattr(state, "team_sync_worker", None) is not None,
+    }
+
+    sync_worker = getattr(state, "team_sync_worker", None)
+    if sync_worker is not None:
+        team_status["sync"] = sync_worker.get_status().model_dump()
+
+    return team_status
 
 
 @router.get("/api/logs")

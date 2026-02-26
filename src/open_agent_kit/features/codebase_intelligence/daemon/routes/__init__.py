@@ -24,6 +24,7 @@ This package contains the FastAPI routers split by domain:
 - agent_settings: Agent provider settings (get/update settings, list models, test)
 - schedules: Agent scheduling (CRUD, manual trigger, sync)
 - backup: Database backup and restore endpoints
+- team: Team management API routes for the dashboard UI
 - ui: Web dashboard
 """
 
@@ -82,6 +83,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.otel import rou
 from open_agent_kit.features.codebase_intelligence.daemon.routes.search import (
     router as search_router,
 )
+from open_agent_kit.features.codebase_intelligence.daemon.routes.team import (
+    router as team_router,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.routes.ui import router as ui_router
 
 __all__ = [
@@ -106,5 +110,6 @@ __all__ = [
     "config_exclusions_router",
     "config_providers_router",
     "config_test_router",
+    "team_router",
     "ui_router",
 ]

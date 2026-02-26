@@ -183,6 +183,13 @@ def create_app(
     app.include_router(acp.router)
     app.include_router(acp_sessions.router)
 
+    # Team UI routes (always available -- both client and server mode)
+    from open_agent_kit.features.codebase_intelligence.daemon.routes.team import (
+        router as team_ui_router,
+    )
+
+    app.include_router(team_ui_router)
+
     # Team server routes (only when running as team server)
     if os.environ.get("OAK_CI_TEAM_SERVER"):
         from open_agent_kit.features.codebase_intelligence.team.server.routes import (

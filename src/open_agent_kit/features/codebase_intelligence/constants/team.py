@@ -108,6 +108,27 @@ TEAM_MESSAGE_JOIN_SUCCESS: Final[str] = "Joined team server: {server_url}"
 TEAM_MESSAGE_LEAVE_SUCCESS: Final[str] = "Left team server"
 TEAM_MESSAGE_NOT_CONFIGURED: Final[str] = "Team sync not configured"
 TEAM_MESSAGE_ALREADY_CONFIGURED: Final[str] = "Already connected to team server: {server_url}"
+TEAM_MESSAGE_INVALID_URL: Final[str] = "Invalid server URL: must start with http:// or https://"
+TEAM_MESSAGE_CONNECTION_TEST_FAILED: Final[str] = "Failed to connect to team server: {error}"
+TEAM_MESSAGE_DAEMON_NOT_RUNNING: Final[str] = "Daemon is not running. Start with: oak ci start"
+TEAM_MESSAGE_SERVER_URL: Final[str] = "Server URL: {server_url}"
+TEAM_MESSAGE_AUTO_SYNC: Final[str] = "Auto Sync: {auto_sync}"
+TEAM_MESSAGE_SYNC_ENABLED: Final[str] = "enabled"
+TEAM_MESSAGE_SYNC_DISABLED: Final[str] = "disabled"
+TEAM_MESSAGE_KEY_CREATED: Final[str] = "API key created: {name}"
+TEAM_MESSAGE_KEY_SAVE_WARNING: Final[str] = "Save this key -- it will not be shown again:"
+TEAM_MESSAGE_KEY_REVOKED: Final[str] = "API key revoked: {key_id}"
+TEAM_MESSAGE_KEY_NOT_FOUND: Final[str] = "API key not found: {key_id}"
+TEAM_MESSAGE_NO_KEYS: Final[str] = "No API keys found"
+TEAM_MESSAGE_NO_MEMBERS: Final[str] = "No team members found"
+TEAM_MESSAGE_SERVE_STARTING: Final[str] = "Starting daemon in team server mode on {host}:{port}"
+TEAM_MESSAGE_TOKEN_PROMPT: Final[str] = "API token"
+
+# CLI env var for team token
+TEAM_TOKEN_ENV_VAR: Final[str] = "OAK_TEAM_TOKEN"
+
+# CLI daemon API URL template (reuse pattern from cloud relay)
+TEAM_CLI_API_URL_TEMPLATE: Final[str] = "http://localhost:{port}{path}"
 
 # Validation error messages
 TEAM_ERROR_INVALID_TRANSPORT: Final[str] = "Invalid transport: {transport}"

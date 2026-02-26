@@ -80,6 +80,19 @@ def get_daemon_manager(project_root: Path) -> "DaemonManager":
     return DaemonManager(project_root=project_root, port=port, ci_data_dir=ci_data_dir)
 
 
+def _register_sub_typers() -> None:
+    """Register sub-Typer apps (team, etc.) onto ci_app.
+
+    Called after ci_app is defined so that submodule imports can
+    reference it without circular import issues.
+    """
+    from open_agent_kit.commands.ci.team import team_app
+
+    ci_app.add_typer(team_app)
+
+
+_register_sub_typers()
+
 __all__ = [
     "ci_app",
     "console",
