@@ -69,6 +69,9 @@ from open_agent_kit.features.codebase_intelligence.config.summarization import (
     SummarizationConfig,
 )
 
+# --- Team ---
+from open_agent_kit.features.codebase_intelligence.config.team import TeamConfig
+
 __all__ = [
     # Dataclass configs
     "AgentConfig",
@@ -82,6 +85,7 @@ __all__ = [
     "LogRotationConfig",
     "SessionQualityConfig",
     "SummarizationConfig",
+    "TeamConfig",
     "TunnelConfig",
     # Type aliases
     "ProviderType",

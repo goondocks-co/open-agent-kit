@@ -30,6 +30,8 @@ Read and follow **`oak/constitution.md`**. It is the authoritative specification
 | `agent_schedules` | Cron scheduling state | `task_name`, `cron_expression`, `enabled`, `additional_prompt`, `last_run_at`, `next_run_at` |
 | `resolution_events` | Cross-machine resolution propagation | `observation_id`, `action`, `source_machine_id`, `applied`, `content_hash` |
 | `governance_audit_events` |  |  |
+| `team_outbox` |  |  |
+| `team_pull_cursor` |  |  |
 <!-- END GENERATED CORE TABLES -->
 
 ## Observation Lifecycle Schema
