@@ -12,7 +12,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook SessionStart --agent claude || true",
+            "command": "oak-dev ci hook SessionStart --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook UserPromptSubmit --agent claude || true",
+            "command": "oak-dev ci hook UserPromptSubmit --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook PreToolUse --agent claude || true",
+            "command": "oak-dev ci hook PreToolUse --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook PostToolUse --agent claude || true",
+            "command": "oak-dev ci hook PostToolUse --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook PreCompact --agent claude || true",
+            "command": "oak-dev ci hook PreCompact --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook Stop --agent claude || true",
+            "command": "oak-dev ci hook Stop --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook SessionEnd --agent claude || true",
+            "command": "oak-dev ci hook SessionEnd --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -96,7 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook PostToolUseFailure --agent claude || true",
+            "command": "oak-dev ci hook PostToolUseFailure --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -108,7 +108,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook SubagentStart --agent claude || true",
+            "command": "oak-dev ci hook SubagentStart --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]
@@ -120,7 +120,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook SubagentStop --agent claude || true",
+            "command": "oak-dev ci hook SubagentStop --agent claude 2>/dev/null || true",
             "timeout": 60
           }
         ]

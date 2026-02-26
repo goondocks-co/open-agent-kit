@@ -3,32 +3,32 @@
   "hooks": {
     "pre_user_prompt": [
       {
-        "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook pre_user_prompt --agent windsurf || true"
+        "command": "oak-dev ci hook pre_user_prompt --agent windsurf 2>/dev/null || true"
       }
     ],
     "post_cascade_response": [
       {
-        "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook post_cascade_response --agent windsurf || true"
+        "command": "oak-dev ci hook post_cascade_response --agent windsurf 2>/dev/null || true"
       }
     ],
     "post_write_code": [
       {
-        "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook post_write_code --agent windsurf || true"
+        "command": "oak-dev ci hook post_write_code --agent windsurf 2>/dev/null || true"
       }
     ],
     "post_read_code": [
       {
-        "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook post_read_code --agent windsurf || true"
+        "command": "oak-dev ci hook post_read_code --agent windsurf 2>/dev/null || true"
       }
     ],
     "post_run_command": [
       {
-        "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook post_run_command --agent windsurf || true"
+        "command": "oak-dev ci hook post_run_command --agent windsurf 2>/dev/null || true"
       }
     ],
     "post_mcp_tool_use": [
       {
-        "command": "command -v oak-dev >/dev/null 2>&1 && oak-dev ci hook post_mcp_tool_use --agent windsurf || true"
+        "command": "oak-dev ci hook post_mcp_tool_use --agent windsurf 2>/dev/null || true"
       }
     ]
   }

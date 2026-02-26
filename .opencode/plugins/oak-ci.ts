@@ -29,7 +29,7 @@ async function callOakHook(
   try {
     const jsonPayload = JSON.stringify(payload);
     const result =
-      await $`command -v oak-dev >/dev/null 2>&1 && echo ${jsonPayload} | oak-dev ci hook ${hookName} --agent opencode || true`;
+      await $`echo ${jsonPayload} | oak-dev ci hook ${hookName} --agent opencode 2>/dev/null || true`;
     return { success: true, result };
   } catch (error) {
     // Don't let hook failures break OpenCode - log and continue

@@ -8,7 +8,7 @@
           {
             "name": "oak-ci-context",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook SessionStart --agent gemini || true",
+            "command": "{oak-cli-command} ci hook SessionStart --agent gemini 2>/dev/null || true",
             "timeout": 60000
           }
         ]
@@ -21,7 +21,7 @@
           {
             "name": "oak-ci-prompt",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook BeforeAgent --agent gemini || true",
+            "command": "{oak-cli-command} ci hook BeforeAgent --agent gemini 2>/dev/null || true",
             "timeout": 15000
           }
         ]
@@ -34,7 +34,7 @@
           {
             "name": "oak-ci-observe",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook PostToolUse --agent gemini || true",
+            "command": "{oak-cli-command} ci hook PostToolUse --agent gemini 2>/dev/null || true",
             "timeout": 15000
           }
         ]
@@ -47,7 +47,7 @@
           {
             "name": "oak-ci-stop",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook AfterAgent --agent gemini || true",
+            "command": "{oak-cli-command} ci hook AfterAgent --agent gemini 2>/dev/null || true",
             "timeout": 15000
           }
         ]
@@ -60,7 +60,7 @@
           {
             "name": "oak-ci-pre-compact",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook PreCompress --agent gemini || true",
+            "command": "{oak-cli-command} ci hook PreCompress --agent gemini 2>/dev/null || true",
             "timeout": 15000
           }
         ]
@@ -73,7 +73,7 @@
           {
             "name": "oak-ci-session-end",
             "type": "command",
-            "command": "command -v {oak-cli-command} >/dev/null 2>&1 && {oak-cli-command} ci hook SessionEnd --agent gemini || true",
+            "command": "{oak-cli-command} ci hook SessionEnd --agent gemini 2>/dev/null || true",
             "timeout": 15000
           }
         ]
