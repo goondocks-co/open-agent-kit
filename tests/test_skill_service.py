@@ -212,7 +212,7 @@ class TestSkillServiceInstallation:
         service.package_features_dir = package_skills_dir
 
         # Mock agent service to return skills-capable agent
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             skills_dir = temp_project / ".claude" / "skills"
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
@@ -240,7 +240,7 @@ class TestSkillServiceInstallation:
         config.skills.installed.append("test-skill")
         service.config_service.save_config(config)
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             skills_dir = temp_project / ".claude" / "skills"
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
@@ -253,7 +253,7 @@ class TestSkillServiceInstallation:
         service = SkillService(temp_project)
         service.package_features_dir = package_skills_dir
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = []
 
             result = service.install_skill("test-skill")
@@ -266,7 +266,7 @@ class TestSkillServiceInstallation:
         service = SkillService(temp_project)
         service.package_features_dir = package_skills_dir
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             skills_dir = temp_project / ".claude" / "skills"
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
@@ -280,7 +280,7 @@ class TestSkillServiceInstallation:
         service = SkillService(temp_project)
         service.package_features_dir = package_skills_dir
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             skills_dir = temp_project / ".claude" / "skills"
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
@@ -338,7 +338,7 @@ Path: oak/daemon.port
             encoding="utf-8",
         )
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             skills_dir = temp_project / ".claude" / "skills"
             mock_agents.return_value = [("claude", skills_dir, "skills")]
             result = service.install_skill("test-skill")
@@ -380,7 +380,7 @@ class TestSkillServiceRemoval:
         config.skills.installed.append("test-skill")
         service.config_service.save_config(config)
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
             result = service.remove_skill("test-skill")
@@ -416,7 +416,7 @@ class TestSkillServiceRemoval:
         config.skills.installed = ["test-skill", "other-skill"]
         service.config_service.save_config(config)
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
             result = service.remove_skills_for_feature("strategic-planning")
@@ -446,7 +446,7 @@ class TestSkillServiceRefresh:
         config.skills.installed = ["test-skill"]
         service.config_service.save_config(config)
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
             result = service.refresh_skills()
@@ -462,7 +462,7 @@ class TestSkillServiceRefresh:
         """Skip refresh when no agents support skills."""
         service = SkillService(temp_project)
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = []
 
             result = service.refresh_skills()
@@ -490,7 +490,7 @@ class TestSkillServiceUpgrade:
         config.skills.installed = ["test-skill"]
         service.config_service.save_config(config)
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [("claude", skills_dir, "skills")]
 
             result = service.upgrade_skill("test-skill")
@@ -669,7 +669,7 @@ class TestSkillsFolderOverride:
         with patch.object(AgentService, "get_agent_manifest") as mock_get_manifest:
             mock_get_manifest.return_value = mock_custom_agent_manifest
 
-            agents_with_skills = service._get_agents_with_skills_support()
+            agents_with_skills = service.get_agents_with_skills_support()
 
         assert len(agents_with_skills) == 1
         agent_name, skills_path, skills_subdir = agents_with_skills[0]
@@ -688,7 +688,7 @@ class TestSkillsFolderOverride:
         # Skills should go to .custom-skills/skills/ due to override
         skills_dir = temp_project / ".custom-skills" / "skills"
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [("custom-agent", skills_dir, "skills")]
 
             result = service.install_skill("test-skill")
@@ -876,7 +876,7 @@ class TestManifestSkillsConsistency:
 
 
 class TestGetUniqueSkillsPaths:
-    """Tests for _get_unique_skills_paths() deduplication."""
+    """Tests for get_unique_skills_paths() deduplication."""
 
     def test_groups_shared_agents_into_one_entry(self, temp_project):
         """Agents sharing .agents/skills/ should be grouped into one entry."""
@@ -886,7 +886,7 @@ class TestGetUniqueSkillsPaths:
         claude_path = temp_project / ".claude" / "skills"
         cursor_path = temp_project / ".cursor" / "skills"
 
-        with patch.object(service, "_get_agents_with_skills_support") as mock_agents:
+        with patch.object(service, "get_agents_with_skills_support") as mock_agents:
             mock_agents.return_value = [
                 ("codex", shared_path, "skills"),
                 ("gemini", shared_path, "skills"),
@@ -897,7 +897,7 @@ class TestGetUniqueSkillsPaths:
                 ("cursor", cursor_path, "skills"),
             ]
 
-            unique = service._get_unique_skills_paths()
+            unique = service.get_unique_skills_paths()
 
         assert len(unique) == 3
 
@@ -925,7 +925,7 @@ class TestGetUniqueSkillsPaths:
         claude_path = temp_project / ".claude" / "skills"
         cursor_path = temp_project / ".cursor" / "skills"
 
-        with patch.object(service, "_get_unique_skills_paths") as mock_unique:
+        with patch.object(service, "get_unique_skills_paths") as mock_unique:
             mock_unique.return_value = [
                 (
                     ["codex", "gemini", "vscode-copilot", "windsurf", "opencode"],
@@ -979,11 +979,11 @@ class TestGetUniqueSkillsPaths:
             installation=AgentInstallation(folder=".gemini/"),
         )
 
-        # Gemini is still configured — _get_agents_with_skills_support returns it
+        # Gemini is still configured — get_agents_with_skills_support returns it
         shared_path = temp_project / ".agents" / "skills"
         with (
             patch.object(AgentService, "get_agent_manifest") as mock_get,
-            patch.object(service, "_get_agents_with_skills_support") as mock_remaining,
+            patch.object(service, "get_agents_with_skills_support") as mock_remaining,
         ):
             mock_get.side_effect = lambda name: {
                 "codex": codex_manifest,
@@ -1020,10 +1020,10 @@ class TestGetUniqueSkillsPaths:
             installation=AgentInstallation(folder=".codex/"),
         )
 
-        # No agents remain — _get_agents_with_skills_support returns empty
+        # No agents remain — get_agents_with_skills_support returns empty
         with (
             patch.object(AgentService, "get_agent_manifest") as mock_get,
-            patch.object(service, "_get_agents_with_skills_support") as mock_remaining,
+            patch.object(service, "get_agents_with_skills_support") as mock_remaining,
         ):
             mock_get.return_value = codex_manifest
             mock_remaining.return_value = []  # No remaining agents use shared path

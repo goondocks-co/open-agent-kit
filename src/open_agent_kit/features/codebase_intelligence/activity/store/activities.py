@@ -452,3 +452,63 @@ def search_activities(
         )
 
     return [Activity.from_row(row) for row in cursor.fetchall()]
+
+
+def execute_readonly_query(
+    store: ActivityStore,
+    sql: str,
+    params: tuple[Any, ...] | None = None,
+    limit: int = 100,
+) -> tuple[list[str], list[tuple[Any, ...]]]:
+    """Execute a read-only SQL query and return results.
+
+    Opens a separate read-only connection to prevent any writes.
+    The query is executed with a LIMIT clause if not already present.
+
+    Args:
+        store: The ActivityStore instance.
+        sql: SQL query string (must be SELECT or WITH).
+        params: Optional query parameters.
+        limit: Maximum rows to return.
+
+    Returns:
+        Tuple of (column_names, rows).
+
+    Raises:
+        ValueError: If the SQL is not a read-only statement.
+        sqlite3.Error: If the query fails.
+    """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CI_QUERY_FORBIDDEN_KEYWORDS,
+        CI_QUERY_MAX_ROWS,
+    )
+
+    # Validate SQL is read-only
+    normalized = sql.strip().upper()
+    if not (
+        normalized.startswith("SELECT")
+        or normalized.startswith("WITH")
+        or normalized.startswith("EXPLAIN")
+    ):
+        raise ValueError(
+            "Only SELECT, WITH, and EXPLAIN statements are allowed. "
+            "Use MCP tools (oak_remember, etc.) for write operations."
+        )
+
+    for keyword in CI_QUERY_FORBIDDEN_KEYWORDS:
+        if f" {keyword} " in f" {normalized} ":
+            raise ValueError(
+                f"Forbidden keyword '{keyword}' detected. " f"Only read-only queries are allowed."
+            )
+
+    effective_limit = min(limit, CI_QUERY_MAX_ROWS)
+
+    conn = store._get_readonly_connection()
+    query = sql.strip().rstrip(";")
+    if "LIMIT" not in normalized:
+        query = f"{query} LIMIT {effective_limit}"
+
+    cursor = conn.execute(query, params or ())
+    columns = [desc[0] for desc in cursor.description] if cursor.description else []
+    rows = [tuple(row) for row in cursor.fetchmany(effective_limit)]
+    return columns, rows

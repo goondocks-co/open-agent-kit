@@ -30,7 +30,7 @@ MOCK_MACHINE_ID = "testuser_abc123"
 def mock_machine_id(monkeypatch):
     """Patch get_machine_identifier to return a stable test value."""
     monkeypatch.setattr(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.get_machine_identifier",
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.get_machine_identifier",
         lambda *_args, **_kwargs: MOCK_MACHINE_ID,
     )
 
@@ -88,7 +88,7 @@ class TestCreateBackup:
         assert result.backup_path is None
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
-    @patch("open_agent_kit.features.codebase_intelligence.activity.store.backup.export_to_sql")
+    @patch("open_agent_kit.features.codebase_intelligence.activity.store.backup.api.export_to_sql")
     def test_successful_backup(self, mock_export, mock_store_cls, tmp_path, mock_machine_id):
         """Test successful backup creates file and returns correct result."""
         db_path = tmp_path / "test.db"
@@ -108,7 +108,7 @@ class TestCreateBackup:
         mock_store.close.assert_called_once()
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
-    @patch("open_agent_kit.features.codebase_intelligence.activity.store.backup.export_to_sql")
+    @patch("open_agent_kit.features.codebase_intelligence.activity.store.backup.api.export_to_sql")
     def test_export_exception_returns_failure(
         self, mock_export, mock_store_cls, tmp_path, mock_machine_id
     ):
@@ -187,7 +187,7 @@ class TestRestoreBackup:
             mock_store_cls.return_value = mock_store
 
             with patch(
-                "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
             ) as mock_import:
                 from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
                     ImportResult,
@@ -203,7 +203,7 @@ class TestRestoreBackup:
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
     )
     def test_successful_restore(self, mock_import, mock_store_cls, tmp_path, mock_machine_id):
         """Test successful restore with explicit input_path."""
@@ -230,7 +230,7 @@ class TestRestoreBackup:
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
     )
     def test_dry_run_passed_through(self, mock_import, mock_store_cls, tmp_path, mock_machine_id):
         """Test that dry_run flag is passed to import function."""
@@ -253,7 +253,7 @@ class TestRestoreBackup:
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
     )
     def test_import_exception_returns_failure(
         self, mock_import, mock_store_cls, tmp_path, mock_machine_id
@@ -306,7 +306,7 @@ class TestRestoreAll:
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
     )
     def test_explicit_file_list(self, mock_import, mock_store_cls, tmp_path, mock_machine_id):
         """Test restore_all with explicit backup_files list."""
@@ -340,7 +340,7 @@ class TestRestoreAll:
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
     )
     def test_dry_run_passed_through(self, mock_import, mock_store_cls, tmp_path, mock_machine_id):
         """Test that dry_run flag is passed to each import call."""
@@ -366,7 +366,7 @@ class TestRestoreAll:
 
     @patch("open_agent_kit.features.codebase_intelligence.activity.store.core.ActivityStore")
     @patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup.import_from_sql_with_dedup"
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.import_from_sql_with_dedup"
     )
     def test_exception_returns_failure(
         self, mock_import, mock_store_cls, tmp_path, mock_machine_id

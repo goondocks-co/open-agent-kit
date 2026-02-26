@@ -11,7 +11,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     OTEL_EVENT_CODEX_TOOL_RESULT,
     OTEL_EVENT_CODEX_USER_PROMPT,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.routes import otel as otel_routes
+from open_agent_kit.features.codebase_intelligence.daemon.routes import (
+    otel_processor as otel_routes,
+)
 from open_agent_kit.services.agent_service import AgentService
 
 

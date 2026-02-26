@@ -24,7 +24,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     is_meaningful_upgrade,
     parse_base_release,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.server import _check_version
+from open_agent_kit.features.codebase_intelligence.daemon.lifecycle.version_check import (
+    check_version as _check_version,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     get_state,
     reset_state,

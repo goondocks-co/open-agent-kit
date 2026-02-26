@@ -498,7 +498,11 @@ def delete_session(
     observation_ids = get_session_observation_ids(store, session_id) if vector_store else []
 
     with store._transaction() as conn:
-        # Delete junction tables first (session_relationships has FK to sessions)
+        # Delete leaf/junction tables first (FK references to sessions)
+        conn.execute(
+            "DELETE FROM governance_audit_events WHERE session_id = ?",
+            (session_id,),
+        )
         conn.execute(
             "DELETE FROM session_relationships WHERE session_a_id = ? OR session_b_id = ?",
             (session_id, session_id),

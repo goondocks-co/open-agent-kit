@@ -1,12 +1,13 @@
 """Core ActivityProcessor class and orchestration.
 
 Main class that coordinates all processing, scheduling, and recovery.
+Background phases, scheduling, power management, and async wrappers
+live in their own modules -- see background_phases.py, scheduler.py,
+power.py, and async_api.py.
 """
 
-import asyncio
 import json
 import logging
-import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -52,20 +53,8 @@ from open_agent_kit.features.codebase_intelligence.activity.prompts import (
     render_prompt,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
-    AGENT_RUN_RECOVERY_BUFFER_SECONDS,
-    DEFAULT_AGENT_TIMEOUT_SECONDS,
     DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE,
     DEFAULT_BACKGROUND_PROCESSING_WORKERS,
-    INJECTION_MAX_SESSION_SUMMARIES,
-    POWER_ACTIVE_INTERVAL,
-    POWER_DEEP_SLEEP_THRESHOLD,
-    POWER_IDLE_THRESHOLD,
-    POWER_SLEEP_INTERVAL,
-    POWER_SLEEP_THRESHOLD,
-    POWER_STATE_ACTIVE,
-    POWER_STATE_DEEP_SLEEP,
-    POWER_STATE_IDLE,
-    POWER_STATE_SLEEP,
     PROMPT_SOURCE_PLAN,
     PROMPT_SOURCE_USER,
     SESSION_STATUS_ACTIVE,
@@ -90,25 +79,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Exception types caught by background processing phases.
-# Each phase has its own error boundary so failures are isolated —
-# a bug in one phase must not crash the entire processor loop.
-# TypeError/KeyError/AttributeError are intentionally included:
-# while they often indicate programming errors, in this context
-# phase isolation is more important than fail-fast behavior.
-# All caught exceptions are logged with exc_info=True for debugging.
-_BG_EXCEPTIONS = (
-    OSError,
-    sqlite3.OperationalError,
-    ValueError,
-    TypeError,
-    KeyError,
-    AttributeError,
-)
-
 
 class ActivityProcessor:
-    """Background processor for activity → observation extraction.
+    """Background processor for activity -> observation extraction.
 
     Two-stage approach:
     1. LLM classifies session type
@@ -126,24 +99,6 @@ class ActivityProcessor:
         session_quality_config: "SessionQualityConfig | None" = None,
         config_accessor: "Callable[[], CIConfig | None] | None" = None,
     ):
-        """Initialize the processor.
-
-        Args:
-            activity_store: SQLite store for activities.
-            vector_store: ChromaDB store for observations.
-            summarizer: Static summarizer fallback (used when config_accessor
-                is not provided, e.g. in tests).
-            prompt_config: Prompt template configuration.
-            project_root: Project root for oak ci commands.
-            context_tokens: Static context_tokens fallback (used when
-                config_accessor is not provided).
-            session_quality_config: Static session quality fallback.
-            config_accessor: Callable returning the current CIConfig. When
-                provided, summarizer/context_budget/session_quality are read
-                from live config instead of the static init values. This
-                ensures config changes via the UI take effect immediately
-                without a daemon restart.
-        """
         self.activity_store = activity_store
         self.vector_store = vector_store
         self.prompt_config = prompt_config or PromptTemplateConfig.load_from_directory()
@@ -167,6 +122,10 @@ class ActivityProcessor:
         self._is_processing = False
         self._last_process_time: datetime | None = None
         self._pollution_cleanup_done = False
+
+    # ------------------------------------------------------------------
+    # Property accessors (live config or static fallback)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _summarizer_fingerprint(
@@ -250,15 +209,11 @@ class ActivityProcessor:
             return sqc.stale_timeout_seconds
         return SESSION_INACTIVE_TIMEOUT_SECONDS
 
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
     def _call_llm(self, prompt: str) -> dict[str, Any]:
-        """Call LLM for observation extraction.
-
-        Args:
-            prompt: Rendered prompt.
-
-        Returns:
-            Dictionary with success, observations, summary, and raw_response.
-        """
         if not self.summarizer:
             return {"success": False, "error": "No summarizer configured"}
         return call_llm(prompt, self.summarizer, self.context_budget)
@@ -273,7 +228,6 @@ class ActivityProcessor:
         has_errors: bool,
         duration_minutes: float,
     ) -> str:
-        """Classify session type using LLM."""
         return classify_session(
             activities=activities,
             tool_names=tool_names,
@@ -293,11 +247,9 @@ class ActivityProcessor:
         files_modified: list[str],
         files_created: list[str],
     ) -> str:
-        """Fallback heuristic classification."""
         return classify_heuristic(tool_names, has_errors, files_modified, files_created)
 
     def _select_template_by_classification(self, classification: str) -> Any:
-        """Select extraction template based on LLM classification."""
         return select_template_by_classification(classification, self.prompt_config)
 
     def _get_oak_ci_context(
@@ -307,7 +259,6 @@ class ActivityProcessor:
         files_created: list[str],
         classification: str,
     ) -> str:
-        """Get relevant context from oak ci for the prompt."""
         return get_oak_ci_context(
             files_read=files_read,
             files_modified=files_modified,
@@ -324,14 +275,11 @@ class ActivityProcessor:
         prompt_batch_id: int | None = None,
         session_origin_type: str | None = None,
     ) -> str | None:
-        """Store an observation using dual-write: SQLite + ChromaDB."""
-        # Read auto-resolve config from live config if available
         auto_resolve_config = None
         if self._config_accessor is not None:
             config = self._config_accessor()
             if config is not None:
                 auto_resolve_config = config.auto_resolve
-
         return store_observation(
             session_id=session_id,
             observation=observation,
@@ -344,19 +292,12 @@ class ActivityProcessor:
             auto_resolve_config=auto_resolve_config,
         )
 
+    # ------------------------------------------------------------------
+    # Core processing methods
+    # ------------------------------------------------------------------
+
     def process_session(self, session_id: str) -> ProcessingResult:
-        """Process all unprocessed activities for a session.
-
-        Two-stage approach:
-        1. Classify session type via LLM
-        2. Extract observations with activity-specific prompt + oak ci context
-
-        Args:
-            session_id: Session to process.
-
-        Returns:
-            ProcessingResult with extraction statistics.
-        """
+        """Process all unprocessed activities for a session."""
         start_time = datetime.now()
 
         if not self.summarizer:
@@ -505,7 +446,7 @@ class ActivityProcessor:
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
             logger.info(
-                f"Processed session {session_id}: {len(activities)} activities → "
+                f"Processed session {session_id}: {len(activities)} activities -> "
                 f"{stored_count} observations ({duration_ms}ms, type={classification})"
             )
 
@@ -537,17 +478,7 @@ class ActivityProcessor:
             )
 
     def process_prompt_batch(self, batch_id: int) -> ProcessingResult:
-        """Process activities for a single prompt batch.
-
-        This is the preferred processing unit - activities from one user prompt.
-        Dispatches to appropriate handler based on batch source_type.
-
-        Args:
-            batch_id: Prompt batch ID to process.
-
-        Returns:
-            ProcessingResult with extraction statistics.
-        """
+        """Process activities for a single prompt batch."""
         start_time = datetime.now()
 
         batch = self.activity_store.get_prompt_batch(batch_id)
@@ -669,14 +600,7 @@ class ActivityProcessor:
     def process_pending_batches(
         self, max_batches: int = DEFAULT_BACKGROUND_PROCESSING_BATCH_SIZE
     ) -> list[ProcessingResult]:
-        """Process all pending prompt batches.
-
-        Args:
-            max_batches: Maximum batches to process in one run.
-
-        Returns:
-            List of ProcessingResult for each batch.
-        """
+        """Process all pending prompt batches."""
         with self._processing_lock:
             if self._is_processing:
                 logger.debug("Processing already in progress, skipping")
@@ -698,7 +622,7 @@ class ActivityProcessor:
 
             results = []
             if workers <= 1:
-                # Single batch — no thread pool overhead
+                # Single batch -- no thread pool overhead
                 for bid in batch_ids:
                     results.append(self.process_prompt_batch(bid))
             else:
@@ -731,27 +655,14 @@ class ActivityProcessor:
                 self._is_processing = False
 
     def _process_user_batch(
-        self,
-        batch_id: int,
-        batch: Any,
-        activities: list[Any],
-        start_time: datetime,
+        self, batch_id: int, batch: Any, activities: list[Any], start_time: datetime
     ) -> ProcessingResult:
-        """Process a user-initiated batch with full LLM extraction.
-
-        This is a wrapper for the handlers.process_user_batch function.
-        Used by promote_agent_batch.
-        """
-        # Compute session origin type for the batch
+        """Wrapper for handlers.process_user_batch. Used by promote_agent_batch."""
         session_stats = self.activity_store.get_session_stats(batch.session_id)
         all_batches = self.activity_store.get_session_prompt_batches(batch.session_id, limit=100)
         has_plan_batches = any(
             b.source_type in (PROMPT_SOURCE_PLAN, "derived_plan") for b in all_batches
         )
-        session_origin_type = compute_session_origin_type(
-            stats=session_stats, has_plan_batches=has_plan_batches
-        )
-
         return process_user_batch(
             batch_id=batch_id,
             batch=batch,
@@ -767,11 +678,16 @@ class ActivityProcessor:
             classify_session=classify_session,
             select_template_by_classification=select_template_by_classification,
             get_oak_ci_context=get_oak_ci_context,
-            session_origin_type=session_origin_type,
+            session_origin_type=compute_session_origin_type(
+                stats=session_stats, has_plan_batches=has_plan_batches
+            ),
         )
 
+    # ------------------------------------------------------------------
+    # Title and summary generation
+    # ------------------------------------------------------------------
+
     def generate_session_title(self, session_id: str) -> str | None:
-        """Generate a short title for a session based on its prompts."""
         return generate_session_title(
             session_id=session_id,
             activity_store=self.activity_store,
@@ -781,7 +697,6 @@ class ActivityProcessor:
         )
 
     def generate_pending_titles(self, limit: int = 5) -> int:
-        """Generate titles for sessions that don't have them."""
         return generate_pending_titles(
             activity_store=self.activity_store,
             prompt_config=self.prompt_config,
@@ -793,21 +708,11 @@ class ActivityProcessor:
     def process_session_summary_with_title(
         self, session_id: str, regenerate_title: bool = False
     ) -> tuple[str | None, str | None]:
-        """Generate and store a session summary and title.
-
-        Args:
-            session_id: Session to summarize.
-            regenerate_title: If True, force regenerate title even if one exists.
-
-        Returns:
-            Tuple of (summary text, title text) if generated, (None, None) otherwise.
-        """
         if not self.summarizer:
             logger.info("Session summary skipped: summarizer not configured")
             return None, None
 
-        # Create a wrapper for generate_title_from_summary that binds store and config
-        def _generate_title_from_summary(sid: str, summary: str) -> str | None:
+        def _gen_title(sid: str, summary: str) -> str | None:
             return generate_title_from_summary(
                 session_id=sid,
                 summary=summary,
@@ -824,26 +729,15 @@ class ActivityProcessor:
             call_llm=self._call_llm,
             generate_title=self.generate_session_title,
             regenerate_title=regenerate_title,
-            generate_title_from_summary=_generate_title_from_summary,
+            generate_title_from_summary=_gen_title,
         )
 
+    # ------------------------------------------------------------------
+    # Session lifecycle
+    # ------------------------------------------------------------------
+
     def complete_session(self, session_id: str) -> tuple[str | None, str | None]:
-        """Mark an active session as completed and run post-completion processing.
-
-        This is the same chain the background job runs for stale sessions:
-        1. Mark session status as 'completed' (via end_session)
-        2. Generate summary (if summarizer configured)
-        3. Generate title (if missing)
-
-        Args:
-            session_id: Session to complete.
-
-        Returns:
-            Tuple of (summary text, title text) if generated.
-
-        Raises:
-            ValueError: If session not found or not active.
-        """
+        """Mark an active session as completed and run post-completion processing."""
         session = self.activity_store.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
@@ -852,11 +746,11 @@ class ActivityProcessor:
                 f"Session {session_id} is already '{session.status}', only active sessions can be completed"
             )
 
-        # Step 1: Mark as completed — same SQL path as recover_stale_sessions
+        # Step 1: Mark as completed -- same SQL path as recover_stale_sessions
         self.activity_store.end_session(session_id)
         logger.info(f"Manually completed session {session_id[:8]}")
 
-        # Step 2: Generate summary — same path as background job
+        # Step 2: Generate summary -- same path as background job
         summary, title = self.process_session_summary_with_title(session_id, regenerate_title=True)
 
         # Step 3: Generate title if summary didn't produce one
@@ -872,14 +766,7 @@ class ActivityProcessor:
         return summary, title
 
     def process_pending(self, max_sessions: int = 5) -> list[ProcessingResult]:
-        """Process all pending sessions.
-
-        Args:
-            max_sessions: Maximum sessions to process in one batch.
-
-        Returns:
-            List of ProcessingResult for each session.
-        """
+        """Process all pending sessions."""
         with self._processing_lock:
             if self._is_processing:
                 logger.debug("Processing already in progress, skipping")
@@ -909,174 +796,53 @@ class ActivityProcessor:
                 self._is_processing = False
 
     # ------------------------------------------------------------------
-    # Background processing phases
-    #
-    # Each phase has its own error boundary so a failure in one phase
-    # does not skip subsequent phases.  This decomposition also makes
-    # each phase independently testable and sets the groundwork for
-    # future parallelization (W5.6).
+    # Background processing (delegates to background_phases module)
     # ------------------------------------------------------------------
 
     def _bg_cleanup_pollution(self) -> None:
-        """Phase 0: One-time cross-machine pollution cleanup.
+        from open_agent_kit.features.codebase_intelligence.activity.processor.background_phases import (
+            bg_cleanup_pollution as _fn,
+        )  # noqa: E501
 
-        Runs only on the first background cycle. Removes observations that
-        were created by the local processor but reference sessions from
-        another machine (a violation of the machine isolation invariant).
-        """
-        if self._pollution_cleanup_done:
-            return
-
-        try:
-            counts = self.activity_store.cleanup_cross_machine_pollution(
-                vector_store=self.vector_store,
-            )
-            if counts["observations_deleted"] > 0:
-                logger.info(
-                    "Cross-machine pollution cleanup: %d observations removed",
-                    counts["observations_deleted"],
-                )
-        except _BG_EXCEPTIONS as e:
-            logger.error(f"Cross-machine pollution cleanup error: {e}", exc_info=True)
-        finally:
-            self._pollution_cleanup_done = True
+        _fn(self)
 
     def _bg_recover_stuck_data(self) -> None:
-        """Phase 1: Recover stuck batches, stale runs, and orphaned activities."""
-        try:
-            from open_agent_kit.features.codebase_intelligence.constants import (
-                BATCH_ACTIVE_TIMEOUT_SECONDS,
-            )
+        from open_agent_kit.features.codebase_intelligence.activity.processor.background_phases import (
+            bg_recover_stuck_data as _fn,
+        )  # noqa: E501
 
-            # Auto-end batches stuck in 'active' too long
-            stuck_count = self.activity_store.recover_stuck_batches(
-                timeout_seconds=BATCH_ACTIVE_TIMEOUT_SECONDS,
-                project_root=self.project_root,
-            )
-            if stuck_count:
-                logger.info(f"Recovered {stuck_count} stuck batches")
-
-            # Mark stale agent runs as failed
-            stale_run_ids = self.activity_store.recover_stale_runs(
-                buffer_seconds=AGENT_RUN_RECOVERY_BUFFER_SECONDS,
-                default_timeout_seconds=DEFAULT_AGENT_TIMEOUT_SECONDS,
-            )
-            if stale_run_ids:
-                logger.info(
-                    f"Recovered {len(stale_run_ids)} stale agent runs: "
-                    f"{[r[:8] for r in stale_run_ids]}"
-                )
-
-            # Associate orphaned activities with batches
-            orphan_count = self.activity_store.recover_orphaned_activities()
-            if orphan_count:
-                logger.info(f"Recovered {orphan_count} orphaned activities")
-        except _BG_EXCEPTIONS as e:
-            logger.error(f"Background recovery error: {e}", exc_info=True)
+        _fn(self)
 
     def _bg_recover_stale_sessions(self) -> None:
-        """Phase 2: End/delete stale sessions and summarize recovered ones."""
-        try:
-            recovered_ids, deleted_ids = self.activity_store.recover_stale_sessions(
-                timeout_seconds=self.stale_timeout_seconds,
-                min_activities=self.min_session_activities,
-                vector_store=self.vector_store,
-            )
-            if deleted_ids:
-                logger.info(
-                    f"Deleted {len(deleted_ids)} empty stale sessions: "
-                    f"{[s[:8] for s in deleted_ids]}"
-                )
-            if recovered_ids:
-                logger.info(f"Recovered {len(recovered_ids)} stale sessions")
-                for session_id in recovered_ids:
-                    try:
-                        summary, _title = self.process_session_summary_with_title(session_id)
-                        if summary:
-                            logger.info(
-                                f"Generated summary for recovered session "
-                                f"{session_id[:8]}: {summary[:50]}..."
-                            )
-                    except (OSError, ValueError, TypeError, RuntimeError) as e:
-                        logger.warning(
-                            f"Failed to summarize recovered session {session_id[:8]}: {e}"
-                        )
-        except _BG_EXCEPTIONS as e:
-            logger.error(f"Background stale-session recovery error: {e}", exc_info=True)
+        from open_agent_kit.features.codebase_intelligence.activity.processor.background_phases import (
+            bg_recover_stale_sessions as _fn,
+        )  # noqa: E501
+
+        _fn(self)
 
     def _bg_cleanup_and_summarize(self) -> None:
-        """Phase 3: Clean up low-quality sessions and generate missing summaries.
+        from open_agent_kit.features.codebase_intelligence.activity.processor.background_phases import (
+            bg_cleanup_and_summarize as _fn,
+        )  # noqa: E501
 
-        Cleanup runs first to avoid wasting LLM calls on sessions that
-        will be deleted.
-        """
-        try:
-            cleanup_ids = self.activity_store.cleanup_low_quality_sessions(
-                vector_store=self.vector_store,
-                min_activities=self.min_session_activities,
-            )
-            if cleanup_ids:
-                logger.info(
-                    f"Cleaned up {len(cleanup_ids)} low-quality completed sessions: "
-                    f"{[s[:8] for s in cleanup_ids]}"
-                )
-
-            if self.summarizer:
-                missing = self.activity_store.get_sessions_missing_summaries(
-                    limit=INJECTION_MAX_SESSION_SUMMARIES,
-                    min_activities=self.min_session_activities,
-                )
-                for session in missing:
-                    try:
-                        summary, _title = self.process_session_summary_with_title(session.id)
-                        if summary:
-                            logger.info(
-                                f"Generated summary for session {session.id[:8]}: "
-                                f"{summary[:50]}..."
-                            )
-                    except (OSError, ValueError, TypeError, RuntimeError) as e:
-                        logger.warning(f"Failed to summarize session {session.id[:8]}: {e}")
-        except _BG_EXCEPTIONS as e:
-            logger.error(f"Background cleanup/summarize error: {e}", exc_info=True)
+        _fn(self)
 
     def _bg_process_pending(self) -> None:
-        """Phase 4: Process pending batches and fallback sessions."""
-        try:
-            batch_results = self.process_pending_batches()
-            if batch_results:
-                logger.info(f"Background processed {len(batch_results)} prompt batches")
+        from open_agent_kit.features.codebase_intelligence.activity.processor.background_phases import (
+            bg_process_pending as _fn,
+        )  # noqa: E501
 
-            self.process_pending()
-        except _BG_EXCEPTIONS as e:
-            logger.error(f"Background batch processing error: {e}", exc_info=True)
+        _fn(self)
 
     def _bg_index_and_title(self) -> None:
-        """Phase 5: Index pending plans and generate missing titles."""
-        try:
-            plan_stats = self.index_pending_plans()
-            if plan_stats.get("indexed", 0) > 0:
-                logger.info(f"Background indexed {plan_stats['indexed']} plans")
+        from open_agent_kit.features.codebase_intelligence.activity.processor.background_phases import (
+            bg_index_and_title as _fn,
+        )  # noqa: E501
 
-            title_count = self.generate_pending_titles()
-            if title_count > 0:
-                logger.info(f"Background generated {title_count} session titles")
-        except _BG_EXCEPTIONS as e:
-            logger.error(f"Background indexing/title error: {e}", exc_info=True)
+        _fn(self)
 
     def run_background_cycle(self) -> None:
-        """Execute one full background processing cycle.
-
-        Runs all phases sequentially.  Each phase has its own error
-        boundary so a failure in one does not skip the rest.
-
-        Phase ordering:
-        0. One-time cross-machine pollution cleanup (first cycle only)
-        1. Recover stuck data (batches, runs, orphans)
-        2. Recover stale sessions
-        3. Cleanup low-quality sessions + generate summaries
-        4. Process pending batches/sessions
-        5. Index plans + generate titles
-        """
+        """Execute one full background processing cycle (phases 0-5)."""
         self._bg_cleanup_pollution()
         self._bg_recover_stuck_data()
         self._bg_recover_stale_sessions()
@@ -1084,224 +850,60 @@ class ActivityProcessor:
         self._bg_process_pending()
         self._bg_index_and_title()
 
+    # ------------------------------------------------------------------
+    # Scheduling and power (delegates to scheduler/power modules)
+    # ------------------------------------------------------------------
+
     def schedule_background_processing(
         self,
-        interval_seconds: int = POWER_ACTIVE_INTERVAL,
+        interval_seconds: int = 60,
         state_accessor: "Callable[[], DaemonState] | None" = None,
     ) -> threading.Timer:
-        """Schedule periodic background processing with power-state awareness.
+        """Schedule periodic background processing with power-state awareness."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.scheduler import (
+            schedule_background_processing as _fn,
+        )  # noqa: E501
 
-        When *state_accessor* is provided the timer callback evaluates idle
-        duration and adjusts which phases run and how long to sleep before
-        the next cycle.  When the daemon reaches deep sleep the timer is
-        **not** rescheduled -- the wake-from-deep-sleep path in
-        ``DaemonState.record_hook_activity`` restarts it.
-
-        Args:
-            interval_seconds: Base interval between processing runs.
-            state_accessor: Optional callable returning the current DaemonState.
-
-        Returns:
-            Timer object (can be cancelled).
-        """
-
-        def run_and_reschedule() -> None:
-            new_state, next_interval = self._evaluate_and_run_cycle(
-                state_accessor, interval_seconds
-            )
-            if next_interval > 0:
-                timer = threading.Timer(next_interval, run_and_reschedule)
-                timer.daemon = True
-                timer.start()
-
-        timer = threading.Timer(interval_seconds, run_and_reschedule)
-        timer.daemon = True
-        timer.start()
-
-        logger.info(f"Scheduled background activity processing every {interval_seconds}s")
-        return timer
+        return _fn(self, interval_seconds, state_accessor)
 
     def _evaluate_and_run_cycle(
         self,
         state_accessor: "Callable[[], DaemonState] | None",
         base_interval: int,
     ) -> tuple[str, int]:
-        """Evaluate power state, run appropriate phases, return (state, interval).
+        """Evaluate power state, run appropriate phases, return (state, interval)."""
+        from open_agent_kit.features.codebase_intelligence.activity.processor.scheduler import (
+            evaluate_and_run_cycle as _fn,
+        )  # noqa: E501
 
-        Logic:
-        - ACTIVE: full ``run_background_cycle()`` (phases 1-5)
-        - IDLE: maintenance + indexing (phases 1-2, 5), same interval
-        - SLEEP: recovery + indexing (phases 1, 5), longer interval
-        - DEEP_SLEEP: no work, interval 0 (timer stops)
-
-        Phase 5 (plan indexing + title generation) runs in IDLE/SLEEP because
-        it is lightweight (embedding + ChromaDB upsert, no LLM calls) and plans
-        are often created at the end of a session just before idle begins.
-
-        Args:
-            state_accessor: Optional callable returning the current DaemonState.
-            base_interval: The base interval in seconds.
-
-        Returns:
-            Tuple of (power_state_name, next_interval_seconds).
-            An interval of 0 means the timer should NOT be rescheduled.
-        """
-        import time
-
-        daemon_state: DaemonState | None = None
-        if state_accessor is not None:
-            daemon_state = state_accessor()
-
-        # Determine idle duration — use last hook activity if available,
-        # otherwise fall back to daemon start time so the idle clock ticks
-        # even when no hooks have ever fired (e.g. daemon starts, user walks away).
-        idle_seconds: float | None = None
-        if daemon_state is not None:
-            last_activity = daemon_state.last_hook_activity or daemon_state.start_time
-            if last_activity is not None:
-                idle_seconds = time.time() - last_activity
-
-        # Determine target power state
-        if idle_seconds is None or idle_seconds < POWER_IDLE_THRESHOLD:
-            target_state = POWER_STATE_ACTIVE
-        elif idle_seconds < POWER_SLEEP_THRESHOLD:
-            target_state = POWER_STATE_IDLE
-        elif idle_seconds < POWER_DEEP_SLEEP_THRESHOLD:
-            target_state = POWER_STATE_SLEEP
-        else:
-            target_state = POWER_STATE_DEEP_SLEEP
-
-        # Handle state transition
-        if daemon_state is not None:
-            old_state = daemon_state.power_state
-            if old_state != target_state:
-                self._on_power_transition(daemon_state, old_state, target_state)
-
-        # Run phases based on target state
-        if target_state == POWER_STATE_ACTIVE:
-            self.run_background_cycle()
-            return target_state, base_interval
-
-        if target_state == POWER_STATE_IDLE:
-            self._bg_recover_stuck_data()  # Phase 1
-            self._bg_recover_stale_sessions()  # Phase 2
-            self._bg_index_and_title()  # Phase 5 (lightweight, no LLM)
-            return target_state, base_interval
-
-        if target_state == POWER_STATE_SLEEP:
-            self._bg_recover_stuck_data()  # Phase 1
-            self._bg_index_and_title()  # Phase 5 (lightweight, no LLM)
-            return target_state, POWER_SLEEP_INTERVAL
-
-        # DEEP_SLEEP: run nothing, do not reschedule
-        return target_state, 0
+        return _fn(self, state_accessor, base_interval)
 
     def _on_power_transition(
-        self,
-        daemon_state: "DaemonState",
-        old_state: str,
-        new_state: str,
+        self, daemon_state: "DaemonState", old_state: str, new_state: str
     ) -> None:
-        """Handle power state transitions with logging and side effects.
+        from open_agent_kit.features.codebase_intelligence.activity.processor.power import (
+            on_power_transition as _fn,
+        )  # noqa: E501
 
-        Side effects on entry:
-        - SLEEP / DEEP_SLEEP: trigger a backup, prune governance audit events.
-        - DEEP_SLEEP: stop file watcher.
-        - ACTIVE (from DEEP_SLEEP): start file watcher.
-
-        Args:
-            daemon_state: The current daemon state instance.
-            old_state: The power state being left.
-            new_state: The power state being entered.
-        """
-        import time
-
-        last_activity = daemon_state.last_hook_activity or daemon_state.start_time
-        idle_seconds = (time.time() - last_activity) if last_activity else 0.0
-
-        logger.info(f"Power state: {old_state} -> {new_state} (idle {idle_seconds:.0f}s)")
-        daemon_state.power_state = new_state
-
-        # Trigger backup and governance audit pruning when entering sleep states
-        if new_state in (POWER_STATE_SLEEP, POWER_STATE_DEEP_SLEEP):
-            self._trigger_transition_backup(daemon_state)
-            self._trigger_governance_prune(daemon_state)
-
-        # Stop file watcher on entry to deep sleep
-        if new_state == POWER_STATE_DEEP_SLEEP and daemon_state.file_watcher:
-            daemon_state.file_watcher.stop()
-
-        # Restart file watcher when waking from deep sleep
-        if (
-            new_state == POWER_STATE_ACTIVE
-            and old_state == POWER_STATE_DEEP_SLEEP
-            and daemon_state.file_watcher
-        ):
-            daemon_state.file_watcher.start()
+        _fn(self, daemon_state, old_state, new_state)
 
     def _trigger_transition_backup(self, daemon_state: "DaemonState") -> None:
-        """Trigger a backup on power state transition (entering sleep/deep_sleep).
+        from open_agent_kit.features.codebase_intelligence.activity.processor.power import (
+            _trigger_transition_backup as _fn,
+        )  # noqa: E501
 
-        Reuses the existing activity_store when available to avoid opening
-        a second connection to the same SQLite database.
-
-        Args:
-            daemon_state: The current daemon state instance.
-        """
-        from ..store.backup import create_backup
-
-        try:
-            config = daemon_state.ci_config
-            if not config or not config.backup.auto_enabled:
-                return
-
-            if not daemon_state.project_root:
-                return
-
-            from open_agent_kit.config.paths import OAK_DIR
-            from open_agent_kit.features.codebase_intelligence.constants import (
-                CI_ACTIVITIES_DB_FILENAME,
-                CI_DATA_DIR,
-            )
-
-            db_path = daemon_state.project_root / OAK_DIR / CI_DATA_DIR / CI_ACTIVITIES_DB_FILENAME
-            if not db_path.exists():
-                return
-
-            result = create_backup(
-                project_root=daemon_state.project_root,
-                db_path=db_path,
-                activity_store=self.activity_store,
-            )
-            if result and result.success:
-                logger.info(f"Transition backup created: {result.record_count} records")
-        except Exception:
-            logger.exception("Failed to create transition backup")
+        _fn(self, daemon_state)
 
     def _trigger_governance_prune(self, daemon_state: "DaemonState") -> None:
-        """Prune old governance audit events on power transition.
+        from open_agent_kit.features.codebase_intelligence.activity.processor.power import (
+            _trigger_governance_prune as _fn,
+        )  # noqa: E501
 
-        Runs alongside backup when entering sleep/deep_sleep states.
-        Uses the governance retention_days config to determine the cutoff.
+        _fn(self, daemon_state)
 
-        Args:
-            daemon_state: The current daemon state instance.
-        """
-        try:
-            config = daemon_state.ci_config
-            if not config or not config.governance.enabled:
-                return
-
-            if not self.activity_store:
-                return
-
-            from open_agent_kit.features.codebase_intelligence.governance.audit import (
-                prune_old_events,
-            )
-
-            prune_old_events(self.activity_store, config.governance.retention_days)
-        except Exception:
-            logger.debug("Failed to prune governance audit events", exc_info=True)
+    # ------------------------------------------------------------------
+    # Indexing and rebuild (delegates to indexing module)
+    # ------------------------------------------------------------------
 
     def rebuild_chromadb_from_sqlite(
         self,
@@ -1309,14 +911,6 @@ class ActivityProcessor:
         reset_embedded_flags: bool = True,
         clear_chromadb_first: bool = False,
     ) -> dict[str, int]:
-        """Rebuild ChromaDB memory index from SQLite source of truth.
-
-        Args:
-            batch_size: Number of observations to process per batch.
-            reset_embedded_flags: If True, marks ALL observations as unembedded first.
-            clear_chromadb_first: If True, clears ChromaDB memory collection first
-                to remove orphaned entries before rebuilding.
-        """
         return rebuild_chromadb_from_sqlite(
             activity_store=self.activity_store,
             vector_store=self.vector_store,
@@ -1326,7 +920,6 @@ class ActivityProcessor:
         )
 
     def embed_pending_observations(self, batch_size: int = 50) -> dict[str, int]:
-        """Embed observations that are in SQLite but not yet in ChromaDB."""
         return embed_pending_observations(
             activity_store=self.activity_store,
             vector_store=self.vector_store,
@@ -1334,7 +927,6 @@ class ActivityProcessor:
         )
 
     def index_pending_plans(self, batch_size: int = 10) -> dict[str, int]:
-        """Index plans that haven't been embedded in ChromaDB yet."""
         return index_pending_plans(
             activity_store=self.activity_store,
             vector_store=self.vector_store,
@@ -1342,34 +934,25 @@ class ActivityProcessor:
         )
 
     def _extract_plan_title(self, batch: Any) -> str:
-        """Extract plan title from filename or first heading."""
         from open_agent_kit.features.codebase_intelligence.activity.processor.indexing import (
             extract_plan_title,
-        )
+        )  # noqa: E501
 
         return extract_plan_title(batch)
 
     def rebuild_plan_index(self, batch_size: int = 50) -> dict[str, int]:
-        """Rebuild ChromaDB plan index from SQLite source of truth."""
         return rebuild_plan_index(
             activity_store=self.activity_store,
             vector_store=self.vector_store,
             batch_size=batch_size,
         )
 
+    # ------------------------------------------------------------------
+    # Agent batch promotion
+    # ------------------------------------------------------------------
+
     def promote_agent_batch(self, batch_id: int) -> ProcessingResult:
-        """Promote an agent batch to extract memories using user-style processing.
-
-        This forces full LLM extraction on batches that were previously skipped
-        (agent_notification, system). Useful for manually promoting valuable
-        findings from background agent work to the memory store.
-
-        Args:
-            batch_id: Prompt batch ID to promote.
-
-        Returns:
-            ProcessingResult with extracted observations.
-        """
+        """Promote an agent batch to extract memories using user-style LLM extraction."""
         start_time = datetime.now()
 
         # Get the batch
@@ -1471,64 +1054,3 @@ class ActivityProcessor:
                 duration_ms=int((datetime.now() - start_time).total_seconds() * 1000),
                 prompt_batch_id=batch_id,
             )
-
-
-# Async wrappers for use with FastAPI
-
-
-async def process_session_async(
-    processor: ActivityProcessor,
-    session_id: str,
-) -> ProcessingResult:
-    """Process a session asynchronously.
-
-    Args:
-        processor: Activity processor instance.
-        session_id: Session to process.
-
-    Returns:
-        ProcessingResult.
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, processor.process_session, session_id)
-
-
-async def process_prompt_batch_async(
-    processor: ActivityProcessor,
-    batch_id: int,
-) -> ProcessingResult:
-    """Process a prompt batch asynchronously.
-
-    This is the preferred processing method - processes activities from a
-    single user prompt as one coherent unit.
-
-    Args:
-        processor: Activity processor instance.
-        batch_id: Prompt batch ID to process.
-
-    Returns:
-        ProcessingResult.
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, processor.process_prompt_batch, batch_id)
-
-
-async def promote_agent_batch_async(
-    processor: ActivityProcessor,
-    batch_id: int,
-) -> ProcessingResult:
-    """Promote an agent batch to extract memories asynchronously.
-
-    This forces user-style LLM extraction on batches that were previously
-    skipped (agent_notification, system). Useful for promoting valuable
-    findings from background agent work.
-
-    Args:
-        processor: Activity processor instance.
-        batch_id: Prompt batch ID to promote.
-
-    Returns:
-        ProcessingResult with extracted observations.
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, processor.promote_agent_batch, batch_id)

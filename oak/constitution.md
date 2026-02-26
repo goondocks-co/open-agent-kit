@@ -252,7 +252,59 @@ When adding functionality:
 - Prefer **new service + registration** or **new strategy** rather than modifying unrelated code paths.
 - Avoid growing god-services and mega-constants files. Refactor early.
 
-### 3.4 Prefer Dependency Injection Over Service Location
+### 3.4 Module Size Limits (Hard Rule)
+
+**No single Python module may exceed 600 lines.** If a module approaches this limit, decompose it before adding more code.
+
+Canonical decomposition pattern (barrel re-export):
+
+1. Create a `module/` directory with an `__init__.py` barrel.
+2. Split into domain-focused sub-modules (e.g., `module/queries.py`, `module/lifecycle.py`).
+3. The `__init__.py` re-exports all public symbols so existing `from package.module import X` continues to work.
+4. Never break existing import paths — the barrel absorbs the change.
+
+Exemplar anchors (created during the Feb 2026 architecture refactoring):
+
+| Pattern | Anchor |
+|---------|--------|
+| Constants barrel | `codebase_intelligence/constants/__init__.py` (15 domain modules) |
+| Config barrel | `codebase_intelligence/config/__init__.py` (8 domain modules) |
+| Store sub-package | `activity/store/sessions/` (4 modules: crud, queries, lifecycle, linking) |
+| Lifecycle extraction | `daemon/lifecycle/` (startup, version_check, sync_check, maintenance, logging_setup) |
+| Strategy pattern | `hooks/strategies.py` (JsonHookStrategy, PluginHookStrategy, OtelHookStrategy) |
+| Dispatcher + registration | `services/hook_dispatcher.py` (replaces if/elif chains with OCP) |
+
+When decomposing, prefer these strategies in order:
+
+1. **Barrel re-export** — for data-heavy modules (constants, config, models)
+2. **Lifecycle extraction** — for god-modules mixing init, runtime, and cleanup
+3. **Strategy pattern** — for if/elif chains dispatching by type
+4. **`__getattr__` delegation** — for facade classes with many pass-through methods (use sparingly)
+
+### 3.5 FK-Safe Deletion (Hard Rule)
+
+When deleting rows from a parent table (e.g., `sessions`), **all child tables with FK references must be cleaned first.** This is a manual requirement because SQLite does not cascade deletes by default.
+
+Whenever a new table is added with a `FOREIGN KEY ... REFERENCES sessions(id)` (or any other parent):
+
+- **Update all deletion paths** that delete from the parent table.
+- Search for `DELETE FROM <parent_table>` across the codebase to find all paths.
+- Add the new child table deletion **before** the parent deletion, inside the same transaction.
+
+Current tables referencing `sessions(id)`: `activities`, `prompt_batches`, `memory_observations`, `session_relationships`, `session_link_events`, `governance_audit_events`.
+
+Canonical deletion anchor: `activity/store/delete.py:delete_session()`.
+
+### 3.6 Background Processing Resilience
+
+Background processing phases (in `activity/processor/background_phases.py`) must be **independently isolated**:
+
+- Each phase has its own `except _BG_EXCEPTIONS` boundary.
+- A failure in Phase N must **never** prevent Phases N+1..M from executing.
+- `_BG_EXCEPTIONS` must include all SQLite error types that can occur during normal operation (`OperationalError`, `IntegrityError`).
+- When adding a new background phase, add it as a new function following the existing pattern and call it from `run_background_cycle()`.
+
+### 3.8 Prefer Dependency Injection Over Service Location
 
 When a component depends on a shared value or service (e.g., machine identity, configuration):
 

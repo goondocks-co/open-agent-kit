@@ -95,7 +95,7 @@ class ReconcileSkillsStage(BaseStage):
         skill_service = self._get_skill_service(context)
 
         # Check if any configured agent supports skills
-        if not skill_service._has_skills_capable_agent():
+        if not skill_service.has_skills_capable_agent():
             return StageOutcome.skipped("No skills-capable agents configured")
 
         # First, remove obsolete skills (skills no longer in any feature)

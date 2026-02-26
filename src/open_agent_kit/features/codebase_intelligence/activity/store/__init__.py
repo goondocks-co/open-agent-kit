@@ -5,8 +5,8 @@ Decomposes the large store.py into focused modules:
 - migrations.py: Schema migration logic
 - models.py: Data models (Activity, PromptBatch, Session, StoredObservation)
 - core.py: Main ActivityStore class with connection management
-- sessions.py: Session CRUD operations
-- batches.py: Prompt batch operations and plan embedding
+- sessions/: Session operations (crud, queries, lifecycle, linking)
+- batches/: Prompt batch operations (crud, queries, recovery, plan_embedding, plan_graph)
 - activities.py: Activity CRUD and FTS5 search
 - observations.py: Memory observation storage
 - stats.py: Statistics and caching

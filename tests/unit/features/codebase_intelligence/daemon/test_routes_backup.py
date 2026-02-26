@@ -60,9 +60,13 @@ def _stable_machine_id(monkeypatch):
     get_project_root() which may find the real repo's cached ID, while
     route handlers pass temp_project and compute a different ID.
     """
-    monkeypatch.setattr(
-        backup_module, "get_machine_identifier", lambda project_root=None: TEST_MACHINE_ID
+    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        api as backup_api,
     )
+
+    _mock_fn = lambda project_root=None: TEST_MACHINE_ID  # noqa: E731
+    monkeypatch.setattr(backup_module, "get_machine_identifier", _mock_fn)
+    monkeypatch.setattr(backup_api, "get_machine_identifier", _mock_fn)
     # Also set machine_id on DaemonState so route handlers using state.machine_id
     # get the same consistent value
     state = get_state()

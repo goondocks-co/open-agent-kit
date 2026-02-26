@@ -596,8 +596,10 @@ class TestGetTaskContext:
     def test_adds_guidelines_when_constitution_exists(
         self, engine: RetrievalEngine, tmp_path: Path
     ) -> None:
-        """Test that guidelines are added when .constitution.md exists."""
-        constitution = tmp_path / ".constitution.md"
+        """Test that guidelines are added when oak/constitution.md exists."""
+        oak_dir = tmp_path / "oak"
+        oak_dir.mkdir()
+        constitution = oak_dir / "constitution.md"
         constitution.write_text("# Project Constitution")
 
         result = engine.get_task_context(
@@ -606,12 +608,12 @@ class TestGetTaskContext:
         )
 
         assert len(result.guidelines) > 0
-        assert ".constitution.md" in result.guidelines[0]
+        assert "oak/constitution.md" in result.guidelines[0]
 
     def test_no_guidelines_without_constitution(
         self, engine: RetrievalEngine, tmp_path: Path
     ) -> None:
-        """Test that no guidelines are added when .constitution.md doesn't exist."""
+        """Test that no guidelines are added when oak/constitution.md doesn't exist."""
         result = engine.get_task_context(
             task="test task",
             project_root=tmp_path,

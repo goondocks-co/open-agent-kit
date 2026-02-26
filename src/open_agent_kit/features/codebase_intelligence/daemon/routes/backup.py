@@ -596,3 +596,31 @@ async def restore_all_backups_endpoint(
         total_errors=total_errors,
         per_file=per_file,
     )
+
+
+@router.get("/api/backup/config")
+async def get_backup_config() -> dict:
+    """Get backup configuration and last auto-backup timestamp.
+
+    Convenience endpoint combining backup config with runtime state.
+    """
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=500, detail="Project root not set")
+
+    config = state.ci_config
+    if not config:
+        raise HTTPException(status_code=500, detail="Configuration not loaded")
+
+    last_backup_epoch = get_last_backup_epoch(state)
+    last_auto_backup_iso: str | None = None
+    if last_backup_epoch is not None:
+        last_auto_backup_iso = datetime.fromtimestamp(last_backup_epoch).isoformat()
+
+    return {
+        "auto_enabled": config.backup.auto_enabled,
+        "include_activities": config.backup.include_activities,
+        "on_upgrade": config.backup.on_upgrade,
+        "last_auto_backup": last_auto_backup_iso,
+    }

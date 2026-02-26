@@ -284,9 +284,12 @@ class UpgradeAgentSettingsStage(BaseStage):
         plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
 
+        def _upgrade_agent_setting(agent: str) -> None:
+            upgrade_service.agent_settings_service.install_settings(agent, force=False)
+
         result = process_items(
             plan.get("agent_settings", []),
-            upgrade_service._upgrade_agent_settings,
+            _upgrade_agent_setting,
         )
 
         message = format_count_message(
@@ -391,31 +394,46 @@ class UpgradeSkillsStage(BaseStage):
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Install, upgrade, and remove obsolete skills."""
-        from open_agent_kit.services.upgrade_service import UpgradeService
+        from open_agent_kit.services.skill_service import SkillService
 
-        upgrade_service = UpgradeService(context.project_root)
+        skill_service = SkillService(context.project_root)
         plan_result = context.get_result(StageResultRegistry.PLAN_UPGRADE, {})
         plan: dict[str, Any] = plan_result.get("plan", {})
         skill_plan = plan.get("skills", {})
 
+        def _remove_skill(info: dict[str, Any]) -> None:
+            result = skill_service.remove_skill(info["skill"])
+            if "error" in result:
+                raise ValueError(result["error"])
+
+        def _install_skill(info: dict[str, Any]) -> None:
+            result = skill_service.install_skill(info["skill"], info.get("feature"))
+            if "error" in result:
+                raise ValueError(result["error"])
+
+        def _upgrade_skill(info: dict[str, Any]) -> None:
+            result = skill_service.upgrade_skill(info["skill"])
+            if "error" in result:
+                raise ValueError(result["error"])
+
         # Process obsolete skill removals first (cleanup renamed/removed skills)
         remove_result = process_items(
             skill_plan.get("obsolete", []),
-            lambda info: upgrade_service._remove_obsolete_skill(info["skill"]),
+            _remove_skill,
             lambda info: info["skill"],
         )
 
         # Process skill installations
         install_result = process_items(
             skill_plan.get("install", []),
-            lambda info: upgrade_service._install_skill(info["skill"], info["feature"]),
+            _install_skill,
             lambda info: info["skill"],
         )
 
         # Process skill upgrades
         upgrade_result = process_items(
             skill_plan.get("upgrade", []),
-            lambda info: upgrade_service._upgrade_skill(info["skill"]),
+            _upgrade_skill,
             lambda info: info["skill"],
         )
 

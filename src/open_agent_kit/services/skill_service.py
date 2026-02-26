@@ -20,7 +20,10 @@ skills support). When a feature is removed, its skills are also removed.
 import logging
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from open_agent_kit.models.agent_manifest import AgentManifest
 
 from open_agent_kit.config.paths import (
     FEATURE_MANIFEST_FILE,
@@ -33,6 +36,7 @@ from open_agent_kit.models.results import SkillInstallResult, SkillRefreshResult
 from open_agent_kit.models.skill import SkillManifest
 from open_agent_kit.services.config_service import ConfigService
 from open_agent_kit.utils import ensure_dir, write_file
+from open_agent_kit.utils.file_utils import files_differ as _files_differ
 from open_agent_kit.utils.naming import feature_name_to_dir as _feature_name_to_dir
 
 logger = logging.getLogger(__name__)
@@ -63,6 +67,20 @@ class SkillService:
         # Skills are read directly from the package and installed to agent directories
         # Path: services/skill_service.py -> services/ -> open_agent_kit/
         self.package_features_dir = Path(__file__).parent.parent / FEATURES_DIR
+
+    def _get_skill_path_for_agent(self, manifest: "AgentManifest") -> Path:
+        """Derive the skills directory path for an agent manifest.
+
+        Args:
+            manifest: Agent manifest with capabilities and installation config.
+
+        Returns:
+            Absolute path to the agent's skills directory.
+        """
+        skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
+        skills_base = skills_base.rstrip("/")
+        skills_subdir = manifest.capabilities.skills_directory
+        return self.project_root / skills_base / skills_subdir
 
     def _render_skill_text(self, content: str) -> str:
         """Render skill text content with the configured CLI command."""
@@ -118,7 +136,7 @@ class SkillService:
                 continue
 
             if package_text is None and installed_text is None:
-                if self._files_differ(package_file, installed_file):
+                if _files_differ(package_file, installed_file):
                     return True
                 continue
 
@@ -128,14 +146,7 @@ class SkillService:
 
         return False
 
-    def _files_differ(self, file1: Path, file2: Path) -> bool:
-        """Check if two files differ."""
-        try:
-            return file1.read_bytes() != file2.read_bytes()
-        except OSError:
-            return True
-
-    def _get_agents_with_skills_support(self) -> list[tuple[str, Path, str]]:
+    def get_agents_with_skills_support(self) -> list[tuple[str, Path, str]]:
         """Get configured agents that support skills.
 
         Returns:
@@ -157,24 +168,20 @@ class SkillService:
                 # (e.g. "copilot" → "vscode-copilot" migration pending)
                 continue
             if manifest and manifest.capabilities.has_skills:
-                # Build the skills directory path
-                # Use skills_folder override if specified, otherwise use installation.folder
-                skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
-                skills_base = skills_base.rstrip("/")
+                skills_path = self._get_skill_path_for_agent(manifest)
                 skills_subdir = manifest.capabilities.skills_directory
-                skills_path = self.project_root / skills_base / skills_subdir
                 agents_with_skills.append((agent_name, skills_path, skills_subdir))
 
         return agents_with_skills
 
-    def _get_unique_skills_paths(self) -> list[tuple[list[str], Path, str]]:
+    def get_unique_skills_paths(self) -> list[tuple[list[str], Path, str]]:
         """Deduplicate skills paths, grouping agents that share the same directory.
 
         Returns:
             List of (agent_names, skills_dir_path, skills_directory_name)
             deduplicated by skills_dir_path.
         """
-        agents_with_skills = self._get_agents_with_skills_support()
+        agents_with_skills = self.get_agents_with_skills_support()
         path_to_agents: dict[Path, tuple[list[str], str]] = {}
         for agent_name, skills_path, skills_subdir in agents_with_skills:
             if skills_path not in path_to_agents:
@@ -182,13 +189,13 @@ class SkillService:
             path_to_agents[skills_path][0].append(agent_name)
         return [(names, path, sub) for path, (names, sub) in path_to_agents.items()]
 
-    def _has_skills_capable_agent(self) -> bool:
+    def has_skills_capable_agent(self) -> bool:
         """Check if any configured agent supports skills.
 
         Returns:
             True if at least one configured agent has has_skills: true
         """
-        return len(self._get_agents_with_skills_support()) > 0
+        return len(self.get_agents_with_skills_support()) > 0
 
     def _get_feature_skills_dir(self, feature_name: str) -> Path:
         """Get the skills directory for a feature in the package.
@@ -281,7 +288,7 @@ class SkillService:
 
         return None
 
-    def _find_skill_dir_in_features(self, skill_name: str) -> Path | None:
+    def find_skill_dir_in_features(self, skill_name: str) -> Path | None:
         """Find a skill's directory path by searching all feature directories.
 
         Args:
@@ -385,7 +392,7 @@ class SkillService:
         }
 
         # Get unique skills paths (deduped across agents sharing the same dir)
-        unique_paths = self._get_unique_skills_paths()
+        unique_paths = self.get_unique_skills_paths()
         if not unique_paths:
             results["skipped"] = True
             results["reason"] = "No configured agents support skills"
@@ -397,7 +404,7 @@ class SkillService:
             return results
 
         # Find source skill directory in package
-        source_skill_dir = self._find_skill_dir_in_features(skill_name)
+        source_skill_dir = self.find_skill_dir_in_features(skill_name)
         if not source_skill_dir:
             results["error"] = f"Skill not found: {skill_name}"
             return results
@@ -457,7 +464,7 @@ class SkillService:
             return results
 
         # Check if any agent supports skills (early exit)
-        if not self._has_skills_capable_agent():
+        if not self.has_skills_capable_agent():
             results["skills_skipped"] = skills
             results["reason"] = "No configured agents support skills"
             return results
@@ -503,7 +510,7 @@ class SkillService:
             return results
 
         # Remove once per unique skills directory
-        unique_paths = self._get_unique_skills_paths()
+        unique_paths = self.get_unique_skills_paths()
         for agent_names, skills_dir, _ in unique_paths:
             skill_dir = skills_dir / skill_name
             if skill_dir.exists():
@@ -582,7 +589,7 @@ class SkillService:
         agent_service = AgentService(self.project_root)
 
         # Collect paths still in use by remaining configured agents
-        remaining_paths = {p for _, p, _ in self._get_agents_with_skills_support()}
+        remaining_paths = {p for _, p, _ in self.get_agents_with_skills_support()}
 
         for agent_type in removed_agents:
             # Get agent manifest to find skills directory
@@ -595,11 +602,7 @@ class SkillService:
                 continue
 
             # Build the skills directory path
-            # Use skills_folder override if specified, otherwise use installation.folder
-            skills_base = manifest.capabilities.skills_folder or manifest.installation.folder
-            skills_base = skills_base.rstrip("/")
-            skills_subdir = manifest.capabilities.skills_directory
-            skills_dir = self.project_root / skills_base / skills_subdir
+            skills_dir = self._get_skill_path_for_agent(manifest)
 
             if not skills_dir.exists():
                 continue
@@ -646,7 +649,7 @@ class SkillService:
         }
 
         # Get unique skills paths (deduped across agents sharing the same dir)
-        unique_paths = self._get_unique_skills_paths()
+        unique_paths = self.get_unique_skills_paths()
         if not unique_paths:
             results["skipped"] = True
             results["reason"] = "No configured agents support skills"
@@ -657,7 +660,7 @@ class SkillService:
 
         for skill_name in installed_skills:
             # Find source skill directory in package
-            source_skill_dir = self._find_skill_dir_in_features(skill_name)
+            source_skill_dir = self.find_skill_dir_in_features(skill_name)
             if not source_skill_dir:
                 results["errors"].append(f"Skill not found in package: {skill_name}")
                 continue
@@ -705,7 +708,7 @@ class SkillService:
             return results
 
         # Get unique skills paths (deduped across agents sharing the same dir)
-        unique_paths = self._get_unique_skills_paths()
+        unique_paths = self.get_unique_skills_paths()
         if not unique_paths:
             results["error"] = "No configured agents support skills"
             return results
@@ -723,7 +726,7 @@ class SkillService:
             results["old_version"] = "unknown"
 
         # Find source skill directory in package
-        source_skill_dir = self._find_skill_dir_in_features(skill_name)
+        source_skill_dir = self.find_skill_dir_in_features(skill_name)
         if not source_skill_dir:
             results["error"] = f"Skill not found in package: {skill_name}"
             return results

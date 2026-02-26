@@ -440,7 +440,7 @@ def _isolate_dotenv(monkeypatch):
         return _real_read_dotenv_value(dotenv_path, key)
 
     with patch(
-        "open_agent_kit.features.codebase_intelligence.activity.store.backup._read_dotenv_value",
+        "open_agent_kit.features.codebase_intelligence.activity.store.backup.paths._read_dotenv_value",
         side_effect=_filtered_read,
     ):
         yield

@@ -236,7 +236,7 @@ class TestPowerTransitionLogging:
         state = _make_state(idle_seconds=POWER_IDLE_THRESHOLD + 10)
 
         with patch(
-            "open_agent_kit.features.codebase_intelligence.activity.processor.core.logger"
+            "open_agent_kit.features.codebase_intelligence.activity.processor.power.logger"
         ) as mock_logger:
             processor._on_power_transition(state, POWER_STATE_ACTIVE, POWER_STATE_IDLE)
 

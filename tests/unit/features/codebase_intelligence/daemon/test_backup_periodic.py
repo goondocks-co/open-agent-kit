@@ -16,8 +16,8 @@ from open_agent_kit.features.codebase_intelligence.activity.store.backup import 
     BackupResult,
     create_backup,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.server import (
-    _run_auto_backup,
+from open_agent_kit.features.codebase_intelligence.daemon.lifecycle.maintenance import (
+    run_auto_backup as _run_auto_backup,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
     DaemonState,
@@ -169,9 +169,9 @@ class TestPeriodicBackupLoopRemoved:
         import ast
         import inspect
 
-        from open_agent_kit.features.codebase_intelligence.daemon import server
+        from open_agent_kit.features.codebase_intelligence.daemon.lifecycle import startup
 
-        source = inspect.getsource(server.lifespan)
+        source = inspect.getsource(startup.lifespan)
         tree = ast.parse(source)
 
         # Walk the AST looking for references to _periodic_backup_loop
@@ -210,11 +210,11 @@ class TestTransitionBackupStoreReuse:
 
         with (
             patch(
-                "open_agent_kit.features.codebase_intelligence.activity.store.backup.export_to_sql",
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.export_to_sql",
                 return_value=10,
             ),
             patch(
-                "open_agent_kit.features.codebase_intelligence.activity.store.backup.get_machine_identifier",
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.get_machine_identifier",
                 return_value="test_machine",
             ),
             patch(
@@ -250,11 +250,11 @@ class TestTransitionBackupStoreReuse:
 
         with (
             patch(
-                "open_agent_kit.features.codebase_intelligence.activity.store.backup.export_to_sql",
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.export_to_sql",
                 return_value=10,
             ),
             patch(
-                "open_agent_kit.features.codebase_intelligence.activity.store.backup.get_machine_identifier",
+                "open_agent_kit.features.codebase_intelligence.activity.store.backup.api.get_machine_identifier",
                 return_value="test_machine",
             ),
             patch(

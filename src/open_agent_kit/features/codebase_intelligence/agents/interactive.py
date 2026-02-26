@@ -27,19 +27,28 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from open_agent_kit.features.acp_server.constants import ACP_AGENT_NAME
-from open_agent_kit.features.codebase_intelligence.agents.tools import create_ci_mcp_server
+from open_agent_kit.features.codebase_intelligence.agents.activity_recorder import (
+    ActivityRecorder,
+)
+from open_agent_kit.features.codebase_intelligence.agents.ci_tools import (
+    build_ci_tools_from_access,
+)
+from open_agent_kit.features.codebase_intelligence.agents.context_injection import (
+    build_session_context as build_session_context_impl,
+)
+from open_agent_kit.features.codebase_intelligence.agents.context_injection import (
+    build_task_context as build_task_context_impl,
+)
+from open_agent_kit.features.codebase_intelligence.agents.context_injection import (
+    search_prompt_context as search_prompt_context_impl,
+)
+from open_agent_kit.features.codebase_intelligence.agents.mcp_cache import CiMcpServerCache
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_MCP_SERVER_NAME,
-    CI_TOOL_ARCHIVE,
     CI_TOOL_MEMORIES,
     CI_TOOL_PROJECT_STATS,
-    CI_TOOL_QUERY,
-    CI_TOOL_REMEMBER,
-    CI_TOOL_RESOLVE,
     CI_TOOL_SEARCH,
     CI_TOOL_SESSIONS,
-    INJECTION_MAX_SESSION_SUMMARIES,
-    INJECTION_SESSION_START_REMINDER_BLOCK,
     PROMPT_SOURCE_PLAN,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
@@ -70,12 +79,6 @@ ACP_DEFAULT_SYSTEM_PROMPT = (
     "codebase intelligence. Use the available tools to search code, "
     "access project memories, and understand the codebase."
 )
-
-# Maximum length for sanitized tool input string values
-_SANITIZED_INPUT_MAX_LENGTH = 500
-
-# Fields in tool_input that contain large content (file bodies, diffs)
-_LARGE_CONTENT_FIELDS = frozenset({"content", "new_source", "old_string", "new_string"})
 
 
 @dataclass
@@ -139,167 +142,32 @@ class InteractiveSessionManager:
         self._activity_processor = activity_processor
         self._sessions: dict[str, InteractiveSession] = {}
 
-        # MCP server cache keyed by frozenset of enabled tools
-        self._ci_mcp_servers: dict[frozenset[str], Any] = {}
+        # MCP server cache
+        self._ci_mcp_cache = CiMcpServerCache(
+            retrieval_engine=retrieval_engine,
+            activity_store=activity_store,
+            vector_store=vector_store,
+        )
 
     @property
     def project_root(self) -> Path:
         """Get project root directory."""
         return self._project_root
 
-    def _get_ci_mcp_server(self, enabled_tools: set[str] | None = None) -> Any:
-        """Get or create a CI MCP server for the given tool set.
-
-        Caches servers by the set of enabled tools.
-
-        Args:
-            enabled_tools: Set of tool names to include.
-
-        Returns:
-            McpSdkServerConfig instance, or None if unavailable.
-        """
-        cache_key = frozenset(enabled_tools) if enabled_tools else frozenset()
-
-        if cache_key in self._ci_mcp_servers:
-            return self._ci_mcp_servers[cache_key]
-
-        if self._retrieval_engine is None:
-            logger.warning("Cannot create CI MCP server - no retrieval engine")
-            return None
-
-        server = create_ci_mcp_server(
-            retrieval_engine=self._retrieval_engine,
-            activity_store=self._activity_store,
-            vector_store=self._vector_store,
-            enabled_tools=enabled_tools,
-        )
-        self._ci_mcp_servers[cache_key] = server
-        return server
-
     # =====================================================================
-    # Context injection
+    # Context injection (delegated to context_injection module)
     # =====================================================================
 
     def _build_session_context(self, session_id: str) -> str:
-        """Build context string for session-start injection.
-
-        Mirrors injection.py:build_session_context() but uses injected
-        dependencies instead of DaemonState.
-
-        Args:
-            session_id: Current session ID for tool call linking.
-
-        Returns:
-            Formatted context string (may be empty).
-        """
-        parts: list[str] = []
-
-        try:
-            if self._vector_store:
-                stats = self._vector_store.get_stats()
-                code_chunks = stats.get("code_chunks", 0)
-                memory_count = stats.get("memory_observations", 0)
-
-                if code_chunks > 0 or memory_count > 0:
-                    parts.append(
-                        f"**Codebase Intelligence Active**: {code_chunks} code chunks indexed, "
-                        f"{memory_count} memories stored."
-                    )
-
-                    reminder = INJECTION_SESSION_START_REMINDER_BLOCK
-                    reminder += f"\n- Current session: `session_id={session_id}`"
-                    parts.append(reminder)
-
-                    # Include recent session summaries for continuity
-                    if self._activity_store:
-                        try:
-                            from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
-                                format_session_summaries,
-                            )
-
-                            recent_sessions = self._activity_store.list_sessions_with_summaries(
-                                limit=INJECTION_MAX_SESSION_SUMMARIES
-                            )
-                            if recent_sessions:
-                                session_summaries = [
-                                    {
-                                        "observation": s.summary,
-                                        "tags": [s.agent],
-                                    }
-                                    for s in recent_sessions
-                                ]
-                                session_text = format_session_summaries(session_summaries)
-                                if session_text:
-                                    parts.append(session_text)
-                        except (OSError, ValueError, RuntimeError, AttributeError) as e:
-                            logger.debug(
-                                f"Failed to fetch session summaries for ACP injection: {e}"
-                            )
-        except (OSError, ValueError, RuntimeError, AttributeError) as e:
-            logger.debug(f"Failed to build session context: {e}")
-
-        return "\n\n".join(parts) if parts else ""
+        """Build context string for session-start injection."""
+        return build_session_context_impl(session_id, self._vector_store, self._activity_store)
 
     def _search_prompt_context(self, user_text: str, session_id: str) -> str | None:
-        """Search for relevant code and memories based on user prompt.
-
-        Args:
-            user_text: The user's prompt text.
-            session_id: Current session ID.
-
-        Returns:
-            Formatted context string, or None if nothing relevant found.
-        """
-        if not self._retrieval_engine:
-            return None
-
-        try:
-            from open_agent_kit.features.codebase_intelligence.daemon.routes.injection import (
-                format_code_for_injection,
-                format_memories_for_injection,
-            )
-            from open_agent_kit.features.codebase_intelligence.retrieval.engine import (
-                RetrievalEngine,
-            )
-
-            search_res = self._retrieval_engine.search(
-                query=user_text,
-                search_type="all",
-                limit=10,
-            )
-
-            parts: list[str] = []
-
-            # Filter code by high confidence
-            if search_res.code:
-                confident_code = RetrievalEngine.filter_by_combined_score(
-                    search_res.code, min_combined="high"
-                )
-                if confident_code:
-                    code_text = format_code_for_injection(confident_code[:3])
-                    if code_text:
-                        parts.append(code_text)
-
-            # Filter memories by high combined score
-            if search_res.memory:
-                confident_memories = RetrievalEngine.filter_by_combined_score(
-                    search_res.memory, min_combined="high"
-                )
-                if confident_memories:
-                    mem_text = format_memories_for_injection(confident_memories[:5])
-                    if mem_text:
-                        parts.append(mem_text)
-
-            if parts:
-                return "\n\n".join(parts)
-
-        except (OSError, ValueError, RuntimeError, AttributeError) as e:
-            logger.debug(f"Failed to search prompt context: {e}")
-
-        return None
+        """Search for relevant code and memories based on user prompt."""
+        return search_prompt_context_impl(user_text, self._retrieval_engine)
 
     # =====================================================================
-    # SDK hooks for activity recording
+    # SDK hooks for activity recording (delegated to ActivityRecorder)
     # =====================================================================
 
     def _build_sdk_hooks(
@@ -308,135 +176,12 @@ class InteractiveSessionManager:
         batch_id_ref: list[int | None],
         response_text_parts: list[str],
     ) -> dict[str, list[Any]]:
-        """Build SDK hooks dict for activity recording.
-
-        Creates PostToolUse and PostToolUseFailure callbacks that record
-        tool activities in the activity store, mirroring hooks_tool.py.
-
-        Args:
-            session: Current interactive session.
-            batch_id_ref: Mutable reference [batch_id] so hooks see current batch.
-            response_text_parts: Mutable list to accumulate response text.
-
-        Returns:
-            Dict suitable for ClaudeAgentOptions.hooks.
-        """
-        try:
-            from claude_agent_sdk import (
-                HookJSONOutput,
-                HookMatcher,
-            )
-        except ImportError:
-            return {}
-
-        activity_store = self._activity_store
-        project_root = self._project_root
-
-        async def _post_tool_use(
-            input_data: Any,
-            tool_use_id: str | None,
-            context: Any,
-        ) -> HookJSONOutput:
-            """Record successful tool execution as an activity."""
-            try:
-                from open_agent_kit.features.codebase_intelligence.activity.store.models import (
-                    Activity,
-                )
-
-                tool_name = input_data.get("tool_name", "")
-                tool_input = input_data.get("tool_input", {})
-                tool_response = input_data.get("tool_response", "")
-
-                # Sanitize tool_input (remove large content fields)
-                sanitized_input = _sanitize_tool_input(tool_input)
-
-                # Build output summary
-                output_summary = _build_output_summary(tool_name, tool_response)
-
-                activity = Activity(
-                    session_id=session.session_id,
-                    prompt_batch_id=batch_id_ref[0],
-                    tool_name=tool_name,
-                    tool_input=sanitized_input,
-                    tool_output_summary=output_summary,
-                    file_path=(
-                        tool_input.get("file_path") if isinstance(tool_input, dict) else None
-                    ),
-                    success=True,
-                )
-                activity_store.add_activity_buffered(activity)
-                logger.debug(f"ACP hook: stored activity {tool_name} (batch={batch_id_ref[0]})")
-
-                # Plan detection for Write tool
-                if tool_name == "Write" and batch_id_ref[0] is not None:
-                    _handle_plan_detection(
-                        activity_store,
-                        session.session_id,
-                        batch_id_ref[0],
-                        tool_input,
-                        project_root,
-                    )
-
-                # Plan capture for ExitPlanMode
-                if tool_name == "ExitPlanMode" and batch_id_ref[0] is not None:
-                    _handle_exit_plan_mode(
-                        activity_store,
-                        session.session_id,
-                        project_root,
-                    )
-
-            except Exception as e:
-                logger.debug(f"ACP post-tool-use hook error: {e}")
-
-            return {}
-
-        async def _post_tool_use_failure(
-            input_data: Any,
-            tool_use_id: str | None,
-            context: Any,
-        ) -> HookJSONOutput:
-            """Record failed tool execution as an activity."""
-            try:
-                from open_agent_kit.features.codebase_intelligence.activity.store.models import (
-                    Activity,
-                )
-
-                tool_name = input_data.get("tool_name", "unknown")
-                tool_input = input_data.get("tool_input", {})
-                error_message = str(input_data.get("tool_response", "Tool execution failed"))
-
-                sanitized_input = _sanitize_tool_input(tool_input)
-
-                activity = Activity(
-                    session_id=session.session_id,
-                    prompt_batch_id=batch_id_ref[0],
-                    tool_name=tool_name,
-                    tool_input=sanitized_input,
-                    tool_output_summary=error_message[:_SANITIZED_INPUT_MAX_LENGTH],
-                    file_path=(
-                        tool_input.get("file_path") if isinstance(tool_input, dict) else None
-                    ),
-                    success=False,
-                    error_message=error_message[:_SANITIZED_INPUT_MAX_LENGTH],
-                )
-                activity_store.add_activity_buffered(activity)
-                logger.debug(
-                    f"ACP hook: stored failed activity {tool_name} (batch={batch_id_ref[0]})"
-                )
-
-            except Exception as e:
-                logger.debug(f"ACP post-tool-use-failure hook error: {e}")
-
-            return {}
-
-        return {
-            "PostToolUse": [
-                HookMatcher(matcher=None, hooks=[_post_tool_use]),
-            ],
-            "PostToolUseFailure": [
-                HookMatcher(matcher=None, hooks=[_post_tool_use_failure]),
-            ],
-        }
+        """Build SDK hooks dict for activity recording."""
+        recorder = ActivityRecorder(
+            activity_store=self._activity_store,
+            project_root=self._project_root,
+        )
+        return recorder.build_hooks(session.session_id, batch_id_ref, response_text_parts)
 
     # =====================================================================
     # Batch finalization
@@ -498,70 +243,8 @@ class InteractiveSessionManager:
     # =====================================================================
 
     def _build_task_context(self, focus: str) -> str:
-        """Build a task-awareness section for the system prompt.
-
-        When a non-default focus is active, finds all tasks that use that
-        template and produces a concise reference the agent can use to
-        apply the right guardrails when the user's request matches a task.
-
-        Args:
-            focus: Current agent focus (template name).
-
-        Returns:
-            Markdown block describing available tasks, or empty string.
-        """
-        if self._agent_registry is None:
-            return ""
-
-        tasks = [t for t in self._agent_registry.list_tasks() if t.agent_type == focus]
-        if not tasks:
-            return ""
-
-        lines = [
-            "## Available Tasks",
-            "",
-            (
-                "The following pre-configured tasks exist for this focus. When the "
-                "user's request aligns with a task, follow its conventions — maintained "
-                "files, style, and output requirements."
-            ),
-            "",
-        ]
-
-        for task in tasks:
-            lines.append(f"### {task.display_name} (`{task.name}`)")
-            if task.description:
-                lines.append(f"{task.description.strip()}")
-            lines.append("")
-
-            if task.maintained_files:
-                lines.append("**Maintained files:**")
-                for mf in task.maintained_files:
-                    path = mf.path.replace("{project_root}/", "")
-                    purpose = f" — {mf.purpose}" if mf.purpose else ""
-                    lines.append(f"- `{path}`{purpose}")
-                lines.append("")
-
-            if task.output_requirements:
-                sections = task.output_requirements.get("required_sections", [])
-                if sections:
-                    lines.append("**Required sections:**")
-                    for section in sections:
-                        if isinstance(section, dict):
-                            name = section.get("name", "")
-                            desc = section.get("description", "")
-                            lines.append(f"- {name}: {desc}" if desc else f"- {name}")
-                    lines.append("")
-
-            if task.style:
-                conventions = task.style.get("conventions", [])
-                if conventions:
-                    lines.append("**Conventions:**")
-                    for conv in conventions:
-                        lines.append(f"- {conv}")
-                    lines.append("")
-
-        return "\n".join(lines)
+        """Build a task-awareness section for the system prompt."""
+        return build_task_context_impl(focus, self._agent_registry)
 
     def _build_options(
         self,
@@ -624,33 +307,9 @@ class InteractiveSessionManager:
         # Build enabled CI tools set from agent ci_access flags
         mcp_servers: dict[str, Any] = {}
         if agent_def:
-            ci_access = agent_def.ci_access
-            has_any_ci_access = (
-                ci_access.code_search
-                or ci_access.memory_search
-                or ci_access.session_history
-                or ci_access.project_stats
-                or ci_access.sql_query
-                or ci_access.memory_write
-            )
-            if has_any_ci_access:
-                enabled_ci_tools: set[str] = set()
-                if ci_access.code_search:
-                    enabled_ci_tools.add(CI_TOOL_SEARCH)
-                if ci_access.memory_search:
-                    enabled_ci_tools.add(CI_TOOL_MEMORIES)
-                if ci_access.session_history:
-                    enabled_ci_tools.add(CI_TOOL_SESSIONS)
-                if ci_access.project_stats:
-                    enabled_ci_tools.add(CI_TOOL_PROJECT_STATS)
-                if ci_access.sql_query:
-                    enabled_ci_tools.add(CI_TOOL_QUERY)
-                if ci_access.memory_write:
-                    enabled_ci_tools.add(CI_TOOL_REMEMBER)
-                    enabled_ci_tools.add(CI_TOOL_RESOLVE)
-                    enabled_ci_tools.add(CI_TOOL_ARCHIVE)
-
-                ci_server = self._get_ci_mcp_server(enabled_ci_tools)
+            enabled_ci_tools = build_ci_tools_from_access(agent_def.ci_access)
+            if enabled_ci_tools is not None:
+                ci_server = self._ci_mcp_cache.get(enabled_ci_tools)
                 if ci_server:
                     mcp_servers[CI_MCP_SERVER_NAME] = ci_server
                     for tool_name in enabled_ci_tools:
@@ -667,7 +326,7 @@ class InteractiveSessionManager:
                 CI_TOOL_SESSIONS,
                 CI_TOOL_PROJECT_STATS,
             }
-            ci_server = self._get_ci_mcp_server(default_ci_tools)
+            ci_server = self._ci_mcp_cache.get(default_ci_tools)
             if ci_server:
                 mcp_servers[CI_MCP_SERVER_NAME] = ci_server
                 for tool_name in default_ci_tools:
@@ -696,6 +355,106 @@ class InteractiveSessionManager:
                 options.hooks = hooks  # type: ignore[assignment]
 
         return options
+
+    # =====================================================================
+    # SDK turn execution (shared by prompt() and approve_plan())
+    # =====================================================================
+
+    async def _run_sdk_turn(
+        self,
+        session: InteractiveSession,
+        query_text: str,
+        batch_id_ref: list[int | None],
+        response_text_parts: list[str],
+        options: Any,
+        *,
+        detect_plans: bool = False,
+    ) -> AsyncIterator[ExecutionEvent]:
+        """Run a single SDK turn: send query, stream response events.
+
+        Shared loop used by both ``prompt()`` and ``approve_plan()`` to
+        avoid duplicating the message-processing logic.
+
+        Args:
+            session: Current interactive session.
+            query_text: Text to send to the SDK client.
+            batch_id_ref: Mutable reference for batch ID.
+            response_text_parts: Mutable list accumulating text blocks.
+            options: ClaudeAgentOptions instance.
+            detect_plans: If True, handle ExitPlanMode tool events.
+
+        Yields:
+            ExecutionEvent instances.
+        """
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeSDKClient,
+            ResultMessage,
+            TextBlock,
+            ToolUseBlock,
+        )
+
+        async with ClaudeSDKClient(options=options) as client:
+            logger.debug(f"ACP session {session.session_id}: SDK client connected, sending query")
+            await client.query(query_text)
+
+            msg_count = 0
+            async for msg in client.receive_response():
+                msg_count += 1
+                logger.debug(
+                    f"ACP session {session.session_id}: message {msg_count} "
+                    f"type={type(msg).__name__}"
+                )
+                # Check for cancellation between messages
+                if session.cancelled:
+                    yield CancelledEvent()
+                    return
+
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            response_text_parts.append(block.text)
+                            yield TextEvent(text=block.text)
+                        elif isinstance(block, ToolUseBlock):
+                            if detect_plans and block.name == "ExitPlanMode":
+                                # Plan proposed - needs user approval
+                                plan_content = ""
+                                if isinstance(block.input, dict):
+                                    plan_content = block.input.get("plan", "")
+                                session.pending_plan = True
+                                session.pending_plan_content = plan_content
+
+                                # Store plan in batch metadata
+                                if batch_id_ref[0] is not None:
+                                    try:
+                                        self._activity_store.update_prompt_batch_source_type(
+                                            batch_id_ref[0],
+                                            PROMPT_SOURCE_PLAN,
+                                            plan_content=plan_content,
+                                        )
+                                    except (OSError, ValueError, RuntimeError) as e:
+                                        logger.debug(f"Failed to store plan metadata: {e}")
+
+                                yield PlanProposedEvent(plan=plan_content)
+                            else:
+                                yield ToolStartEvent(
+                                    tool_id=block.id,
+                                    tool_name=block.name,
+                                    tool_input=(
+                                        block.input if isinstance(block.input, dict) else {}
+                                    ),
+                                )
+
+                elif isinstance(msg, ResultMessage):
+                    if msg.total_cost_usd:
+                        cost_event = CostEvent(
+                            total_cost_usd=msg.total_cost_usd,
+                        )
+                        if hasattr(msg, "input_tokens") and msg.input_tokens:
+                            cost_event.input_tokens = msg.input_tokens
+                        if hasattr(msg, "output_tokens") and msg.output_tokens:
+                            cost_event.output_tokens = msg.output_tokens
+                        yield cost_event
 
     # =====================================================================
     # Session lifecycle
@@ -762,15 +521,6 @@ class InteractiveSessionManager:
         response_text_parts: list[str] = []
 
         try:
-            # Lazy imports for SDK types
-            from claude_agent_sdk import (
-                AssistantMessage,
-                ClaudeSDKClient,
-                ResultMessage,
-                TextBlock,
-                ToolUseBlock,
-            )
-
             options = self._build_options(session, batch_id_ref, response_text_parts)
 
             # Search for relevant context based on user prompt
@@ -779,67 +529,15 @@ class InteractiveSessionManager:
             if prompt_context:
                 effective_text = f"{user_text}\n\n---\n**Relevant context:**\n{prompt_context}"
 
-            async with ClaudeSDKClient(options=options) as client:
-                logger.debug(f"ACP session {session_id}: SDK client connected, sending query")
-                await client.query(effective_text)
-
-                msg_count = 0
-                async for msg in client.receive_response():
-                    msg_count += 1
-                    logger.debug(
-                        f"ACP session {session_id}: message {msg_count} "
-                        f"type={type(msg).__name__}"
-                    )
-                    # Check for cancellation between messages
-                    if session.cancelled:
-                        yield CancelledEvent()
-                        return
-
-                    if isinstance(msg, AssistantMessage):
-                        for block in msg.content:
-                            if isinstance(block, TextBlock):
-                                response_text_parts.append(block.text)
-                                yield TextEvent(text=block.text)
-                            elif isinstance(block, ToolUseBlock):
-                                if block.name == "ExitPlanMode":
-                                    # Plan proposed - needs user approval
-                                    plan_content = ""
-                                    if isinstance(block.input, dict):
-                                        plan_content = block.input.get("plan", "")
-                                    session.pending_plan = True
-                                    session.pending_plan_content = plan_content
-
-                                    # Store plan in batch metadata
-                                    if batch.id is not None:
-                                        try:
-                                            self._activity_store.update_prompt_batch_source_type(
-                                                batch.id,
-                                                PROMPT_SOURCE_PLAN,
-                                                plan_content=plan_content,
-                                            )
-                                        except (OSError, ValueError, RuntimeError) as e:
-                                            logger.debug(f"Failed to store plan metadata: {e}")
-
-                                    yield PlanProposedEvent(plan=plan_content)
-                                else:
-                                    yield ToolStartEvent(
-                                        tool_id=block.id,
-                                        tool_name=block.name,
-                                        tool_input=(
-                                            block.input if isinstance(block.input, dict) else {}
-                                        ),
-                                    )
-
-                    elif isinstance(msg, ResultMessage):
-                        if msg.total_cost_usd:
-                            cost_event = CostEvent(
-                                total_cost_usd=msg.total_cost_usd,
-                            )
-                            if hasattr(msg, "input_tokens") and msg.input_tokens:
-                                cost_event.input_tokens = msg.input_tokens
-                            if hasattr(msg, "output_tokens") and msg.output_tokens:
-                                cost_event.output_tokens = msg.output_tokens
-                            yield cost_event
+            async for event in self._run_sdk_turn(
+                session,
+                effective_text,
+                batch_id_ref,
+                response_text_parts,
+                options,
+                detect_plans=True,
+            ):
+                yield event
 
         except ImportError as e:
             yield ErrorEvent(message=f"claude-agent-sdk not installed: {e}")
@@ -942,51 +640,24 @@ class InteractiveSessionManager:
         response_text_parts: list[str] = []
 
         try:
-            from claude_agent_sdk import (
-                AssistantMessage,
-                ClaudeSDKClient,
-                ResultMessage,
-                TextBlock,
-                ToolUseBlock,
-            )
-
             # Build options with acceptEdits for plan execution
             options = self._build_options(session, batch_id_ref, response_text_parts)
             options.permission_mode = "acceptEdits"
 
-            async with ClaudeSDKClient(options=options) as client:
-                # Continue conversation with plan approval
-                await client.query(
-                    f"The plan has been approved. Please proceed with the implementation.\n\n{plan_content}",
-                )
+            query_text = (
+                f"The plan has been approved. Please proceed with the "
+                f"implementation.\n\n{plan_content}"
+            )
 
-                async for msg in client.receive_response():
-                    if session.cancelled:
-                        yield CancelledEvent()
-                        return
-
-                    if isinstance(msg, AssistantMessage):
-                        for block in msg.content:
-                            if isinstance(block, TextBlock):
-                                response_text_parts.append(block.text)
-                                yield TextEvent(text=block.text)
-                            elif isinstance(block, ToolUseBlock):
-                                yield ToolStartEvent(
-                                    tool_id=block.id,
-                                    tool_name=block.name,
-                                    tool_input=block.input if isinstance(block.input, dict) else {},
-                                )
-
-                    elif isinstance(msg, ResultMessage):
-                        if msg.total_cost_usd:
-                            cost_event = CostEvent(
-                                total_cost_usd=msg.total_cost_usd,
-                            )
-                            if hasattr(msg, "input_tokens") and msg.input_tokens:
-                                cost_event.input_tokens = msg.input_tokens
-                            if hasattr(msg, "output_tokens") and msg.output_tokens:
-                                cost_event.output_tokens = msg.output_tokens
-                            yield cost_event
+            async for event in self._run_sdk_turn(
+                session,
+                query_text,
+                batch_id_ref,
+                response_text_parts,
+                options,
+                detect_plans=False,
+            ):
+                yield event
 
         except ImportError as e:
             yield ErrorEvent(message=f"claude-agent-sdk not installed: {e}")
@@ -1066,152 +737,3 @@ class InteractiveSessionManager:
                     logger.warning(f"Failed to generate session summary for {sid}: {e}")
 
             asyncio.create_task(_generate_summary())
-
-
-# =========================================================================
-# Module-level helper functions (used by SDK hooks)
-# =========================================================================
-
-
-def _sanitize_tool_input(tool_input: Any) -> dict[str, Any] | None:
-    """Sanitize tool input by truncating large content fields.
-
-    Mirrors the sanitization pattern from hooks_tool.py.
-
-    Args:
-        tool_input: Raw tool input (dict or other).
-
-    Returns:
-        Sanitized dict, or None.
-    """
-    if not isinstance(tool_input, dict):
-        return None
-
-    sanitized: dict[str, Any] = {}
-    for k, v in tool_input.items():
-        if k in _LARGE_CONTENT_FIELDS:
-            sanitized[k] = f"<{len(str(v))} chars>"
-        elif isinstance(v, str) and len(v) > _SANITIZED_INPUT_MAX_LENGTH:
-            sanitized[k] = v[:_SANITIZED_INPUT_MAX_LENGTH] + "..."
-        else:
-            sanitized[k] = v
-    return sanitized
-
-
-def _build_output_summary(tool_name: str, tool_response: Any) -> str:
-    """Build a concise output summary from tool response.
-
-    Args:
-        tool_name: Name of the tool.
-        tool_response: Raw tool response.
-
-    Returns:
-        Truncated summary string.
-    """
-    if not tool_response:
-        return ""
-
-    response_str = str(tool_response)
-
-    # For file reads, just note the length
-    if tool_name == "Read" and len(response_str) > 200:
-        return f"Read {len(response_str)} chars"
-
-    return response_str[:_SANITIZED_INPUT_MAX_LENGTH]
-
-
-def _handle_plan_detection(
-    activity_store: "ActivityStore",
-    session_id: str,
-    batch_id: int,
-    tool_input: Any,
-    project_root: Path,
-) -> None:
-    """Detect and record plan file writes.
-
-    Args:
-        activity_store: Store for batch updates.
-        session_id: Current session.
-        batch_id: Current batch ID.
-        tool_input: Tool input dict from Write tool.
-        project_root: Project root for path resolution.
-    """
-    if not isinstance(tool_input, dict):
-        return
-
-    file_path = tool_input.get("file_path", "")
-    if not file_path:
-        return
-
-    try:
-        from open_agent_kit.features.codebase_intelligence.plan_detector import detect_plan
-
-        detection = detect_plan(file_path)
-        if not detection.is_plan:
-            return
-
-        # Read plan content from disk (source of truth)
-        plan_content = ""
-        plan_path = Path(file_path)
-        if not plan_path.is_absolute():
-            plan_path = project_root / plan_path
-
-        try:
-            if plan_path.exists():
-                plan_content = plan_path.read_text(encoding="utf-8")
-            else:
-                plan_content = tool_input.get("content", "")
-        except (OSError, ValueError) as e:
-            logger.debug(f"Failed to read plan file {plan_path}: {e}")
-            plan_content = tool_input.get("content", "")
-
-        activity_store.update_prompt_batch_source_type(
-            batch_id,
-            PROMPT_SOURCE_PLAN,
-            plan_file_path=file_path,
-            plan_content=plan_content,
-        )
-        logger.info(
-            f"ACP: detected plan in Write to {file_path}, "
-            f"batch {batch_id} ({len(plan_content)} chars)"
-        )
-
-    except (OSError, ValueError, RuntimeError, AttributeError) as e:
-        logger.debug(f"Plan detection failed: {e}")
-
-
-def _handle_exit_plan_mode(
-    activity_store: "ActivityStore",
-    session_id: str,
-    project_root: Path,
-) -> None:
-    """Re-read and update plan content on ExitPlanMode.
-
-    Args:
-        activity_store: Store for batch updates.
-        session_id: Current session.
-        project_root: Project root for path resolution.
-    """
-    try:
-        plan_batch = activity_store.get_session_plan_batch(session_id)
-        if not (plan_batch and plan_batch.plan_file_path and plan_batch.id):
-            return
-
-        plan_path = Path(plan_batch.plan_file_path)
-        if not plan_path.is_absolute():
-            plan_path = project_root / plan_path
-
-        if plan_path.exists():
-            final_content = plan_path.read_text(encoding="utf-8")
-            activity_store.update_prompt_batch_source_type(
-                plan_batch.id,
-                PROMPT_SOURCE_PLAN,
-                plan_file_path=plan_batch.plan_file_path,
-                plan_content=final_content,
-            )
-            activity_store.mark_plan_unembedded(plan_batch.id)
-            logger.info(
-                f"ACP ExitPlanMode: updated plan {plan_batch.id} ({len(final_content)} chars)"
-            )
-    except (OSError, ValueError, RuntimeError, AttributeError) as e:
-        logger.debug(f"ExitPlanMode handling failed: {e}")

@@ -17,13 +17,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from open_agent_kit.features.codebase_intelligence.agents.activity_recorder import (
+    build_output_summary as _build_output_summary,
+)
+from open_agent_kit.features.codebase_intelligence.agents.activity_recorder import (
+    sanitize_tool_input as _sanitize_tool_input,
+)
 from open_agent_kit.features.codebase_intelligence.agents.interactive import (
     ACP_AGENT_NAME,
     ACP_DEFAULT_SYSTEM_PROMPT,
     InteractiveSession,
     InteractiveSessionManager,
-    _build_output_summary,
-    _sanitize_tool_input,
 )
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_TOOL_ARCHIVE,
@@ -731,34 +735,34 @@ class TestBuildOptions:
     def test_mcp_server_no_retrieval_engine_returns_none(
         self, manager: InteractiveSessionManager
     ) -> None:
-        """_get_ci_mcp_server should return None without retrieval engine."""
-        result = manager._get_ci_mcp_server({CI_TOOL_SEARCH})
+        """CiMcpServerCache.get should return None without retrieval engine."""
+        result = manager._ci_mcp_cache.get({CI_TOOL_SEARCH})
 
         assert result is None
 
     def test_mcp_server_no_retrieval_engine_does_not_cache(
         self, manager: InteractiveSessionManager
     ) -> None:
-        """_get_ci_mcp_server should NOT cache when retrieval engine is None."""
-        manager._get_ci_mcp_server({CI_TOOL_SEARCH})
+        """CiMcpServerCache.get should NOT cache when retrieval engine is None."""
+        manager._ci_mcp_cache.get({CI_TOOL_SEARCH})
 
         # Early return path skips the cache write
-        assert len(manager._ci_mcp_servers) == 0
+        assert len(manager._ci_mcp_cache._servers) == 0
 
     def test_mcp_server_cache_reuses_instances(self, manager: InteractiveSessionManager) -> None:
-        """_get_ci_mcp_server should cache servers by tool set when engine exists."""
+        """CiMcpServerCache.get should cache servers by tool set when engine exists."""
         mock_engine = MagicMock()
-        manager._retrieval_engine = mock_engine
+        manager._ci_mcp_cache._retrieval_engine = mock_engine
 
         with patch(
-            "open_agent_kit.features.codebase_intelligence.agents.interactive.create_ci_mcp_server",
+            "open_agent_kit.features.codebase_intelligence.agents.mcp_cache.create_ci_mcp_server",
             return_value=MagicMock(),
         ) as mock_create:
-            result1 = manager._get_ci_mcp_server({CI_TOOL_SEARCH})
-            result2 = manager._get_ci_mcp_server({CI_TOOL_SEARCH})
+            result1 = manager._ci_mcp_cache.get({CI_TOOL_SEARCH})
+            result2 = manager._ci_mcp_cache.get({CI_TOOL_SEARCH})
 
         assert result1 is result2
-        assert frozenset({CI_TOOL_SEARCH}) in manager._ci_mcp_servers
+        assert frozenset({CI_TOOL_SEARCH}) in manager._ci_mcp_cache._servers
         # Factory called only once due to caching
         mock_create.assert_called_once()
 
@@ -767,16 +771,16 @@ class TestBuildOptions:
     ) -> None:
         """Different tool sets should get different cache entries."""
         mock_engine = MagicMock()
-        manager._retrieval_engine = mock_engine
+        manager._ci_mcp_cache._retrieval_engine = mock_engine
 
         with patch(
-            "open_agent_kit.features.codebase_intelligence.agents.interactive.create_ci_mcp_server",
+            "open_agent_kit.features.codebase_intelligence.agents.mcp_cache.create_ci_mcp_server",
             return_value=MagicMock(),
         ):
-            manager._get_ci_mcp_server({CI_TOOL_SEARCH})
-            manager._get_ci_mcp_server({CI_TOOL_SEARCH, CI_TOOL_MEMORIES})
+            manager._ci_mcp_cache.get({CI_TOOL_SEARCH})
+            manager._ci_mcp_cache.get({CI_TOOL_SEARCH, CI_TOOL_MEMORIES})
 
-        assert len(manager._ci_mcp_servers) == 2
+        assert len(manager._ci_mcp_cache._servers) == 2
 
 
 # =============================================================================

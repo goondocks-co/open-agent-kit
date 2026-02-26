@@ -156,7 +156,7 @@ class TestPluginNeedsUpgrade:
         installer.cli_command = "oak-dev"
 
         with patch(
-            "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies.HOOKS_TEMPLATE_DIR",
             tmp_path / "templates",
         ):
             template_path = tmp_path / "templates" / "opencode"
@@ -193,7 +193,10 @@ class TestJsonNeedsUpgrade:
                 ]
             }
         }
-        with patch.object(installer, "_load_hook_template", return_value=template):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=template,
+        ):
             assert installer.needs_upgrade() is True
 
     def test_json_needs_upgrade_when_content_differs(self, tmp_path: Path):
@@ -229,7 +232,10 @@ class TestJsonNeedsUpgrade:
                 ]
             }
         }
-        with patch.object(installer, "_load_hook_template", return_value=new_template):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=new_template,
+        ):
             assert installer.needs_upgrade() is True
 
     def test_json_no_upgrade_when_identical(self, tmp_path: Path):
@@ -254,7 +260,10 @@ class TestJsonNeedsUpgrade:
         config_dir.mkdir(parents=True)
         (config_dir / "settings.local.json").write_text(json.dumps(hooks_data))
 
-        with patch.object(installer, "_load_hook_template", return_value=hooks_data):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=hooks_data,
+        ):
             assert installer.needs_upgrade() is False
 
     def test_json_no_upgrade_ignores_user_hooks(self, tmp_path: Path):
@@ -292,7 +301,10 @@ class TestJsonNeedsUpgrade:
         config_dir.mkdir(parents=True)
         (config_dir / "settings.local.json").write_text(json.dumps(installed))
 
-        with patch.object(installer, "_load_hook_template", return_value=template):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=template,
+        ):
             assert installer.needs_upgrade() is False
 
     def test_json_detects_orphaned_oak_hooks(self, tmp_path: Path):
@@ -311,7 +323,10 @@ class TestJsonNeedsUpgrade:
         config_dir.mkdir(parents=True)
         (config_dir / "settings.local.json").write_text(json.dumps(installed))
 
-        with patch.object(installer, "_load_hook_template", return_value=template):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=template,
+        ):
             assert installer.needs_upgrade() is True
 
     def test_json_install_rewrites_to_configured_cli_command(self, tmp_path: Path):
@@ -321,7 +336,7 @@ class TestJsonNeedsUpgrade:
         installer.cli_command = "oak-dev"
 
         with patch(
-            "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies.HOOKS_TEMPLATE_DIR",
             tmp_path / "templates",
         ):
             template_path = tmp_path / "templates" / "claude"
@@ -378,7 +393,10 @@ class TestJsonNeedsUpgrade:
         config_dir.mkdir(parents=True)
         (config_dir / "settings.local.json").write_text(json.dumps(installed))
 
-        with patch.object(installer, "_load_hook_template", return_value=template):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=template,
+        ):
             result = installer.install()
 
         assert result.success is True
@@ -404,7 +422,10 @@ class TestOtelNeedsUpgrade:
         installer = _make_installer(tmp_path, "codex", hooks_cfg, folder=".codex/")
 
         # Patch _get_daemon_port to avoid reading real port file
-        with patch.object(installer, "_get_daemon_port", return_value=37800):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._get_daemon_port",
+            return_value=37800,
+        ):
             assert installer.needs_upgrade() is True
 
     def test_otel_no_upgrade_when_identical(self, tmp_path: Path):
@@ -432,7 +453,10 @@ class TestOtelNeedsUpgrade:
         config_dir.mkdir(parents=True)
         (config_dir / "config.toml").write_bytes(tomli_w.dumps(expected).encode())
 
-        with patch.object(installer, "_get_daemon_port", return_value=37800):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._get_daemon_port",
+            return_value=37800,
+        ):
             assert installer.needs_upgrade() is False
 
     def test_otel_needs_upgrade_when_port_differs(self, tmp_path: Path):
@@ -460,7 +484,10 @@ class TestOtelNeedsUpgrade:
         )
 
         # Now the daemon port changed to 38000
-        with patch.object(installer, "_get_daemon_port", return_value=38000):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._get_daemon_port",
+            return_value=38000,
+        ):
             assert installer.needs_upgrade() is True
 
 
@@ -575,7 +602,10 @@ class TestHooksInstallerGitignore:
                 ]
             }
         }
-        with patch.object(installer, "_load_hook_template", return_value=template):
+        with patch(
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies._load_hook_template",
+            return_value=template,
+        ):
             result = installer.install()
 
         assert result.success
@@ -618,7 +648,7 @@ class TestHooksInstallerGitignore:
         (tmp_path / ".gitignore").write_text(".opencode/plugins/oak-ci.ts\n")
 
         with patch(
-            "open_agent_kit.features.codebase_intelligence.hooks.installer.HOOKS_TEMPLATE_DIR",
+            "open_agent_kit.features.codebase_intelligence.hooks.strategies.HOOKS_TEMPLATE_DIR",
             tmp_path / "templates",
         ):
             template_path = tmp_path / "templates" / "opencode"

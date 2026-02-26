@@ -47,33 +47,37 @@ def test_plan_upgrade_templates_only(initialized_project: Path) -> None:
 
 
 def test_files_differ_identical_files(initialized_project: Path) -> None:
-    """Test _files_differ returns False for identical files."""
-    service = UpgradeService(initialized_project)
+    """Test files_differ returns False for identical files."""
+    from open_agent_kit.utils.file_utils import files_differ
+
     file1 = initialized_project / "test1.txt"
     file2 = initialized_project / "test2.txt"
     content = "Test content\n"
     file1.write_text(content, encoding="utf-8")
     file2.write_text(content, encoding="utf-8")
-    assert not service._files_differ(file1, file2)
+    assert not files_differ(file1, file2)
 
 
 def test_files_differ_different_files(initialized_project: Path) -> None:
-    """Test _files_differ returns True for different files."""
-    service = UpgradeService(initialized_project)
+    """Test files_differ returns True for different files."""
+    from open_agent_kit.utils.file_utils import files_differ
+
     file1 = initialized_project / "test1.txt"
     file2 = initialized_project / "test2.txt"
     file1.write_text("Content A\n", encoding="utf-8")
     file2.write_text("Content B\n", encoding="utf-8")
-    assert service._files_differ(file1, file2)
+    assert files_differ(file1, file2)
 
 
 def test_files_differ_nonexistent_file(initialized_project: Path) -> None:
-    """Test _files_differ returns False when file doesn't exist."""
-    service = UpgradeService(initialized_project)
+    """Test files_differ returns True when file doesn't exist."""
+    from open_agent_kit.utils.file_utils import files_differ
+
     file1 = initialized_project / "test1.txt"
     file2 = initialized_project / "nonexistent.txt"
     file1.write_text("Content\n", encoding="utf-8")
-    assert not service._files_differ(file1, file2)
+    # The shared files_differ returns True when a file can't be read (OSError)
+    assert files_differ(file1, file2)
 
 
 def test_plan_upgrade_with_no_commands(initialized_project: Path) -> None:

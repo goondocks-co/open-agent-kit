@@ -10,13 +10,19 @@ Decomposes the large processor.py into focused modules:
 - titles.py: Session title generation
 - summaries.py: Session summary generation
 - indexing.py: Plan/memory indexing and rebuilds
+- background_phases.py: Background processing phases (error-isolated)
+- scheduler.py: Timer-based background cycle scheduling
+- power.py: Power state transition management
+- async_api.py: Async wrappers for FastAPI routes
 """
 
-from open_agent_kit.features.codebase_intelligence.activity.processor.core import (
-    ActivityProcessor,
+from open_agent_kit.features.codebase_intelligence.activity.processor.async_api import (
     process_prompt_batch_async,
     process_session_async,
     promote_agent_batch_async,
+)
+from open_agent_kit.features.codebase_intelligence.activity.processor.core import (
+    ActivityProcessor,
 )
 from open_agent_kit.features.codebase_intelligence.activity.processor.models import (
     ContextBudget,

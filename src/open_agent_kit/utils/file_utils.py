@@ -386,6 +386,22 @@ def find_files_by_extension(
     return list_files(directory, pattern, recursive)
 
 
+def files_differ(file1: Path, file2: Path) -> bool:
+    """Check if two files have different content (binary-safe).
+
+    Args:
+        file1: First file path.
+        file2: Second file path.
+
+    Returns:
+        True if files differ or if either cannot be read, False if identical.
+    """
+    try:
+        return file1.read_bytes() != file2.read_bytes()
+    except OSError:
+        return True
+
+
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename by removing/replacing invalid characters.
 

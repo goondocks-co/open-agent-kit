@@ -21,10 +21,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from open_agent_kit.features.codebase_intelligence.daemon.server import (
+from open_agent_kit.features.codebase_intelligence.daemon.lifecycle.version_check import (
     _is_install_stale,
-    _periodic_version_check,
     _trigger_stale_restart,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.lifecycle.version_check import (
+    periodic_version_check as _periodic_version_check,
+)
+from open_agent_kit.features.codebase_intelligence.daemon.server import (
     create_app,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import (
@@ -33,7 +37,8 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import (
 )
 
 # Module paths for patching
-_SERVER_MODULE = "open_agent_kit.features.codebase_intelligence.daemon.server"
+_VERSION_MODULE = "open_agent_kit.features.codebase_intelligence.daemon.lifecycle.version_check"
+_SERVER_MODULE = _VERSION_MODULE
 _UI_MODULE = "open_agent_kit.features.codebase_intelligence.daemon.routes.ui"
 
 # Non-existent path for stale-executable test
@@ -97,15 +102,16 @@ class TestIsInstallStale:
             exec_path = MagicMock()
             exec_path.exists.return_value = True
 
-            # Second call: Path(__file__).parent / "static" / "index.html"
-            # Path(__file__) -> mock with .parent that chains / "static" / "index.html"
+            # Second call: Path(__file__).parent.parent / "static" / "index.html"
+            # (parent.parent because version_check.py is in lifecycle/ subdir)
             file_path = MagicMock()
             static_index = MagicMock()
             static_index.exists.return_value = False
-            file_path.parent.__truediv__ = MagicMock(return_value=MagicMock())
-            file_path.parent.__truediv__.return_value.__truediv__ = MagicMock(
-                return_value=static_index
-            )
+            # Chain: .parent.parent / "static" / "index.html"
+            daemon_dir = MagicMock()
+            daemon_dir.__truediv__ = MagicMock(return_value=MagicMock())
+            daemon_dir.__truediv__.return_value.__truediv__ = MagicMock(return_value=static_index)
+            file_path.parent.parent = daemon_dir
 
             mock_path_cls.side_effect = [exec_path, file_path]
             assert _is_install_stale() is True
@@ -176,7 +182,8 @@ class TestPeriodicVersionCheck:
             patch(
                 f"{_SERVER_MODULE}._trigger_stale_restart", new_callable=AsyncMock
             ) as mock_restart,
-            patch(f"{_SERVER_MODULE}._check_version"),
+            patch(f"{_SERVER_MODULE}.check_version"),
+            patch(f"{_SERVER_MODULE}.check_upgrade_needed"),
             patch("asyncio.sleep", side_effect=mock_sleep),
         ):
             await _periodic_version_check()
@@ -204,7 +211,8 @@ class TestPeriodicVersionCheck:
             patch(
                 f"{_SERVER_MODULE}._trigger_stale_restart", new_callable=AsyncMock
             ) as mock_restart,
-            patch(f"{_SERVER_MODULE}._check_version", side_effect=fake_check_version),
+            patch(f"{_SERVER_MODULE}.check_version", side_effect=fake_check_version),
+            patch(f"{_SERVER_MODULE}.check_upgrade_needed"),
             patch("asyncio.sleep", side_effect=mock_sleep),
         ):
             await _periodic_version_check()
@@ -230,7 +238,8 @@ class TestPeriodicVersionCheck:
             patch(
                 f"{_SERVER_MODULE}._trigger_stale_restart", new_callable=AsyncMock
             ) as mock_restart,
-            patch(f"{_SERVER_MODULE}._check_version", side_effect=fake_check_version),
+            patch(f"{_SERVER_MODULE}.check_version", side_effect=fake_check_version),
+            patch(f"{_SERVER_MODULE}.check_upgrade_needed"),
             patch("asyncio.sleep", side_effect=mock_sleep),
         ):
             with pytest.raises(asyncio.CancelledError):
@@ -254,7 +263,8 @@ class TestPeriodicVersionCheck:
             patch(
                 f"{_SERVER_MODULE}._trigger_stale_restart", new_callable=AsyncMock
             ) as mock_restart,
-            patch(f"{_SERVER_MODULE}._check_version"),
+            patch(f"{_SERVER_MODULE}.check_version"),
+            patch(f"{_SERVER_MODULE}.check_upgrade_needed"),
             patch("asyncio.sleep", side_effect=mock_sleep),
         ):
             with pytest.raises(asyncio.CancelledError):
