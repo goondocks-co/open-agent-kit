@@ -104,6 +104,17 @@ export const API_ENDPOINTS = {
     ACP_START: "/api/acp/start",
     ACP_STOP: "/api/acp/stop",
     ACP_LOGS: "/api/acp/logs",
+
+    // Team endpoints
+    TEAM_CONFIG: "/api/team/config",
+    TEAM_JOIN: "/api/team/join",
+    TEAM_LEAVE: "/api/team/leave",
+    TEAM_STATUS: "/api/team/status",
+    TEAM_MEMBERS: "/api/team/status/members",
+    TEAM_SYNC_FLUSH: "/api/team/sync/flush",
+    TEAM_SYNC_PULL: "/api/team/sync/pull",
+    TEAM_POLICY: "/api/team/policy",
+    TEAM_KEYS: "/api/team/keys",
 } as const;
 
 // =============================================================================

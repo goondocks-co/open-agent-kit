@@ -11,6 +11,11 @@ import SessionDetail from "@/pages/SessionDetail";
 import Config from "@/pages/Config";
 import DevTools from "@/pages/DevTools";
 import Team from "@/pages/Team";
+import TeamStatus from "@/components/team/TeamStatus";
+import TeamMembers from "@/components/team/TeamMembers";
+import TeamConfig from "@/components/team/TeamConfig";
+import TeamPolicy from "@/components/team/TeamPolicy";
+import TeamKeys from "@/components/team/TeamKeys";
 import TeamBackups from "@/components/team/TeamBackups";
 import TeamSharing from "@/components/team/TeamSharing";
 import Help from "@/pages/Help";
@@ -70,7 +75,12 @@ export const router = createBrowserRouter([
                 path: "team",
                 element: <Team />,
                 children: [
-                    { index: true, element: <Navigate to="backups" replace /> },
+                    { index: true, element: <Navigate to="status" replace /> },
+                    { path: "status", element: <TeamStatus /> },
+                    { path: "members", element: <TeamMembers /> },
+                    { path: "config", element: <TeamConfig /> },
+                    { path: "policy", element: <TeamPolicy /> },
+                    { path: "keys", element: <TeamKeys /> },
                     { path: "backups", element: <TeamBackups /> },
                     { path: "sharing", element: <TeamSharing /> },
                 ]

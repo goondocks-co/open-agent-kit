@@ -1,12 +1,17 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { HardDrive, Share2 } from "lucide-react";
+import { Wifi, Users, Settings, Shield, Key, HardDrive, Share2 } from "lucide-react";
 
 export default function Team() {
     const location = useLocation();
     const currentPath = location.pathname;
 
     const tabs = [
+        { id: "status", label: "Status", path: "/team/status", icon: Wifi },
+        { id: "members", label: "Members", path: "/team/members", icon: Users },
+        { id: "config", label: "Config", path: "/team/config", icon: Settings },
+        { id: "policy", label: "Policy", path: "/team/policy", icon: Shield },
+        { id: "keys", label: "Keys", path: "/team/keys", icon: Key },
         { id: "backups", label: "Backups", path: "/team/backups", icon: HardDrive },
         { id: "sharing", label: "Sharing", path: "/team/sharing", icon: Share2 },
     ];
@@ -20,13 +25,13 @@ export default function Team() {
                 </p>
             </div>
 
-            <div className="flex items-center border-b">
+            <div className="flex items-center border-b overflow-x-auto">
                 {tabs.map(tab => (
                     <Link
                         key={tab.id}
                         to={tab.path}
                         className={cn(
-                            "px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2",
+                            "px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap",
                             currentPath.startsWith(tab.path)
                                 ? "border-primary text-foreground"
                                 : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted"
