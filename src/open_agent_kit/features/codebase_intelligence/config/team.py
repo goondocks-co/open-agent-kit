@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
     CI_CONFIG_TEAM_KEY_BIND_HOST,
     CI_CONFIG_TEAM_KEY_BIND_PORT,
@@ -17,7 +18,6 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     CI_CONFIG_TEAM_KEY_SERVER_SIDE_LLM,
     CI_CONFIG_TEAM_KEY_SERVER_URL,
     CI_CONFIG_TEAM_KEY_SYNC_INTERVAL,
-    CI_CONFIG_TEAM_KEY_TOKEN,
     CI_CONFIG_TEAM_KEY_TRANSPORT,
     TEAM_DEFAULT_BIND_HOST,
     TEAM_DEFAULT_BIND_PORT,
@@ -52,7 +52,7 @@ class TeamConfig:
 
     Attributes:
         server_url: URL of the team server.
-        token: Authentication token (supports ${ENV_VAR} syntax).
+        api_key: Team API key (supports ${ENV_VAR} syntax).
         auto_sync: Whether to start sync automatically on daemon startup.
         sync_interval_seconds: Seconds between outbox flush cycles.
         pull_interval_seconds: Seconds between pull cycles.
@@ -67,7 +67,7 @@ class TeamConfig:
     """
 
     server_url: str | None = None
-    token: str | None = None
+    api_key: str | None = None
     auto_sync: bool = False
     sync_interval_seconds: int = TEAM_DEFAULT_SYNC_INTERVAL_SECONDS
     pull_interval_seconds: int = TEAM_DEFAULT_PULL_INTERVAL_SECONDS
@@ -148,15 +148,15 @@ class TeamConfig:
         Returns:
             TeamConfig instance.
         """
-        # Resolve environment variables in token
-        token = data.get(CI_CONFIG_TEAM_KEY_TOKEN)
-        if token and token.startswith("${") and token.endswith("}"):
-            env_var = token[2:-1]
-            token = os.environ.get(env_var)
+        # Resolve environment variables in team API key
+        api_key = data.get(CI_CONFIG_TEAM_KEY_API_KEY)
+        if api_key and api_key.startswith("${") and api_key.endswith("}"):
+            env_var = api_key[2:-1]
+            api_key = os.environ.get(env_var)
 
         return cls(
             server_url=data.get(CI_CONFIG_TEAM_KEY_SERVER_URL),
-            token=token,
+            api_key=api_key,
             auto_sync=data.get(CI_CONFIG_TEAM_KEY_AUTO_SYNC, False),
             sync_interval_seconds=data.get(
                 CI_CONFIG_TEAM_KEY_SYNC_INTERVAL,
@@ -180,7 +180,7 @@ class TeamConfig:
         """Convert to dictionary for serialization."""
         return {
             CI_CONFIG_TEAM_KEY_SERVER_URL: self.server_url,
-            CI_CONFIG_TEAM_KEY_TOKEN: self.token,
+            CI_CONFIG_TEAM_KEY_API_KEY: self.api_key,
             CI_CONFIG_TEAM_KEY_AUTO_SYNC: self.auto_sync,
             CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: self.sync_interval_seconds,
             CI_CONFIG_TEAM_KEY_PULL_INTERVAL: self.pull_interval_seconds,

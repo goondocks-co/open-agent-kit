@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-26]
+
+### Added
+
+- **Oak Teams outbox schema and sync worker** — new `outbox` table and database migration replace the previous git-based CI sync with a self-hosted team server; a background sync worker queues events for guaranteed ordered delivery — [Implement outbox schema and sync worker for Oak Teams](http://localhost:38388/activity/sessions/9407ac76-5b89-4b48-89f4-89e0ec1fb68c), [Add outbox schema and migration for Oak Teams sync](http://localhost:38388/activity/sessions/aceb5769-42bb-41f3-820d-ba1a544aa685)
+- **Persistent team and relay status banner** — new banner beneath `UpdateBanner` in `Layout.tsx` surfaces live team and cloud relay health across every page; companion dashboard tiles provide an at-a-glance health view on the daemon home screen — [Update UI with persistent team status banner and dashboard tiles](http://localhost:38388/activity/sessions/31220976-a1a8-4ba8-9f7a-fb0fcb7230f4), [Add persistent team status banner and dashboard tiles via enriched status API](http://localhost:38388/activity/sessions/607d0ad6-5ea1-434a-8468-e0ffe6da41f6)
+- **Centralized feature-flag system** — Oak API refactored around a unified flag registry; feature availability is now controlled via typed, testable guards rather than ad-hoc conditionals, and new flags can be rolled out without code-path changes _(part of the 2/25 Oak API refactoring, not previously documented)_ — [Refactor Oak API and implement centralized feature‑flag system](http://localhost:38388/activity/sessions/f53e0953-a76f-41b9-8858-cdc386156d14)
+
+### Fixed
+
+- Fix Cursor session capture: missing `SESSION_SECRET` caused hook sessions to be silently dropped — identified that `SESSION_SECRET` was absent from the Cursor hook execution environment in the conduit-test-poc project; correcting propagation restores session capture — [Debug missing SESSION_SECRET causing cursor session failure](http://localhost:38388/activity/sessions/b44b649e-c44b-4427-8044-aae8098e63f9), [Fix cursor session capture logic, cherry‑pick minimal changes, clean PR](http://localhost:38388/activity/sessions/f93e6018-d5dd-45a0-b219-883feb21e7fc)
+- Fix `hooks.py` stdin reader returning `None` on empty stream — `_stdin_reader` left `result_holder[0]` as `None` when stdin was empty (e.g., non-interactive CI environments), causing downstream `TypeError`; now falls back to an empty string — [Fix cursor session capture logic, cherry‑pick minimal changes, clean PR](http://localhost:38388/activity/sessions/f93e6018-d5dd-45a0-b219-883feb21e7fc)
+- Fix `oak ci hook` crash from unsupported `--timeout=30` flag — the CLI `__main__.py` does not recognise this argument, causing `SystemExit` before the hook executes; removed the unsupported flag from hook invocations — [Fix cursor session capture logic, cherry‑pick minimal changes, clean PR](http://localhost:38388/activity/sessions/f93e6018-d5dd-45a0-b219-883feb21e7fc)
+- Fix docs site build failure: Astro 5.17.1 incompatible with Starlight ≥0.34.8 — bumped Astro to 5.18.0 and updated Starlight and Sharp to latest compatible versions — [Update Astro, Starlight, Sharp to latest versions](http://localhost:38388/activity/sessions/057d65c3-12d8-4cf6-bbbc-16f586bf53c9)
+
+### Changed
+
+- OAK Agents docs reorganized — sections restructured and architecture diagram refined for clearer onboarding — [Update OAK Agents docs: reorganize section refine diagram](http://localhost:38388/activity/sessions/9139ba09-a96d-4575-93f4-4d82928da4ea)
+
+### Notes
+
+> **Gotcha**: Oak Teams sync stores events as plain strings in SQLite — team keys are indexed but not hashed at rest. Secure the daemon database (`.oak/ci/activities.db`) with appropriate file permissions.
+
+> **Gotcha**: The persistent team-status banner polls the daemon's enriched `/team` endpoint, which requires the `X-OpenAgent-Team-Key` header. A missing or invalid key returns a generic 401 with no detail — verify the key is set in `.oak/config.yaml`.
+
+> **Gotcha**: `SESSION_SECRET` must be present in the environment where Cursor hooks execute. If absent, the hook drops the session silently and logs a `[DROP]` message. Check `.cursor/hooks.json` environment configuration if Cursor sessions are not appearing in the activity log.
+
 ## [2026-02-25]
 
 ### Added

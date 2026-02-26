@@ -4,7 +4,7 @@ import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-compone
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { usePlans } from "@/hooks/use-plans";
-import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save, Share2 } from "lucide-react";
+import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save, Server, Cloud, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     formatRelativeTime,
@@ -153,6 +153,54 @@ export default function Dashboard() {
                 />
             </div>
 
+            {/* Team Stats — only when team features are active */}
+            {(status?.team?.configured || status?.cloud_relay?.connected) && (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <StatCard
+                        title="Team Server"
+                        value={
+                            status?.team?.server_mode
+                                ? "Active"
+                                : status?.team?.connected
+                                    ? "Connected"
+                                    : "Off"
+                        }
+                        icon={Server}
+                        subtext={
+                            status?.team?.server_mode
+                                ? "Running as server"
+                                : status?.team?.server_url
+                                    ? `Client → ${new URL(status.team.server_url).host}`
+                                    : "Team server"
+                        }
+                        loading={isLoading}
+                        href="/team"
+                    />
+                    <StatCard
+                        title="Cloud Relay"
+                        value={status?.cloud_relay?.connected ? "Connected" : "Off"}
+                        icon={Cloud}
+                        subtext={
+                            status?.cloud_relay?.worker_url
+                                ? new URL(status.cloud_relay.worker_url).host
+                                : "Cloudflare Worker relay"
+                        }
+                        loading={isLoading}
+                        href="/cloud"
+                    />
+                    {status?.team?.server_mode && (
+                        <StatCard
+                            title="Members"
+                            value={status.team.members_online}
+                            icon={Users}
+                            subtext="Online team members"
+                            loading={isLoading}
+                            href="/team"
+                        />
+                    )}
+                </div>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <Card className="col-span-4">
                     <CardHeader className="flex flex-row items-center justify-between">
@@ -278,22 +326,27 @@ export default function Dashboard() {
                                 </span>
                             </div>
 
-                            {/* Tunnel Sharing */}
+                            {/* Team Status */}
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground flex items-center gap-1">
-                                    <Share2 className="w-3 h-3" />
-                                    <Link to="/team/sharing" className="hover:underline">Sharing</Link>
+                                    <Server className="w-3 h-3" />
+                                    <Link to="/team" className="hover:underline">Team</Link>
                                 </span>
                                 <span className={cn(
                                     "font-medium text-sm",
-                                    status?.tunnel?.active ? "text-green-500" : "text-muted-foreground"
+                                    status?.team?.configured ? "text-green-500" : "text-muted-foreground"
                                 )}>
-                                    {status?.tunnel?.active
-                                        ? <span className="flex items-center gap-1" title={status.tunnel.public_url || undefined}>
+                                    {status?.team?.server_mode
+                                        ? <span className="flex items-center gap-1">
                                             <Check className="w-3 h-3" />
-                                            Active
+                                            Server
                                           </span>
-                                        : <Link to="/team/sharing" className="hover:underline">Off</Link>
+                                        : status?.team?.configured
+                                            ? <span className="flex items-center gap-1">
+                                                <Check className="w-3 h-3" />
+                                                Client
+                                              </span>
+                                            : <Link to="/team" className="hover:underline">Off</Link>
                                     }
                                 </span>
                             </div>

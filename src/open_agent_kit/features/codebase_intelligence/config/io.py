@@ -27,8 +27,10 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_LOG_ROTATION,
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
+    CI_CONFIG_KEY_TEAM,
     CI_CONFIG_KEY_TUNNEL,
     CI_CONFIG_KEY_WATCH_FILES,
+    CI_CONFIG_TEAM_KEY_API_KEY,
 )
 from open_agent_kit.features.codebase_intelligence.exceptions import (
     ValidationError,
@@ -182,6 +184,7 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{CI_CONFIG_KEY_AGENTS}.provider_model",  # Agent LLM backend varies per machine
         CI_CONFIG_KEY_TUNNEL,  # Tunnel provider/paths are machine-local
         CI_CONFIG_KEY_CLOUD_RELAY,  # Cloud relay config is machine-local (token, worker URL)
+        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_API_KEY}",  # Team API keys are machine-local secrets
         CI_CONFIG_KEY_LOG_LEVEL,  # Personal debugging preference
         CI_CONFIG_KEY_LOG_ROTATION,  # Machine-local log management
         f"{BACKUP_CONFIG_KEY}.auto_enabled",  # Personal preference for auto-backup
@@ -406,6 +409,10 @@ def save_ci_config(
             logger.warning(f"Failed to read existing config: {e}")
 
     ci_dict = config.to_dict()
+    # Hard-scrub legacy team.token from project config output.
+    team_dict = ci_dict.get(CI_CONFIG_KEY_TEAM)
+    if isinstance(team_dict, dict):
+        team_dict.pop("token", None)
 
     if force_project:
         # Write everything to project config as team baseline
@@ -423,6 +430,11 @@ def save_ci_config(
             existing_config["codebase_intelligence"] = _deep_merge(existing_ci, project_keys)
         else:
             existing_config["codebase_intelligence"] = project_keys
+        existing_ci_section = existing_config.get("codebase_intelligence")
+        if isinstance(existing_ci_section, dict):
+            existing_team = existing_ci_section.get(CI_CONFIG_KEY_TEAM)
+            if isinstance(existing_team, dict):
+                existing_team.pop("token", None)
         _write_yaml_config(config_file, existing_config)
 
         # Write user keys to .oak/config.{machine_id}.yaml

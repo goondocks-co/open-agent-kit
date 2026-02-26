@@ -31,5 +31,5 @@ def create_transport(config: TeamConfig) -> TeamTransport:
 
     return HttpTransport(
         server_url=config.server_url or "",
-        token=config.token or "",
+        token=config.api_key or "",
     )

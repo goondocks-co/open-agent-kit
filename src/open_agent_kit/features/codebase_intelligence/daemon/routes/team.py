@@ -21,9 +21,12 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_KEYS,
     TEAM_API_PATH_LEAVE,
     TEAM_API_PATH_POLICY,
+    TEAM_API_PATH_SERVE,
     TEAM_API_PATH_STATUS,
     TEAM_API_PATH_SYNC_FLUSH,
     TEAM_API_PATH_SYNC_PULL,
+    TEAM_LOOPBACK_KEY_NAME,
+    TEAM_LOOPBACK_URL_TEMPLATE,
     TEAM_ROUTE_TAG,
     TEAM_SERVER_MODE_ENV_VAR,
 )
@@ -43,7 +46,7 @@ router = APIRouter(tags=[TEAM_ROUTE_TAG])
 
 
 class TeamConfigResponse(BaseModel):
-    """Current team configuration (read-only view, token excluded)."""
+    """Current team configuration (read-only view, API key excluded)."""
 
     server_url: str | None = None
     auto_sync: bool = False
@@ -58,7 +61,7 @@ class TeamConfigUpdate(BaseModel):
     """Partial update for team configuration."""
 
     server_url: str | None = None
-    token: str | None = None
+    api_key: str | None = None
     auto_sync: bool | None = None
     sync_interval_seconds: int | None = None
     pull_interval_seconds: int | None = None
@@ -70,7 +73,7 @@ class TeamJoinRequest(BaseModel):
     """Request body for joining a team server."""
 
     server_url: str
-    token: str
+    api_key: str
 
 
 class TeamStatusResponse(BaseModel):
@@ -104,6 +107,12 @@ class PolicyUpdate(BaseModel):
     sync_activities: bool | None = None
     sync_prompts: bool | None = None
     allow_server_llm: bool | None = None
+
+
+class ServerModeRequest(BaseModel):
+    """Request body for toggling server mode."""
+
+    enable: bool
 
 
 class KeyCreateRequest(BaseModel):
@@ -167,7 +176,7 @@ def _require_activity_store() -> Any:
 @router.get(TEAM_API_PATH_CONFIG)
 @handle_route_errors("team config get")
 async def get_team_config() -> TeamConfigResponse:
-    """Return current team configuration (token excluded)."""
+    """Return current team configuration (API key excluded)."""
     state = get_state()
     ci_config = state.ci_config
     if not ci_config:
@@ -200,8 +209,8 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
 
     if update.server_url is not None:
         tc.server_url = update.server_url
-    if update.token is not None:
-        tc.token = update.token
+    if update.api_key is not None:
+        tc.api_key = update.api_key
     if update.auto_sync is not None:
         tc.auto_sync = update.auto_sync
     if update.sync_interval_seconds is not None:
@@ -254,7 +263,7 @@ async def join_team(req: TeamJoinRequest) -> TeamStatusResponse:
 
     ci_config = load_ci_config(project_root)
     ci_config.team.server_url = req.server_url
-    ci_config.team.token = req.token
+    ci_config.team.api_key = req.api_key
     ci_config.team.auto_sync = True
     save_ci_config(project_root, ci_config)
 
@@ -277,7 +286,7 @@ async def leave_team() -> dict[str, str]:
 
     ci_config = load_ci_config(project_root)
     ci_config.team.server_url = None
-    ci_config.team.token = None
+    ci_config.team.api_key = None
     ci_config.team.auto_sync = False
     save_ci_config(project_root, ci_config)
 
@@ -331,18 +340,35 @@ async def get_team_status() -> TeamStatusResponse:
 @router.get(f"{TEAM_API_PATH_STATUS}/members")
 @handle_route_errors("team members")
 async def get_team_members() -> dict[str, Any]:
-    """Proxy member list from team server."""
+    """Return team member list.
+
+    In server mode, queries the local DB directly (avoids loopback auth
+    conflict with ``TokenAuthMiddleware``).  When connected to a remote
+    server, proxies the request.
+    """
     state = get_state()
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.server_url:
         return {"members": []}
 
+    # Server mode: query DB directly instead of HTTP loopback
+    if ci_config.team.server_mode and state.activity_store:
+        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+            MembershipService,
+        )
+
+        conn = state.activity_store._get_connection()
+        svc = MembershipService(conn_factory=lambda: conn)
+        members = svc.list_members()
+        return {"members": [m.model_dump() for m in members]}
+
+    # Remote server: proxy the request
     import httpx
 
     try:
         headers: dict[str, str] = {}
-        if ci_config.team.token:
-            headers["Authorization"] = f"Bearer {ci_config.team.token}"
+        if ci_config.team.api_key:
+            headers["Authorization"] = f"Bearer {ci_config.team.api_key}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{ci_config.team.server_url.rstrip('/')}/api/team/members",
@@ -378,6 +404,96 @@ async def force_sync_pull() -> dict[str, str]:
     """Placeholder for force-pulling events from the team server."""
     # Pull worker not yet implemented; return a descriptive status
     return {"status": "pull_worker_not_available"}
+
+
+# ---------------------------------------------------------------------------
+# Server mode toggle
+# ---------------------------------------------------------------------------
+
+
+@router.post(TEAM_API_PATH_SERVE)
+@handle_route_errors("team serve toggle")
+async def toggle_server_mode(req: ServerModeRequest) -> dict[str, Any]:
+    """Enable or disable team server mode. Requires daemon restart."""
+    project_root = _require_project_root()
+
+    from open_agent_kit.config.paths import OAK_DIR
+    from open_agent_kit.features.codebase_intelligence.config import (
+        load_ci_config,
+        save_ci_config,
+    )
+    from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
+    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+        get_project_port,
+    )
+
+    ci_config = load_ci_config(project_root)
+
+    if req.enable:
+        # 1. Resolve daemon port
+        ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
+        port = get_project_port(project_root, ci_data_dir)
+
+        # 2. Create server tables idempotently
+        store = _require_activity_store()
+        conn = store._get_connection()
+
+        from open_agent_kit.features.codebase_intelligence.team.server.auth import (
+            TEAM_API_KEYS_DDL,
+            create_api_key,
+        )
+        from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
+            TEAM_EVENTS_DDL,
+        )
+        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+            TEAM_MEMBERS_DDL,
+        )
+
+        conn.executescript(TEAM_API_KEYS_DDL)
+        conn.executescript(TEAM_MEMBERS_DDL)
+        conn.executescript(TEAM_EVENTS_DDL)
+
+        # 3. Create loopback API key
+        _key_id, plaintext = create_api_key(conn, TEAM_LOOPBACK_KEY_NAME)
+
+        # 4. Update config
+        server_url = TEAM_LOOPBACK_URL_TEMPLATE.format(port=port)
+        ci_config.team.server_mode = True
+        ci_config.team.server_url = server_url
+        ci_config.team.api_key = plaintext
+        ci_config.team.auto_sync = True
+        save_ci_config(project_root, ci_config)
+
+        state = get_state()
+        state.ci_config = None
+
+        return {
+            "enabled": True,
+            "server_url": server_url,
+            "restart_required": True,
+        }
+    else:
+        # Disable: clear loopback config only
+        loopback_prefix = "http://127.0.0.1:"
+        was_loopback = ci_config.team.server_url and ci_config.team.server_url.startswith(
+            loopback_prefix
+        )
+
+        ci_config.team.server_mode = False
+        if was_loopback:
+            ci_config.team.server_url = None
+            ci_config.team.api_key = None
+            ci_config.team.auto_sync = False
+
+        save_ci_config(project_root, ci_config)
+
+        state = get_state()
+        state.ci_config = None
+
+        return {
+            "enabled": False,
+            "restart_required": True,
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ from typer.testing import CliRunner
 
 from open_agent_kit.commands.ci.team import team_app
 from open_agent_kit.features.codebase_intelligence.constants.team import (
-    TEAM_TOKEN_ENV_VAR,
+    TEAM_API_KEY_ENV_VAR,
 )
 
 runner = CliRunner()
@@ -19,11 +19,11 @@ _SAVE_CONFIG = "open_agent_kit.features.codebase_intelligence.config.save_ci_con
 _GET_DAEMON = "open_agent_kit.commands.ci.team.get_daemon_manager"
 
 
-def _make_config(server_url=None, token=None, auto_sync=False):
+def _make_config(server_url=None, api_key=None, auto_sync=False):
     """Create a mock CIConfig with team settings."""
     config = MagicMock()
     config.team.server_url = server_url
-    config.team.token = token
+    config.team.api_key = api_key
     config.team.auto_sync = auto_sync
     config.team.server_mode = False
     config.team.bind_host = "127.0.0.1"
@@ -49,7 +49,7 @@ class TestTeamJoin:
     @patch(_CHECK_CI)
     @patch(_CHECK_OAK)
     def test_join_saves_config(self, mock_oak, mock_ci, mock_load, mock_save):
-        """Test that join saves server_url, token, and auto_sync to config."""
+        """Test that join saves server_url, api_key, and auto_sync to config."""
         mock_load.return_value = _make_config()
 
         with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
@@ -63,7 +63,7 @@ class TestTeamJoin:
 
             result = runner.invoke(
                 team_app,
-                ["join", "--server-url", "https://team.example.com", "--token", "test-token"],
+                ["join", "--server-url", "https://team.example.com", "--api-key", "test-token"],
             )
 
         assert result.exit_code == 0
@@ -71,7 +71,7 @@ class TestTeamJoin:
         mock_save.assert_called_once()
         saved_config = mock_save.call_args[0][1]
         assert saved_config.team.server_url == "https://team.example.com"
-        assert saved_config.team.token == "test-token"
+        assert saved_config.team.api_key == "test-token"
         assert saved_config.team.auto_sync is True
 
     @patch(_CHECK_CI)
@@ -80,7 +80,7 @@ class TestTeamJoin:
         """Test that join rejects URLs without http:// or https://."""
         result = runner.invoke(
             team_app,
-            ["join", "--server-url", "ftp://bad.example.com", "--token", "test-token"],
+            ["join", "--server-url", "ftp://bad.example.com", "--api-key", "test-token"],
         )
         assert result.exit_code != 0
 
@@ -88,10 +88,10 @@ class TestTeamJoin:
     @patch(_LOAD_CONFIG)
     @patch(_CHECK_CI)
     @patch(_CHECK_OAK)
-    def test_join_uses_env_token(self, mock_oak, mock_ci, mock_load, mock_save, monkeypatch):
-        """Test that join reads token from OAK_TEAM_TOKEN env var."""
+    def test_join_uses_env_api_key(self, mock_oak, mock_ci, mock_load, mock_save, monkeypatch):
+        """Test that join reads api key from OAK_TEAM_API_KEY env var."""
         mock_load.return_value = _make_config()
-        monkeypatch.setenv(TEAM_TOKEN_ENV_VAR, "env-token")
+        monkeypatch.setenv(TEAM_API_KEY_ENV_VAR, "env-token")
 
         with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
             mock_response = MagicMock()
@@ -109,7 +109,7 @@ class TestTeamJoin:
 
         assert result.exit_code == 0
         saved_config = mock_save.call_args[0][1]
-        assert saved_config.team.token == "env-token"
+        assert saved_config.team.api_key == "env-token"
 
 
 class TestTeamLeave:
@@ -120,10 +120,10 @@ class TestTeamLeave:
     @patch(_CHECK_CI)
     @patch(_CHECK_OAK)
     def test_leave_clears_config(self, mock_oak, mock_ci, mock_load, mock_save):
-        """Test that leave clears server_url, token, and disables auto_sync."""
+        """Test that leave clears server_url, api_key, and disables auto_sync."""
         mock_load.return_value = _make_config(
             server_url="https://team.example.com",
-            token="old-token",
+            api_key="old-token",
             auto_sync=True,
         )
 
@@ -133,7 +133,7 @@ class TestTeamLeave:
         mock_save.assert_called_once()
         saved_config = mock_save.call_args[0][1]
         assert saved_config.team.server_url is None
-        assert saved_config.team.token is None
+        assert saved_config.team.api_key is None
         assert saved_config.team.auto_sync is False
 
     @patch(_LOAD_CONFIG)

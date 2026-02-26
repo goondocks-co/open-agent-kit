@@ -31,7 +31,7 @@ export interface TeamConfigResponse {
 
 export interface TeamConfigUpdate {
     server_url?: string | null;
-    token?: string | null;
+    api_key?: string | null;
     auto_sync?: boolean | null;
     sync_interval_seconds?: number | null;
     pull_interval_seconds?: number | null;
@@ -106,7 +106,13 @@ export interface KeyCreateResponse {
 
 export interface TeamJoinRequest {
     server_url: string;
-    token: string;
+    api_key: string;
+}
+
+export interface ServerModeResponse {
+    enabled: boolean;
+    server_url?: string;
+    restart_required: boolean;
 }
 
 // =============================================================================
@@ -288,6 +294,19 @@ export function useRevokeKey() {
             deleteJson<{ revoked: boolean }>(`${API_ENDPOINTS.TEAM_KEYS}/${keyId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
+        },
+    });
+}
+
+/** Toggle server mode (enable/disable). Requires restart. */
+export function useToggleServerMode() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (enable: boolean) =>
+            postJson<ServerModeResponse>(API_ENDPOINTS.TEAM_SERVE, { enable }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: teamKeys.all });
         },
     });
 }

@@ -9,6 +9,7 @@ import type { PowerState } from "@/hooks/use-power-state";
 import { useStatus } from "@/hooks/use-status";
 import { useRestart } from "@/hooks/use-restart";
 import { UpdateBanner } from "@/components/ui/update-banner";
+import { TeamStatusBanner } from "@/components/ui/team-status-banner";
 
 import type { LucideIcon } from "lucide-react";
 
@@ -209,6 +210,7 @@ export function Layout() {
                                 cliCommand={status.cli_command}
                             />
                         )}
+                        <TeamStatusBanner status={status} />
                         <Outlet />
                     </div>
                 </div>

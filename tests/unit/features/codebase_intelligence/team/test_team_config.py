@@ -7,7 +7,7 @@ Tests cover:
 - TeamConfig validation: sync_interval out of range raises
 - TeamConfig validation: pull_interval out of range raises
 - from_dict() / to_dict() round-trip
-- from_dict() with ${ENV_VAR} token resolution
+- from_dict() with ${ENV_VAR} API key resolution
 - from_dict() with empty dict returns defaults
 """
 
@@ -15,10 +15,10 @@ import pytest
 
 from open_agent_kit.features.codebase_intelligence.config.team import TeamConfig
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL,
     CI_CONFIG_TEAM_KEY_SERVER_URL,
     CI_CONFIG_TEAM_KEY_SYNC_INTERVAL,
-    CI_CONFIG_TEAM_KEY_TOKEN,
     CI_CONFIG_TEAM_KEY_TRANSPORT,
     TEAM_DEFAULT_BIND_HOST,
     TEAM_DEFAULT_BIND_PORT,
@@ -47,7 +47,7 @@ class TestTeamConfigInit:
         """Test default values are applied correctly."""
         config = TeamConfig()
         assert config.server_url is None
-        assert config.token is None
+        assert config.api_key is None
         assert config.auto_sync is False
         assert config.sync_interval_seconds == TEAM_DEFAULT_SYNC_INTERVAL_SECONDS
         assert config.pull_interval_seconds == TEAM_DEFAULT_PULL_INTERVAL_SECONDS
@@ -64,7 +64,7 @@ class TestTeamConfigInit:
         """Test initialization with explicit values."""
         config = TeamConfig(
             server_url="https://team.example.com",
-            token="secret-token",
+            api_key="secret-token",
             auto_sync=True,
             sync_interval_seconds=10,
             pull_interval_seconds=30,
@@ -76,7 +76,7 @@ class TestTeamConfigInit:
             server_side_llm=True,
         )
         assert config.server_url == "https://team.example.com"
-        assert config.token == "secret-token"
+        assert config.api_key == "secret-token"
         assert config.auto_sync is True
         assert config.sync_interval_seconds == 10
         assert config.pull_interval_seconds == 30
@@ -163,7 +163,7 @@ class TestTeamConfigSerialization:
         config = TeamConfig.from_dict({})
         default = TeamConfig()
         assert config.server_url == default.server_url
-        assert config.token == default.token
+        assert config.api_key == default.api_key
         assert config.auto_sync == default.auto_sync
         assert config.sync_interval_seconds == default.sync_interval_seconds
         assert config.pull_interval_seconds == default.pull_interval_seconds
@@ -173,7 +173,7 @@ class TestTeamConfigSerialization:
         """Test that from_dict(to_dict()) produces equivalent config."""
         original = TeamConfig(
             server_url="https://team.example.com",
-            token="my-token",
+            api_key="my-token",
             auto_sync=True,
             sync_interval_seconds=5,
             pull_interval_seconds=30,
@@ -186,7 +186,7 @@ class TestTeamConfigSerialization:
         )
         restored = TeamConfig.from_dict(original.to_dict())
         assert restored.server_url == original.server_url
-        assert restored.token == original.token
+        assert restored.api_key == original.api_key
         assert restored.auto_sync == original.auto_sync
         assert restored.sync_interval_seconds == original.sync_interval_seconds
         assert restored.pull_interval_seconds == original.pull_interval_seconds
@@ -199,25 +199,25 @@ class TestTeamConfigSerialization:
         assert restored.relay_worker_name == original.relay_worker_name
         assert restored.server_side_llm == original.server_side_llm
 
-    def test_from_dict_with_env_var_token(self, monkeypatch):
-        """Test that ${ENV_VAR} token syntax resolves from environment."""
-        monkeypatch.setenv("OAK_TEAM_TOKEN", "resolved-secret")
+    def test_from_dict_with_env_var_api_key(self, monkeypatch):
+        """Test that ${ENV_VAR} API key syntax resolves from environment."""
+        monkeypatch.setenv("OAK_TEAM_API_KEY", "resolved-secret")
         config = TeamConfig.from_dict(
             {
-                CI_CONFIG_TEAM_KEY_TOKEN: "${OAK_TEAM_TOKEN}",
+                CI_CONFIG_TEAM_KEY_API_KEY: "${OAK_TEAM_API_KEY}",
             }
         )
-        assert config.token == "resolved-secret"
+        assert config.api_key == "resolved-secret"
 
-    def test_from_dict_with_missing_env_var_token(self, monkeypatch):
+    def test_from_dict_with_missing_env_var_api_key(self, monkeypatch):
         """Test that ${ENV_VAR} with missing env var resolves to None."""
         monkeypatch.delenv("NONEXISTENT_TOKEN_VAR", raising=False)
         config = TeamConfig.from_dict(
             {
-                CI_CONFIG_TEAM_KEY_TOKEN: "${NONEXISTENT_TOKEN_VAR}",
+                CI_CONFIG_TEAM_KEY_API_KEY: "${NONEXISTENT_TOKEN_VAR}",
             }
         )
-        assert config.token is None
+        assert config.api_key is None
 
     def test_from_dict_with_explicit_values(self):
         """Test from_dict with explicitly provided values."""
@@ -235,6 +235,6 @@ class TestTeamConfigSerialization:
         config = TeamConfig()
         d = config.to_dict()
         assert CI_CONFIG_TEAM_KEY_SERVER_URL in d
-        assert CI_CONFIG_TEAM_KEY_TOKEN in d
+        assert CI_CONFIG_TEAM_KEY_API_KEY in d
         assert CI_CONFIG_TEAM_KEY_TRANSPORT in d
         assert CI_CONFIG_TEAM_KEY_SYNC_INTERVAL in d

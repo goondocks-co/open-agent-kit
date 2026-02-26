@@ -13,12 +13,14 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HTTP_TIMEOUT_QUICK,
 )
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_API_KEY_ENV_VAR,
     TEAM_API_PATH_KEYS,
     TEAM_API_PATH_MEMBERS,
     TEAM_API_PATH_STATUS,
     TEAM_CLI_API_URL_TEMPLATE,
     TEAM_DEFAULT_BIND_HOST,
     TEAM_DEFAULT_BIND_PORT,
+    TEAM_MESSAGE_API_KEY_PROMPT,
     TEAM_MESSAGE_AUTO_SYNC,
     TEAM_MESSAGE_CONNECTION_TEST_FAILED,
     TEAM_MESSAGE_DAEMON_NOT_RUNNING,
@@ -36,9 +38,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_MESSAGE_SERVER_URL,
     TEAM_MESSAGE_SYNC_DISABLED,
     TEAM_MESSAGE_SYNC_ENABLED,
-    TEAM_MESSAGE_TOKEN_PROMPT,
     TEAM_SERVER_MODE_ENV_VAR,
-    TEAM_TOKEN_ENV_VAR,
 )
 from open_agent_kit.utils import (
     print_error,
@@ -95,7 +95,10 @@ def _get_daemon_port(project_root: Path) -> int:
 @team_app.command("join")
 def team_join(
     server_url: str = typer.Option(..., help="Team server URL"),
-    token: str | None = typer.Option(None, help="API token (or set OAK_TEAM_TOKEN env var)"),
+    api_key: str | None = typer.Option(
+        None,
+        help="Team API key (or set OAK_TEAM_API_KEY env var)",
+    ),
 ) -> None:
     """Join a team server and enable sync."""
     from open_agent_kit.features.codebase_intelligence.config import (
@@ -112,11 +115,11 @@ def team_join(
         print_error(TEAM_MESSAGE_INVALID_URL)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
-    # Resolve token: option > env var > prompt
-    if not token:
-        token = os.environ.get(TEAM_TOKEN_ENV_VAR)
-    if not token:
-        token = typer.prompt(TEAM_MESSAGE_TOKEN_PROMPT, hide_input=True)
+    # Resolve API key: option > env var > prompt
+    if not api_key:
+        api_key = os.environ.get(TEAM_API_KEY_ENV_VAR)
+    if not api_key:
+        api_key = typer.prompt(TEAM_MESSAGE_API_KEY_PROMPT, hide_input=True)
 
     # Test connection
     status_url = server_url.rstrip("/") + TEAM_API_PATH_STATUS
@@ -138,7 +141,7 @@ def team_join(
     # Save to config
     config = load_ci_config(project_root)
     config.team.server_url = server_url.rstrip("/")
-    config.team.token = token
+    config.team.api_key = api_key
     config.team.auto_sync = True
     save_ci_config(project_root, config)
 
@@ -164,7 +167,7 @@ def team_leave() -> None:
         return
 
     config.team.server_url = None
-    config.team.token = None
+    config.team.api_key = None
     config.team.auto_sync = False
     save_ci_config(project_root, config)
 

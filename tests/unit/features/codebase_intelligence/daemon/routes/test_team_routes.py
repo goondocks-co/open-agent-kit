@@ -11,6 +11,7 @@ Tests cover:
 - POST /api/team/leave disconnects and clears config
 - POST /api/team/sync/flush when sync not active
 - POST /api/team/sync/pull placeholder response
+- POST /api/team/serve enable/disable server mode
 """
 
 from pathlib import Path
@@ -30,11 +31,13 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_KEYS,
     TEAM_API_PATH_LEAVE,
     TEAM_API_PATH_POLICY,
+    TEAM_API_PATH_SERVE,
     TEAM_API_PATH_STATUS,
     TEAM_API_PATH_SYNC_FLUSH,
     TEAM_API_PATH_SYNC_PULL,
     TEAM_DEFAULT_PULL_INTERVAL_SECONDS,
     TEAM_DEFAULT_SYNC_INTERVAL_SECONDS,
+    TEAM_LOOPBACK_KEY_NAME,
     TEAM_SERVER_MODE_ENV_VAR,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.team import router
@@ -68,14 +71,14 @@ def _make_ci_config(
     *,
     server_url: str | None = None,
     auto_sync: bool = False,
-    token: str | None = None,
+    api_key: str | None = None,
 ) -> MagicMock:
     """Build a minimal mock CIConfig with team and governance sections."""
     ci_config = MagicMock()
     ci_config.team = TeamConfig(
         server_url=server_url,
         auto_sync=auto_sync,
-        token=token,
+        api_key=api_key,
     )
     ci_config.governance = GovernanceConfig(
         data_collection=DataCollectionPolicy(),
@@ -410,7 +413,7 @@ class TestLeaveTeam:
 
         # Config should be cleared
         assert ci_config.team.server_url is None
-        assert ci_config.team.token is None
+        assert ci_config.team.api_key is None
         assert ci_config.team.auto_sync is False
         mock_save.assert_called_once()
 
@@ -451,3 +454,141 @@ class TestSyncControl:
         resp = client.post(TEAM_API_PATH_SYNC_PULL)
         assert resp.status_code == 200
         assert resp.json()["status"] == "pull_worker_not_available"
+
+
+# =========================================================================
+# POST /api/team/serve (server mode toggle)
+# =========================================================================
+
+
+class TestToggleServerMode:
+    """Tests for POST /api/team/serve."""
+
+    @patch(f"{_ROUTE_MOD}.get_state")
+    def test_enable_returns_500_when_no_project_root(
+        self, mock_get_state: MagicMock, client: TestClient
+    ) -> None:
+        """When project_root is not set, returns 500."""
+        mock_state = MagicMock()
+        mock_state.project_root = None
+        mock_get_state.return_value = mock_state
+        resp = client.post(TEAM_API_PATH_SERVE, json={"enable": True})
+        assert resp.status_code == 500
+
+    @patch(f"{_CONFIG_PKG}.save_ci_config")
+    @patch(f"{_CONFIG_PKG}.load_ci_config")
+    @patch(f"{_ROUTE_MOD}.get_state")
+    def test_enable_creates_tables_and_loopback_key(
+        self,
+        mock_get_state: MagicMock,
+        mock_load: MagicMock,
+        mock_save: MagicMock,
+        client: TestClient,
+    ) -> None:
+        """Enable creates server tables, loopback key, and updates config."""
+        ci_config = _make_ci_config()
+        mock_store = MagicMock()
+        mock_conn = MagicMock()
+        mock_store._get_connection.return_value = mock_conn
+
+        mock_state = _mock_state_with_config(ci_config, project_root=Path("/tmp/test-project"))
+        mock_state.activity_store = mock_store
+        mock_get_state.return_value = mock_state
+        mock_load.return_value = ci_config
+
+        with (
+            patch(
+                "open_agent_kit.features.codebase_intelligence.daemon.manager.get_project_port",
+                return_value=37842,
+            ),
+            patch(
+                "open_agent_kit.features.codebase_intelligence.team.server.auth.create_api_key",
+                return_value=("key123", "oak_team_testtoken"),
+            ) as mock_create_key,
+        ):
+            resp = client.post(TEAM_API_PATH_SERVE, json={"enable": True})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["enabled"] is True
+        assert data["server_url"] == "http://127.0.0.1:37842"
+        assert data["restart_required"] is True
+
+        # Server tables created
+        assert mock_conn.executescript.call_count == 3
+
+        # Loopback key created
+        mock_create_key.assert_called_once_with(mock_conn, TEAM_LOOPBACK_KEY_NAME)
+
+        # Config updated
+        assert ci_config.team.server_mode is True
+        assert ci_config.team.server_url == "http://127.0.0.1:37842"
+        assert ci_config.team.api_key == "oak_team_testtoken"
+        assert ci_config.team.auto_sync is True
+        mock_save.assert_called_once()
+
+    @patch(f"{_CONFIG_PKG}.save_ci_config")
+    @patch(f"{_CONFIG_PKG}.load_ci_config")
+    @patch(f"{_ROUTE_MOD}.get_state")
+    def test_disable_clears_loopback_config(
+        self,
+        mock_get_state: MagicMock,
+        mock_load: MagicMock,
+        mock_save: MagicMock,
+        client: TestClient,
+    ) -> None:
+        """Disable clears loopback server_url/api_key and sets server_mode=False."""
+        ci_config = _make_ci_config(
+            server_url="http://127.0.0.1:37842",
+            auto_sync=True,
+            api_key="oak_team_testtoken",
+        )
+        ci_config.team.server_mode = True
+
+        mock_state = _mock_state_with_config(ci_config, project_root=Path("/tmp/test-project"))
+        mock_get_state.return_value = mock_state
+        mock_load.return_value = ci_config
+
+        resp = client.post(TEAM_API_PATH_SERVE, json={"enable": False})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["enabled"] is False
+        assert data["restart_required"] is True
+
+        # Config cleared
+        assert ci_config.team.server_mode is False
+        assert ci_config.team.server_url is None
+        assert ci_config.team.api_key is None
+        assert ci_config.team.auto_sync is False
+        mock_save.assert_called_once()
+
+    @patch(f"{_CONFIG_PKG}.save_ci_config")
+    @patch(f"{_CONFIG_PKG}.load_ci_config")
+    @patch(f"{_ROUTE_MOD}.get_state")
+    def test_disable_preserves_remote_config(
+        self,
+        mock_get_state: MagicMock,
+        mock_load: MagicMock,
+        mock_save: MagicMock,
+        client: TestClient,
+    ) -> None:
+        """Disable preserves server_url/api_key when connected to a remote server."""
+        ci_config = _make_ci_config(
+            server_url="https://team.example.com",
+            auto_sync=True,
+            api_key="remote_token",
+        )
+        ci_config.team.server_mode = True
+
+        mock_state = _mock_state_with_config(ci_config, project_root=Path("/tmp/test-project"))
+        mock_get_state.return_value = mock_state
+        mock_load.return_value = ci_config
+
+        resp = client.post(TEAM_API_PATH_SERVE, json={"enable": False})
+        assert resp.status_code == 200
+
+        # server_mode cleared, but remote URL/api_key preserved
+        assert ci_config.team.server_mode is False
+        assert ci_config.team.server_url == "https://team.example.com"
+        assert ci_config.team.api_key == "remote_token"
+        assert ci_config.team.auto_sync is True

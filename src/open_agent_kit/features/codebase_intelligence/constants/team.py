@@ -9,7 +9,7 @@ from typing import Final
 # Config keys (inside codebase_intelligence.team section)
 CI_CONFIG_KEY_TEAM: Final[str] = "team"
 CI_CONFIG_TEAM_KEY_SERVER_URL: Final[str] = "server_url"
-CI_CONFIG_TEAM_KEY_TOKEN: Final[str] = "token"
+CI_CONFIG_TEAM_KEY_API_KEY: Final[str] = "api_key"
 CI_CONFIG_TEAM_KEY_AUTO_SYNC: Final[str] = "auto_sync"
 CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: Final[str] = "sync_interval_seconds"
 CI_CONFIG_TEAM_KEY_PULL_INTERVAL: Final[str] = "pull_interval_seconds"
@@ -73,7 +73,12 @@ TEAM_API_PATH_POLICY: Final[str] = "/api/team/policy"
 TEAM_API_PATH_KEYS: Final[str] = "/api/team/keys"
 TEAM_API_PATH_SYNC_FLUSH: Final[str] = "/api/team/sync/flush"
 TEAM_API_PATH_SYNC_PULL: Final[str] = "/api/team/sync/pull"
+TEAM_API_PATH_SERVE: Final[str] = "/api/team/serve"
 TEAM_ROUTE_TAG: Final[str] = "team"
+
+# Loopback server mode
+TEAM_LOOPBACK_KEY_NAME: Final[str] = "_loopback"
+TEAM_LOOPBACK_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port}"
 
 # API key constants
 TEAM_API_KEY_PREFIX: Final[str] = "oak_team_"
@@ -122,10 +127,12 @@ TEAM_MESSAGE_KEY_NOT_FOUND: Final[str] = "API key not found: {key_id}"
 TEAM_MESSAGE_NO_KEYS: Final[str] = "No API keys found"
 TEAM_MESSAGE_NO_MEMBERS: Final[str] = "No team members found"
 TEAM_MESSAGE_SERVE_STARTING: Final[str] = "Starting daemon in team server mode on {host}:{port}"
-TEAM_MESSAGE_TOKEN_PROMPT: Final[str] = "API token"
+TEAM_MESSAGE_SERVER_ENABLED: Final[str] = "Server mode enabled. Restart required."
+TEAM_MESSAGE_SERVER_DISABLED: Final[str] = "Server mode disabled. Restart required."
+TEAM_MESSAGE_API_KEY_PROMPT: Final[str] = "Team API key"
 
-# CLI env var for team token
-TEAM_TOKEN_ENV_VAR: Final[str] = "OAK_TEAM_TOKEN"
+# CLI env var for team API key
+TEAM_API_KEY_ENV_VAR: Final[str] = "OAK_TEAM_API_KEY"
 
 # CLI daemon API URL template (reuse pattern from cloud relay)
 TEAM_CLI_API_URL_TEMPLATE: Final[str] = "http://localhost:{port}{path}"

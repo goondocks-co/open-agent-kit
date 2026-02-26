@@ -115,6 +115,7 @@ export const API_ENDPOINTS = {
     TEAM_SYNC_PULL: "/api/team/sync/pull",
     TEAM_POLICY: "/api/team/policy",
     TEAM_KEYS: "/api/team/keys",
+    TEAM_SERVE: "/api/team/serve",
 } as const;
 
 // =============================================================================

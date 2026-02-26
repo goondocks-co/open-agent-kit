@@ -192,6 +192,7 @@ async def get_status() -> dict:
             "pending_migrations": state.pending_migration_count,
         },
         "team": _get_team_status(state),
+        "cloud_relay": _get_cloud_relay_status(state),
     }
 
 
@@ -292,13 +293,63 @@ def _get_team_status(state: object) -> dict | None:
         "configured": True,
         "server_url": team_cfg.server_url,
         "connected": getattr(state, "team_sync_worker", None) is not None,
+        "server_mode": team_cfg.server_mode,
+        "members_online": 0,
     }
+
+    # Count online members when running as server
+    if team_cfg.server_mode:
+        activity_store = getattr(state, "activity_store", None)
+        if activity_store is not None:
+            try:
+                from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+                    MembershipService,
+                )
+
+                conn = activity_store._get_connection()
+                svc = MembershipService(conn_factory=lambda: conn)
+                team_status["members_online"] = len(svc.list_members())
+            except Exception:
+                logger.debug("Could not count team members", exc_info=True)
 
     sync_worker = getattr(state, "team_sync_worker", None)
     if sync_worker is not None:
         team_status["sync"] = sync_worker.get_status().model_dump()
 
     return team_status
+
+
+def _get_cloud_relay_status(state: object) -> dict | None:
+    """Get cloud relay status for the status endpoint.
+
+    Args:
+        state: DaemonState instance.
+
+    Returns:
+        Cloud relay status dictionary, or None if not connected.
+    """
+    client = getattr(state, "cloud_relay_client", None)
+    if client is None:
+        return None
+
+    relay_status = client.get_status()
+    if not relay_status.connected:
+        return None
+
+    worker_url = relay_status.worker_url
+    mcp_endpoint = None
+    if worker_url:
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CLOUD_RELAY_MCP_ENDPOINT_SUFFIX,
+        )
+
+        mcp_endpoint = worker_url + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
+
+    return {
+        "connected": True,
+        "worker_url": worker_url,
+        "mcp_endpoint": mcp_endpoint,
+    }
 
 
 @router.get("/api/logs")

@@ -390,11 +390,17 @@ def _init_team_sync(state: "DaemonState") -> None:
 
     Enables outbox writes in the activity store and starts the background
     sync worker. Non-critical: failures are logged but do not prevent startup.
+
+    Skipped in server mode: the local DB is the server, so there is no
+    remote to push to or pull from.
     """
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.auto_sync:
         return
     if not ci_config.team.server_url:
+        return
+    if ci_config.team.server_mode:
+        logger.info("Team sync skipped: this node is the server (no outbox needed)")
         return
     if not state.activity_store:
         logger.debug("Team sync skipped: no activity store")
@@ -676,7 +682,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state.indexer = None
 
     # Team server mode: create server-side tables
-    if os.environ.get("OAK_CI_TEAM_SERVER"):
+    _server_mode = os.environ.get("OAK_CI_TEAM_SERVER") or (
+        ci_config and ci_config.team.server_mode
+    )
+    if _server_mode:
         try:
             _init_team_server(state)
         except (OSError, ValueError, RuntimeError) as e:
