@@ -16,6 +16,7 @@ import typer
 from open_agent_kit.config.paths import GIT_DIR, OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
     AGENT_CLAUDE,
+    AGENT_CURSOR,
     AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT,
     CI_AUTH_SCHEME_BEARER,
     CI_TOKEN_FILE,
@@ -121,6 +122,14 @@ def ci_hook(
             input_json = {}
     except Exception:
         input_json = {}
+
+    # Auto-detect Cursor: when Cursor fires Claude-format hooks
+    # (.claude/settings.json), it pipes the same stdin data which includes
+    # cursor_version.  Cursor only reliably delivers stdin to ONE of the
+    # hook invocations per event, and that winner is typically the Claude
+    # hook.  Relabel the agent so the session is correctly attributed.
+    if input_json.get("cursor_version") and agent == AGENT_CLAUDE:
+        agent = AGENT_CURSOR
 
     # Extract common fields (universal: accept alternative field names from any agent).
     # VS Code Copilot sends camelCase fields (sessionId, conversationId, generationId)
