@@ -119,6 +119,8 @@ def _get_github_username() -> str:
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()[:MACHINE_ID_MAX_USERNAME_LENGTH]
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        # If the `gh` CLI is not available or times out, silently fall back to
+        # MACHINE_ID_FALLBACK_USERNAME below to avoid breaking backup behavior.
         pass
 
     return MACHINE_ID_FALLBACK_USERNAME
