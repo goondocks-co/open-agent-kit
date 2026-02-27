@@ -12,6 +12,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_JOIN_STATUS_APPROVED,
     TEAM_LOG_JOIN_APPROVED,
     TEAM_LOG_JOIN_REJECTED,
     TEAM_LOG_JOIN_REQUEST_CREATED,
@@ -38,6 +39,7 @@ from open_agent_kit.features.codebase_intelligence.team.protocol import (
 from open_agent_kit.features.codebase_intelligence.team.server.auth import (
     approve_key,
     create_pending_key,
+    find_key_by_hash,
     get_key_by_id,
     get_key_join_status,
     list_pending_keys,
@@ -171,8 +173,24 @@ async def request_join(req: JoinRequest) -> JoinRequestResponse:
 
     The client generates its own API key locally, computes a SHA-256 hash,
     and sends only the hash. The server stores the hash as a pending key.
+
+    Idempotent: if a non-revoked key with the same hash already exists,
+    returns its current status instead of creating a duplicate.
     """
     conn = _get_conn()
+
+    # Check for existing key with this hash (idempotent re-join)
+    existing = find_key_by_hash(conn, req.key_hash)
+    if existing and existing.revoked_at is None:
+        # Already approved — return approved status
+        if existing.approved_at is not None:
+            return JoinRequestResponse(
+                key_id=existing.id,
+                status=TEAM_JOIN_STATUS_APPROVED,
+            )
+        # Still pending — return existing key_id
+        return JoinRequestResponse(key_id=existing.id)
+
     name = f"join:{req.machine_id}"
     key_id = create_pending_key(
         conn,

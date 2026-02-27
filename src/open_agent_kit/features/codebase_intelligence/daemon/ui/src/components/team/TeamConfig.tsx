@@ -387,14 +387,40 @@ export default function TeamConfig() {
                                             Your join request has been sent. The server admin
                                             will approve or reject your access.
                                         </p>
+                                        {config?.server_url && (
+                                            <code className="text-xs text-amber-600/80 mt-1 block">
+                                                {config.server_url}
+                                            </code>
+                                        )}
                                     </div>
-                                    <Loader2 className="w-4 h-4 text-amber-600 animate-spin flex-shrink-0" />
+                                    {effectiveKeyId && (
+                                        <Loader2 className="w-4 h-4 text-amber-600 animate-spin flex-shrink-0" />
+                                    )}
                                 </div>
 
                                 {joinStatusData?.status === "rejected" && (
                                     <div className="flex items-center gap-2 text-sm text-red-600 bg-red-500/10 px-3 py-2 rounded">
                                         <AlertCircle className="h-4 w-4 flex-shrink-0" />
                                         Your join request was rejected by the server admin.
+                                    </div>
+                                )}
+
+                                <Button
+                                    variant="outline"
+                                    onClick={handleLeave}
+                                    disabled={leaveTeam.isPending}
+                                >
+                                    {leaveTeam.isPending ? (
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <LogOut className="w-4 h-4 mr-2" />
+                                    )}
+                                    Cancel &amp; Leave
+                                </Button>
+
+                                {leaveTeam.isError && (
+                                    <div className="text-sm text-red-600 bg-red-500/10 px-3 py-2 rounded">
+                                        {leaveTeam.error.message}
                                     </div>
                                 )}
                             </>

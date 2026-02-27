@@ -412,6 +412,12 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
             error=relay_status.error or CLOUD_RELAY_ERROR_CONNECTION_FAILED,
         )
 
+    # Persist auto_connect so the relay reconnects after daemon restart
+    ci_config_ac = load_ci_config(project_root)
+    ci_config_ac.cloud_relay.auto_connect = True
+    save_ci_config(project_root, ci_config_ac)
+    state.ci_config = None
+
     mcp_endpoint = _mcp_endpoint(
         worker_url, relay_config_final.custom_domain, effective_worker_name
     )
@@ -455,6 +461,18 @@ async def stop_cloud_relay() -> dict:
     finally:
         state.cloud_relay_client = None
         state.cf_account_name = None
+
+    # Clear auto_connect so relay stays off after restart
+    if state.project_root:
+        from open_agent_kit.features.codebase_intelligence.config import (
+            load_ci_config,
+            save_ci_config,
+        )
+
+        ci_config = load_ci_config(state.project_root)
+        ci_config.cloud_relay.auto_connect = False
+        save_ci_config(state.project_root, ci_config)
+        state.ci_config = None
 
     logger.info(CI_CLOUD_RELAY_LOG_DISCONNECTED)
     return {

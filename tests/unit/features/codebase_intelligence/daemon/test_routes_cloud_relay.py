@@ -385,16 +385,18 @@ class TestCloudRelayStart:
             return_value=RelayStatus(connected=True, worker_url=TEST_WORKER_URL)
         )
 
-        # load_ci_config is called 4 times in the full flow:
+        # load_ci_config is called 5 times in the full flow:
         # 1. inside scaffold phase (persist tokens)
         # 2. re-read after scaffold
         # 3. after deploy (save worker_url)
         # 4. final read for connect phase
+        # 5. persist auto_connect=True after successful connect
         configs = [
             _make_config_with(),  # 1: scaffold persist
             _make_config_with(),  # 2: re-read after scaffold
             _make_config_with(),  # 3: deploy save
             _make_config_with(worker_url=TEST_WORKER_URL),  # 4: final read
+            _make_config_with(worker_url=TEST_WORKER_URL),  # 5: auto_connect persist
         ]
 
         with (

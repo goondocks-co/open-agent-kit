@@ -333,16 +333,24 @@ async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
         ) from exc
 
     key_id = join_result.get("key_id", "")
+    join_status = join_result.get("status", "pending")
 
-    # 6. Save config: server_url set, auto_sync=False (pending), save key_id
+    # 6. Save config: server_url set, handle pending vs already-approved
     ci_config.team.server_url = server_url
-    ci_config.team.auto_sync = False  # Pending approval
-    ci_config.team.pending_key_id = key_id
+
+    if join_status == TEAM_JOIN_STATUS_APPROVED:
+        # Idempotent re-join: key was already approved on the server
+        ci_config.team.auto_sync = True
+        ci_config.team.pending_key_id = None
+    else:
+        ci_config.team.auto_sync = False  # Pending approval
+        ci_config.team.pending_key_id = key_id
+
     save_ci_config(project_root, ci_config)
     state.ci_config = None
 
     return {
-        "status": "pending_approval",
+        "status": "connected" if join_status == TEAM_JOIN_STATUS_APPROVED else "pending_approval",
         "key_id": key_id,
         "server_url": server_url,
     }
