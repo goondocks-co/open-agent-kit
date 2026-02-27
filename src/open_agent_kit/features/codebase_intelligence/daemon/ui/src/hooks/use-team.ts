@@ -383,7 +383,10 @@ export function useJoinStatus(keyId: string | null) {
     return usePowerQuery<JoinStatusResponse>({
         queryKey: teamKeys.joinStatus(keyId ?? ""),
         queryFn: ({ signal }) =>
-            fetchJson<JoinStatusResponse>(API_ENDPOINTS.TEAM_JOIN_STATUS, { signal }),
+            fetchJson<JoinStatusResponse>(
+                `${API_ENDPOINTS.TEAM_JOIN_STATUS}/${keyId}`,
+                { signal },
+            ),
         refetchInterval: JOIN_STATUS_POLL_MS,
         pollCategory: "standard",
         enabled: !!keyId,

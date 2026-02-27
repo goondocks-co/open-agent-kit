@@ -95,8 +95,10 @@ export default function TeamConfig() {
         }
     }, [joinStatusData?.status]);
 
-    const connected = status?.configured ?? false;
+    const configured = status?.configured ?? false;
     const isServerMode = config?.server_mode ?? false;
+    // Actually connected and syncing (not just configured + pending)
+    const connected = configured && !isPendingApproval;
     // Connected to a remote server (not loopback)
     const isRemoteConnected = connected && !isServerMode;
 

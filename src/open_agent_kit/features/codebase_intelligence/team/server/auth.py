@@ -381,6 +381,39 @@ def list_pending_keys(conn: sqlite3.Connection) -> list[ApiKeyInfo]:
     ]
 
 
+def get_key_by_id(conn: sqlite3.Connection, key_id: str) -> ApiKeyInfo | None:
+    """Look up an API key by its ID.
+
+    Args:
+        conn: SQLite connection with team_api_keys table.
+        key_id: The key ID to look up.
+
+    Returns:
+        ApiKeyInfo if found, None otherwise.
+    """
+    row = conn.execute(
+        "SELECT id, name, machine_id, display_name, created_at, "
+        "last_used_at, revoked_at, approved_at, permissions "
+        "FROM team_api_keys WHERE id = ?",
+        (key_id,),
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return ApiKeyInfo(
+        id=row[0],
+        name=row[1],
+        machine_id=row[2],
+        display_name=row[3],
+        created_at=row[4],
+        last_used_at=row[5],
+        revoked_at=row[6],
+        approved_at=row[7],
+        permissions=row[8],
+    )
+
+
 def get_key_join_status(conn: sqlite3.Connection, key_id: str) -> str | None:
     """Get the join status for a key by ID.
 

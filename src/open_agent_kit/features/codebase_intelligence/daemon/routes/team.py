@@ -337,6 +337,7 @@ async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
     # 6. Save config: server_url set, auto_sync=False (pending), save key_id
     ci_config.team.server_url = server_url
     ci_config.team.auto_sync = False  # Pending approval
+    ci_config.team.pending_key_id = key_id
     save_ci_config(project_root, ci_config)
     state.ci_config = None
 
@@ -362,6 +363,7 @@ async def leave_team() -> dict[str, str]:
     ci_config.team.server_url = None
     ci_config.team.api_key = None
     ci_config.team.auto_sync = False
+    ci_config.team.pending_key_id = None
     save_ci_config(project_root, ci_config)
 
     state = get_state()
@@ -417,6 +419,7 @@ async def get_team_status() -> TeamStatusResponse:
         project_id=project_id,
         sync=sync_status,
         pending_approval=pending_approval,
+        pending_key_id=ci_config.team.pending_key_id if pending_approval else None,
     )
 
 
@@ -761,11 +764,34 @@ async def approve_join(key_id: str) -> dict[str, bool]:
     from open_agent_kit.features.codebase_intelligence.team.server.auth import (
         approve_key as _approve_key,
     )
+    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
+        get_key_by_id as _get_key_by_id,
+    )
 
     conn = store._get_connection()
+
+    # Look up key info before approving so we can register the member
+    key_info = _get_key_by_id(conn, key_id)
+    if not key_info:
+        raise HTTPException(status_code=404, detail="Pending key not found")
+
     success = _approve_key(conn, key_id)
     if not success:
         raise HTTPException(status_code=404, detail="Pending key not found")
+
+    # Register the member immediately so they appear in the members list
+    if key_info.machine_id:
+        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+            MembershipService,
+        )
+
+        svc = MembershipService(conn_factory=lambda: conn)
+        svc.register(
+            machine_id=key_info.machine_id,
+            display_name=key_info.display_name or key_info.machine_id,
+            project_id=key_info.machine_id,  # Updated on first sync
+        )
+
     return {"approved": True}
 
 
@@ -869,6 +895,7 @@ async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
 
         fresh_config = load_ci_config(project_root)
         fresh_config.team.auto_sync = True
+        fresh_config.team.pending_key_id = None  # Clear pending state
         save_ci_config(project_root, fresh_config)
         state.ci_config = None
 

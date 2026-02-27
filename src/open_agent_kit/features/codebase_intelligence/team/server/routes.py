@@ -38,6 +38,7 @@ from open_agent_kit.features.codebase_intelligence.team.protocol import (
 from open_agent_kit.features.codebase_intelligence.team.server.auth import (
     approve_key,
     create_pending_key,
+    get_key_by_id,
     get_key_join_status,
     list_pending_keys,
     reject_key,
@@ -210,9 +211,25 @@ async def approve_join(
 ) -> dict[str, bool]:
     """Approve a pending join request -- authenticated (server admin)."""
     conn = _get_conn()
+
+    # Look up key info before approving so we can register the member
+    key_info = get_key_by_id(conn, key_id)
+    if not key_info:
+        raise HTTPException(status_code=404, detail="Pending key not found")
+
     success = approve_key(conn, key_id)
     if not success:
         raise HTTPException(status_code=404, detail="Pending key not found")
+
+    # Register the member immediately so they appear in the members list
+    if key_info.machine_id:
+        svc = _get_membership_service()
+        svc.register(
+            machine_id=key_info.machine_id,
+            display_name=key_info.display_name or key_info.machine_id,
+            project_id=key_info.machine_id,  # Updated on first sync
+        )
+
     logger.info(TEAM_LOG_JOIN_APPROVED.format(key_id=key_id))
     return {"approved": True}
 

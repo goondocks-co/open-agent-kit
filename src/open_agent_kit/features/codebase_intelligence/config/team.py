@@ -10,6 +10,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
     CI_CONFIG_TEAM_KEY_BIND_HOST,
     CI_CONFIG_TEAM_KEY_BIND_PORT,
+    CI_CONFIG_TEAM_KEY_PENDING_KEY_ID,
     CI_CONFIG_TEAM_KEY_PROJECT_SLUG,
     CI_CONFIG_TEAM_KEY_PULL_INTERVAL,
     CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME,
@@ -64,6 +65,7 @@ class TeamConfig:
         relay_worker_url: URL of the relay worker (relay transport only).
         relay_worker_name: Name of the relay worker.
         server_side_llm: Whether the server provides LLM summarization.
+        pending_key_id: Key ID from a pending join request (for status polling).
     """
 
     server_url: str | None = None
@@ -79,6 +81,7 @@ class TeamConfig:
     relay_worker_url: str | None = None
     relay_worker_name: str | None = None
     server_side_llm: bool = False
+    pending_key_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -174,6 +177,7 @@ class TeamConfig:
             relay_worker_url=data.get(CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL),
             relay_worker_name=data.get(CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME),
             server_side_llm=data.get(CI_CONFIG_TEAM_KEY_SERVER_SIDE_LLM, False),
+            pending_key_id=data.get(CI_CONFIG_TEAM_KEY_PENDING_KEY_ID),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -192,4 +196,5 @@ class TeamConfig:
             CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL: self.relay_worker_url,
             CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME: self.relay_worker_name,
             CI_CONFIG_TEAM_KEY_SERVER_SIDE_LLM: self.server_side_llm,
+            CI_CONFIG_TEAM_KEY_PENDING_KEY_ID: self.pending_key_id,
         }
