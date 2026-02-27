@@ -410,9 +410,17 @@ class CloudRelayClient(RelayClient):
         Args:
             request: The HTTP request message from the worker.
         """
+        import os
+
         try:
             port = self._daemon_port
             url = CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE.format(port=port, path=request.path)
+
+            # Inject daemon auth token so TokenAuthMiddleware passes the request
+            fwd_headers = dict(request.headers) if request.headers else {}
+            auth_token = os.environ.get(CI_AUTH_ENV_VAR)
+            if auth_token:
+                fwd_headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
 
             async with httpx.AsyncClient(
                 timeout=CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
@@ -420,7 +428,7 @@ class CloudRelayClient(RelayClient):
                 resp = await client.request(
                     method=request.method,
                     url=url,
-                    headers=request.headers,
+                    headers=fwd_headers,
                     content=request.body,
                 )
 

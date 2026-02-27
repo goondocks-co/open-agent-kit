@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-27]
+
+### Added
+
+- **Oak Teams single-page Join flow** — redesigned team onboarding UX replaces the multi-step Cloudflare-Worker-relay approach with a single seamless flow; a client enters the server URL and receives a bearer token in one page, eliminating manual relay configuration — [Plan Oak Teams single‑page Join flow architecture](http://localhost:38388/activity/sessions/ae7106de-16a8-491c-97ce-c2f8ce41f943), [Implement Oak Teams single‑page Join flow API endpoint](http://localhost:38388/activity/sessions/38278353-f814-46f2-a9f7-5a68a807dbc9)
+
+### Notes
+
+> **Gotcha**: The Join flow requires the server's auto-generated machine key to be present in the config override file (`config/team.py`). A missing or corrupted file causes join requests to be rejected with a 404 from the relay. Verify the file exists before testing the flow.
+
+> **Gotcha**: The Join approval flow is synchronous — the daemon writes approval immediately to SQLite but the client UI does not poll for status. Users see no feedback until a manual refresh.
+
+> **Gotcha**: Do not use the Join flow on the machine acting as the team server. This causes authentication conflicts. Client machines must join from a separate device using a member API key generated on the server.
+
 ## [2026-02-26]
 
 ### Added
@@ -14,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Oak Teams outbox schema and sync worker** — new `outbox` table and database migration replace the previous git-based CI sync with a self-hosted team server; a background sync worker queues events for guaranteed ordered delivery — [Implement outbox schema and sync worker for Oak Teams](http://localhost:38388/activity/sessions/9407ac76-5b89-4b48-89f4-89e0ec1fb68c), [Add outbox schema and migration for Oak Teams sync](http://localhost:38388/activity/sessions/aceb5769-42bb-41f3-820d-ba1a544aa685)
 - **Persistent team and relay status banner** — new banner beneath `UpdateBanner` in `Layout.tsx` surfaces live team and cloud relay health across every page; companion dashboard tiles provide an at-a-glance health view on the daemon home screen — [Update UI with persistent team status banner and dashboard tiles](http://localhost:38388/activity/sessions/31220976-a1a8-4ba8-9f7a-fb0fcb7230f4), [Add persistent team status banner and dashboard tiles via enriched status API](http://localhost:38388/activity/sessions/607d0ad6-5ea1-434a-8468-e0ffe6da41f6)
 - **Centralized feature-flag system** — Oak API refactored around a unified flag registry; feature availability is now controlled via typed, testable guards rather than ad-hoc conditionals, and new flags can be rolled out without code-path changes _(part of the 2/25 Oak API refactoring, not previously documented)_ — [Refactor Oak API and implement centralized feature‑flag system](http://localhost:38388/activity/sessions/f53e0953-a76f-41b9-8858-cdc386156d14)
+- **Secure bearer token for team identity** — team join tokens upgraded from plain unique strings to cryptographically secure bearer tokens; the loopback API key is now persisted on first creation and reused across daemon restarts, eliminating unbounded key proliferation in the database — [Implement secure bearer token generation and storage for Oak](http://localhost:38388/activity/sessions/0b893a97-a339-4c8b-830b-2ff9a869e2e5)
 
 ### Fixed
 
@@ -33,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Gotcha**: The persistent team-status banner polls the daemon's enriched `/team` endpoint, which requires the `X-OpenAgent-Team-Key` header. A missing or invalid key returns a generic 401 with no detail — verify the key is set in `.oak/config.yaml`.
 
 > **Gotcha**: `SESSION_SECRET` must be present in the environment where Cursor hooks execute. If absent, the hook drops the session silently and logs a `[DROP]` message. Check `.cursor/hooks.json` environment configuration if Cursor sessions are not appearing in the activity log.
+
+> **Gotcha**: Oak Teams API keys serve two purposes — loopback (internal daemon communication) and user-generated (external access) — both stored in the same SQLite table. A missing unique constraint or column mismatch can cause silent key duplication. Inspect [`team/server/auth.py`](src/open_agent_kit/features/codebase_intelligence/team/server/auth.py) if duplicate loopback keys appear after a daemon restart.
 
 ## [2026-02-25]
 
