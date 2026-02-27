@@ -366,7 +366,7 @@ class TestJsonNeedsUpgrade:
         assert result.success is True
         config = json.loads((tmp_path / ".claude" / "settings.local.json").read_text())
         command = config["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-        assert command == "oak-dev ci hook SessionStart --agent claude"
+        assert "oak-dev ci hook SessionStart --agent claude" in command
 
     def test_json_install_replaces_previous_cli_variant_hooks(self, tmp_path: Path):
         """Installing hooks should replace previously managed CLI variants."""

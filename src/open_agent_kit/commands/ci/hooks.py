@@ -238,6 +238,18 @@ def ci_hook(
         )
 
         cli_bin = resolve_ci_cli_command(project_root)
+
+        # Resolve bare command names to absolute paths so the daemon can
+        # start even when PATH is stale (e.g. inside tmux).  The hook
+        # command itself runs with augmented PATH, so shutil.which()
+        # succeeds here even if the user's default PATH lacks the binary.
+        if not os.path.isabs(cli_bin):
+            import shutil
+
+            resolved = shutil.which(cli_bin)
+            if resolved:
+                cli_bin = resolved
+
         try:
             import subprocess
 

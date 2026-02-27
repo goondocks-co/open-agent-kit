@@ -178,7 +178,11 @@ class HooksInstaller:
 
     def _rewrite_plugin_content(self, content: str) -> str:
         """Render plugin source command placeholder to the configured CLI."""
-        return content.replace(HOOK_CLI_COMMAND_PLACEHOLDER, self.cli_command)
+        from open_agent_kit.features.codebase_intelligence.hooks.strategies import (
+            _rewrite_plugin_content,
+        )
+
+        return _rewrite_plugin_content(content, self.cli_command)
 
     def _load_hook_template(self) -> dict[str, Any] | None:
         """Load hook template for this agent (delegates to strategies module)."""

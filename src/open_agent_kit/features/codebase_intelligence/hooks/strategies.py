@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -30,6 +31,25 @@ from open_agent_kit.features.codebase_intelligence.hooks.installer import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# POSIX PATH augmentation (tmux compatibility)
+# ---------------------------------------------------------------------------
+# tmux inherits the environment at server startup time.  If the user installs
+# oak *after* starting tmux, or tmux starts a login shell with a different
+# PATH, ``oak`` may not be found.  The hook commands all end with
+# ``2>/dev/null || true``, so this failure is completely silent.
+#
+# Prepending common install directories to PATH in the rendered hook command
+# ensures the binary is discovered even when PATH is stale.  The augmentation
+# is prepended (highest priority) and the original PATH is preserved, so
+# existing installs in other locations continue to work.
+#
+# Covered install methods:
+#   - $HOME/.local/bin  — pip install --user, uv tool install, pipx
+#   - /opt/homebrew/bin — Homebrew on Apple Silicon macOS
+#   - /usr/local/bin    — Homebrew on Intel macOS, system-wide pip
+_POSIX_HOOK_PATH_DIRS = "$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
 
 
 # ---------------------------------------------------------------------------
@@ -87,19 +107,43 @@ class HookStrategy(Protocol):
 
 
 def _rewrite_plugin_content(content: str, cli_command: str) -> str:
-    """Render plugin source command placeholder to the configured CLI."""
-    return content.replace(HOOK_CLI_COMMAND_PLACEHOLDER, cli_command)
+    """Render plugin source command placeholder to the configured CLI.
+
+    On POSIX, also prepends PATH augmentation to the CLI command so
+    the binary is findable in tmux and similar stale-PATH environments.
+    """
+    if os.name != "nt" and not os.path.isabs(cli_command):
+        replacement = f'PATH="{_POSIX_HOOK_PATH_DIRS}:$PATH" {cli_command}'
+    else:
+        replacement = cli_command
+    return content.replace(HOOK_CLI_COMMAND_PLACEHOLDER, replacement)
 
 
 def _render_hook_template_commands(data: dict[str, Any], cli_command: str) -> dict[str, Any]:
-    """Render hook command placeholders in hook template payloads."""
+    """Render hook command placeholders in hook template payloads.
+
+    On POSIX systems, also prepends ``PATH`` augmentation so the ``oak``
+    binary is findable in environments where PATH is stale (e.g. tmux
+    sessions started before oak was installed).  Skipped for ``powershell``
+    keys and when the CLI command is already an absolute path.
+    """
+    # Build PATH augmentation prefix for POSIX shell commands.
+    # Skip when the CLI command is an absolute path (it doesn't need PATH).
+    if os.name != "nt" and not os.path.isabs(cli_command):
+        path_prefix = f'PATH="{_POSIX_HOOK_PATH_DIRS}:$PATH" '
+    else:
+        path_prefix = ""
 
     def _render_node(node: Any) -> Any:
         if isinstance(node, dict):
             rendered: dict[str, Any] = {}
             for key, value in node.items():
                 if key in HOOK_COMMAND_KEYS and isinstance(value, str):
-                    rendered[key] = value.replace(HOOK_CLI_COMMAND_PLACEHOLDER, cli_command)
+                    command = value.replace(HOOK_CLI_COMMAND_PLACEHOLDER, cli_command)
+                    # Augment PATH for POSIX shell commands (not powershell)
+                    if path_prefix and key != "powershell":
+                        command = f"{path_prefix}{command}"
+                    rendered[key] = command
                 else:
                     rendered[key] = _render_node(value)
             return rendered
