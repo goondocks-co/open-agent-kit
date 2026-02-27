@@ -23,7 +23,9 @@ import {
     useJoinTeam,
     useLeaveTeam,
     useToggleServerMode,
+    useJoinStatus,
 } from "@/hooks/use-team";
+import type { TeamJoinResponse } from "@/hooks/use-team";
 import { useRestart } from "@/hooks/use-restart";
 import {
     Server,
@@ -32,14 +34,13 @@ import {
     AlertCircle,
     LogIn,
     LogOut,
-    Eye,
-    EyeOff,
     Settings,
     RefreshCw,
     Copy,
     Check,
     Power,
     PowerOff,
+    Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -67,9 +68,8 @@ export default function TeamConfig() {
 
     // Join form state
     const [joinUrl, setJoinUrl] = useState("");
-    const [joinToken, setJoinToken] = useState("");
-    const [showToken, setShowToken] = useState(false);
     const [joinError, setJoinError] = useState<string | null>(null);
+    const [pendingKeyId, setPendingKeyId] = useState<string | null>(null);
 
     // Config form state
     const [autoSync, setAutoSync] = useState(false);
@@ -82,6 +82,18 @@ export default function TeamConfig() {
     const [serverUrl, setServerUrl] = useState<string | null>(null);
     const [showRestartPrompt, setShowRestartPrompt] = useState(false);
     const [copied, setCopied] = useState(false);
+
+    // Poll join status when waiting for approval
+    const effectiveKeyId = pendingKeyId ?? status?.pending_key_id ?? null;
+    const isPendingApproval = status?.pending_approval ?? !!effectiveKeyId;
+    const { data: joinStatusData } = useJoinStatus(effectiveKeyId);
+
+    // When join is approved, clear pending state and refresh
+    useEffect(() => {
+        if (joinStatusData?.status === "approved") {
+            setPendingKeyId(null);
+        }
+    }, [joinStatusData?.status]);
 
     const connected = status?.configured ?? false;
     const isServerMode = config?.server_mode ?? false;
@@ -128,18 +140,20 @@ export default function TeamConfig() {
     };
 
     const handleJoin = async () => {
-        if (!joinUrl.trim() || !joinToken.trim()) {
-            setJoinError("Both server URL and API key are required.");
+        if (!joinUrl.trim()) {
+            setJoinError("Server URL is required.");
             return;
         }
         setJoinError(null);
         try {
-            await joinTeam.mutateAsync({
+            const result: TeamJoinResponse = await joinTeam.mutateAsync({
                 server_url: joinUrl.trim(),
-                api_key: joinToken.trim(),
             });
-            setJoinUrl("");
-            setJoinToken("");
+            if (result.status === "pending_approval" && result.key_id) {
+                setPendingKeyId(result.key_id);
+            } else {
+                setJoinUrl("");
+            }
         } catch (err) {
             setJoinError(err instanceof Error ? err.message : "Failed to join team");
         }
@@ -262,10 +276,10 @@ export default function TeamConfig() {
                                     <p className="text-xs text-muted-foreground">
                                         The server URL above is local. To let remote teammates connect,
                                         set up a{" "}
-                                        <Link to="/cloud" className="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                                        <Link to="/team/connectivity" className="text-blue-600 dark:text-blue-400 underline hover:no-underline">
                                             Cloud Relay
                                         </Link>{" "}
-                                        and share that URL instead.
+                                        in the Connectivity tab and share that URL instead.
                                     </p>
                                 </div>
 
@@ -319,7 +333,9 @@ export default function TeamConfig() {
                         <CardDescription>
                             {connected
                                 ? "You are connected to a team server. You can disconnect below."
-                                : "Enter your team server URL and API key to connect."}
+                                : isPendingApproval
+                                    ? "Your join request is awaiting approval from the server admin."
+                                    : "Enter your team server URL to request access."}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -357,53 +373,47 @@ export default function TeamConfig() {
                                     </div>
                                 )}
                             </>
+                        ) : isPendingApproval ? (
+                            <>
+                                <div className="flex items-center gap-3 p-4 rounded-lg border border-amber-500/30 bg-amber-500/10">
+                                    <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                                    <div>
+                                        <div className="text-sm font-medium text-amber-700">
+                                            Waiting for approval
+                                        </div>
+                                        <p className="text-xs text-amber-600 mt-0.5">
+                                            Your join request has been sent. The server admin
+                                            will approve or reject your access.
+                                        </p>
+                                    </div>
+                                    <Loader2 className="w-4 h-4 text-amber-600 animate-spin flex-shrink-0" />
+                                </div>
+
+                                {joinStatusData?.status === "rejected" && (
+                                    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-500/10 px-3 py-2 rounded">
+                                        <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                        Your join request was rejected by the server admin.
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             <>
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">Server URL</label>
-                                        <input
-                                            type="url"
-                                            value={joinUrl}
-                                            onChange={(e) => {
-                                                setJoinUrl(e.target.value);
-                                                setJoinError(null);
-                                            }}
-                                            placeholder="https://team-server.example.com"
-                                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                            disabled={joinTeam.isPending}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">API Key</label>
-                                        <div className="relative">
-                                            <input
-                                                type={showToken ? "text" : "password"}
-                                                value={joinToken}
-                                                onChange={(e) => {
-                                                    setJoinToken(e.target.value);
-                                                    setJoinError(null);
-                                                }}
-                                                placeholder="Your team authentication API key"
-                                                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                                disabled={joinTeam.isPending}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowToken(!showToken)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                                tabIndex={-1}
-                                                aria-label={showToken ? "Hide token" : "Show token"}
-                                            >
-                                                {showToken ? (
-                                                    <EyeOff className="w-4 h-4" />
-                                                ) : (
-                                                    <Eye className="w-4 h-4" />
-                                                )}
-                                            </button>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Server URL</label>
+                                    <input
+                                        type="url"
+                                        value={joinUrl}
+                                        onChange={(e) => {
+                                            setJoinUrl(e.target.value);
+                                            setJoinError(null);
+                                        }}
+                                        placeholder="https://team-server.example.com"
+                                        className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                        disabled={joinTeam.isPending}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        An API key will be generated automatically when the server admin approves your request.
+                                    </p>
                                 </div>
 
                                 {joinError && (
@@ -415,14 +425,14 @@ export default function TeamConfig() {
 
                                 <Button
                                     onClick={handleJoin}
-                                    disabled={joinTeam.isPending || !joinUrl.trim() || !joinToken.trim()}
+                                    disabled={joinTeam.isPending || !joinUrl.trim()}
                                 >
                                     {joinTeam.isPending ? (
                                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                     ) : (
                                         <LogIn className="w-4 h-4 mr-2" />
                                     )}
-                                    Join Team
+                                    Request to Join
                                 </Button>
                             </>
                         )}

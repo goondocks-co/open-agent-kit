@@ -25,11 +25,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CLOUD_RELAY_LOG_CONNECTED,
     CI_DATA_DIR,
     CI_LOG_FILE,
-    CI_TUNNEL_ERROR_START_UNKNOWN,
-    CI_TUNNEL_LOG_ACTIVE,
-    CI_TUNNEL_LOG_AUTO_START,
-    CI_TUNNEL_LOG_AUTO_START_FAILED,
-    CI_TUNNEL_LOG_AUTO_START_UNAVAILABLE,
     SHUTDOWN_TASK_TIMEOUT_SECONDS,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
@@ -43,45 +38,44 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _init_tunnel(state: "DaemonState", project_root: Path) -> None:
-    """Auto-start tunnel if configured.
+def _ensure_team_key(state: "DaemonState", project_root: Path) -> None:
+    """Ensure a local team API key exists in the user config.
+
+    Auto-generates ``team_<random>`` if ``ci_config.team.api_key`` is
+    ``None``.  The key is saved to ``config.{machine_id}.yaml`` (user-
+    classified) so it persists across restarts and is never committed.
 
     Non-critical: failures are logged but do not prevent startup.
     """
+    import secrets
+
+    from open_agent_kit.features.codebase_intelligence.constants.team import (
+        TEAM_AUTO_KEY_PREFIX,
+        TEAM_AUTO_KEY_RANDOM_BYTES,
+        TEAM_LOG_KEY_GENERATED,
+        TEAM_LOG_KEY_PRESERVED,
+    )
+
     ci_config = state.ci_config
-    if not ci_config or not ci_config.tunnel.auto_start:
+    if ci_config is None:
         return
 
-    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
-        get_project_port,
-    )
-    from open_agent_kit.features.codebase_intelligence.tunnel.factory import (
-        create_tunnel_provider,
-    )
+    if ci_config.team.api_key:
+        logger.debug(TEAM_LOG_KEY_PRESERVED)
+        return
 
-    logger.info(CI_TUNNEL_LOG_AUTO_START)
     try:
-        provider = create_tunnel_provider(
-            provider=ci_config.tunnel.provider,
-            cloudflared_path=ci_config.tunnel.cloudflared_path,
-            ngrok_path=ci_config.tunnel.ngrok_path,
-        )
-        if not provider.is_available:
-            logger.warning(CI_TUNNEL_LOG_AUTO_START_UNAVAILABLE.format(provider=provider.name))
-            return
+        from open_agent_kit.features.codebase_intelligence.config import save_ci_config
 
-        ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
-        port = get_project_port(project_root, ci_data_dir)
-        status = provider.start(port)
-        if status.active and status.public_url:
-            state.tunnel_provider = provider
-            state.add_cors_origin(status.public_url)
-            logger.info(CI_TUNNEL_LOG_ACTIVE.format(public_url=status.public_url))
-        else:
-            error_detail = status.error or CI_TUNNEL_ERROR_START_UNKNOWN
-            logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=error_detail))
+        ci_config.team.api_key = (
+            f"{TEAM_AUTO_KEY_PREFIX}{secrets.token_hex(TEAM_AUTO_KEY_RANDOM_BYTES)}"
+        )
+        save_ci_config(project_root, ci_config)
+        # Invalidate cached config so subsequent reads pick up the change
+        state.ci_config = None
+        logger.info(TEAM_LOG_KEY_GENERATED)
     except (OSError, ValueError, RuntimeError) as e:
-        logger.warning(CI_TUNNEL_LOG_AUTO_START_FAILED.format(error=e))
+        logger.warning(f"Failed to generate team API key: {e}")
 
 
 async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
@@ -455,12 +449,14 @@ def _init_team_server(state: "DaemonState") -> None:
 
     Only called when OAK_CI_TEAM_SERVER env var is set.
     Tables are created idempotently (IF NOT EXISTS).
+    Also runs column migrations for existing databases.
     """
     from open_agent_kit.features.codebase_intelligence.constants.team import (
         TEAM_SERVER_LOG_INIT,
     )
     from open_agent_kit.features.codebase_intelligence.team.server.auth import (
         TEAM_API_KEYS_DDL,
+        migrate_api_keys_table,
     )
     from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
         TEAM_EVENTS_DDL,
@@ -477,6 +473,10 @@ def _init_team_server(state: "DaemonState") -> None:
     conn.executescript(TEAM_API_KEYS_DDL)
     conn.executescript(TEAM_MEMBERS_DDL)
     conn.executescript(TEAM_EVENTS_DDL)
+
+    # Migrate existing tables to add new columns (idempotent)
+    migrate_api_keys_table(conn)
+
     logger.info(TEAM_SERVER_LOG_INIT)
 
 
@@ -519,20 +519,7 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.agent_scheduler = None
 
-    # 4. Stop tunnel if active
-    if state.tunnel_provider:
-        logger.info("Stopping tunnel...")
-        try:
-            status = state.tunnel_provider.get_status()
-            if status.public_url:
-                state.remove_cors_origin(status.public_url)
-            state.tunnel_provider.stop()
-        except (RuntimeError, OSError) as e:
-            logger.warning(f"Error stopping tunnel: {e}")
-        finally:
-            state.tunnel_provider = None
-
-    # 4b. Stop team sync worker
+    # 4. Stop team sync worker
     if state.team_sync_worker:
         logger.info("Stopping team sync worker...")
         try:
@@ -628,7 +615,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_redaction(ci_data_dir)
 
     # --- Subsystem init (order matters: embedding -> vector store -> activity -> agents) ---
-    _init_tunnel(state, project_root)
+    _ensure_team_key(state, project_root)
     await _init_cloud_relay(state, project_root)
 
     provider_available = _init_embedding(state, project_root)

@@ -6,8 +6,16 @@
  */
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTeamMembers, useTeamStatus } from "@/hooks/use-team";
-import { Users, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+    useTeamMembers,
+    useTeamStatus,
+    useTeamConfig,
+    usePendingJoins,
+    useApproveJoin,
+    useRejectJoin,
+} from "@/hooks/use-team";
+import { Users, AlertCircle, Check, X, Loader2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime, TIME_UNITS } from "@/lib/constants";
 
@@ -65,12 +73,118 @@ function PresenceIndicator({ state }: { state: PresenceState }) {
 }
 
 // =============================================================================
+// Pending Join Requests (server mode)
+// =============================================================================
+
+function PendingJoinRequests() {
+    const { data: pending, isLoading } = usePendingJoins();
+    const approveJoin = useApproveJoin();
+    const rejectJoin = useRejectJoin();
+
+    if (isLoading) {
+        return (
+            <Card>
+                <CardContent className="flex items-center justify-center py-6">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (!pending || pending.length === 0) return null;
+
+    return (
+        <Card className="border-amber-500/30">
+            <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Clock className="h-4 w-4 text-amber-600" />
+                    Pending Join Requests
+                </CardTitle>
+                <CardDescription>
+                    These nodes have requested to join your team. Approve to grant access.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+                <div className="border-t divide-y">
+                    {/* Table header */}
+                    <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-medium text-muted-foreground bg-amber-500/5">
+                        <div>Node</div>
+                        <div>Machine ID</div>
+                        <div>Requested</div>
+                        <div className="text-right">Actions</div>
+                    </div>
+
+                    {/* Table rows */}
+                    {pending.map((entry) => (
+                        <div
+                            key={entry.key_id}
+                            className="grid grid-cols-4 gap-4 px-6 py-3 items-center hover:bg-accent/5"
+                        >
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                                    <Users className="h-4 w-4 text-amber-600" />
+                                </div>
+                                <div className="text-sm font-medium truncate">
+                                    {entry.display_name || entry.machine_id || "Unknown"}
+                                </div>
+                            </div>
+                            <div>
+                                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                                    {entry.machine_id || "n/a"}
+                                </code>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                                {entry.created_at
+                                    ? formatRelativeTime(entry.created_at)
+                                    : "Unknown"}
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-green-600 border-green-500/30 hover:bg-green-500/10"
+                                    onClick={() => approveJoin.mutate(entry.key_id)}
+                                    disabled={approveJoin.isPending || rejectJoin.isPending}
+                                >
+                                    {approveJoin.isPending ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                        <Check className="h-3 w-3 mr-1" />
+                                    )}
+                                    Approve
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-red-600 border-red-500/30 hover:bg-red-500/10"
+                                    onClick={() => rejectJoin.mutate(entry.key_id)}
+                                    disabled={approveJoin.isPending || rejectJoin.isPending}
+                                >
+                                    {rejectJoin.isPending ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                        <X className="h-3 w-3 mr-1" />
+                                    )}
+                                    Reject
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+// =============================================================================
 // Main Component
 // =============================================================================
 
 export default function TeamMembers() {
     const { data: status } = useTeamStatus();
+    const { data: config } = useTeamConfig();
     const { data: membersData, isLoading, isError, error } = useTeamMembers();
+    const isServerMode = config?.server_mode ?? false;
 
     const configured = status?.configured ?? false;
     const members = membersData?.members ?? [];
@@ -110,6 +224,9 @@ export default function TeamMembers() {
 
     return (
         <div className="space-y-4">
+            {/* Pending join requests (server mode only) */}
+            {isServerMode && <PendingJoinRequests />}
+
             {/* Error banner */}
             {(isError || fetchError) && (
                 <div className="flex items-center gap-2 p-3 rounded-md bg-red-500/10 text-red-600 text-sm">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, Cloud, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText } from "lucide-react";
+import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { usePowerState } from "@/hooks/use-power-state";
@@ -86,7 +86,6 @@ export function Layout() {
         { to: "/activity", icon: Activity, label: "Activity" },
         { to: "/team", icon: Users, label: "Team" },
         { to: "/agents", icon: Bot, label: "Agents" },
-        { to: "/cloud", icon: Cloud, label: "Cloud" },
         { to: "/governance", icon: Shield, label: "Governance" },
         { to: "/config", icon: Settings, label: "Configuration" },
         { to: "/logs", icon: ScrollText, label: "Logs" },

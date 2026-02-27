@@ -26,9 +26,6 @@ codebase_intelligence:
     enabled: true
     executor_cache_size: 100
     max_turns: 50
-    provider_base_url: null
-    provider_model: null
-    provider_type: cloud
     scheduler_interval_seconds: 60
     timeout_seconds: 600
     background_processing_workers: 4
@@ -160,13 +157,10 @@ codebase_intelligence:
       sync_prompts: true
       allow_server_llm: false
   team:
-    server_url: null
-    auto_sync: false
     sync_interval_seconds: 3
     pull_interval_seconds: 15
     project_slug: null
     transport: direct
-    server_mode: false
     bind_host: 127.0.0.1
     bind_port: 8600
     relay_worker_url: null

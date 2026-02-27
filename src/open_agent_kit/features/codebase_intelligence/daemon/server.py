@@ -156,7 +156,6 @@ def create_app(
         restart,
         schedules,
         search,
-        tunnel,
         ui,
     )
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
@@ -191,7 +190,6 @@ def create_app(
     app.include_router(devtools.router)
     app.include_router(devtools_processing.router)
     app.include_router(backup.router)
-    app.include_router(tunnel.router)
     app.include_router(cloud_relay.router)
     app.include_router(restart.router)
     app.include_router(governance.router)

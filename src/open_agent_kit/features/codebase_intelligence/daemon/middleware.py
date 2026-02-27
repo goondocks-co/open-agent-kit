@@ -1,7 +1,7 @@
 """Middleware for the CI daemon.
 
 Includes:
-- DynamicCORSMiddleware: Runtime-configurable CORS for tunnel URLs.
+- DynamicCORSMiddleware: Runtime-configurable CORS for dynamic origins (e.g. cloud relay).
 - TokenAuthMiddleware: Bearer token authentication for /api/* routes.
 - RequestSizeLimitMiddleware: Content-Length enforcement to prevent memory exhaustion.
 """
@@ -74,7 +74,7 @@ class DynamicCORSMiddleware(CORSMiddleware):
     """CORS middleware that checks both static and dynamic origins.
 
     Static origins (localhost) are configured at startup via the parent class.
-    Dynamic origins (tunnel URLs) are read from DaemonState at request time.
+    Dynamic origins (e.g. cloud relay URLs) are read from DaemonState at request time.
     """
 
     def __init__(
@@ -114,7 +114,7 @@ class DynamicCORSMiddleware(CORSMiddleware):
         if origin in self._static_origins:
             return True
 
-        # Check dynamic origins (tunnel URLs)
+        # Check dynamic origins (cloud relay URLs)
         dynamic_origins = get_state().get_dynamic_cors_origins()
         return origin in dynamic_origins
 

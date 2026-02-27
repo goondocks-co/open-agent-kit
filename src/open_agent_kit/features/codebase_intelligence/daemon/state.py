@@ -52,7 +52,6 @@ if TYPE_CHECKING:
         MembershipService,
     )
     from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
-    from open_agent_kit.features.codebase_intelligence.tunnel.base import TunnelProvider
 
 
 @dataclass
@@ -197,8 +196,6 @@ class DaemonState:
     last_auto_backup: float | None = None
     # Authentication token for API security (set from OAK_CI_TOKEN env var)
     auth_token: str | None = None
-    # Tunnel sharing
-    tunnel_provider: "TunnelProvider | None" = None
     # Cloud MCP Relay
     cloud_relay_client: "RelayClient | None" = None
     cf_account_name: str | None = None
@@ -410,10 +407,10 @@ class DaemonState:
         return False
 
     def add_cors_origin(self, origin: str) -> None:
-        """Add a dynamic CORS origin (e.g. tunnel URL).
+        """Add a dynamic CORS origin (e.g. cloud relay URL).
 
         Args:
-            origin: Origin URL to allow (e.g. "https://xxx.trycloudflare.com").
+            origin: Origin URL to allow (e.g. "https://relay.example.com").
         """
         with self._cors_lock:
             self._dynamic_cors_origins.add(origin)
@@ -573,7 +570,6 @@ class DaemonState:
         self.interactive_session_manager = None
         self.last_auto_backup = None
         self.auth_token = None
-        self.tunnel_provider = None
         self.cloud_relay_client = None
         self.cf_account_name = None
         self.acp_server_pid = None

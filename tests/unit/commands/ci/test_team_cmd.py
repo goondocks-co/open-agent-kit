@@ -5,9 +5,6 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from open_agent_kit.commands.ci.team import team_app
-from open_agent_kit.features.codebase_intelligence.constants.team import (
-    TEAM_API_KEY_ENV_VAR,
-)
 
 runner = CliRunner()
 
@@ -44,62 +41,25 @@ def _mock_daemon_manager(running=True, port=37800):
 class TestTeamJoin:
     """Tests for team join command."""
 
-    @patch(_SAVE_CONFIG)
-    @patch(_LOAD_CONFIG)
+    @patch(_GET_DAEMON)
     @patch(_CHECK_CI)
     @patch(_CHECK_OAK)
-    def test_join_saves_config(self, mock_oak, mock_ci, mock_load, mock_save):
-        """Test that join saves server_url, api_key, and auto_sync to config."""
-        mock_load.return_value = _make_config()
+    def test_join_delegates_to_daemon(self, mock_oak, mock_ci, mock_daemon):
+        """Test that join delegates to the daemon /api/team/join endpoint."""
+        mock_daemon.return_value = _mock_daemon_manager()
 
         with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
             mock_response = MagicMock()
             mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "status": "pending_approval",
+                "key_id": "abc123",
+                "server_url": "https://team.example.com",
+            }
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.get.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
-            result = runner.invoke(
-                team_app,
-                ["join", "--server-url", "https://team.example.com", "--api-key", "test-token"],
-            )
-
-        assert result.exit_code == 0
-        # Verify config was saved
-        mock_save.assert_called_once()
-        saved_config = mock_save.call_args[0][1]
-        assert saved_config.team.server_url == "https://team.example.com"
-        assert saved_config.team.api_key == "test-token"
-        assert saved_config.team.auto_sync is True
-
-    @patch(_CHECK_CI)
-    @patch(_CHECK_OAK)
-    def test_join_rejects_invalid_url(self, mock_oak, mock_ci):
-        """Test that join rejects URLs without http:// or https://."""
-        result = runner.invoke(
-            team_app,
-            ["join", "--server-url", "ftp://bad.example.com", "--api-key", "test-token"],
-        )
-        assert result.exit_code != 0
-
-    @patch(_SAVE_CONFIG)
-    @patch(_LOAD_CONFIG)
-    @patch(_CHECK_CI)
-    @patch(_CHECK_OAK)
-    def test_join_uses_env_api_key(self, mock_oak, mock_ci, mock_load, mock_save, monkeypatch):
-        """Test that join reads api key from OAK_TEAM_API_KEY env var."""
-        mock_load.return_value = _make_config()
-        monkeypatch.setenv(TEAM_API_KEY_ENV_VAR, "env-token")
-
-        with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.get.return_value = mock_response
+            mock_client.post.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
             result = runner.invoke(
@@ -108,19 +68,88 @@ class TestTeamJoin:
             )
 
         assert result.exit_code == 0
-        saved_config = mock_save.call_args[0][1]
-        assert saved_config.team.api_key == "env-token"
+        # Should have posted to daemon join endpoint
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert "/api/team/join" in call_args[0][0]
+        assert call_args[1]["json"] == {"server_url": "https://team.example.com"}
+
+    @patch(_CHECK_CI)
+    @patch(_CHECK_OAK)
+    def test_join_rejects_invalid_url(self, mock_oak, mock_ci):
+        """Test that join rejects URLs without http:// or https://."""
+        result = runner.invoke(
+            team_app,
+            ["join", "--server-url", "ftp://bad.example.com"],
+        )
+        assert result.exit_code != 0
+
+    @patch(_GET_DAEMON)
+    @patch(_CHECK_CI)
+    @patch(_CHECK_OAK)
+    def test_join_shows_pending_status(self, mock_oak, mock_ci, mock_daemon):
+        """Test that join shows pending approval message."""
+        mock_daemon.return_value = _mock_daemon_manager()
+
+        with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "status": "pending_approval",
+                "key_id": "abc123",
+                "server_url": "https://team.example.com",
+            }
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(
+                team_app,
+                ["join", "--server-url", "https://team.example.com"],
+            )
+
+        assert result.exit_code == 0
+        assert "approval" in result.output.lower()
 
 
 class TestTeamLeave:
     """Tests for team leave command."""
 
-    @patch(_SAVE_CONFIG)
-    @patch(_LOAD_CONFIG)
+    @patch(_GET_DAEMON)
     @patch(_CHECK_CI)
     @patch(_CHECK_OAK)
-    def test_leave_clears_config(self, mock_oak, mock_ci, mock_load, mock_save):
-        """Test that leave clears server_url, api_key, and disables auto_sync."""
+    def test_leave_via_daemon(self, mock_oak, mock_ci, mock_daemon):
+        """Test that leave goes through daemon API when running."""
+        mock_daemon.return_value = _mock_daemon_manager()
+
+        with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"status": "disconnected"}
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(team_app, ["leave"])
+
+        assert result.exit_code == 0
+        mock_client.post.assert_called_once()
+        assert "/api/team/leave" in mock_client.post.call_args[0][0]
+
+    @patch(_SAVE_CONFIG)
+    @patch(_LOAD_CONFIG)
+    @patch(_GET_DAEMON)
+    @patch(_CHECK_CI)
+    @patch(_CHECK_OAK)
+    def test_leave_fallback_when_daemon_not_running(
+        self, mock_oak, mock_ci, mock_daemon, mock_load, mock_save
+    ):
+        """Test that leave falls back to direct config write when daemon is down."""
+        mock_daemon.return_value = _mock_daemon_manager(running=False)
         mock_load.return_value = _make_config(
             server_url="https://team.example.com",
             api_key="old-token",
@@ -136,14 +165,16 @@ class TestTeamLeave:
         assert saved_config.team.api_key is None
         assert saved_config.team.auto_sync is False
 
-    @patch(_LOAD_CONFIG)
+    @patch(_GET_DAEMON)
     @patch(_CHECK_CI)
     @patch(_CHECK_OAK)
-    def test_leave_when_not_configured(self, mock_oak, mock_ci, mock_load):
-        """Test that leave handles not-configured gracefully."""
-        mock_load.return_value = _make_config()
+    def test_leave_when_not_configured(self, mock_oak, mock_ci, mock_daemon):
+        """Test that leave handles not-configured gracefully when daemon is down."""
+        mock_daemon.return_value = _mock_daemon_manager(running=False)
 
-        result = runner.invoke(team_app, ["leave"])
+        with patch(_LOAD_CONFIG) as mock_load:
+            mock_load.return_value = _make_config()
+            result = runner.invoke(team_app, ["leave"])
 
         assert result.exit_code == 0
 

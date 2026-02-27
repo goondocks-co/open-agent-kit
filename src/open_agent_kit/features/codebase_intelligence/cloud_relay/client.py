@@ -23,6 +23,8 @@ from open_agent_kit.features.codebase_intelligence.cloud_relay.base import (
 )
 from open_agent_kit.features.codebase_intelligence.cloud_relay.protocol import (
     HeartbeatPong,
+    HttpRequestMessage,
+    HttpResponseMessage,
     RegisterMessage,
     RelayMessageType,
     ToolCallRequest,
@@ -41,6 +43,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CLOUD_RELAY_LOG_RECONNECTING,
     CLOUD_RELAY_CLIENT_NAME,
     CLOUD_RELAY_DAEMON_CALL_OVERHEAD_SECONDS,
+    CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE,
     CLOUD_RELAY_DAEMON_MCP_CALL_URL_TEMPLATE,
     CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY,
     CLOUD_RELAY_DAEMON_MCP_TOOLS_URL_TEMPLATE,
@@ -49,6 +52,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
     CLOUD_RELAY_HEARTBEAT_INTERVAL_SECONDS,
     CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS,
+    CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
     CLOUD_RELAY_MAX_RESPONSE_BYTES,
     CLOUD_RELAY_RECONNECT_BACKOFF_FACTOR,
     CLOUD_RELAY_RECONNECT_BASE_DELAY_SECONDS,
@@ -288,6 +292,16 @@ class CloudRelayClient(RelayClient):
                             self._last_heartbeat = pong.timestamp
                         logger.debug(CI_CLOUD_RELAY_LOG_HEARTBEAT)
 
+                    elif msg_type == RelayMessageType.HTTP_REQUEST.value:
+                        http_req = HttpRequestMessage(
+                            request_id=msg["request_id"],
+                            method=msg["method"],
+                            path=msg["path"],
+                            headers=msg.get("headers", {}),
+                            body=msg.get("body"),
+                        )
+                        asyncio.ensure_future(self._handle_http_request(http_req))
+
                     elif msg_type == RelayMessageType.ERROR.value:
                         error_text = msg.get(
                             CLOUD_RELAY_WS_FIELD_MESSAGE,
@@ -389,6 +403,47 @@ class CloudRelayClient(RelayClient):
                 await self._ws.send(payload)
             except Exception as exc:
                 logger.error("Failed to send tool response: %s", exc)
+
+    async def _handle_http_request(self, request: HttpRequestMessage) -> None:
+        """Handle an HTTP proxy request by forwarding to the local daemon.
+
+        Args:
+            request: The HTTP request message from the worker.
+        """
+        try:
+            port = self._daemon_port
+            url = CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE.format(port=port, path=request.path)
+
+            async with httpx.AsyncClient(
+                timeout=CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
+            ) as client:
+                resp = await client.request(
+                    method=request.method,
+                    url=url,
+                    headers=request.headers,
+                    content=request.body,
+                )
+
+            response_headers = dict(resp.headers)
+            response = HttpResponseMessage(
+                request_id=request.request_id,
+                status=resp.status_code,
+                headers=response_headers,
+                body=resp.text,
+            )
+        except Exception as exc:
+            logger.error("HTTP proxy request failed: %s", exc)
+            response = HttpResponseMessage(
+                request_id=request.request_id,
+                status=502,
+                body=str(exc),
+            )
+
+        if self._ws:
+            try:
+                await self._ws.send(response.model_dump_json())
+            except Exception as exc:
+                logger.error("Failed to send HTTP proxy response: %s", exc)
 
     async def _call_daemon(
         self,

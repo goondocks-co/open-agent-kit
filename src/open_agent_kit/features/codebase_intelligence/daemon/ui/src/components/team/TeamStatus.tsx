@@ -35,6 +35,7 @@ const CONNECTION_STATE = {
     CONNECTED: "connected",
     DISCONNECTED: "disconnected",
     NOT_CONFIGURED: "not_configured",
+    PENDING_APPROVAL: "pending_approval",
 } as const;
 
 type ConnectionState = (typeof CONNECTION_STATE)[keyof typeof CONNECTION_STATE];
@@ -42,7 +43,9 @@ type ConnectionState = (typeof CONNECTION_STATE)[keyof typeof CONNECTION_STATE];
 function getConnectionState(
     configured: boolean,
     connected: boolean,
+    pendingApproval?: boolean,
 ): ConnectionState {
+    if (pendingApproval) return CONNECTION_STATE.PENDING_APPROVAL;
     if (!configured) return CONNECTION_STATE.NOT_CONFIGURED;
     return connected ? CONNECTION_STATE.CONNECTED : CONNECTION_STATE.DISCONNECTED;
 }
@@ -51,12 +54,14 @@ const CONNECTION_COLORS: Record<ConnectionState, string> = {
     [CONNECTION_STATE.CONNECTED]: "bg-green-500",
     [CONNECTION_STATE.DISCONNECTED]: "bg-red-500",
     [CONNECTION_STATE.NOT_CONFIGURED]: "bg-gray-400",
+    [CONNECTION_STATE.PENDING_APPROVAL]: "bg-amber-500",
 };
 
 const CONNECTION_LABELS: Record<ConnectionState, string> = {
     [CONNECTION_STATE.CONNECTED]: "Connected",
     [CONNECTION_STATE.DISCONNECTED]: "Disconnected",
     [CONNECTION_STATE.NOT_CONFIGURED]: "Not Configured",
+    [CONNECTION_STATE.PENDING_APPROVAL]: "Waiting for Approval",
 };
 
 // =============================================================================
@@ -116,7 +121,8 @@ export default function TeamStatus() {
 
     const configured = status?.configured ?? false;
     const connected = status?.connected ?? false;
-    const connectionState = getConnectionState(configured, connected);
+    const pendingApproval = status?.pending_approval ?? false;
+    const connectionState = getConnectionState(configured, connected, pendingApproval);
     const sync = status?.sync ?? null;
 
     return (
@@ -125,7 +131,9 @@ export default function TeamStatus() {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        {connected ? (
+                        {pendingApproval ? (
+                            <CircleDot className="h-5 w-5 text-amber-500" />
+                        ) : connected ? (
                             <Wifi className="h-5 w-5 text-green-500" />
                         ) : configured ? (
                             <WifiOff className="h-5 w-5 text-red-500" />

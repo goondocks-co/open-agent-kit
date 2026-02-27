@@ -102,6 +102,8 @@ CLOUD_RELAY_WS_TYPE_HEARTBEAT: Final[str] = "heartbeat"
 CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK: Final[str] = "heartbeat_ack"
 CLOUD_RELAY_WS_TYPE_ERROR: Final[str] = "error"
 CLOUD_RELAY_WS_TYPE_REGISTERED: Final[str] = "registered"
+CLOUD_RELAY_WS_TYPE_HTTP_REQUEST: Final[str] = "http_request"
+CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE: Final[str] = "http_response"
 
 # WebSocket protocol field names
 CLOUD_RELAY_WS_FIELD_TYPE: Final[str] = "type"
@@ -209,6 +211,10 @@ CLOUD_RELAY_DAEMON_MCP_CALL_URL_TEMPLATE: Final[str] = (
 CLOUD_RELAY_DAEMON_MCP_TOOLS_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port}/api/mcp/tools"
 CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY: Final[str] = "tools"
 CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS: Final[float] = 10.0
+
+# HTTP proxy forwarding (used by cloud relay client for team API proxying)
+CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port}{path}"
+CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS: Final[float] = 30.0
 
 # WebSocket protocol — additional fields and default messages
 CLOUD_RELAY_WS_FIELD_MESSAGE: Final[str] = "message"

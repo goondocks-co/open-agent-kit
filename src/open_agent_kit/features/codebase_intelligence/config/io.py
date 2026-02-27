@@ -28,9 +28,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TEAM,
-    CI_CONFIG_KEY_TUNNEL,
     CI_CONFIG_KEY_WATCH_FILES,
     CI_CONFIG_TEAM_KEY_API_KEY,
+    CI_CONFIG_TEAM_KEY_AUTO_SYNC,
+    CI_CONFIG_TEAM_KEY_SERVER_MODE,
+    CI_CONFIG_TEAM_KEY_SERVER_URL,
 )
 from open_agent_kit.features.codebase_intelligence.exceptions import (
     ValidationError,
@@ -182,9 +184,11 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{CI_CONFIG_KEY_AGENTS}.provider_type",  # Agent LLM backend varies per machine
         f"{CI_CONFIG_KEY_AGENTS}.provider_base_url",  # Agent LLM backend varies per machine
         f"{CI_CONFIG_KEY_AGENTS}.provider_model",  # Agent LLM backend varies per machine
-        CI_CONFIG_KEY_TUNNEL,  # Tunnel provider/paths are machine-local
         CI_CONFIG_KEY_CLOUD_RELAY,  # Cloud relay config is machine-local (token, worker URL)
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_API_KEY}",  # Team API keys are machine-local secrets
+        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_SERVER_URL}",  # Loopback or remote URL is per-machine
+        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_SERVER_MODE}",  # Only one machine should be the server
+        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_AUTO_SYNC}",  # Depends on per-machine join approval state
         CI_CONFIG_KEY_LOG_LEVEL,  # Personal debugging preference
         CI_CONFIG_KEY_LOG_ROTATION,  # Machine-local log management
         f"{BACKUP_CONFIG_KEY}.auto_enabled",  # Personal preference for auto-backup
@@ -264,6 +268,27 @@ def _split_by_classification(
             project_dict[key] = value
 
     return user_dict, project_dict
+
+
+def _scrub_user_keys_from_project(ci_dict: dict[str, Any]) -> None:
+    """Remove user-classified sub-keys from a project config dict **in place**.
+
+    After reclassifying fields (e.g. moving ``team.server_mode`` from
+    project to user), stale values linger in the shared config because
+    ``_deep_merge`` only adds/overwrites. This function removes them.
+
+    Only scrubs **dotted paths** (sub-keys within mixed sections). Entire
+    user-classified sections (bare names like ``embedding``) are left
+    alone — they may contain team defaults set via ``force_project``.
+    """
+    for path in USER_CLASSIFIED_PATHS:
+        if "." not in path:
+            # Entire section — leave it; may hold team defaults
+            continue
+        section, leaf = path.split(".", 1)
+        sub = ci_dict.get(section)
+        if isinstance(sub, dict):
+            sub.pop(leaf, None)
 
 
 def _user_config_path(project_root: Path) -> Path:
@@ -432,6 +457,9 @@ def save_ci_config(
             existing_config["codebase_intelligence"] = project_keys
         existing_ci_section = existing_config.get("codebase_intelligence")
         if isinstance(existing_ci_section, dict):
+            # Remove user-classified keys that may have been written
+            # before they were reclassified (e.g. team.server_mode).
+            _scrub_user_keys_from_project(existing_ci_section)
             existing_team = existing_ci_section.get(CI_CONFIG_KEY_TEAM)
             if isinstance(existing_team, dict):
                 existing_team.pop("token", None)
@@ -499,7 +527,6 @@ def get_config_origins(project_root: Path) -> dict[str, str]:
         CI_CONFIG_KEY_SUMMARIZATION,
         CI_CONFIG_KEY_AGENTS,
         CI_CONFIG_KEY_SESSION_QUALITY,
-        CI_CONFIG_KEY_TUNNEL,
         CI_CONFIG_KEY_CLOUD_RELAY,
         BACKUP_CONFIG_KEY,
         AUTO_RESOLVE_CONFIG_KEY,

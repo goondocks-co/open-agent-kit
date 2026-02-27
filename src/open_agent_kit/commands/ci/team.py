@@ -13,18 +13,19 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HTTP_TIMEOUT_QUICK,
 )
 from open_agent_kit.features.codebase_intelligence.constants.team import (
-    TEAM_API_KEY_ENV_VAR,
+    TEAM_API_PATH_JOIN,
     TEAM_API_PATH_KEYS,
+    TEAM_API_PATH_LEAVE,
     TEAM_API_PATH_MEMBERS,
     TEAM_API_PATH_STATUS,
     TEAM_CLI_API_URL_TEMPLATE,
     TEAM_DEFAULT_BIND_HOST,
     TEAM_DEFAULT_BIND_PORT,
-    TEAM_MESSAGE_API_KEY_PROMPT,
     TEAM_MESSAGE_AUTO_SYNC,
-    TEAM_MESSAGE_CONNECTION_TEST_FAILED,
     TEAM_MESSAGE_DAEMON_NOT_RUNNING,
     TEAM_MESSAGE_INVALID_URL,
+    TEAM_MESSAGE_JOIN_PENDING,
+    TEAM_MESSAGE_JOIN_PENDING_POLL,
     TEAM_MESSAGE_JOIN_SUCCESS,
     TEAM_MESSAGE_KEY_CREATED,
     TEAM_MESSAGE_KEY_NOT_FOUND,
@@ -95,17 +96,13 @@ def _get_daemon_port(project_root: Path) -> int:
 @team_app.command("join")
 def team_join(
     server_url: str = typer.Option(..., help="Team server URL"),
-    api_key: str | None = typer.Option(
-        None,
-        help="Team API key (or set OAK_TEAM_API_KEY env var)",
-    ),
 ) -> None:
-    """Join a team server and enable sync."""
-    from open_agent_kit.features.codebase_intelligence.config import (
-        load_ci_config,
-        save_ci_config,
-    )
+    """Join a team server.
 
+    Sends a join request through the daemon, which auto-generates an API
+    key and submits only its SHA-256 hash to the server.  The server
+    admin must approve the request before sync begins.
+    """
     project_root = Path.cwd()
     check_oak_initialized(project_root)
     check_ci_enabled(project_root)
@@ -115,51 +112,67 @@ def team_join(
         print_error(TEAM_MESSAGE_INVALID_URL)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
-    # Resolve API key: option > env var > prompt
-    if not api_key:
-        api_key = os.environ.get(TEAM_API_KEY_ENV_VAR)
-    if not api_key:
-        api_key = typer.prompt(TEAM_MESSAGE_API_KEY_PROMPT, hide_input=True)
+    port = _get_daemon_port(project_root)
 
-    # Test connection
-    status_url = server_url.rstrip("/") + TEAM_API_PATH_STATUS
     try:
         with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
-            response = client.get(status_url)
+            response = client.post(
+                _daemon_api_url(port, TEAM_API_PATH_JOIN),
+                json={"server_url": server_url},
+            )
+
             if response.status_code != HTTPStatus.OK:
-                print_error(
-                    TEAM_MESSAGE_CONNECTION_TEST_FAILED.format(error=f"HTTP {response.status_code}")
-                )
+                detail = response.json().get("detail", response.text) if response.text else ""
+                print_error(f"Join failed: {detail}")
                 raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
-    except httpx.ConnectError as e:
-        print_error(TEAM_MESSAGE_CONNECTION_TEST_FAILED.format(error=str(e)))
+
+            data = response.json()
+
+    except httpx.ConnectError:
+        print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
     except httpx.TimeoutException:
-        print_error(TEAM_MESSAGE_CONNECTION_TEST_FAILED.format(error="Connection timed out"))
+        print_error("Request timed out")
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
-    # Save to config
-    config = load_ci_config(project_root)
-    config.team.server_url = server_url.rstrip("/")
-    config.team.api_key = api_key
-    config.team.auto_sync = True
-    save_ci_config(project_root, config)
-
-    print_success(TEAM_MESSAGE_JOIN_SUCCESS.format(server_url=server_url))
-    print_info("Restart the daemon to begin syncing: oak ci restart")
+    status = data.get("status", "")
+    if status == "pending_approval":
+        print_warning(TEAM_MESSAGE_JOIN_PENDING.format(server_url=server_url))
+        print_info(TEAM_MESSAGE_JOIN_PENDING_POLL)
+    else:
+        print_success(TEAM_MESSAGE_JOIN_SUCCESS.format(server_url=server_url))
 
 
 @team_app.command("leave")
 def team_leave() -> None:
     """Disconnect from team server and disable sync."""
+    project_root = Path.cwd()
+    check_oak_initialized(project_root)
+    check_ci_enabled(project_root)
+
+    manager = get_daemon_manager(project_root)
+    if manager.is_running():
+        # Daemon running — go through API so it also stops sync workers
+        status = manager.get_status()
+        port: int = status["port"]
+        try:
+            with httpx.Client(timeout=HTTP_TIMEOUT_QUICK) as client:
+                response = client.post(_daemon_api_url(port, TEAM_API_PATH_LEAVE))
+                if response.status_code == HTTPStatus.OK:
+                    print_success(TEAM_MESSAGE_LEAVE_SUCCESS)
+                    return
+                print_error(f"Leave failed: {response.text}")
+                raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
+        except httpx.ConnectError:
+            pass  # Fall through to direct config write
+        except httpx.TimeoutException:
+            pass
+
+    # Daemon not running — write config directly
     from open_agent_kit.features.codebase_intelligence.config import (
         load_ci_config,
         save_ci_config,
     )
-
-    project_root = Path.cwd()
-    check_oak_initialized(project_root)
-    check_ci_enabled(project_root)
 
     config = load_ci_config(project_root)
     if not config.team.server_url:
@@ -299,7 +312,7 @@ def team_serve(
 
     if manager.start():
         print_success("Daemon started in team server mode")
-        print_info("Create API keys for team members: oak ci team key create --name <name>")
+        print_info("Teammates can join via: oak ci team join --server-url <url>")
     else:
         print_error("Failed to start daemon")
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)

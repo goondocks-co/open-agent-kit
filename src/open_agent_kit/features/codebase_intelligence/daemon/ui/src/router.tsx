@@ -17,7 +17,7 @@ import TeamConfig from "@/components/team/TeamConfig";
 import TeamPolicy from "@/components/team/TeamPolicy";
 import TeamKeys from "@/components/team/TeamKeys";
 import TeamBackups from "@/components/team/TeamBackups";
-import TeamSharing from "@/components/team/TeamSharing";
+import TeamConnectivity from "@/components/team/TeamConnectivity";
 import Help from "@/pages/Help";
 import AgentsLayout from "@/pages/AgentsLayout";
 import AgentsList from "@/components/agents/AgentsList";
@@ -25,7 +25,6 @@ import RunHistory from "@/components/agents/RunHistory";
 import Schedules from "@/components/agents/Schedules";
 import AgentSettings from "@/pages/AgentSettings";
 import ACPIntegrations from "@/components/agents/ACPIntegrations";
-import CloudRelay from "@/pages/CloudRelay";
 import Governance from "@/pages/Governance";
 import GovernanceAudit from "@/components/governance/GovernanceAudit";
 import GovernanceRules from "@/components/governance/GovernanceRules";
@@ -61,7 +60,7 @@ export const router = createBrowserRouter([
                     { path: "integrations", element: <ACPIntegrations /> },
                 ]
             },
-            { path: "cloud", element: <CloudRelay /> },
+            { path: "cloud", element: <Navigate to="/team/connectivity" replace /> },
             {
                 path: "governance",
                 element: <Governance />,
@@ -82,7 +81,8 @@ export const router = createBrowserRouter([
                     { path: "policy", element: <TeamPolicy /> },
                     { path: "keys", element: <TeamKeys /> },
                     { path: "backups", element: <TeamBackups /> },
-                    { path: "sharing", element: <TeamSharing /> },
+                    { path: "connectivity", element: <TeamConnectivity /> },
+                    { path: "sharing", element: <Navigate to="/team/connectivity" replace /> },
                 ]
             },
             { path: "config", element: <Config /> },

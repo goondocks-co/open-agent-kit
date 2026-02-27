@@ -74,6 +74,12 @@ export default {
       return doStub.fetch(request);
     }
 
+    // ----- /api/team/* — HTTP proxy to local daemon via Durable Object -----
+    if (path.startsWith("/api/team/")) {
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request));
+    }
+
     // ----- GET /health -----
     if (path === "/health") {
       const doStub = getDurableObject(env);

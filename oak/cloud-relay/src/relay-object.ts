@@ -17,6 +17,9 @@ import {
   RelayMessageType,
   type Env,
   type HeartbeatPing,
+  type HttpRequestMessage,
+  type HttpResponseMessage,
+  type PendingHttpRequest,
   type PendingRequest,
   type RegisterMessage,
   type RegisteredMessage,
@@ -46,6 +49,9 @@ export class RelayObject implements DurableObject {
   /** Pending tool call requests awaiting a response from the local daemon. */
   private pending: Map<string, PendingRequest> = new Map();
 
+  /** Pending HTTP proxy requests awaiting a response from the local daemon. */
+  private pendingHttp: Map<string, PendingHttpRequest> = new Map();
+
   /** Heartbeat interval handle. */
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -70,6 +76,10 @@ export class RelayObject implements DurableObject {
 
     if (url.pathname === "/mcp" && request.method === "POST") {
       return this.handleToolCall(request);
+    }
+
+    if (url.pathname.startsWith("/api/team/")) {
+      return this.handleHttpProxy(request);
     }
 
     if (url.pathname === "/health") {
@@ -140,6 +150,9 @@ export class RelayObject implements DurableObject {
         break;
       case RelayMessageType.HEARTBEAT_ACK:
         this.handleHeartbeatAck();
+        break;
+      case RelayMessageType.HTTP_RESPONSE:
+        this.resolveHttpProxy(msg as HttpResponseMessage);
         break;
       default:
         break;
@@ -257,6 +270,68 @@ export class RelayObject implements DurableObject {
   }
 
   // -----------------------------------------------------------------------
+  // HTTP proxy request/response flow
+  // -----------------------------------------------------------------------
+
+  private async handleHttpProxy(request: Request): Promise<Response> {
+    if (!this.instanceConnected || !this.ws) {
+      return Response.json({ error: "instance offline" }, { status: 502 });
+    }
+
+    const url = new URL(request.url);
+    const requestId = crypto.randomUUID();
+    const body = await request.text();
+
+    const httpMsg: HttpRequestMessage = {
+      type: RelayMessageType.HTTP_REQUEST,
+      request_id: requestId,
+      method: request.method,
+      path: url.pathname + url.search,
+      headers: Object.fromEntries(request.headers),
+      body: body || null,
+    };
+
+    const responsePromise = new Promise<HttpResponseMessage>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingHttp.delete(requestId);
+        reject(new Error("HTTP proxy request timed out"));
+      }, DEFAULT_TOOL_TIMEOUT_MS);
+
+      this.pendingHttp.set(requestId, { resolve, reject, timer });
+    });
+
+    try {
+      this.ws.send(JSON.stringify(httpMsg));
+    } catch {
+      this.pendingHttp.delete(requestId);
+      return Response.json(
+        { error: "failed to send to local instance" },
+        { status: 502 },
+      );
+    }
+
+    try {
+      const msg = await responsePromise;
+      return new Response(msg.body, {
+        status: msg.status,
+        headers: msg.headers,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      return Response.json({ error: message }, { status: 504 });
+    }
+  }
+
+  private resolveHttpProxy(msg: HttpResponseMessage): void {
+    const entry = this.pendingHttp.get(msg.request_id);
+    if (!entry) return;
+
+    clearTimeout(entry.timer);
+    this.pendingHttp.delete(msg.request_id);
+    entry.resolve(msg);
+  }
+
+  // -----------------------------------------------------------------------
   // Heartbeat
   // -----------------------------------------------------------------------
 
@@ -327,6 +402,12 @@ export class RelayObject implements DurableObject {
       clearTimeout(entry.timer);
       entry.reject(new Error("instance offline"));
       this.pending.delete(id);
+    }
+
+    for (const [id, entry] of this.pendingHttp) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error("instance offline"));
+      this.pendingHttp.delete(id);
     }
   }
 }

@@ -80,11 +80,6 @@ export const API_ENDPOINTS = {
     BACKUP_RESTORE: "/api/backup/restore",
     BACKUP_RESTORE_ALL: "/api/backup/restore-all",
 
-    // Tunnel endpoints
-    TUNNEL_START: "/api/tunnel/start",
-    TUNNEL_STOP: "/api/tunnel/stop",
-    TUNNEL_STATUS: "/api/tunnel/status",
-
     // Governance endpoints
     GOVERNANCE_CONFIG: "/api/governance/config",
     GOVERNANCE_AUDIT: "/api/governance/audit",
@@ -116,6 +111,10 @@ export const API_ENDPOINTS = {
     TEAM_POLICY: "/api/team/policy",
     TEAM_KEYS: "/api/team/keys",
     TEAM_SERVE: "/api/team/serve",
+    TEAM_PENDING_JOINS: "/api/team/pending-joins",
+    TEAM_APPROVE_JOIN: "/api/team/approve-join",
+    TEAM_REJECT_JOIN: "/api/team/reject-join",
+    TEAM_JOIN_STATUS: "/api/team/join-status",
 } as const;
 
 // =============================================================================

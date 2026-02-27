@@ -18,6 +18,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WS_TYPE_ERROR,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK,
+    CLOUD_RELAY_WS_TYPE_HTTP_REQUEST,
+    CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE,
     CLOUD_RELAY_WS_TYPE_REGISTER,
     CLOUD_RELAY_WS_TYPE_REGISTERED,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
@@ -38,6 +40,8 @@ class RelayMessageType(str, Enum):
     HEARTBEAT = CLOUD_RELAY_WS_TYPE_HEARTBEAT
     HEARTBEAT_ACK = CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK
     ERROR = CLOUD_RELAY_WS_TYPE_ERROR
+    HTTP_REQUEST = CLOUD_RELAY_WS_TYPE_HTTP_REQUEST
+    HTTP_RESPONSE = CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE
 
 
 # ---- Daemon -> Worker messages ----
@@ -110,3 +114,34 @@ class RelayError(BaseModel):
     type: str = CLOUD_RELAY_WS_TYPE_ERROR
     message: str
     code: str | None = None
+
+
+# ---- HTTP proxy messages (bidirectional) ----
+
+
+class HttpRequestMessage(BaseModel):
+    """Sent by worker to forward an HTTP request to the local daemon.
+
+    The daemon should execute the request locally and respond with an
+    HttpResponseMessage using the same request_id.
+    """
+
+    type: str = CLOUD_RELAY_WS_TYPE_HTTP_REQUEST
+    request_id: str
+    method: str
+    path: str
+    headers: dict[str, str] = Field(default_factory=dict)
+    body: str | None = None
+
+
+class HttpResponseMessage(BaseModel):
+    """Sent by daemon in response to an HTTP proxy request.
+
+    The request_id must match the corresponding HttpRequestMessage.
+    """
+
+    type: str = CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE
+    request_id: str
+    status: int
+    headers: dict[str, str] = Field(default_factory=dict)
+    body: str = ""

@@ -1,6 +1,6 @@
 """Infrastructure configuration for Codebase Intelligence.
 
-Contains LogRotationConfig, BackupConfig, TunnelConfig, and CloudRelayConfig.
+Contains LogRotationConfig, BackupConfig, and CloudRelayConfig.
 """
 
 import logging
@@ -23,22 +23,14 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL,
-    CI_CONFIG_TUNNEL_KEY_AUTO_START,
-    CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH,
-    CI_CONFIG_TUNNEL_KEY_NGROK_PATH,
-    CI_CONFIG_TUNNEL_KEY_PROVIDER,
-    CI_TUNNEL_ERROR_INVALID_PROVIDER,
-    CI_TUNNEL_ERROR_INVALID_PROVIDER_EXPECTED,
     CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS,
     CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_MAX_SIZE_MB,
     DEFAULT_LOG_ROTATION_ENABLED,
-    DEFAULT_TUNNEL_PROVIDER,
     MAX_LOG_BACKUP_COUNT,
     MAX_LOG_MAX_SIZE_MB,
     MIN_LOG_MAX_SIZE_MB,
-    VALID_TUNNEL_PROVIDERS,
 )
 from open_agent_kit.features.codebase_intelligence.exceptions import (
     ValidationError,
@@ -203,60 +195,6 @@ class BackupConfig:
             "include_activities": self.include_activities,
             "interval_minutes": self.interval_minutes,
             "on_upgrade": self.on_upgrade,
-        }
-
-
-@dataclass
-class TunnelConfig:
-    """Configuration for tunnel-based session sharing.
-
-    Allows sharing the daemon UI via a public URL through cloudflared or ngrok.
-
-    Attributes:
-        provider: Tunnel provider (cloudflared, ngrok).
-        auto_start: Whether to start tunnel automatically on daemon startup.
-        cloudflared_path: Custom path to cloudflared binary (None = use PATH).
-        ngrok_path: Custom path to ngrok binary (None = use PATH).
-    """
-
-    provider: str = DEFAULT_TUNNEL_PROVIDER
-    auto_start: bool = False
-    cloudflared_path: str | None = None
-    ngrok_path: str | None = None
-
-    def __post_init__(self) -> None:
-        """Validate configuration after initialization."""
-        self._validate()
-
-    def _validate(self) -> None:
-        """Validate configuration values."""
-        if self.provider not in VALID_TUNNEL_PROVIDERS:
-            raise ValidationError(
-                CI_TUNNEL_ERROR_INVALID_PROVIDER.format(provider=self.provider),
-                field="provider",
-                value=self.provider,
-                expected=CI_TUNNEL_ERROR_INVALID_PROVIDER_EXPECTED.format(
-                    providers=VALID_TUNNEL_PROVIDERS
-                ),
-            )
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TunnelConfig":
-        """Create config from dictionary."""
-        return cls(
-            provider=data.get(CI_CONFIG_TUNNEL_KEY_PROVIDER, DEFAULT_TUNNEL_PROVIDER),
-            auto_start=data.get(CI_CONFIG_TUNNEL_KEY_AUTO_START, False),
-            cloudflared_path=data.get(CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH),
-            ngrok_path=data.get(CI_CONFIG_TUNNEL_KEY_NGROK_PATH),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            CI_CONFIG_TUNNEL_KEY_PROVIDER: self.provider,
-            CI_CONFIG_TUNNEL_KEY_AUTO_START: self.auto_start,
-            CI_CONFIG_TUNNEL_KEY_CLOUDFLARED_PATH: self.cloudflared_path,
-            CI_CONFIG_TUNNEL_KEY_NGROK_PATH: self.ngrok_path,
         }
 
 

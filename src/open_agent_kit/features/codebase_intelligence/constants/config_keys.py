@@ -9,7 +9,7 @@ from typing import Final
 # ``codebase_intelligence:`` in .oak/config.yaml.  Used by
 # CIConfig.from_dict / to_dict, get_config_origins, and daemon config routes.
 #
-# NOTE: BACKUP_CONFIG_KEY, AUTO_RESOLVE_CONFIG_KEY, CI_CONFIG_KEY_TUNNEL,
+# NOTE: BACKUP_CONFIG_KEY, AUTO_RESOLVE_CONFIG_KEY,
 # and CI_CONFIG_KEY_CLI_COMMAND are defined in their respective domain
 # sections and are also valid section keys.
 CI_CONFIG_KEY_EMBEDDING: Final[str] = "embedding"

@@ -766,7 +766,6 @@ class TestSplitByClassification:
         # Entire user-classified sections
         assert "embedding" in user
         assert "summarization" in user
-        assert "tunnel" in user
         assert "log_level" in user
         assert "log_rotation" in user
 

@@ -12,6 +12,10 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_LOG_JOIN_APPROVED,
+    TEAM_LOG_JOIN_REJECTED,
+    TEAM_LOG_JOIN_REQUEST_CREATED,
+    TEAM_LOG_JOIN_STATUS_POLL,
     TEAM_PULL_DEFAULT_LIMIT,
     TEAM_ROUTE_TAG,
     TEAM_ROUTER_PREFIX,
@@ -22,12 +26,21 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_SERVER_STATUS_OK,
 )
 from open_agent_kit.features.codebase_intelligence.team.protocol import (
+    JoinRequest,
+    JoinRequestResponse,
+    JoinRequestStatus,
+    PendingJoinInfo,
     PushResult,
     TeamEventBatch,
     TeamMemberInfo,
     TeamPullRequest,
 )
 from open_agent_kit.features.codebase_intelligence.team.server.auth import (
+    approve_key,
+    create_pending_key,
+    get_key_join_status,
+    list_pending_keys,
+    reject_key,
     verify_team_token,
 )
 from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
@@ -144,3 +157,86 @@ async def server_status() -> dict:
         "status": TEAM_SERVER_STATUS_OK,
         TEAM_SERVER_STATUS_KEY_SERVER_MODE: True,
     }
+
+
+# ---------------------------------------------------------------------------
+# Join request / approval flow
+# ---------------------------------------------------------------------------
+
+
+@router.post("/request-join")
+async def request_join(req: JoinRequest) -> JoinRequestResponse:
+    """Submit a join request -- unauthenticated.
+
+    The client generates its own API key locally, computes a SHA-256 hash,
+    and sends only the hash. The server stores the hash as a pending key.
+    """
+    conn = _get_conn()
+    name = f"join:{req.machine_id}"
+    key_id = create_pending_key(
+        conn,
+        name=name,
+        key_hash=req.key_hash,
+        machine_id=req.machine_id,
+        display_name=req.display_name,
+    )
+    logger.info(TEAM_LOG_JOIN_REQUEST_CREATED.format(key_id=key_id, machine_id=req.machine_id))
+    return JoinRequestResponse(key_id=key_id)
+
+
+@router.get("/pending-joins")
+async def get_pending_joins(
+    machine_id: str = Depends(verify_team_token),
+) -> list[PendingJoinInfo]:
+    """List pending join requests -- authenticated (server admin)."""
+    conn = _get_conn()
+    keys = list_pending_keys(conn)
+    return [
+        PendingJoinInfo(
+            key_id=k.id,
+            name=k.name,
+            machine_id=k.machine_id or "",
+            display_name=k.display_name or "",
+            created_at=k.created_at,
+        )
+        for k in keys
+    ]
+
+
+@router.post("/approve-join/{key_id}")
+async def approve_join(
+    key_id: str,
+    machine_id: str = Depends(verify_team_token),
+) -> dict[str, bool]:
+    """Approve a pending join request -- authenticated (server admin)."""
+    conn = _get_conn()
+    success = approve_key(conn, key_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Pending key not found")
+    logger.info(TEAM_LOG_JOIN_APPROVED.format(key_id=key_id))
+    return {"approved": True}
+
+
+@router.post("/reject-join/{key_id}")
+async def reject_join(
+    key_id: str,
+    machine_id: str = Depends(verify_team_token),
+) -> dict[str, bool]:
+    """Reject a pending join request -- authenticated (server admin)."""
+    conn = _get_conn()
+    success = reject_key(conn, key_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Key not found")
+    logger.info(TEAM_LOG_JOIN_REJECTED.format(key_id=key_id))
+    return {"rejected": True}
+
+
+@router.get("/join-status/{key_id}")
+async def get_join_status(key_id: str) -> JoinRequestStatus:
+    """Poll join request status -- unauthenticated (client polling)."""
+    conn = _get_conn()
+    status = get_key_join_status(conn, key_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Key not found")
+    logger.debug(TEAM_LOG_JOIN_STATUS_POLL.format(key_id=key_id, status=status))
+    return JoinRequestStatus(key_id=key_id, status=status)

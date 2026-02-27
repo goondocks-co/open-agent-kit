@@ -12,7 +12,6 @@ from open_agent_kit.features.codebase_intelligence.config.infrastructure import 
     BackupConfig,
     CloudRelayConfig,
     LogRotationConfig,
-    TunnelConfig,
 )
 from open_agent_kit.features.codebase_intelligence.config.io import DEFAULT_EXCLUDE_PATTERNS
 from open_agent_kit.features.codebase_intelligence.config.session import (
@@ -38,7 +37,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TEAM,
-    CI_CONFIG_KEY_TUNNEL,
     CI_CONFIG_KEY_WATCH_FILES,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
@@ -58,7 +56,6 @@ class CIConfig:
         summarization: LLM summarization configuration.
         agents: Agent subsystem configuration.
         session_quality: Session quality threshold configuration.
-        tunnel: Tunnel sharing configuration.
         cloud_relay: Cloud MCP Relay configuration.
         team: Oak Teams sync configuration.
         backup: Backup behavior configuration.
@@ -76,7 +73,6 @@ class CIConfig:
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
     session_quality: SessionQualityConfig = field(default_factory=SessionQualityConfig)
-    tunnel: TunnelConfig = field(default_factory=TunnelConfig)
     cloud_relay: CloudRelayConfig = field(default_factory=CloudRelayConfig)
     team: TeamConfig = field(default_factory=TeamConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
@@ -141,7 +137,6 @@ class CIConfig:
         summarization_data = data.get(CI_CONFIG_KEY_SUMMARIZATION, {})
         agents_data = data.get(CI_CONFIG_KEY_AGENTS, {})
         session_quality_data = data.get(CI_CONFIG_KEY_SESSION_QUALITY, {})
-        tunnel_data = data.get(CI_CONFIG_KEY_TUNNEL, {})
         cloud_relay_data = data.get(CI_CONFIG_KEY_CLOUD_RELAY, {})
         team_data = data.get(CI_CONFIG_KEY_TEAM, {})
         backup_data = data.get(BACKUP_CONFIG_KEY, {})
@@ -153,7 +148,6 @@ class CIConfig:
             summarization=SummarizationConfig.from_dict(summarization_data),
             agents=AgentConfig.from_dict(agents_data),
             session_quality=SessionQualityConfig.from_dict(session_quality_data),
-            tunnel=TunnelConfig.from_dict(tunnel_data),
             cloud_relay=CloudRelayConfig.from_dict(cloud_relay_data),
             team=TeamConfig.from_dict(team_data),
             backup=BackupConfig.from_dict(backup_data),
@@ -176,7 +170,6 @@ class CIConfig:
             CI_CONFIG_KEY_SUMMARIZATION: self.summarization.to_dict(),
             CI_CONFIG_KEY_AGENTS: self.agents.to_dict(),
             CI_CONFIG_KEY_SESSION_QUALITY: self.session_quality.to_dict(),
-            CI_CONFIG_KEY_TUNNEL: self.tunnel.to_dict(),
             CI_CONFIG_KEY_CLOUD_RELAY: self.cloud_relay.to_dict(),
             CI_CONFIG_KEY_TEAM: self.team.to_dict(),
             BACKUP_CONFIG_KEY: self.backup.to_dict(),

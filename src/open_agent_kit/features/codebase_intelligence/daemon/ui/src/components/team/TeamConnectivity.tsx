@@ -1,6 +1,9 @@
 /**
- * Cloud Relay page — single-page turnkey UX for deploying and managing
- * a Cloudflare Worker relay. Mirrors the TeamSharing.tsx pattern.
+ * Team Connectivity page — cloud relay controls, team join URL, and MCP server URL.
+ *
+ * Consolidates the old TeamSharing (tunnel) and CloudRelay pages into a single
+ * tab within the Team section. Server mode shows relay controls + URLs;
+ * non-server mode shows guidance to either enable server mode or join a team.
  */
 
 import { useState, useEffect } from "react";
@@ -24,6 +27,9 @@ import {
     FileJson,
     FlaskConical,
     Settings,
+    Globe,
+    Link2,
+    Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CopyButton, CommandBlock } from "@/components/ui/command-block";
@@ -35,6 +41,7 @@ import {
     useCloudRelayUpdateSettings,
 } from "@/hooks/use-cloud-relay";
 import type { CloudRelayStartResponse } from "@/hooks/use-cloud-relay";
+import { useTeamConfig } from "@/hooks/use-team";
 
 // =============================================================================
 // Prerequisites Card
@@ -153,6 +160,70 @@ function ErrorCard({ response }: ErrorCardProps) {
 }
 
 // =============================================================================
+// Team URLs Section (shown when relay is connected)
+// =============================================================================
+
+function TeamUrls({ workerUrl, mcpEndpoint }: { workerUrl: string; mcpEndpoint: string }) {
+    return (
+        <div className="space-y-4">
+            {/* Team Join URL */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <Link2 className="h-4 w-4" />
+                        Team Join URL
+                    </CardTitle>
+                    <CardDescription>
+                        Share this URL with teammates so they can request to join your team.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
+                        <code className="flex-1 truncate">{workerUrl}</code>
+                        <CopyButton text={workerUrl} />
+                        <a
+                            href={workerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <ExternalLink className="w-4 h-4" />
+                        </a>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* MCP Server URL */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <Globe className="h-4 w-4" />
+                        MCP Server URL
+                    </CardTitle>
+                    <CardDescription>
+                        Give this URL to cloud AI agents (Claude.ai, ChatGPT, etc.) as the MCP server endpoint.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
+                        <code className="flex-1 truncate">{mcpEndpoint}</code>
+                        <CopyButton text={mcpEndpoint} />
+                        <a
+                            href={mcpEndpoint}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <ExternalLink className="w-4 h-4" />
+                        </a>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// =============================================================================
 // Agent Registration Section
 // =============================================================================
 
@@ -250,68 +321,6 @@ function AgentRegistration({ mcpEndpoint, agentToken }: { mcpEndpoint: string; a
                 </CardContent>
             </Card>
 
-            {/* Claude.ai */}
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Claude.ai</CardTitle>
-                    <CardDescription>
-                        Add Oak CI as an MCP server in Claude.ai.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
-                        <li>Open Claude.ai settings and navigate to the <strong>MCP Servers</strong> section</li>
-                        <li>Click <strong>Add MCP Server</strong></li>
-                        <li>Enter the following URL as the server endpoint:</li>
-                    </ol>
-                    <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">MCP Server URL</div>
-                        <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
-                            <code className="flex-1 truncate">{mcpEndpoint}</code>
-                            <CopyButton text={mcpEndpoint} />
-                            <a
-                                href={mcpEndpoint}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                <ExternalLink className="w-4 h-4" />
-                            </a>
-                        </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                        Enter your agent token when prompted for authentication.
-                    </p>
-                </CardContent>
-            </Card>
-
-            {/* ChatGPT */}
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base">ChatGPT</CardTitle>
-                    <CardDescription>
-                        Connect Oak CI as a tool in ChatGPT.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
-                        <li>Open ChatGPT and go to <strong>Settings</strong> &gt; <strong>Connected Tools</strong></li>
-                        <li>Click <strong>Add Tool</strong> and select MCP</li>
-                        <li>Enter the MCP server URL:</li>
-                    </ol>
-                    <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">MCP Server URL</div>
-                        <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
-                            <code className="flex-1 truncate">{mcpEndpoint}</code>
-                            <CopyButton text={mcpEndpoint} />
-                        </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                        Authenticate using your agent token when prompted.
-                    </p>
-                </CardContent>
-            </Card>
-
             {/* Testing */}
             <Card>
                 <CardHeader className="pb-3">
@@ -331,19 +340,6 @@ function AgentRegistration({ mcpEndpoint, agentToken }: { mcpEndpoint: string; a
                     <p className="text-sm text-muted-foreground">
                         Replace <code className="bg-muted px-1 rounded">&lt;your-agent-token&gt;</code> with your actual agent token.
                         A successful response will return a JSON-RPC result with the available Oak CI tools.
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                        For interactive testing, use the{" "}
-                        <a
-                            href="https://github.com/modelcontextprotocol/inspector"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline inline-flex items-center gap-1"
-                        >
-                            MCP Inspector
-                            <ExternalLink className="h-3 w-3" />
-                        </a>
-                        {" "}&mdash; a visual tool for browsing and calling MCP server tools.
                     </p>
                 </CardContent>
             </Card>
@@ -366,7 +362,6 @@ function CustomDomainSettings({ currentDomain, workerName, isConnected }: Custom
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const updateSettings = useCloudRelayUpdateSettings();
 
-    // Sync local state when server value changes (e.g. after save or external update)
     useEffect(() => {
         setDomain(currentDomain ?? "");
     }, [currentDomain]);
@@ -375,7 +370,6 @@ function CustomDomainSettings({ currentDomain, workerName, isConnected }: Custom
     const isSaving = updateSettings.isPending;
     const trimmedDomain = domain.trim();
 
-    // Derive the subdomain preview from workerName + entered domain
     const derivedSubdomain = trimmedDomain && workerName
         ? `${workerName}.${trimmedDomain}`
         : null;
@@ -480,14 +474,16 @@ function CustomDomainSettings({ currentDomain, workerName, isConnected }: Custom
 }
 
 // =============================================================================
-// Cloud Relay Page
+// Main Component
 // =============================================================================
 
-export default function CloudRelay() {
+export default function TeamConnectivity() {
+    const { data: config, isLoading: isConfigLoading } = useTeamConfig();
     const { data: status, isLoading } = useCloudRelayStatus();
     const startRelay = useCloudRelayStart();
     const stopRelay = useCloudRelayStop();
 
+    const isServerMode = config?.server_mode ?? false;
     const isConnected = status?.connected ?? false;
     const isToggling = startRelay.isPending || stopRelay.isPending;
 
@@ -495,48 +491,68 @@ export default function CloudRelay() {
         if (isConnected) {
             stopRelay.mutate();
         } else {
-            // Clear stale data/errors from any previous attempt so they
-            // don't briefly flash while the new request is in-flight.
             startRelay.reset();
             startRelay.mutate();
         }
     };
 
-    // Derive MCP endpoint from status or start response
+    // Derive URLs from status or start response
+    const workerUrl = status?.worker_url ?? startRelay.data?.worker_url ?? null;
     const mcpEndpoint = status?.mcp_endpoint
         ?? startRelay.data?.mcp_endpoint
-        ?? (status?.worker_url ? `${status.worker_url}/mcp` : null);
+        ?? (workerUrl ? `${workerUrl}/mcp` : null);
 
     const agentToken = status?.agent_token ?? startRelay.data?.agent_token ?? null;
     const cfAccountName = status?.cf_account_name ?? startRelay.data?.cf_account_name ?? null;
 
-    // Check if start mutation returned an error response (status !== "error" means HTTP 200 but logical error)
     const startError = startRelay.data?.error ? startRelay.data : null;
+
+    if (isConfigLoading) {
+        return (
+            <div className="space-y-4">
+                <div className="border rounded-lg p-6 animate-pulse">
+                    <div className="h-5 bg-muted rounded w-1/3 mb-3" />
+                    <div className="h-4 bg-muted rounded w-2/3" />
+                </div>
+            </div>
+        );
+    }
+
+    // Not in server mode: show guidance
+    if (!isServerMode) {
+        return (
+            <div className="space-y-6">
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <Server className="w-12 h-12 mb-4 opacity-30" />
+                        <p className="text-sm font-medium">Server mode is not enabled</p>
+                        <p className="text-xs mt-2 text-center max-w-md">
+                            Enable server mode in the{" "}
+                            <Link to="/team/config" className="text-primary hover:underline">
+                                Config tab
+                            </Link>{" "}
+                            to set up a Cloud Relay for remote access, or join an existing team
+                            to connect as a client.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                    <Cloud className="w-8 h-8" />
-                    Cloud Relay
-                </h1>
-                <p className="text-muted-foreground">
-                    Deploy a Cloudflare Worker so cloud AI agents can access your local Oak CI instance.
-                </p>
-            </div>
-
-            {/* Main Control Card */}
+            {/* Main Relay Control Card */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Cloud className="h-5 w-5" />
-                        Relay Connection
+                        Cloud Relay
                     </CardTitle>
                     <CardDescription>
                         {isConnected
-                            ? "Your relay is active. Cloud agents can connect to your local instance."
-                            : "Start the relay to deploy a Cloudflare Worker and connect automatically."
+                            ? "Your relay is active. Remote teammates and cloud agents can connect."
+                            : "Deploy a Cloudflare Worker to enable remote access for teammates and cloud AI agents."
                         }
                     </CardDescription>
                 </CardHeader>
@@ -582,33 +598,7 @@ export default function CloudRelay() {
                         </Button>
                     </div>
 
-                    {/* MCP URL display (when connected) */}
-                    {isConnected && mcpEndpoint && (
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">MCP Server URL</label>
-                            <div className="flex items-center gap-2">
-                                <code className="flex-1 bg-muted px-3 py-2 rounded-md text-sm font-mono truncate border">
-                                    {mcpEndpoint}
-                                </code>
-                                <CopyButton text={mcpEndpoint} />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-shrink-0"
-                                    asChild
-                                >
-                                    <a href={mcpEndpoint} target="_blank" rel="noopener noreferrer">
-                                        <ExternalLink className="h-4 w-4" />
-                                    </a>
-                                </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                                Give this URL to cloud AI agents (Claude.ai, ChatGPT, etc.) as the MCP server endpoint.
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Errors — hide when relay is connected (stale from previous attempt) */}
+                    {/* Errors — hide when relay is connected */}
                     {!isConnected && startError && <ErrorCard response={startError} />}
 
                     {!isConnected && startRelay.error && !startError && (
@@ -626,6 +616,11 @@ export default function CloudRelay() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Team URLs (when connected) */}
+            {isConnected && workerUrl && mcpEndpoint && (
+                <TeamUrls workerUrl={workerUrl} mcpEndpoint={mcpEndpoint} />
+            )}
 
             {/* Settings */}
             <CustomDomainSettings

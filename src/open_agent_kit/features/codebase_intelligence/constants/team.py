@@ -110,6 +110,12 @@ TEAM_LOG_PULL_ERROR: Final[str] = "Team pull error: {error}"
 
 # CLI messages
 TEAM_MESSAGE_JOIN_SUCCESS: Final[str] = "Joined team server: {server_url}"
+TEAM_MESSAGE_JOIN_PENDING: Final[str] = (
+    "Join request submitted to {server_url}. Waiting for admin approval."
+)
+TEAM_MESSAGE_JOIN_PENDING_POLL: Final[str] = (
+    "Check status in the dashboard or run: oak ci team status"
+)
 TEAM_MESSAGE_LEAVE_SUCCESS: Final[str] = "Left team server"
 TEAM_MESSAGE_NOT_CONFIGURED: Final[str] = "Team sync not configured"
 TEAM_MESSAGE_ALREADY_CONFIGURED: Final[str] = "Already connected to team server: {server_url}"
@@ -181,3 +187,41 @@ TEAM_TRANSPORT_ERROR_PULL: Final[str] = "Failed to pull events: {error}"
 TEAM_HTTP_PUSH_PATH: Final[str] = "/events/push"
 TEAM_HTTP_PULL_PATH: Final[str] = "/events/pull"
 TEAM_HTTP_STATUS_PATH: Final[str] = "/status"
+TEAM_HTTP_REQUEST_JOIN_PATH: Final[str] = "/request-join"
+TEAM_HTTP_JOIN_STATUS_PATH: Final[str] = "/join-status"
+
+# =============================================================================
+# Join request / approval flow
+# =============================================================================
+
+# Server-side API paths for join flow (full paths, used by daemon routes)
+TEAM_API_PATH_REQUEST_JOIN: Final[str] = "/api/team/request-join"
+TEAM_API_PATH_PENDING_JOINS: Final[str] = "/api/team/pending-joins"
+TEAM_API_PATH_APPROVE_JOIN: Final[str] = "/api/team/approve-join"
+TEAM_API_PATH_REJECT_JOIN: Final[str] = "/api/team/reject-join"
+TEAM_API_PATH_JOIN_STATUS: Final[str] = "/api/team/join-status"
+
+# Join request statuses
+TEAM_JOIN_STATUS_PENDING: Final[str] = "pending"
+TEAM_JOIN_STATUS_APPROVED: Final[str] = "approved"
+TEAM_JOIN_STATUS_REJECTED: Final[str] = "rejected"
+
+# Auto-generated key format
+TEAM_AUTO_KEY_PREFIX: Final[str] = "team_"
+TEAM_AUTO_KEY_RANDOM_BYTES: Final[int] = 32
+
+# Config keys for join flow persistence
+CI_CONFIG_TEAM_KEY_PENDING_KEY_ID: Final[str] = "pending_key_id"
+
+# Log messages for join flow
+TEAM_LOG_KEY_GENERATED: Final[str] = "Auto-generated team API key"
+TEAM_LOG_KEY_PRESERVED: Final[str] = "Existing team API key preserved"
+TEAM_LOG_JOIN_REQUEST_CREATED: Final[str] = (
+    "Join request created: key_id={key_id}, machine_id={machine_id}"
+)
+TEAM_LOG_JOIN_APPROVED: Final[str] = "Join request approved: key_id={key_id}"
+TEAM_LOG_JOIN_REJECTED: Final[str] = "Join request rejected: key_id={key_id}"
+TEAM_LOG_JOIN_PENDING_KEY_VERIFY: Final[str] = (
+    "Key verification failed: pending approval (key_id={key_id})"
+)
+TEAM_LOG_JOIN_STATUS_POLL: Final[str] = "Join status polled: key_id={key_id}, status={status}"

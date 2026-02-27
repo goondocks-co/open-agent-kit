@@ -90,12 +90,6 @@ export interface DaemonStatus {
     };
     storage: StorageStats;
     backup: BackupSummary;
-    tunnel: {
-        active: boolean;
-        public_url: string | null;
-        provider: string | null;
-        started_at: string | null;
-    };
     version: VersionInfo;
     upgrade: UpgradeInfo;
     team?: TeamStatus;

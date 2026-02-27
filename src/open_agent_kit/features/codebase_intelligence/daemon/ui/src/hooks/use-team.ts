@@ -46,6 +46,8 @@ export interface TeamStatusResponse {
     project_id: string | null;
     sync: TeamSyncStatus | null;
     members_online: number;
+    pending_approval?: boolean;
+    pending_key_id?: string | null;
 }
 
 export interface TeamSyncStatus {
@@ -106,7 +108,24 @@ export interface KeyCreateResponse {
 
 export interface TeamJoinRequest {
     server_url: string;
-    api_key: string;
+}
+
+export interface TeamJoinResponse {
+    status: string;
+    key_id?: string;
+    configured?: boolean;
+    connected?: boolean;
+}
+
+export interface JoinStatusResponse {
+    status: "pending" | "approved" | "rejected";
+}
+
+export interface PendingJoinEntry {
+    key_id: string;
+    display_name?: string;
+    machine_id?: string;
+    created_at: string;
 }
 
 export interface ServerModeResponse {
@@ -136,6 +155,8 @@ const teamKeys = {
     config: () => [...teamKeys.all, "config"] as const,
     policy: () => [...teamKeys.all, "policy"] as const,
     keys: () => [...teamKeys.all, "keys"] as const,
+    pendingJoins: () => [...teamKeys.all, "pending-joins"] as const,
+    joinStatus: (keyId: string) => [...teamKeys.all, "join-status", keyId] as const,
 };
 
 // =============================================================================
@@ -193,13 +214,13 @@ export function useTeamKeys() {
 // Mutation Hooks
 // =============================================================================
 
-/** Join a team server. */
+/** Join a team server (simplified: only server_url needed). */
 export function useJoinTeam() {
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: (req: TeamJoinRequest) =>
-            postJson<TeamStatusResponse>(API_ENDPOINTS.TEAM_JOIN, req),
+            postJson<TeamJoinResponse>(API_ENDPOINTS.TEAM_JOIN, req),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: teamKeys.all });
         },
@@ -308,5 +329,63 @@ export function useToggleServerMode() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: teamKeys.all });
         },
+    });
+}
+
+// =============================================================================
+// Join Approval Hooks (server mode)
+// =============================================================================
+
+/** Polling interval for join status checks (5 seconds). */
+const JOIN_STATUS_POLL_MS = 5000;
+
+/** Fetch pending join requests (server mode only). */
+export function usePendingJoins() {
+    return useQuery<PendingJoinEntry[]>({
+        queryKey: teamKeys.pendingJoins(),
+        queryFn: ({ signal }) =>
+            fetchJson<PendingJoinEntry[]>(API_ENDPOINTS.TEAM_PENDING_JOINS, { signal }),
+        retry: false,
+    });
+}
+
+/** Approve a pending join request (server mode only). */
+export function useApproveJoin() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (keyId: string) =>
+            postJson<{ status: string }>(`${API_ENDPOINTS.TEAM_APPROVE_JOIN}/${keyId}`, {}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: teamKeys.pendingJoins() });
+            queryClient.invalidateQueries({ queryKey: teamKeys.members() });
+            queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
+        },
+    });
+}
+
+/** Reject a pending join request (server mode only). */
+export function useRejectJoin() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (keyId: string) =>
+            postJson<{ status: string }>(`${API_ENDPOINTS.TEAM_REJECT_JOIN}/${keyId}`, {}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: teamKeys.pendingJoins() });
+            queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
+        },
+    });
+}
+
+/** Poll join status after submitting a join request (client mode). */
+export function useJoinStatus(keyId: string | null) {
+    return usePowerQuery<JoinStatusResponse>({
+        queryKey: teamKeys.joinStatus(keyId ?? ""),
+        queryFn: ({ signal }) =>
+            fetchJson<JoinStatusResponse>(API_ENDPOINTS.TEAM_JOIN_STATUS, { signal }),
+        refetchInterval: JOIN_STATUS_POLL_MS,
+        pollCategory: "standard",
+        enabled: !!keyId,
     });
 }

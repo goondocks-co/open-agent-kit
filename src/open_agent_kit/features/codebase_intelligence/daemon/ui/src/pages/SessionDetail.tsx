@@ -16,7 +16,7 @@ import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, T
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DELETE_CONFIRMATIONS, type SessionLinkReason } from "@/lib/constants";
-import { useTunnelStatus } from "@/hooks/use-tunnel";
+import { useStatus } from "@/hooks/use-status";
 
 // Source type configuration for badges and icons
 const SOURCE_TYPE_CONFIG: Record<string, { badge: string; label: string; icon: React.ElementType; muted?: boolean }> = {
@@ -68,8 +68,9 @@ export default function SessionDetail() {
     // Inline title editing
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editTitleValue, setEditTitleValue] = useState("");
-    // Tunnel status for share button
-    const { data: tunnelStatus } = useTunnelStatus();
+    // Cloud relay status for share button
+    const { data: status } = useStatus();
+    const cloudRelay = status?.cloud_relay;
 
     // Session delete dialog
     const sessionDialog = useConfirmDialog();
@@ -195,8 +196,8 @@ export default function SessionDetail() {
     };
 
     const handleShareSession = async () => {
-        if (!tunnelStatus?.active || !tunnelStatus.public_url || !id) return;
-        const shareUrl = `${tunnelStatus.public_url}/activity/sessions/${id}`;
+        if (!cloudRelay?.connected || !cloudRelay.worker_url || !id) return;
+        const shareUrl = `${cloudRelay.worker_url}/activity/sessions/${id}`;
         try {
             await navigator.clipboard.writeText(shareUrl);
             setCopiedShare(true);
@@ -294,7 +295,7 @@ export default function SessionDetail() {
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    {tunnelStatus?.active && tunnelStatus.public_url && (
+                    {cloudRelay?.connected && cloudRelay.worker_url && (
                         <Button
                             variant="outline"
                             size="sm"

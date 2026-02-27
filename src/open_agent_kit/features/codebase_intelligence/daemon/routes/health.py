@@ -22,7 +22,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_DATA_DIR,
     CI_HOOKS_LOG_FILE,
     CI_LOG_FILE,
-    CI_STATUS_KEY_TUNNEL,
     DAEMON_STATUS_HEALTHY,
     DAEMON_STATUS_RUNNING,
     LOG_FILE_ACP,
@@ -32,10 +31,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     LOG_LINES_DEFAULT,
     LOG_LINES_MAX,
     LOG_LINES_MIN,
-    TUNNEL_RESPONSE_KEY_ACTIVE,
-    TUNNEL_RESPONSE_KEY_PROVIDER,
-    TUNNEL_RESPONSE_KEY_PUBLIC_URL,
-    TUNNEL_RESPONSE_KEY_STARTED_AT,
     VALID_LOG_FILES,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.models import HealthResponse
@@ -180,7 +175,6 @@ async def get_status() -> dict:
         },
         "storage": _get_storage_stats(state.project_root),
         "backup": _get_backup_summary(state.project_root),
-        CI_STATUS_KEY_TUNNEL: _get_tunnel_status(state),
         "version": {
             "running": VERSION,
             "installed": state.installed_version,
@@ -242,34 +236,6 @@ def _get_backup_summary(project_root: Path | None) -> dict:
         "last_backup": mtime.isoformat(),
         "age_hours": round(age_hours, 1),
         "size_bytes": stat.st_size,
-    }
-
-
-def _get_tunnel_status(state: object) -> dict:
-    """Get tunnel status for the status endpoint.
-
-    Args:
-        state: DaemonState instance.
-
-    Returns:
-        Tunnel status dictionary.
-    """
-    # Avoid circular import by accessing attribute dynamically
-    tunnel_provider = getattr(state, "tunnel_provider", None)
-    if tunnel_provider is None:
-        return {
-            TUNNEL_RESPONSE_KEY_ACTIVE: False,
-            TUNNEL_RESPONSE_KEY_PUBLIC_URL: None,
-            TUNNEL_RESPONSE_KEY_PROVIDER: None,
-            TUNNEL_RESPONSE_KEY_STARTED_AT: None,
-        }
-
-    status = tunnel_provider.get_status()
-    return {
-        TUNNEL_RESPONSE_KEY_ACTIVE: status.active,
-        TUNNEL_RESPONSE_KEY_PUBLIC_URL: status.public_url,
-        TUNNEL_RESPONSE_KEY_PROVIDER: status.provider_name,
-        TUNNEL_RESPONSE_KEY_STARTED_AT: status.started_at,
     }
 
 

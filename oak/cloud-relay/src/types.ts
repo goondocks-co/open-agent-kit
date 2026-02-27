@@ -17,6 +17,8 @@ export const RelayMessageType = {
   HEARTBEAT: "heartbeat",
   HEARTBEAT_ACK: "heartbeat_ack",
   ERROR: "error",
+  HTTP_REQUEST: "http_request",
+  HTTP_RESPONSE: "http_response",
 } as const;
 
 export type RelayMessageType =
@@ -79,6 +81,29 @@ export interface RelayError {
 }
 
 // ---------------------------------------------------------------------------
+// Wire messages — HTTP proxy (bidirectional)
+// ---------------------------------------------------------------------------
+
+/** Sent by worker to forward an HTTP request to the local daemon. */
+export interface HttpRequestMessage {
+  type: typeof RelayMessageType.HTTP_REQUEST;
+  request_id: string;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body: string | null;
+}
+
+/** Sent by daemon in response to an HTTP proxy request. */
+export interface HttpResponseMessage {
+  type: typeof RelayMessageType.HTTP_RESPONSE;
+  request_id: string;
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+// ---------------------------------------------------------------------------
 // Union of all message types
 // ---------------------------------------------------------------------------
 
@@ -89,7 +114,9 @@ export type RelayMessage =
   | ToolCallResponse
   | HeartbeatPing
   | HeartbeatPong
-  | RelayError;
+  | RelayError
+  | HttpRequestMessage
+  | HttpResponseMessage;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -98,6 +125,13 @@ export type RelayMessage =
 /** Pending request waiting for a response from the local daemon. */
 export interface PendingRequest {
   resolve: (response: ToolCallResponse) => void;
+  reject: (reason: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** Pending HTTP proxy request waiting for a response from the local daemon. */
+export interface PendingHttpRequest {
+  resolve: (response: HttpResponseMessage) => void;
   reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }

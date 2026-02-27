@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_JOIN_STATUS_PENDING,
     TEAM_PULL_DEFAULT_LIMIT,
 )
 
@@ -84,3 +85,43 @@ class TeamPullStatus(BaseModel):
     last_pull: str | None = None
     events_applied_total: int = 0
     cursor: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Join request / approval flow
+# ---------------------------------------------------------------------------
+
+
+class JoinRequest(BaseModel):
+    """Request from a client to join a team server."""
+
+    machine_id: str
+    display_name: str
+    key_hash: str
+    project_id: str
+
+
+class JoinRequestResponse(BaseModel):
+    """Server response after receiving a join request."""
+
+    status: str = TEAM_JOIN_STATUS_PENDING
+    key_id: str
+
+
+class JoinRequestStatus(BaseModel):
+    """Status of a join request (used for client polling)."""
+
+    key_id: str
+    status: str
+    machine_id: str | None = None
+    display_name: str | None = None
+
+
+class PendingJoinInfo(BaseModel):
+    """Information about a pending join request (for server admin UI)."""
+
+    key_id: str
+    name: str
+    machine_id: str
+    display_name: str
+    created_at: str

@@ -37,7 +37,6 @@ from open_agent_kit.features.codebase_intelligence.config.infrastructure import 
     BackupConfig,
     CloudRelayConfig,
     LogRotationConfig,
-    TunnelConfig,
 )
 
 # --- I/O and classification ---
@@ -88,7 +87,6 @@ __all__ = [
     "SessionQualityConfig",
     "SummarizationConfig",
     "TeamConfig",
-    "TunnelConfig",
     # Type aliases
     "ProviderType",
     # Constants
