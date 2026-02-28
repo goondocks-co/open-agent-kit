@@ -23,6 +23,8 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_LOG_SYNC_STARTED,
     TEAM_LOG_SYNC_STOPPED,
     TEAM_OUTBOX_BATCH_SIZE,
+    TEAM_OUTBOX_BATCH_SIZE_BURST,
+    TEAM_OUTBOX_BURST_THRESHOLD,
     TEAM_OUTBOX_MAX_RETRY_COUNT,
     TEAM_OUTBOX_PRUNE_AGE_HOURS,
     TEAM_OUTBOX_STATUS_FAILED,
@@ -177,6 +179,19 @@ class TeamSyncWorker:
 
         conn = self._store._get_connection()
 
+        # Choose batch size: use burst limit when the queue is deep to drain
+        # a backlog with fewer HTTP round-trips.
+        depth_row = conn.execute(
+            "SELECT COUNT(*) FROM team_outbox WHERE status = ?",
+            (TEAM_OUTBOX_STATUS_PENDING,),
+        ).fetchone()
+        pending_count = depth_row[0] if depth_row else 0
+        batch_limit = (
+            TEAM_OUTBOX_BATCH_SIZE_BURST
+            if pending_count >= TEAM_OUTBOX_BURST_THRESHOLD
+            else TEAM_OUTBOX_BATCH_SIZE
+        )
+
         # Select pending events that haven't exceeded retry limit
         cursor = conn.execute(
             """
@@ -187,7 +202,7 @@ class TeamSyncWorker:
             ORDER BY id ASC
             LIMIT ?
             """,
-            (TEAM_OUTBOX_STATUS_PENDING, TEAM_OUTBOX_MAX_RETRY_COUNT, TEAM_OUTBOX_BATCH_SIZE),
+            (TEAM_OUTBOX_STATUS_PENDING, TEAM_OUTBOX_MAX_RETRY_COUNT, batch_limit),
         )
         rows = cursor.fetchall()
         if not rows:

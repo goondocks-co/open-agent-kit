@@ -107,7 +107,9 @@ TEAM_API_KEY_PERMISSIONS_ADMIN: Final[str] = "admin"
 # Outbox management
 TEAM_OUTBOX_MAX_RETRY_COUNT: Final[int] = 5
 TEAM_OUTBOX_PRUNE_AGE_HOURS: Final[int] = 24
-TEAM_OUTBOX_BATCH_SIZE: Final[int] = 50
+TEAM_OUTBOX_BATCH_SIZE: Final[int] = 250
+TEAM_OUTBOX_BATCH_SIZE_BURST: Final[int] = 500  # used when queue depth > threshold
+TEAM_OUTBOX_BURST_THRESHOLD: Final[int] = 1000  # queue depth that triggers burst mode
 
 # Presence heartbeat rate limit (independent of sync_interval)
 TEAM_HEARTBEAT_INTERVAL_SECONDS: Final[int] = 30
