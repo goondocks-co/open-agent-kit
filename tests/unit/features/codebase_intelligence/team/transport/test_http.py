@@ -146,8 +146,12 @@ class TestHttpTransportPush:
         assert result.accepted == 2
         assert result.rejected == 0
 
-    def test_push_failure(self):
-        """push_events returns rejected count on HTTP error."""
+    def test_push_server_rejection_returns_rejected_count(self):
+        """push_events returns rejected count on HTTP 4xx/5xx server response.
+
+        A server-side rejection (explicit HTTP error response) counts against
+        the retry limit, so we return PushResult rather than raising.
+        """
         import httpx
 
         transport = HttpTransport(_TEST_SERVER_URL, _TEST_TOKEN)
@@ -163,6 +167,28 @@ class TestHttpTransportPush:
 
         assert result.accepted == 0
         assert result.rejected == 1
+
+    def test_push_transport_error_raises(self):
+        """push_events raises on network-level failure (server unreachable).
+
+        The outbox worker must see the exception to know this is a transient
+        failure and must NOT increment retry_count on pending events.
+        """
+        import httpx
+        import pytest
+
+        transport = HttpTransport(_TEST_SERVER_URL, _TEST_TOKEN)
+
+        mock_cls, mock_client = _mock_async_client()
+        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        with patch("httpx.AsyncClient", mock_cls):
+            batch = TeamEventBatch(events=[_make_event()])
+            with pytest.raises(httpx.TransportError):
+                _run(transport.push_events(batch))
+
+        assert transport.get_status().connected is False
+        assert transport.get_status().last_error is not None
 
 
 # =============================================================================

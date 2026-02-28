@@ -52,10 +52,9 @@ export interface TeamStatusResponse {
 
 export interface TeamSyncStatus {
     queue_depth?: number;
-    last_flush_at?: string | null;
-    last_flush_count?: number;
+    last_sync?: string | null;
     last_error?: string | null;
-    events_sent?: number;
+    events_sent_total?: number;
     [key: string]: unknown;
 }
 

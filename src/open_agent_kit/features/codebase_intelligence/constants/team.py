@@ -114,6 +114,9 @@ TEAM_OUTBOX_BURST_THRESHOLD: Final[int] = 1000  # queue depth that triggers burs
 # Presence heartbeat rate limit (independent of sync_interval)
 TEAM_HEARTBEAT_INTERVAL_SECONDS: Final[int] = 30
 
+# Maximum backoff between sync/pull attempts after consecutive transport failures
+TEAM_SYNC_MAX_BACKOFF_SECONDS: Final[int] = 300
+
 # Pull defaults
 TEAM_PULL_DEFAULT_LIMIT: Final[int] = 50
 

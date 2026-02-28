@@ -118,8 +118,14 @@ def test_flush_marks_events_sent(worker, store):
     assert row[0] == TEAM_OUTBOX_STATUS_SENT
 
 
-def test_flush_retries_on_failure(worker, store):
-    """Transport failure should increment retry_count and not mark as sent."""
+def test_flush_transport_error_preserves_pending_no_retry(worker, store):
+    """Network-level transport failure must NOT increment retry_count.
+
+    When the server is unreachable (ConnectError, timeout, etc.) events must
+    stay pending with retry_count=0 so they are delivered once the server
+    comes back.  Incrementing retry_count would permanently fail events after
+    just a few seconds of server downtime.
+    """
     _insert_pending_event(store)
 
     mock_transport = MagicMock()
@@ -130,16 +136,35 @@ def test_flush_retries_on_failure(worker, store):
         worker._flush_outbox()
 
     conn = store._get_connection()
-    cursor = conn.execute("SELECT status, retry_count, error_message FROM team_outbox")
-    row = cursor.fetchone()
-    assert row[0] == TEAM_OUTBOX_STATUS_PENDING  # still pending (retry_count < max)
+    row = conn.execute("SELECT status, retry_count FROM team_outbox").fetchone()
+    assert row[0] == TEAM_OUTBOX_STATUS_PENDING  # still pending
+    assert row[1] == 0  # retry_count unchanged — server was just unreachable
+
+
+def test_flush_server_rejection_increments_retry(worker, store):
+    """Explicit server rejection (PushResult.rejected) increments retry_count.
+
+    When the server responds but rejects the event (e.g. 4xx/5xx), the
+    transport returns PushResult(accepted=0, rejected=N).  This counts against
+    the retry limit because the server has made a deliberate decision.
+    """
+    _insert_pending_event(store)
+
+    mock_transport = MagicMock()
+    mock_transport.push_events = AsyncMock(return_value=PushResult(accepted=0, rejected=1))
+    worker.set_transport(mock_transport)
+
+    worker._flush_outbox()
+
+    conn = store._get_connection()
+    row = conn.execute("SELECT status, retry_count, error_message FROM team_outbox").fetchone()
+    assert row[0] == TEAM_OUTBOX_STATUS_PENDING  # still pending (below max)
     assert row[1] == 1
-    assert "network down" in row[2]
+    assert "rejected by server" in row[2]
 
 
-def test_flush_marks_failed_after_max_retries(worker, store):
-    """Events exceeding max retry count should be marked as failed."""
-    # Insert event with retry_count just below the max
+def test_flush_marks_failed_after_max_server_rejections(worker, store):
+    """Events reaching max retry_count via server rejections are marked FAILED."""
     conn = store._get_connection()
     conn.execute(
         """
@@ -160,15 +185,14 @@ def test_flush_marks_failed_after_max_retries(worker, store):
     )
     conn.commit()
 
+    # Server explicitly rejects (returns PushResult, not a transport exception)
     mock_transport = MagicMock()
-    mock_transport.push_events = AsyncMock(side_effect=ConnectionError("still down"))
+    mock_transport.push_events = AsyncMock(return_value=PushResult(accepted=0, rejected=1))
     worker.set_transport(mock_transport)
 
-    with pytest.raises(ConnectionError):
-        worker._flush_outbox()
+    worker._flush_outbox()
 
-    cursor = conn.execute("SELECT status, retry_count FROM team_outbox")
-    row = cursor.fetchone()
+    row = conn.execute("SELECT status, retry_count FROM team_outbox").fetchone()
     assert row[0] == TEAM_OUTBOX_STATUS_FAILED
     assert row[1] == TEAM_OUTBOX_MAX_RETRY_COUNT
 

@@ -60,7 +60,17 @@ class HttpTransport(TeamTransport):
         return f"{self._server_url}{TEAM_ROUTER_PREFIX}{path}"
 
     async def push_events(self, batch: TeamEventBatch) -> PushResult:
-        """Push events via POST to /api/team/events/push."""
+        """Push events via POST to /api/team/events/push.
+
+        Raises:
+            httpx.TransportError: On network-level failures (server unreachable,
+                connection refused, timeout). The caller should treat these as
+                transient and NOT increment retry counts — events must stay pending.
+        Returns:
+            PushResult with accepted/rejected counts when the server responds,
+            including error responses (4xx/5xx) which are treated as explicit
+            server rejections and DO count against the retry limit.
+        """
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -72,7 +82,16 @@ class HttpTransport(TeamTransport):
                 self._connected = True
                 self._last_error = None
                 return PushResult.model_validate(response.json())
+        except httpx.TransportError as e:
+            # Network-level failure: server is unreachable, connection refused,
+            # or timed out. Re-raise so the outbox worker knows this is transient
+            # and must NOT increment retry_count on pending events.
+            self._last_error = str(e)
+            self._connected = False
+            raise
         except httpx.HTTPError as e:
+            # Server responded with an error (4xx/5xx). This is an explicit
+            # server rejection — the caller may count this against the retry limit.
             self._last_error = str(e)
             self._connected = False
             logger.warning(TEAM_TRANSPORT_ERROR_PUSH.format(error=e))

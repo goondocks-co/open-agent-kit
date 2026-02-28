@@ -440,10 +440,14 @@ async def get_team_status() -> TeamStatusResponse:
     )
 
     # Server mode is always "connected" (this node IS the server).
-    # Client mode depends on whether the sync worker is running.
-    is_connected = (state.team_gateway is not None and state.team_gateway.is_server()) or (
-        state.team_sync_worker is not None
-    )
+    # Client mode uses the transport's last known connectivity state so the
+    # UI correctly reflects a downed server even while the worker is running.
+    if state.team_gateway is not None and state.team_gateway.is_server():
+        is_connected = True
+    elif state.team_transport is not None:
+        is_connected = state.team_transport.get_status().connected
+    else:
+        is_connected = False
 
     return TeamStatusResponse(
         configured=True,
@@ -473,21 +477,37 @@ async def get_team_members() -> dict[str, Any]:
 
 @router.post(TEAM_API_PATH_SYNC_FLUSH)
 @handle_route_errors("team sync flush")
-async def force_sync_flush() -> dict[str, int]:
-    """Force-flush the outbox to the team server."""
+async def force_sync_flush() -> dict[str, Any]:
+    """Force-flush the outbox to the team server.
+
+    Returns flushed count on success. Returns an error field (not a 500) if
+    the server is temporarily unreachable — events remain pending and will
+    be delivered automatically when the server comes back.
+    """
     state = get_state()
     if not state.team_sync_worker:
         raise HTTPException(status_code=400, detail="Team sync not active")
-    count = state.team_sync_worker._flush_outbox()
-    return {"flushed": count}
+    try:
+        count = state.team_sync_worker._flush_outbox()
+        return {"flushed": count}
+    except Exception as exc:
+        # Transport-level failure: server unreachable. Not a 500 — events are
+        # safely queued locally and will be retried automatically.
+        return {"flushed": 0, "error": str(exc)}
 
 
 @router.post(TEAM_API_PATH_SYNC_PULL)
 @handle_route_errors("team sync pull")
-async def force_sync_pull() -> dict[str, str]:
-    """Placeholder for force-pulling events from the team server."""
-    # Pull worker not yet implemented; return a descriptive status
-    return {"status": "pull_worker_not_available"}
+async def force_sync_pull() -> dict[str, Any]:
+    """Force-pull events from the team server via the pull worker."""
+    state = get_state()
+    if not state.team_pull_worker:
+        return {"status": "pull_worker_not_available", "applied": 0}
+    try:
+        applied = state.team_pull_worker._pull_and_apply()
+        return {"status": "ok", "applied": applied}
+    except Exception as exc:
+        return {"status": "error", "applied": 0, "error": str(exc)}
 
 
 # ---------------------------------------------------------------------------

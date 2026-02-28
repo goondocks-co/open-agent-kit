@@ -17,6 +17,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_LOG_PULL_ERROR,
     TEAM_LOG_PULL_STARTED,
     TEAM_LOG_PULL_STOPPED,
+    TEAM_SYNC_MAX_BACKOFF_SECONDS,
 )
 from open_agent_kit.features.codebase_intelligence.team.protocol import (
     TeamPullRequest,
@@ -99,16 +100,27 @@ class TeamPullWorker:
         logger.info(TEAM_LOG_PULL_STOPPED)
 
     def _run_loop(self) -> None:
-        """Timer loop: sleep(interval), pull, repeat."""
+        """Timer loop: sleep(interval), pull, repeat.
+
+        Uses exponential backoff on consecutive transport failures, mirroring
+        the outbox worker. Resets to the base interval on success.
+        """
+        consecutive_failures = 0
         while not self._stop_event.is_set():
-            self._stop_event.wait(timeout=self._config.pull_interval_seconds)
+            backoff = min(
+                self._config.pull_interval_seconds * (2 ** min(consecutive_failures, 6)),
+                TEAM_SYNC_MAX_BACKOFF_SECONDS,
+            )
+            self._stop_event.wait(timeout=backoff)
             if self._stop_event.is_set():
                 break
             try:
                 applied = self._pull_and_apply()
+                consecutive_failures = 0
                 if applied > 0:
                     logger.info(TEAM_LOG_PULL_APPLIED.format(count=applied))
             except Exception as exc:
+                consecutive_failures += 1
                 logger.error(TEAM_LOG_PULL_ERROR.format(error=exc))
                 with self._lock:
                     self._last_error = str(exc)

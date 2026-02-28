@@ -30,6 +30,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_OUTBOX_STATUS_FAILED,
     TEAM_OUTBOX_STATUS_PENDING,
     TEAM_OUTBOX_STATUS_SENT,
+    TEAM_SYNC_MAX_BACKOFF_SECONDS,
 )
 from open_agent_kit.features.codebase_intelligence.team.protocol import (
     TeamEvent,
@@ -110,19 +111,31 @@ class TeamSyncWorker:
         logger.info(TEAM_LOG_SYNC_STOPPED)
 
     def _run_loop(self) -> None:
-        """Timer loop: sleep(interval), flush, repeat."""
+        """Timer loop: sleep(interval), flush, repeat.
+
+        Uses exponential backoff on consecutive transport failures to avoid
+        hammering a downed server. Resets to the base interval on success.
+        Backoff doubles each failure up to TEAM_SYNC_MAX_BACKOFF_SECONDS.
+        """
+        consecutive_failures = 0
         while not self._stop_event.is_set():
-            self._stop_event.wait(timeout=self._config.sync_interval_seconds)
+            backoff = min(
+                self._config.sync_interval_seconds * (2 ** min(consecutive_failures, 6)),
+                TEAM_SYNC_MAX_BACKOFF_SECONDS,
+            )
+            self._stop_event.wait(timeout=backoff)
             if self._stop_event.is_set():
                 break
             try:
                 flushed = self._flush_outbox()
+                consecutive_failures = 0
                 if flushed > 0:
                     logger.info(TEAM_LOG_SYNC_FLUSH.format(count=flushed))
                 else:
                     # Queue empty: heartbeat keeps member presence alive
                     self._heartbeat()
             except Exception as exc:
+                consecutive_failures += 1
                 logger.error(TEAM_LOG_SYNC_ERROR.format(error=exc))
                 with self._lock:
                     self._last_error = str(exc)
@@ -237,9 +250,11 @@ class TeamSyncWorker:
             finally:
                 loop.close()
             accepted = result.accepted
-        except Exception as exc:
-            # Mark all rows as retry-incremented
-            self._mark_retry(conn, row_ids, str(exc))
+        except Exception:
+            # Transport-level failure (server unreachable, connection refused,
+            # timeout, etc.). Events remain pending — retry_count is NOT
+            # incremented. The loop retries on the next tick. Only explicit
+            # server rejections (PushResult.rejected) count against the limit.
             raise
 
         # Mark accepted events as sent

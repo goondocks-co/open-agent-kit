@@ -99,6 +99,7 @@ def _mock_state_with_config(
     mock_state.ci_config = ci_config
     mock_state.team_sync_worker = None
     mock_state.team_gateway = None
+    mock_state.team_transport = None
     mock_state.activity_store = None
     return mock_state
 
@@ -248,6 +249,14 @@ class TestGetTeamStatus:
         }
         mock_worker.get_status.return_value = mock_status
         mock_state.team_sync_worker = mock_worker
+
+        # Transport is always set when a sync worker is active
+        mock_transport = MagicMock()
+        mock_transport_status = MagicMock()
+        mock_transport_status.connected = True
+        mock_transport.get_status.return_value = mock_transport_status
+        mock_state.team_transport = mock_transport
+
         mock_get_state.return_value = mock_state
 
         with patch(

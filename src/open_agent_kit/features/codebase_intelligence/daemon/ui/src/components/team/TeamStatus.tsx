@@ -314,7 +314,7 @@ export default function TeamStatus() {
                     <CardContent className="space-y-4">
                         {sync ? (
                             <>
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <div className="grid gap-3 sm:grid-cols-3">
                                     <SyncStatCard
                                         label="Queue Depth"
                                         value={sync.queue_depth ?? 0}
@@ -322,24 +322,32 @@ export default function TeamStatus() {
                                     />
                                     <SyncStatCard
                                         label="Events Sent"
-                                        value={sync.events_sent ?? 0}
+                                        value={sync.events_sent_total ?? 0}
                                         icon={RefreshCw}
                                     />
                                     <SyncStatCard
-                                        label="Last Flush"
+                                        label="Last Sync"
                                         value={
-                                            sync.last_flush_at
-                                                ? formatRelativeTime(sync.last_flush_at)
+                                            sync.last_sync
+                                                ? formatRelativeTime(sync.last_sync)
                                                 : "Never"
                                         }
-                                        icon={Upload}
-                                    />
-                                    <SyncStatCard
-                                        label="Last Flush Count"
-                                        value={sync.last_flush_count ?? 0}
                                         icon={Download}
                                     />
                                 </div>
+
+                                {/* Offline queue banner: server unreachable but events are accumulating */}
+                                {!connected && (sync.queue_depth ?? 0) > 0 && (
+                                    <div className="flex items-start gap-2 p-3 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
+                                        <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                        <div>
+                                            <div className="font-medium">Server unreachable — retrying automatically</div>
+                                            <div className="text-xs mt-0.5">
+                                                {sync.queue_depth} event{sync.queue_depth !== 1 ? "s" : ""} queued locally. They will sync as soon as the server is reachable again.
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {sync.last_error && (
                                     <div className="flex items-start gap-2 p-3 rounded-md bg-red-500/10 text-red-600 text-sm">
@@ -396,9 +404,7 @@ export default function TeamStatus() {
                             )}
                             {pullSync.isSuccess && (
                                 <span className="text-xs text-green-600">
-                                    {pullSync.data?.status === "pull_worker_not_available"
-                                        ? "Pull worker not yet available"
-                                        : `Applied ${pullSync.data?.applied ?? 0} events`}
+                                    Applied {pullSync.data?.applied ?? 0} events
                                 </span>
                             )}
                             {flushSync.isError && (
