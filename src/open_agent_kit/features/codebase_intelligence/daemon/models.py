@@ -15,7 +15,21 @@ class ChunkType(str, Enum):
     CLASS = "class"
     METHOD = "method"
     MODULE = "module"
+    # Language-specific types produced by AST chunking (Go, Rust, Java, C#, etc.)
+    TYPE = "type"
+    IMPL = "impl"
+    STRUCT = "struct"
+    ENUM = "enum"
+    TRAIT = "trait"
+    INTERFACE = "interface"
+    PROPERTY = "property"
+    CONSTRUCTOR = "constructor"
     UNKNOWN = "unknown"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "ChunkType":
+        """Fall back to UNKNOWN for any unrecognized chunk type value."""
+        return cls.UNKNOWN
 
 
 class MemoryType(str, Enum):
