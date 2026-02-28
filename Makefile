@@ -97,6 +97,13 @@ setup:
 	@echo "  make ci-dev      Run daemon with hot reload (auto-restarts on code changes)"
 	@echo "  make ci-restart  Manual restart after code changes"
 	@echo "  make ui-restart  Build UI and restart daemon (for UI changes)"
+	@if ! echo "$$PATH" | tr ':' '\n' | grep -qx "$(USER_BIN_DIR)"; then \
+		echo ""; \
+		echo "WARNING: $(USER_BIN_DIR) is not in your PATH."; \
+		echo "Add this to your ~/.zshrc (or ~/.bashrc):"; \
+		echo "  export PATH=\"$(USER_BIN_DIR):\$$PATH\""; \
+		echo "Then run: source ~/.zshrc"; \
+	fi
 
 # Alias for backwards compatibility
 setup-full: setup
@@ -107,6 +114,13 @@ sync:
 	@mkdir -p "$(USER_BIN_DIR)"
 	ln -sf "$(CURDIR)/.venv/bin/oak" "$(USER_BIN_DIR)/oak-dev"
 	@echo "Dependencies synced and oak-dev symlink refreshed."
+	@if ! echo "$$PATH" | tr ':' '\n' | grep -qx "$(USER_BIN_DIR)"; then \
+		echo ""; \
+		echo "WARNING: $(USER_BIN_DIR) is not in your PATH."; \
+		echo "Add this to your ~/.zshrc (or ~/.bashrc):"; \
+		echo "  export PATH=\"$(USER_BIN_DIR):\$$PATH\""; \
+		echo "Then run: source ~/.zshrc"; \
+	fi
 
 lock:
 	uv lock
