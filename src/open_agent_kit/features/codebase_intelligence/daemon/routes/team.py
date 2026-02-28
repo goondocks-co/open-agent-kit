@@ -816,6 +816,13 @@ async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
         save_ci_config(project_root, fresh_config)
         state.ci_config = None
 
+        # Start sync workers now that approval is confirmed
+        from open_agent_kit.features.codebase_intelligence.daemon.lifecycle.startup import (
+            _init_team_sync,
+        )
+
+        _init_team_sync(state)
+
         return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
 
     return result

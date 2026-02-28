@@ -43,8 +43,9 @@ class RemoteTeamGateway(TeamGateway):
                     timeout=_HTTP_TIMEOUT,
                 )
                 resp.raise_for_status()
-                data: dict[str, Any] = resp.json()
-                return data
+                # Server returns list[TeamMemberInfo]; wrap for dashboard
+                members: list[Any] = resp.json()
+                return {"members": members}
         except Exception as exc:
             logger.warning("Failed to fetch team members: %s", exc)
             return {"members": [], "error": str(exc)}
