@@ -182,7 +182,7 @@ class TeamEventApplier:
                 (
                     payload.get("id"),
                     payload.get("session_id"),
-                    payload.get("prompt_batch_id"),
+                    None,  # prompt_batch_id is a local integer FK, not meaningful cross-machine
                     payload.get("observation"),
                     payload.get("memory_type"),
                     payload.get("context"),

@@ -99,6 +99,39 @@ def test_apply_observation_upsert_new(applier, store):
     assert row[2] == 0  # embedded=False
 
 
+def test_apply_observation_upsert_with_nonexistent_prompt_batch_id(applier, store):
+    """Observation with a sender-side prompt_batch_id that doesn't exist locally
+    must not raise an FK error. The batch ID is nulled out (cross-machine int IDs
+    are meaningless); the observation content is what matters."""
+    obs_id = f"obs-{uuid.uuid4().hex[:8]}"
+    payload = {
+        "id": obs_id,
+        "session_id": "sess-remote-1",
+        "prompt_batch_id": 99999,  # local integer on sender -- doesn't exist here
+        "observation": "Cross-machine observation with dangling batch ref",
+        "memory_type": "discovery",
+        "context": "src/parser.py",
+        "created_at": "2026-02-26T10:00:00",
+        "created_at_epoch": 1740000000,
+        "content_hash": "cross-machine-hash-001",
+        "source_machine_id": REMOTE_MACHINE_ID,
+    }
+    _insert_session(store)
+    event = _make_event(
+        TEAM_EVENT_OBSERVATION_UPSERT, payload, content_hash="cross-machine-hash-001"
+    )
+
+    result = applier._apply_event(event)
+    assert result is True
+
+    conn = store._get_connection()
+    row = conn.execute(
+        "SELECT id, prompt_batch_id FROM memory_observations WHERE id = ?", (obs_id,)
+    ).fetchone()
+    assert row is not None
+    assert row[1] is None  # prompt_batch_id nulled out cross-machine
+
+
 def test_apply_observation_upsert_dedup(applier, store):
     """Duplicate content_hash should be skipped."""
     obs_id = f"obs-{uuid.uuid4().hex[:8]}"
