@@ -11,6 +11,7 @@ import httpx
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_AUTH_SCHEME_BEARER,
+    TEAM_HTTP_HEARTBEAT_PATH,
     TEAM_HTTP_PULL_PATH,
     TEAM_HTTP_PUSH_PATH,
     TEAM_HTTP_STATUS_PATH,
@@ -115,6 +116,22 @@ class HttpTransport(TeamTransport):
     async def disconnect(self) -> None:
         """No-op — clients are not cached."""
         self._connected = False
+
+    async def send_heartbeat(self) -> None:
+        """Update member presence via POST /members/heartbeat."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self._url(TEAM_HTTP_HEARTBEAT_PATH),
+                    headers=self._auth_headers(),
+                )
+                response.raise_for_status()
+                self._connected = True
+                self._last_error = None
+        except httpx.HTTPError as e:
+            self._last_error = str(e)
+            self._connected = False
+            logger.debug("Heartbeat failed: %s", e)
 
     def get_status(self) -> TransportStatus:
         """Return current transport status."""

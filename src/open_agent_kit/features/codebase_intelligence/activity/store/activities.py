@@ -267,7 +267,7 @@ def _enqueue_activity_outbox_events(
         return
 
     schema_version = store.get_schema_version()
-    for activity, row in zip(activities, rows):
+    for activity, row in zip(activities, rows, strict=True):
         enqueue_team_event(
             conn=conn,
             event_type=TEAM_EVENT_ACTIVITY_UPSERT,

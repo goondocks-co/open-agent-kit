@@ -25,14 +25,14 @@ from open_agent_kit.features.codebase_intelligence.constants.governance import (
     DATA_COLLECTION_SYNC_PROMPTS_DEFAULT,
 )
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
     TEAM_EVENT_OBSERVATION_UPSERT,
-    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-    TEAM_EVENT_SESSION_UPSERT,
-    TEAM_EVENT_SESSION_END,
-    TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
-    TEAM_EVENT_ACTIVITY_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_SESSION_UPSERT,
 )
 from open_agent_kit.features.codebase_intelligence.governance.policies import (
     LOCAL_EVENT_TYPE_ACTIVITY,
@@ -317,8 +317,12 @@ class TestRedactPromptPayload:
 
     def test_redacts_content_fields(self):
         """Content fields are replaced with redaction sentinel."""
-        from open_agent_kit.features.codebase_intelligence.governance.policies import redact_prompt_payload
-        from open_agent_kit.features.codebase_intelligence.constants.team import TEAM_REDACTED_BY_POLICY
+        from open_agent_kit.features.codebase_intelligence.constants.team import (
+            TEAM_REDACTED_BY_POLICY,
+        )
+        from open_agent_kit.features.codebase_intelligence.governance.policies import (
+            redact_prompt_payload,
+        )
 
         payload = {
             "session_id": "sess-1",
@@ -339,7 +343,9 @@ class TestRedactPromptPayload:
 
     def test_preserves_none_fields(self):
         """None fields are not redacted (remain None)."""
-        from open_agent_kit.features.codebase_intelligence.governance.policies import redact_prompt_payload
+        from open_agent_kit.features.codebase_intelligence.governance.policies import (
+            redact_prompt_payload,
+        )
 
         payload = {
             "session_id": "sess-1",
@@ -354,7 +360,9 @@ class TestRedactPromptPayload:
 
     def test_does_not_mutate_original(self):
         """Original payload is not modified."""
-        from open_agent_kit.features.codebase_intelligence.governance.policies import redact_prompt_payload
+        from open_agent_kit.features.codebase_intelligence.governance.policies import (
+            redact_prompt_payload,
+        )
 
         payload = {"user_prompt": "original text", "session_id": "sess-1"}
         redacted = redact_prompt_payload(payload)

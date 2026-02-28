@@ -10,10 +10,14 @@ import asyncio
 import json
 import logging
 import threading
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from open_agent_kit.features.codebase_intelligence.constants import POWER_STATE_DEEP_SLEEP
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_HEARTBEAT_INTERVAL_SECONDS,
     TEAM_LOG_SYNC_ERROR,
     TEAM_LOG_SYNC_FLUSH,
     TEAM_LOG_SYNC_STARTED,
@@ -56,10 +60,12 @@ class TeamSyncWorker:
         store: ActivityStore,
         config: TeamConfig,
         project_id: str,
+        state_accessor: Callable[[], str] | None = None,
     ) -> None:
         self._store = store
         self._config = config
         self._project_id = project_id
+        self._state_accessor = state_accessor
         self._transport: TeamTransport | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -69,6 +75,7 @@ class TeamSyncWorker:
         self._last_sync: str | None = None
         self._last_error: str | None = None
         self._events_sent_total: int = 0
+        self._last_heartbeat_at: float | None = None
 
     def set_transport(self, transport: TeamTransport) -> None:
         """Set or replace the transport used for pushing events.
@@ -110,10 +117,50 @@ class TeamSyncWorker:
                 flushed = self._flush_outbox()
                 if flushed > 0:
                     logger.info(TEAM_LOG_SYNC_FLUSH.format(count=flushed))
+                else:
+                    # Queue empty: heartbeat keeps member presence alive
+                    self._heartbeat()
             except Exception as exc:
                 logger.error(TEAM_LOG_SYNC_ERROR.format(error=exc))
                 with self._lock:
                     self._last_error = str(exc)
+
+    def _heartbeat(self) -> None:
+        """Send a presence heartbeat when the outbox is empty.
+
+        Skipped in DEEP_SLEEP — the member correctly appears offline when
+        the user has been away for 90+ minutes. On the next flush cycle
+        after waking, the stale _last_heartbeat_at triggers an immediate
+        reconnect without any special wake-up path.
+
+        Rate-limited to TEAM_HEARTBEAT_INTERVAL_SECONDS so the HTTP
+        transport isn't flooded on every short sync_interval tick.
+        """
+        if self._transport is None:
+            return
+
+        # Respect deep sleep: user is genuinely away, offline is correct
+        if self._state_accessor is not None:
+            if self._state_accessor() == POWER_STATE_DEEP_SLEEP:
+                return
+
+        # Rate limit: at most one heartbeat per TEAM_HEARTBEAT_INTERVAL_SECONDS
+        now = time.monotonic()
+        if (
+            self._last_heartbeat_at is not None
+            and now - self._last_heartbeat_at < TEAM_HEARTBEAT_INTERVAL_SECONDS
+        ):
+            return
+
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(self._transport.send_heartbeat())
+            finally:
+                loop.close()
+            self._last_heartbeat_at = now
+        except Exception as exc:
+            logger.debug("Heartbeat failed (non-critical): %s", exc)
 
     def _flush_outbox(self) -> int:
         """Flush pending outbox events to the team server.

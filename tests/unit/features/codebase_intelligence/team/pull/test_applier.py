@@ -6,14 +6,14 @@ import pytest
 
 from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
     TEAM_EVENT_OBSERVATION_UPSERT,
-    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-    TEAM_EVENT_SESSION_UPSERT,
-    TEAM_EVENT_SESSION_END,
-    TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
-    TEAM_EVENT_ACTIVITY_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_SESSION_UPSERT,
 )
 from open_agent_kit.features.codebase_intelligence.team.protocol import TeamEvent
 from open_agent_kit.features.codebase_intelligence.team.pull.applier import (

@@ -8,11 +8,11 @@ import functools
 import logging
 import sqlite3
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.activity.store import (
     activities,
@@ -262,7 +262,7 @@ class ActivityStore:
         self._buffer_size = 10  # Flush when buffer reaches this size
         # Team outbox: when enabled, data writes enqueue sync events atomically
         self.team_outbox_enabled: bool = False
-        self._team_policy_accessor: Callable[[], "DataCollectionPolicy"] | None = None
+        self._team_policy_accessor: Callable[[], DataCollectionPolicy] | None = None
         self._ensure_schema()
 
     # ==========================================================================

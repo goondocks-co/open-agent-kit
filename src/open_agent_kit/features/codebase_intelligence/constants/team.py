@@ -46,6 +46,7 @@ TEAM_EVENT_SESSION_SUMMARY_UPDATE: Final[str] = "session_summary_update"
 TEAM_EVENT_SESSION_END: Final[str] = "session_end"
 TEAM_EVENT_SESSION_TITLE_UPDATE: Final[str] = "session_title_update"
 TEAM_EVENT_PROMPT_BATCH_UPSERT: Final[str] = "prompt_batch_upsert"
+TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE: Final[str] = "prompt_batch_response_update"
 TEAM_EVENT_ACTIVITY_UPSERT: Final[str] = "activity_upsert"
 TEAM_EVENT_RAW_SESSION: Final[str] = "raw_session"  # Mode 2 groundwork
 VALID_TEAM_EVENT_TYPES: Final[tuple[str, ...]] = (
@@ -56,6 +57,7 @@ VALID_TEAM_EVENT_TYPES: Final[tuple[str, ...]] = (
     TEAM_EVENT_SESSION_END,
     TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
     TEAM_EVENT_ACTIVITY_UPSERT,
 )
 
@@ -102,6 +104,9 @@ TEAM_API_KEY_PERMISSIONS_ADMIN: Final[str] = "admin"
 TEAM_OUTBOX_MAX_RETRY_COUNT: Final[int] = 5
 TEAM_OUTBOX_PRUNE_AGE_HOURS: Final[int] = 24
 TEAM_OUTBOX_BATCH_SIZE: Final[int] = 50
+
+# Presence heartbeat rate limit (independent of sync_interval)
+TEAM_HEARTBEAT_INTERVAL_SECONDS: Final[int] = 30
 
 # Pull defaults
 TEAM_PULL_DEFAULT_LIMIT: Final[int] = 50
@@ -203,6 +208,7 @@ TEAM_HTTP_STATUS_PATH: Final[str] = "/status"
 TEAM_HTTP_REQUEST_JOIN_PATH: Final[str] = "/request-join"
 TEAM_HTTP_JOIN_STATUS_PATH: Final[str] = "/join-status"
 TEAM_HTTP_MEMBERS_PATH: Final[str] = "/members"
+TEAM_HTTP_HEARTBEAT_PATH: Final[str] = "/members/heartbeat"
 
 # =============================================================================
 # Join request / approval flow

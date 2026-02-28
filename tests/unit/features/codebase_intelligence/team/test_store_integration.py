@@ -13,14 +13,14 @@ from open_agent_kit.features.codebase_intelligence.activity.store.models import 
     StoredObservation,
 )
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
     TEAM_EVENT_OBSERVATION_UPSERT,
-    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-    TEAM_EVENT_SESSION_UPSERT,
-    TEAM_EVENT_SESSION_END,
-    TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
-    TEAM_EVENT_ACTIVITY_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_SESSION_UPSERT,
     TEAM_OUTBOX_STATUS_PENDING,
     TEAM_REDACTED_BY_POLICY,
 )
@@ -313,11 +313,11 @@ def test_update_session_title_with_outbox_enabled(store):
 
 def test_create_prompt_batch_with_outbox_enabled(store):
     """create_prompt_batch should enqueue a prompt_batch_upsert event."""
-    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
-        create_session,
-    )
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
     )
 
     store.team_outbox_enabled = True
@@ -335,11 +335,11 @@ def test_create_prompt_batch_with_outbox_enabled(store):
 
 def test_create_prompt_batch_redaction(store):
     """Prompt content should be redacted when sync_prompts is disabled."""
-    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
-        create_session,
-    )
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
     )
     from open_agent_kit.features.codebase_intelligence.config.governance import (
         DataCollectionPolicy,
@@ -363,16 +363,16 @@ def test_create_prompt_batch_redaction(store):
 
 def test_add_activity_with_outbox_enabled(store):
     """add_activity should enqueue an activity_upsert event."""
-    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
-        create_session,
+    from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
+        add_activity,
     )
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
     )
-    from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
-        add_activity,
-    )
     from open_agent_kit.features.codebase_intelligence.activity.store.models import Activity
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
 
     store.team_outbox_enabled = True
     create_session(store, "session-act-1", TEST_AGENT, TEST_PROJECT_ROOT)
@@ -397,16 +397,16 @@ def test_add_activity_with_outbox_enabled(store):
 
 def test_add_activity_blocked_by_policy(store):
     """add_activity should NOT enqueue when sync_activities is disabled."""
-    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
-        create_session,
+    from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
+        add_activity,
     )
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
     )
-    from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
-        add_activity,
-    )
     from open_agent_kit.features.codebase_intelligence.activity.store.models import Activity
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
     from open_agent_kit.features.codebase_intelligence.config.governance import (
         DataCollectionPolicy,
     )

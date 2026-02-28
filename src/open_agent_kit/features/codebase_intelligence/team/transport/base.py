@@ -59,3 +59,12 @@ class TeamTransport(ABC):
             TransportStatus with connection info.
         """
         ...
+
+    @abstractmethod
+    async def send_heartbeat(self) -> None:
+        """Update member presence on the server without pushing events.
+
+        Called when the outbox is empty so the member doesn't appear
+        offline due to an idle queue.
+        """
+        ...

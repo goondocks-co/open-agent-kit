@@ -128,7 +128,8 @@ def create_prompt_batch(
                     event_type=TEAM_EVENT_PROMPT_BATCH_UPSERT,
                     payload=event_payload,
                     source_machine_id=store.machine_id,
-                    content_hash=row_data.get("content_hash") or f"{session_id}:prompt:{batch.prompt_number}",
+                    content_hash=row_data.get("content_hash")
+                    or f"{session_id}:prompt:{batch.prompt_number}",
                     schema_version=store.get_schema_version(),
                 )
 
@@ -262,6 +263,7 @@ def end_prompt_batch(store: ActivityStore, batch_id: int) -> None:
         store: The ActivityStore instance.
         batch_id: Prompt batch to end.
     """
+    ended_at = datetime.now().isoformat()
     with store._transaction() as conn:
         conn.execute(
             """
@@ -269,8 +271,45 @@ def end_prompt_batch(store: ActivityStore, batch_id: int) -> None:
             SET ended_at = ?, status = 'completed'
             WHERE id = ?
             """,
-            (datetime.now().isoformat(), batch_id),
+            (ended_at, batch_id),
         )
+
+        if getattr(store, "team_outbox_enabled", False):
+            row = conn.execute(
+                "SELECT session_id, prompt_number, content_hash FROM prompt_batches WHERE id = ?",
+                (batch_id,),
+            ).fetchone()
+            if row:
+                from open_agent_kit.features.codebase_intelligence.constants.team import (
+                    TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
+                    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+                )
+                from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                    should_sync_event,
+                )
+                from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                    enqueue_team_event,
+                )
+
+                policy = store.get_team_policy()
+                if policy is None or should_sync_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, policy):
+                    batch_content_hash = row["content_hash"]
+                    enqueue_team_event(
+                        conn=conn,
+                        event_type=TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
+                        payload={
+                            "batch_content_hash": batch_content_hash,
+                            "session_id": row["session_id"],
+                            "prompt_number": row["prompt_number"],
+                            "status": "completed",
+                            "ended_at": ended_at,
+                            "source_machine_id": store.machine_id,
+                        },
+                        source_machine_id=store.machine_id,
+                        content_hash=f"batch_end:{batch_content_hash}",
+                        schema_version=store.get_schema_version(),
+                    )
+
     logger.debug(f"Ended prompt batch {batch_id}")
 
 
@@ -318,6 +357,49 @@ def update_prompt_batch_response(
             "UPDATE prompt_batches SET response_summary = ? WHERE id = ?",
             (truncated, batch_id),
         )
+
+        if getattr(store, "team_outbox_enabled", False):
+            row = conn.execute(
+                "SELECT session_id, prompt_number, content_hash FROM prompt_batches WHERE id = ?",
+                (batch_id,),
+            ).fetchone()
+            if row:
+                from open_agent_kit.features.codebase_intelligence.constants.team import (
+                    TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
+                    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+                )
+                from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                    should_sync_event,
+                )
+                from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                    enqueue_team_event,
+                )
+
+                policy = store.get_team_policy()
+                if policy is None or should_sync_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, policy):
+                    batch_content_hash = row["content_hash"]
+                    response_payload = truncated
+                    if policy is not None and not policy.sync_prompts:
+                        from open_agent_kit.features.codebase_intelligence.constants.team import (
+                            TEAM_REDACTED_BY_POLICY,
+                        )
+
+                        response_payload = TEAM_REDACTED_BY_POLICY if truncated else None
+                    enqueue_team_event(
+                        conn=conn,
+                        event_type=TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
+                        payload={
+                            "batch_content_hash": batch_content_hash,
+                            "session_id": row["session_id"],
+                            "prompt_number": row["prompt_number"],
+                            "response_summary": response_payload,
+                            "source_machine_id": store.machine_id,
+                        },
+                        source_machine_id=store.machine_id,
+                        content_hash=f"batch_response:{batch_content_hash}",
+                        schema_version=store.get_schema_version(),
+                    )
+
     logger.debug(f"Updated response summary for batch {batch_id}")
 
 

@@ -11,14 +11,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
     TEAM_EVENT_OBSERVATION_UPSERT,
-    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-    TEAM_EVENT_SESSION_UPSERT,
-    TEAM_EVENT_SESSION_END,
-    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
-    TEAM_EVENT_ACTIVITY_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_SESSION_UPSERT,
 )
 
 if TYPE_CHECKING:
@@ -88,6 +89,8 @@ class TeamEventApplier:
             return self._apply_session_title_update(payload)
         elif event.event_type == TEAM_EVENT_PROMPT_BATCH_UPSERT:
             return self._apply_prompt_batch_upsert(payload)
+        elif event.event_type == TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE:
+            return self._apply_prompt_batch_response_update(payload)
         elif event.event_type == TEAM_EVENT_ACTIVITY_UPSERT:
             return self._apply_activity_upsert(payload)
         else:
@@ -262,7 +265,12 @@ class TeamEventApplier:
         with self._store._transaction() as conn:
             conn.execute(
                 "UPDATE sessions SET ended_at = ?, status = ?, summary = COALESCE(?, summary) WHERE id = ?",
-                (payload.get("ended_at"), payload.get("status", "completed"), payload.get("summary"), session_id),
+                (
+                    payload.get("ended_at"),
+                    payload.get("status", "completed"),
+                    payload.get("summary"),
+                    session_id,
+                ),
             )
         return True
 
@@ -359,6 +367,36 @@ class TeamEventApplier:
                     payload.get("source_machine_id"),
                     content_hash,
                     payload.get("response_summary"),
+                ),
+            )
+        return True
+
+    def _apply_prompt_batch_response_update(self, payload: dict) -> bool:
+        """Apply a prompt batch response/completion update.
+
+        Updates response_summary, status, and ended_at on an existing batch,
+        identified by its cross-machine stable content_hash (hash of
+        session_id + prompt_number).  Uses COALESCE so that a response-only
+        event doesn't overwrite an already-set status, and vice-versa.
+        """
+        batch_content_hash = payload.get("batch_content_hash")
+        if not batch_content_hash:
+            return False
+
+        with self._store._transaction() as conn:
+            conn.execute(
+                """
+                UPDATE prompt_batches
+                SET response_summary = COALESCE(?, response_summary),
+                    status = COALESCE(?, status),
+                    ended_at = COALESCE(?, ended_at)
+                WHERE content_hash = ?
+                """,
+                (
+                    payload.get("response_summary"),
+                    payload.get("status"),
+                    payload.get("ended_at"),
+                    batch_content_hash,
                 ),
             )
         return True

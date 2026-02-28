@@ -55,6 +55,10 @@ class RelayTransport(TeamTransport):
         """Disconnect from the relay worker."""
         await self._inner.disconnect()
 
+    async def send_heartbeat(self) -> None:
+        """Send heartbeat via the relay."""
+        await self._inner.send_heartbeat()
+
     def get_status(self) -> TransportStatus:
         """Return current transport status."""
         return self._inner.get_status()

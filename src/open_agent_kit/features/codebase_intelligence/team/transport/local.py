@@ -23,6 +23,9 @@ from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
     get_latest_cursor,
     store_events,
 )
+from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+    MembershipService,
+)
 from open_agent_kit.features.codebase_intelligence.team.transport.base import (
     TeamTransport,
 )
@@ -43,9 +46,11 @@ class LocalTransport(TeamTransport):
         self,
         conn_factory: Callable[[], sqlite3.Connection],
         project_id: str,
+        machine_id: str = "",
     ) -> None:
         self._conn_factory = conn_factory
         self._project_id = project_id
+        self._machine_id = machine_id
         logger.info(TEAM_LOG_LOCAL_TRANSPORT)
 
     async def push_events(self, batch: TeamEventBatch) -> PushResult:
@@ -53,6 +58,12 @@ class LocalTransport(TeamTransport):
         conn = self._conn_factory()
         accepted = store_events(conn, batch.events, self._project_id)
         cursor = get_latest_cursor(conn) or ""
+        # Mirror what the HTTP push route does: update member presence
+        if self._machine_id:
+            svc = MembershipService(conn_factory=lambda: conn)
+            svc.update_last_seen(self._machine_id)
+            if accepted > 0:
+                svc.increment_event_count(self._machine_id, accepted)
         return PushResult(
             accepted=accepted,
             rejected=len(batch.events) - accepted,
@@ -72,6 +83,14 @@ class LocalTransport(TeamTransport):
 
     async def disconnect(self) -> None:
         """No-op — nothing to tear down."""
+
+    async def send_heartbeat(self) -> None:
+        """Update member presence directly in the local DB."""
+        if not self._machine_id:
+            return
+        conn = self._conn_factory()
+        svc = MembershipService(conn_factory=lambda: conn)
+        svc.update_last_seen(self._machine_id)
 
     def get_status(self) -> TransportStatus:
         """Always connected."""

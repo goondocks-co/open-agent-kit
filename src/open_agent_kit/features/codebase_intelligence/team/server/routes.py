@@ -178,6 +178,20 @@ async def list_members(
     return svc.list_members()
 
 
+@router.post("/members/heartbeat")
+async def member_heartbeat(
+    machine_id: str = Depends(verify_team_token),
+) -> dict:
+    """Update member presence without pushing events.
+
+    Called by idle clients to keep their last_seen timestamp current
+    so they don't appear offline when the outbox queue is empty.
+    """
+    svc = _get_membership_service()
+    svc.update_last_seen(machine_id)
+    return {"ok": True}
+
+
 @router.get("/status")
 async def server_status() -> dict:
     """Server health check -- no auth required for connectivity testing."""

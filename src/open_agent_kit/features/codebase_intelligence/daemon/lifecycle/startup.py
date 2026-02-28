@@ -13,6 +13,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.config.governance import DataCollectionPolicy
+    from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
+
 from fastapi import FastAPI
 
 from open_agent_kit.config.paths import OAK_DIR
@@ -405,7 +409,7 @@ def _init_team_sync(state: "DaemonState") -> None:
     state.activity_store.team_outbox_enabled = True
 
     # Wire policy accessor so outbox hooks can check data collection policy
-    def _policy_accessor():
+    def _policy_accessor() -> "DataCollectionPolicy":
         from open_agent_kit.features.codebase_intelligence.config.governance import (
             DataCollectionPolicy,
         )
@@ -430,6 +434,7 @@ def _init_team_sync(state: "DaemonState") -> None:
         get_project_identity(state.project_root).full_id if state.project_root else "unknown"
     )
 
+    transport: TeamTransport
     if ci_config.team.server_mode:
         from open_agent_kit.features.codebase_intelligence.team.transport.local import (
             LocalTransport,
@@ -438,6 +443,7 @@ def _init_team_sync(state: "DaemonState") -> None:
         transport = LocalTransport(
             conn_factory=state.activity_store._get_connection,
             project_id=project_id,
+            machine_id=state.machine_id or "unknown",
         )
     else:
         from open_agent_kit.features.codebase_intelligence.team.transport.factory import (
@@ -453,6 +459,7 @@ def _init_team_sync(state: "DaemonState") -> None:
         store=state.activity_store,
         config=ci_config.team,
         project_id=project_id,
+        state_accessor=lambda: state.power_state,
     )
     worker.set_transport(transport)  # type: ignore[arg-type]
 
