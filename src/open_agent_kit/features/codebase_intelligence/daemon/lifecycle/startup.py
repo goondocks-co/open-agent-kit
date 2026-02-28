@@ -403,6 +403,20 @@ def _init_team_sync(state: "DaemonState") -> None:
     # Enable outbox writes in the store (atomic with data writes)
     state.activity_store.team_outbox_enabled = True
 
+    # Wire policy accessor so outbox hooks can check data collection policy
+    def _policy_accessor():
+        from open_agent_kit.features.codebase_intelligence.config.governance import (
+            DataCollectionPolicy,
+        )
+        from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+
+        s = get_state()
+        if s.ci_config and s.ci_config.governance:
+            return s.ci_config.governance.data_collection
+        return DataCollectionPolicy()
+
+    state.activity_store._team_policy_accessor = _policy_accessor
+
     # Create transport for pushing/pulling events
     from open_agent_kit.features.codebase_intelligence.team.identity import (
         get_project_identity,

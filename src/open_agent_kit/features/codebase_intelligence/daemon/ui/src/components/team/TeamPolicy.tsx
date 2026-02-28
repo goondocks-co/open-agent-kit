@@ -37,8 +37,8 @@ interface PolicyToggle {
 const LOCAL_COLLECTION_TOGGLES: PolicyToggle[] = [
     {
         key: "collect_activities",
-        label: "Collect activities",
-        description: "Record file changes, tool calls, and other activities from coding sessions.",
+        label: "Collect session activity",
+        description: "Record file changes, tool calls, and other activities during coding sessions. Session start/end is always recorded.",
     },
     {
         key: "collect_prompts",
@@ -51,17 +51,17 @@ const TEAM_SYNC_TOGGLES: PolicyToggle[] = [
     {
         key: "sync_observations",
         label: "Sync observations",
-        description: "Share session summaries and observations with the team server.",
+        description: "Share codebase observations and plans with the team. Includes activity-based and agent-based observations.",
     },
     {
         key: "sync_activities",
-        label: "Sync activities",
-        description: "Share detailed activity data (file changes, tool calls) with the team server.",
+        label: "Sync session activity",
+        description: "Share detailed session activity (file changes, tool calls) with the team. Session lifecycle (start, end, titles, summaries) always syncs.",
     },
     {
         key: "sync_prompts",
         label: "Sync prompts",
-        description: "Share user prompts and agent responses with the team server.",
+        description: "Share user prompts and agent responses with the team server. Requires sync to be active.",
     },
 ];
 
@@ -196,7 +196,7 @@ export default function TeamPolicy() {
                 </CardTitle>
                 <CardDescription>
                     Control what data is collected locally and shared with the team server.
-                    These settings apply to this machine only.
+                    Session lifecycle always syncs when connected — these toggles control sub-categories.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

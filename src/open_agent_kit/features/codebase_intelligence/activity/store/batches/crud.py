@@ -104,6 +104,34 @@ def create_prompt_batch(
             (session_id,),
         )
 
+        # Enqueue team sync event for prompt batch
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_PROMPT_BATCH_UPSERT,
+            )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                redact_prompt_payload,
+                should_sync_event,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, policy):
+                event_payload = row_data
+                # Redact prompt content if sync_prompts is disabled
+                if policy is not None and not policy.sync_prompts:
+                    event_payload = redact_prompt_payload(event_payload)
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_PROMPT_BATCH_UPSERT,
+                    payload=event_payload,
+                    source_machine_id=store.machine_id,
+                    content_hash=row_data.get("content_hash") or f"{session_id}:prompt:{batch.prompt_number}",
+                    schema_version=store.get_schema_version(),
+                )
+
     logger.debug(
         f"Created prompt batch {batch.id} (prompt #{prompt_number}, source={source_type}) "
         f"for session {session_id}"

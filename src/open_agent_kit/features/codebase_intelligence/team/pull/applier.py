@@ -14,6 +14,10 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_ACTIVITY_UPSERT,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +81,14 @@ class TeamEventApplier:
             return self._apply_session_upsert(payload)
         elif event.event_type == TEAM_EVENT_SESSION_SUMMARY_UPDATE:
             return self._apply_session_summary_update(payload)
+        elif event.event_type == TEAM_EVENT_SESSION_END:
+            return self._apply_session_end(payload)
+        elif event.event_type == TEAM_EVENT_SESSION_TITLE_UPDATE:
+            return self._apply_session_title_update(payload)
+        elif event.event_type == TEAM_EVENT_PROMPT_BATCH_UPSERT:
+            return self._apply_prompt_batch_upsert(payload)
+        elif event.event_type == TEAM_EVENT_ACTIVITY_UPSERT:
+            return self._apply_activity_upsert(payload)
         else:
             logger.warning("Unknown team event type: %s", event.event_type)
             return False
@@ -238,5 +250,124 @@ class TeamEventApplier:
                 "UPDATE sessions SET summary = ?, summary_updated_at = ?, "
                 "summary_embedded = 0 WHERE id = ?",
                 (summary, payload.get("summary_updated_at"), session_id),
+            )
+        return True
+
+    def _apply_session_end(self, payload: dict) -> bool:
+        """Apply a session end event."""
+        session_id = payload.get("session_id")
+        if not session_id:
+            return False
+        with self._store._transaction() as conn:
+            conn.execute(
+                "UPDATE sessions SET ended_at = ?, status = ?, summary = COALESCE(?, summary) WHERE id = ?",
+                (payload.get("ended_at"), payload.get("status", "completed"), payload.get("summary"), session_id),
+            )
+        return True
+
+    def _apply_session_title_update(self, payload: dict) -> bool:
+        """Apply a session title update. Respects manually_edited flag."""
+        session_id = payload.get("session_id")
+        title = payload.get("title")
+        if not session_id or title is None:
+            return False
+        manually_edited = payload.get("title_manually_edited", False)
+        with self._store._transaction() as conn:
+            if manually_edited:
+                conn.execute(
+                    "UPDATE sessions SET title = ?, title_manually_edited = ? WHERE id = ?",
+                    (title, True, session_id),
+                )
+            else:
+                # Only update if not manually edited locally
+                conn.execute(
+                    "UPDATE sessions SET title = ? WHERE id = ? AND (title_manually_edited IS NULL OR title_manually_edited = 0)",
+                    (title, session_id),
+                )
+        return True
+
+    def _apply_prompt_batch_upsert(self, payload: dict) -> bool:
+        """Apply a prompt batch upsert. Dedup by content_hash."""
+        content_hash = payload.get("content_hash")
+        if content_hash:
+            conn = self._store._get_connection()
+            existing = conn.execute(
+                "SELECT 1 FROM prompt_batches WHERE content_hash = ? LIMIT 1",
+                (content_hash,),
+            ).fetchone()
+            if existing:
+                return False
+
+        with self._store._transaction() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO prompt_batches
+                (session_id, prompt_number, user_prompt, started_at, ended_at,
+                 status, activity_count, processed, classification, source_type,
+                 plan_file_path, plan_content, created_at_epoch, source_machine_id,
+                 content_hash, response_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.get("session_id"),
+                    payload.get("prompt_number", 0),
+                    payload.get("user_prompt"),
+                    payload.get("started_at"),
+                    payload.get("ended_at"),
+                    payload.get("status", "active"),
+                    payload.get("activity_count", 0),
+                    payload.get("processed", False),
+                    payload.get("classification"),
+                    payload.get("source_type", "user"),
+                    payload.get("plan_file_path"),
+                    payload.get("plan_content"),
+                    payload.get("created_at_epoch", 0),
+                    payload.get("source_machine_id"),
+                    content_hash,
+                    payload.get("response_summary"),
+                ),
+            )
+        return True
+
+    def _apply_activity_upsert(self, payload: dict) -> bool:
+        """Apply an activity upsert. Dedup by content_hash."""
+        content_hash = payload.get("content_hash")
+        if content_hash:
+            conn = self._store._get_connection()
+            existing = conn.execute(
+                "SELECT 1 FROM activities WHERE content_hash = ? LIMIT 1",
+                (content_hash,),
+            ).fetchone()
+            if existing:
+                return False
+
+        with self._store._transaction() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO activities
+                (session_id, prompt_batch_id, tool_name, tool_input, tool_output_summary,
+                 file_path, files_affected, duration_ms, success, error_message,
+                 timestamp, timestamp_epoch, processed, observation_id,
+                 source_machine_id, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.get("session_id"),
+                    payload.get("prompt_batch_id"),
+                    payload.get("tool_name"),
+                    payload.get("tool_input"),
+                    payload.get("tool_output_summary"),
+                    payload.get("file_path"),
+                    payload.get("files_affected"),
+                    payload.get("duration_ms"),
+                    payload.get("success"),
+                    payload.get("error_message"),
+                    payload.get("timestamp"),
+                    payload.get("timestamp_epoch"),
+                    payload.get("processed", False),
+                    payload.get("observation_id"),
+                    payload.get("source_machine_id"),
+                    content_hash,
+                ),
             )
         return True

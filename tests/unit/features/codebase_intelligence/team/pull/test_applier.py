@@ -10,6 +10,10 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_ACTIVITY_UPSERT,
 )
 from open_agent_kit.features.codebase_intelligence.team.protocol import TeamEvent
 from open_agent_kit.features.codebase_intelligence.team.pull.applier import (
@@ -471,3 +475,209 @@ def test_apply_observation_superseded(applier, store):
     ).fetchone()
     assert obs_row[0] == "superseded"
     assert obs_row[1] == superseder_id
+
+
+# --------------------------------------------------------------------------
+# Session end tests
+# --------------------------------------------------------------------------
+
+
+def test_apply_session_end(applier, store):
+    """Session end should update status and ended_at."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    _insert_session(store, session_id)
+
+    payload = {
+        "session_id": session_id,
+        "ended_at": "2026-02-26T12:00:00",
+        "status": "completed",
+        "summary": "Finished refactoring",
+    }
+    event = _make_event(TEAM_EVENT_SESSION_END, payload)
+    result = applier._apply_event(event)
+    assert result is True
+
+    conn = store._get_connection()
+    row = conn.execute(
+        "SELECT status, ended_at, summary FROM sessions WHERE id = ?", (session_id,)
+    ).fetchone()
+    assert row[0] == "completed"
+    assert row[1] == "2026-02-26T12:00:00"
+    assert row[2] == "Finished refactoring"
+
+
+def test_apply_session_end_missing_session_id(applier):
+    """Session end without session_id should be skipped."""
+    payload = {"ended_at": "2026-02-26T12:00:00", "status": "completed"}
+    event = _make_event(TEAM_EVENT_SESSION_END, payload)
+    result = applier._apply_event(event)
+    assert result is False
+
+
+# --------------------------------------------------------------------------
+# Session title update tests
+# --------------------------------------------------------------------------
+
+
+def test_apply_session_title_update(applier, store):
+    """Title update should update the session title."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    _insert_session(store, session_id)
+
+    payload = {
+        "session_id": session_id,
+        "title": "Auth module refactor",
+        "title_manually_edited": False,
+    }
+    event = _make_event(TEAM_EVENT_SESSION_TITLE_UPDATE, payload)
+    result = applier._apply_event(event)
+    assert result is True
+
+    conn = store._get_connection()
+    row = conn.execute("SELECT title FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    assert row[0] == "Auth module refactor"
+
+
+def test_apply_session_title_update_respects_manual_edit(applier, store):
+    """Auto title should not overwrite a manually edited title."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    _insert_session(store, session_id)
+
+    # First set a manually edited title
+    conn = store._get_connection()
+    conn.execute(
+        "UPDATE sessions SET title = ?, title_manually_edited = 1 WHERE id = ?",
+        ("My manual title", session_id),
+    )
+    conn.commit()
+
+    # Try to overwrite with an auto title
+    payload = {
+        "session_id": session_id,
+        "title": "Auto-generated title",
+        "title_manually_edited": False,
+    }
+    event = _make_event(TEAM_EVENT_SESSION_TITLE_UPDATE, payload)
+    applier._apply_event(event)
+
+    row = conn.execute("SELECT title FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    assert row[0] == "My manual title"  # Should NOT be overwritten
+
+
+def test_apply_session_title_update_missing_title(applier):
+    """Title update with None title should be skipped."""
+    payload = {"session_id": "sess-exists", "title": None}
+    event = _make_event(TEAM_EVENT_SESSION_TITLE_UPDATE, payload)
+    result = applier._apply_event(event)
+    assert result is False
+
+
+# --------------------------------------------------------------------------
+# Prompt batch upsert tests
+# --------------------------------------------------------------------------
+
+
+def test_apply_prompt_batch_upsert(applier, store):
+    """Prompt batch should be inserted."""
+    _insert_session(store)
+
+    payload = {
+        "session_id": "sess-remote-1",
+        "prompt_number": 1,
+        "user_prompt": "Fix the login page",
+        "started_at": "2026-02-26T10:00:00",
+        "status": "completed",
+        "source_type": "user",
+        "created_at_epoch": 1740000000,
+        "source_machine_id": REMOTE_MACHINE_ID,
+        "content_hash": "prompt-hash-001",
+    }
+    event = _make_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, payload, content_hash="prompt-hash-001")
+    result = applier._apply_event(event)
+    assert result is True
+
+    conn = store._get_connection()
+    row = conn.execute(
+        "SELECT user_prompt, source_type FROM prompt_batches WHERE content_hash = ?",
+        ("prompt-hash-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "Fix the login page"
+    assert row[1] == "user"
+
+
+def test_apply_prompt_batch_upsert_dedup(applier, store):
+    """Duplicate prompt batch content_hash should be skipped."""
+    _insert_session(store)
+    content_hash = "prompt-dedup-hash"
+
+    payload = {
+        "session_id": "sess-remote-1",
+        "prompt_number": 1,
+        "user_prompt": "Original prompt",
+        "started_at": "2026-02-26T10:00:00",
+        "created_at_epoch": 1740000000,
+        "source_machine_id": REMOTE_MACHINE_ID,
+        "content_hash": content_hash,
+    }
+    event1 = _make_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, payload, content_hash=content_hash)
+    result1 = applier._apply_event(event1)
+    assert result1 is True
+
+    event2 = _make_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, payload, content_hash=content_hash)
+    result2 = applier._apply_event(event2)
+    assert result2 is False
+
+
+# --------------------------------------------------------------------------
+# Activity upsert tests
+# --------------------------------------------------------------------------
+
+
+def test_apply_activity_upsert(applier, store):
+    """Activity should be inserted."""
+    _insert_session(store)
+
+    payload = {
+        "session_id": "sess-remote-1",
+        "tool_name": "Edit",
+        "file_path": "src/auth.py",
+        "timestamp": "2026-02-26T10:00:00",
+        "timestamp_epoch": 1740000000,
+        "source_machine_id": REMOTE_MACHINE_ID,
+        "content_hash": "activity-hash-001",
+    }
+    event = _make_event(TEAM_EVENT_ACTIVITY_UPSERT, payload, content_hash="activity-hash-001")
+    result = applier._apply_event(event)
+    assert result is True
+
+    conn = store._get_connection()
+    row = conn.execute(
+        "SELECT tool_name, file_path FROM activities WHERE content_hash = ?",
+        ("activity-hash-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "Edit"
+    assert row[1] == "src/auth.py"
+
+
+def test_apply_activity_upsert_dedup(applier, store):
+    """Duplicate activity content_hash should be skipped."""
+    _insert_session(store)
+    content_hash = "activity-dedup-hash"
+
+    payload = {
+        "session_id": "sess-remote-1",
+        "tool_name": "Read",
+        "timestamp": "2026-02-26T10:00:00",
+        "timestamp_epoch": 1740000000,
+        "source_machine_id": REMOTE_MACHINE_ID,
+        "content_hash": content_hash,
+    }
+    event1 = _make_event(TEAM_EVENT_ACTIVITY_UPSERT, payload, content_hash=content_hash)
+    result1 = applier._apply_event(event1)
+    assert result1 is True
+
+    event2 = _make_event(TEAM_EVENT_ACTIVITY_UPSERT, payload, content_hash=content_hash)
+    result2 = applier._apply_event(event2)
+    assert result2 is False

@@ -42,13 +42,24 @@ TEAM_EVENT_OBSERVATION_UPSERT: Final[str] = "observation_upsert"
 TEAM_EVENT_OBSERVATION_RESOLVED: Final[str] = "observation_resolved"
 TEAM_EVENT_SESSION_UPSERT: Final[str] = "session_upsert"
 TEAM_EVENT_SESSION_SUMMARY_UPDATE: Final[str] = "session_summary_update"
+TEAM_EVENT_SESSION_END: Final[str] = "session_end"
+TEAM_EVENT_SESSION_TITLE_UPDATE: Final[str] = "session_title_update"
+TEAM_EVENT_PROMPT_BATCH_UPSERT: Final[str] = "prompt_batch_upsert"
+TEAM_EVENT_ACTIVITY_UPSERT: Final[str] = "activity_upsert"
 TEAM_EVENT_RAW_SESSION: Final[str] = "raw_session"  # Mode 2 groundwork
 VALID_TEAM_EVENT_TYPES: Final[tuple[str, ...]] = (
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
     TEAM_EVENT_SESSION_UPSERT,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_ACTIVITY_UPSERT,
 )
+
+# Redaction sentinel
+TEAM_REDACTED_BY_POLICY: Final[str] = "[redacted by policy]"
 
 # Outbox statuses
 TEAM_OUTBOX_STATUS_PENDING: Final[str] = "pending"

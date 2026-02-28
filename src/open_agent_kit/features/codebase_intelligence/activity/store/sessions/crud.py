@@ -76,18 +76,23 @@ def create_session(
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_SESSION_UPSERT,
             )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                should_sync_event,
+            )
             from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
                 enqueue_team_event,
             )
 
-            enqueue_team_event(
-                conn=conn,
-                event_type=TEAM_EVENT_SESSION_UPSERT,
-                payload=row,
-                source_machine_id=session.source_machine_id or store.machine_id,
-                content_hash=session.id,
-                schema_version=store.get_schema_version(),
-            )
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy):
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_SESSION_UPSERT,
+                    payload=row,
+                    source_machine_id=session.source_machine_id or store.machine_id,
+                    content_hash=session.id,
+                    schema_version=store.get_schema_version(),
+                )
 
     if parent_session_id:
         logger.debug(
@@ -212,6 +217,34 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
             """,
             (datetime.now().isoformat(), summary, session_id),
         )
+
+        # Enqueue team sync event
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_SESSION_END,
+            )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                should_sync_event,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_SESSION_END, policy):
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_SESSION_END,
+                    payload={
+                        "session_id": session_id,
+                        "ended_at": datetime.now().isoformat(),
+                        "summary": summary,
+                        "status": SESSION_STATUS_COMPLETED,
+                    },
+                    source_machine_id=store.machine_id,
+                    content_hash=f"{session_id}:end",
+                    schema_version=store.get_schema_version(),
+                )
     logger.debug(f"Ended session {session_id}")
 
 
@@ -232,6 +265,33 @@ def update_session_title(
             "UPDATE sessions SET title = ?, title_manually_edited = ? WHERE id = ?",
             (title, manually_edited, session_id),
         )
+
+        # Enqueue team sync event
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_SESSION_TITLE_UPDATE,
+            )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                should_sync_event,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_SESSION_TITLE_UPDATE, policy):
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_SESSION_TITLE_UPDATE,
+                    payload={
+                        "session_id": session_id,
+                        "title": title,
+                        "title_manually_edited": manually_edited,
+                    },
+                    source_machine_id=store.machine_id,
+                    content_hash=f"{session_id}:title:{title[:32]}",
+                    schema_version=store.get_schema_version(),
+                )
     logger.debug(f"Updated session {session_id} title: {title[:50]}...")
 
 
@@ -255,22 +315,27 @@ def update_session_summary(store: ActivityStore, session_id: str, summary: str) 
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_SESSION_SUMMARY_UPDATE,
             )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                should_sync_event,
+            )
             from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
                 enqueue_team_event,
             )
 
-            enqueue_team_event(
-                conn=conn,
-                event_type=TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-                payload={
-                    "session_id": session_id,
-                    "summary": summary,
-                    "summary_updated_at": now_epoch,
-                },
-                source_machine_id=store.machine_id,
-                content_hash=f"{session_id}:summary:{now_epoch}",
-                schema_version=store.get_schema_version(),
-            )
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_SESSION_SUMMARY_UPDATE, policy):
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+                    payload={
+                        "session_id": session_id,
+                        "summary": summary,
+                        "summary_updated_at": now_epoch,
+                    },
+                    source_machine_id=store.machine_id,
+                    content_hash=f"{session_id}:summary:{now_epoch}",
+                    schema_version=store.get_schema_version(),
+                )
 
     logger.debug(f"Updated session {session_id} summary: {summary[:50]}...")
 

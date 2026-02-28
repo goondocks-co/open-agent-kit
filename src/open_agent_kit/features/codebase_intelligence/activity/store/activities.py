@@ -57,6 +57,29 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
                 "UPDATE prompt_batches SET activity_count = activity_count + 1 WHERE id = ?",
                 (activity.prompt_batch_id,),
             )
+        # Enqueue team sync event for activity
+        if getattr(store, "team_outbox_enabled", False):
+            from open_agent_kit.features.codebase_intelligence.constants.team import (
+                TEAM_EVENT_ACTIVITY_UPSERT,
+            )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                should_sync_event,
+            )
+            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                enqueue_team_event,
+            )
+
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy):
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_ACTIVITY_UPSERT,
+                    payload=row,
+                    source_machine_id=activity.source_machine_id or store.machine_id,
+                    content_hash=row.get("content_hash") or "",
+                    schema_version=store.get_schema_version(),
+                )
+
         # Invalidate cache for this session
         store._invalidate_stats_cache(activity.session_id)
         return cursor.lastrowid or 0

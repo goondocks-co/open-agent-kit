@@ -59,6 +59,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix=TEAM_ROUTER_PREFIX, tags=[TEAM_ROUTE_TAG])
 
 
+def _apply_events_locally(events: list) -> None:
+    """Apply pushed events to the server's own activity store.
+
+    Uses TeamEventApplier which writes via direct SQL (not store_observation)
+    to avoid triggering outbox hooks and infinite sync loops.
+    """
+    from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+    from open_agent_kit.features.codebase_intelligence.team.pull.applier import TeamEventApplier
+
+    state = get_state()
+    if state.activity_store is None:
+        return
+    try:
+        applier = TeamEventApplier(state.activity_store)
+        result = applier.apply_batch(events)
+        if result.applied > 0:
+            logger.debug("Applied %d pushed events to local store", result.applied)
+    except Exception:
+        logger.exception("Failed to apply pushed events locally")
+
+
 def _get_conn() -> sqlite3.Connection:
     """Get database connection from daemon state."""
     from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
@@ -91,6 +112,11 @@ async def push_events(
         logger.info(TEAM_SERVER_LOG_EVENT_STORED.format(count=accepted, machine_id=machine_id))
     if rejected > 0:
         logger.debug(TEAM_SERVER_LOG_EVENT_DEDUP.format(count=rejected))
+
+    # Apply events to the server's own activity store so sessions/observations
+    # from remote members appear in the server's dashboard.
+    if accepted > 0:
+        _apply_events_locally(batch.events)
 
     # Update membership tracking
     svc = _get_membership_service()

@@ -6,9 +6,13 @@ to the team server based on the DataCollectionPolicy configuration.
 
 from open_agent_kit.features.codebase_intelligence.config.governance import DataCollectionPolicy
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
     TEAM_EVENT_OBSERVATION_UPSERT,
+    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_SESSION_END,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
 )
 
@@ -27,12 +31,21 @@ def should_sync_event(event_type: str, policy: DataCollectionPolicy) -> bool:
     Returns:
         True if the event should be synced.
     """
+    # Session lifecycle + prompt batches: always sync (structural envelope)
+    if event_type in (
+        TEAM_EVENT_SESSION_UPSERT,
+        TEAM_EVENT_SESSION_END,
+        TEAM_EVENT_SESSION_TITLE_UPDATE,
+        TEAM_EVENT_SESSION_SUMMARY_UPDATE,
+        TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    ):
+        return True
+    # Observations: gated by sync_observations
     if event_type in (TEAM_EVENT_OBSERVATION_UPSERT, TEAM_EVENT_OBSERVATION_RESOLVED):
         return policy.sync_observations
-    if event_type in (TEAM_EVENT_SESSION_UPSERT, TEAM_EVENT_SESSION_SUMMARY_UPDATE):
-        # Sessions sync is controlled by sync_activities (sessions are activity data)
+    # Activities (tool calls, file changes): gated by sync_activities
+    if event_type == TEAM_EVENT_ACTIVITY_UPSERT:
         return policy.sync_activities
-    # Unknown event types: don't sync by default
     return False
 
 
@@ -54,3 +67,14 @@ def should_collect_locally(event_type: str, policy: DataCollectionPolicy) -> boo
         return policy.collect_prompts
     # Observations are always collected locally (they're the core value)
     return True
+
+
+def redact_prompt_payload(payload: dict) -> dict:
+    """Return a copy of a prompt batch payload with content fields redacted."""
+    from open_agent_kit.features.codebase_intelligence.constants.team import TEAM_REDACTED_BY_POLICY
+
+    redacted = dict(payload)
+    for field in ("user_prompt", "response_summary", "plan_content"):
+        if field in redacted and redacted[field] is not None:
+            redacted[field] = TEAM_REDACTED_BY_POLICY
+    return redacted

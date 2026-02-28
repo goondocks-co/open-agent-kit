@@ -29,6 +29,10 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_ACTIVITY_UPSERT,
 )
 from open_agent_kit.features.codebase_intelligence.governance.policies import (
     LOCAL_EVENT_TYPE_ACTIVITY,
@@ -147,15 +151,15 @@ class TestShouldSyncEvent:
         policy = DataCollectionPolicy()
         assert should_sync_event(TEAM_EVENT_OBSERVATION_RESOLVED, policy) is True
 
-    def test_default_policy_blocks_session_upsert(self):
-        """Default policy blocks session upsert sync."""
+    def test_default_policy_syncs_session_upsert(self):
+        """Session upsert always syncs (session lifecycle is structural)."""
         policy = DataCollectionPolicy()
-        assert should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy) is False
+        assert should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy) is True
 
-    def test_default_policy_blocks_session_summary_update(self):
-        """Default policy blocks session summary update sync."""
+    def test_default_policy_syncs_session_summary_update(self):
+        """Session summary update always syncs (session lifecycle is structural)."""
         policy = DataCollectionPolicy()
-        assert should_sync_event(TEAM_EVENT_SESSION_SUMMARY_UPDATE, policy) is False
+        assert should_sync_event(TEAM_EVENT_SESSION_SUMMARY_UPDATE, policy) is True
 
     def test_sync_observations_false_blocks_observation_events(self):
         """Disabling sync_observations blocks both observation event types."""
@@ -163,11 +167,33 @@ class TestShouldSyncEvent:
         assert should_sync_event(TEAM_EVENT_OBSERVATION_UPSERT, policy) is False
         assert should_sync_event(TEAM_EVENT_OBSERVATION_RESOLVED, policy) is False
 
-    def test_sync_activities_true_enables_session_events(self):
-        """Enabling sync_activities allows session event types."""
+    def test_sync_activities_true_enables_activity_upsert(self):
+        """Enabling sync_activities allows activity upsert events."""
         policy = DataCollectionPolicy(sync_activities=True)
-        assert should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy) is True
-        assert should_sync_event(TEAM_EVENT_SESSION_SUMMARY_UPDATE, policy) is True
+        assert should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy) is True
+
+    def test_session_end_always_syncs(self):
+        """Session end events always sync regardless of policy toggles."""
+        policy = DataCollectionPolicy(sync_activities=False, sync_observations=False)
+        assert should_sync_event(TEAM_EVENT_SESSION_END, policy) is True
+
+    def test_session_title_update_always_syncs(self):
+        """Session title update events always sync regardless of policy toggles."""
+        policy = DataCollectionPolicy(sync_activities=False, sync_observations=False)
+        assert should_sync_event(TEAM_EVENT_SESSION_TITLE_UPDATE, policy) is True
+
+    def test_prompt_batch_upsert_always_syncs(self):
+        """Prompt batch upsert events always sync (content may be redacted separately)."""
+        policy = DataCollectionPolicy(sync_prompts=False, sync_activities=False)
+        assert should_sync_event(TEAM_EVENT_PROMPT_BATCH_UPSERT, policy) is True
+
+    def test_activity_upsert_gated_by_sync_activities(self):
+        """Activity upsert is gated by sync_activities toggle."""
+        policy_off = DataCollectionPolicy(sync_activities=False)
+        assert should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy_off) is False
+
+        policy_on = DataCollectionPolicy(sync_activities=True)
+        assert should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy_on) is True
 
     def test_unknown_event_type_returns_false(self):
         """Unknown event types are never synced."""
@@ -279,3 +305,58 @@ class TestGovernanceConfigDataCollection:
         assert restored.data_collection.sync_prompts is True
         assert restored.data_collection.allow_server_llm is True
         assert restored.enabled is True
+
+
+# =============================================================================
+# redact_prompt_payload
+# =============================================================================
+
+
+class TestRedactPromptPayload:
+    """Test redact_prompt_payload helper."""
+
+    def test_redacts_content_fields(self):
+        """Content fields are replaced with redaction sentinel."""
+        from open_agent_kit.features.codebase_intelligence.governance.policies import redact_prompt_payload
+        from open_agent_kit.features.codebase_intelligence.constants.team import TEAM_REDACTED_BY_POLICY
+
+        payload = {
+            "session_id": "sess-1",
+            "prompt_number": 1,
+            "user_prompt": "fix the bug",
+            "response_summary": "I fixed the bug by...",
+            "plan_content": "Step 1: read the file",
+            "source_type": "user",
+        }
+        redacted = redact_prompt_payload(payload)
+        assert redacted["user_prompt"] == TEAM_REDACTED_BY_POLICY
+        assert redacted["response_summary"] == TEAM_REDACTED_BY_POLICY
+        assert redacted["plan_content"] == TEAM_REDACTED_BY_POLICY
+        # Non-content fields preserved
+        assert redacted["session_id"] == "sess-1"
+        assert redacted["prompt_number"] == 1
+        assert redacted["source_type"] == "user"
+
+    def test_preserves_none_fields(self):
+        """None fields are not redacted (remain None)."""
+        from open_agent_kit.features.codebase_intelligence.governance.policies import redact_prompt_payload
+
+        payload = {
+            "session_id": "sess-1",
+            "user_prompt": None,
+            "response_summary": None,
+            "plan_content": None,
+        }
+        redacted = redact_prompt_payload(payload)
+        assert redacted["user_prompt"] is None
+        assert redacted["response_summary"] is None
+        assert redacted["plan_content"] is None
+
+    def test_does_not_mutate_original(self):
+        """Original payload is not modified."""
+        from open_agent_kit.features.codebase_intelligence.governance.policies import redact_prompt_payload
+
+        payload = {"user_prompt": "original text", "session_id": "sess-1"}
+        redacted = redact_prompt_payload(payload)
+        assert payload["user_prompt"] == "original text"
+        assert redacted["user_prompt"] != "original text"

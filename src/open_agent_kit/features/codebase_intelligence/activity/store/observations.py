@@ -82,18 +82,23 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_OBSERVATION_UPSERT,
             )
+            from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                should_sync_event,
+            )
             from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
                 enqueue_team_event,
             )
 
-            enqueue_team_event(
-                conn=conn,
-                event_type=TEAM_EVENT_OBSERVATION_UPSERT,
-                payload=row,
-                source_machine_id=observation.source_machine_id or store.machine_id,
-                content_hash=observation._compute_content_hash(),
-                schema_version=store.get_schema_version(),
-            )
+            policy = store.get_team_policy()
+            if policy is None or should_sync_event(TEAM_EVENT_OBSERVATION_UPSERT, policy):
+                enqueue_team_event(
+                    conn=conn,
+                    event_type=TEAM_EVENT_OBSERVATION_UPSERT,
+                    payload=row,
+                    source_machine_id=observation.source_machine_id or store.machine_id,
+                    content_hash=observation._compute_content_hash(),
+                    schema_version=store.get_schema_version(),
+                )
 
     logger.debug(f"Stored observation {observation.id} for session {observation.session_id}")
     return observation.id

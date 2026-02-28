@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from open_agent_kit.features.codebase_intelligence.activity.store import (
     activities,
@@ -39,6 +39,9 @@ from open_agent_kit.features.codebase_intelligence.activity.store.schema import 
     SCHEMA_SQL,
     SCHEMA_VERSION,
 )
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.config.governance import DataCollectionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +262,7 @@ class ActivityStore:
         self._buffer_size = 10  # Flush when buffer reaches this size
         # Team outbox: when enabled, data writes enqueue sync events atomically
         self.team_outbox_enabled: bool = False
+        self._team_policy_accessor: Callable[[], "DataCollectionPolicy"] | None = None
         self._ensure_schema()
 
     # ==========================================================================
@@ -421,6 +425,12 @@ class ActivityStore:
             return row[0] if row else 0
         except sqlite3.OperationalError:
             return 0
+
+    def get_team_policy(self) -> "DataCollectionPolicy | None":
+        """Get current team data collection policy, or None if not configured."""
+        if self._team_policy_accessor is not None:
+            return self._team_policy_accessor()
+        return None
 
     # ==========================================================================
     # Database maintenance

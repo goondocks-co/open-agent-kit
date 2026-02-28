@@ -17,7 +17,12 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
+    TEAM_EVENT_SESSION_END,
+    TEAM_EVENT_SESSION_TITLE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_UPSERT,
+    TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_OUTBOX_STATUS_PENDING,
+    TEAM_REDACTED_BY_POLICY,
 )
 
 TEST_MACHINE_ID = "test-machine-integration"
@@ -253,3 +258,196 @@ def test_outbox_and_observation_atomic(store):
         (TEAM_EVENT_OBSERVATION_UPSERT,),
     )
     assert outbox_cursor.fetchone() is not None
+
+
+# ---- End session tests ----
+
+
+def test_end_session_with_outbox_enabled(store):
+    """end_session should enqueue a session_end event when outbox is enabled."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+        end_session,
+    )
+
+    store.team_outbox_enabled = True
+    create_session(store, "session-end-1", TEST_AGENT, TEST_PROJECT_ROOT)
+    end_session(store, "session-end-1", summary="Session completed successfully")
+
+    rows = _get_outbox_rows(store)
+    end_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_SESSION_END]
+    assert len(end_rows) == 1
+
+    payload = json.loads(end_rows[0]["payload"])
+    assert payload["session_id"] == "session-end-1"
+    assert payload["summary"] == "Session completed successfully"
+    assert payload["status"] == "completed"
+
+
+# ---- Update session title tests ----
+
+
+def test_update_session_title_with_outbox_enabled(store):
+    """update_session_title should enqueue a title update event."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+        update_session_title,
+    )
+
+    store.team_outbox_enabled = True
+    create_session(store, "session-title-1", TEST_AGENT, TEST_PROJECT_ROOT)
+    update_session_title(store, "session-title-1", "Refactored auth module", manually_edited=True)
+
+    rows = _get_outbox_rows(store)
+    title_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_SESSION_TITLE_UPDATE]
+    assert len(title_rows) == 1
+
+    payload = json.loads(title_rows[0]["payload"])
+    assert payload["session_id"] == "session-title-1"
+    assert payload["title"] == "Refactored auth module"
+    assert payload["title_manually_edited"] is True
+
+
+# ---- Prompt batch tests ----
+
+
+def test_create_prompt_batch_with_outbox_enabled(store):
+    """create_prompt_batch should enqueue a prompt_batch_upsert event."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
+        create_prompt_batch,
+    )
+
+    store.team_outbox_enabled = True
+    create_session(store, "session-batch-1", TEST_AGENT, TEST_PROJECT_ROOT)
+    create_prompt_batch(store, "session-batch-1", user_prompt="Fix the login bug")
+
+    rows = _get_outbox_rows(store)
+    batch_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_PROMPT_BATCH_UPSERT]
+    assert len(batch_rows) == 1
+
+    payload = json.loads(batch_rows[0]["payload"])
+    assert payload["session_id"] == "session-batch-1"
+    assert payload["user_prompt"] == "Fix the login bug"
+
+
+def test_create_prompt_batch_redaction(store):
+    """Prompt content should be redacted when sync_prompts is disabled."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
+        create_prompt_batch,
+    )
+    from open_agent_kit.features.codebase_intelligence.config.governance import (
+        DataCollectionPolicy,
+    )
+
+    store.team_outbox_enabled = True
+    store._team_policy_accessor = lambda: DataCollectionPolicy(sync_prompts=False)
+    create_session(store, "session-redact-1", TEST_AGENT, TEST_PROJECT_ROOT)
+    create_prompt_batch(store, "session-redact-1", user_prompt="Secret prompt text")
+
+    rows = _get_outbox_rows(store)
+    batch_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_PROMPT_BATCH_UPSERT]
+    assert len(batch_rows) == 1
+
+    payload = json.loads(batch_rows[0]["payload"])
+    assert payload["user_prompt"] == TEAM_REDACTED_BY_POLICY
+
+
+# ---- Activity tests ----
+
+
+def test_add_activity_with_outbox_enabled(store):
+    """add_activity should enqueue an activity_upsert event."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
+        create_prompt_batch,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
+        add_activity,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.models import Activity
+
+    store.team_outbox_enabled = True
+    create_session(store, "session-act-1", TEST_AGENT, TEST_PROJECT_ROOT)
+    batch = create_prompt_batch(store, "session-act-1", user_prompt="test")
+
+    activity = Activity(
+        session_id="session-act-1",
+        prompt_batch_id=batch.id,
+        tool_name="Edit",
+        file_path="src/main.py",
+    )
+    add_activity(store, activity)
+
+    rows = _get_outbox_rows(store)
+    act_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_ACTIVITY_UPSERT]
+    assert len(act_rows) == 1
+
+    payload = json.loads(act_rows[0]["payload"])
+    assert payload["session_id"] == "session-act-1"
+    assert payload["tool_name"] == "Edit"
+
+
+def test_add_activity_blocked_by_policy(store):
+    """add_activity should NOT enqueue when sync_activities is disabled."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
+        create_prompt_batch,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
+        add_activity,
+    )
+    from open_agent_kit.features.codebase_intelligence.activity.store.models import Activity
+    from open_agent_kit.features.codebase_intelligence.config.governance import (
+        DataCollectionPolicy,
+    )
+
+    store.team_outbox_enabled = True
+    store._team_policy_accessor = lambda: DataCollectionPolicy(sync_activities=False)
+    create_session(store, "session-act-blocked", TEST_AGENT, TEST_PROJECT_ROOT)
+    batch = create_prompt_batch(store, "session-act-blocked", user_prompt="test")
+
+    activity = Activity(
+        session_id="session-act-blocked",
+        prompt_batch_id=batch.id,
+        tool_name="Read",
+        file_path="src/main.py",
+    )
+    add_activity(store, activity)
+
+    rows = _get_outbox_rows(store)
+    act_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_ACTIVITY_UPSERT]
+    assert len(act_rows) == 0
+
+
+# ---- Policy enforcement test ----
+
+
+def test_observation_blocked_by_policy(store):
+    """Observation outbox hook should be skipped when sync_observations=False."""
+    from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
+        create_session,
+    )
+    from open_agent_kit.features.codebase_intelligence.config.governance import (
+        DataCollectionPolicy,
+    )
+
+    store.team_outbox_enabled = True
+    store._team_policy_accessor = lambda: DataCollectionPolicy(sync_observations=False)
+    create_session(store, TEST_SESSION_ID, TEST_AGENT, TEST_PROJECT_ROOT)
+
+    obs = _make_observation()
+    store.store_observation(obs)
+
+    rows = _get_outbox_rows(store)
+    obs_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_OBSERVATION_UPSERT]
+    assert len(obs_rows) == 0
