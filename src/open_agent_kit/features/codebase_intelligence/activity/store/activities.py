@@ -242,6 +242,42 @@ def _apply_count_updates(
         )
 
 
+def _enqueue_activity_outbox_events(
+    store: ActivityStore,
+    conn: sqlite3.Connection,
+    activities: list[Activity],
+    rows: list[dict],
+) -> None:
+    """Enqueue team outbox events for a batch of activities (inside open transaction)."""
+    if not getattr(store, "team_outbox_enabled", False):
+        return
+
+    from open_agent_kit.features.codebase_intelligence.constants.team import (
+        TEAM_EVENT_ACTIVITY_UPSERT,
+    )
+    from open_agent_kit.features.codebase_intelligence.governance.policies import (
+        should_sync_event,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+        enqueue_team_event,
+    )
+
+    policy = store.get_team_policy()
+    if policy is not None and not should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy):
+        return
+
+    schema_version = store.get_schema_version()
+    for activity, row in zip(activities, rows):
+        enqueue_team_event(
+            conn=conn,
+            event_type=TEAM_EVENT_ACTIVITY_UPSERT,
+            payload=row,
+            source_machine_id=activity.source_machine_id or store.machine_id,
+            content_hash=row.get("content_hash") or "",
+            schema_version=schema_version,
+        )
+
+
 def _bulk_insert_transaction(
     store: ActivityStore,
     activities: list[Activity],
@@ -251,6 +287,7 @@ def _bulk_insert_transaction(
     session_updates: dict[str, int] = {}
     batch_updates: dict[int, int] = {}
     affected_sessions: set[str] = set()
+    inserted_rows: list[dict] = []
 
     with store._transaction() as conn:
         for activity in activities:
@@ -264,7 +301,9 @@ def _bulk_insert_transaction(
                 batch_updates,
                 affected_sessions,
             )
+            inserted_rows.append(row)
         _apply_count_updates(conn, session_updates, batch_updates)
+        _enqueue_activity_outbox_events(store, conn, activities, inserted_rows)
 
     return ids, session_updates, batch_updates, affected_sessions
 
@@ -278,6 +317,8 @@ def _individual_insert_fallback(
     session_updates: dict[str, int] = {}
     batch_updates: dict[int, int] = {}
     affected_sessions: set[str] = set()
+    inserted_activities: list[Activity] = []
+    inserted_rows: list[dict] = []
     skipped = 0
 
     for activity in activities:
@@ -293,6 +334,8 @@ def _individual_insert_fallback(
                     batch_updates,
                     affected_sessions,
                 )
+                inserted_activities.append(activity)
+                inserted_rows.append(row)
         except sqlite3.IntegrityError:
             skipped += 1
             logger.debug(
@@ -301,10 +344,11 @@ def _individual_insert_fallback(
                 f"tool={activity.tool_name}"
             )
 
-    # Apply count updates for successfully inserted activities
-    if session_updates or batch_updates:
+    # Apply count updates + enqueue outbox events for successfully inserted activities
+    if session_updates or batch_updates or inserted_rows:
         with store._transaction() as conn:
             _apply_count_updates(conn, session_updates, batch_updates)
+            _enqueue_activity_outbox_events(store, conn, inserted_activities, inserted_rows)
 
     if skipped:
         logger.warning(f"Skipped {skipped}/{len(activities)} activities due to FK violations")
