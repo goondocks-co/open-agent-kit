@@ -2,7 +2,7 @@
 
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -16,7 +16,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_OUTBOX_STATUS_SENT,
 )
 from open_agent_kit.features.codebase_intelligence.team.outbox.worker import TeamSyncWorker
-from open_agent_kit.features.codebase_intelligence.team.protocol import TeamEventBatch
+from open_agent_kit.features.codebase_intelligence.team.protocol import PushResult, TeamEventBatch
 
 TEST_MACHINE_ID = "test-machine-worker"
 TEST_PROJECT_ID = "myproject:abc12345"
@@ -87,7 +87,7 @@ def test_flush_reads_pending_events(worker, store):
     _insert_pending_event(store)
 
     mock_transport = MagicMock()
-    mock_transport.push_events.return_value = 1
+    mock_transport.push_events = AsyncMock(return_value=PushResult(accepted=1, rejected=0))
     worker.set_transport(mock_transport)
 
     result = worker._flush_outbox()
@@ -107,7 +107,7 @@ def test_flush_marks_events_sent(worker, store):
     _insert_pending_event(store)
 
     mock_transport = MagicMock()
-    mock_transport.push_events.return_value = 1
+    mock_transport.push_events = AsyncMock(return_value=PushResult(accepted=1, rejected=0))
     worker.set_transport(mock_transport)
 
     worker._flush_outbox()
@@ -123,7 +123,7 @@ def test_flush_retries_on_failure(worker, store):
     _insert_pending_event(store)
 
     mock_transport = MagicMock()
-    mock_transport.push_events.side_effect = ConnectionError("network down")
+    mock_transport.push_events = AsyncMock(side_effect=ConnectionError("network down"))
     worker.set_transport(mock_transport)
 
     with pytest.raises(ConnectionError):
@@ -161,7 +161,7 @@ def test_flush_marks_failed_after_max_retries(worker, store):
     conn.commit()
 
     mock_transport = MagicMock()
-    mock_transport.push_events.side_effect = ConnectionError("still down")
+    mock_transport.push_events = AsyncMock(side_effect=ConnectionError("still down"))
     worker.set_transport(mock_transport)
 
     with pytest.raises(ConnectionError):
@@ -275,7 +275,7 @@ def test_get_status_after_flush(worker, store):
     _insert_pending_event(store)
 
     mock_transport = MagicMock()
-    mock_transport.push_events.return_value = 1
+    mock_transport.push_events = AsyncMock(return_value=PushResult(accepted=1, rejected=0))
     worker.set_transport(mock_transport)
 
     worker._flush_outbox()

@@ -4,11 +4,14 @@ Uses a daemon thread with a timer loop, following the same pattern as
 cloud_relay/client.py for background work with reconnect/backoff.
 """
 
+from __future__ import annotations
+
+import asyncio
 import json
 import logging
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_LOG_SYNC_ERROR,
@@ -31,30 +34,9 @@ from open_agent_kit.features.codebase_intelligence.team.protocol import (
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
     from open_agent_kit.features.codebase_intelligence.config.team import TeamConfig
+    from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
 
 logger = logging.getLogger(__name__)
-
-
-class TeamTransport(Protocol):
-    """Protocol for team transport implementations.
-
-    Defined here as a protocol so the worker can be built and tested
-    independently of the Phase 2 transport module.
-    """
-
-    def push_events(self, batch: TeamEventBatch) -> int:
-        """Push a batch of events to the team server.
-
-        Args:
-            batch: Events to push.
-
-        Returns:
-            Number of events accepted by the server.
-
-        Raises:
-            Exception: On transport failure.
-        """
-        ...
 
 
 class TeamSyncWorker:
@@ -71,8 +53,8 @@ class TeamSyncWorker:
 
     def __init__(
         self,
-        store: "ActivityStore",
-        config: "TeamConfig",
+        store: ActivityStore,
+        config: TeamConfig,
         project_id: str,
     ) -> None:
         self._store = store
@@ -185,9 +167,14 @@ class TeamSyncWorker:
 
         batch = TeamEventBatch(events=events)
 
-        # Push via transport
+        # Push via transport (async -> sync bridge)
         try:
-            accepted = self._transport.push_events(batch)
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(self._transport.push_events(batch))
+            finally:
+                loop.close()
+            accepted = result.accepted
         except Exception as exc:
             # Mark all rows as retry-incremented
             self._mark_retry(conn, row_ids, str(exc))

@@ -46,7 +46,6 @@ class HttpTransport(TeamTransport):
     def __init__(self, server_url: str, token: str) -> None:
         self._server_url = server_url.rstrip("/")
         self._token = token
-        self._client: httpx.AsyncClient | None = None
         self._connected = False
         self._last_error: str | None = None
         self._last_connected_at: str | None = None
@@ -61,18 +60,17 @@ class HttpTransport(TeamTransport):
 
     async def push_events(self, batch: TeamEventBatch) -> PushResult:
         """Push events via POST to /api/team/events/push."""
-        if self._client is None:
-            await self.connect()
-
-        assert self._client is not None
         try:
-            response = await self._client.post(
-                self._url(TEAM_HTTP_PUSH_PATH),
-                json=batch.model_dump(),
-                headers=self._auth_headers(),
-            )
-            response.raise_for_status()
-            return PushResult.model_validate(response.json())
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self._url(TEAM_HTTP_PUSH_PATH),
+                    json=batch.model_dump(),
+                    headers=self._auth_headers(),
+                )
+                response.raise_for_status()
+                self._connected = True
+                self._last_error = None
+                return PushResult.model_validate(response.json())
         except httpx.HTTPError as e:
             self._last_error = str(e)
             self._connected = False
@@ -81,18 +79,17 @@ class HttpTransport(TeamTransport):
 
     async def pull_events(self, request: TeamPullRequest) -> TeamEventBatch:
         """Pull events via POST to /api/team/events/pull."""
-        if self._client is None:
-            await self.connect()
-
-        assert self._client is not None
         try:
-            response = await self._client.post(
-                self._url(TEAM_HTTP_PULL_PATH),
-                json=request.model_dump(),
-                headers=self._auth_headers(),
-            )
-            response.raise_for_status()
-            return TeamEventBatch.model_validate(response.json())
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self._url(TEAM_HTTP_PULL_PATH),
+                    json=request.model_dump(),
+                    headers=self._auth_headers(),
+                )
+                response.raise_for_status()
+                self._connected = True
+                self._last_error = None
+                return TeamEventBatch.model_validate(response.json())
         except httpx.HTTPError as e:
             self._last_error = str(e)
             self._connected = False
@@ -101,25 +98,22 @@ class HttpTransport(TeamTransport):
 
     async def connect(self) -> None:
         """Verify server reachable via GET /api/team/status."""
-        self._client = httpx.AsyncClient()
         try:
-            response = await self._client.get(
-                self._url(TEAM_HTTP_STATUS_PATH),
-            )
-            response.raise_for_status()
-            self._connected = True
-            self._last_error = None
-            self._last_connected_at = datetime.now(UTC).isoformat()
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    self._url(TEAM_HTTP_STATUS_PATH),
+                )
+                response.raise_for_status()
+                self._connected = True
+                self._last_error = None
+                self._last_connected_at = datetime.now(UTC).isoformat()
         except httpx.HTTPError as e:
             self._connected = False
             self._last_error = str(e)
             logger.warning(TEAM_TRANSPORT_ERROR_CONNECTION.format(error=e))
 
     async def disconnect(self) -> None:
-        """Close the HTTP client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        """No-op — clients are not cached."""
         self._connected = False
 
     def get_status(self) -> TransportStatus:

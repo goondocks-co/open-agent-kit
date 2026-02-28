@@ -7,6 +7,7 @@ Tests cover:
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
@@ -47,6 +48,18 @@ def _run(coro):
         loop.close()
 
 
+def _mock_async_client(**kwargs):
+    """Create a mock that works with ``async with httpx.AsyncClient() as client:``."""
+    mock_client = AsyncMock(**kwargs)
+
+    @asynccontextmanager
+    async def _ctx_mgr():
+        yield mock_client
+
+    mock_cls = MagicMock(return_value=_ctx_mgr())
+    return mock_cls, mock_client
+
+
 # =============================================================================
 # connect / disconnect
 # =============================================================================
@@ -62,10 +75,10 @@ class TestHttpTransportConnect:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
 
-        mock_client = AsyncMock()
+        mock_cls, mock_client = _mock_async_client()
         mock_client.get = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", mock_cls):
             _run(transport.connect())
 
         status = transport.get_status()
@@ -79,10 +92,10 @@ class TestHttpTransportConnect:
 
         transport = HttpTransport(_TEST_SERVER_URL, _TEST_TOKEN)
 
-        mock_client = AsyncMock()
+        mock_cls, mock_client = _mock_async_client()
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", mock_cls):
             _run(transport.connect())
 
         status = transport.get_status()
@@ -90,21 +103,19 @@ class TestHttpTransportConnect:
         assert status.last_error is not None
 
     def test_disconnect(self):
-        """disconnect() closes client and sets connected=False."""
+        """disconnect() sets connected=False."""
         transport = HttpTransport(_TEST_SERVER_URL, _TEST_TOKEN)
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
 
-        mock_client = AsyncMock()
+        mock_cls, mock_client = _mock_async_client()
         mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client.aclose = AsyncMock()
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", mock_cls):
             _run(transport.connect())
-            _run(transport.disconnect())
 
-        mock_client.aclose.assert_called_once()
+        _run(transport.disconnect())
         status = transport.get_status()
         assert status.connected is False
 
@@ -125,12 +136,10 @@ class TestHttpTransportPush:
         mock_response.raise_for_status = MagicMock()
         mock_response.json = MagicMock(return_value={"accepted": 2, "rejected": 0, "cursor": "5"})
 
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=MagicMock(raise_for_status=MagicMock()))
+        mock_cls, mock_client = _mock_async_client()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            _run(transport.connect())
+        with patch("httpx.AsyncClient", mock_cls):
             batch = TeamEventBatch(events=[_make_event("h1"), _make_event("h2")])
             result = _run(transport.push_events(batch))
 
@@ -143,14 +152,12 @@ class TestHttpTransportPush:
 
         transport = HttpTransport(_TEST_SERVER_URL, _TEST_TOKEN)
 
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=MagicMock(raise_for_status=MagicMock()))
+        mock_cls, mock_client = _mock_async_client()
         mock_client.post = AsyncMock(
             side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock())
         )
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            _run(transport.connect())
+        with patch("httpx.AsyncClient", mock_cls):
             batch = TeamEventBatch(events=[_make_event()])
             result = _run(transport.push_events(batch))
 
@@ -175,12 +182,10 @@ class TestHttpTransportPull:
         mock_response.raise_for_status = MagicMock()
         mock_response.json = MagicMock(return_value={"events": [event_data], "cursor": "1"})
 
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=MagicMock(raise_for_status=MagicMock()))
+        mock_cls, mock_client = _mock_async_client()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            _run(transport.connect())
+        with patch("httpx.AsyncClient", mock_cls):
             request = TeamPullRequest(since_cursor=None, limit=50)
             batch = _run(transport.pull_events(request))
 
@@ -193,12 +198,10 @@ class TestHttpTransportPull:
 
         transport = HttpTransport(_TEST_SERVER_URL, _TEST_TOKEN)
 
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=MagicMock(raise_for_status=MagicMock()))
+        mock_cls, mock_client = _mock_async_client()
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            _run(transport.connect())
+        with patch("httpx.AsyncClient", mock_cls):
             request = TeamPullRequest()
             batch = _run(transport.pull_events(request))
 
