@@ -403,13 +403,19 @@ def _init_team_sync(state: "DaemonState") -> None:
     # Enable outbox writes in the store (atomic with data writes)
     state.activity_store.team_outbox_enabled = True
 
-    # Create and start the sync worker
+    # Create transport for pushing/pulling events
     from open_agent_kit.features.codebase_intelligence.team.identity import (
         get_project_identity,
     )
     from open_agent_kit.features.codebase_intelligence.team.outbox.worker import (
         TeamSyncWorker,
     )
+    from open_agent_kit.features.codebase_intelligence.team.transport.factory import (
+        create_transport,
+    )
+
+    transport = state.team_transport or create_transport(ci_config.team)
+    state.team_transport = transport
 
     project_id = (
         get_project_identity(state.project_root).full_id if state.project_root else "unknown"
@@ -419,10 +425,7 @@ def _init_team_sync(state: "DaemonState") -> None:
         config=ci_config.team,
         project_id=project_id,
     )
-
-    # Wire transport if already available (Phase 2 may have set it)
-    if state.team_transport:
-        worker.set_transport(state.team_transport)  # type: ignore[arg-type]
+    worker.set_transport(transport)  # type: ignore[arg-type]
 
     worker.start()
     state.team_sync_worker = worker
@@ -437,8 +440,7 @@ def _init_team_sync(state: "DaemonState") -> None:
         project_id=project_id,
         machine_id=state.machine_id or "unknown",
     )
-    if state.team_transport:
-        pull_worker.set_transport(state.team_transport)
+    pull_worker.set_transport(transport)
     pull_worker.start()
     state.team_pull_worker = pull_worker
     logger.info("Team pull worker started")
