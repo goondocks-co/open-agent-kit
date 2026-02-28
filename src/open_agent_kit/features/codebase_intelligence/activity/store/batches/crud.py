@@ -105,7 +105,7 @@ def create_prompt_batch(
         )
 
         # Enqueue team sync event for prompt batch
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_PROMPT_BATCH_UPSERT,
             )
@@ -274,7 +274,7 @@ def end_prompt_batch(store: ActivityStore, batch_id: int) -> None:
             (ended_at, batch_id),
         )
 
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             row = conn.execute(
                 "SELECT session_id, prompt_number, content_hash FROM prompt_batches WHERE id = ?",
                 (batch_id,),
@@ -358,7 +358,7 @@ def update_prompt_batch_response(
             (truncated, batch_id),
         )
 
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             row = conn.execute(
                 "SELECT session_id, prompt_number, content_hash FROM prompt_batches WHERE id = ?",
                 (batch_id,),
@@ -447,7 +447,7 @@ def update_prompt_batch_source_type(
                 (source_type, batch_id),
             )
 
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             row = conn.execute(
                 "SELECT session_id, prompt_number, content_hash, source_type, plan_file_path, plan_content FROM prompt_batches WHERE id = ?",
                 (batch_id,),
@@ -515,7 +515,7 @@ def mark_prompt_batch_processed(
             (classification, batch_id),
         )
 
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             row = conn.execute(
                 "SELECT session_id, prompt_number, content_hash, classification FROM prompt_batches WHERE id = ?",
                 (batch_id,),

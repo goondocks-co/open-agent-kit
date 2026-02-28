@@ -72,7 +72,7 @@ def create_session(
         )
 
         # Enqueue team sync event in the same transaction
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_SESSION_UPSERT,
             )
@@ -208,6 +208,7 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
         session_id: Session to end.
         summary: Optional session summary.
     """
+    ended_at = datetime.now().isoformat()
     with store._transaction() as conn:
         conn.execute(
             f"""
@@ -215,11 +216,11 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
             SET ended_at = ?, status = '{SESSION_STATUS_COMPLETED}', summary = ?
             WHERE id = ?
             """,
-            (datetime.now().isoformat(), summary, session_id),
+            (ended_at, summary, session_id),
         )
 
         # Enqueue team sync event
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_SESSION_END,
             )
@@ -237,7 +238,7 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
                     event_type=TEAM_EVENT_SESSION_END,
                     payload={
                         "session_id": session_id,
-                        "ended_at": datetime.now().isoformat(),
+                        "ended_at": ended_at,
                         "summary": summary,
                         "status": SESSION_STATUS_COMPLETED,
                     },
@@ -267,7 +268,7 @@ def update_session_title(
         )
 
         # Enqueue team sync event
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_SESSION_TITLE_UPDATE,
             )
@@ -311,7 +312,7 @@ def update_session_summary(store: ActivityStore, session_id: str, summary: str) 
         )
 
         # Enqueue team sync event in the same transaction
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_SESSION_SUMMARY_UPDATE,
             )
@@ -373,7 +374,7 @@ def update_session_transcript_path(
             (transcript_path, session_id),
         )
 
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             sess_row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
             if sess_row:
                 from open_agent_kit.features.codebase_intelligence.constants.team import (

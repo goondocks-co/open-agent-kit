@@ -168,6 +168,7 @@ class TeamEventApplier:
                 return False
 
         with self._store._transaction() as conn:
+            self._ensure_session_exists(conn, payload)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO memory_observations

@@ -448,9 +448,9 @@ class TestSyncControl:
 
     @patch(f"{_ROUTE_MOD}.get_state")
     def test_flush_calls_flush_outbox(self, mock_get_state: MagicMock, client: TestClient) -> None:
-        """Force flush delegates to worker._flush_outbox()."""
+        """Force flush delegates to worker.flush()."""
         mock_worker = MagicMock()
-        mock_worker._flush_outbox.return_value = 3
+        mock_worker.flush.return_value = 3
         mock_state = MagicMock(spec=DaemonState)
         mock_state.team_sync_worker = mock_worker
         mock_get_state.return_value = mock_state

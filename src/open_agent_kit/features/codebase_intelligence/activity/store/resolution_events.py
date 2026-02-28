@@ -84,7 +84,7 @@ def store_resolution_event(
         )
 
         # Enqueue team sync event in the same transaction
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_OBSERVATION_RESOLVED,
             )

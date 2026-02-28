@@ -65,22 +65,30 @@ def store_events(conn: sqlite3.Connection, events: list[TeamEvent], project_id: 
         return 0
 
     now = datetime.now(UTC).isoformat()
-    accepted = 0
 
-    for event in events:
-        # Check for existing content_hash
-        existing = conn.execute(
-            "SELECT 1 FROM team_events WHERE content_hash = ?",
-            (event.content_hash,),
-        ).fetchone()
+    # Deduplicate within the batch first (preserve first occurrence per hash).
+    unique_by_hash: dict[str, TeamEvent] = {}
+    for e in events:
+        if e.content_hash not in unique_by_hash:
+            unique_by_hash[e.content_hash] = e
+    unique_events = list(unique_by_hash.values())
 
-        if existing is not None:
-            continue
+    # Batch dedup against DB: fetch all existing hashes in one query.
+    incoming_hashes = list(unique_by_hash.keys())
+    placeholders = ",".join("?" * len(incoming_hashes))
+    existing_hashes = {
+        row[0]
+        for row in conn.execute(
+            f"SELECT content_hash FROM team_events WHERE content_hash IN ({placeholders})",
+            incoming_hashes,
+        ).fetchall()
+    }
 
+    new_events = [e for e in unique_events if e.content_hash not in existing_hashes]
+    for event in new_events:
         payload_json = (
             json.dumps(event.payload) if isinstance(event.payload, dict) else event.payload
         )
-
         conn.execute(
             "INSERT INTO team_events "
             "(event_type, payload, source_machine_id, content_hash, schema_version, project_id, received_at) "
@@ -95,10 +103,9 @@ def store_events(conn: sqlite3.Connection, events: list[TeamEvent], project_id: 
                 now,
             ),
         )
-        accepted += 1
 
     conn.commit()
-    return accepted
+    return len(new_events)
 
 
 def get_events_since(

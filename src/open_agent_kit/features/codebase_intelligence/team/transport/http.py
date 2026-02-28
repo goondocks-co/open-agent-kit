@@ -15,6 +15,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_HTTP_PULL_PATH,
     TEAM_HTTP_PUSH_PATH,
     TEAM_HTTP_STATUS_PATH,
+    TEAM_HTTP_TIMEOUT_SECONDS,
     TEAM_ROUTER_PREFIX,
     TEAM_TRANSPORT_ERROR_CONNECTION,
     TEAM_TRANSPORT_ERROR_PULL,
@@ -72,7 +73,7 @@ class HttpTransport(TeamTransport):
             server rejections and DO count against the retry limit.
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=TEAM_HTTP_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     self._url(TEAM_HTTP_PUSH_PATH),
                     json=batch.model_dump(),
@@ -100,7 +101,7 @@ class HttpTransport(TeamTransport):
     async def pull_events(self, request: TeamPullRequest) -> TeamEventBatch:
         """Pull events via POST to /api/team/events/pull."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=TEAM_HTTP_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     self._url(TEAM_HTTP_PULL_PATH),
                     json=request.model_dump(),
@@ -119,7 +120,7 @@ class HttpTransport(TeamTransport):
     async def connect(self) -> None:
         """Verify server reachable via GET /api/team/status."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=TEAM_HTTP_TIMEOUT_SECONDS) as client:
                 response = await client.get(
                     self._url(TEAM_HTTP_STATUS_PATH),
                 )
@@ -139,7 +140,7 @@ class HttpTransport(TeamTransport):
     async def send_heartbeat(self) -> None:
         """Update member presence via POST /members/heartbeat."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=TEAM_HTTP_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     self._url(TEAM_HTTP_HEARTBEAT_PATH),
                     headers=self._auth_headers(),

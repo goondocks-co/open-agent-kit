@@ -125,6 +125,14 @@ class TeamPullWorker:
                 with self._lock:
                     self._last_error = str(exc)
 
+    def pull(self) -> int:
+        """Public entry point for on-demand pull (e.g. from a route handler).
+
+        Returns:
+            Number of events applied.
+        """
+        return self._pull_and_apply()
+
     def _pull_and_apply(self) -> int:
         """Pull events from server and apply them locally.
 

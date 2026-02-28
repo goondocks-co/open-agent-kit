@@ -152,101 +152,65 @@ jobs:
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
           if [ -n "$PREVIOUS_TAG" ]; then
-            # Use %s for subject only, escape special characters
             COMMITS=$(git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"- %s" --no-merges | head -50)
           else
             COMMITS=$(git log --pretty=format:"- %s" --no-merges | head -20)
           fi
 
           if [ "$IS_PRERELEASE" = "true" ]; then
-            # Pre-release: include warning and beta-specific install instructions
-            cat > release-notes.md << 'RELEASE_EOF'
-## ⚠️ This is a pre-release
-
-This version is a pre-release and may contain bugs or incomplete features.
-Please report issues at https://github.com/goondocks-co/open-agent-kit/issues
-
-## What's Changed
-
-RELEASE_EOF
-
-            echo "$COMMITS" >> release-notes.md
-
-            cat >> release-notes.md << 'RELEASE_EOF'
-
-## Install / Upgrade
-
-The beta formula installs the binary as `oak-beta` so stable and beta can coexist.
-
-```bash
-# Homebrew (macOS) — installs as `oak-beta`
-brew install goondocks-co/oak/oak-ci-beta
-
-# pipx — installs as `oak-beta`
-pipx install oak-ci --python python3.13 --pip-args='--pre' --suffix=-beta
-
-# uv
-uv tool install oak-ci --python python3.13 --prerelease=allow
-
-# pip
-pip install oak-ci --pre
-```
-
-After installing, initialise your project with the beta binary:
-
-```bash
-oak-beta init
-```
-
-## Documentation
-
-- [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)
-- [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)
-RELEASE_EOF
-
+            {
+              printf '## ⚠️ This is a pre-release\n\n'
+              printf 'This version is a pre-release and may contain bugs or incomplete features.\n'
+              printf 'Please report issues at https://github.com/goondocks-co/open-agent-kit/issues\n\n'
+              printf "## What's Changed\n\n"
+              printf '%s\n\n' "$COMMITS"
+              printf '## Install / Upgrade\n\n'
+              printf 'The beta formula installs the binary as `oak-beta` so stable and beta can coexist.\n\n'
+              printf '```bash\n'
+              printf '# Homebrew (macOS) — installs as `oak-beta`\n'
+              printf 'brew install goondocks-co/oak/oak-ci-beta\n\n'
+              printf '# pipx — installs as `oak-beta`\n'
+              printf "pipx install oak-ci --python python3.13 --pip-args='--pre' --suffix=-beta\n\n"
+              printf '# uv\n'
+              printf 'uv tool install oak-ci --python python3.13 --prerelease=allow\n\n'
+              printf '# pip\n'
+              printf 'pip install oak-ci --pre\n'
+              printf '```\n\n'
+              printf 'After installing, initialise your project with the beta binary:\n\n'
+              printf '```bash\n'
+              printf 'oak-beta init\n'
+              printf '```\n\n'
+              printf '## Documentation\n\n'
+              printf '- [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)\n'
+              printf '- [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)\n'
+            } > release-notes.md
           else
-            # Stable release notes
-            cat > release-notes.md << 'RELEASE_EOF'
-## What's Changed
-
-RELEASE_EOF
-
-            echo "$COMMITS" >> release-notes.md
-
-            cat >> release-notes.md << 'RELEASE_EOF'
-
-## Install and Upgrade
-
-```bash
-# Install via Homebrew (macOS — handles Python version automatically)
-brew install goondocks-co/oak/oak-ci
-
-# Or via pipx (requires Python 3.12-3.13)
-pipx install oak-ci --python python3.13
-
-# Or via uv (requires Python 3.12-3.13)
-uv tool install oak-ci --python python3.13
-
-# Or via pip
-pip install oak-ci
-
-# Initialize in your project
-cd /path/to/your/project
-oak init
-
-# Upgrade an existing installation
-brew upgrade oak-ci              # Homebrew
-pipx upgrade oak-ci              # pipx
-uv tool upgrade oak-ci           # uv
-oak upgrade                      # in-place upgrade
-```
-
-## Documentation
-
-- [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)
-- [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)
-RELEASE_EOF
-
+            {
+              printf "## What's Changed\n\n"
+              printf '%s\n\n' "$COMMITS"
+              printf '## Install and Upgrade\n\n'
+              printf '```bash\n'
+              printf '# Install via Homebrew (macOS — handles Python version automatically)\n'
+              printf 'brew install goondocks-co/oak/oak-ci\n\n'
+              printf '# Or via pipx (requires Python 3.12-3.13)\n'
+              printf 'pipx install oak-ci --python python3.13\n\n'
+              printf '# Or via uv (requires Python 3.12-3.13)\n'
+              printf 'uv tool install oak-ci --python python3.13\n\n'
+              printf '# Or via pip\n'
+              printf 'pip install oak-ci\n\n'
+              printf '# Initialize in your project\n'
+              printf 'cd /path/to/your/project\n'
+              printf 'oak init\n\n'
+              printf '# Upgrade an existing installation\n'
+              printf 'brew upgrade oak-ci              # Homebrew\n'
+              printf 'pipx upgrade oak-ci              # pipx\n'
+              printf 'uv tool upgrade oak-ci           # uv\n'
+              printf 'oak upgrade                      # in-place upgrade\n'
+              printf '```\n\n'
+              printf '## Documentation\n\n'
+              printf '- [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)\n'
+              printf '- [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)\n'
+            } > release-notes.md
           fi
 
           cat release-notes.md

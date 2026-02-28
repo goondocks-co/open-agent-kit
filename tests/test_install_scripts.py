@@ -18,6 +18,13 @@ PIPX_VERIFY_TOKEN = "pipx list --short"
 UV_VERIFY_TOKEN = "uv tool list"
 PIP_VERIFY_TOKEN = "-m pip show"
 
+BETA_CHANNEL_TOKEN = "OAK_CHANNEL"
+PIPX_BETA_SUFFIX_TOKEN = "--suffix=-beta"
+PIPX_BETA_PRE_FLAG_TOKEN = "--pip-args="
+UV_BETA_FLAG_TOKEN = "--prerelease=allow"
+PIP_BETA_FLAG_TOKEN = "--pre"
+BETA_BINARY_TOKEN = "oak-beta"
+
 SHELL_BINARY = "sh"
 POWERSHELL_BINARY = "pwsh"
 SUCCESS_EXIT_CODE = 0
@@ -64,6 +71,20 @@ def test_install_sh_has_valid_syntax() -> None:
         check=False,
     )
     assert result.returncode == SUCCESS_EXIT_CODE, result.stderr
+
+
+def test_install_scripts_support_beta_channel() -> None:
+    """Both installers must honour OAK_CHANNEL=beta and produce the oak-beta binary."""
+    sh_content = INSTALL_SH_PATH.read_text(encoding="utf-8")
+    ps1_content = INSTALL_PS1_PATH.read_text(encoding="utf-8")
+
+    for content, name in ((sh_content, "install.sh"), (ps1_content, "install.ps1")):
+        assert BETA_CHANNEL_TOKEN in content, f"{name}: missing OAK_CHANNEL support"
+        assert PIPX_BETA_SUFFIX_TOKEN in content, f"{name}: missing --suffix=-beta for pipx beta"
+        assert PIPX_BETA_PRE_FLAG_TOKEN in content, f"{name}: missing --pip-args for pipx beta"
+        assert UV_BETA_FLAG_TOKEN in content, f"{name}: missing --prerelease=allow for uv beta"
+        assert PIP_BETA_FLAG_TOKEN in content, f"{name}: missing --pre for pip beta"
+        assert BETA_BINARY_TOKEN in content, f"{name}: missing oak-beta binary reference"
 
 
 @pytest.mark.skipif(shutil.which(POWERSHELL_BINARY) is None, reason="pwsh not available")

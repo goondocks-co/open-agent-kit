@@ -10,6 +10,7 @@ Server-only endpoints (API key management) check the
 import hashlib
 import logging
 import os
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,10 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_STATUS,
     TEAM_API_PATH_SYNC_FLUSH,
     TEAM_API_PATH_SYNC_PULL,
+    TEAM_HTTP_TIMEOUT_SECONDS,
     TEAM_JOIN_STATUS_APPROVED,
     TEAM_LOOPBACK_KEY_NAME,
+    TEAM_LOOPBACK_URL_PREFIX,
     TEAM_LOOPBACK_URL_TEMPLATE,
     TEAM_ROUTE_TAG,
     TEAM_ROUTER_PREFIX,
@@ -164,21 +167,25 @@ def _require_project_root() -> Path:
     """Return project_root from state or raise 500."""
     state = get_state()
     if not state.project_root:
-        raise HTTPException(status_code=500, detail="Project root not set")
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Project root not set"
+        )
     return state.project_root
 
 
 def _require_server_mode() -> None:
     """Raise 403 if not running as team server."""
     if not os.environ.get(TEAM_SERVER_MODE_ENV_VAR):
-        raise HTTPException(status_code=403, detail="Server mode only")
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Server mode only")
 
 
 def _require_activity_store() -> Any:
     """Return activity_store from state or raise 500."""
     state = get_state()
     if not state.activity_store:
-        raise HTTPException(status_code=500, detail="Store not initialized")
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Store not initialized"
+        )
     return state.activity_store
 
 
@@ -189,7 +196,9 @@ def _require_gateway() -> Any:
     state = get_state()
     gw: TeamGateway | None = state.team_gateway
     if gw is None:
-        raise HTTPException(status_code=500, detail="Team gateway not initialized")
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Team gateway not initialized"
+        )
     return gw
 
 
@@ -293,12 +302,12 @@ async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{server_url}{TEAM_ROUTER_PREFIX}{TEAM_HTTP_STATUS_PATH}",
-                timeout=10,
+                timeout=TEAM_HTTP_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
     except Exception as exc:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTPStatus.BAD_REQUEST,
             detail=f"Cannot connect to server: {exc}",
         ) from exc
 
@@ -308,7 +317,7 @@ async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
     api_key = ci_config.team.api_key
     if not api_key:
         raise HTTPException(
-            status_code=500,
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail="No API key available. Restart daemon to auto-generate.",
         )
 
@@ -335,13 +344,13 @@ async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
                     "key_hash": key_hash,
                     "project_id": identity.full_id,
                 },
-                timeout=10,
+                timeout=TEAM_HTTP_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
             join_result = resp.json()
     except Exception as exc:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTPStatus.BAD_REQUEST,
             detail=f"Join request failed: {exc}",
         ) from exc
 
@@ -486,9 +495,9 @@ async def force_sync_flush() -> dict[str, Any]:
     """
     state = get_state()
     if not state.team_sync_worker:
-        raise HTTPException(status_code=400, detail="Team sync not active")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Team sync not active")
     try:
-        count = state.team_sync_worker._flush_outbox()
+        count = state.team_sync_worker.flush()
         return {"flushed": count}
     except Exception as exc:
         # Transport-level failure: server unreachable. Not a 500 — events are
@@ -504,7 +513,7 @@ async def force_sync_pull() -> dict[str, Any]:
     if not state.team_pull_worker:
         return {"status": "pull_worker_not_available", "applied": 0}
     try:
-        applied = state.team_pull_worker._pull_and_apply()
+        applied = state.team_pull_worker.pull()
         return {"status": "ok", "applied": applied}
     except Exception as exc:
         return {"status": "error", "applied": 0, "error": str(exc)}
@@ -593,11 +602,10 @@ async def toggle_server_mode(req: ServerModeRequest) -> dict[str, Any]:
             revoke_keys_by_name(conn, TEAM_LOOPBACK_KEY_NAME)
             delete_revoked_keys_by_name(conn, TEAM_LOOPBACK_KEY_NAME)
         except Exception:
-            pass  # DB may not have team tables yet
+            logger.debug("Could not revoke loopback keys (tables may not exist yet)", exc_info=True)
 
-        loopback_prefix = "http://127.0.0.1:"
         was_loopback = ci_config.team.server_url and ci_config.team.server_url.startswith(
-            loopback_prefix
+            TEAM_LOOPBACK_URL_PREFIX
         )
 
         ci_config.team.server_mode = False
@@ -738,7 +746,7 @@ async def revoke_key(key_id: str) -> dict[str, bool]:
     conn = store._get_connection()
     success = revoke_api_key(conn, key_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Key not found")
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Key not found")
     return {"revoked": True}
 
 
@@ -787,7 +795,9 @@ async def poll_join_status() -> dict[str, Any]:
     state = get_state()
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.server_url:
-        raise HTTPException(status_code=400, detail="Not connected to a team server")
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST, detail="Not connected to a team server"
+        )
 
     # Server mode doesn't need to poll itself
     if ci_config.team.server_mode:
@@ -812,14 +822,18 @@ async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
     state = get_state()
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.server_url:
-        raise HTTPException(status_code=400, detail="Not connected to a team server")
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST, detail="Not connected to a team server"
+        )
 
     # Already approved and syncing — short-circuit
     if ci_config.team.auto_sync and state.team_gateway and not state.team_gateway.is_server():
         return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
 
     if not state.team_gateway:
-        raise HTTPException(status_code=500, detail="Team gateway not initialized")
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Team gateway not initialized"
+        )
 
     result = await state.team_gateway.get_join_status(key_id)
 
@@ -934,9 +948,11 @@ async def trigger_backfill() -> BackfillStatusResponse:
 
     state = get_state()
     if not state.activity_store:
-        raise HTTPException(status_code=503, detail="Activity store not available")
-    if not getattr(state.activity_store, "team_outbox_enabled", False):
-        raise HTTPException(status_code=400, detail="Team sync not enabled")
+        raise HTTPException(
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail="Activity store not available"
+        )
+    if not state.activity_store.team_outbox_enabled:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Team sync not enabled")
 
     from open_agent_kit.features.codebase_intelligence.team.backfill import TeamBackfillService
 

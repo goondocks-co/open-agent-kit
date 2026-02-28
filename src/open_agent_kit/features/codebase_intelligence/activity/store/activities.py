@@ -58,7 +58,7 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
                 (activity.prompt_batch_id,),
             )
         # Enqueue team sync event for activity
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_ACTIVITY_UPSERT,
             )
@@ -257,7 +257,7 @@ def _enqueue_activity_outbox_events(
     rows: list[dict],
 ) -> None:
     """Enqueue team outbox events for a batch of activities (inside open transaction)."""
-    if not getattr(store, "team_outbox_enabled", False):
+    if not store.team_outbox_enabled:
         return
 
     from open_agent_kit.features.codebase_intelligence.constants.team import (

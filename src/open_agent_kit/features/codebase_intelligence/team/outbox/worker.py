@@ -25,6 +25,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_OUTBOX_BATCH_SIZE,
     TEAM_OUTBOX_BATCH_SIZE_BURST,
     TEAM_OUTBOX_BURST_THRESHOLD,
+    TEAM_OUTBOX_FAILED_PRUNE_AGE_HOURS,
     TEAM_OUTBOX_MAX_RETRY_COUNT,
     TEAM_OUTBOX_PRUNE_AGE_HOURS,
     TEAM_OUTBOX_STATUS_FAILED,
@@ -177,6 +178,14 @@ class TeamSyncWorker:
         except Exception as exc:
             logger.debug("Heartbeat failed (non-critical): %s", exc)
 
+    def flush(self) -> int:
+        """Public entry point for on-demand outbox flush (e.g. from a route handler).
+
+        Returns:
+            Number of events flushed successfully.
+        """
+        return self._flush_outbox()
+
     def _flush_outbox(self) -> int:
         """Flush pending outbox events to the team server.
 
@@ -307,14 +316,21 @@ class TeamSyncWorker:
             )
 
     def _prune_sent_events(self, conn: Any) -> None:
-        """Delete sent events older than the configured prune age."""
+        """Delete sent and permanently-failed events older than the configured prune ages."""
         from datetime import timedelta
 
-        cutoff = (datetime.now(UTC) - timedelta(hours=TEAM_OUTBOX_PRUNE_AGE_HOURS)).isoformat()
+        sent_cutoff = (datetime.now(UTC) - timedelta(hours=TEAM_OUTBOX_PRUNE_AGE_HOURS)).isoformat()
+        failed_cutoff = (
+            datetime.now(UTC) - timedelta(hours=TEAM_OUTBOX_FAILED_PRUNE_AGE_HOURS)
+        ).isoformat()
         with self._store._transaction() as tx:
             tx.execute(
                 "DELETE FROM team_outbox WHERE status = ? AND created_at < ?",
-                (TEAM_OUTBOX_STATUS_SENT, cutoff),
+                (TEAM_OUTBOX_STATUS_SENT, sent_cutoff),
+            )
+            tx.execute(
+                "DELETE FROM team_outbox WHERE status = ? AND created_at < ?",
+                (TEAM_OUTBOX_STATUS_FAILED, failed_cutoff),
             )
 
     def get_status(self) -> TeamSyncStatus:

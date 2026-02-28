@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-02-28]
+
+### Added
+
+- **Beta release channel (`oak-beta` binary)** — `oak-beta` installs side-by-side with the stable CLI so users can opt into pre-release features without disrupting their primary installation; a dedicated `ReleaseChannel` enum centralizes channel values across the codebase — [Implement beta release channel for Oak CLI](http://localhost:38388/activity/sessions/67cf5af4-879c-4a73-8614-bd604e464464), [Add beta channel support with oak-beta binary](http://localhost:38388/activity/sessions/6ff0c0aa-33d4-425a-9d9f-8f1f805f82df)
+- **High-fidelity team sync** — team synchronization elevated from "quick sync" to full backup/restore-level fidelity; new members now receive complete historical CI data via a new `/sync/start` API endpoint, with real-time UI status updates reflecting sync progress — [Configure high-fidelity sync strategy flag and module](http://localhost:38388/activity/sessions/875c144e-47fc-4564-acb3-f60c9e3b0265), [Implement high-fidelity sync module and expose start API](http://localhost:38388/activity/sessions/1415dd0e-39ce-4bab-a8c1-75e68e51d77b), [Implement high-fidelity sync API and UI status updates](http://localhost:38388/activity/sessions/8def04b4-2554-44d6-bd39-88d1deb58ba3)
+- **LocalTransport for server-mode event propagation** — Oak Teams server now emits its own session-level events so connected clients see sessions created on the server machine; previously `_init_team_sync()` short-circuited in server mode, leaving server-originated sessions invisible to members — [Implement LocalTransport to enable server-mode event syncing](http://localhost:38388/activity/sessions/199895f1-c82e-48ae-9737-2b36bf994eef), [Implement LocalTransport to propagate server-mode events](http://localhost:38388/activity/sessions/3b5f4d85-fd4f-4a76-83f2-c9fcaaddfc08)
+- **Connection status icon in daemon UI** — live connection indicator wired into the team sync UI — [Fix build errors and add connection status icon](http://localhost:38388/activity/sessions/a7e958f3-85ad-4260-b3b2-fe53c039b9fe)
+
+### Fixed
+
+- Fix team-routes Gateway pattern: persistent auth 401 errors from fragile `if server_mode` branches — further hardened the routing layer to consistently authenticate across server and client modes — [Refactor team routes to Gateway pattern, eliminate auth 401 errors](http://localhost:38388/activity/sessions/15b02521-c762-498e-9f9b-6be8d01940a5)
+- Fix `TeamMembers.tsx` reporting zero online members — `MEMBER_ONLINE_THRESHOLD_MS` was declared but never used; replaced with `5 * TIME_UNITS.MS_PER_SECOND` so the online count now matches the members page — [Fix build errors and add connection status icon](http://localhost:38388/activity/sessions/a7e958f3-85ad-4260-b3b2-fe53c039b9fe)
+- Fix `check_upgrade_needed` never flagging an upgrade — function returned `None` without setting `state.upgrade_needed`, silencing the "run `oak upgrade`" prompt — [Fix build errors and add connection status icon](http://localhost:38388/activity/sessions/a7e958f3-85ad-4260-b3b2-fe53c039b9fe)
+- Fix `CloudRelayErrorCode` enum crash from duplicate members — duplicate enum entries caused a `ValueError` on import, preventing the cloud relay module from loading — [Fix build errors and add connection status icon](http://localhost:38388/activity/sessions/a7e958f3-85ad-4260-b3b2-fe53c039b9fe)
+- Fix CI daemon startup failure on fresh clone — missing initialization step prevented `make setup` from starting CI; quickstart documentation updated to reflect the correct sequence — [Debug CI start failure and clarify quickstart documentation](http://localhost:38388/activity/sessions/8f306970-2883-48a4-be27-023144cead36)
+
+### Changed
+
+- Integration tests refactored for comprehensive multi-language coverage — test suite reorganized to exercise all supported programming languages with a consistent, thorough strategy — [Refactor Oak integration tests for comprehensive language coverage](http://localhost:38388/activity/sessions/3bd94870-738d-42fd-8846-9b5fc13dfd21)
+
+### Notes
+
+> **Gotcha**: `TeamStatus.tsx` expects the backend to return a `status` field; a missing or mistyped field causes the component to silently render an empty status with no error. Add a defensive default or null-check when extending the `/team` endpoint.
+
+> **Gotcha**: The outbox worker does not buffer events locally — if the server is offline when a sync is attempted, the payload is discarded immediately. Changes made while the server is unreachable are lost until a new sync cycle runs after reconnection. See [`team/outbox/worker.py`](src/open_agent_kit/features/codebase_intelligence/team/outbox/worker.py).
+
 ## [2026-02-27]
 
 ### Added

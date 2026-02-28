@@ -35,6 +35,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_MESSAGE_NO_KEYS,
     TEAM_MESSAGE_NO_MEMBERS,
     TEAM_MESSAGE_NOT_CONFIGURED,
+    TEAM_MESSAGE_REQUEST_TIMED_OUT,
     TEAM_MESSAGE_SERVE_STARTING,
     TEAM_MESSAGE_SERVER_URL,
     TEAM_MESSAGE_SYNC_DISABLED,
@@ -132,7 +133,7 @@ def team_join(
         print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
     except httpx.TimeoutException:
-        print_error("Request timed out")
+        print_error(TEAM_MESSAGE_REQUEST_TIMED_OUT)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
     status = data.get("status", "")
@@ -272,7 +273,7 @@ def team_members() -> None:
         print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
     except httpx.TimeoutException:
-        print_error("Request timed out")
+        print_error(TEAM_MESSAGE_REQUEST_TIMED_OUT)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
 
@@ -357,7 +358,7 @@ def key_create(
         print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
     except httpx.TimeoutException:
-        print_error("Request timed out")
+        print_error(TEAM_MESSAGE_REQUEST_TIMED_OUT)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
 
@@ -407,7 +408,7 @@ def key_list() -> None:
         print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
     except httpx.TimeoutException:
-        print_error("Request timed out")
+        print_error(TEAM_MESSAGE_REQUEST_TIMED_OUT)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
 
@@ -440,5 +441,5 @@ def key_revoke(
         print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
     except httpx.TimeoutException:
-        print_error("Request timed out")
+        print_error(TEAM_MESSAGE_REQUEST_TIMED_OUT)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)

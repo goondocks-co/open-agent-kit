@@ -78,7 +78,7 @@ def store_observation(store: ActivityStore, observation: StoredObservation) -> s
         )
 
         # Enqueue team sync event in the same transaction (atomic with data write)
-        if getattr(store, "team_outbox_enabled", False):
+        if store.team_outbox_enabled:
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_OBSERVATION_UPSERT,
             )

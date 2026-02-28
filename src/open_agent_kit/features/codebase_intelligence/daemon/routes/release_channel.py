@@ -110,7 +110,7 @@ async def _fetch_pypi_versions() -> tuple[str | None, str | None]:
             return cached
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             raw = await loop.run_in_executor(None, _fetch_pypi_raw)
             result = _parse_pypi_versions(raw)
         except Exception as exc:

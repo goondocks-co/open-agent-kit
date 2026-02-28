@@ -97,6 +97,7 @@ TEAM_ROUTE_TAG: Final[str] = "team"
 # Loopback server mode
 TEAM_LOOPBACK_KEY_NAME: Final[str] = "_loopback"
 TEAM_LOOPBACK_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port}"
+TEAM_LOOPBACK_URL_PREFIX: Final[str] = "http://127.0.0.1:"
 
 # API key constants
 TEAM_API_KEY_PREFIX: Final[str] = "oak_team_"
@@ -107,6 +108,7 @@ TEAM_API_KEY_PERMISSIONS_ADMIN: Final[str] = "admin"
 # Outbox management
 TEAM_OUTBOX_MAX_RETRY_COUNT: Final[int] = 5
 TEAM_OUTBOX_PRUNE_AGE_HOURS: Final[int] = 24
+TEAM_OUTBOX_FAILED_PRUNE_AGE_HOURS: Final[int] = 168  # 7 days
 TEAM_OUTBOX_BATCH_SIZE: Final[int] = 250
 TEAM_OUTBOX_BATCH_SIZE_BURST: Final[int] = 500  # used when queue depth > threshold
 TEAM_OUTBOX_BURST_THRESHOLD: Final[int] = 1000  # queue depth that triggers burst mode
@@ -149,6 +151,7 @@ TEAM_MESSAGE_ALREADY_CONFIGURED: Final[str] = "Already connected to team server:
 TEAM_MESSAGE_INVALID_URL: Final[str] = "Invalid server URL: must start with http:// or https://"
 TEAM_MESSAGE_CONNECTION_TEST_FAILED: Final[str] = "Failed to connect to team server: {error}"
 TEAM_MESSAGE_DAEMON_NOT_RUNNING: Final[str] = "Daemon is not running. Start with: oak ci start"
+TEAM_MESSAGE_REQUEST_TIMED_OUT: Final[str] = "Request timed out"
 TEAM_MESSAGE_SERVER_URL: Final[str] = "Server URL: {server_url}"
 TEAM_MESSAGE_AUTO_SYNC: Final[str] = "Auto Sync: {auto_sync}"
 TEAM_MESSAGE_SYNC_ENABLED: Final[str] = "enabled"
@@ -209,6 +212,9 @@ TEAM_TRANSPORT_ERROR_NOT_IMPLEMENTED: Final[str] = "Relay transport not yet impl
 TEAM_TRANSPORT_ERROR_CONNECTION: Final[str] = "Failed to connect to team server: {error}"
 TEAM_TRANSPORT_ERROR_PUSH: Final[str] = "Failed to push events: {error}"
 TEAM_TRANSPORT_ERROR_PULL: Final[str] = "Failed to pull events: {error}"
+
+# HTTP transport timeout
+TEAM_HTTP_TIMEOUT_SECONDS: Final[float] = 10.0
 
 # HTTP transport paths (relative, without prefix — used by HttpTransport)
 TEAM_HTTP_PUSH_PATH: Final[str] = "/events/push"

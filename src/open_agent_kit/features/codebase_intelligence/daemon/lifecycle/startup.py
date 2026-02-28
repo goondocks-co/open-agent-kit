@@ -490,7 +490,7 @@ def _init_team_sync(state: "DaemonState") -> None:
 
     def _reconcile_trigger() -> None:
         """Fill local gaps by re-applying missed team_events. Idempotent."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         if not state.activity_store:
             return
@@ -505,7 +505,7 @@ def _init_team_sync(state: "DaemonState") -> None:
         if last_row and last_row["last_reconcile_at"]:
             try:
                 last_at = datetime.fromisoformat(last_row["last_reconcile_at"])
-                elapsed_minutes = (datetime.now() - last_at).total_seconds() / 60
+                elapsed_minutes = (datetime.now(UTC) - last_at).total_seconds() / 60
                 if elapsed_minutes < TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES:
                     return
             except (ValueError, TypeError):
@@ -525,7 +525,7 @@ def _init_team_sync(state: "DaemonState") -> None:
             )
 
         # Update reconcile state
-        now_str = datetime.now().isoformat()
+        now_str = datetime.now(UTC).isoformat()
         with state.activity_store._transaction() as wconn:
             wconn.execute(
                 """INSERT OR REPLACE INTO team_reconcile_state
@@ -784,7 +784,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning(f"Failed to initialize team sync: {e}")
 
     # Auto-trigger backfill for historical data (runs in background, non-blocking)
-    if state.activity_store and getattr(state.activity_store, "team_outbox_enabled", False):
+    if state.activity_store and state.activity_store.team_outbox_enabled:
         try:
             from open_agent_kit.features.codebase_intelligence.team.backfill import (
                 TeamBackfillService,
