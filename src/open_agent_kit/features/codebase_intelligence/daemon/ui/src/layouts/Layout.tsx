@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText } from "lucide-react";
+import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { usePowerState } from "@/hooks/use-power-state";
 import type { PowerState } from "@/hooks/use-power-state";
 import { useStatus } from "@/hooks/use-status";
 import { useRestart } from "@/hooks/use-restart";
+import { useChannel } from "@/hooks/use-channel";
+import { AboutDialog } from "@/components/about/AboutDialog";
 import { UpdateBanner } from "@/components/ui/update-banner";
 import { TeamStatusBanner } from "@/components/ui/team-status-banner";
 
@@ -37,6 +39,8 @@ export function Layout() {
     const { setTheme, theme } = useTheme();
     const { data: status } = useStatus();
     const { restart, isRestarting } = useRestart();
+    const { data: channelData } = useChannel();
+    const [aboutOpen, setAboutOpen] = useState(false);
     const queryClient = useQueryClient();
     const { state: powerState, reportActivity } = usePowerState();
     const prevPowerStateRef = useRef<PowerState>(powerState);
@@ -97,6 +101,7 @@ export function Layout() {
 
     return (
         <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans">
+            <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
             {/* Sidebar */}
             <aside className={cn(
                 "border-r bg-card flex flex-col transition-all duration-200",
@@ -107,7 +112,16 @@ export function Layout() {
                         <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
                             <img src="/logo.png" alt="Oak CI" className="w-8 h-8 object-contain" />
                         </div>
-                        {!collapsed && <span className="font-bold text-lg tracking-tight">Oak CI</span>}
+                        {!collapsed && (
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-bold text-lg tracking-tight">Oak CI</span>
+                                {channelData?.current_channel === "beta" && (
+                                    <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
+                                        Beta
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
                     {!collapsed && projectName && (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
@@ -129,6 +143,20 @@ export function Layout() {
                 </nav>
 
                 <div className={cn("border-t", collapsed ? "p-2" : "p-4")}>
+                    {/* About / Info button */}
+                    <button
+                        onClick={() => setAboutOpen(true)}
+                        title="About Oak CI"
+                        aria-label="About Oak CI"
+                        className={cn(
+                            "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground mb-2",
+                            collapsed && "justify-center px-2",
+                        )}
+                    >
+                        <Info className="w-4 h-4 flex-shrink-0" />
+                        {!collapsed && <span>About</span>}
+                    </button>
+
                     {/* Restart daemon button */}
                     <button
                         onClick={restart}

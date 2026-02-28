@@ -100,6 +100,10 @@ export const API_ENDPOINTS = {
     ACP_STOP: "/api/acp/stop",
     ACP_LOGS: "/api/acp/logs",
 
+    // Channel endpoints
+    CHANNEL: "/api/channel",
+    CHANNEL_SWITCH: "/api/channel/switch",
+
     // Team endpoints
     TEAM_CONFIG: "/api/team/config",
     TEAM_JOIN: "/api/team/join",

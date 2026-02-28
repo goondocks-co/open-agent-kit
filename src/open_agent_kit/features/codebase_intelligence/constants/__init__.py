@@ -703,6 +703,18 @@ from open_agent_kit.features.codebase_intelligence.constants.providers import (
     VALID_SUMMARIZATION_PROVIDERS,
     WARMUP_TIMEOUT_MULTIPLIER,
 )
+
+# --- release_channel ---
+from open_agent_kit.features.codebase_intelligence.constants.release_channel import (
+    CI_CHANNEL_API_PATH,
+    CI_CHANNEL_BETA,
+    CI_CHANNEL_STABLE,
+    CI_CHANNEL_SWITCH_API_PATH,
+    CI_INSTALL_METHOD_HOMEBREW,
+    CI_INSTALL_METHOD_PIPX,
+    CI_INSTALL_METHOD_UNKNOWN,
+    CI_INSTALL_METHOD_UV,
+)
 from open_agent_kit.features.codebase_intelligence.constants.search import (
     CHUNK_TYPE_CLASS,
     CHUNK_TYPE_FUNCTION,

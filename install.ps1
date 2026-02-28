@@ -16,6 +16,10 @@ $MinPythonMajor = 3
 $MinPythonMinor = 12
 $MaxPythonMinor = 13
 
+# Channel: "stable" (default) or "beta" (pre-release).
+# Override: $env:OAK_CHANNEL = "beta"; irm .../install.ps1 | iex
+$OakChannel = if ($env:OAK_CHANNEL) { $env:OAK_CHANNEL } else { "stable" }
+
 function Write-Info  { param($Msg) Write-Host "==> $Msg" -ForegroundColor Blue }
 function Write-Ok    { param($Msg) Write-Host "==> $Msg" -ForegroundColor Green }
 function Write-Warn  { param($Msg) Write-Host "warning: $Msg" -ForegroundColor Yellow }
@@ -51,12 +55,22 @@ function Test-PythonVersion {
 function Install-WithPipx {
     param($VersionSpec)
     Write-Info "Installing with pipx..."
-    # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
-    pipx uninstall $Package 2>$null | Out-Null
-    if ($VersionSpec) {
-        pipx install "${Package}==${VersionSpec}"
+    if ($OakChannel -eq "beta") {
+        # Beta: --suffix=-beta produces the `oak-beta` binary so stable and beta coexist.
+        # Skip pre-uninstall; the suffixed app is independent of the stable install.
+        if ($VersionSpec) {
+            pipx install --pip-args='--pre' --suffix=-beta "${Package}==${VersionSpec}"
+        } else {
+            pipx install --pip-args='--pre' --suffix=-beta $Package
+        }
     } else {
-        pipx install $Package
+        # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
+        pipx uninstall $Package 2>$null | Out-Null
+        if ($VersionSpec) {
+            pipx install "${Package}==${VersionSpec}"
+        } else {
+            pipx install $Package
+        }
     }
 }
 
@@ -65,20 +79,26 @@ function Install-WithUv {
     Write-Info "Installing with uv..."
     # Uninstall first to ensure clean install (mirrors pipx workaround)
     uv tool uninstall $Package 2>$null | Out-Null
+    $PreFlag = if ($OakChannel -eq "beta") { "--prerelease=allow" } else { $null }
     if ($VersionSpec) {
-        uv tool install "${Package}==${VersionSpec}"
+        if ($PreFlag) { uv tool install $PreFlag "${Package}==${VersionSpec}" }
+        else          { uv tool install "${Package}==${VersionSpec}" }
     } else {
-        uv tool install $Package
+        if ($PreFlag) { uv tool install $PreFlag $Package }
+        else          { uv tool install $Package }
     }
 }
 
 function Install-WithPip {
     param($PythonCmd, $VersionSpec)
     Write-Info "Installing with pip (--user)..."
+    $PreFlag = if ($OakChannel -eq "beta") { "--pre" } else { $null }
     if ($VersionSpec) {
-        & $PythonCmd -m pip install --user --upgrade "${Package}==${VersionSpec}"
+        if ($PreFlag) { & $PythonCmd -m pip install --user --upgrade $PreFlag "${Package}==${VersionSpec}" }
+        else          { & $PythonCmd -m pip install --user --upgrade "${Package}==${VersionSpec}" }
     } else {
-        & $PythonCmd -m pip install --user --upgrade $Package
+        if ($PreFlag) { & $PythonCmd -m pip install --user --upgrade $PreFlag $Package }
+        else          { & $PythonCmd -m pip install --user --upgrade $Package }
     }
 }
 
@@ -152,6 +172,10 @@ function Main {
     Write-Host "  The Intelligence Layer for AI Agents"
     Write-Host ""
 
+    if ($OakChannel -eq "beta") {
+        Write-Info "Channel: beta (pre-release)"
+    }
+
     Write-Info "Detected OS: Windows"
 
     # Find Python
@@ -222,26 +246,30 @@ function Main {
         exit 1
     }
 
+    # The binary name depends on channel + method:
+    # pipx beta uses --suffix=-beta → produces `oak-beta`; all other combos produce `oak`
+    $oakBin = if ($OakChannel -eq "beta" -and $actualMethod -eq "pipx") { "oak-beta" } else { "oak" }
+
     # Verify installation
     Write-Host ""
-    $oakCmd = Get-Command oak -ErrorAction SilentlyContinue
+    $oakCmd = Get-Command $oakBin -ErrorAction SilentlyContinue
     if ($oakCmd) {
-        $installedVersion = & oak --version 2>$null
+        $installedVersion = & $oakBin --version 2>$null
         if (-not $installedVersion) { $installedVersion = "unknown" }
         if (-not (Test-VersionMatch -Actual $installedVersion -Expected $versionSpec)) {
-            Write-Err "Detected oak command does not match requested version ($versionSpec)"
-            Write-Info "Restart your terminal and verify with: oak --version"
+            Write-Err "Detected $oakBin command does not match requested version ($versionSpec)"
+            Write-Info "Restart your terminal and verify with: $oakBin --version"
             exit 1
         }
         Write-Ok "OAK installed successfully! ($installedVersion)"
         Write-Host ""
         Write-Info "Get started:"
         Write-Host "  cd \path\to\your\project"
-        Write-Host "  oak init"
-        Write-Host "  oak ci start"
+        Write-Host "  $oakBin init"
+        Write-Host "  $oakBin ci start"
         Write-Host ""
     } else {
-        Write-Warn "oak command not found in PATH"
+        Write-Warn "$oakBin command not found in PATH"
 
         # Detect the scripts directory where oak was installed
         $scriptsDir = $null
@@ -253,7 +281,7 @@ function Main {
 
         if ($scriptsDir -and (Test-Path $scriptsDir)) {
             Write-Host ""
-            Write-Info "oak was installed to: $scriptsDir"
+            Write-Info "$oakBin was installed to: $scriptsDir"
             Write-Host ""
             Write-Info "Add it to your PATH (this session):"
             Write-Host "  `$env:PATH += `";$scriptsDir`"" -ForegroundColor Cyan
@@ -266,7 +294,7 @@ function Main {
         }
 
         Write-Host ""
-        Write-Info "Then verify with: oak --version"
+        Write-Info "Then verify with: $oakBin --version"
     }
 }
 

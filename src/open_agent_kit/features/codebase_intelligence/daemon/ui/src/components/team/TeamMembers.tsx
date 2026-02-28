@@ -17,14 +17,13 @@ import {
 } from "@/hooks/use-team";
 import { Users, AlertCircle, Check, X, Loader2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatRelativeTime, TIME_UNITS } from "@/lib/constants";
+import { formatRelativeTime, TIME_UNITS, MEMBER_ONLINE_THRESHOLD_MS } from "@/lib/constants";
 
 // =============================================================================
 // Online Status Constants
 // =============================================================================
 
-/** Thresholds for online status in milliseconds */
-const ONLINE_THRESHOLD_MS = 60 * TIME_UNITS.MS_PER_SECOND;
+/** Threshold for "recently seen" presence state in milliseconds */
 const RECENTLY_SEEN_THRESHOLD_MS = 5 * 60 * TIME_UNITS.MS_PER_SECOND;
 
 const PRESENCE_STATE = {
@@ -51,7 +50,7 @@ function getPresenceState(lastSeen: string | undefined): PresenceState {
     if (!lastSeen) return PRESENCE_STATE.OFFLINE;
 
     const diffMs = Date.now() - new Date(lastSeen).getTime();
-    if (diffMs < ONLINE_THRESHOLD_MS) return PRESENCE_STATE.ONLINE;
+    if (diffMs < MEMBER_ONLINE_THRESHOLD_MS) return PRESENCE_STATE.ONLINE;
     if (diffMs < RECENTLY_SEEN_THRESHOLD_MS) return PRESENCE_STATE.RECENTLY_SEEN;
     return PRESENCE_STATE.OFFLINE;
 }

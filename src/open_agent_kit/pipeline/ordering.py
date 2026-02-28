@@ -27,6 +27,7 @@ class StageOrder:
     # Configuration phase (100-199)
     LOAD_EXISTING_CONFIG = 100
     CREATE_CONFIG = 110
+    SYNC_CLI_COMMAND = 115  # Detect invoked binary and persist to CI config
     UPDATE_CONFIG_AGENTS = 120
     UPDATE_CONFIG_FEATURES = 140
     SAVE_CONFIG = 150

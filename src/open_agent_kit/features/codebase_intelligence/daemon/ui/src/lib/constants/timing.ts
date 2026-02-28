@@ -27,6 +27,9 @@ export const RESTART_TIMEOUT_MS = 60000;
 /** Duration to show "Copied!" feedback after clipboard copy (2 seconds) */
 export const COPIED_FEEDBACK_DURATION_MS = 2000;
 
+/** last_seen threshold for considering a team member "online" (60 seconds) */
+export const MEMBER_ONLINE_THRESHOLD_MS = 60 * 1000;
+
 // =============================================================================
 // Time Constants
 // =============================================================================

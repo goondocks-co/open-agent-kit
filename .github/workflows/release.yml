@@ -3,8 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'            # stable: v0.5.0
+      - 'v[0-9]+.[0-9]+.[0-9]+[ab][0-9]+'  # alpha/beta: v0.6.0a1, v0.6.0b1
+      - 'v[0-9]+.[0-9]+.[0-9]+rc[0-9]+'    # release candidate: v0.6.0rc1
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'          # other pre-releases (testpypi, etc.)
 
 permissions:
   contents: write
@@ -38,6 +40,12 @@ jobs:
             echo "is_testpypi=true" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
             echo "This is a TestPyPI test release: $VERSION"
+          # Detect PEP 440 pre-release suffixes: a1, b1, rc1, .dev1
+          elif [[ "$VERSION" =~ (a|b|rc)[0-9]+$ ]] || [[ "$VERSION" =~ \.dev[0-9]+$ ]]; then
+            echo "is_testpypi=false" >> $GITHUB_OUTPUT
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "This is a pre-release: $VERSION"
+          # Catch any remaining dash-suffixed pre-releases for backward compatibility
           elif [[ "$VERSION" =~ -[a-zA-Z] ]]; then
             echo "is_testpypi=false" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
@@ -138,6 +146,7 @@ jobs:
         id: notes
         env:
           VERSION: ${{ needs.validate-tag.outputs.version }}
+          IS_PRERELEASE: ${{ needs.validate-tag.outputs.is_prerelease }}
         run: |
           # Get commits since last tag (sanitize output to prevent injection)
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -149,48 +158,96 @@ jobs:
             COMMITS=$(git log --pretty=format:"- %s" --no-merges | head -20)
           fi
 
-          # Write release notes to file (avoids shell expansion issues)
-          cat > release-notes.md << 'RELEASE_EOF'
-          ## What's Changed
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            # Pre-release: include warning and beta-specific install instructions
+            cat > release-notes.md << 'RELEASE_EOF'
+## ⚠️ This is a pre-release
 
-          RELEASE_EOF
+This version is a pre-release and may contain bugs or incomplete features.
+Please report issues at https://github.com/goondocks-co/open-agent-kit/issues
 
-          # Append commits safely
-          echo "$COMMITS" >> release-notes.md
+## What's Changed
 
-          cat >> release-notes.md << 'RELEASE_EOF'
+RELEASE_EOF
 
-          ## Install and Upgrade
+            echo "$COMMITS" >> release-notes.md
 
-          ```bash
-          # Install via Homebrew (macOS — handles Python version automatically)
-          brew install goondocks-co/oak/oak-ci
+            cat >> release-notes.md << 'RELEASE_EOF'
 
-          # Or via pipx (requires Python 3.12-3.13)
-          pipx install oak-ci --python python3.13
+## Install / Upgrade
 
-          # Or via uv (requires Python 3.12-3.13)
-          uv tool install oak-ci --python python3.13
+The beta formula installs the binary as `oak-beta` so stable and beta can coexist.
 
-          # Or via pip
-          pip install oak-ci
+```bash
+# Homebrew (macOS) — installs as `oak-beta`
+brew install goondocks-co/oak/oak-ci-beta
 
-          # Initialize in your project
-          cd /path/to/your/project
-          oak init
+# pipx — installs as `oak-beta`
+pipx install oak-ci --python python3.13 --pip-args='--pre' --suffix=-beta
 
-          # Upgrade an existing installation
-          brew upgrade oak-ci              # Homebrew
-          pipx upgrade oak-ci              # pipx
-          uv tool upgrade oak-ci           # uv
-          oak upgrade                      # in-place upgrade
-          ```
+# uv
+uv tool install oak-ci --python python3.13 --prerelease=allow
 
-          ## Documentation
+# pip
+pip install oak-ci --pre
+```
 
-          - [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)
-          - [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)
-          RELEASE_EOF
+After installing, initialise your project with the beta binary:
+
+```bash
+oak-beta init
+```
+
+## Documentation
+
+- [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)
+- [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)
+RELEASE_EOF
+
+          else
+            # Stable release notes
+            cat > release-notes.md << 'RELEASE_EOF'
+## What's Changed
+
+RELEASE_EOF
+
+            echo "$COMMITS" >> release-notes.md
+
+            cat >> release-notes.md << 'RELEASE_EOF'
+
+## Install and Upgrade
+
+```bash
+# Install via Homebrew (macOS — handles Python version automatically)
+brew install goondocks-co/oak/oak-ci
+
+# Or via pipx (requires Python 3.12-3.13)
+pipx install oak-ci --python python3.13
+
+# Or via uv (requires Python 3.12-3.13)
+uv tool install oak-ci --python python3.13
+
+# Or via pip
+pip install oak-ci
+
+# Initialize in your project
+cd /path/to/your/project
+oak init
+
+# Upgrade an existing installation
+brew upgrade oak-ci              # Homebrew
+pipx upgrade oak-ci              # pipx
+uv tool upgrade oak-ci           # uv
+oak upgrade                      # in-place upgrade
+```
+
+## Documentation
+
+- [README](https://github.com/goondocks-co/open-agent-kit/blob/main/README.md)
+- [Quick Start Guide](https://github.com/goondocks-co/open-agent-kit/blob/main/QUICKSTART.md)
+RELEASE_EOF
+
+          fi
 
           cat release-notes.md
 
@@ -276,4 +333,23 @@ jobs:
         run: |
           gh workflow run update-formula.yml \
             -R goondocks-co/homebrew-oak \
-            -f version="$VERSION"
+            -f version="$VERSION" \
+            -f formula="oak-ci"
+
+  update-homebrew-beta:
+    name: Update Homebrew Beta Tap
+    runs-on: ubuntu-latest
+    needs: [validate-tag, publish-pypi]
+    if: >-
+      needs.validate-tag.outputs.is_testpypi == 'false' &&
+      needs.validate-tag.outputs.is_prerelease == 'true'
+    steps:
+      - name: Trigger beta tap update
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+        run: |
+          gh workflow run update-formula.yml \
+            -R goondocks-co/homebrew-oak \
+            -f version="$VERSION" \
+            -f formula="oak-ci-beta"

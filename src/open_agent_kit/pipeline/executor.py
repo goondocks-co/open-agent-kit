@@ -398,6 +398,7 @@ def build_upgrade_pipeline() -> PipelineBuilder:
     """
     return (
         PipelineBuilder()
+        .with_config_stages()  # SyncCliCommandStage only runs for UPGRADE flow
         .with_upgrade_stages()  # Migrate: migrations, structural repairs, version
         .with_agent_stages()  # Reconcile: agent commands and settings
         .with_skill_stages()  # Reconcile: skills

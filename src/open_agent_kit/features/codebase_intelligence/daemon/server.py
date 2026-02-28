@@ -196,6 +196,13 @@ def create_app(
     app.include_router(acp.router)
     app.include_router(acp_sessions.router)
 
+    # Release channel routes
+    from open_agent_kit.features.codebase_intelligence.daemon.routes import (
+        release_channel,
+    )
+
+    app.include_router(release_channel.router)
+
     # Team UI routes (always available -- both client and server mode)
     from open_agent_kit.features.codebase_intelligence.daemon.routes.team import (
         router as team_ui_router,

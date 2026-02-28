@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import {
     useTeamStatus,
+    useTeamMembers,
     useFlushSync,
     usePullSync,
     useBackfillStatus,
@@ -29,7 +30,7 @@ import {
     CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatRelativeTime } from "@/lib/constants";
+import { formatRelativeTime, MEMBER_ONLINE_THRESHOLD_MS } from "@/lib/constants";
 
 // =============================================================================
 // Connection indicator constants
@@ -107,6 +108,7 @@ function SyncStatCard({
 
 export default function TeamStatus() {
     const { data: status, isLoading } = useTeamStatus();
+    const { data: members } = useTeamMembers();
     const { data: backfill } = useBackfillStatus();
     const flushSync = useFlushSync();
     const pullSync = usePullSync();
@@ -130,6 +132,9 @@ export default function TeamStatus() {
     const pendingApproval = status?.pending_approval ?? false;
     const connectionState = getConnectionState(configured, connected, pendingApproval);
     const sync = status?.sync ?? null;
+    const membersOnline = (members?.members ?? []).filter(
+        (m) => m.last_seen && Date.now() - new Date(m.last_seen).getTime() < MEMBER_ONLINE_THRESHOLD_MS,
+    ).length;
 
     return (
         <div className="space-y-6">
@@ -158,7 +163,7 @@ export default function TeamStatus() {
                         {configured && (
                             <span className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Users className="w-3 h-3" />
-                                {status?.members_online ?? 0} online
+                                {membersOnline} online
                             </span>
                         )}
                     </div>

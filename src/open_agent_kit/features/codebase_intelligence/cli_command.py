@@ -8,6 +8,7 @@ from pathlib import Path
 from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CLI_COMMAND_DEFAULT,
     CI_CLI_COMMAND_OAK_PREFIX,
+    CI_CLI_COMMAND_VALIDATION_PATTERN,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,21 @@ def resolve_ci_cli_command(project_root: Path) -> str:
     except (OSError, ValueError, KeyError) as e:
         logger.debug(f"Falling back to default CLI command: {e}")
         return CI_CLI_COMMAND_DEFAULT
+
+
+def detect_invoked_cli_command() -> str:
+    """Detect the CLI binary name from the current process invocation.
+
+    Returns the stem of sys.argv[0] if it matches the allowed pattern
+    (e.g. 'oak', 'oak-beta', 'oak-dev'), falling back to the default.
+    """
+    import re
+    import sys
+
+    name = Path(sys.argv[0]).name
+    if re.fullmatch(CI_CLI_COMMAND_VALIDATION_PATTERN, name):
+        return name
+    return CI_CLI_COMMAND_DEFAULT
 
 
 def render_cli_command_placeholder(content: str, cli_command: str) -> str:
