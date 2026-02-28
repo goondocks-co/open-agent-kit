@@ -8,11 +8,15 @@ Thank you for your interest in contributing to open-agent-kit! This guide covers
 # Clone and setup
 git clone https://github.com/YOUR_USERNAME/open-agent-kit.git
 cd open-agent-kit
-make setup      # Installs dependencies with uv
+make setup           # Installs dependencies and creates oak-dev symlink
+oak-dev init         # Initializes .oak/, installs hooks, starts CI daemon
 
 # Verify everything works
-make check      # Runs all CI checks
+make check           # Runs all CI checks
 ```
+
+> **Note**: `make setup` only installs the package — it does not initialize the project.
+> `oak-dev init` is required before `oak-dev ci start` will work.
 
 ## Prerequisites
 

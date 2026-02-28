@@ -280,9 +280,6 @@ dogfood-reset:
 	-uv run oak remove --force 2>/dev/null || true
 	uv sync --all-extras
 	uv run oak init --agent claude --no-interactive
-	uv run oak feature add codebase-intelligence
-	uv run oak feature add rules-management
-	uv run oak feature add strategic-planning
 	@echo ""
 	@echo "Dogfooding environment reset. Run 'make ci-dev' to start daemon with hot reload."
 
