@@ -262,9 +262,22 @@ class TokenAuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Extract and validate Authorization header
+        # Extract the daemon auth token.
+        # Relay-proxied requests set X-Oak-Source: relay and carry daemon
+        # auth in X-Oak-Daemon-Auth (so Authorization can carry the team
+        # API key). Direct requests use the standard Authorization header.
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_RELAY_DAEMON_AUTH_HEADER,
+            CI_RELAY_SOURCE_HEADER,
+            CI_RELAY_SOURCE_VALUE,
+        )
+
         headers = Headers(scope=scope)
-        auth_value = headers.get(CI_AUTH_HEADER_NAME)
+        source = headers.get(CI_RELAY_SOURCE_HEADER)
+        if source == CI_RELAY_SOURCE_VALUE:
+            auth_value = headers.get(CI_RELAY_DAEMON_AUTH_HEADER)
+        else:
+            auth_value = headers.get(CI_AUTH_HEADER_NAME)
 
         if not auth_value:
             await _send_json_error(send, HTTPStatus.UNAUTHORIZED, CI_AUTH_ERROR_MISSING)

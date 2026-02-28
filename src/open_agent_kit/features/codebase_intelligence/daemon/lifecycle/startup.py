@@ -684,6 +684,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Failed to initialize team sync: {e}")
 
+    # Team gateway: abstracts server vs client mode for dashboard routes
+    from open_agent_kit.features.codebase_intelligence.team.gateway.factory import (
+        create_gateway,
+    )
+
+    state.team_gateway = create_gateway(state)
+
     # Run one immediate version + upgrade check, then launch periodic loop
     check_version(state)
     check_upgrade_needed(state)

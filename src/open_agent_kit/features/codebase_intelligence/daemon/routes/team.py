@@ -180,6 +180,17 @@ def _require_activity_store() -> Any:
     return state.activity_store
 
 
+def _require_gateway() -> Any:
+    """Return team_gateway from state or raise an appropriate error."""
+    from open_agent_kit.features.codebase_intelligence.team.gateway.base import TeamGateway
+
+    state = get_state()
+    gw: TeamGateway | None = state.team_gateway
+    if gw is None:
+        raise HTTPException(status_code=500, detail="Team gateway not initialized")
+    return gw
+
+
 # ---------------------------------------------------------------------------
 # Config routes
 # ---------------------------------------------------------------------------
@@ -420,10 +431,16 @@ async def get_team_status() -> TeamStatusResponse:
         and not ci_config.team.server_mode
     )
 
+    # Server mode is always "connected" (this node IS the server).
+    # Client mode depends on whether the sync worker is running.
+    is_connected = (state.team_gateway is not None and state.team_gateway.is_server()) or (
+        state.team_sync_worker is not None
+    )
+
     return TeamStatusResponse(
         configured=True,
         server_url=ci_config.team.server_url,
-        connected=state.team_sync_worker is not None,
+        connected=is_connected,
         project_id=project_id,
         sync=sync_status,
         pending_approval=pending_approval,
@@ -434,46 +451,11 @@ async def get_team_status() -> TeamStatusResponse:
 @router.get(f"{TEAM_API_PATH_STATUS}/members")
 @handle_route_errors("team members")
 async def get_team_members() -> dict[str, Any]:
-    """Return team member list.
-
-    In server mode, queries the local DB directly (avoids loopback auth
-    conflict with ``TokenAuthMiddleware``).  When connected to a remote
-    server, proxies the request.
-    """
+    """Return team member list via gateway (server=DB, client=HTTP proxy)."""
     state = get_state()
-    ci_config = state.ci_config
-    if not ci_config or not ci_config.team.server_url:
+    if not state.team_gateway:
         return {"members": []}
-
-    # Server mode: query DB directly instead of HTTP loopback
-    if ci_config.team.server_mode and state.activity_store:
-        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-            MembershipService,
-        )
-
-        conn = state.activity_store._get_connection()
-        svc = MembershipService(conn_factory=lambda: conn)
-        members = svc.list_members()
-        return {"members": [m.model_dump() for m in members]}
-
-    # Remote server: proxy the request
-    import httpx
-
-    try:
-        headers: dict[str, str] = {}
-        if ci_config.team.api_key:
-            headers["Authorization"] = f"Bearer {ci_config.team.api_key}"
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{ci_config.team.server_url.rstrip('/')}/api/team/members",
-                headers=headers,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return resp.json()
-    except Exception as exc:
-        logger.warning("Failed to fetch team members: %s", exc)
-        return {"members": [], "error": str(exc)}
+    return await state.team_gateway.get_members()
 
 
 # ---------------------------------------------------------------------------
@@ -740,85 +722,25 @@ async def revoke_key(key_id: str) -> dict[str, bool]:
 @router.get(TEAM_API_PATH_PENDING_JOINS)
 @handle_route_errors("team pending joins")
 async def get_pending_joins() -> list[dict[str, Any]]:
-    """List pending join requests. Server mode only (dashboard admin)."""
-    _require_server_mode()
-    store = _require_activity_store()
-
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        list_pending_keys as _list_pending_keys,
-    )
-
-    conn = store._get_connection()
-    keys = _list_pending_keys(conn)
-    return [
-        {
-            "key_id": k.id,
-            "name": k.name,
-            "machine_id": k.machine_id or "",
-            "display_name": k.display_name or "",
-            "created_at": k.created_at,
-        }
-        for k in keys
-    ]
+    """List pending join requests via gateway."""
+    gateway = _require_gateway()
+    return await gateway.get_pending_joins()
 
 
 @router.post(f"{TEAM_API_PATH_APPROVE_JOIN}/{{key_id}}")
 @handle_route_errors("team approve join")
 async def approve_join(key_id: str) -> dict[str, bool]:
-    """Approve a pending join request. Server mode only (dashboard admin)."""
-    _require_server_mode()
-    store = _require_activity_store()
-
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        approve_key as _approve_key,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        get_key_by_id as _get_key_by_id,
-    )
-
-    conn = store._get_connection()
-
-    # Look up key info before approving so we can register the member
-    key_info = _get_key_by_id(conn, key_id)
-    if not key_info:
-        raise HTTPException(status_code=404, detail="Pending key not found")
-
-    success = _approve_key(conn, key_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Pending key not found")
-
-    # Register the member immediately so they appear in the members list
-    if key_info.machine_id:
-        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-            MembershipService,
-        )
-
-        svc = MembershipService(conn_factory=lambda: conn)
-        svc.register(
-            machine_id=key_info.machine_id,
-            display_name=key_info.display_name or key_info.machine_id,
-            project_id=key_info.machine_id,  # Updated on first sync
-        )
-
-    return {"approved": True}
+    """Approve a pending join request via gateway."""
+    gateway = _require_gateway()
+    return await gateway.approve_join(key_id)
 
 
 @router.post(f"{TEAM_API_PATH_REJECT_JOIN}/{{key_id}}")
 @handle_route_errors("team reject join")
 async def reject_join(key_id: str) -> dict[str, bool]:
-    """Reject a pending join request. Server mode only (dashboard admin)."""
-    _require_server_mode()
-    store = _require_activity_store()
-
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        reject_key as _reject_key,
-    )
-
-    conn = store._get_connection()
-    success = _reject_key(conn, key_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Key not found")
-    return {"rejected": True}
+    """Reject a pending join request via gateway."""
+    gateway = _require_gateway()
+    return await gateway.reject_join(key_id)
 
 
 # ---------------------------------------------------------------------------
@@ -855,45 +777,26 @@ async def poll_join_status() -> dict[str, Any]:
 @router.get(f"{TEAM_API_PATH_JOIN_STATUS}/{{key_id}}")
 @handle_route_errors("team join status poll")
 async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
-    """Poll remote server for join approval status by key_id.
+    """Poll join approval status by key_id via gateway.
 
-    On approval, enables auto_sync so sync workers can start.
+    On approval (client mode only), enables auto_sync so sync workers start.
     """
     state = get_state()
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.server_url:
         raise HTTPException(status_code=400, detail="Not connected to a team server")
 
-    if ci_config.team.server_mode:
-        return {"status": "server_mode", "pending_approval": False}
-
-    if ci_config.team.auto_sync:
+    # Already approved and syncing — short-circuit
+    if ci_config.team.auto_sync and state.team_gateway and not state.team_gateway.is_server():
         return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
 
-    import httpx
+    if not state.team_gateway:
+        raise HTTPException(status_code=500, detail="Team gateway not initialized")
 
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_HTTP_JOIN_STATUS_PATH,
-    )
+    result = await state.team_gateway.get_join_status(key_id)
 
-    server_url = ci_config.team.server_url.rstrip("/")
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{server_url}{TEAM_ROUTER_PREFIX}{TEAM_HTTP_JOIN_STATUS_PATH}/{key_id}",
-                timeout=10,
-            )
-            resp.raise_for_status()
-            result = resp.json()
-    except Exception as exc:
-        logger.warning("Failed to poll join status: %s", exc)
-        return {"status": "error", "error": str(exc), "pending_approval": True}
-
-    status = result.get("status", "pending")
-
-    # On approval, enable auto_sync so sync workers start
-    if status == TEAM_JOIN_STATUS_APPROVED:
+    # Side effect: enable auto_sync on approval (client mode only)
+    if result.get("status") == TEAM_JOIN_STATUS_APPROVED and not state.team_gateway.is_server():
         project_root = _require_project_root()
 
         from open_agent_kit.features.codebase_intelligence.config import (
@@ -909,4 +812,4 @@ async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
 
         return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
 
-    return {"status": status, "pending_approval": status == "pending"}
+    return result

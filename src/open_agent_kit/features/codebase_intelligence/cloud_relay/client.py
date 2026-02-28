@@ -412,15 +412,23 @@ class CloudRelayClient(RelayClient):
         """
         import os
 
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_RELAY_DAEMON_AUTH_HEADER,
+            CI_RELAY_SOURCE_HEADER,
+            CI_RELAY_SOURCE_VALUE,
+        )
+
         try:
             port = self._daemon_port
             url = CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE.format(port=port, path=request.path)
 
-            # Inject daemon auth token so TokenAuthMiddleware passes the request
+            # Mark as relay traffic so middleware reads daemon auth from the
+            # dedicated header, leaving Authorization for the team API key.
             fwd_headers = dict(request.headers) if request.headers else {}
+            fwd_headers[CI_RELAY_SOURCE_HEADER] = CI_RELAY_SOURCE_VALUE
             auth_token = os.environ.get(CI_AUTH_ENV_VAR)
             if auth_token:
-                fwd_headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
+                fwd_headers[CI_RELAY_DAEMON_AUTH_HEADER] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
 
             async with httpx.AsyncClient(
                 timeout=CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,

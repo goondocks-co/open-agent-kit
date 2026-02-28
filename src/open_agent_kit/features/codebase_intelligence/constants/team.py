@@ -189,6 +189,7 @@ TEAM_HTTP_PULL_PATH: Final[str] = "/events/pull"
 TEAM_HTTP_STATUS_PATH: Final[str] = "/status"
 TEAM_HTTP_REQUEST_JOIN_PATH: Final[str] = "/request-join"
 TEAM_HTTP_JOIN_STATUS_PATH: Final[str] = "/join-status"
+TEAM_HTTP_MEMBERS_PATH: Final[str] = "/members"
 
 # =============================================================================
 # Join request / approval flow

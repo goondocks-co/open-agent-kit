@@ -98,6 +98,7 @@ def _mock_state_with_config(
     mock_state.project_root = project_root
     mock_state.ci_config = ci_config
     mock_state.team_sync_worker = None
+    mock_state.team_gateway = None
     mock_state.activity_store = None
     return mock_state
 

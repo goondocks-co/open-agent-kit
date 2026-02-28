@@ -476,6 +476,44 @@ def get_key_join_status(conn: sqlite3.Connection, key_id: str) -> str | None:
     return TEAM_JOIN_STATUS_PENDING
 
 
+def approve_join_request(conn: sqlite3.Connection, key_id: str) -> tuple[bool, ApiKeyInfo | None]:
+    """Approve a join request and register the member.
+
+    Consolidates the "get key -> approve -> register member" sequence
+    used by both ``LocalTeamGateway`` and ``server/routes.py``.
+
+    Args:
+        conn: SQLite connection with team_api_keys table.
+        key_id: The key ID to approve.
+
+    Returns:
+        Tuple of (success, key_info). ``key_info`` is ``None`` when the
+        key was not found; ``success`` is ``False`` when the approve
+        step failed (e.g. already approved/revoked).
+    """
+    key_info = get_key_by_id(conn, key_id)
+    if not key_info:
+        return False, None
+
+    success = approve_key(conn, key_id)
+    if not success:
+        return False, key_info
+
+    if key_info.machine_id:
+        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+            MembershipService,
+        )
+
+        svc = MembershipService(conn_factory=lambda: conn)
+        svc.register(
+            machine_id=key_info.machine_id,
+            display_name=key_info.display_name or key_info.machine_id,
+            project_id=key_info.machine_id,  # Updated on first sync
+        )
+
+    return True, key_info
+
+
 def migrate_api_keys_table(conn: sqlite3.Connection) -> None:
     """Add new columns to existing team_api_keys tables.
 

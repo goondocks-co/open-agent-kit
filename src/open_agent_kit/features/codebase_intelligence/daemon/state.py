@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.indexing.watcher import FileWatcher
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
+    from open_agent_kit.features.codebase_intelligence.team.gateway.base import TeamGateway
     from open_agent_kit.features.codebase_intelligence.team.outbox.worker import TeamSyncWorker
     from open_agent_kit.features.codebase_intelligence.team.pull.worker import TeamPullWorker
     from open_agent_kit.features.codebase_intelligence.team.server.membership import (
@@ -220,6 +221,7 @@ class DaemonState:
     team_membership_service: "MembershipService | None" = None
     team_sync_worker: "TeamSyncWorker | None" = None
     team_pull_worker: "TeamPullWorker | None" = None
+    team_gateway: "TeamGateway | None" = None
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -586,6 +588,7 @@ class DaemonState:
         self.team_membership_service = None
         self.team_sync_worker = None
         self.team_pull_worker = None
+        self.team_gateway = None
 
 
 # Global daemon state instance
