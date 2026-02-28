@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS team_events (
 CREATE INDEX IF NOT EXISTS idx_team_events_hash ON team_events(content_hash);
 CREATE INDEX IF NOT EXISTS idx_team_events_received ON team_events(received_at);
 CREATE INDEX IF NOT EXISTS idx_team_events_source ON team_events(source_machine_id);
+CREATE INDEX IF NOT EXISTS idx_team_events_source_hash
+    ON team_events(source_machine_id, content_hash);
 """
 
 

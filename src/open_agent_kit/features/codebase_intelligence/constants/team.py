@@ -47,17 +47,21 @@ TEAM_EVENT_SESSION_END: Final[str] = "session_end"
 TEAM_EVENT_SESSION_TITLE_UPDATE: Final[str] = "session_title_update"
 TEAM_EVENT_PROMPT_BATCH_UPSERT: Final[str] = "prompt_batch_upsert"
 TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE: Final[str] = "prompt_batch_response_update"
+TEAM_EVENT_PROMPT_BATCH_META_UPDATE: Final[str] = "prompt_batch_meta_update"
 TEAM_EVENT_ACTIVITY_UPSERT: Final[str] = "activity_upsert"
+TEAM_EVENT_OBSERVATION_STATUS_UPDATE: Final[str] = "observation_status_update"
 TEAM_EVENT_RAW_SESSION: Final[str] = "raw_session"  # Mode 2 groundwork
 VALID_TEAM_EVENT_TYPES: Final[tuple[str, ...]] = (
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
+    TEAM_EVENT_OBSERVATION_STATUS_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
     TEAM_EVENT_SESSION_SUMMARY_UPDATE,
     TEAM_EVENT_SESSION_END,
     TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
     TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
+    TEAM_EVENT_PROMPT_BATCH_META_UPDATE,
     TEAM_EVENT_ACTIVITY_UPSERT,
 )
 
@@ -245,3 +249,18 @@ TEAM_LOG_JOIN_PENDING_KEY_VERIFY: Final[str] = (
     "Key verification failed: pending approval (key_id={key_id})"
 )
 TEAM_LOG_JOIN_STATUS_POLL: Final[str] = "Join status polled: key_id={key_id}, status={status}"
+
+# =============================================================================
+# Backfill & reconciliation
+# =============================================================================
+
+TEAM_BACKFILL_CHUNK_SIZE: Final[int] = 100
+TEAM_BACKFILL_STATE_KEY_COMPLETED_AT: Final[str] = "backfill_completed_at"
+TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION: Final[str] = "backfill_schema_version"
+TEAM_BACKFILL_STATE_KEY_COUNTS: Final[str] = "backfill_counts"
+
+TEAM_RECONCILE_INTERVAL_HOURS: Final[int] = 1
+TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES: Final[int] = 30
+TEAM_API_PATH_BACKFILL: Final[str] = "/api/team/backfill"
+TEAM_API_PATH_BACKFILL_STATUS: Final[str] = "/api/team/backfill/status"
+TEAM_API_PATH_RECONCILE: Final[str] = "/api/team/reconcile"

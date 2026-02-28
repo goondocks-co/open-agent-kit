@@ -436,6 +436,13 @@ function SyncGuideContent() {
                         </p>
                     </div>
                     <div>
+                        <h3 className="font-semibold text-sm">Live team sync: historical data</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            When you join a team server, OAK automatically backfills all your historical sessions, memories, and activities so teammates can see your full context — not just future work.
+                            Check the <strong>Team → Status</strong> tab to see progress and trigger a manual re-sync if needed.
+                        </p>
+                    </div>
+                    <div>
                         <h3 className="font-semibold text-sm">Daily workflow</h3>
                         <p className="text-sm text-muted-foreground mt-1">
                             After <code className="bg-muted px-1 rounded">git pull</code>, run <code className="bg-muted px-1 rounded">oak ci sync --team</code> to get the latest from teammates.

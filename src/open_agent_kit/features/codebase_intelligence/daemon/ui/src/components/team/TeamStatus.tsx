@@ -11,6 +11,8 @@ import {
     useTeamStatus,
     useFlushSync,
     usePullSync,
+    useBackfillStatus,
+    useTriggerBackfill,
 } from "@/hooks/use-team";
 import {
     Wifi,
@@ -23,6 +25,8 @@ import {
     AlertCircle,
     Server,
     Users,
+    History,
+    CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/constants";
@@ -103,8 +107,10 @@ function SyncStatCard({
 
 export default function TeamStatus() {
     const { data: status, isLoading } = useTeamStatus();
+    const { data: backfill } = useBackfillStatus();
     const flushSync = useFlushSync();
     const pullSync = usePullSync();
+    const triggerBackfill = useTriggerBackfill();
 
     if (isLoading) {
         return (
@@ -192,6 +198,106 @@ export default function TeamStatus() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Historical Data Sync Card (only when configured) */}
+            {configured && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <History className="h-5 w-5" />
+                            Historical Data Sync
+                        </CardTitle>
+                        <CardDescription>
+                            Pre-join sessions, memories, and activities backfilled to the team server.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {backfill ? (
+                            <>
+                                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                                    {backfill.completed ? (
+                                        <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                                    ) : (
+                                        <History className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium">
+                                            {backfill.completed ? "Backfill complete" : "Not yet run"}
+                                        </div>
+                                        {backfill.completed_at && (
+                                            <div className="text-xs text-muted-foreground">
+                                                Last synced {formatRelativeTime(backfill.completed_at)}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {backfill.counts && (
+                                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-xs">
+                                        {(
+                                            [
+                                                ["Sessions", backfill.counts.sessions],
+                                                ["Batches", backfill.counts.batches],
+                                                ["Memories", backfill.counts.observations],
+                                                ["Activities", backfill.counts.activities],
+                                            ] as [string, number][]
+                                        ).map(([label, count]) => (
+                                            <div
+                                                key={label}
+                                                className="flex items-center justify-between p-2 rounded bg-muted/40"
+                                            >
+                                                <span className="text-muted-foreground">{label}</span>
+                                                <span className="font-medium tabular-nums">{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {backfill.last_reconcile_at && (
+                                    <div className="text-xs text-muted-foreground">
+                                        Last reconciled {formatRelativeTime(backfill.last_reconcile_at)}
+                                        {backfill.last_missing_count !== null &&
+                                            backfill.last_missing_count > 0 && (
+                                                <span className="ml-1 text-amber-600">
+                                                    ({backfill.last_missing_count} gap
+                                                    {backfill.last_missing_count !== 1 ? "s" : ""} found)
+                                                </span>
+                                            )}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="text-center py-4 text-muted-foreground">
+                                <p className="text-sm">No backfill data available.</p>
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-3 pt-2 border-t">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => triggerBackfill.mutate()}
+                                disabled={triggerBackfill.isPending || !connected}
+                            >
+                                {triggerBackfill.isPending ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <History className="w-4 h-4 mr-2" />
+                                )}
+                                Re-sync Historical Data
+                            </Button>
+                            {triggerBackfill.isSuccess && (
+                                <span className="text-xs text-green-600">Backfill started</span>
+                            )}
+                            {triggerBackfill.isError && (
+                                <span className="text-xs text-red-600">
+                                    {triggerBackfill.error.message}
+                                </span>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Sync Status Card (only when configured) */}
             {configured && (

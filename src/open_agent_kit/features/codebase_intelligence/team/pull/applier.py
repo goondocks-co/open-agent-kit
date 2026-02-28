@@ -11,9 +11,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_BACKFILL_CHUNK_SIZE,
     TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
+    TEAM_EVENT_OBSERVATION_STATUS_UPDATE,
     TEAM_EVENT_OBSERVATION_UPSERT,
+    TEAM_EVENT_PROMPT_BATCH_META_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
     TEAM_EVENT_SESSION_END,
@@ -71,6 +74,54 @@ class TeamEventApplier:
                 result.errors += 1
         return result
 
+    def reconcile_local(self) -> ApplyResult:
+        """Re-apply all team_events to fill any local gaps.
+
+        Used by the server node to ensure its own local store matches the team_events
+        table. Safe to call repeatedly: INSERT OR REPLACE + content_hash dedup = no-ops
+        for already-present records. Processes in chunks to avoid loading the full
+        team_events table into memory.
+        """
+        from open_agent_kit.features.codebase_intelligence.team.protocol import TeamEvent
+
+        result = ApplyResult()
+        conn = self._store._get_connection()
+        offset = 0
+
+        while True:
+            rows = conn.execute(
+                "SELECT event_type, payload, source_machine_id, content_hash "
+                "FROM team_events ORDER BY id ASC LIMIT ? OFFSET ?",
+                (TEAM_BACKFILL_CHUNK_SIZE, offset),
+            ).fetchall()
+            if not rows:
+                break
+
+            events: list[TeamEvent] = []
+            for row in rows:
+                payload = row["payload"]
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                events.append(
+                    TeamEvent(
+                        event_type=row["event_type"],
+                        payload=payload,
+                        source_machine_id=row["source_machine_id"] or "",
+                        content_hash=row["content_hash"] or "",
+                        schema_version=1,
+                        timestamp="",
+                        project_id="",
+                    )
+                )
+
+            chunk = self.apply_batch(events)
+            result.applied += chunk.applied
+            result.skipped += chunk.skipped
+            result.errors += chunk.errors
+            offset += len(rows)
+
+        return result
+
     def _apply_event(self, event: "TeamEvent") -> bool:
         """Apply a single event. Returns True if applied, False if skipped (dedup)."""
         payload = event.payload if isinstance(event.payload, dict) else json.loads(event.payload)
@@ -91,8 +142,12 @@ class TeamEventApplier:
             return self._apply_prompt_batch_upsert(payload)
         elif event.event_type == TEAM_EVENT_PROMPT_BATCH_RESPONSE_UPDATE:
             return self._apply_prompt_batch_response_update(payload)
+        elif event.event_type == TEAM_EVENT_PROMPT_BATCH_META_UPDATE:
+            return self._apply_prompt_batch_meta_update(payload)
         elif event.event_type == TEAM_EVENT_ACTIVITY_UPSERT:
             return self._apply_activity_upsert(payload)
+        elif event.event_type == TEAM_EVENT_OBSERVATION_STATUS_UPDATE:
+            return self._apply_observation_status_update(payload)
         else:
             logger.warning("Unknown team event type: %s", event.event_type)
             return False
@@ -200,6 +255,38 @@ class TeamEventApplier:
                         (payload.get("superseded_by"), observation_id),
                     )
         return True
+
+    def _apply_observation_status_update(self, payload: dict) -> bool:
+        """Apply an observation status change (resolve/supersede/reactivate).
+
+        Uses COALESCE so a status-only event doesn't overwrite fields that were
+        already set. Identified by observation_id (UUID — cross-machine stable).
+        """
+        observation_id = payload.get("observation_id")
+        status = payload.get("status")
+        if not observation_id or not status:
+            return False
+
+        with self._store._transaction() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE memory_observations
+                SET status = ?,
+                    resolved_at = COALESCE(?, resolved_at),
+                    resolved_by_session_id = COALESCE(?, resolved_by_session_id),
+                    superseded_by = COALESCE(?, superseded_by)
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    payload.get("resolved_at"),
+                    payload.get("resolved_by_session_id"),
+                    payload.get("superseded_by"),
+                    observation_id,
+                ),
+            )
+            updated = cursor.rowcount > 0
+        return updated
 
     def _apply_session_upsert(self, payload: dict) -> bool:
         """Apply a session upsert. Last-write-wins by session ID."""
@@ -389,45 +476,51 @@ class TeamEventApplier:
                 UPDATE prompt_batches
                 SET response_summary = COALESCE(?, response_summary),
                     status = COALESCE(?, status),
-                    ended_at = COALESCE(?, ended_at)
+                    ended_at = COALESCE(?, ended_at),
+                    classification = COALESCE(?, classification),
+                    processed = COALESCE(?, processed)
                 WHERE content_hash = ?
                 """,
                 (
                     payload.get("response_summary"),
                     payload.get("status"),
                     payload.get("ended_at"),
+                    payload.get("classification"),
+                    payload.get("processed"),
                     batch_content_hash,
                 ),
             )
         return True
 
-    def _ensure_prompt_batch_exists(self, conn: sqlite3.Connection, payload: dict) -> None:
-        """Create a stub prompt_batch row if the referenced batch doesn't exist yet.
+    def _apply_prompt_batch_meta_update(self, payload: dict) -> bool:
+        """Apply a prompt batch metadata update (source_type, plan fields).
 
-        Activities reference prompt_batch_id as a FK. If the prompt_batch event
-        hasn't been applied yet, insert a minimal placeholder.
+        Uses natural key (session_id + prompt_number) for cross-machine stability.
+        COALESCE ensures existing values are not overwritten with NULL.
         """
-        batch_id = payload.get("prompt_batch_id")
-        if not batch_id:
-            return
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO prompt_batches
-            (id, session_id, prompt_number, status, activity_count, processed,
-             created_at_epoch, source_machine_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                batch_id,
-                payload.get("session_id"),
-                0,
-                "active",
-                0,
-                False,
-                payload.get("created_at_epoch", 0),
-                payload.get("source_machine_id"),
-            ),
-        )
+        session_id = payload.get("session_id")
+        prompt_number = payload.get("prompt_number")
+        if not session_id or prompt_number is None:
+            return False
+        with self._store._transaction() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE prompt_batches
+                SET source_type = COALESCE(?, source_type),
+                    plan_file_path = COALESCE(?, plan_file_path),
+                    plan_content = COALESCE(?, plan_content)
+                WHERE session_id = ? AND prompt_number = ?
+                """,
+                (
+                    payload.get("source_type"),
+                    payload.get("plan_file_path"),
+                    payload.get("plan_content"),
+                    session_id,
+                    prompt_number,
+                ),
+            )
+            updated = cursor.rowcount > 0
+        return updated
 
     def _apply_activity_upsert(self, payload: dict) -> bool:
         """Apply an activity upsert. Dedup by content_hash."""
@@ -443,7 +536,23 @@ class TeamEventApplier:
 
         with self._store._transaction() as conn:
             self._ensure_session_exists(conn, payload)
-            self._ensure_prompt_batch_exists(conn, payload)
+
+            # Natural-key FK resolution: use (session_id, batch_prompt_number) instead of
+            # the sender's integer prompt_batch_id (which is local to the sender's DB).
+            session_id = payload.get("session_id")
+            batch_prompt_number = payload.get("batch_prompt_number")
+
+            if batch_prompt_number is not None and session_id:
+                row = conn.execute(
+                    "SELECT id FROM prompt_batches WHERE session_id = ? AND prompt_number = ?",
+                    (session_id, batch_prompt_number),
+                ).fetchone()
+                local_batch_id = row["id"] if row else None
+            else:
+                # Fallback for events without batch_prompt_number (older format).
+                # Use the sender's integer as best-effort; may be None cross-machine.
+                local_batch_id = payload.get("prompt_batch_id")
+
             conn.execute(
                 """
                 INSERT OR REPLACE INTO activities
@@ -455,7 +564,7 @@ class TeamEventApplier:
                 """,
                 (
                     payload.get("session_id"),
-                    payload.get("prompt_batch_id"),
+                    local_batch_id,  # resolved local FK
                     payload.get("tool_name"),
                     payload.get("tool_input"),
                     payload.get("tool_output_summary"),

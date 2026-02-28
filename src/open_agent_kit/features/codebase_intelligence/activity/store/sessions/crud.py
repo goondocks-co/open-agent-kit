@@ -372,6 +372,30 @@ def update_session_transcript_path(
             f"UPDATE sessions SET {CI_SESSION_COLUMN_TRANSCRIPT_PATH} = ? WHERE id = ?",
             (transcript_path, session_id),
         )
+
+        if getattr(store, "team_outbox_enabled", False):
+            sess_row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            if sess_row:
+                from open_agent_kit.features.codebase_intelligence.constants.team import (
+                    TEAM_EVENT_SESSION_UPSERT,
+                )
+                from open_agent_kit.features.codebase_intelligence.governance.policies import (
+                    should_sync_event,
+                )
+                from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
+                    enqueue_team_event,
+                )
+
+                policy = store.get_team_policy()
+                if policy is None or should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy):
+                    enqueue_team_event(
+                        conn=conn,
+                        event_type=TEAM_EVENT_SESSION_UPSERT,
+                        payload=dict(sess_row),
+                        source_machine_id=store.machine_id,
+                        content_hash=f"session_transcript:{session_id}",
+                        schema_version=store.get_schema_version(),
+                    )
     logger.debug(f"Updated session {session_id} transcript_path: {transcript_path}")
 
 

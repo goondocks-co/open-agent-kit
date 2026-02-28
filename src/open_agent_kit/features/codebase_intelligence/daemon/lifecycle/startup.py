@@ -482,6 +482,66 @@ def _init_team_sync(state: "DaemonState") -> None:
         state.team_pull_worker = pull_worker
         logger.info("Team pull worker started")
 
+    # Wire reconcile trigger: runs on daemon startup and wake-from-sleep
+    from open_agent_kit.features.codebase_intelligence.constants.team import (
+        TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES,
+    )
+    from open_agent_kit.features.codebase_intelligence.team.pull.applier import TeamEventApplier
+
+    def _reconcile_trigger() -> None:
+        """Fill local gaps by re-applying missed team_events. Idempotent."""
+        from datetime import datetime
+
+        if not state.activity_store:
+            return
+
+        # Gate: skip if reconciled recently (avoids spurious runs on quick wake cycles)
+        conn = state.activity_store._get_connection()
+        machine_id_str = state.machine_id or "unknown"
+        last_row = conn.execute(
+            "SELECT last_reconcile_at FROM team_reconcile_state WHERE machine_id = ?",
+            (machine_id_str,),
+        ).fetchone()
+        if last_row and last_row["last_reconcile_at"]:
+            try:
+                last_at = datetime.fromisoformat(last_row["last_reconcile_at"])
+                elapsed_minutes = (datetime.now() - last_at).total_seconds() / 60
+                if elapsed_minutes < TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES:
+                    return
+            except (ValueError, TypeError):
+                pass
+
+        # Read live config so server_mode reflects any config reload since startup
+        current_config = state.ci_config
+        if current_config and current_config.team.server_mode:
+            # Server node: local diff — re-apply team_events not yet in local store
+            applier = TeamEventApplier(state.activity_store)
+            result = applier.reconcile_local()
+            logger.info(
+                "Team reconcile (local): applied=%d skipped=%d errors=%d",
+                result.applied,
+                result.skipped,
+                result.errors,
+            )
+
+        # Update reconcile state
+        now_str = datetime.now().isoformat()
+        with state.activity_store._transaction() as wconn:
+            wconn.execute(
+                """INSERT OR REPLACE INTO team_reconcile_state
+                   (machine_id, last_reconcile_at, last_hash_count, last_missing_count)
+                   VALUES (?, ?, ?, ?)""",
+                (machine_id_str, now_str, 0, 0),
+            )
+
+    state.team_reconcile_trigger = _reconcile_trigger
+
+    # Run once at startup
+    try:
+        _reconcile_trigger()
+    except Exception:
+        logger.exception("Initial team reconcile failed")
+
 
 def _init_team_server(state: "DaemonState") -> None:
     """Create server-side tables for team server mode.
@@ -722,6 +782,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _init_team_sync(state)
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Failed to initialize team sync: {e}")
+
+    # Auto-trigger backfill for historical data (runs in background, non-blocking)
+    if state.activity_store and getattr(state.activity_store, "team_outbox_enabled", False):
+        try:
+            from open_agent_kit.features.codebase_intelligence.team.backfill import (
+                TeamBackfillService,
+            )
+
+            _backfill_svc = TeamBackfillService()
+            if _backfill_svc.needs_backfill(state.activity_store):
+                _backfill_task = asyncio.create_task(
+                    _backfill_svc.run_async(state.activity_store),
+                    name="team_backfill",
+                )
+                state.background_tasks.append(_backfill_task)
+                logger.info("Team backfill started in background")
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to start team backfill: {e}")
 
     # Team gateway: abstracts server vs client mode for dashboard routes
     from open_agent_kit.features.codebase_intelligence.team.gateway.factory import (

@@ -10,8 +10,10 @@ import logging
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
+    TEAM_API_PATH_RECONCILE,
     TEAM_JOIN_STATUS_APPROVED,
     TEAM_LOG_JOIN_APPROVED,
     TEAM_LOG_JOIN_REJECTED,
@@ -302,3 +304,39 @@ async def get_join_status(key_id: str) -> JoinRequestStatus:
         raise HTTPException(status_code=404, detail="Key not found")
     logger.debug(TEAM_LOG_JOIN_STATUS_POLL.format(key_id=key_id, status=status))
     return JoinRequestStatus(key_id=key_id, status=status)
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation
+# ---------------------------------------------------------------------------
+
+
+class ReconcileRequest(BaseModel):
+    source_machine_id: str  # whose data to check
+    content_hashes: list[str]  # hashes the client already has from that machine
+
+
+class ReconcileResponse(BaseModel):
+    missing_from_client: list[str]  # hashes server has that client doesn't
+
+
+@router.post(TEAM_API_PATH_RECONCILE)
+async def reconcile(
+    req: ReconcileRequest,
+    machine_id: str = Depends(verify_team_token),
+) -> ReconcileResponse:
+    """Return content_hashes present on the server but missing from the client."""
+    conn = _get_conn()
+    server_hashes = {
+        row["content_hash"]
+        for row in conn.execute(
+            "SELECT DISTINCT content_hash FROM team_events "
+            "WHERE source_machine_id = ? AND content_hash IS NOT NULL",
+            (req.source_machine_id,),
+        ).fetchall()
+    }
+
+    client_set = set(req.content_hashes)
+    missing = list(server_hashes - client_set)
+
+    return ReconcileResponse(missing_from_client=missing)

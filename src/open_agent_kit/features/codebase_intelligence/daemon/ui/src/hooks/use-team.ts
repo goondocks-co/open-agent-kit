@@ -134,6 +134,23 @@ export interface ServerModeResponse {
     restart_required: boolean;
 }
 
+export interface BackfillCounts {
+    sessions: number;
+    batches: number;
+    observations: number;
+    activities: number;
+    resolution_events: number;
+}
+
+export interface BackfillState {
+    completed: boolean;
+    completed_at: string | null;
+    schema_version: string | null;
+    counts: BackfillCounts | null;
+    last_reconcile_at: string | null;
+    last_missing_count: number | null;
+}
+
 // =============================================================================
 // Polling Constants
 // =============================================================================
@@ -157,6 +174,7 @@ const teamKeys = {
     keys: () => [...teamKeys.all, "keys"] as const,
     pendingJoins: () => [...teamKeys.all, "pending-joins"] as const,
     joinStatus: (keyId: string) => [...teamKeys.all, "join-status", keyId] as const,
+    backfillStatus: () => [...teamKeys.all, "backfill-status"] as const,
 };
 
 // =============================================================================
@@ -336,6 +354,9 @@ export function useToggleServerMode() {
 // Join Approval Hooks (server mode)
 // =============================================================================
 
+/** Slow polling interval for backfill status (30 seconds — rarely changes). */
+const BACKFILL_STATUS_POLL_MS = 30000;
+
 /** Polling interval for join status checks (5 seconds). */
 const JOIN_STATUS_POLL_MS = 5000;
 
@@ -374,6 +395,34 @@ export function useRejectJoin() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: teamKeys.pendingJoins() });
             queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
+        },
+    });
+}
+
+/** Fetch backfill and reconciliation state (slow poll — rarely changes). */
+export function useBackfillStatus() {
+    return usePowerQuery<BackfillState>({
+        queryKey: teamKeys.backfillStatus(),
+        queryFn: ({ signal }) =>
+            fetchJson<BackfillState>(API_ENDPOINTS.TEAM_BACKFILL_STATUS, { signal }),
+        refetchInterval: BACKFILL_STATUS_POLL_MS,
+        pollCategory: "standard",
+        staleTime: 20000,
+    });
+}
+
+/** Trigger a full historical data re-backfill. */
+export function useTriggerBackfill() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: () =>
+            postJson<{ status: string; started_at: string }>(API_ENDPOINTS.TEAM_BACKFILL, {}),
+        onSuccess: () => {
+            // Refresh after a short delay to show updated state once backfill runs
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: teamKeys.backfillStatus() });
+            }, 3000);
         },
     });
 }

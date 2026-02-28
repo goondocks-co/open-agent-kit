@@ -71,10 +71,18 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
 
             policy = store.get_team_policy()
             if policy is None or should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy):
+                batch_pn = None
+                if activity.prompt_batch_id is not None:
+                    pn_row = conn.execute(
+                        "SELECT prompt_number FROM prompt_batches WHERE id = ?",
+                        (activity.prompt_batch_id,),
+                    ).fetchone()
+                    batch_pn = pn_row[0] if pn_row else None
+                event_payload = {**row, "batch_prompt_number": batch_pn}
                 enqueue_team_event(
                     conn=conn,
                     event_type=TEAM_EVENT_ACTIVITY_UPSERT,
-                    payload=row,
+                    payload=event_payload,
                     source_machine_id=activity.source_machine_id or store.machine_id,
                     content_hash=row.get("content_hash") or "",
                     schema_version=store.get_schema_version(),
@@ -267,11 +275,31 @@ def _enqueue_activity_outbox_events(
         return
 
     schema_version = store.get_schema_version()
+
+    # Batch-fetch all prompt_numbers in one query instead of N+1
+    batch_ids = {a.prompt_batch_id for a in activities if a.prompt_batch_id is not None}
+    prompt_numbers: dict[int, int] = {}
+    if batch_ids:
+        placeholders = ",".join("?" * len(batch_ids))
+        prompt_numbers = {
+            pn_row["id"]: pn_row["prompt_number"]
+            for pn_row in conn.execute(
+                f"SELECT id, prompt_number FROM prompt_batches WHERE id IN ({placeholders})",
+                list(batch_ids),
+            ).fetchall()
+        }
+
     for activity, row in zip(activities, rows, strict=True):
+        batch_pn = (
+            prompt_numbers.get(activity.prompt_batch_id)
+            if activity.prompt_batch_id is not None
+            else None
+        )
+        event_payload = {**row, "batch_prompt_number": batch_pn}
         enqueue_team_event(
             conn=conn,
             event_type=TEAM_EVENT_ACTIVITY_UPSERT,
-            payload=row,
+            payload=event_payload,
             source_machine_id=activity.source_machine_id or store.machine_id,
             content_hash=row.get("content_hash") or "",
             schema_version=schema_version,

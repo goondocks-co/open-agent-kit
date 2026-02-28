@@ -18,6 +18,8 @@ from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_APPROVE_JOIN,
+    TEAM_API_PATH_BACKFILL,
+    TEAM_API_PATH_BACKFILL_STATUS,
     TEAM_API_PATH_CONFIG,
     TEAM_API_PATH_JOIN,
     TEAM_API_PATH_JOIN_STATUS,
@@ -826,3 +828,105 @@ async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
         return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Backfill (manual trigger)
+# ---------------------------------------------------------------------------
+
+
+class BackfillStatusResponse(BaseModel):
+    """Response for backfill trigger endpoint."""
+
+    status: str
+    started_at: str
+    estimated_records: int | None = None
+
+
+class BackfillState(BaseModel):
+    """Current state of the team backfill and reconciliation."""
+
+    completed: bool = False
+    completed_at: str | None = None
+    schema_version: str | None = None
+    counts: dict | None = None
+    last_reconcile_at: str | None = None
+    last_missing_count: int | None = None
+
+
+@router.get(TEAM_API_PATH_BACKFILL_STATUS)
+@handle_route_errors("team backfill status")
+async def get_backfill_status() -> BackfillState:
+    """Return current backfill and reconciliation state."""
+    import json
+
+    from open_agent_kit.features.codebase_intelligence.constants.team import (
+        TEAM_BACKFILL_STATE_KEY_COMPLETED_AT,
+        TEAM_BACKFILL_STATE_KEY_COUNTS,
+        TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION,
+    )
+
+    store = _require_activity_store()
+    conn = store._get_connection()
+
+    rows = conn.execute(
+        "SELECT key, value FROM team_sync_state WHERE key IN (?, ?, ?)",
+        (
+            TEAM_BACKFILL_STATE_KEY_COMPLETED_AT,
+            TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION,
+            TEAM_BACKFILL_STATE_KEY_COUNTS,
+        ),
+    ).fetchall()
+    state_map = {r["key"]: r["value"] for r in rows}
+
+    completed_at = state_map.get(TEAM_BACKFILL_STATE_KEY_COMPLETED_AT)
+    counts_raw = state_map.get(TEAM_BACKFILL_STATE_KEY_COUNTS)
+    counts = None
+    if counts_raw:
+        try:
+            counts = json.loads(counts_raw)
+        except Exception:
+            pass
+
+    machine_id = store.machine_id or "unknown"
+    rec_row = conn.execute(
+        "SELECT last_reconcile_at, last_missing_count FROM team_reconcile_state"
+        " WHERE machine_id = ?",
+        (machine_id,),
+    ).fetchone()
+
+    return BackfillState(
+        completed=completed_at is not None,
+        completed_at=completed_at,
+        schema_version=state_map.get(TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION),
+        counts=counts,
+        last_reconcile_at=rec_row["last_reconcile_at"] if rec_row else None,
+        last_missing_count=rec_row["last_missing_count"] if rec_row else None,
+    )
+
+
+@router.post(TEAM_API_PATH_BACKFILL)
+@handle_route_errors("team backfill trigger")
+async def trigger_backfill() -> BackfillStatusResponse:
+    """Force a full re-backfill. Idempotent -- server dedup prevents duplicate sync."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    state = get_state()
+    if not state.activity_store:
+        raise HTTPException(status_code=503, detail="Activity store not available")
+    if not getattr(state.activity_store, "team_outbox_enabled", False):
+        raise HTTPException(status_code=400, detail="Team sync not enabled")
+
+    from open_agent_kit.features.codebase_intelligence.team.backfill import TeamBackfillService
+
+    backfill_svc = TeamBackfillService()
+    task = asyncio.create_task(
+        backfill_svc.run_async(state.activity_store),
+        name="team_backfill_manual",
+    )
+    state.background_tasks.append(task)
+    return BackfillStatusResponse(
+        status="started",
+        started_at=datetime.now(UTC).isoformat(),
+    )

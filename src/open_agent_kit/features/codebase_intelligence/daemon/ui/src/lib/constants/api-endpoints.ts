@@ -115,6 +115,8 @@ export const API_ENDPOINTS = {
     TEAM_APPROVE_JOIN: "/api/team/approve-join",
     TEAM_REJECT_JOIN: "/api/team/reject-join",
     TEAM_JOIN_STATUS: "/api/team/join-status",
+    TEAM_BACKFILL: "/api/team/backfill",
+    TEAM_BACKFILL_STATUS: "/api/team/backfill/status",
 } as const;
 
 // =============================================================================

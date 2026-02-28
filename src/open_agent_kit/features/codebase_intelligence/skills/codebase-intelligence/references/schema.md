@@ -2,7 +2,7 @@
 
 Complete DDL for the Oak CI SQLite database at `.oak/ci/activities.db`.
 
-Current schema version: **9**
+Current schema version: **10**
 
 ## memory_observations
 
@@ -329,6 +329,31 @@ CREATE TABLE IF NOT EXISTS team_pull_cursor (
     server_url TEXT PRIMARY KEY,
     cursor_value TEXT,
     updated_at TEXT NOT NULL
+);
+```
+
+## team_sync_state
+
+Tracks backfill completion state for team sync historical data propagation.
+
+```sql
+CREATE TABLE IF NOT EXISTS team_sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+```
+
+## team_reconcile_state
+
+Tracks last reconciliation run per source machine for gap-filling on wake/startup.
+
+```sql
+CREATE TABLE IF NOT EXISTS team_reconcile_state (
+    machine_id TEXT PRIMARY KEY,
+    last_reconcile_at TEXT,
+    last_hash_count INTEGER,
+    last_missing_count INTEGER
 );
 ```
 

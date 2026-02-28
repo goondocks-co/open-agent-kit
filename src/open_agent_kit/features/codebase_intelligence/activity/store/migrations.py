@@ -32,6 +32,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         _migrate_v7_to_v8(conn)
     if from_version < 9:
         _migrate_v8_to_v9(conn)
+    if from_version < 10:
+        _migrate_v9_to_v10(conn)
 
     # Always run idempotent column checks for the current version.
     # This catches columns added mid-development after a version was
@@ -341,6 +343,50 @@ def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
     """)
 
     logger.info("Migration v8 -> v9 complete: team sync outbox tables created")
+
+
+def _migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
+    """Migrate schema v9 -> v10: cleanup stubs, unique index, team sync/reconcile state tables."""
+    logger.info("Migrating activity store schema v9 -> v10 (team sync state + reconcile state)")
+
+    # 1. Clean up stub prompt_batches (NULL content_hash, no linked activities)
+    conn.execute("""
+        DELETE FROM prompt_batches
+        WHERE content_hash IS NULL
+          AND id NOT IN (
+              SELECT DISTINCT prompt_batch_id
+              FROM activities
+              WHERE prompt_batch_id IS NOT NULL
+          )
+    """)
+
+    # 2. Unique index on prompt_batches.content_hash (partial: non-NULL only)
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_prompt_batches_content_hash
+        ON prompt_batches(content_hash)
+        WHERE content_hash IS NOT NULL
+    """)
+
+    # 3. Team sync state table (key-value store for sync metadata)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS team_sync_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    # 4. Team reconcile state table (per-machine reconciliation tracking)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS team_reconcile_state (
+            machine_id TEXT PRIMARY KEY,
+            last_reconcile_at TEXT,
+            last_hash_count INTEGER,
+            last_missing_count INTEGER
+        )
+    """)
+
+    logger.info("Migration v9 -> v10 complete: team sync/reconcile state tables created")
 
 
 def _ensure_v6_columns(conn: sqlite3.Connection) -> None:

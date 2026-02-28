@@ -12,6 +12,7 @@ Benefits of this design:
 
 import asyncio
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -222,6 +223,7 @@ class DaemonState:
     team_sync_worker: "TeamSyncWorker | None" = None
     team_pull_worker: "TeamPullWorker | None" = None
     team_gateway: "TeamGateway | None" = None
+    team_reconcile_trigger: Callable[[], None] | None = None
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -543,6 +545,11 @@ class DaemonState:
             self.activity_processor.schedule_background_processing(
                 state_accessor=lambda: self,
             )
+        if self.team_reconcile_trigger is not None:
+            try:
+                self.team_reconcile_trigger()
+            except Exception:
+                logger.exception("Reconcile trigger failed on wake")
 
     def reset(self) -> None:
         """Reset state for testing or restart."""
@@ -589,6 +596,7 @@ class DaemonState:
         self.team_sync_worker = None
         self.team_pull_worker = None
         self.team_gateway = None
+        self.team_reconcile_trigger = None
 
 
 # Global daemon state instance
