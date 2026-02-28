@@ -62,7 +62,17 @@ def check_version(state: "DaemonState") -> None:
             pass
 
     state.installed_version = installed
-    state.update_available = installed is not None and is_meaningful_upgrade(VERSION, installed)
+
+    # PEP 440 local-version builds (e.g. "1.3.1.dev1+g8585b791f") are editable
+    # installs running directly from source.  The "+" local segment can never
+    # appear on PyPI -- it always means the code is loaded from the working
+    # tree, so restarting would loop forever (same source loaded each time).
+    # Plain ".dev" versions without "+" may be published pre-releases and
+    # correctly trigger a restart when a newer release stamp is found.
+    is_local_build = "+" in VERSION
+    state.update_available = (
+        not is_local_build and installed is not None and is_meaningful_upgrade(VERSION, installed)
+    )
 
 
 def check_upgrade_needed(state: "DaemonState") -> None:

@@ -166,7 +166,13 @@ class TestVersionCheck:
         assert initialized_state.update_available is False
 
     def test_dogfooding_dev_with_real_upgrade(self, initialized_state, stamp_file: Path) -> None:
-        """Dev version running, stamp has genuinely newer release -> update available."""
+        """Local-build version running, stamp has newer release -> no auto-restart.
+
+        PEP 440 local-version segments ("+") mark editable installs that load
+        code directly from the working tree.  Auto-restarting would loop forever
+        because the same source is loaded again every time.  The installed_version
+        is still recorded so the UI can display an informational banner.
+        """
         dev_version = "1.0.10.dev0+gb93e51d90.d20260211"
         newer_release = "1.0.11"
         stamp_file.write_text(newer_release)
@@ -175,7 +181,7 @@ class TestVersionCheck:
             _check_version(initialized_state)
 
         assert initialized_state.installed_version == newer_release
-        assert initialized_state.update_available is True
+        assert initialized_state.update_available is False
 
 
 class TestParseBaseRelease:
