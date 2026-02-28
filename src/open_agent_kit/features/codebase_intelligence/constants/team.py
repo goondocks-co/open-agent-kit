@@ -25,6 +25,7 @@ CI_CONFIG_TEAM_KEY_SERVER_SIDE_LLM: Final[str] = "server_side_llm"
 # Transport types
 TEAM_TRANSPORT_DIRECT: Final[str] = "direct"
 TEAM_TRANSPORT_RELAY: Final[str] = "relay"
+TEAM_TRANSPORT_LOCAL: Final[str] = "local"
 VALID_TEAM_TRANSPORTS: Final[tuple[str, ...]] = (TEAM_TRANSPORT_DIRECT, TEAM_TRANSPORT_RELAY)
 
 # Default values
@@ -118,6 +119,7 @@ TEAM_LOG_PULL_STARTED: Final[str] = "Team pull worker started (interval={interva
 TEAM_LOG_PULL_STOPPED: Final[str] = "Team pull worker stopped"
 TEAM_LOG_PULL_APPLIED: Final[str] = "Applied {count} events from team server"
 TEAM_LOG_PULL_ERROR: Final[str] = "Team pull error: {error}"
+TEAM_LOG_LOCAL_TRANSPORT: Final[str] = "Using local transport (server mode)"
 
 # CLI messages
 TEAM_MESSAGE_JOIN_SUCCESS: Final[str] = "Joined team server: {server_url}"

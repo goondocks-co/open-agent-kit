@@ -6,6 +6,7 @@ on imported data, which would cause infinite sync loops.
 
 import json
 import logging
+import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -286,6 +287,38 @@ class TeamEventApplier:
                 )
         return True
 
+    def _ensure_session_exists(self, conn: sqlite3.Connection, payload: dict) -> None:
+        """Create a stub session row if the referenced session doesn't exist yet.
+
+        Events can arrive out of order (activity before its session), so we
+        insert a minimal placeholder that will be overwritten when the real
+        session_upsert event is applied (INSERT OR REPLACE).
+        """
+        session_id = payload.get("session_id")
+        if not session_id:
+            return
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO sessions
+            (id, agent, project_root, started_at, status, prompt_count, tool_count,
+             processed, created_at_epoch, source_machine_id, summary_embedded)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                payload.get("agent", "unknown"),
+                payload.get("project_root", ""),
+                payload.get("started_at"),
+                "active",
+                0,
+                0,
+                False,
+                payload.get("created_at_epoch", 0),
+                payload.get("source_machine_id"),
+                0,
+            ),
+        )
+
     def _apply_prompt_batch_upsert(self, payload: dict) -> bool:
         """Apply a prompt batch upsert. Dedup by content_hash."""
         content_hash = payload.get("content_hash")
@@ -299,6 +332,7 @@ class TeamEventApplier:
                 return False
 
         with self._store._transaction() as conn:
+            self._ensure_session_exists(conn, payload)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO prompt_batches
@@ -329,6 +363,34 @@ class TeamEventApplier:
             )
         return True
 
+    def _ensure_prompt_batch_exists(self, conn: sqlite3.Connection, payload: dict) -> None:
+        """Create a stub prompt_batch row if the referenced batch doesn't exist yet.
+
+        Activities reference prompt_batch_id as a FK. If the prompt_batch event
+        hasn't been applied yet, insert a minimal placeholder.
+        """
+        batch_id = payload.get("prompt_batch_id")
+        if not batch_id:
+            return
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO prompt_batches
+            (id, session_id, prompt_number, status, activity_count, processed,
+             created_at_epoch, source_machine_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                batch_id,
+                payload.get("session_id"),
+                0,
+                "active",
+                0,
+                False,
+                payload.get("created_at_epoch", 0),
+                payload.get("source_machine_id"),
+            ),
+        )
+
     def _apply_activity_upsert(self, payload: dict) -> bool:
         """Apply an activity upsert. Dedup by content_hash."""
         content_hash = payload.get("content_hash")
@@ -342,6 +404,8 @@ class TeamEventApplier:
                 return False
 
         with self._store._transaction() as conn:
+            self._ensure_session_exists(conn, payload)
+            self._ensure_prompt_batch_exists(conn, payload)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO activities

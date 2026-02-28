@@ -383,19 +383,20 @@ def _init_team_sync(state: "DaemonState") -> None:
     """Initialize team outbox sync if configured.
 
     Enables outbox writes in the activity store and starts the background
-    sync worker. Non-critical: failures are logged but do not prevent startup.
+    sync worker.  Non-critical: failures are logged but do not prevent startup.
 
-    Skipped in server mode: the local DB is the server, so there is no
-    remote to push to or pull from.
+    In **server mode** a ``LocalTransport`` writes events directly into the
+    ``team_events`` table (no HTTP loopback).  No pull worker is started
+    because client-pushed events are already applied in the push endpoint.
+
+    In **client mode** an HTTP transport is created and both the sync worker
+    (outbox flush) and pull worker (poll for teammate events) are started.
     """
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.auto_sync:
         return
-    if not ci_config.team.server_url:
-        return
-    if ci_config.team.server_mode:
-        logger.info("Team sync skipped: this node is the server (no outbox needed)")
-        return
+    if not ci_config.team.server_mode and not ci_config.team.server_url:
+        return  # Client mode requires a server URL
     if not state.activity_store:
         logger.debug("Team sync skipped: no activity store")
         return
@@ -424,16 +425,30 @@ def _init_team_sync(state: "DaemonState") -> None:
     from open_agent_kit.features.codebase_intelligence.team.outbox.worker import (
         TeamSyncWorker,
     )
-    from open_agent_kit.features.codebase_intelligence.team.transport.factory import (
-        create_transport,
-    )
-
-    transport = state.team_transport or create_transport(ci_config.team)
-    state.team_transport = transport
 
     project_id = (
         get_project_identity(state.project_root).full_id if state.project_root else "unknown"
     )
+
+    if ci_config.team.server_mode:
+        from open_agent_kit.features.codebase_intelligence.team.transport.local import (
+            LocalTransport,
+        )
+
+        transport = LocalTransport(
+            conn_factory=state.activity_store._get_connection,
+            project_id=project_id,
+        )
+    else:
+        from open_agent_kit.features.codebase_intelligence.team.transport.factory import (
+            create_transport,
+        )
+
+        transport = state.team_transport or create_transport(ci_config.team)
+
+    state.team_transport = transport
+
+    # Start sync worker (flushes outbox — both modes)
     worker = TeamSyncWorker(
         store=state.activity_store,
         config=ci_config.team,
@@ -445,19 +460,20 @@ def _init_team_sync(state: "DaemonState") -> None:
     state.team_sync_worker = worker
     logger.info("Team sync worker started")
 
-    # Start pull worker (polls server for new events from teammates)
-    from open_agent_kit.features.codebase_intelligence.team.pull.worker import TeamPullWorker
+    # Start pull worker (client mode only — polls server for teammate events)
+    if not ci_config.team.server_mode:
+        from open_agent_kit.features.codebase_intelligence.team.pull.worker import TeamPullWorker
 
-    pull_worker = TeamPullWorker(
-        store=state.activity_store,
-        config=ci_config.team,
-        project_id=project_id,
-        machine_id=state.machine_id or "unknown",
-    )
-    pull_worker.set_transport(transport)
-    pull_worker.start()
-    state.team_pull_worker = pull_worker
-    logger.info("Team pull worker started")
+        pull_worker = TeamPullWorker(
+            store=state.activity_store,
+            config=ci_config.team,
+            project_id=project_id,
+            machine_id=state.machine_id or "unknown",
+        )
+        pull_worker.set_transport(transport)
+        pull_worker.start()
+        state.team_pull_worker = pull_worker
+        logger.info("Team pull worker started")
 
 
 def _init_team_server(state: "DaemonState") -> None:
@@ -694,7 +710,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to initialize team server: {e}")
 
-    # Team client mode: start outbox sync worker
+    # Team sync: start outbox sync worker
     try:
         _init_team_sync(state)
     except (OSError, ValueError, RuntimeError) as e:
