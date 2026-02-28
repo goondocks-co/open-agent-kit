@@ -360,6 +360,11 @@ async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
     save_ci_config(project_root, ci_config)
     state.ci_config = None
 
+    # Create gateway so poll_join_status_by_key works without restart
+    from open_agent_kit.features.codebase_intelligence.team.gateway.factory import create_gateway
+
+    state.team_gateway = create_gateway(state)
+
     return {
         "status": "connected" if join_status == TEAM_JOIN_STATUS_APPROVED else "pending_approval",
         "key_id": key_id,
@@ -380,13 +385,14 @@ async def leave_team() -> dict[str, str]:
 
     ci_config = load_ci_config(project_root)
     ci_config.team.server_url = None
-    ci_config.team.api_key = None
+    # Preserve api_key so the user can re-join without a daemon restart
     ci_config.team.auto_sync = False
     ci_config.team.pending_key_id = None
     save_ci_config(project_root, ci_config)
 
     state = get_state()
     state.ci_config = None
+    state.team_gateway = None
 
     # Stop sync worker if running
     if state.team_sync_worker:

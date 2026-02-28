@@ -412,15 +412,15 @@ class TestLeaveTeam:
         assert resp.status_code == 200
         assert resp.json()["status"] == "disconnected"
 
-        # Config should be cleared
+        # Config should be cleared (api_key preserved for re-join)
         assert ci_config.team.server_url is None
-        assert ci_config.team.api_key is None
         assert ci_config.team.auto_sync is False
         mock_save.assert_called_once()
 
-        # Worker should be stopped
+        # Worker should be stopped, gateway cleared
         mock_worker.stop.assert_called_once()
         assert mock_state.team_sync_worker is None
+        assert mock_state.team_gateway is None
 
 
 # =========================================================================
