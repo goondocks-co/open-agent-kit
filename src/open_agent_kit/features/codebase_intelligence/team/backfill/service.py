@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -134,7 +135,26 @@ class TeamBackfillService:
             with store._transaction() as wconn:
                 for row in rows:
                     d = dict(row)
-                    ch = f"session:{d['id']}"
+                    # Hash includes mutable session fields so that updates
+                    # (summary, title, status, ended_at) produce a new
+                    # content_hash and bypass outbox/server deduplication.
+                    _mutable = {
+                        k: d.get(k)
+                        for k in (
+                            "status",
+                            "ended_at",
+                            "summary",
+                            "summary_updated_at",
+                            "title",
+                            "title_manually_edited",
+                            "prompt_count",
+                            "tool_count",
+                        )
+                    }
+                    _state_hash = hashlib.sha256(
+                        json.dumps(_mutable, sort_keys=True).encode()
+                    ).hexdigest()[:12]
+                    ch = f"session:{d['id']}:{_state_hash}"
                     enqueue_team_event(
                         conn=wconn,
                         event_type=TEAM_EVENT_SESSION_UPSERT,

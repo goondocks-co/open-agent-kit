@@ -576,6 +576,30 @@ def _init_team_server(state: "DaemonState") -> None:
     # Migrate existing tables to add new columns (idempotent)
     migrate_api_keys_table(conn)
 
+    # Register the server node as a member so it appears in the members list
+    # for all connected clients.  The server is just another node playing the
+    # server role — it should be visible and resynable like any other member.
+    if state.machine_id:
+        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
+            MembershipService,
+        )
+
+        project_id = "unknown"
+        if state.project_root:
+            try:
+                from open_agent_kit.features.codebase_intelligence.team.identity import (
+                    get_project_identity,
+                )
+
+                project_id = get_project_identity(state.project_root).full_id
+            except Exception:
+                pass
+        MembershipService(conn_factory=lambda: conn).register(
+            machine_id=state.machine_id,
+            display_name=state.machine_id,
+            project_id=project_id,
+        )
+
     logger.info(TEAM_SERVER_LOG_INIT)
 
 
