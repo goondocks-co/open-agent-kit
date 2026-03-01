@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-03-01]
+
+### Added
+
+- **`oak ci team resync` CLI command** — self-healing command that replays machine events from a snapshot, letting any team node recover from corrupted or orphaned data caused by FK integrity failures without manual intervention or a full re-onboard — [Implement machine resync command to recover from FK bug](http://localhost:38388/activity/sessions/376b648d-7962-4f60-8887-113443740b7c), [Implement team resync CLI command to recover machine events from snapshot](http://localhost:38388/activity/sessions/c4ac862f-7d51-4fd1-b41d-98a144f03176), [Implement team resync CLI command for machine event recovery](http://localhost:38388/activity/sessions/7fdffc23-1c14-497f-b622-3f9dc8fac0db)
+
+### Fixed
+
+- Fix observation upsert silently dropping rows — SQL `INSERT` in [`team/pull/applier.py`](src/open_agent_kit/features/codebase_intelligence/team/pull/applier.py) omitted the `team_id` column, causing a `FOREIGN KEY constraint failed` error on every new observation write; `team_id` is now drawn from the event payload and included in the statement — [Implement team resync CLI command to recover machine events from snapshot](http://localhost:38388/activity/sessions/c4ac862f-7d51-4fd1-b41d-98a144f03176)
+
+### Notes
+
+> **In Progress**: Cloud relay WebSocket connections are rejecting with a 401 during team sync; root cause under active investigation — [Debug Cloud Relay WebSocket 401 for Team Sync commit](http://localhost:38388/activity/sessions/639a99da-7bbb-46b7-9e86-0ae050977e1d)
+
+> **Gotcha**: The cloud relay auth token is held only in memory on the server side — no persistent storage. Any new node connecting after a daemon restart will receive a 401 with no detail. Re-deploy the relay via Team → Connectivity to reissue the token.
+
 ## [2026-02-28]
 
 ### Added

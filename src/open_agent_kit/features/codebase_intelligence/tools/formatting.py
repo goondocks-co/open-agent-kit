@@ -361,6 +361,46 @@ def format_activity_results(activities: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def format_network_search_results(results: list[dict[str, Any]]) -> str:
+    """Format federated network search results for agent consumption.
+
+    Each result includes a source machine_id badge to distinguish
+    which peer node contributed the result.
+
+    Args:
+        results: Network search results from relay, each containing
+            machine_id, observation/summary, relevance, etc.
+
+    Returns:
+        Formatted markdown string with network results.
+    """
+    if not results:
+        return "No network results found."
+
+    lines = [f"Found {len(results)} network results:\n"]
+    for i, r in enumerate(results, 1):
+        machine_id = r.get("machine_id", "unknown")
+        observation = r.get("observation", r.get("summary", ""))
+        memory_type = r.get("memory_type", "")
+        relevance = r.get("relevance")
+        confidence = r.get("confidence", "medium")
+
+        header = f"{i}. [{machine_id}]"
+        if memory_type:
+            header += f" [{memory_type}]"
+        if relevance is not None:
+            header += f" (relevance: {round(relevance, 2)})"
+        elif confidence:
+            header += f" [{confidence}]"
+
+        lines.append(header)
+        if observation:
+            lines.append(f"   {observation}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def format_stats_results(
     code_chunks: int = 0,
     unique_files: int = 0,

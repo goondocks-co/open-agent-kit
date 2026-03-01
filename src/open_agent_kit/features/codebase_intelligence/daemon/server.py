@@ -141,6 +141,7 @@ def create_app(
         restart,
         schedules,
         search,
+        search_network,
         ui,
     )
     from open_agent_kit.features.codebase_intelligence.daemon.routes import (
@@ -156,6 +157,7 @@ def create_app(
     app.include_router(config_exclusions.router)
     app.include_router(index.router)
     app.include_router(search.router)
+    app.include_router(search_network.router)
     app.include_router(activity.router)
     app.include_router(activity_plans.router)
     app.include_router(activity_processing.router)

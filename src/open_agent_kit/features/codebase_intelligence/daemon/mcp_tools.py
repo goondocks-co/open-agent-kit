@@ -65,6 +65,14 @@ MCP_TOOLS = [
                     "default": False,
                     "description": "If True, include resolved/superseded memories in results",
                 },
+                "include_network": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "If True, also search across connected team network nodes "
+                        "via the cloud relay. Not available for code searches."
+                    ),
+                },
             },
             "required": ["query"],
         },
@@ -307,11 +315,16 @@ class MCPToolHandler:
     Delegates to shared ToolOperations for actual implementation.
     """
 
-    def __init__(self, retrieval_engine: RetrievalEngine) -> None:
+    def __init__(
+        self,
+        retrieval_engine: RetrievalEngine,
+        relay_client: Any | None = None,
+    ) -> None:
         """Initialize handler.
 
         Args:
             retrieval_engine: RetrievalEngine instance for all operations.
+            relay_client: Optional RelayClient for network search.
         """
         from open_agent_kit.features.codebase_intelligence.tools import ToolOperations
 
@@ -319,6 +332,7 @@ class MCPToolHandler:
             retrieval_engine,
             activity_store=getattr(retrieval_engine, "activity_store", None),
             vector_store=getattr(retrieval_engine, "store", None),
+            relay_client=relay_client,
         )
 
     def handle_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:

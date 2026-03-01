@@ -407,6 +407,14 @@ def _init_team_sync(state: "DaemonState") -> None:
     if state.cloud_relay_client is not None:
         worker.set_relay_client(state.cloud_relay_client)
 
+        # Wire obs applier so incoming peer observations are applied locally
+        from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
+            RemoteObsApplier,
+        )
+
+        applier = RemoteObsApplier(state.activity_store)
+        state.cloud_relay_client.set_obs_applier(applier)
+
     worker.start()
     state.team_sync_worker = worker
     logger.info("Obs flush worker started")

@@ -22,6 +22,8 @@ export const RelayMessageType = {
   OBS_PUSH: "obs_push",
   OBS_BATCH: "obs_batch",
   NODE_LIST: "node_list",
+  SEARCH_QUERY: "search_query",
+  SEARCH_RESULT: "search_result",
 } as const;
 
 export type RelayMessageType =
@@ -39,6 +41,7 @@ export interface RegisterMessage {
   tools: Array<Record<string, unknown>>;
   oak_version?: string;
   template_hash?: string;
+  capabilities?: string[];
 }
 
 /** Sent by daemon in response to a tool call request. */
@@ -129,7 +132,38 @@ export interface ObsBatchMessage {
 /** Sent by worker to inform all nodes of the current node list. */
 export interface NodeListMessage {
   type: typeof RelayMessageType.NODE_LIST;
-  nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string }[];
+  nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string; capabilities?: string[] }[];
+}
+
+// ---------------------------------------------------------------------------
+// Wire messages — Federated search
+// ---------------------------------------------------------------------------
+
+/** Sent to request a federated search across connected nodes. */
+export interface SearchQueryMessage {
+  type: typeof RelayMessageType.SEARCH_QUERY;
+  request_id: string;
+  query: string;
+  search_type?: string;
+  limit?: number;
+  from_machine_id?: string;
+}
+
+/** Sent by a node in response to a SearchQueryMessage. */
+export interface SearchResultMessage {
+  type: typeof RelayMessageType.SEARCH_RESULT;
+  request_id: string;
+  results: Record<string, unknown>[];
+  from_machine_id?: string;
+  error?: string;
+}
+
+/** Tracks pending federated search state in the DO. */
+export interface PendingSearch {
+  results: SearchResultMessage[];
+  expectedCount: number;
+  resolve: (value: SearchResultMessage[]) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +182,9 @@ export type RelayMessage =
   | HttpResponseMessage
   | ObsPushMessage
   | ObsBatchMessage
-  | NodeListMessage;
+  | NodeListMessage
+  | SearchQueryMessage
+  | SearchResultMessage;
 
 // ---------------------------------------------------------------------------
 // Internal helpers

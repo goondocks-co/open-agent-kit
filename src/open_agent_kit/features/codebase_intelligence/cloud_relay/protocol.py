@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
+    CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT,
     CLOUD_RELAY_WS_TYPE_ERROR,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK,
@@ -25,6 +26,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WS_TYPE_OBS_PUSH,
     CLOUD_RELAY_WS_TYPE_REGISTER,
     CLOUD_RELAY_WS_TYPE_REGISTERED,
+    CLOUD_RELAY_WS_TYPE_SEARCH_QUERY,
+    CLOUD_RELAY_WS_TYPE_SEARCH_RESULT,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
     CLOUD_RELAY_WS_TYPE_TOOL_RESULT,
 )
@@ -48,6 +51,8 @@ class RelayMessageType(str, Enum):
     OBS_PUSH = CLOUD_RELAY_WS_TYPE_OBS_PUSH
     OBS_BATCH = CLOUD_RELAY_WS_TYPE_OBS_BATCH
     NODE_LIST = CLOUD_RELAY_WS_TYPE_NODE_LIST
+    SEARCH_QUERY = CLOUD_RELAY_WS_TYPE_SEARCH_QUERY
+    SEARCH_RESULT = CLOUD_RELAY_WS_TYPE_SEARCH_RESULT
 
 
 # ---- Daemon -> Worker messages ----
@@ -66,6 +71,7 @@ class RegisterMessage(BaseModel):
     machine_id: str = ""
     oak_version: str = ""
     template_hash: str = ""
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class ToolCallResponse(BaseModel):
@@ -165,3 +171,31 @@ class ObsPushMessage(BaseModel):
 
     type: str = CLOUD_RELAY_WS_TYPE_OBS_PUSH
     observations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# ---- Federated search messages (bidirectional) ----
+
+
+class SearchQueryMessage(BaseModel):
+    """Sent to request a federated search across connected nodes.
+
+    The relay fans this out to all nodes with the ``federated_search_v1``
+    capability and collects results.
+    """
+
+    type: str = CLOUD_RELAY_WS_TYPE_SEARCH_QUERY
+    request_id: str
+    query: str
+    search_type: str = "all"
+    limit: int = CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT
+    from_machine_id: str = ""
+
+
+class SearchResultMessage(BaseModel):
+    """Sent by a node in response to a SearchQueryMessage."""
+
+    type: str = CLOUD_RELAY_WS_TYPE_SEARCH_RESULT
+    request_id: str
+    results: list[dict[str, Any]] = Field(default_factory=list)
+    from_machine_id: str = ""
+    error: str | None = None

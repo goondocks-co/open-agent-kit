@@ -35,6 +35,13 @@ class SearchInput(BaseModel):
         default=False,
         description="If True, include resolved/superseded memories in results",
     )
+    include_network: bool = Field(
+        default=False,
+        description=(
+            "If True, also search across connected team network nodes via the "
+            "cloud relay. Not available for code searches."
+        ),
+    )
 
 
 class RememberInput(BaseModel):

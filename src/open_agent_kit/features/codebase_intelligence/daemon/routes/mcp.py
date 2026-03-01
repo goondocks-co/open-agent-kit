@@ -47,6 +47,9 @@ async def call_mcp_tool(
         arguments = {}
 
     # Create handler with retrieval engine (direct access, no HTTP)
-    handler = MCPToolHandler(retrieval_engine=state.retrieval_engine)
+    handler = MCPToolHandler(
+        retrieval_engine=state.retrieval_engine,
+        relay_client=state.cloud_relay_client,
+    )
 
     return handler.handle_tool_call(tool_name, arguments)

@@ -412,6 +412,14 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
             worker_url, token, port, machine_id=state.machine_id or ""
         )
         state.cloud_relay_client = client
+
+        # Wire obs applier so incoming peer observations are applied locally
+        if state.activity_store is not None:
+            from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
+                RemoteObsApplier,
+            )
+
+            client.set_obs_applier(RemoteObsApplier(state.activity_store))
     except Exception as exc:
         error_msg = CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(error=str(exc))
         logger.error(error_msg)
@@ -726,6 +734,14 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
             worker_url, token, port, machine_id=state.machine_id or ""
         )
         state.cloud_relay_client = client
+
+        # Wire obs applier so incoming peer observations are applied locally
+        if state.activity_store is not None:
+            from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
+                RemoteObsApplier,
+            )
+
+            client.set_obs_applier(RemoteObsApplier(state.activity_store))
 
         if relay_status.connected:
             return {

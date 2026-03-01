@@ -28,6 +28,8 @@ from open_agent_kit.features.codebase_intelligence.cloud_relay.protocol import (
     ObsPushMessage,
     RegisterMessage,
     RelayMessageType,
+    SearchQueryMessage,
+    SearchResultMessage,
     ToolCallRequest,
     ToolCallResponse,
 )
@@ -42,22 +44,29 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CLOUD_RELAY_LOG_HEARTBEAT,
     CI_CLOUD_RELAY_LOG_HEARTBEAT_TIMEOUT,
     CI_CLOUD_RELAY_LOG_RECONNECTING,
+    CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH,
+    CLOUD_RELAY_CAPABILITY_OBS_SYNC,
     CLOUD_RELAY_CLIENT_NAME,
     CLOUD_RELAY_DAEMON_CALL_OVERHEAD_SECONDS,
     CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE,
     CLOUD_RELAY_DAEMON_MCP_CALL_URL_TEMPLATE,
     CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY,
     CLOUD_RELAY_DAEMON_MCP_TOOLS_URL_TEMPLATE,
+    CLOUD_RELAY_DAEMON_SEARCH_TIMEOUT_SECONDS,
+    CLOUD_RELAY_DAEMON_SEARCH_URL_TEMPLATE,
     CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS,
     CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS,
     CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
+    CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS,
     CLOUD_RELAY_HEARTBEAT_INTERVAL_SECONDS,
     CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS,
     CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
     CLOUD_RELAY_MAX_RESPONSE_BYTES,
     CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
+    CLOUD_RELAY_OBS_HISTORY_PATH,
     CLOUD_RELAY_RECONNECT_BACKOFF_FACTOR,
     CLOUD_RELAY_RECONNECT_BASE_DELAY_SECONDS,
+    CLOUD_RELAY_SEARCH_PATH,
     CLOUD_RELAY_WS_CLOSE_GOING_AWAY,
     CLOUD_RELAY_WS_CLOSE_NORMAL,
     CLOUD_RELAY_WS_DEFAULT_REGISTRATION_REJECTED,
@@ -69,6 +78,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WS_FIELD_TIMEOUT_MS,
     CLOUD_RELAY_WS_FIELD_TOOL_NAME,
     CLOUD_RELAY_WS_FIELD_TYPE,
+    CLOUD_RELAY_WS_TYPE_SEARCH_QUERY,
 )
 
 logger = logging.getLogger(__name__)
@@ -229,6 +239,10 @@ class CloudRelayClient(RelayClient):
             machine_id=self._machine_id,
             oak_version=getattr(open_agent_kit, "__version__", ""),
             template_hash=compute_template_hash(),
+            capabilities=[
+                CLOUD_RELAY_CAPABILITY_OBS_SYNC,
+                CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH,
+            ],
         )
         await self._ws.send(register_msg.model_dump_json())
 
@@ -263,6 +277,7 @@ class CloudRelayClient(RelayClient):
 
         # Drain any observations buffered by the relay while we were offline
         await self._drain_pending_obs()
+        await self._drain_obs_history()
 
         # Start background loops
         self._message_task = asyncio.ensure_future(self._message_loop())
@@ -332,6 +347,16 @@ class CloudRelayClient(RelayClient):
                     elif msg_type == RelayMessageType.NODE_LIST.value:
                         with self._lock:
                             self._online_nodes = msg.get("nodes", [])
+
+                    elif msg_type == CLOUD_RELAY_WS_TYPE_SEARCH_QUERY:
+                        query_msg = SearchQueryMessage(
+                            request_id=msg["request_id"],
+                            query=msg["query"],
+                            search_type=msg.get("search_type", "all"),
+                            limit=msg.get("limit", 10),
+                            from_machine_id=msg.get("from_machine_id", ""),
+                        )
+                        asyncio.ensure_future(self._handle_search_query(query_msg))
 
                     elif msg_type == RelayMessageType.ERROR.value:
                         error_text = msg.get(
@@ -434,6 +459,44 @@ class CloudRelayClient(RelayClient):
         except Exception as exc:
             logger.warning("Failed to drain pending obs: %s", exc)
 
+    async def _drain_obs_history(self) -> None:
+        """Drain observation history from the relay (called on reconnect).
+
+        Fetches historical observations that were recorded while this node
+        was offline. Paginates with ``offset`` until an empty page is returned.
+        Deduplication is handled by content_hash checks in RemoteObsApplier.
+        """
+        if not self._worker_url or not self._token or not self._machine_id:
+            return
+        if self._obs_applier is None:
+            return
+
+        try:
+            base_url = (
+                f"{self._worker_url.rstrip('/')}"
+                f"{CLOUD_RELAY_OBS_HISTORY_PATH}?machine_id={self._machine_id}"
+            )
+            headers = {"Authorization": f"Bearer {self._token}"}
+            offset = 0
+
+            async with httpx.AsyncClient(
+                timeout=CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
+            ) as client:
+                while True:
+                    url = f"{base_url}&offset={offset}"
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code != 200:
+                        break
+                    data = resp.json()
+                    observations = data.get("observations", [])
+                    if not observations:
+                        break
+                    for item in observations:
+                        self._obs_applier.apply_batch([item["obs"]], item["from_machine_id"])
+                    offset += len(observations)
+        except Exception as exc:
+            logger.warning("Failed to drain obs history: %s", exc)
+
     def _handle_obs_batch(self, data: dict) -> None:
         """Handle incoming obs_batch from a peer node."""
         if self._obs_applier is None:
@@ -444,6 +507,124 @@ class CloudRelayClient(RelayClient):
             self._obs_applier.apply_batch(observations, from_machine_id)
         except Exception as exc:
             logger.error("Failed to apply remote obs batch: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Federated search
+    # ------------------------------------------------------------------
+
+    async def _handle_search_query(self, query: SearchQueryMessage) -> None:
+        """Handle an incoming search query by querying the local daemon.
+
+        Follows the same pattern as _handle_tool_call: run the local call,
+        build a response, apply the size guard, and send over WebSocket.
+
+        Args:
+            query: The search query message from the relay.
+        """
+        import os
+
+        try:
+            port = self._daemon_port
+            url = CLOUD_RELAY_DAEMON_SEARCH_URL_TEMPLATE.format(port=port)
+
+            headers: dict[str, str] = {}
+            auth_token = os.environ.get(CI_AUTH_ENV_VAR)
+            if auth_token:
+                headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
+
+            async with httpx.AsyncClient(
+                timeout=CLOUD_RELAY_DAEMON_SEARCH_TIMEOUT_SECONDS,
+            ) as client:
+                resp = await client.post(
+                    url,
+                    json={
+                        "query": query.query,
+                        "search_type": query.search_type,
+                        "limit": query.limit,
+                    },
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            results = data.get("results", [])
+            response = SearchResultMessage(
+                request_id=query.request_id,
+                results=results,
+                from_machine_id=self._machine_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to handle search query: %s", exc)
+            response = SearchResultMessage(
+                request_id=query.request_id,
+                from_machine_id=self._machine_id,
+                error=str(exc),
+            )
+
+        # Serialize and truncate if needed (same guard as _handle_tool_call)
+        payload = response.model_dump_json()
+        if len(payload.encode()) > CLOUD_RELAY_MAX_RESPONSE_BYTES:
+            response = SearchResultMessage(
+                request_id=query.request_id,
+                from_machine_id=self._machine_id,
+                error=f"Search response too large ({len(payload.encode())} bytes, "
+                f"max {CLOUD_RELAY_MAX_RESPONSE_BYTES})",
+            )
+            payload = response.model_dump_json()
+
+        if self._ws:
+            try:
+                await self._ws.send(payload)
+            except Exception as exc:
+                logger.error("Failed to send search result: %s", exc)
+
+    async def search_network(
+        self,
+        query: str,
+        search_type: str = "all",
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Initiate a federated search across connected relay nodes.
+
+        Sends an HTTP POST to the relay worker which fans the query out
+        to all nodes with the ``federated_search_v1`` capability and
+        aggregates results.
+
+        Args:
+            query: Search query string.
+            search_type: Type of search (e.g., "all", "code", "memory").
+            limit: Maximum number of results per node.
+
+        Returns:
+            Dict with ``results`` list and optional ``error`` key.
+        """
+        if not self._worker_url or not self._token:
+            return {"results": [], "error": "Relay not configured"}
+
+        try:
+            url = (
+                f"{self._worker_url.rstrip('/')}"
+                f"{CLOUD_RELAY_SEARCH_PATH}?machine_id={self._machine_id}"
+            )
+            headers = {"Authorization": f"Bearer {self._token}"}
+            timeout = CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS + 1.0
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(
+                    url,
+                    json={
+                        "query": query,
+                        "search_type": search_type,
+                        "limit": limit,
+                    },
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                data: dict[str, Any] = resp.json()
+                return data
+        except Exception as exc:
+            logger.warning("Federated search failed: %s", exc)
+            return {"results": [], "error": str(exc)}
 
     # ------------------------------------------------------------------
     # Internal: tool call forwarding

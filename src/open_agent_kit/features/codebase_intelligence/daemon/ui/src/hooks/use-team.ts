@@ -36,6 +36,7 @@ export interface OnlineNode {
     online: boolean;
     oak_version?: string;
     template_hash?: string;
+    capabilities?: string[];
 }
 
 export interface RelayStatus {

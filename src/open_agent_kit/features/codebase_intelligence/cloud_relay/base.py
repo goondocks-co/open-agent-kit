@@ -4,8 +4,11 @@ Defines the abstract interface and shared data structures for the
 WebSocket-based cloud relay through a Cloudflare Worker.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_RESPONSE_KEY_CONNECTED,
@@ -94,3 +97,23 @@ class RelayClient(ABC):
             RelayStatus reflecting the current state.
         """
         ...
+
+    # ------------------------------------------------------------------
+    # Optional capabilities (concrete defaults for backward compat)
+    # ------------------------------------------------------------------
+
+    def set_obs_applier(self, applier: Any) -> None:  # noqa: B027
+        """Set the applier for incoming observation batches from peers."""
+
+    async def search_network(
+        self,
+        query: str,
+        search_type: str = "all",
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Initiate a federated search across connected relay nodes.
+
+        Returns:
+            Dict with ``results`` list and optional ``error`` key.
+        """
+        return {"results": [], "error": "Not implemented"}

@@ -49,6 +49,7 @@ export const API_ENDPOINTS = {
 
     // Search endpoint
     SEARCH: "/api/search",
+    SEARCH_NETWORK: "/api/search/network",
 
     // Index endpoints
     INDEX_REBUILD: "/api/index/rebuild",

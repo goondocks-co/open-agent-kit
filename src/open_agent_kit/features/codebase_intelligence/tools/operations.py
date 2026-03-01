@@ -25,6 +25,7 @@ from open_agent_kit.features.codebase_intelligence.tools.formatting import (
     format_activity_results,
     format_context_results,
     format_memory_results,
+    format_network_search_results,
     format_search_results,
     format_session_results,
     format_stats_results,
@@ -42,6 +43,7 @@ from open_agent_kit.features.codebase_intelligence.tools.schemas import (
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
@@ -61,6 +63,7 @@ class ToolOperations:
         retrieval_engine: RetrievalEngine,
         activity_store: ActivityStore | None = None,
         vector_store: VectorStore | None = None,
+        relay_client: RelayClient | None = None,
     ) -> None:
         """Initialize operations.
 
@@ -68,16 +71,18 @@ class ToolOperations:
             retrieval_engine: RetrievalEngine for search operations.
             activity_store: ActivityStore for session data (optional).
             vector_store: VectorStore for stats (optional).
+            relay_client: RelayClient for network search (optional).
         """
         self.engine = retrieval_engine
         self.activity_store = activity_store
         self.vector_store = vector_store
+        self.relay_client = relay_client
 
     def search(self, args: dict[str, Any]) -> str:
         """Execute search operation.
 
         Args:
-            args: Search arguments (query, search_type, limit).
+            args: Search arguments (query, search_type, limit, include_network).
 
         Returns:
             Formatted search results as markdown string.
@@ -109,7 +114,32 @@ class ToolOperations:
             include_resolved=input_data.include_resolved,
         )
 
-        return format_search_results(result, query=input_data.query)
+        output = format_search_results(result, query=input_data.query)
+
+        # Append network results when requested and relay is available
+        if (
+            input_data.include_network
+            and self.relay_client is not None
+            and search_type != SEARCH_TYPE_CODE
+        ):
+            try:
+                import asyncio
+
+                network_result = asyncio.get_event_loop().run_until_complete(
+                    self.relay_client.search_network(
+                        query=input_data.query,
+                        search_type=search_type,
+                        limit=input_data.limit,
+                    )
+                )
+                network_items = network_result.get("results", [])
+                if network_items:
+                    output += "\n\n## Network Results\n\n"
+                    output += format_network_search_results(network_items)
+            except Exception:
+                logger.warning("Network search failed", exc_info=True)
+
+        return output
 
     def remember(self, args: dict[str, Any]) -> str:
         """Execute remember operation.

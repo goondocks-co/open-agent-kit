@@ -3,6 +3,7 @@
 This package contains the FastAPI routers split by domain:
 - health: Health checks and status endpoints
 - search: Search, fetch, remember, and context endpoints
+- search_network: Federated network search via cloud relay
 - index: Index build and status endpoints
 - hooks: AI agent integration hooks (claude-mem inspired)
 - otel: OpenTelemetry (OTLP) receiver for agents that emit OTel events
@@ -83,6 +84,9 @@ from open_agent_kit.features.codebase_intelligence.daemon.routes.otel import rou
 from open_agent_kit.features.codebase_intelligence.daemon.routes.search import (
     router as search_router,
 )
+from open_agent_kit.features.codebase_intelligence.daemon.routes.search_network import (
+    router as search_network_router,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.routes.team import (
     router as team_router,
 )
@@ -101,6 +105,7 @@ __all__ = [
     "devtools_processing_router",
     "health_router",
     "search_router",
+    "search_network_router",
     "index_router",
     "hook_router",
     "notifications_router",

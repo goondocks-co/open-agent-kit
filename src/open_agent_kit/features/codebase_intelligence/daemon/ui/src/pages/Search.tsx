@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useSearch } from "@/hooks/use-search";
+import { useNetworkSearch } from "@/hooks/use-network-search";
+import { useTeamStatus } from "@/hooks/use-team";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/config-components";
 import { Link, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search as SearchIcon, FileText, Loader2, AlertCircle, Brain, ClipboardList, MessageSquare } from "lucide-react";
+import { Search as SearchIcon, FileText, Loader2, AlertCircle, Brain, ClipboardList, MessageSquare, Globe } from "lucide-react";
 import {
     FALLBACK_MESSAGES,
     SCORE_DISPLAY_PRECISION,
@@ -54,7 +56,21 @@ export default function Search() {
         setSearchParams(searchParams, { replace: true });
     };
 
+    const [includeNetwork, setIncludeNetwork] = useState(false);
+
+    const { data: teamStatus } = useTeamStatus();
+    const relayConnected = teamStatus?.connected ?? false;
+
     const { data: results, isLoading, error } = useSearch(debouncedQuery, confidenceFilter, applyDocTypeWeights, searchType, includeResolved);
+
+    const isCodeSearch = searchType === SEARCH_TYPES.CODE;
+    const networkEnabled = includeNetwork && !isCodeSearch && relayConnected;
+    const { data: networkResults, isLoading: networkLoading } = useNetworkSearch(
+        debouncedQuery,
+        searchType,
+        20,
+        networkEnabled,
+    );
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -135,6 +151,21 @@ export default function Search() {
                     />
                     Include resolved
                 </label>
+                {relayConnected && (
+                    <label
+                        className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap"
+                        title={isCodeSearch ? "Code search is project-specific and cannot be shared across the network" : "Search across connected team nodes"}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={includeNetwork && !isCodeSearch}
+                            onChange={(e) => setIncludeNetwork(e.target.checked)}
+                            disabled={isCodeSearch}
+                            className="rounded border-gray-300"
+                        />
+                        Include team network
+                    </label>
+                )}
                 <Button type="submit" disabled={!query || isLoading}>
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <SearchIcon className="w-4 h-4 mr-2" />}
                     Search
@@ -279,7 +310,51 @@ export default function Search() {
                     </div>
                 )}
 
-                {debouncedQuery && !isLoading && !hasResults ? (
+                {networkEnabled && networkLoading && (
+                    <div className="mt-8 flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Searching team network...
+                    </div>
+                )}
+
+                {networkResults?.results && networkResults.results.length > 0 && (
+                    <div className="mt-8">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <Globe className="w-5 h-5" /> Network Results ({networkResults.results.length})
+                        </h2>
+                        <div className="space-y-3">
+                            {networkResults.results.map((match, i) => (
+                                <Card key={`network-${i}`} className="overflow-hidden">
+                                    <CardHeader className="py-3 bg-teal-500/5 border-l-2 border-teal-500">
+                                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                            <span className="text-xs px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 font-mono">
+                                                {match.machine_id}
+                                            </span>
+                                            {match.memory_type && (
+                                                <span className="capitalize text-muted-foreground">{match.memory_type}</span>
+                                            )}
+                                            <span className="ml-auto flex items-center gap-2">
+                                                {match.confidence && (
+                                                    <span className="text-xs px-2 py-0.5 rounded capitalize bg-gray-500/10 text-gray-500">
+                                                        {match.confidence}
+                                                    </span>
+                                                )}
+                                                {match.relevance != null && (
+                                                    <span className="text-xs text-muted-foreground">Score: {match.relevance.toFixed(SCORE_DISPLAY_PRECISION)}</span>
+                                                )}
+                                            </span>
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-4 text-sm">
+                                        {match.observation || match.summary}
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {debouncedQuery && !isLoading && !hasResults && !(networkResults?.results?.length) ? (
                     <div className="text-center py-12 text-muted-foreground">{FALLBACK_MESSAGES.NO_RESULTS} for "{debouncedQuery}"</div>
                 ) : null}
             </div>

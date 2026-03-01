@@ -182,11 +182,17 @@ def bg_process_pending(processor: "ActivityProcessor") -> None:
 
 
 def bg_index_and_title(processor: "ActivityProcessor") -> None:
-    """Phase 5: Index pending plans and generate missing titles."""
+    """Phase 5: Index pending plans, embed pending observations, and generate missing titles."""
     try:
         plan_stats = processor.index_pending_plans()
         if plan_stats.get("indexed", 0) > 0:
             logger.info(f"Background indexed {plan_stats['indexed']} plans")
+
+        # Embed observations not yet in ChromaDB (e.g. from remote sync)
+        obs_stats = processor.embed_pending_observations()
+        obs_embedded = obs_stats.get("embedded", 0)
+        if obs_embedded > 0:
+            logger.info(f"Background embedded {obs_embedded} pending observations")
 
         title_count = processor.generate_pending_titles()
         if title_count > 0:

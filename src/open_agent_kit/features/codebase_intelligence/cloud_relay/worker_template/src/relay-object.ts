@@ -30,9 +30,12 @@ import {
   type ObsPushMessage,
   type PendingHttpRequest,
   type PendingRequest,
+  type PendingSearch,
   type RegisterMessage,
   type RegisteredMessage,
   type RelayMessage,
+  type SearchQueryMessage,
+  type SearchResultMessage,
   type ToolCallRequest,
   type ToolCallResponse,
   type ToolInfo,
@@ -42,6 +45,12 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000;
 const PENDING_OBS_DRAIN_LIMIT = 500;
+const OBS_HISTORY_RETENTION_DAYS = 7;
+const OBS_HISTORY_DEFAULT_LIMIT = 500;
+const MS_PER_DAY = 86_400_000;
+const FEDERATED_SEARCH_TIMEOUT_MS = 3_000;
+const FEDERATED_SEARCH_DEFAULT_LIMIT = 10;
+const CAPABILITY_FEDERATED_SEARCH = "federated_search_v1";
 
 export class RelayObject implements DurableObject {
   private state: DurableObjectState;
@@ -63,7 +72,10 @@ export class RelayObject implements DurableObject {
   private pongTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   /** Version metadata from each node's register message, keyed by machine_id. */
-  private nodeMetadata: Map<string, { oak_version?: string; template_hash?: string }> = new Map();
+  private nodeMetadata: Map<string, { oak_version?: string; template_hash?: string; capabilities?: string[] }> = new Map();
+
+  /** Pending federated search requests awaiting results from peer nodes. */
+  private pendingSearch: Map<string, PendingSearch> = new Map();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -82,10 +94,27 @@ export class RelayObject implements DurableObject {
     this.state.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS idx_pending_for ON pending_obs(for_machine_id)"
     );
+
+    // Observation history table for new-node catch-up.
+    this.state.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS obs_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_machine_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    this.state.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_obs_history_hash ON obs_history(content_hash)"
+    );
+    this.state.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_obs_history_created ON obs_history(created_at)"
+    );
   }
 
   // -----------------------------------------------------------------------
-  // fetch() -- called by the Worker for /mcp, /ws, /health, /tools, /obs/pending
+  // fetch() -- called by the Worker for /mcp, /ws, /health, /tools, /obs/*
   // -----------------------------------------------------------------------
 
   async fetch(request: Request): Promise<Response> {
@@ -107,8 +136,16 @@ export class RelayObject implements DurableObject {
       return this.handleObsPending(url);
     }
 
+    if (url.pathname === "/obs/history" && request.method === "GET") {
+      return this.handleObsHistory(url);
+    }
+
     if (url.pathname === "/obs/stats" && request.method === "GET") {
       return this.handleObsStats();
+    }
+
+    if (url.pathname === "/search" && request.method === "POST") {
+      return this.handleSearchFanout(request);
     }
 
     if (url.pathname === "/health") {
@@ -180,6 +217,9 @@ export class RelayObject implements DurableObject {
       case RelayMessageType.OBS_PUSH:
         this.handleObsPush(msg as ObsPushMessage, _ws);
         break;
+      case RelayMessageType.SEARCH_RESULT:
+        this.resolveSearchResult(msg as SearchResultMessage);
+        break;
       default:
         break;
     }
@@ -247,10 +287,11 @@ export class RelayObject implements DurableObject {
     // above without a tag, we use serializeAttachment to store the machine_id.
     ws.serializeAttachment({ machineId });
 
-    // Store version metadata for this node.
+    // Store version metadata and capabilities for this node.
     this.nodeMetadata.set(machineId, {
       oak_version: msg.oak_version,
       template_hash: msg.template_hash,
+      capabilities: msg.capabilities,
     });
 
     // Store the tool list from the daemon.
@@ -408,6 +449,7 @@ export class RelayObject implements DurableObject {
   private handleObsPush(msg: ObsPushMessage, senderWs: WebSocket): void {
     const senderMachineId = this.getMachineId(senderWs) ?? "unknown";
     const allSockets = this.state.getWebSockets();
+    const now = new Date().toISOString();
 
     // Serialize once for all peers.
     const batch: ObsBatchMessage = {
@@ -426,7 +468,6 @@ export class RelayObject implements DurableObject {
       } catch {
         // WS closed — buffer all observations for this peer in one bulk INSERT.
         if (machineId && msg.observations.length > 0) {
-          const now = new Date().toISOString();
           const placeholders = msg.observations.map(() => "(?, ?, ?, ?)").join(", ");
           const values: unknown[] = [];
           for (const obs of msg.observations) {
@@ -438,6 +479,36 @@ export class RelayObject implements DurableObject {
           );
         }
       }
+    }
+
+    // Store in obs_history for new-node catch-up (dedup by content_hash).
+    if (msg.observations.length > 0) {
+      for (const obs of msg.observations) {
+        const payload = JSON.stringify(obs);
+        const contentHash = this.hashPayload(payload);
+        // INSERT OR IGNORE deduplicates by content_hash via unique index check.
+        // We use a subquery to skip if hash already exists.
+        const existing = this.state.storage.sql.exec(
+          "SELECT 1 FROM obs_history WHERE content_hash = ? LIMIT 1",
+          contentHash,
+        ).toArray();
+        if (existing.length === 0) {
+          this.state.storage.sql.exec(
+            "INSERT INTO obs_history (from_machine_id, payload, content_hash, created_at) VALUES (?, ?, ?, ?)",
+            senderMachineId,
+            payload,
+            contentHash,
+            now,
+          );
+        }
+      }
+
+      // TTL cleanup — remove rows older than retention period.
+      const cutoff = new Date(Date.now() - OBS_HISTORY_RETENTION_DAYS * MS_PER_DAY).toISOString();
+      this.state.storage.sql.exec(
+        "DELETE FROM obs_history WHERE created_at < ?",
+        cutoff,
+      );
     }
   }
 
@@ -479,6 +550,58 @@ export class RelayObject implements DurableObject {
     }
 
     return Response.json({ pending });
+  }
+
+  private handleObsHistory(url: URL): Response {
+    const machineId = url.searchParams.get("machine_id");
+    if (!machineId) {
+      return Response.json({ error: "missing machine_id" }, { status: 400 });
+    }
+
+    const since = url.searchParams.get("since");
+    const limit = Math.min(
+      parseInt(url.searchParams.get("limit") ?? String(OBS_HISTORY_DEFAULT_LIMIT), 10) || OBS_HISTORY_DEFAULT_LIMIT,
+      OBS_HISTORY_DEFAULT_LIMIT,
+    );
+    const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
+
+    let rows;
+    if (since) {
+      rows = this.state.storage.sql.exec(
+        "SELECT from_machine_id, payload, created_at FROM obs_history WHERE from_machine_id != ? AND created_at >= ? ORDER BY id ASC LIMIT ? OFFSET ?",
+        machineId,
+        since,
+        limit,
+        offset,
+      ).toArray();
+    } else {
+      rows = this.state.storage.sql.exec(
+        "SELECT from_machine_id, payload, created_at FROM obs_history WHERE from_machine_id != ? ORDER BY id ASC LIMIT ? OFFSET ?",
+        machineId,
+        limit,
+        offset,
+      ).toArray();
+    }
+
+    return Response.json({
+      observations: rows.map((r) => ({
+        from_machine_id: r.from_machine_id,
+        obs: JSON.parse(r.payload as string),
+        created_at: r.created_at,
+      })),
+      count: rows.length,
+      limit,
+      offset,
+    });
+  }
+
+  /** Simple DJB2 hash for deduplication — not cryptographic, just fast. */
+  private hashPayload(payload: string): string {
+    let hash = 5381;
+    for (let i = 0; i < payload.length; i++) {
+      hash = ((hash << 5) + hash + payload.charCodeAt(i)) & 0xffffffff;
+    }
+    return hash.toString(16);
   }
 
   private drainPendingObs(machineId: string, ws: WebSocket): void {
@@ -526,12 +649,123 @@ export class RelayObject implements DurableObject {
   }
 
   // -----------------------------------------------------------------------
+  // Federated search fan-out
+  // -----------------------------------------------------------------------
+
+  private async handleSearchFanout(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const requesterMachineId = url.searchParams.get("machine_id");
+
+    let body: { query: string; search_type?: string; limit?: number };
+    try {
+      body = (await request.json()) as { query: string; search_type?: string; limit?: number };
+    } catch {
+      return Response.json({ error: "invalid request body" }, { status: 400 });
+    }
+
+    if (!body.query) {
+      return Response.json({ error: "missing query" }, { status: 400 });
+    }
+
+    // Find capable peer sockets (excluding requester).
+    const capablePeers: { machineId: string; ws: WebSocket }[] = [];
+    const allSockets = this.state.getWebSockets();
+    const seen = new Set<string>();
+
+    for (const ws of allSockets) {
+      const machineId = this.getMachineId(ws);
+      if (!machineId || machineId === requesterMachineId || seen.has(machineId)) continue;
+      seen.add(machineId);
+
+      const meta = this.nodeMetadata.get(machineId);
+      if (meta?.capabilities?.includes(CAPABILITY_FEDERATED_SEARCH)) {
+        capablePeers.push({ machineId, ws });
+      }
+    }
+
+    // No capable peers — return empty results immediately.
+    if (capablePeers.length === 0) {
+      return Response.json({ results: [] });
+    }
+
+    const requestId = crypto.randomUUID();
+    const queryMsg: SearchQueryMessage = {
+      type: RelayMessageType.SEARCH_QUERY,
+      request_id: requestId,
+      query: body.query,
+      search_type: body.search_type ?? "all",
+      limit: body.limit ?? FEDERATED_SEARCH_DEFAULT_LIMIT,
+      from_machine_id: requesterMachineId ?? "",
+    };
+    const serialized = JSON.stringify(queryMsg);
+
+    // Track how many peers we actually sent to (some sends may fail).
+    let sentCount = 0;
+    for (const { ws } of capablePeers) {
+      try {
+        ws.send(serialized);
+        sentCount++;
+      } catch {
+        // Peer socket closed — skip it.
+      }
+    }
+
+    if (sentCount === 0) {
+      return Response.json({ results: [] });
+    }
+
+    // Create aggregation promise with timeout.
+    const resultsPromise = new Promise<SearchResultMessage[]>((resolve) => {
+      const timer = setTimeout(() => {
+        const entry = this.pendingSearch.get(requestId);
+        if (entry) {
+          this.pendingSearch.delete(requestId);
+          resolve(entry.results);
+        } else {
+          resolve([]);
+        }
+      }, FEDERATED_SEARCH_TIMEOUT_MS);
+
+      this.pendingSearch.set(requestId, {
+        results: [],
+        expectedCount: sentCount,
+        resolve,
+        timer,
+      });
+    });
+
+    const searchResults = await resultsPromise;
+
+    // Merge results from all responding peers.
+    const merged: Record<string, unknown>[] = [];
+    for (const sr of searchResults) {
+      merged.push(...sr.results);
+    }
+
+    return Response.json({ results: merged });
+  }
+
+  private resolveSearchResult(msg: SearchResultMessage): void {
+    const entry = this.pendingSearch.get(msg.request_id);
+    if (!entry) return;
+
+    entry.results.push(msg);
+
+    // All peers responded — resolve early.
+    if (entry.results.length >= entry.expectedCount) {
+      clearTimeout(entry.timer);
+      this.pendingSearch.delete(msg.request_id);
+      entry.resolve(entry.results);
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Node list broadcast
   // -----------------------------------------------------------------------
 
   private broadcastNodeList(): void {
     const allSockets = this.state.getWebSockets();
-    const nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string }[] = [];
+    const nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string; capabilities?: string[] }[] = [];
     const seen = new Set<string>();
 
     for (const ws of allSockets) {

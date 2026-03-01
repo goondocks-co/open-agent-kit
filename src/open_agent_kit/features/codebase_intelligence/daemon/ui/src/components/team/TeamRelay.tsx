@@ -272,12 +272,19 @@ function ConnectionCard({
 // Section 2a: Join a Team (consumer input form)
 // =============================================================================
 
-function JoinTeamCard({ onSave, isSaving }: {
-    onSave: (url: string, token: string) => void;
+interface JoinTeamCardProps {
+    onJoin: (url: string, token: string) => void;
     isSaving: boolean;
-}) {
+    isConnecting: boolean;
+    joinError: string | null;
+    joinSuccess: boolean;
+}
+
+function JoinTeamCard({ onJoin, isSaving, isConnecting, joinError, joinSuccess }: JoinTeamCardProps) {
     const [url, setUrl] = useState("");
     const [token, setToken] = useState("");
+
+    const isBusy = isSaving || isConnecting;
 
     return (
         <Card>
@@ -299,6 +306,7 @@ function JoinTeamCard({ onSave, isSaving }: {
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder="https://oak-relay-yourteam.workers.dev"
                         className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                        disabled={isBusy}
                     />
                 </div>
                 <div className="space-y-1.5">
@@ -309,20 +317,35 @@ function JoinTeamCard({ onSave, isSaving }: {
                         onChange={(e) => setToken(e.target.value)}
                         placeholder="Shared relay token"
                         className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                        disabled={isBusy}
                     />
                 </div>
+
+                {joinError && (
+                    <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{joinError}</AlertDescription>
+                    </Alert>
+                )}
+
+                {joinSuccess && (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Connected to relay. Syncing observations automatically.
+                    </div>
+                )}
             </CardContent>
             <CardFooter>
                 <Button
-                    onClick={() => onSave(url.trim(), token.trim())}
-                    disabled={!url.trim() || !token.trim() || isSaving}
+                    onClick={() => onJoin(url.trim(), token.trim())}
+                    disabled={!url.trim() || !token.trim() || isBusy}
                     size="sm"
                 >
-                    {isSaving
+                    {isBusy
                         ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        : <Save className="h-4 w-4 mr-2" />
+                        : <Cloud className="h-4 w-4 mr-2" />
                     }
-                    Save
+                    {isSaving ? "Saving..." : isConnecting ? "Connecting..." : "Connect"}
                 </Button>
             </CardFooter>
         </Card>
@@ -819,6 +842,10 @@ export default function TeamRelay() {
     const [syncDirty, setSyncDirty] = useState(false);
     const [syncMessage, setSyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+    // Join flow state
+    const [joinError, setJoinError] = useState<string | null>(null);
+    const [joinSuccess, setJoinSuccess] = useState(false);
+
     // Config sections are collapsed by default when connected
     const [showConfig, setShowConfig] = useState(false);
 
@@ -863,7 +890,21 @@ export default function TeamRelay() {
     const handleRedeploy = () => { startRelay.reset(); startRelay.mutate(); };
 
     const handleJoin = async (url: string, token: string) => {
-        await updateConfig.mutateAsync({ relay_worker_url: url, api_key: token });
+        setJoinError(null);
+        setJoinSuccess(false);
+        try {
+            await updateConfig.mutateAsync({
+                relay_worker_url: url,
+                api_key: token,
+                auto_sync: true,
+            });
+            connectRelay.mutate(undefined, {
+                onSuccess: () => setJoinSuccess(true),
+                onError: (err) => setJoinError(err.message),
+            });
+        } catch (err) {
+            setJoinError(err instanceof Error ? err.message : "Failed to save configuration.");
+        }
     };
 
     const handleSaveSync = async () => {
@@ -951,7 +992,13 @@ export default function TeamRelay() {
                 <>
                     {/* Consumer join form — when no relay is configured */}
                     {!isDeployed && (
-                        <JoinTeamCard onSave={handleJoin} isSaving={updateConfig.isPending} />
+                        <JoinTeamCard
+                            onJoin={handleJoin}
+                            isSaving={updateConfig.isPending}
+                            isConnecting={isConnecting}
+                            joinError={joinError}
+                            joinSuccess={joinSuccess}
+                        />
                     )}
 
                     {/* Team credentials — when relay is deployed (deployer view) */}

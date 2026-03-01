@@ -107,6 +107,8 @@ CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE: Final[str] = "http_response"
 CLOUD_RELAY_WS_TYPE_OBS_PUSH: Final[str] = "obs_push"
 CLOUD_RELAY_WS_TYPE_OBS_BATCH: Final[str] = "obs_batch"
 CLOUD_RELAY_WS_TYPE_NODE_LIST: Final[str] = "node_list"
+CLOUD_RELAY_WS_TYPE_SEARCH_QUERY: Final[str] = "search_query"
+CLOUD_RELAY_WS_TYPE_SEARCH_RESULT: Final[str] = "search_result"
 
 # WebSocket protocol field names
 CLOUD_RELAY_WS_FIELD_TYPE: Final[str] = "type"
@@ -300,6 +302,20 @@ CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: Final[str] = "update_available"
 # Observation stats endpoint path
 CLOUD_RELAY_OBS_STATS_PATH: Final[str] = "/obs/stats"
 CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS: Final[float] = 5.0
+
+# Capability identifiers (sent in RegisterMessage for feature negotiation)
+CLOUD_RELAY_CAPABILITY_OBS_SYNC: Final[str] = "obs_sync_v1"
+CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH: Final[str] = "federated_search_v1"
+
+# Federated search
+CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS: Final[float] = 3.0
+CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT: Final[int] = 10
+CLOUD_RELAY_OBS_HISTORY_PATH: Final[str] = "/obs/history"
+CLOUD_RELAY_SEARCH_PATH: Final[str] = "/search"
+
+# Daemon local search forwarding (used by cloud relay client to query local daemon)
+CLOUD_RELAY_DAEMON_SEARCH_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port}/api/search"
+CLOUD_RELAY_DAEMON_SEARCH_TIMEOUT_SECONDS: Final[float] = 10.0
 
 # CLI additional messages
 CI_CLOUD_RELAY_MESSAGE_CONNECTING_RELAY: Final[str] = "Connecting to cloud relay..."

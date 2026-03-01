@@ -190,12 +190,22 @@ export function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
                                     <div className="w-2 h-2 rounded-full bg-green-500" />
                                     <span className="text-sm font-mono">{node.machine_id}</span>
                                 </div>
-                                {node.oak_version && (
-                                    <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                        <Package className="w-3 h-3" />
-                                        v{node.oak_version}
-                                    </span>
-                                )}
+                                <div className="flex items-center gap-1.5">
+                                    {node.capabilities?.map((cap) => (
+                                        <span
+                                            key={cap}
+                                            className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400"
+                                        >
+                                            {cap.replace(/_v\d+$/, '').replace(/_/g, ' ')}
+                                        </span>
+                                    ))}
+                                    {node.oak_version && (
+                                        <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                            <Package className="w-3 h-3" />
+                                            v{node.oak_version}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
