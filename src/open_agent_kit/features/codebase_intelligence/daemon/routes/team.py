@@ -60,6 +60,7 @@ class TeamStatusResponse(BaseModel):
     relay: dict[str, Any] | None = None
     online_nodes: list[dict[str, Any]] = []
     sync: dict[str, Any] | None = None
+    relay_pending: dict[str, int] = {}
 
 
 class PolicyResponse(BaseModel):
@@ -166,17 +167,47 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
 @handle_route_errors("team status")
 async def get_team_status() -> TeamStatusResponse:
     """Return team connection and sync status via cloud relay."""
+    import httpx
+
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CLOUD_RELAY_OBS_STATS_PATH,
+    )
+
     state = get_state()
 
     relay_status = None
     online_nodes: list[dict[str, Any]] = []
     is_connected = False
+    relay_pending: dict[str, int] = {}
 
     if state.cloud_relay_client:
         status = state.cloud_relay_client.get_status()
         relay_status = status.to_dict()
         is_connected = status.connected
         online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
+
+        # Fetch pending obs counts from the relay DO when connected.
+        if is_connected and status.worker_url:
+            try:
+                token = state.ci_config.cloud_relay.token if state.ci_config else None
+                headers = {"Authorization": f"Bearer {token}"} if token else {}
+                url = status.worker_url.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    relay_pending = resp.json().get("pending", {})
+            except Exception as exc:
+                logger.debug("Failed to fetch relay obs stats: %s", exc)
+    else:
+        # No live client yet — surface the configured URL so the UI shows
+        # "Disconnected" rather than "Not Configured".
+        ci_config = state.ci_config
+        if ci_config:
+            tc = ci_config.team
+            rc = ci_config.cloud_relay
+            worker_url = tc.relay_worker_url or (rc.worker_url if rc else None)
+            if worker_url:
+                relay_status = {"connected": False, "worker_url": worker_url}
 
     sync_status = None
     if state.team_sync_worker:
@@ -188,6 +219,7 @@ async def get_team_status() -> TeamStatusResponse:
         relay=relay_status,
         online_nodes=online_nodes,
         sync=sync_status,
+        relay_pending=relay_pending,
     )
 
 
@@ -197,8 +229,8 @@ async def get_team_members() -> dict[str, Any]:
     """Return team member list from cloud relay online nodes."""
     state = get_state()
     if not state.cloud_relay_client:
-        return {"members": []}
-    return {"members": getattr(state.cloud_relay_client, "online_nodes", [])}
+        return {"online_nodes": []}
+    return {"online_nodes": getattr(state.cloud_relay_client, "online_nodes", [])}
 
 
 # ---------------------------------------------------------------------------

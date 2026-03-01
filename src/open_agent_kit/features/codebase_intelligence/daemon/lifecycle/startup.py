@@ -43,18 +43,28 @@ logger = logging.getLogger(__name__)
 async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
     """Auto-connect cloud relay if configured.
 
+    Supports two modes:
+    - Publisher: cloud_relay.auto_connect=True (set after successful deploy).
+    - Consumer: team.auto_sync=True with relay_worker_url + api_key configured.
+
     Non-critical: failures are logged but do not prevent startup.
     """
     ci_config = state.ci_config
-    if not ci_config or not ci_config.cloud_relay.auto_connect:
+    if not ci_config:
         return
 
     relay_config = ci_config.cloud_relay
-    if not relay_config.worker_url:
-        logger.debug("Cloud relay auto-connect skipped: no worker_url configured")
-        return
-    if not relay_config.token:
-        logger.debug("Cloud relay auto-connect skipped: no token configured")
+    team_config = ci_config.team
+
+    # Publisher path: relay was deployed by this node
+    if relay_config.auto_connect and relay_config.worker_url and relay_config.token:
+        worker_url = relay_config.worker_url
+        token = relay_config.token
+    # Consumer path: team relay configured manually (teammate's Worker)
+    elif team_config.auto_sync and team_config.relay_worker_url and team_config.api_key:
+        worker_url = team_config.relay_worker_url
+        token = team_config.api_key
+    else:
         return
 
     from open_agent_kit.features.codebase_intelligence.daemon.manager import (
@@ -74,11 +84,11 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
             tool_timeout_seconds=relay_config.tool_timeout_seconds,
             reconnect_max_seconds=relay_config.reconnect_max_seconds,
         )
-        relay_status = await client.connect(relay_config.worker_url, relay_config.token, port)
+        relay_status = await client.connect(worker_url, token, port)
         state.cloud_relay_client = client
 
         if relay_status.connected:
-            logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=relay_config.worker_url))
+            logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=worker_url))
         else:
             error_detail = relay_status.error or CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(
                 error="unknown"
@@ -523,6 +533,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_redaction(ci_data_dir)
 
     # --- Subsystem init (order matters: embedding -> vector store -> activity -> agents) ---
+
+    # One-time migration: move legacy git-tracked scaffold to .oak/ci/cloud-relay
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.scaffold import (
+        migrate_scaffold_dir,
+    )
+
+    migrate_scaffold_dir(project_root)
+
     await _init_cloud_relay(state, project_root)
 
     provider_available = _init_embedding(state, project_root)

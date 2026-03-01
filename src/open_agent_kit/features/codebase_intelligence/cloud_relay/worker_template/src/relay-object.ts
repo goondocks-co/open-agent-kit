@@ -62,6 +62,9 @@ export class RelayObject implements DurableObject {
   /** Per-connection pong timeout handles, keyed by machine_id. */
   private pongTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
+  /** Version metadata from each node's register message, keyed by machine_id. */
+  private nodeMetadata: Map<string, { oak_version?: string; template_hash?: string }> = new Map();
+
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
@@ -102,6 +105,10 @@ export class RelayObject implements DurableObject {
 
     if (url.pathname === "/obs/pending" && request.method === "GET") {
       return this.handleObsPending(url);
+    }
+
+    if (url.pathname === "/obs/stats" && request.method === "GET") {
+      return this.handleObsStats();
     }
 
     if (url.pathname === "/health") {
@@ -187,6 +194,7 @@ export class RelayObject implements DurableObject {
     const machineId = this.getMachineId(_ws);
     if (machineId) {
       this.stopHeartbeat(machineId);
+      this.nodeMetadata.delete(machineId);
     }
     this.broadcastNodeList();
   }
@@ -195,6 +203,7 @@ export class RelayObject implements DurableObject {
     const machineId = this.getMachineId(_ws);
     if (machineId) {
       this.stopHeartbeat(machineId);
+      this.nodeMetadata.delete(machineId);
     }
     this.broadcastNodeList();
   }
@@ -237,6 +246,12 @@ export class RelayObject implements DurableObject {
     // calling acceptWebSocket only once per WS. Since we already accepted
     // above without a tag, we use serializeAttachment to store the machine_id.
     ws.serializeAttachment({ machineId });
+
+    // Store version metadata for this node.
+    this.nodeMetadata.set(machineId, {
+      oak_version: msg.oak_version,
+      template_hash: msg.template_hash,
+    });
 
     // Store the tool list from the daemon.
     this.tools = (msg.tools || []).map((t) => ({
@@ -451,6 +466,19 @@ export class RelayObject implements DurableObject {
     });
   }
 
+  private handleObsStats(): Response {
+    const rows = this.state.storage.sql.exec(
+      "SELECT for_machine_id, COUNT(*) as cnt FROM pending_obs GROUP BY for_machine_id",
+    ).toArray();
+
+    const pending: Record<string, number> = {};
+    for (const row of rows) {
+      pending[row.for_machine_id as string] = row.cnt as number;
+    }
+
+    return Response.json({ pending });
+  }
+
   private drainPendingObs(machineId: string, ws: WebSocket): void {
     const rows = this.state.storage.sql.exec(
       "SELECT id, from_machine_id, payload FROM pending_obs WHERE for_machine_id = ? ORDER BY id ASC LIMIT ?",
@@ -501,14 +529,15 @@ export class RelayObject implements DurableObject {
 
   private broadcastNodeList(): void {
     const allSockets = this.state.getWebSockets();
-    const nodes: { machine_id: string; online: boolean }[] = [];
+    const nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string }[] = [];
     const seen = new Set<string>();
 
     for (const ws of allSockets) {
       const machineId = this.getMachineId(ws);
       if (machineId && !seen.has(machineId)) {
         seen.add(machineId);
-        nodes.push({ machine_id: machineId, online: true });
+        const meta = this.nodeMetadata.get(machineId);
+        nodes.push({ machine_id: machineId, online: true, ...meta });
       }
     }
 

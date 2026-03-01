@@ -24,6 +24,7 @@ import {
     Bot,
     FileJson,
     FlaskConical,
+    RefreshCw,
     Settings,
     Globe,
     Link2,
@@ -480,6 +481,7 @@ export default function TeamConnectivity() {
 
     const isConnected = status?.connected ?? false;
     const isToggling = startRelay.isPending || stopRelay.isPending;
+    const updateAvailable = status?.update_available ?? false;
 
     const handleToggle = () => {
         if (isConnected) {
@@ -488,6 +490,11 @@ export default function TeamConnectivity() {
             startRelay.reset();
             startRelay.mutate();
         }
+    };
+
+    const handleRedeploy = () => {
+        startRelay.reset();
+        startRelay.mutate();
     };
 
     // Derive URLs from status or start response
@@ -569,6 +576,32 @@ export default function TeamConnectivity() {
                             )}
                         </Button>
                     </div>
+
+                    {/* Worker update banner */}
+                    {updateAvailable && (
+                        <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm">
+                            <div className="flex items-center gap-2">
+                                <RefreshCw className="h-4 w-4 shrink-0" />
+                                <span>
+                                    Worker template updated in this package version.
+                                    Re-deploy to apply the latest changes.
+                                </span>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleRedeploy}
+                                disabled={isToggling}
+                                className="shrink-0 border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                            >
+                                {startRelay.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    "Re-deploy"
+                                )}
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Errors — hide when relay is connected */}
                     {!isConnected && startError && <ErrorCard response={startError} />}

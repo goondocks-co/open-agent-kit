@@ -4,6 +4,9 @@ Copies the bundled Cloudflare Worker template to the user's directory and
 renders Jinja2 templates (wrangler.toml.j2) with the provided tokens.
 """
 
+import functools
+import hashlib
+import logging
 import re
 import secrets
 import shutil
@@ -23,6 +26,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WORKER_NAME_MAX_LENGTH,
     CLOUD_RELAY_WORKER_TEMPLATE_DIR,
 )
+
+logger = logging.getLogger(__name__)
 
 # Resolve the bundled template directory relative to this file.
 _TEMPLATE_DIR = Path(__file__).parent / CLOUD_RELAY_WORKER_TEMPLATE_DIR
@@ -181,6 +186,45 @@ def is_scaffolded(project_root: Path) -> bool:
     return (scaffold_dir / CLOUD_RELAY_SCAFFOLD_PACKAGE_JSON).is_file() and (
         scaffold_dir / CLOUD_RELAY_SCAFFOLD_WRANGLER_TOML
     ).is_file()
+
+
+@functools.lru_cache(maxsize=1)
+def compute_template_hash() -> str:
+    """Compute SHA-256 hash of the bundled Worker template source files.
+
+    Used to detect when a package update has changed the Worker template,
+    signalling that a redeploy is needed.  The result is cached because the
+    bundled template is read-only for the lifetime of the process.
+
+    Returns:
+        Hex digest of the hash.
+    """
+    h = hashlib.sha256()
+    for ext in (".ts", ".json", ".toml"):
+        for path in sorted(_TEMPLATE_DIR.rglob(f"*{ext}")):
+            h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+def migrate_scaffold_dir(project_root: Path) -> None:
+    """Migrate scaffold from legacy git-tracked location to .oak/ci/cloud-relay.
+
+    One-time idempotent migration: copies the old ``oak/cloud-relay/`` directory
+    to the new ``.oak/ci/cloud-relay/`` location if the old one exists and the
+    new one does not.
+
+    Args:
+        project_root: Root directory of the project.
+    """
+    old_dir = project_root / "oak" / "cloud-relay"
+    new_dir = project_root / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR
+    if old_dir.is_dir() and not new_dir.is_dir():
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(old_dir, new_dir)
+        logger.info(
+            "Migrated cloud relay scaffold from oak/cloud-relay to %s",
+            CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR,
+        )
 
 
 def render_wrangler_config(

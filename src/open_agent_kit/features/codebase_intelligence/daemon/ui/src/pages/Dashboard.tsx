@@ -4,7 +4,7 @@ import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-compone
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { usePlans } from "@/hooks/use-plans";
-import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save, Server, Cloud, Users } from "lucide-react";
+import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     formatRelativeTime,
@@ -152,48 +152,6 @@ export default function Dashboard() {
                     loading={isLoading}
                 />
             </div>
-
-            {/* Team Stats — only when team features are active */}
-            {(status?.team?.configured || status?.cloud_relay?.connected) && (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <StatCard
-                        title="Team"
-                        value={
-                            status?.team?.connected
-                                ? "Connected"
-                                : status?.team?.configured
-                                    ? "Configured"
-                                    : "Off"
-                        }
-                        icon={Server}
-                        subtext="Relay-based team sync"
-                        loading={isLoading}
-                        href="/team"
-                    />
-                    <StatCard
-                        title="Cloud Relay"
-                        value={status?.cloud_relay?.connected ? "Connected" : "Off"}
-                        icon={Cloud}
-                        subtext={
-                            status?.cloud_relay?.worker_url
-                                ? new URL(status.cloud_relay.worker_url).host
-                                : "Cloudflare Worker relay"
-                        }
-                        loading={isLoading}
-                        href="/cloud"
-                    />
-                    {(status?.team?.members_online ?? 0) > 0 && (
-                        <StatCard
-                            title="Nodes Online"
-                            value={status!.team!.members_online}
-                            icon={Users}
-                            subtext="Connected peer nodes"
-                            loading={isLoading}
-                            href="/team/members"
-                        />
-                    )}
-                </div>
-            )}
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <Card className="col-span-4">

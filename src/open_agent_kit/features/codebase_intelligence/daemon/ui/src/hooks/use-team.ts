@@ -34,17 +34,34 @@ export interface TeamConfigUpdate {
 export interface OnlineNode {
     machine_id: string;
     online: boolean;
+    oak_version?: string;
+    template_hash?: string;
 }
 
 export interface RelayStatus {
     connected: boolean;
     worker_url: string | null;
-    [key: string]: unknown;
+    connected_at: string | null;
+    last_heartbeat: string | null;
+    error: string | null;
+    reconnect_attempts: number;
+}
+
+export interface SyncStatus {
+    enabled: boolean;
+    queue_depth: number;
+    last_sync: string | null;
+    last_error: string | null;
+    events_sent_total: number;
 }
 
 export interface TeamStatusResponse {
+    configured: boolean;
+    connected: boolean;
     relay: RelayStatus | null;
     online_nodes: OnlineNode[];
+    sync: SyncStatus | null;
+    relay_pending: Record<string, number>;
 }
 
 export interface TeamMembersResponse {

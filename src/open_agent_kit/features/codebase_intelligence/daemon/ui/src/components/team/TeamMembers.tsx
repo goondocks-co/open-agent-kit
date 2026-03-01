@@ -7,7 +7,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTeamMembers } from "@/hooks/use-team";
-import { Users, AlertCircle } from "lucide-react";
+import { Users, AlertCircle, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // =============================================================================
@@ -100,8 +100,9 @@ export default function TeamMembers() {
                     <CardContent className="p-0">
                         <div className="border-t divide-y">
                             {/* Table header */}
-                            <div className="grid grid-cols-2 gap-4 px-6 py-3 text-xs font-medium text-muted-foreground bg-muted/30">
+                            <div className="grid grid-cols-3 gap-4 px-6 py-3 text-xs font-medium text-muted-foreground bg-muted/30">
                                 <div>Machine ID</div>
+                                <div>Version</div>
                                 <div>Status</div>
                             </div>
 
@@ -109,7 +110,7 @@ export default function TeamMembers() {
                             {nodes.map((node, idx) => (
                                 <div
                                     key={node.machine_id || idx}
-                                    className="grid grid-cols-2 gap-4 px-6 py-3 items-center hover:bg-accent/5"
+                                    className="grid grid-cols-3 gap-4 px-6 py-3 items-center hover:bg-accent/5"
                                 >
                                     <div className="flex items-center gap-3 min-w-0">
                                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -118,6 +119,16 @@ export default function TeamMembers() {
                                         <code className="text-sm bg-muted px-1.5 py-0.5 rounded truncate">
                                             {node.machine_id}
                                         </code>
+                                    </div>
+                                    <div>
+                                        {node.oak_version ? (
+                                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                                <Package className="w-3 h-3" />
+                                                v{node.oak_version}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">—</span>
+                                        )}
                                     </div>
                                     <div>
                                         <OnlineIndicator online={node.online} />

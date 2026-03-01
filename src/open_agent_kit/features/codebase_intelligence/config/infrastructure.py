@@ -18,6 +18,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT,
     CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN,
+    CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH,
     CI_CONFIG_CLOUD_RELAY_KEY_RECONNECT_MAX,
     CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT,
@@ -223,6 +224,7 @@ class CloudRelayConfig:
     tool_timeout_seconds: int = CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS
     reconnect_max_seconds: int = CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS
     custom_domain: str | None = None
+    deployed_template_hash: str | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -318,6 +320,7 @@ class CloudRelayConfig:
                 CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS,
             ),
             custom_domain=data.get(CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN),
+            deployed_template_hash=data.get(CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -331,4 +334,5 @@ class CloudRelayConfig:
             CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT: self.tool_timeout_seconds,
             CI_CONFIG_CLOUD_RELAY_KEY_RECONNECT_MAX: self.reconnect_max_seconds,
             CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN: self.custom_domain,
+            CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH: self.deployed_template_hash,
         }

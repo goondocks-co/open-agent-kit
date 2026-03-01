@@ -24,6 +24,7 @@ export interface CloudRelayStatus {
     cf_account_name: string | null;
     custom_domain: string | null;
     worker_name: string | null;
+    update_available: boolean;
 }
 
 /** Cloud relay start response */

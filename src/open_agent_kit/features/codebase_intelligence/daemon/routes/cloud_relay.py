@@ -80,6 +80,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_RESPONSE_KEY_RECONNECT_ATTEMPTS,
     CLOUD_RELAY_RESPONSE_KEY_STATUS,
     CLOUD_RELAY_RESPONSE_KEY_SUGGESTION,
+    CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE,
     CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME,
     CLOUD_RELAY_RESPONSE_KEY_WORKER_URL,
     CLOUD_RELAY_SCAFFOLD_NODE_MODULES_DIR,
@@ -203,23 +204,9 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
             error=CI_CLOUD_RELAY_ERROR_CONFIG_NOT_LOADED,
         )
 
-    # Guard: if this node is configured as a relay *consumer* (team.relay_worker_url
-    # points to a URL that is NOT the locally-deployed cloud relay), deploying a new
-    # Worker would overwrite the shared team credentials and disconnect this node from
-    # the rest of the team.  Only the node that owns the Cloudflare account should
-    # deploy; teammates configure via the Team Config tab instead.
-    _tc = state.ci_config.team
-    _rc = state.ci_config.cloud_relay
-    if _tc.relay_worker_url and _tc.relay_worker_url != _rc.worker_url:
-        return _make_error_response(
-            phase=CLOUD_RELAY_PHASE_SCAFFOLD,
-            error=(
-                "This node is already joined to a team relay at "
-                f"{_tc.relay_worker_url}. "
-                "Only the node that owns the Cloudflare account should deploy. "
-                "Teammates join via Team → Config."
-            ),
-        )
+    # No ownership guard — any team member with valid Cloudflare credentials can
+    # deploy or update the relay Worker.  If wrangler is not authenticated or points
+    # to a different account the auth_check phase will fail with a clear message.
 
     from open_agent_kit.features.codebase_intelligence.cloud_relay.deploy import (
         check_wrangler_auth,
@@ -359,9 +346,14 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
 
     worker_url = deployed_url
 
-    # Save worker_url to config
+    # Save worker_url and deployed template hash to config
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.scaffold import (
+        compute_template_hash,
+    )
+
     ci_config_fresh = load_ci_config(project_root)
     ci_config_fresh.cloud_relay.worker_url = worker_url
+    ci_config_fresh.cloud_relay.deployed_template_hash = compute_template_hash()
     save_ci_config(project_root, ci_config_fresh)
     state.ci_config = None
 
@@ -800,6 +792,14 @@ async def get_cloud_relay_status() -> dict:
 
         worker_name = make_worker_name(state.project_root.name)
 
+    # Compute update_available: True when deployed hash differs from current template
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.scaffold import (
+        compute_template_hash,
+    )
+
+    deployed_hash = state.ci_config.cloud_relay.deployed_template_hash if state.ci_config else None
+    update_available = deployed_hash is not None and deployed_hash != compute_template_hash()
+
     if state.cloud_relay_client is None:
         return {
             CLOUD_RELAY_RESPONSE_KEY_CONNECTED: False,
@@ -813,6 +813,7 @@ async def get_cloud_relay_status() -> dict:
             CLOUD_RELAY_RESPONSE_KEY_CF_ACCOUNT_NAME: None,
             CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN: custom_domain,
             CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME: worker_name,
+            CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: update_available,
         }
 
     status_dict = state.cloud_relay_client.get_status().to_dict()
@@ -831,5 +832,6 @@ async def get_cloud_relay_status() -> dict:
     status_dict[CLOUD_RELAY_RESPONSE_KEY_CF_ACCOUNT_NAME] = state.cf_account_name
     status_dict[CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN] = custom_domain
     status_dict[CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME] = worker_name
+    status_dict[CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE] = update_available
 
     return status_dict

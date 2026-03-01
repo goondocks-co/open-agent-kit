@@ -88,6 +88,14 @@ export default {
       return doStub.fetch(request);
     }
 
+    // ----- GET /obs/stats — pending obs counts per offline node -----
+    if (path === "/obs/stats" && request.method === "GET") {
+      const authErr = validateRelayToken(request, env);
+      if (authErr) return authErr;
+      const doStub = getDurableObject(env);
+      return doStub.fetch(request);
+    }
+
     // ----- GET /health -----
     if (path === "/health") {
       const doStub = getDurableObject(env);

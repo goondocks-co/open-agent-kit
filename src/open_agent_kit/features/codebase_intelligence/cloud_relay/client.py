@@ -216,12 +216,19 @@ class CloudRelayClient(RelayClient):
         subprotocols = [Subprotocol(self._token)] if self._token else []
         self._ws = await websockets.connect(ws_url, subprotocols=subprotocols)
 
-        # Send registration message with available tools
+        # Send registration message with available tools and version metadata.
+        import open_agent_kit
+        from open_agent_kit.features.codebase_intelligence.cloud_relay.scaffold import (
+            compute_template_hash,
+        )
+
         tools = await self._get_available_tools()
         register_msg = RegisterMessage(
             token=self._token or "",
             tools=tools,
             machine_id=self._machine_id,
+            oak_version=getattr(open_agent_kit, "__version__", ""),
+            template_hash=compute_template_hash(),
         )
         await self._ws.send(register_msg.model_dump_json())
 

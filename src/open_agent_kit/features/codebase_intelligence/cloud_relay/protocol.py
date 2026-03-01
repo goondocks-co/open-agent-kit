@@ -56,13 +56,16 @@ class RelayMessageType(str, Enum):
 class RegisterMessage(BaseModel):
     """Sent by daemon to register with the worker after connecting.
 
-    Includes the authentication token and the list of available MCP tools.
+    Includes the authentication token, list of available MCP tools, and
+    version metadata so peers can detect when teammates need to update.
     """
 
     type: str = CLOUD_RELAY_WS_TYPE_REGISTER
     token: str
     tools: list[dict[str, Any]] = Field(default_factory=list)
     machine_id: str = ""
+    oak_version: str = ""
+    template_hash: str = ""
 
 
 class ToolCallResponse(BaseModel):

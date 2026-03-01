@@ -37,6 +37,8 @@ export interface RegisterMessage {
   token: string;
   machine_id: string;
   tools: Array<Record<string, unknown>>;
+  oak_version?: string;
+  template_hash?: string;
 }
 
 /** Sent by daemon in response to a tool call request. */
@@ -127,7 +129,7 @@ export interface ObsBatchMessage {
 /** Sent by worker to inform all nodes of the current node list. */
 export interface NodeListMessage {
   type: typeof RelayMessageType.NODE_LIST;
-  nodes: { machine_id: string; online: boolean }[];
+  nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string }[];
 }
 
 // ---------------------------------------------------------------------------

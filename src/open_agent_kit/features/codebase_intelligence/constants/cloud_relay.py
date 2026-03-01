@@ -127,7 +127,7 @@ CLOUD_RELAY_WS_CLOSE_TOKEN_INVALID: Final[int] = 4003
 
 # Scaffold constants
 CLOUD_RELAY_WORKER_TEMPLATE_DIR: Final[str] = "worker_template"
-CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR: Final[str] = "oak/cloud-relay"
+CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR: Final[str] = ".oak/ci/cloud-relay"
 CLOUD_RELAY_JINJA2_EXTENSION: Final[str] = ".j2"
 
 # Scaffold .gitignore entries
@@ -290,6 +290,15 @@ CLOUD_RELAY_REQUEST_KEY_AGENT_TOKEN: Final[str] = "agent_token"
 
 # Worker name response key (used by UI to derive custom subdomain preview)
 CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME: Final[str] = "worker_name"
+
+# Template hash config key (persisted in cloud_relay config section)
+CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH: Final[str] = "deployed_template_hash"
+
+# Status response key for Worker template update detection
+CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: Final[str] = "update_available"
+
+# Observation stats endpoint path
+CLOUD_RELAY_OBS_STATS_PATH: Final[str] = "/obs/stats"
 
 # CLI additional messages
 CI_CLOUD_RELAY_MESSAGE_CONNECTING_RELAY: Final[str] = "Connecting to cloud relay..."
