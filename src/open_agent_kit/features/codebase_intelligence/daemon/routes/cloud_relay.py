@@ -230,7 +230,24 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     relay_config = state.ci_config.cloud_relay
 
     # ------------------------------------------------------------------
-    # Phase 1: Scaffold
+    # Phase 1: Auth check (fast, no side effects — fail before doing work)
+    # ------------------------------------------------------------------
+    logger.info(CI_CLOUD_RELAY_LOG_PHASE_AUTH_CHECK)
+    loop = asyncio.get_running_loop()
+    auth_info = await loop.run_in_executor(None, check_wrangler_auth, project_root)
+
+    if auth_info is None or not auth_info.authenticated:
+        return _make_error_response(
+            phase=CLOUD_RELAY_PHASE_AUTH_CHECK,
+            error=CLOUD_RELAY_ERROR_NOT_AUTHENTICATED,
+            suggestion=CLOUD_RELAY_SUGGESTION_WRANGLER_LOGIN,
+        )
+
+    # Store account name for status display
+    state.cf_account_name = auth_info.account_name
+
+    # ------------------------------------------------------------------
+    # Phase 2: Scaffold
     # ------------------------------------------------------------------
     if not is_scaffolded(project_root):
         logger.info(CI_CLOUD_RELAY_LOG_PHASE_SCAFFOLD)
@@ -284,12 +301,14 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     )
 
     # ------------------------------------------------------------------
-    # Phase 2: npm install (skip if node_modules exists)
+    # Phase 3: npm install (skip if node_modules exists)
     # ------------------------------------------------------------------
+    # Verify wrangler-dist/cli.js exists — a partial npm install leaves node_modules/
+    # in place but missing sub-packages, which causes wrangler to crash at runtime.
     node_modules = scaffold_dir / CLOUD_RELAY_SCAFFOLD_NODE_MODULES_DIR
-    if not node_modules.is_dir():
+    wrangler_cli = node_modules / "wrangler-dist" / "cli.js"
+    if not node_modules.is_dir() or not wrangler_cli.is_file():
         logger.info(CI_CLOUD_RELAY_LOG_PHASE_NPM_INSTALL)
-        loop = asyncio.get_running_loop()
         success, npm_output = await loop.run_in_executor(None, run_npm_install, scaffold_dir)
         if not success:
             return _make_error_response(
@@ -304,26 +323,6 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
             )
     else:
         logger.info(CI_CLOUD_RELAY_LOG_PHASE_NPM_INSTALL_SKIP)
-
-    # ------------------------------------------------------------------
-    # Phase 3: Auth check
-    # ------------------------------------------------------------------
-    # Run from project_root (not scaffold_dir) so npx finds the same wrangler
-    # binary as the preflight check — local node_modules wrangler may format
-    # `whoami` output differently, causing false "not authenticated" errors.
-    logger.info(CI_CLOUD_RELAY_LOG_PHASE_AUTH_CHECK)
-    loop = asyncio.get_running_loop()
-    auth_info = await loop.run_in_executor(None, check_wrangler_auth, project_root)
-
-    if auth_info is None or not auth_info.authenticated:
-        return _make_error_response(
-            phase=CLOUD_RELAY_PHASE_AUTH_CHECK,
-            error=CLOUD_RELAY_ERROR_NOT_AUTHENTICATED,
-            suggestion=CLOUD_RELAY_SUGGESTION_WRANGLER_LOGIN,
-        )
-
-    # Store account name for status display
-    state.cf_account_name = auth_info.account_name
 
     # ------------------------------------------------------------------
     # Phase 4: Deploy (always — idempotent, ensures config changes
@@ -409,7 +408,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     )
 
     try:
-        relay_status = await client.connect(worker_url, token, port)
+        relay_status = await client.connect(worker_url, token, port, machine_id=state.machine_id)
         state.cloud_relay_client = client
     except Exception as exc:
         error_msg = CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(error=str(exc))
@@ -715,7 +714,7 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
     )
 
     try:
-        relay_status = await client.connect(worker_url, token, port)
+        relay_status = await client.connect(worker_url, token, port, machine_id=state.machine_id)
         state.cloud_relay_client = client
 
         if relay_status.connected:

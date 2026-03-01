@@ -90,6 +90,7 @@ export const API_ENDPOINTS = {
     // Cloud relay endpoints
     CLOUD_RELAY_STATUS: "/api/cloud/status",
     CLOUD_RELAY_START: "/api/cloud/start",
+    CLOUD_RELAY_CONNECT: "/api/cloud/connect",
     CLOUD_RELAY_STOP: "/api/cloud/stop",
     CLOUD_RELAY_PREFLIGHT: "/api/cloud/preflight",
     CLOUD_RELAY_SETTINGS: "/api/cloud/settings",
@@ -109,6 +110,7 @@ export const API_ENDPOINTS = {
     TEAM_STATUS: "/api/team/status",
     TEAM_MEMBERS: "/api/team/members",
     TEAM_POLICY: "/api/team/policy",
+    TEAM_LEAVE: "/api/team/leave",
 } as const;
 
 // =============================================================================

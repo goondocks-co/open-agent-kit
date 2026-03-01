@@ -480,6 +480,7 @@ class TestCloudRelayStart:
             patch(_PATCH_GET_PORT, return_value=TEST_DAEMON_PORT),
             patch(_PATCH_CLIENT_CLS, return_value=mock_relay_instance),
             patch("pathlib.Path.is_dir", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
         ):
             response = client.post(CI_CLOUD_RELAY_API_PATH_START, json={})
 
@@ -507,6 +508,7 @@ class TestCloudRelayStart:
                 return_value=WranglerAuthInfo(authenticated=False),
             ),
             patch("pathlib.Path.is_dir", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
         ):
             response = client.post(CI_CLOUD_RELAY_API_PATH_START, json={})
 
@@ -539,6 +541,7 @@ class TestCloudRelayStart:
                 return_value=(False, None, "Error: deploy failed"),
             ),
             patch("pathlib.Path.is_dir", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
         ):
             response = client.post(CI_CLOUD_RELAY_API_PATH_START, json={})
 
@@ -952,6 +955,7 @@ class TestCloudRelayWorkerNameInResponse:
             patch(_PATCH_GET_PORT, return_value=TEST_DAEMON_PORT),
             patch(_PATCH_CLIENT_CLS, return_value=mock_relay_instance),
             patch("pathlib.Path.is_dir", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
         ):
             response = client.post(CI_CLOUD_RELAY_API_PATH_START, json={})
 

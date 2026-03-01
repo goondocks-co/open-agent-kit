@@ -7,7 +7,7 @@
  *   GET  /health — status check
  */
 
-import { validateAgentToken, validateRelayToken } from "./auth";
+import { validateAgentToken, validateRelayToken, validateRelayTokenHttp } from "./auth";
 import { handleMcpRequest } from "./mcp-handler";
 import type { Env } from "./types";
 
@@ -82,7 +82,7 @@ export default {
 
     // ----- GET /obs/pending — drain buffered obs for a reconnecting node -----
     if (path === "/obs/pending" && request.method === "GET") {
-      const authErr = validateRelayToken(request, env);
+      const authErr = validateRelayTokenHttp(request, env);
       if (authErr) return authErr;
       const doStub = getDurableObject(env);
       return doStub.fetch(request);
@@ -90,7 +90,7 @@ export default {
 
     // ----- GET /obs/stats — pending obs counts per offline node -----
     if (path === "/obs/stats" && request.method === "GET") {
-      const authErr = validateRelayToken(request, env);
+      const authErr = validateRelayTokenHttp(request, env);
       if (authErr) return authErr;
       const doStub = getDurableObject(env);
       return doStub.fetch(request);

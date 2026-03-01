@@ -48,7 +48,8 @@ export function validateAgentToken(
 
 /**
  * Validate a local daemon WebSocket upgrade request.
- * The relay token is sent in the Sec-WebSocket-Protocol header.
+ * The relay token is sent in the Sec-WebSocket-Protocol header
+ * (browsers don't allow custom headers on WS upgrades).
  * Returns null on success, or a 401 Response on failure.
  */
 export function validateRelayToken(
@@ -65,6 +66,38 @@ export function validateRelayToken(
 
   // The relay token is sent as the first (or only) sub-protocol value.
   const token = protocols.split(",")[0].trim();
+  if (!timingSafeEqual(token, env.RELAY_TOKEN)) {
+    return new Response(JSON.stringify({ error: "invalid relay token" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return null;
+}
+
+/**
+ * Validate a plain HTTP request from a local daemon using Authorization: Bearer.
+ * Used for HTTP-only relay endpoints (/obs/pending, /obs/stats) where the
+ * Sec-WebSocket-Protocol header is not available.
+ * Returns null on success, or a 401 Response on failure.
+ */
+export function validateRelayTokenHttp(
+  request: Request,
+  env: Env,
+): Response | null {
+  const header = request.headers.get("Authorization");
+  if (!header) {
+    return new Response(JSON.stringify({ error: "missing relay token" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const token = header.startsWith(BEARER_PREFIX)
+    ? header.slice(BEARER_PREFIX.length)
+    : header;
+
   if (!timingSafeEqual(token, env.RELAY_TOKEN)) {
     return new Response(JSON.stringify({ error: "invalid relay token" }), {
       status: 401,

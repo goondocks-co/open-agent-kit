@@ -73,18 +73,22 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
 
     logger.info(CI_CLOUD_RELAY_LOG_AUTO_CONNECT)
     try:
+        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+            get_machine_identifier,
+        )
         from open_agent_kit.features.codebase_intelligence.cloud_relay.client import (
             CloudRelayClient,
         )
 
         ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
         port = get_project_port(project_root, ci_data_dir)
+        machine_id = get_machine_identifier(project_root)
 
         client = CloudRelayClient(
             tool_timeout_seconds=relay_config.tool_timeout_seconds,
             reconnect_max_seconds=relay_config.reconnect_max_seconds,
         )
-        relay_status = await client.connect(worker_url, token, port)
+        relay_status = await client.connect(worker_url, token, port, machine_id=machine_id)
         state.cloud_relay_client = client
 
         if relay_status.connected:

@@ -644,9 +644,21 @@ class CloudRelayClient(RelayClient):
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                logger.warning(CI_CLOUD_RELAY_LOG_ERROR.format(error=str(exc)))
+                error_str = str(exc)
+                logger.warning(CI_CLOUD_RELAY_LOG_ERROR.format(error=error_str))
                 with self._lock:
-                    self._error = str(exc)
+                    self._error = error_str
+
+                # Authentication failures (401/403) cannot be resolved by
+                # retrying — the token is wrong.  Stop the loop and let the
+                # user re-deploy via the Connectivity tab to re-sync tokens.
+                if "401" in error_str or "403" in error_str:
+                    self._should_reconnect = False
+                    logger.error(
+                        "Relay auth failed (token mismatch). "
+                        "Go to Team → Connectivity and click Re-deploy to fix."
+                    )
+                    return
 
             # Exponential backoff
             delay = min(

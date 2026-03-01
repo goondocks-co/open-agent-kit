@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_CONFIG,
+    TEAM_API_PATH_LEAVE,
     TEAM_API_PATH_MEMBERS,
     TEAM_API_PATH_POLICY,
     TEAM_API_PATH_STATUS,
@@ -156,6 +157,52 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
     state.ci_config = None
 
     return await get_team_config()
+
+
+# ---------------------------------------------------------------------------
+# Leave team
+# ---------------------------------------------------------------------------
+
+
+@router.post(TEAM_API_PATH_LEAVE)
+@handle_route_errors("team leave")
+async def leave_team() -> dict:
+    """Leave the team: disconnect relay and clear all team relay config.
+
+    Disconnects the cloud relay WebSocket and clears relay_worker_url,
+    api_key, and auto_sync from team config. Also disables cloud relay
+    auto_connect so the daemon does not reconnect on restart.
+
+    The Worker itself is not deleted — the user can redeploy later.
+    """
+    project_root = _require_project_root()
+    state = get_state()
+
+    # Disconnect relay client if connected
+    if state.cloud_relay_client is not None:
+        try:
+            await state.cloud_relay_client.disconnect()
+        except Exception as exc:
+            logger.warning("leave_team: disconnect error: %s", exc)
+        finally:
+            state.cloud_relay_client = None
+            state.cf_account_name = None
+
+    # Clear team relay config + disable auto_connect so daemon stays off
+    from open_agent_kit.features.codebase_intelligence.config import (
+        load_ci_config,
+        save_ci_config,
+    )
+
+    ci_config = load_ci_config(project_root)
+    ci_config.team.relay_worker_url = None
+    ci_config.team.api_key = None
+    ci_config.team.auto_sync = False
+    ci_config.cloud_relay.auto_connect = False
+    save_ci_config(project_root, ci_config)
+    state.ci_config = None
+
+    return {"status": "left"}
 
 
 # ---------------------------------------------------------------------------

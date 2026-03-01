@@ -533,7 +533,7 @@ export default function TeamConnectivity() {
                         {isConnected
                             ? "Your relay is active. Remote teammates and cloud agents can connect."
                             : isDeployed
-                                ? "Your relay is deployed but not connected. Start Relay to reconnect."
+                                ? "Your relay is deployed but not connected. Re-deploy to reconnect."
                                 : "Deploy a Cloudflare Worker to enable remote access for teammates and cloud AI agents."
                         }
                     </CardDescription>
@@ -562,19 +562,19 @@ export default function TeamConnectivity() {
                             disabled={isToggling || isLoading}
                             variant={isConnected ? "outline" : "default"}
                             size="sm"
-                            aria-label={isConnected ? "Stop cloud relay" : isDeployed ? "Reconnect cloud relay" : "Start cloud relay"}
+                            aria-label={isConnected ? "Stop cloud relay" : isDeployed ? "Re-deploy cloud relay" : "Start cloud relay"}
                         >
                             {isToggling ? (
                                 <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    {startRelay.isPending ? (isDeployed ? "Reconnecting..." : "Starting...") : "Stopping..."}
+                                    {startRelay.isPending ? (isDeployed ? "Deploying..." : "Starting...") : "Stopping..."}
                                 </>
                             ) : isConnected ? (
                                 "Stop Relay"
                             ) : isDeployed ? (
                                 <>
                                     <RefreshCw className="h-4 w-4 mr-2" />
-                                    Reconnect
+                                    Re-deploy
                                 </>
                             ) : (
                                 <>

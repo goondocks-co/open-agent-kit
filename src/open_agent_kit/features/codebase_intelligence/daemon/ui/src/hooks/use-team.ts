@@ -169,6 +169,18 @@ export function useUpdateTeamConfig() {
     });
 }
 
+/** Leave the team: disconnect relay and clear all relay config. */
+export function useTeamLeave() {
+    const queryClient = useQueryClient();
+    return useMutation<{ status: string }, Error, void>({
+        mutationFn: () => postJson(API_ENDPOINTS.TEAM_LEAVE, {}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: teamKeys.all });
+            queryClient.invalidateQueries({ queryKey: ["cloud-relay-status"] });
+        },
+    });
+}
+
 /** Update data collection policy. */
 export function useUpdateTeamPolicy() {
     const queryClient = useQueryClient();

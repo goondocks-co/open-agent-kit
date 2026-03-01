@@ -1,18 +1,16 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Wifi, Users, Settings, Shield, HardDrive, Globe } from "lucide-react";
+import { Cloud, Users, Shield, HardDrive } from "lucide-react";
 
 export default function Team() {
     const location = useLocation();
     const currentPath = location.pathname;
 
     const tabs = [
-        { id: "status", label: "Status", path: "/team/status", icon: Wifi },
+        { id: "relay", label: "Relay", path: "/team/relay", icon: Cloud },
         { id: "members", label: "Members", path: "/team/members", icon: Users },
-        { id: "config", label: "Config", path: "/team/config", icon: Settings },
         { id: "policy", label: "Policy", path: "/team/policy", icon: Shield },
         { id: "backups", label: "Backups", path: "/team/backups", icon: HardDrive },
-        { id: "connectivity", label: "Connectivity", path: "/team/connectivity", icon: Globe },
     ];
 
     return (

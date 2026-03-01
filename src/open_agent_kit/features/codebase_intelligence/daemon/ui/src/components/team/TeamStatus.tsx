@@ -26,7 +26,7 @@ import type { OnlineNode, RelayStatus, SyncStatus } from "@/hooks/use-team";
 // Helpers
 // =============================================================================
 
-function timeAgo(iso: string | null | undefined): string {
+export function timeAgo(iso: string | null | undefined): string {
     if (!iso) return "never";
     const diffMs = Date.now() - new Date(iso).getTime();
     const secs = Math.floor(diffMs / 1000);
@@ -36,7 +36,7 @@ function timeAgo(iso: string | null | undefined): string {
     return `${Math.floor(mins / 60)}h ago`;
 }
 
-function formatTimestamp(iso: string | null | undefined): string {
+export function formatTimestamp(iso: string | null | undefined): string {
     if (!iso) return "—";
     return new Date(iso).toLocaleTimeString();
 }
@@ -83,7 +83,7 @@ function ConnectionIndicator({ state }: { state: ConnectionState }) {
 // Relay detail rows
 // =============================================================================
 
-function DetailRow({ icon, label, value, className }: {
+export function DetailRow({ icon, label, value, className }: {
     icon: React.ReactNode;
     label: string;
     value: string;
@@ -104,7 +104,7 @@ function DetailRow({ icon, label, value, className }: {
 // Sub-components
 // =============================================================================
 
-function RelayDetails({ relay, onlineCount }: { relay: RelayStatus; onlineCount: number }) {
+export function RelayDetails({ relay, onlineCount }: { relay: RelayStatus; onlineCount: number }) {
     const connectionState = getConnectionState(relay);
 
     return (
@@ -169,7 +169,7 @@ function RelayDetails({ relay, onlineCount }: { relay: RelayStatus; onlineCount:
     );
 }
 
-function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
+export function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
     return (
         <Card>
             <CardHeader>
@@ -205,7 +205,7 @@ function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
     );
 }
 
-function RelayBuffer({ pending }: { pending: Record<string, number> }) {
+export function RelayBuffer({ pending }: { pending: Record<string, number> }) {
     const entries = Object.entries(pending);
     if (!entries.length) return null;
     return (
@@ -234,7 +234,7 @@ function RelayBuffer({ pending }: { pending: Record<string, number> }) {
     );
 }
 
-function SyncStats({ sync }: { sync: SyncStatus }) {
+export function SyncStats({ sync }: { sync: SyncStatus }) {
     return (
         <Card>
             <CardHeader>

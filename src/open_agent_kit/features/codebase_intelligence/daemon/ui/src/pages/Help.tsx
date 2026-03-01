@@ -585,7 +585,7 @@ function CloudRelayContent() {
                     <div className="space-y-3">
                         <h3 className="font-semibold">One-Click Start</h3>
                         <p className="text-sm text-muted-foreground">
-                            Click <strong>Start Relay</strong> on the <Link to="/team/connectivity" className="text-primary hover:underline">Connectivity</Link> page.
+                            Click <strong>Start Relay</strong> on the <Link to="/team/relay" className="text-primary hover:underline">Connectivity</Link> page.
                             Oak CI will automatically scaffold, deploy, and connect a Cloudflare Worker for you.
                         </p>
                     </div>
@@ -611,7 +611,7 @@ function CloudRelayContent() {
 
                     <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
                         <p className="text-sm text-blue-800 dark:text-blue-200">
-                            The <Link to="/team/connectivity" className="font-medium underline">Connectivity</Link> page shows a prerequisites checklist
+                            The <Link to="/team/relay" className="font-medium underline">Connectivity</Link> page shows a prerequisites checklist
                             and will guide you through any missing steps before starting.
                         </p>
                     </div>
@@ -653,7 +653,7 @@ function CloudRelayContent() {
                         <h3 className="font-semibold text-sm">Cloud agent can't reach the relay</h3>
                         <p className="text-sm text-muted-foreground mt-1">
                             Verify the agent token matches, the MCP URL includes the <code className="bg-muted px-1 rounded">/mcp</code> path,
-                            and test with the curl command shown on the <Link to="/team/connectivity" className="text-primary hover:underline">Connectivity</Link> page.
+                            and test with the curl command shown on the <Link to="/team/relay" className="text-primary hover:underline">Connectivity</Link> page.
                         </p>
                     </div>
                 </CardContent>
