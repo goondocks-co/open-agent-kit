@@ -16,6 +16,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_JOIN,
     TEAM_API_PATH_KEYS,
     TEAM_API_PATH_LEAVE,
+    TEAM_API_PATH_MACHINE_RESYNC,
     TEAM_API_PATH_MEMBERS,
     TEAM_API_PATH_STATUS,
     TEAM_CLI_API_URL_TEMPLATE,
@@ -36,6 +37,8 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_MESSAGE_NO_MEMBERS,
     TEAM_MESSAGE_NOT_CONFIGURED,
     TEAM_MESSAGE_REQUEST_TIMED_OUT,
+    TEAM_MESSAGE_RESYNC_CONFIRM,
+    TEAM_MESSAGE_RESYNC_SUCCESS,
     TEAM_MESSAGE_SERVE_STARTING,
     TEAM_MESSAGE_SERVER_URL,
     TEAM_MESSAGE_SYNC_DISABLED,
@@ -316,6 +319,57 @@ def team_serve(
         print_info("Teammates can join via: oak ci team join --server-url <url>")
     else:
         print_error("Failed to start daemon")
+        raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
+
+
+@team_app.command("resync")
+def team_resync(
+    machine_id: str = typer.Option(..., "--machine-id", "-m", help="Machine ID to resync"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+) -> None:
+    """Re-fetch and re-apply all events from a specific peer machine.
+
+    Deletes this node's local copy of the machine's data, then re-applies
+    it directly from the team server's event log. Use when a node has
+    corrupt or stale data from a specific peer.
+    """
+    project_root = Path.cwd()
+    check_oak_initialized(project_root)
+    check_ci_enabled(project_root)
+
+    if not yes:
+        confirmed = typer.confirm(TEAM_MESSAGE_RESYNC_CONFIRM.format(machine_id=machine_id))
+        if not confirmed:
+            raise typer.Exit()
+
+    port = _get_daemon_port(project_root)
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(
+                _daemon_api_url(port, TEAM_API_PATH_MACHINE_RESYNC),
+                json={"machine_id": machine_id},
+            )
+            if response.status_code != HTTPStatus.OK:
+                print_error(f"Resync failed: {response.json().get('detail', response.text)}")
+                raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
+
+            data = response.json()
+            deleted_total = sum(data.get("deleted", {}).values())
+            print_success(
+                TEAM_MESSAGE_RESYNC_SUCCESS.format(
+                    deleted=deleted_total,
+                    applied=data.get("applied", 0),
+                )
+            )
+            if data.get("errors", 0):
+                print_warning(f"  {data['errors']} events failed to apply — check daemon log")
+
+    except httpx.ConnectError:
+        print_error(TEAM_MESSAGE_DAEMON_NOT_RUNNING)
+        raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
+    except httpx.TimeoutException:
+        print_error(TEAM_MESSAGE_REQUEST_TIMED_OUT)
         raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
 

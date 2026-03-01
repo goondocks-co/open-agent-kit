@@ -184,3 +184,22 @@ def get_events_since(
         new_cursor = str(event_id)
 
     return events, new_cursor
+
+
+def get_events_for_machine(
+    conn: sqlite3.Connection,
+    machine_id: str,
+    limit: int = 500,
+    offset: int = 0,
+) -> list[dict]:
+    """Return stored events for a specific machine (for resync delivery).
+
+    Ordered by id ASC to preserve causal order (sessions before batches
+    before activities/observations, because backfill enqueues in that order).
+    """
+    rows = conn.execute(
+        "SELECT event_type, payload, source_machine_id, content_hash, schema_version "
+        "FROM team_events WHERE source_machine_id = ? ORDER BY id ASC LIMIT ? OFFSET ?",
+        (machine_id, limit, offset),
+    ).fetchall()
+    return [dict(r) for r in rows]

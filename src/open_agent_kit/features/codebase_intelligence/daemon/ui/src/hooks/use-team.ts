@@ -150,6 +150,14 @@ export interface BackfillState {
     last_missing_count: number | null;
 }
 
+export interface MachineResyncResponse {
+    machine_id: string;
+    deleted: Record<string, number>;
+    applied: number;
+    skipped: number;
+    errors: number;
+}
+
 // =============================================================================
 // Polling Constants
 // =============================================================================
@@ -438,5 +446,20 @@ export function useJoinStatus(keyId: string | null) {
         refetchInterval: JOIN_STATUS_POLL_MS,
         pollCategory: "standard",
         enabled: !!keyId,
+    });
+}
+
+/** Re-fetch and re-apply all events for a specific peer machine. */
+export function useMachineResync() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (machineId: string) =>
+            postJson<MachineResyncResponse>(API_ENDPOINTS.TEAM_MACHINE_RESYNC, {
+                machine_id: machineId,
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: teamKeys.members() });
+            queryClient.invalidateQueries({ queryKey: teamKeys.status() });
+        },
     });
 }

@@ -26,6 +26,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_JOIN_STATUS,
     TEAM_API_PATH_KEYS,
     TEAM_API_PATH_LEAVE,
+    TEAM_API_PATH_MACHINE_RESYNC,
     TEAM_API_PATH_PENDING_JOINS,
     TEAM_API_PATH_POLICY,
     TEAM_API_PATH_REJECT_JOIN,
@@ -38,6 +39,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_LOOPBACK_KEY_NAME,
     TEAM_LOOPBACK_URL_PREFIX,
     TEAM_LOOPBACK_URL_TEMPLATE,
+    TEAM_MESSAGE_RESYNC_NOT_ENABLED,
     TEAM_ROUTE_TAG,
     TEAM_ROUTER_PREFIX,
     TEAM_SERVER_MODE_ENV_VAR,
@@ -965,4 +967,144 @@ async def trigger_backfill() -> BackfillStatusResponse:
     return BackfillStatusResponse(
         status="started",
         started_at=datetime.now(UTC).isoformat(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Machine resync (self-healing)
+# ---------------------------------------------------------------------------
+
+
+class MachineResyncRequest(BaseModel):
+    """Request body for machine resync."""
+
+    machine_id: str
+
+
+class MachineResyncResponse(BaseModel):
+    """Response from machine resync."""
+
+    machine_id: str
+    deleted: dict[str, int]
+    applied: int
+    skipped: int
+    errors: int
+
+
+async def _fetch_machine_events(state: Any, machine_id: str) -> list[dict]:
+    """Fetch all stored events for a machine, paging through results.
+
+    In server mode reads directly from the local DB; in client mode
+    fetches from the remote team server via HTTP.
+    """
+    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
+
+    if state.project_root is None:
+        return []
+
+    config = load_ci_config(state.project_root)
+    all_events: list[dict] = []
+    page_size = 500
+
+    if config.team.server_mode:
+        # Server mode: read directly from the local team_events table
+        from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
+            get_events_for_machine,
+        )
+
+        conn = state.activity_store._get_connection()
+        offset = 0
+        while True:
+            page = get_events_for_machine(conn, machine_id, limit=page_size, offset=offset)
+            if not page:
+                break
+            all_events.extend(page)
+            offset += len(page)
+    else:
+        # Client mode: fetch from remote team server via HTTP
+        import httpx
+
+        server_url = config.team.server_url
+        api_key = config.team.api_key
+        if not server_url or not api_key:
+            return []
+
+        offset = 0
+        async with httpx.AsyncClient(timeout=TEAM_HTTP_TIMEOUT_SECONDS) as client:
+            while True:
+                resp = await client.get(
+                    f"{server_url}{TEAM_ROUTER_PREFIX}/machine/{machine_id}/events",
+                    params={"limit": page_size, "offset": offset},
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                resp.raise_for_status()
+                page = resp.json()
+                if not page:
+                    break
+                all_events.extend(page)
+                offset += len(page)
+
+    return all_events
+
+
+@router.post(TEAM_API_PATH_MACHINE_RESYNC)
+@handle_route_errors("machine resync")
+async def machine_resync(request: MachineResyncRequest) -> MachineResyncResponse:
+    """Delete all local data for a machine and re-apply from team_events."""
+    state = get_state()
+    if not state.activity_store or not state.activity_store.team_outbox_enabled:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=TEAM_MESSAGE_RESYNC_NOT_ENABLED,
+        )
+
+    machine_id = request.machine_id
+
+    # Step 1: wipe local data for the machine
+    from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
+        delete_records_by_machine,
+    )
+
+    deleted = delete_records_by_machine(
+        state.activity_store, machine_id, vector_store=state.vector_store
+    )
+
+    # Step 2: fetch events from team_events
+    events = await _fetch_machine_events(state, machine_id)
+
+    # Step 3: re-apply via TeamEventApplier
+    import json
+
+    from open_agent_kit.features.codebase_intelligence.team.protocol import TeamEvent
+    from open_agent_kit.features.codebase_intelligence.team.pull.applier import TeamEventApplier
+
+    team_events = []
+    for e in events:
+        payload = e.get("payload", {})
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+        team_events.append(
+            TeamEvent(
+                event_type=e["event_type"],
+                payload=payload,
+                source_machine_id=e["source_machine_id"],
+                content_hash=e["content_hash"],
+                schema_version=e.get("schema_version", 1),
+                timestamp=e.get("timestamp", ""),
+                project_id=e.get("project_id", ""),
+            )
+        )
+
+    applier = TeamEventApplier(state.activity_store)
+    result = applier.apply_batch(team_events)
+
+    return MachineResyncResponse(
+        machine_id=machine_id,
+        deleted=deleted,
+        applied=result.applied,
+        skipped=result.skipped,
+        errors=result.errors,
     )

@@ -5,6 +5,7 @@
  * machine ID, last seen time, and event count.
  */
 
+import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,8 +15,11 @@ import {
     usePendingJoins,
     useApproveJoin,
     useRejectJoin,
+    useMachineResync,
+    type TeamMember,
 } from "@/hooks/use-team";
-import { Users, AlertCircle, Check, X, Loader2, Clock } from "lucide-react";
+import { Users, AlertCircle, Check, X, Loader2, Clock, RefreshCw } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime, TIME_UNITS, MEMBER_ONLINE_THRESHOLD_MS } from "@/lib/constants";
 
@@ -189,6 +193,20 @@ export default function TeamMembers() {
     const members = membersData?.members ?? [];
     const fetchError = membersData?.error;
 
+    // Resync state
+    const [resyncTarget, setResyncTarget] = React.useState<TeamMember | null>(null);
+    const [resyncResult, setResyncResult] = React.useState<{ machineId: string; applied: number } | null>(null);
+    const resync = useMachineResync();
+
+    const handleResyncConfirm = async () => {
+        if (!resyncTarget) return;
+        const result = await resync.mutateAsync(resyncTarget.machine_id);
+        setResyncResult({ machineId: result.machine_id, applied: result.applied });
+        setResyncTarget(null);
+        // Clear the success badge after a few seconds
+        setTimeout(() => setResyncResult(null), 5000);
+    };
+
     if (!configured) {
         return (
             <Card>
@@ -268,20 +286,22 @@ export default function TeamMembers() {
                     <CardContent className="p-0">
                         <div className="border-t divide-y">
                             {/* Table header */}
-                            <div className="grid grid-cols-4 gap-4 px-6 py-3 text-xs font-medium text-muted-foreground bg-muted/30">
+                            <div className="grid grid-cols-5 gap-4 px-6 py-3 text-xs font-medium text-muted-foreground bg-muted/30">
                                 <div>Member</div>
                                 <div>Machine ID</div>
                                 <div>Last Seen</div>
                                 <div className="text-right">Events</div>
+                                <div className="text-right">Actions</div>
                             </div>
 
                             {/* Table rows */}
                             {members.map((member, idx) => {
                                 const presence = getPresenceState(member.last_seen);
+                                const justResynced = resyncResult?.machineId === member.machine_id;
                                 return (
                                     <div
                                         key={member.machine_id || idx}
-                                        className="grid grid-cols-4 gap-4 px-6 py-3 items-center hover:bg-accent/5"
+                                        className="grid grid-cols-5 gap-4 px-6 py-3 items-center hover:bg-accent/5"
                                     >
                                         <div className="flex items-center gap-3 min-w-0">
                                             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -307,6 +327,20 @@ export default function TeamMembers() {
                                         <div className="text-sm text-right text-muted-foreground">
                                             {member.event_count ?? 0}
                                         </div>
+                                        <div className="flex items-center justify-end gap-2">
+                                            {justResynced && (
+                                                <span className="text-xs text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded">
+                                                    {resyncResult.applied} applied
+                                                </span>
+                                            )}
+                                            <button
+                                                onClick={() => setResyncTarget(member)}
+                                                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                                title="Resync this machine's data"
+                                            >
+                                                <RefreshCw className="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -314,6 +348,24 @@ export default function TeamMembers() {
                     </CardContent>
                 </Card>
             )}
+
+            {/* Resync confirmation dialog */}
+            <ConfirmDialog
+                open={resyncTarget !== null}
+                onOpenChange={(open) => { if (!open) setResyncTarget(null); }}
+                title="Resync machine data"
+                description={
+                    resyncTarget
+                        ? `This will delete this node's local copy of data from machine "${resyncTarget.machine_id}" and re-apply it from the team server. Use this when this node has corrupt or stale data from that peer.`
+                        : ""
+                }
+                confirmLabel="Resync"
+                loadingLabel="Resyncing..."
+                onConfirm={handleResyncConfirm}
+                isLoading={resync.isPending}
+                variant="destructive"
+                requireConfirmText={resyncTarget?.machine_id}
+            />
         </div>
     );
 }

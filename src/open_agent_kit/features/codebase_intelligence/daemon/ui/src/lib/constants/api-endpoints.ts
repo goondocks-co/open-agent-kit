@@ -121,6 +121,7 @@ export const API_ENDPOINTS = {
     TEAM_JOIN_STATUS: "/api/team/join-status",
     TEAM_BACKFILL: "/api/team/backfill",
     TEAM_BACKFILL_STATUS: "/api/team/backfill/status",
+    TEAM_MACHINE_RESYNC: "/api/team/machine/resync",
 } as const;
 
 // =============================================================================

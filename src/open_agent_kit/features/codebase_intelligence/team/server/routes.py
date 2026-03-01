@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_RECONCILE,
+    TEAM_HTTP_MACHINE_EVENTS_PATH,
     TEAM_JOIN_STATUS_APPROVED,
     TEAM_LOG_JOIN_APPROVED,
     TEAM_LOG_JOIN_REJECTED,
@@ -48,6 +49,7 @@ from open_agent_kit.features.codebase_intelligence.team.server.auth import (
     verify_team_token,
 )
 from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
+    get_events_for_machine,
     get_events_since,
     get_latest_cursor,
     store_events,
@@ -150,6 +152,18 @@ async def pull_events(
     )
 
     return TeamEventBatch(events=events, cursor=new_cursor)
+
+
+@router.get(TEAM_HTTP_MACHINE_EVENTS_PATH)
+async def get_machine_events(
+    machine_id: str,
+    limit: int = 500,
+    offset: int = 0,
+    _key: str = Depends(verify_team_token),
+) -> list[dict]:
+    """Return stored events for a specific machine (paginated, for resync)."""
+    conn = _get_conn()
+    return get_events_for_machine(conn, machine_id, limit=limit, offset=offset)
 
 
 @router.post("/members/register")

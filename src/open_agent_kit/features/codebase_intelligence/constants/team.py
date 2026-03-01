@@ -275,3 +275,17 @@ TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES: Final[int] = 30
 TEAM_API_PATH_BACKFILL: Final[str] = "/api/team/backfill"
 TEAM_API_PATH_BACKFILL_STATUS: Final[str] = "/api/team/backfill/status"
 TEAM_API_PATH_RECONCILE: Final[str] = "/api/team/reconcile"
+
+# Machine resync (self-healing)
+TEAM_API_PATH_MACHINE_RESYNC: Final[str] = "/api/team/machine/resync"
+TEAM_HTTP_MACHINE_EVENTS_PATH: Final[str] = "/machine/{machine_id}/events"
+
+# CLI messages for resync
+TEAM_MESSAGE_RESYNC_CONFIRM: Final[str] = (
+    "This will DELETE all local data for machine '{machine_id}' and re-apply from server. Continue?"
+)
+TEAM_MESSAGE_RESYNC_NOT_ENABLED: Final[str] = "Team sync is not enabled on this node"
+TEAM_MESSAGE_RESYNC_SUCCESS: Final[str] = (
+    "Resync complete: deleted {deleted} records, applied {applied} events"
+)
+TEAM_MESSAGE_RESYNC_NO_EVENTS: Final[str] = "No events found for machine '{machine_id}' on server"
