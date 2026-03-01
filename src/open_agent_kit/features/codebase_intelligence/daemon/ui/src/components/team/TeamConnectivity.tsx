@@ -480,6 +480,7 @@ export default function TeamConnectivity() {
     const stopRelay = useCloudRelayStop();
 
     const isConnected = status?.connected ?? false;
+    const isDeployed = !isConnected && !!status?.worker_url;
     const isToggling = startRelay.isPending || stopRelay.isPending;
     const updateAvailable = status?.update_available ?? false;
 
@@ -531,7 +532,9 @@ export default function TeamConnectivity() {
                     <CardDescription>
                         {isConnected
                             ? "Your relay is active. Remote teammates and cloud agents can connect."
-                            : "Deploy a Cloudflare Worker to enable remote access for teammates and cloud AI agents."
+                            : isDeployed
+                                ? "Your relay is deployed but not connected. Start Relay to reconnect."
+                                : "Deploy a Cloudflare Worker to enable remote access for teammates and cloud AI agents."
                         }
                     </CardDescription>
                 </CardHeader>
@@ -541,11 +544,11 @@ export default function TeamConnectivity() {
                         <div className="flex items-center gap-3">
                             <div className={cn(
                                 "w-3 h-3 rounded-full",
-                                isConnected ? "bg-green-500" : "bg-gray-400"
+                                isConnected ? "bg-green-500" : isDeployed ? "bg-amber-500" : "bg-gray-400"
                             )} />
                             <div>
                                 <div className="font-medium text-sm">
-                                    {isConnected ? "Relay Active" : "Relay Inactive"}
+                                    {isConnected ? "Relay Active" : isDeployed ? "Relay Inactive (Deployed)" : "Relay Inactive"}
                                 </div>
                                 {isConnected && cfAccountName && (
                                     <div className="text-xs text-muted-foreground">
@@ -559,15 +562,20 @@ export default function TeamConnectivity() {
                             disabled={isToggling || isLoading}
                             variant={isConnected ? "outline" : "default"}
                             size="sm"
-                            aria-label={isConnected ? "Stop cloud relay" : "Start cloud relay"}
+                            aria-label={isConnected ? "Stop cloud relay" : isDeployed ? "Reconnect cloud relay" : "Start cloud relay"}
                         >
                             {isToggling ? (
                                 <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    {startRelay.isPending ? "Starting..." : "Stopping..."}
+                                    {startRelay.isPending ? (isDeployed ? "Reconnecting..." : "Starting...") : "Stopping..."}
                                 </>
                             ) : isConnected ? (
                                 "Stop Relay"
+                            ) : isDeployed ? (
+                                <>
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Reconnect
+                                </>
                             ) : (
                                 <>
                                     <Cloud className="h-4 w-4 mr-2" />
@@ -622,8 +630,8 @@ export default function TeamConnectivity() {
                 </CardContent>
             </Card>
 
-            {/* Team URLs (when connected) */}
-            {isConnected && workerUrl && mcpEndpoint && (
+            {/* Team URLs — shown when deployed or connected */}
+            {workerUrl && mcpEndpoint && (
                 <TeamUrls workerUrl={workerUrl} mcpEndpoint={mcpEndpoint} />
             )}
 
@@ -634,8 +642,8 @@ export default function TeamConnectivity() {
                 isConnected={isConnected}
             />
 
-            {/* Agent Registration (when connected) */}
-            {isConnected && mcpEndpoint && (
+            {/* Agent Registration — shown when deployed (token/config are static) */}
+            {(isConnected || isDeployed) && mcpEndpoint && (
                 <AgentRegistration mcpEndpoint={mcpEndpoint} agentToken={agentToken} />
             )}
 

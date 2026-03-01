@@ -135,12 +135,23 @@ class TestCloudRelayStatus:
     """Tests for GET /api/cloud/status."""
 
     def test_status_no_client(self, client: TestClient) -> None:
-        """Returns disconnected when no cloud relay client is active."""
+        """Returns disconnected with null worker_url when no client and no config worker_url."""
+        _setup_state_with_config(worker_url=None)
         response = client.get(CI_CLOUD_RELAY_API_PATH_STATUS)
         assert response.status_code == HTTPStatus.OK
         data = response.json()
         assert data[CLOUD_RELAY_RESPONSE_KEY_CONNECTED] is False
         assert data[CLOUD_RELAY_RESPONSE_KEY_WORKER_URL] is None
+        assert data[CLOUD_RELAY_RESPONSE_KEY_ERROR] is None
+
+    def test_status_no_client_with_deployed_worker(self, client: TestClient) -> None:
+        """Returns deployed worker_url from config even when not connected."""
+        _setup_state_with_config(worker_url=TEST_WORKER_URL)
+        response = client.get(CI_CLOUD_RELAY_API_PATH_STATUS)
+        assert response.status_code == HTTPStatus.OK
+        data = response.json()
+        assert data[CLOUD_RELAY_RESPONSE_KEY_CONNECTED] is False
+        assert data[CLOUD_RELAY_RESPONSE_KEY_WORKER_URL] == TEST_WORKER_URL
         assert data[CLOUD_RELAY_RESPONSE_KEY_ERROR] is None
 
     def test_status_connected_client(self, client: TestClient) -> None:

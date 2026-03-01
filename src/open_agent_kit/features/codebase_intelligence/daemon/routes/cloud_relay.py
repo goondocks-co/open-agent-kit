@@ -308,9 +308,12 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # ------------------------------------------------------------------
     # Phase 3: Auth check
     # ------------------------------------------------------------------
+    # Run from project_root (not scaffold_dir) so npx finds the same wrangler
+    # binary as the preflight check — local node_modules wrangler may format
+    # `whoami` output differently, causing false "not authenticated" errors.
     logger.info(CI_CLOUD_RELAY_LOG_PHASE_AUTH_CHECK)
     loop = asyncio.get_running_loop()
-    auth_info = await loop.run_in_executor(None, check_wrangler_auth, scaffold_dir)
+    auth_info = await loop.run_in_executor(None, check_wrangler_auth, project_root)
 
     if auth_info is None or not auth_info.authenticated:
         return _make_error_response(
@@ -801,15 +804,23 @@ async def get_cloud_relay_status() -> dict:
     update_available = deployed_hash is not None and deployed_hash != compute_template_hash()
 
     if state.cloud_relay_client is None:
+        # Surface config-backed values even when disconnected so the UI can
+        # show the deployed worker URL and let the user reconnect.
+        cfg = state.ci_config.cloud_relay if state.ci_config else None
+        cfg_worker_url = cfg.worker_url if cfg else None
+        cfg_agent_token = cfg.agent_token if cfg else None
+        cfg_mcp_endpoint = (
+            _mcp_endpoint(cfg_worker_url, custom_domain, worker_name) if cfg_worker_url else None
+        )
         return {
             CLOUD_RELAY_RESPONSE_KEY_CONNECTED: False,
-            CLOUD_RELAY_RESPONSE_KEY_WORKER_URL: None,
+            CLOUD_RELAY_RESPONSE_KEY_WORKER_URL: cfg_worker_url,
             CLOUD_RELAY_RESPONSE_KEY_CONNECTED_AT: None,
             CLOUD_RELAY_RESPONSE_KEY_LAST_HEARTBEAT: None,
             CLOUD_RELAY_RESPONSE_KEY_ERROR: None,
             CLOUD_RELAY_RESPONSE_KEY_RECONNECT_ATTEMPTS: 0,
-            CLOUD_RELAY_RESPONSE_KEY_AGENT_TOKEN: None,
-            CLOUD_RELAY_RESPONSE_KEY_MCP_ENDPOINT: None,
+            CLOUD_RELAY_RESPONSE_KEY_AGENT_TOKEN: cfg_agent_token,
+            CLOUD_RELAY_RESPONSE_KEY_MCP_ENDPOINT: cfg_mcp_endpoint,
             CLOUD_RELAY_RESPONSE_KEY_CF_ACCOUNT_NAME: None,
             CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN: custom_domain,
             CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME: worker_name,
