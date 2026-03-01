@@ -22,6 +22,7 @@ class LocalTeamGateway(TeamGateway):
         self._conn_factory = conn_factory
 
     async def get_members(self) -> dict[str, Any]:
+        from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
         from open_agent_kit.features.codebase_intelligence.team.server.membership import (
             MembershipService,
         )
@@ -29,7 +30,13 @@ class LocalTeamGateway(TeamGateway):
         conn = self._conn_factory()
         svc = MembershipService(conn_factory=lambda: conn)
         members = svc.list_members()
-        return {"members": [m.model_dump() for m in members]}
+        server_machine_id = get_state().machine_id
+        result = []
+        for m in members:
+            d = m.model_dump()
+            d["is_server"] = server_machine_id is not None and m.machine_id == server_machine_id
+            result.append(d)
+        return {"members": result}
 
     async def get_join_status(self, key_id: str) -> dict[str, Any]:
         from open_agent_kit.features.codebase_intelligence.team.server.auth import (

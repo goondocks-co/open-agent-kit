@@ -49,7 +49,7 @@ def backfill_content_hashes(store: ActivityStore) -> dict[str, int]:
             batch_id, session_id, prompt_number = row
             hash_val = compute_prompt_batch_hash(str(session_id), int(prompt_number))
             conn.execute(
-                "UPDATE prompt_batches SET content_hash = ? WHERE id = ?",
+                "UPDATE OR IGNORE prompt_batches SET content_hash = ? WHERE id = ?",
                 (hash_val, batch_id),
             )
             counts["prompt_batches"] += 1

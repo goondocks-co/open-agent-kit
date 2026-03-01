@@ -63,6 +63,7 @@ export interface TeamMember {
     machine_id: string;
     last_seen?: string;
     event_count?: number;
+    is_server?: boolean;
     [key: string]: unknown;
 }
 

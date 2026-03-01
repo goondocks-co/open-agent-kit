@@ -41,6 +41,7 @@ class TeamMemberInfo(BaseModel):
     project_id: str
     last_seen: str
     event_count: int = 0
+    is_server: bool = False
 
 
 class TeamPullRequest(BaseModel):

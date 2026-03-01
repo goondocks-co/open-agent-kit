@@ -308,8 +308,15 @@ export default function TeamMembers() {
                                                 <Users className="h-4 w-4 text-primary" />
                                             </div>
                                             <div className="min-w-0">
-                                                <div className="text-sm font-medium truncate">
-                                                    {member.display_name || member.machine_id}
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm font-medium truncate">
+                                                        {member.display_name || member.machine_id}
+                                                    </span>
+                                                    {member.is_server && (
+                                                        <span className="shrink-0 text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-medium">
+                                                            Server
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <PresenceIndicator state={presence} />
                                             </div>

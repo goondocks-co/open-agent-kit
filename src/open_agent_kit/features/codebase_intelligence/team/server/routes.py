@@ -190,8 +190,16 @@ async def list_members(
     machine_id: str = Depends(verify_team_token),
 ) -> list[TeamMemberInfo]:
     """List all registered team members."""
+    from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+
     svc = _get_membership_service()
-    return svc.list_members()
+    members = svc.list_members()
+    server_machine_id = get_state().machine_id
+    if server_machine_id:
+        members = [
+            m.model_copy(update={"is_server": m.machine_id == server_machine_id}) for m in members
+        ]
+    return members
 
 
 @router.post("/members/heartbeat")
