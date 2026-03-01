@@ -70,21 +70,11 @@ export interface TeamMembersResponse {
 }
 
 export interface PolicyResponse {
-    collect_activities: boolean;
-    collect_prompts: boolean;
     sync_observations: boolean;
-    sync_activities: boolean;
-    sync_prompts: boolean;
-    allow_server_llm: boolean;
 }
 
 export interface PolicyUpdate {
-    collect_activities?: boolean;
-    collect_prompts?: boolean;
     sync_observations?: boolean;
-    sync_activities?: boolean;
-    sync_prompts?: boolean;
-    allow_server_llm?: boolean;
 }
 
 // =============================================================================

@@ -451,7 +451,7 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.agent_scheduler = None
 
-    # 4. Stop team sync worker
+    # 5. Stop team sync worker
     if state.team_sync_worker:
         logger.info("Stopping team sync worker...")
         try:
@@ -461,7 +461,7 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.team_sync_worker = None
 
-    # 4b. Disconnect cloud relay if connected
+    # 6. Disconnect cloud relay if connected
     if state.cloud_relay_client:
         logger.info("Disconnecting cloud relay...")
         try:
@@ -471,7 +471,7 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.cloud_relay_client = None
 
-    # 5. Stop file watcher and wait for thread cleanup
+    # 7. Stop file watcher and wait for thread cleanup
     if state.file_watcher:
         logger.info("Stopping file watcher...")
         try:

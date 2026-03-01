@@ -10,6 +10,14 @@ bindings = [{ name = "RELAY", class_name = "RelayObject" }]
 tag = "v1"
 new_sqlite_classes = ["RelayObject"]
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
 [vars]
 AGENT_TOKEN = "{{ agent_token }}"
 RELAY_TOKEN = "{{ relay_token }}"

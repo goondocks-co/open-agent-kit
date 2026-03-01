@@ -408,7 +408,9 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     )
 
     try:
-        relay_status = await client.connect(worker_url, token, port, machine_id=state.machine_id)
+        relay_status = await client.connect(
+            worker_url, token, port, machine_id=state.machine_id or ""
+        )
         state.cloud_relay_client = client
     except Exception as exc:
         error_msg = CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(error=str(exc))
@@ -683,9 +685,15 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
 
     relay_config = state.ci_config.cloud_relay
 
-    # Resolve worker_url and token (request body overrides config)
-    worker_url = body.get(CLOUD_RELAY_REQUEST_KEY_WORKER_URL) or relay_config.worker_url
-    token = body.get(CLOUD_RELAY_REQUEST_KEY_TOKEN) or relay_config.token
+    # Resolve worker_url and token (request body overrides config).
+    # Fall back to team config for consumer nodes that store credentials there.
+    team_config = state.ci_config.team
+    worker_url = (
+        body.get(CLOUD_RELAY_REQUEST_KEY_WORKER_URL)
+        or relay_config.worker_url
+        or team_config.relay_worker_url
+    )
+    token = body.get(CLOUD_RELAY_REQUEST_KEY_TOKEN) or relay_config.token or team_config.api_key
 
     if not worker_url:
         raise HTTPException(
@@ -714,7 +722,9 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
     )
 
     try:
-        relay_status = await client.connect(worker_url, token, port, machine_id=state.machine_id)
+        relay_status = await client.connect(
+            worker_url, token, port, machine_id=state.machine_id or ""
+        )
         state.cloud_relay_client = client
 
         if relay_status.connected:

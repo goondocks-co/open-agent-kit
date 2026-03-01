@@ -1,13 +1,14 @@
 """Data collection policy enforcement.
 
-These functions gate what data is collected locally and what syncs
-to the team server based on the DataCollectionPolicy configuration.
+These functions gate what data syncs to the team relay based on the
+DataCollectionPolicy configuration.
 """
 
 from open_agent_kit.features.codebase_intelligence.config.governance import DataCollectionPolicy
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_ACTIVITY_UPSERT,
     TEAM_EVENT_OBSERVATION_RESOLVED,
+    TEAM_EVENT_OBSERVATION_STATUS_UPDATE,
     TEAM_EVENT_OBSERVATION_UPSERT,
     TEAM_EVENT_PROMPT_BATCH_UPSERT,
     TEAM_EVENT_SESSION_END,
@@ -16,13 +17,9 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_SESSION_UPSERT,
 )
 
-# Local collection event type identifiers (used by should_collect_locally)
-LOCAL_EVENT_TYPE_ACTIVITY = "activity"
-LOCAL_EVENT_TYPE_PROMPT = "prompt"
-
 
 def should_sync_event(event_type: str, policy: DataCollectionPolicy) -> bool:
-    """Check if an event type should be synced to team server per policy.
+    """Check if an event type should be synced to team relay per policy.
 
     Args:
         event_type: The team event type constant.
@@ -41,40 +38,13 @@ def should_sync_event(event_type: str, policy: DataCollectionPolicy) -> bool:
     ):
         return True
     # Observations: gated by sync_observations
-    if event_type in (TEAM_EVENT_OBSERVATION_UPSERT, TEAM_EVENT_OBSERVATION_RESOLVED):
+    if event_type in (
+        TEAM_EVENT_OBSERVATION_UPSERT,
+        TEAM_EVENT_OBSERVATION_RESOLVED,
+        TEAM_EVENT_OBSERVATION_STATUS_UPDATE,
+    ):
         return policy.sync_observations
-    # Activities (tool calls, file changes): gated by sync_activities
+    # Activities (tool calls, file changes): not synced in current version
     if event_type == TEAM_EVENT_ACTIVITY_UPSERT:
-        return policy.sync_activities
+        return False
     return False
-
-
-def should_collect_locally(event_type: str, policy: DataCollectionPolicy) -> bool:
-    """Check if an event should be recorded locally per policy.
-
-    This gates the local ActivityStore writes, not outbox writes.
-
-    Args:
-        event_type: A descriptive string like "activity", "prompt", "observation".
-        policy: Current data collection policy.
-
-    Returns:
-        True if the data should be collected locally.
-    """
-    if event_type == LOCAL_EVENT_TYPE_ACTIVITY:
-        return policy.collect_activities
-    if event_type == LOCAL_EVENT_TYPE_PROMPT:
-        return policy.collect_prompts
-    # Observations are always collected locally (they're the core value)
-    return True
-
-
-def redact_prompt_payload(payload: dict) -> dict:
-    """Return a copy of a prompt batch payload with content fields redacted."""
-    from open_agent_kit.features.codebase_intelligence.constants.team import TEAM_REDACTED_BY_POLICY
-
-    redacted = dict(payload)
-    for field in ("user_prompt", "response_summary", "plan_content"):
-        if field in redacted and redacted[field] is not None:
-            redacted[field] = TEAM_REDACTED_BY_POLICY
-    return redacted

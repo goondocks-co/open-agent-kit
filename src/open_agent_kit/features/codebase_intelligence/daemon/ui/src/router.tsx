@@ -26,6 +26,7 @@ import Governance from "@/pages/Governance";
 import GovernanceAudit from "@/components/governance/GovernanceAudit";
 import GovernanceRules from "@/components/governance/GovernanceRules";
 
+
 export const router = createBrowserRouter([
     {
         path: "/",

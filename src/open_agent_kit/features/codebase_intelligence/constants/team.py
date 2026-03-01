@@ -48,9 +48,6 @@ VALID_TEAM_EVENT_TYPES: Final[tuple[str, ...]] = (
     TEAM_EVENT_ACTIVITY_UPSERT,
 )
 
-# Redaction sentinel
-TEAM_REDACTED_BY_POLICY: Final[str] = "[redacted by policy]"
-
 # Outbox statuses
 TEAM_OUTBOX_STATUS_PENDING: Final[str] = "pending"
 TEAM_OUTBOX_STATUS_SENT: Final[str] = "sent"
@@ -170,8 +167,6 @@ TEAM_SERVER_MODE_ENV_VAR: Final[str] = "OAK_CI_TEAM_SERVER"
 TEAM_AUTH_ERROR_MISSING: Final[str] = "Missing Authorization header"
 TEAM_AUTH_ERROR_INVALID_SCHEME: Final[str] = "Invalid authorization scheme, expected Bearer"
 TEAM_AUTH_ERROR_INVALID_KEY: Final[str] = "Invalid or revoked API key"
-TEAM_AUTH_HEADER_NAME: Final[str] = "authorization"
-TEAM_AUTH_SCHEME_BEARER: Final[str] = "Bearer"
 
 # Server log messages
 TEAM_SERVER_LOG_INIT: Final[str] = "Team server tables initialized"

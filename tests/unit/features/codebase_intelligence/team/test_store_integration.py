@@ -314,20 +314,16 @@ def test_create_prompt_batch_with_outbox_enabled(store):
     assert len(batch_rows) == 0
 
 
-def test_create_prompt_batch_redaction(store):
-    """Prompt batch no longer enqueues events, so redaction is moot (observations-only sync)."""
+def test_create_prompt_batch_no_outbox(store):
+    """Prompt batches are not enqueued in normal write path (only via backfill)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
     )
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
         create_session,
     )
-    from open_agent_kit.features.codebase_intelligence.config.governance import (
-        DataCollectionPolicy,
-    )
 
     store.team_outbox_enabled = True
-    store._team_policy_accessor = lambda: DataCollectionPolicy(sync_prompts=False)
     create_session(store, "session-redact-1", TEST_AGENT, TEST_PROJECT_ROOT)
     create_prompt_batch(store, "session-redact-1", user_prompt="Secret prompt text")
 
@@ -369,8 +365,8 @@ def test_add_activity_with_outbox_enabled(store):
     assert len(act_rows) == 0
 
 
-def test_add_activity_blocked_by_policy(store):
-    """add_activity should NOT enqueue when sync_activities is disabled."""
+def test_add_activity_never_enqueues(store):
+    """add_activity should never enqueue activity events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
         add_activity,
     )
@@ -381,12 +377,8 @@ def test_add_activity_blocked_by_policy(store):
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
         create_session,
     )
-    from open_agent_kit.features.codebase_intelligence.config.governance import (
-        DataCollectionPolicy,
-    )
 
     store.team_outbox_enabled = True
-    store._team_policy_accessor = lambda: DataCollectionPolicy(sync_activities=False)
     create_session(store, "session-act-blocked", TEST_AGENT, TEST_PROJECT_ROOT)
     batch = create_prompt_batch(store, "session-act-blocked", user_prompt="test")
 

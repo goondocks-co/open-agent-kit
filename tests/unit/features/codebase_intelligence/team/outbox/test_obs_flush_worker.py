@@ -1,7 +1,9 @@
 """Unit tests for ObsFlushWorker."""
 
+import asyncio
 import json
-from unittest.mock import MagicMock
+import threading
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -40,6 +42,23 @@ def worker(store, team_config):
     return ObsFlushWorker(store=store, config=team_config, project_id=TEST_PROJECT_ID)
 
 
+@pytest.fixture
+def event_loop_thread():
+    """Run an event loop in a background thread (mirrors production daemon pattern).
+
+    The ObsFlushWorker uses asyncio.run_coroutine_threadsafe to schedule
+    async relay calls from its daemon thread, so tests must provide a
+    running loop on a separate thread.
+    """
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    yield loop
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=5)
+    loop.close()
+
+
 def _insert_outbox_row(store, event_type=TEAM_EVENT_OBSERVATION_UPSERT, payload=None):
     """Insert a pending outbox row directly into the database."""
     if payload is None:
@@ -65,10 +84,14 @@ def _insert_outbox_row(store, event_type=TEAM_EVENT_OBSERVATION_UPSERT, payload=
     conn.commit()
 
 
-def test_flush_calls_push_observations(worker, store):
+def test_flush_calls_push_observations(worker, store, event_loop_thread):
     """ObsFlushWorker.flush() should call relay_client.push_observations() with obs dicts."""
     relay_client = MagicMock()
-    worker.set_relay_client(relay_client)
+    relay_client.push_observations = AsyncMock()
+
+    # Wire up relay client and event loop (mirrors startup.py wiring)
+    worker._relay_client = relay_client
+    worker._event_loop = event_loop_thread
 
     _insert_outbox_row(store)
 

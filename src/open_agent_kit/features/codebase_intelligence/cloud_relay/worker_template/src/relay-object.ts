@@ -409,18 +409,20 @@ export class RelayObject implements DurableObject {
     const senderMachineId = this.getMachineId(senderWs) ?? "unknown";
     const allSockets = this.state.getWebSockets();
 
+    // Serialize once for all peers.
+    const batch: ObsBatchMessage = {
+      type: RelayMessageType.OBS_BATCH,
+      from_machine_id: senderMachineId,
+      observations: msg.observations,
+    };
+    const serialized = JSON.stringify(batch);
+
     for (const ws of allSockets) {
       const machineId = this.getMachineId(ws);
       if (machineId === senderMachineId) continue;
 
-      const batch: ObsBatchMessage = {
-        type: RelayMessageType.OBS_BATCH,
-        from_machine_id: senderMachineId,
-        observations: msg.observations,
-      };
-
       try {
-        ws.send(JSON.stringify(batch));
+        ws.send(serialized);
       } catch {
         // WS closed — buffer all observations for this peer in one bulk INSERT.
         if (machineId && msg.observations.length > 0) {
@@ -672,34 +674,4 @@ export class RelayObject implements DurableObject {
     return null;
   }
 
-  private cleanupConnection(): void {
-    // Stop all heartbeats.
-    for (const machineId of this.heartbeatTimers.keys()) {
-      this.stopHeartbeat(machineId);
-    }
-
-    this.tools = [];
-
-    // Close all sockets.
-    const allSockets = this.state.getWebSockets();
-    for (const ws of allSockets) {
-      try {
-        ws.close(1000, "cleanup");
-      } catch {
-        // already closed
-      }
-    }
-
-    for (const [id, entry] of this.pending) {
-      clearTimeout(entry.timer);
-      entry.reject(new Error("instance offline"));
-      this.pending.delete(id);
-    }
-
-    for (const [id, entry] of this.pendingHttp) {
-      clearTimeout(entry.timer);
-      entry.reject(new Error("instance offline"));
-      this.pendingHttp.delete(id);
-    }
-  }
 }

@@ -228,7 +228,6 @@ def _bulk_insert_transaction(
     session_updates: dict[str, int] = {}
     batch_updates: dict[int, int] = {}
     affected_sessions: set[str] = set()
-    inserted_rows: list[dict] = []
 
     with store._transaction() as conn:
         for activity in activities:
@@ -242,7 +241,6 @@ def _bulk_insert_transaction(
                 batch_updates,
                 affected_sessions,
             )
-            inserted_rows.append(row)
         _apply_count_updates(conn, session_updates, batch_updates)
 
     return ids, session_updates, batch_updates, affected_sessions
@@ -257,8 +255,6 @@ def _individual_insert_fallback(
     session_updates: dict[str, int] = {}
     batch_updates: dict[int, int] = {}
     affected_sessions: set[str] = set()
-    inserted_activities: list[Activity] = []
-    inserted_rows: list[dict] = []
     skipped = 0
 
     for activity in activities:
@@ -274,8 +270,6 @@ def _individual_insert_fallback(
                     batch_updates,
                     affected_sessions,
                 )
-                inserted_activities.append(activity)
-                inserted_rows.append(row)
         except sqlite3.IntegrityError:
             skipped += 1
             logger.debug(
@@ -284,8 +278,8 @@ def _individual_insert_fallback(
                 f"tool={activity.tool_name}"
             )
 
-    # Apply count updates + enqueue outbox events for successfully inserted activities
-    if session_updates or batch_updates or inserted_rows:
+    # Apply count updates for successfully inserted activities
+    if session_updates or batch_updates:
         with store._transaction() as conn:
             _apply_count_updates(conn, session_updates, batch_updates)
 

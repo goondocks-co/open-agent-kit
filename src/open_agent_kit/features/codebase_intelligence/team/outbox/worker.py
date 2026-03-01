@@ -7,6 +7,7 @@ The relay client (CloudRelayClient) is injected via set_relay_client().
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
@@ -63,6 +64,7 @@ class ObsFlushWorker:
         self._config = config
         self._project_id = project_id
         self._relay_client: Any | None = None
+        self._event_loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
@@ -75,10 +77,17 @@ class ObsFlushWorker:
     def set_relay_client(self, relay_client: Any) -> None:
         """Set or replace the relay client used for pushing observations.
 
+        Captures the running event loop so the worker thread can schedule
+        async relay calls via ``asyncio.run_coroutine_threadsafe``.
+
         Args:
             relay_client: CloudRelayClient instance (or compatible).
         """
         self._relay_client = relay_client
+        try:
+            self._event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._event_loop = None
 
     def start(self) -> None:
         """Start the background flush timer."""
@@ -199,12 +208,18 @@ class ObsFlushWorker:
                 }
             )
 
-        # Push via relay client
+        # Push via relay client (async method — schedule from this thread)
         try:
-            self._relay_client.push_observations(obs_list)
+            coro = self._relay_client.push_observations(obs_list)
+            if self._event_loop is not None and self._event_loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(coro, self._event_loop)
+                future.result(timeout=30)
+            else:
+                logger.warning("No event loop available for obs push, skipping")
+                return 0
             accepted = len(obs_list)
-        except Exception:
-            # Relay-level failure -- events remain pending, retry on next tick
+        except Exception as exc:
+            self._mark_retry(conn, row_ids, str(exc))
             raise
 
         # Mark all events as sent

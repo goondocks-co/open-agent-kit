@@ -116,12 +116,15 @@ def client(auth_headers):
 def _setup_state_with_config(
     worker_url: str | None = None,
     token: str | None = None,
-) -> None:
+) -> MagicMock:
     """Set up daemon state with CI config.
 
     Args:
         worker_url: Optional worker URL in config.
         token: Optional relay token in config.
+
+    Returns:
+        The daemon state object.
     """
     state = get_state()
     state.ci_config = CIConfig()
@@ -129,6 +132,7 @@ def _setup_state_with_config(
         worker_url=worker_url,
         token=token,
     )
+    return state
 
 
 class TestCloudRelayStatus:
@@ -308,7 +312,7 @@ class TestCloudRelayConnect:
 
     def test_connect_uses_config_url_and_token(self, client: TestClient) -> None:
         """Falls back to config values when body is empty."""
-        _setup_state_with_config(worker_url=TEST_WORKER_URL, token=TEST_RELAY_TOKEN)
+        state = _setup_state_with_config(worker_url=TEST_WORKER_URL, token=TEST_RELAY_TOKEN)
 
         mock_instance = AsyncMock()
         mock_instance.connect = AsyncMock(
@@ -322,12 +326,12 @@ class TestCloudRelayConnect:
             response = client.post(CI_CLOUD_RELAY_API_PATH_CONNECT, json={})
         assert response.status_code == HTTPStatus.OK
         mock_instance.connect.assert_called_once_with(
-            TEST_WORKER_URL, TEST_RELAY_TOKEN, TEST_DAEMON_PORT
+            TEST_WORKER_URL, TEST_RELAY_TOKEN, TEST_DAEMON_PORT, machine_id=state.machine_id or ""
         )
 
     def test_connect_body_overrides_config(self, client: TestClient) -> None:
         """Request body values override config values."""
-        _setup_state_with_config(worker_url=TEST_WORKER_URL, token="config-token")
+        state = _setup_state_with_config(worker_url=TEST_WORKER_URL, token="config-token")
 
         mock_instance = AsyncMock()
         mock_instance.connect = AsyncMock(
@@ -347,7 +351,10 @@ class TestCloudRelayConnect:
             )
         assert response.status_code == HTTPStatus.OK
         mock_instance.connect.assert_called_once_with(
-            TEST_WORKER_URL_ALTERNATE, TEST_RELAY_TOKEN, TEST_DAEMON_PORT
+            TEST_WORKER_URL_ALTERNATE,
+            TEST_RELAY_TOKEN,
+            TEST_DAEMON_PORT,
+            machine_id=state.machine_id or "",
         )
 
 

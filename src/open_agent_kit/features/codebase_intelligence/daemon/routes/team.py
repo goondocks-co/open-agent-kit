@@ -18,6 +18,7 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_API_PATH_MEMBERS,
     TEAM_API_PATH_POLICY,
     TEAM_API_PATH_STATUS,
+    TEAM_DEFAULT_SYNC_INTERVAL_SECONDS,
     TEAM_ROUTE_TAG,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes._utils import (
@@ -39,7 +40,7 @@ class TeamConfigResponse(BaseModel):
     """Current team configuration."""
 
     auto_sync: bool = False
-    sync_interval_seconds: int = 3
+    sync_interval_seconds: int = TEAM_DEFAULT_SYNC_INTERVAL_SECONDS
     relay_worker_url: str | None = None
     api_key: str | None = None
 
@@ -67,23 +68,13 @@ class TeamStatusResponse(BaseModel):
 class PolicyResponse(BaseModel):
     """Data-collection policy (governance.data_collection)."""
 
-    collect_activities: bool = True
-    collect_prompts: bool = True
     sync_observations: bool = True
-    sync_activities: bool = False
-    sync_prompts: bool = False
-    allow_server_llm: bool = False
 
 
 class PolicyUpdate(BaseModel):
     """Partial update for data-collection policy."""
 
-    collect_activities: bool | None = None
-    collect_prompts: bool | None = None
     sync_observations: bool | None = None
-    sync_activities: bool | None = None
-    sync_prompts: bool | None = None
-    allow_server_llm: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +209,7 @@ async def get_team_status() -> TeamStatusResponse:
 
     from open_agent_kit.features.codebase_intelligence.constants import (
         CLOUD_RELAY_OBS_STATS_PATH,
+        CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS,
     )
 
     state = get_state()
@@ -233,15 +225,17 @@ async def get_team_status() -> TeamStatusResponse:
         is_connected = status.connected
         online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
 
-        # Fetch pending obs counts from the relay DO when connected.
+        # Fetch pending obs counts from the cloud relay when connected.
         if is_connected and status.worker_url:
             try:
                 token = state.ci_config.cloud_relay.token if state.ci_config else None
                 headers = {"Authorization": f"Bearer {token}"} if token else {}
                 url = status.worker_url.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH
-                async with httpx.AsyncClient(timeout=5.0) as client:
+                async with httpx.AsyncClient(
+                    timeout=CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS
+                ) as client:
                     resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
+                if resp.status_code == HTTPStatus.OK:
                     relay_pending = resp.json().get("pending", {})
             except Exception as exc:
                 logger.debug("Failed to fetch relay obs stats: %s", exc)
@@ -295,12 +289,7 @@ async def get_team_policy() -> PolicyResponse:
         return PolicyResponse()
     dc = ci_config.governance.data_collection
     return PolicyResponse(
-        collect_activities=dc.collect_activities,
-        collect_prompts=dc.collect_prompts,
         sync_observations=dc.sync_observations,
-        sync_activities=dc.sync_activities,
-        sync_prompts=dc.sync_prompts,
-        allow_server_llm=dc.allow_server_llm,
     )
 
 
@@ -318,18 +307,8 @@ async def update_team_policy(update: PolicyUpdate) -> PolicyResponse:
     ci_config = load_ci_config(project_root)
     dc = ci_config.governance.data_collection
 
-    if update.collect_activities is not None:
-        dc.collect_activities = update.collect_activities
-    if update.collect_prompts is not None:
-        dc.collect_prompts = update.collect_prompts
     if update.sync_observations is not None:
         dc.sync_observations = update.sync_observations
-    if update.sync_activities is not None:
-        dc.sync_activities = update.sync_activities
-    if update.sync_prompts is not None:
-        dc.sync_prompts = update.sync_prompts
-    if update.allow_server_llm is not None:
-        dc.allow_server_llm = update.allow_server_llm
 
     save_ci_config(project_root, ci_config)
     state = get_state()

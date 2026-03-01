@@ -354,7 +354,6 @@ def update_observation_status(
         if updated and getattr(store, "team_outbox_enabled", False):
             from open_agent_kit.features.codebase_intelligence.constants.team import (
                 TEAM_EVENT_OBSERVATION_STATUS_UPDATE,
-                TEAM_EVENT_OBSERVATION_UPSERT,
             )
             from open_agent_kit.features.codebase_intelligence.governance.policies import (
                 should_sync_event,
@@ -364,7 +363,7 @@ def update_observation_status(
             )
 
             policy = store.get_team_policy()
-            if policy is None or should_sync_event(TEAM_EVENT_OBSERVATION_UPSERT, policy):
+            if policy is None or should_sync_event(TEAM_EVENT_OBSERVATION_STATUS_UPDATE, policy):
                 enqueue_team_event(
                     conn=conn,
                     event_type=TEAM_EVENT_OBSERVATION_STATUS_UPDATE,

@@ -177,7 +177,7 @@ export function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
                     <Users className="h-4 w-4" />
                     Connected Nodes
                 </CardTitle>
-                <CardDescription>Machines currently connected to the relay DO.</CardDescription>
+                <CardDescription>Machines currently connected to the cloud relay.</CardDescription>
             </CardHeader>
             <CardContent>
                 {nodes.length === 0 ? (

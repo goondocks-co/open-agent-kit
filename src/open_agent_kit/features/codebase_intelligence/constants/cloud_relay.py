@@ -299,6 +299,7 @@ CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: Final[str] = "update_available"
 
 # Observation stats endpoint path
 CLOUD_RELAY_OBS_STATS_PATH: Final[str] = "/obs/stats"
+CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # CLI additional messages
 CI_CLOUD_RELAY_MESSAGE_CONNECTING_RELAY: Final[str] = "Connecting to cloud relay..."
