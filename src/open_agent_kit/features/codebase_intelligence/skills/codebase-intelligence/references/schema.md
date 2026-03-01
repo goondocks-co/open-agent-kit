@@ -2,7 +2,7 @@
 
 Complete DDL for the Oak CI SQLite database at `.oak/ci/activities.db`.
 
-Current schema version: **10**
+Current schema version: **11**
 
 ## memory_observations
 

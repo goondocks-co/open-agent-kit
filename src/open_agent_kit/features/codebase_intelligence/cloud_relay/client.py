@@ -25,6 +25,7 @@ from open_agent_kit.features.codebase_intelligence.cloud_relay.protocol import (
     HeartbeatPong,
     HttpRequestMessage,
     HttpResponseMessage,
+    ObsPushMessage,
     RegisterMessage,
     RelayMessageType,
     ToolCallRequest,
@@ -54,6 +55,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS,
     CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
     CLOUD_RELAY_MAX_RESPONSE_BYTES,
+    CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
     CLOUD_RELAY_RECONNECT_BACKOFF_FACTOR,
     CLOUD_RELAY_RECONNECT_BASE_DELAY_SECONDS,
     CLOUD_RELAY_WS_CLOSE_GOING_AWAY,
@@ -101,6 +103,11 @@ class CloudRelayClient(RelayClient):
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._reconnect_task: asyncio.Task[None] | None = None
 
+        # Observation sync
+        self._machine_id: str = ""
+        self._online_nodes: list[dict] = []
+        self._obs_applier: Any = None
+
         # Status tracking (thread-safe)
         self._lock = RLock()
         self._connected = False
@@ -132,6 +139,7 @@ class CloudRelayClient(RelayClient):
         worker_url: str,
         token: str,
         daemon_port: int,
+        machine_id: str = "",
     ) -> RelayStatus:
         """Connect to the cloud relay worker.
 
@@ -139,6 +147,7 @@ class CloudRelayClient(RelayClient):
             worker_url: URL of the Cloudflare Worker (e.g., https://relay.example.workers.dev).
             token: Shared secret for authentication.
             daemon_port: Local daemon port for forwarding tool calls.
+            machine_id: Unique identifier for this machine (used for obs sync).
 
         Returns:
             RelayStatus reflecting the connection state.
@@ -146,6 +155,7 @@ class CloudRelayClient(RelayClient):
         self._worker_url = worker_url
         self._token = token
         self._daemon_port = daemon_port
+        self._machine_id = machine_id
         self._should_reconnect = True
 
         logger.info(CI_CLOUD_RELAY_LOG_CONNECTING.format(worker_url=worker_url))
@@ -208,7 +218,11 @@ class CloudRelayClient(RelayClient):
 
         # Send registration message with available tools
         tools = await self._get_available_tools()
-        register_msg = RegisterMessage(token=self._token or "", tools=tools)
+        register_msg = RegisterMessage(
+            token=self._token or "",
+            tools=tools,
+            machine_id=self._machine_id,
+        )
         await self._ws.send(register_msg.model_dump_json())
 
         # Wait for registered confirmation
@@ -239,6 +253,9 @@ class CloudRelayClient(RelayClient):
             self._reconnect_attempts = 0
 
         logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=self._worker_url))
+
+        # Drain any observations buffered by the relay while we were offline
+        await self._drain_pending_obs()
 
         # Start background loops
         self._message_task = asyncio.ensure_future(self._message_loop())
@@ -302,6 +319,13 @@ class CloudRelayClient(RelayClient):
                         )
                         asyncio.ensure_future(self._handle_http_request(http_req))
 
+                    elif msg_type == RelayMessageType.OBS_BATCH.value:
+                        self._handle_obs_batch(msg)
+
+                    elif msg_type == RelayMessageType.NODE_LIST.value:
+                        with self._lock:
+                            self._online_nodes = msg.get("nodes", [])
+
                     elif msg_type == RelayMessageType.ERROR.value:
                         error_text = msg.get(
                             CLOUD_RELAY_WS_FIELD_MESSAGE,
@@ -359,6 +383,60 @@ class CloudRelayClient(RelayClient):
 
         except asyncio.CancelledError:
             return
+
+    # ------------------------------------------------------------------
+    # Observation sync
+    # ------------------------------------------------------------------
+
+    def set_obs_applier(self, applier: Any) -> None:
+        """Set the applier for incoming obs batches from peer nodes."""
+        self._obs_applier = applier
+
+    @property
+    def online_nodes(self) -> list[dict]:
+        """List of online nodes from relay presence updates."""
+        with self._lock:
+            return list(self._online_nodes)
+
+    async def push_observations(self, observations: list[dict]) -> None:
+        """Push observations to peer nodes via relay WebSocket."""
+        if not self._ws or not self._connected:
+            logger.debug("Relay not connected, skipping obs push (will retry on next tick)")
+            return
+        msg = ObsPushMessage(observations=observations)
+        try:
+            await self._ws.send(msg.model_dump_json())
+        except Exception as exc:
+            logger.warning("Failed to push observations: %s", exc)
+
+    async def _drain_pending_obs(self) -> None:
+        """Drain buffered observations from the relay (called on reconnect)."""
+        if not self._worker_url or not self._token or not self._machine_id:
+            return
+        try:
+            url = f"{self._worker_url.rstrip('/')}/obs/pending?machine_id={self._machine_id}"
+            headers = {"Authorization": f"Bearer {self._token}"}
+            async with httpx.AsyncClient(timeout=CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    observations = data.get("observations", [])
+                    if observations and self._obs_applier is not None:
+                        for item in observations:
+                            self._obs_applier.apply_batch([item["obs"]], item["from_machine_id"])
+        except Exception as exc:
+            logger.warning("Failed to drain pending obs: %s", exc)
+
+    def _handle_obs_batch(self, data: dict) -> None:
+        """Handle incoming obs_batch from a peer node."""
+        if self._obs_applier is None:
+            return
+        from_machine_id = data.get("from_machine_id", "unknown")
+        observations = data.get("observations", [])
+        try:
+            self._obs_applier.apply_batch(observations, from_machine_id)
+        except Exception as exc:
+            logger.error("Failed to apply remote obs batch: %s", exc)
 
     # ------------------------------------------------------------------
     # Internal: tool call forwarding

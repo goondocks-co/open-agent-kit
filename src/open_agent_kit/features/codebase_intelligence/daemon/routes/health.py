@@ -248,37 +248,18 @@ def _get_team_status(state: object) -> dict | None:
     Returns:
         Team status dictionary, or None if not configured.
     """
-    ci_config = getattr(state, "ci_config", None)
-    if ci_config is None:
-        return None
-    team_cfg = getattr(ci_config, "team", None)
-    if team_cfg is None or not team_cfg.server_url:
+    relay_client = getattr(state, "cloud_relay_client", None)
+    sync_worker = getattr(state, "team_sync_worker", None)
+
+    if relay_client is None and sync_worker is None:
         return None
 
     team_status: dict = {
-        "configured": True,
-        "server_url": team_cfg.server_url,
-        "connected": getattr(state, "team_sync_worker", None) is not None,
-        "server_mode": team_cfg.server_mode,
-        "members_online": 0,
+        "configured": relay_client is not None,
+        "connected": relay_client is not None and relay_client.get_status().connected,
+        "members_online": len(getattr(relay_client, "online_nodes", [])) if relay_client else 0,
     }
 
-    # Count online members when running as server
-    if team_cfg.server_mode:
-        activity_store = getattr(state, "activity_store", None)
-        if activity_store is not None:
-            try:
-                from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-                    MembershipService,
-                )
-
-                conn = activity_store._get_connection()
-                svc = MembershipService(conn_factory=lambda: conn)
-                team_status["members_online"] = len(svc.list_members())
-            except Exception:
-                logger.debug("Could not count team members", exc_info=True)
-
-    sync_worker = getattr(state, "team_sync_worker", None)
     if sync_worker is not None:
         team_status["sync"] = sync_worker.get_status().model_dump()
 

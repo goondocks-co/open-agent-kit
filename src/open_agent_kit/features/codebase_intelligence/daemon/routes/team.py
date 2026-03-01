@@ -1,15 +1,10 @@
 """Team management API routes for the dashboard UI.
 
 These routes handle local team configuration, sync status, and
-policy management. They are always included (both client and server mode).
-
-Server-only endpoints (API key management) check the
-``OAK_CI_TEAM_SERVER`` env var at request time.
+policy management via the cloud relay.
 """
 
-import hashlib
 import logging
-import os
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -18,31 +13,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
-    TEAM_API_PATH_APPROVE_JOIN,
-    TEAM_API_PATH_BACKFILL,
-    TEAM_API_PATH_BACKFILL_STATUS,
     TEAM_API_PATH_CONFIG,
-    TEAM_API_PATH_JOIN,
-    TEAM_API_PATH_JOIN_STATUS,
-    TEAM_API_PATH_KEYS,
-    TEAM_API_PATH_LEAVE,
-    TEAM_API_PATH_MACHINE_RESYNC,
-    TEAM_API_PATH_PENDING_JOINS,
+    TEAM_API_PATH_MEMBERS,
     TEAM_API_PATH_POLICY,
-    TEAM_API_PATH_REJECT_JOIN,
-    TEAM_API_PATH_SERVE,
     TEAM_API_PATH_STATUS,
-    TEAM_API_PATH_SYNC_FLUSH,
-    TEAM_API_PATH_SYNC_PULL,
-    TEAM_HTTP_TIMEOUT_SECONDS,
-    TEAM_JOIN_STATUS_APPROVED,
-    TEAM_LOOPBACK_KEY_NAME,
-    TEAM_LOOPBACK_URL_PREFIX,
-    TEAM_LOOPBACK_URL_TEMPLATE,
-    TEAM_MESSAGE_RESYNC_NOT_ENABLED,
     TEAM_ROUTE_TAG,
-    TEAM_ROUTER_PREFIX,
-    TEAM_SERVER_MODE_ENV_VAR,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes._utils import (
     handle_route_errors,
@@ -60,50 +35,31 @@ router = APIRouter(tags=[TEAM_ROUTE_TAG])
 
 
 class TeamConfigResponse(BaseModel):
-    """Current team configuration (read-only view, API key excluded)."""
+    """Current team configuration."""
 
-    server_url: str | None = None
     auto_sync: bool = False
     sync_interval_seconds: int = 3
-    pull_interval_seconds: int = 15
-    project_slug: str | None = None
-    transport: str = "direct"
-    server_mode: bool = False
+    relay_worker_url: str | None = None
+    api_key: str | None = None
 
 
 class TeamConfigUpdate(BaseModel):
     """Partial update for team configuration."""
 
-    server_url: str | None = None
-    api_key: str | None = None
     auto_sync: bool | None = None
     sync_interval_seconds: int | None = None
-    pull_interval_seconds: int | None = None
-    project_slug: str | None = None
-    transport: str | None = None
-
-
-class TeamJoinRequest(BaseModel):
-    """Request body for joining a team server.
-
-    The client no longer sends an API key -- one is auto-generated at
-    startup and sent as a SHA-256 hash during the join request.
-    """
-
-    server_url: str
+    relay_worker_url: str | None = None
+    api_key: str | None = None
 
 
 class TeamStatusResponse(BaseModel):
-    """Overall team status (connection, sync workers)."""
+    """Overall team status (relay connection, sync workers)."""
 
     configured: bool = False
-    server_url: str | None = None
     connected: bool = False
-    project_id: str | None = None
+    relay: dict[str, Any] | None = None
+    online_nodes: list[dict[str, Any]] = []
     sync: dict[str, Any] | None = None
-    members_online: int = 0
-    pending_approval: bool = False
-    pending_key_id: str | None = None
 
 
 class PolicyResponse(BaseModel):
@@ -128,38 +84,6 @@ class PolicyUpdate(BaseModel):
     allow_server_llm: bool | None = None
 
 
-class ServerModeRequest(BaseModel):
-    """Request body for toggling server mode."""
-
-    enable: bool
-
-
-class KeyCreateRequest(BaseModel):
-    """Request body to create an API key (server mode only)."""
-
-    name: str
-
-
-class KeyResponse(BaseModel):
-    """Metadata for an existing API key (no plaintext)."""
-
-    id: str
-    name: str
-    machine_id: str | None = None
-    created_at: str
-    last_used_at: str | None = None
-    revoked_at: str | None = None
-    permissions: str = "member"
-
-
-class KeyCreateResponse(BaseModel):
-    """Response after creating a new API key. Contains the plaintext key."""
-
-    id: str
-    name: str
-    key: str  # Plaintext, shown only once
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -173,35 +97,6 @@ def _require_project_root() -> Path:
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Project root not set"
         )
     return state.project_root
-
-
-def _require_server_mode() -> None:
-    """Raise 403 if not running as team server."""
-    if not os.environ.get(TEAM_SERVER_MODE_ENV_VAR):
-        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Server mode only")
-
-
-def _require_activity_store() -> Any:
-    """Return activity_store from state or raise 500."""
-    state = get_state()
-    if not state.activity_store:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Store not initialized"
-        )
-    return state.activity_store
-
-
-def _require_gateway() -> Any:
-    """Return team_gateway from state or raise an appropriate error."""
-    from open_agent_kit.features.codebase_intelligence.team.gateway.base import TeamGateway
-
-    state = get_state()
-    gw: TeamGateway | None = state.team_gateway
-    if gw is None:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Team gateway not initialized"
-        )
-    return gw
 
 
 # ---------------------------------------------------------------------------
@@ -218,14 +113,16 @@ async def get_team_config() -> TeamConfigResponse:
     if not ci_config:
         return TeamConfigResponse()
     tc = ci_config.team
+    relay = ci_config.cloud_relay
+    # Relay URL and token: prefer explicit team config, fall back to cloud relay
+    # (they're the same Worker, so the values should be identical after deploy).
+    relay_worker_url = tc.relay_worker_url or (relay.worker_url if relay else None)
+    api_key = tc.api_key or (relay.token if relay else None)
     return TeamConfigResponse(
-        server_url=tc.server_url,
         auto_sync=tc.auto_sync,
         sync_interval_seconds=tc.sync_interval_seconds,
-        pull_interval_seconds=tc.pull_interval_seconds,
-        project_slug=tc.project_slug,
-        transport=tc.transport,
-        server_mode=tc.server_mode,
+        relay_worker_url=relay_worker_url,
+        api_key=api_key,
     )
 
 
@@ -243,20 +140,14 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
     ci_config = load_ci_config(project_root)
     tc = ci_config.team
 
-    if update.server_url is not None:
-        tc.server_url = update.server_url
-    if update.api_key is not None:
-        tc.api_key = update.api_key
     if update.auto_sync is not None:
         tc.auto_sync = update.auto_sync
     if update.sync_interval_seconds is not None:
         tc.sync_interval_seconds = update.sync_interval_seconds
-    if update.pull_interval_seconds is not None:
-        tc.pull_interval_seconds = update.pull_interval_seconds
-    if update.project_slug is not None:
-        tc.project_slug = update.project_slug
-    if update.transport is not None:
-        tc.transport = update.transport
+    if update.relay_worker_url is not None:
+        tc.relay_worker_url = update.relay_worker_url or None
+    if update.api_key is not None:
+        tc.api_key = update.api_key or None
 
     save_ci_config(project_root, ci_config)
     # Invalidate cached config so subsequent reads pick up changes
@@ -267,155 +158,6 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
 
 
 # ---------------------------------------------------------------------------
-# Join / Leave
-# ---------------------------------------------------------------------------
-
-
-@router.post(TEAM_API_PATH_JOIN)
-@handle_route_errors("team join")
-async def join_team(req: TeamJoinRequest) -> dict[str, Any]:
-    """Join a team server: test connectivity, submit join request.
-
-    The new flow:
-    1. Test connectivity via GET {server_url}/api/team/status
-    2. Read auto-generated API key from config (guaranteed present after startup)
-    3. Compute key_hash = SHA256(api_key)
-    4. POST {server_url}/api/team/request-join with join details
-    5. Save server_url, set auto_sync=False (pending), save key_id
-    6. Return pending status with key_id for polling
-    """
-    project_root = _require_project_root()
-
-    import httpx
-
-    from open_agent_kit.features.codebase_intelligence.config import (
-        load_ci_config,
-        save_ci_config,
-    )
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_HTTP_REQUEST_JOIN_PATH,
-        TEAM_HTTP_STATUS_PATH,
-    )
-
-    server_url = req.server_url.rstrip("/")
-
-    # 1. Test connectivity
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{server_url}{TEAM_ROUTER_PREFIX}{TEAM_HTTP_STATUS_PATH}",
-                timeout=TEAM_HTTP_TIMEOUT_SECONDS,
-            )
-            resp.raise_for_status()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST,
-            detail=f"Cannot connect to server: {exc}",
-        ) from exc
-
-    # 2. Read auto-generated API key
-    state = get_state()
-    ci_config = load_ci_config(project_root)
-    api_key = ci_config.team.api_key
-    if not api_key:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="No API key available. Restart daemon to auto-generate.",
-        )
-
-    # 3. Compute key hash (never send plaintext)
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-
-    # 4. Get machine identity
-    from open_agent_kit.features.codebase_intelligence.team.identity import (
-        get_project_identity,
-    )
-
-    identity = get_project_identity(project_root)
-    machine_id = state.machine_id or "unknown"
-    display_name = machine_id
-
-    # 5. Submit join request
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{server_url}{TEAM_ROUTER_PREFIX}{TEAM_HTTP_REQUEST_JOIN_PATH}",
-                json={
-                    "machine_id": machine_id,
-                    "display_name": display_name,
-                    "key_hash": key_hash,
-                    "project_id": identity.full_id,
-                },
-                timeout=TEAM_HTTP_TIMEOUT_SECONDS,
-            )
-            resp.raise_for_status()
-            join_result = resp.json()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST,
-            detail=f"Join request failed: {exc}",
-        ) from exc
-
-    key_id = join_result.get("key_id", "")
-    join_status = join_result.get("status", "pending")
-
-    # 6. Save config: server_url set, handle pending vs already-approved
-    ci_config.team.server_url = server_url
-
-    if join_status == TEAM_JOIN_STATUS_APPROVED:
-        # Idempotent re-join: key was already approved on the server
-        ci_config.team.auto_sync = True
-        ci_config.team.pending_key_id = None
-    else:
-        ci_config.team.auto_sync = False  # Pending approval
-        ci_config.team.pending_key_id = key_id
-
-    save_ci_config(project_root, ci_config)
-    state.ci_config = None
-
-    # Create gateway so poll_join_status_by_key works without restart
-    from open_agent_kit.features.codebase_intelligence.team.gateway.factory import create_gateway
-
-    state.team_gateway = create_gateway(state)
-
-    return {
-        "status": "connected" if join_status == TEAM_JOIN_STATUS_APPROVED else "pending_approval",
-        "key_id": key_id,
-        "server_url": server_url,
-    }
-
-
-@router.post(TEAM_API_PATH_LEAVE)
-@handle_route_errors("team leave")
-async def leave_team() -> dict[str, str]:
-    """Disconnect from team server and stop sync workers."""
-    project_root = _require_project_root()
-
-    from open_agent_kit.features.codebase_intelligence.config import (
-        load_ci_config,
-        save_ci_config,
-    )
-
-    ci_config = load_ci_config(project_root)
-    ci_config.team.server_url = None
-    # Preserve api_key so the user can re-join without a daemon restart
-    ci_config.team.auto_sync = False
-    ci_config.team.pending_key_id = None
-    save_ci_config(project_root, ci_config)
-
-    state = get_state()
-    state.ci_config = None
-    state.team_gateway = None
-
-    # Stop sync worker if running
-    if state.team_sync_worker:
-        state.team_sync_worker.stop()
-        state.team_sync_worker = None
-
-    return {"status": "disconnected"}
-
-
-# ---------------------------------------------------------------------------
 # Status
 # ---------------------------------------------------------------------------
 
@@ -423,208 +165,40 @@ async def leave_team() -> dict[str, str]:
 @router.get(TEAM_API_PATH_STATUS)
 @handle_route_errors("team status")
 async def get_team_status() -> TeamStatusResponse:
-    """Return team connection and sync status."""
+    """Return team connection and sync status via cloud relay."""
     state = get_state()
-    ci_config = state.ci_config
-    if not ci_config or not ci_config.team.server_url:
-        return TeamStatusResponse(configured=False)
+
+    relay_status = None
+    online_nodes: list[dict[str, Any]] = []
+    is_connected = False
+
+    if state.cloud_relay_client:
+        status = state.cloud_relay_client.get_status()
+        relay_status = status.to_dict()
+        is_connected = status.connected
+        online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
 
     sync_status = None
     if state.team_sync_worker:
         sync_status = state.team_sync_worker.get_status().model_dump()
 
-    # Get project identity
-    project_id = None
-    if state.project_root:
-        from open_agent_kit.features.codebase_intelligence.team.identity import (
-            get_project_identity,
-        )
-
-        project_id = get_project_identity(state.project_root).full_id
-
-    # Determine if waiting for approval (server_url set but auto_sync off
-    # and not in server mode)
-    pending_approval = bool(
-        ci_config.team.server_url
-        and not ci_config.team.auto_sync
-        and not ci_config.team.server_mode
-    )
-
-    # Server mode is always "connected" (this node IS the server).
-    # Client mode uses the transport's last known connectivity state so the
-    # UI correctly reflects a downed server even while the worker is running.
-    if state.team_gateway is not None and state.team_gateway.is_server():
-        is_connected = True
-    elif state.team_transport is not None:
-        is_connected = state.team_transport.get_status().connected
-    else:
-        is_connected = False
-
     return TeamStatusResponse(
-        configured=True,
-        server_url=ci_config.team.server_url,
+        configured=state.cloud_relay_client is not None,
         connected=is_connected,
-        project_id=project_id,
+        relay=relay_status,
+        online_nodes=online_nodes,
         sync=sync_status,
-        pending_approval=pending_approval,
-        pending_key_id=ci_config.team.pending_key_id if pending_approval else None,
     )
 
 
-@router.get(f"{TEAM_API_PATH_STATUS}/members")
+@router.get(TEAM_API_PATH_MEMBERS)
 @handle_route_errors("team members")
 async def get_team_members() -> dict[str, Any]:
-    """Return team member list via gateway (server=DB, client=HTTP proxy)."""
+    """Return team member list from cloud relay online nodes."""
     state = get_state()
-    if not state.team_gateway:
+    if not state.cloud_relay_client:
         return {"members": []}
-    return await state.team_gateway.get_members()
-
-
-# ---------------------------------------------------------------------------
-# Sync control
-# ---------------------------------------------------------------------------
-
-
-@router.post(TEAM_API_PATH_SYNC_FLUSH)
-@handle_route_errors("team sync flush")
-async def force_sync_flush() -> dict[str, Any]:
-    """Force-flush the outbox to the team server.
-
-    Returns flushed count on success. Returns an error field (not a 500) if
-    the server is temporarily unreachable — events remain pending and will
-    be delivered automatically when the server comes back.
-    """
-    state = get_state()
-    if not state.team_sync_worker:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Team sync not active")
-    try:
-        count = state.team_sync_worker.flush()
-        return {"flushed": count}
-    except Exception as exc:
-        # Transport-level failure: server unreachable. Not a 500 — events are
-        # safely queued locally and will be retried automatically.
-        return {"flushed": 0, "error": str(exc)}
-
-
-@router.post(TEAM_API_PATH_SYNC_PULL)
-@handle_route_errors("team sync pull")
-async def force_sync_pull() -> dict[str, Any]:
-    """Force-pull events from the team server via the pull worker."""
-    state = get_state()
-    if not state.team_pull_worker:
-        return {"status": "pull_worker_not_available", "applied": 0}
-    try:
-        applied = state.team_pull_worker.pull()
-        return {"status": "ok", "applied": applied}
-    except Exception as exc:
-        return {"status": "error", "applied": 0, "error": str(exc)}
-
-
-# ---------------------------------------------------------------------------
-# Server mode toggle
-# ---------------------------------------------------------------------------
-
-
-@router.post(TEAM_API_PATH_SERVE)
-@handle_route_errors("team serve toggle")
-async def toggle_server_mode(req: ServerModeRequest) -> dict[str, Any]:
-    """Enable or disable team server mode. Requires daemon restart."""
-    project_root = _require_project_root()
-
-    from open_agent_kit.config.paths import OAK_DIR
-    from open_agent_kit.features.codebase_intelligence.config import (
-        load_ci_config,
-        save_ci_config,
-    )
-    from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
-    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
-        get_project_port,
-    )
-
-    ci_config = load_ci_config(project_root)
-
-    if req.enable:
-        # 1. Resolve daemon port
-        ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
-        port = get_project_port(project_root, ci_data_dir)
-
-        # 2. Create server tables idempotently
-        store = _require_activity_store()
-        conn = store._get_connection()
-
-        from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-            TEAM_API_KEYS_DDL,
-            create_api_key,
-            delete_revoked_keys_by_name,
-            revoke_keys_by_name,
-        )
-        from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
-            TEAM_EVENTS_DDL,
-        )
-        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-            TEAM_MEMBERS_DDL,
-        )
-
-        conn.executescript(TEAM_API_KEYS_DDL)
-        conn.executescript(TEAM_MEMBERS_DDL)
-        conn.executescript(TEAM_EVENTS_DDL)
-
-        # 3. Revoke stale loopback keys, purge old revoked ones, create fresh
-        revoke_keys_by_name(conn, TEAM_LOOPBACK_KEY_NAME)
-        delete_revoked_keys_by_name(conn, TEAM_LOOPBACK_KEY_NAME)
-        _key_id, plaintext = create_api_key(conn, TEAM_LOOPBACK_KEY_NAME)
-
-        # 4. Update config
-        server_url = TEAM_LOOPBACK_URL_TEMPLATE.format(port=port)
-        ci_config.team.server_mode = True
-        ci_config.team.server_url = server_url
-        ci_config.team.api_key = plaintext
-        ci_config.team.auto_sync = True
-        save_ci_config(project_root, ci_config)
-
-        state = get_state()
-        state.ci_config = None
-
-        return {
-            "enabled": True,
-            "server_url": server_url,
-            "restart_required": True,
-        }
-    else:
-        # Disable: revoke loopback keys, purge revoked, clear config
-        from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-            delete_revoked_keys_by_name,
-            revoke_keys_by_name,
-        )
-
-        try:
-            store = _require_activity_store()
-            conn = store._get_connection()
-            revoke_keys_by_name(conn, TEAM_LOOPBACK_KEY_NAME)
-            delete_revoked_keys_by_name(conn, TEAM_LOOPBACK_KEY_NAME)
-        except Exception:
-            logger.debug("Could not revoke loopback keys (tables may not exist yet)", exc_info=True)
-
-        was_loopback = ci_config.team.server_url and ci_config.team.server_url.startswith(
-            TEAM_LOOPBACK_URL_PREFIX
-        )
-
-        ci_config.team.server_mode = False
-        if was_loopback:
-            ci_config.team.server_url = None
-            ci_config.team.api_key = None
-            ci_config.team.auto_sync = False
-
-        save_ci_config(project_root, ci_config)
-
-        state = get_state()
-        state.ci_config = None
-
-        return {
-            "enabled": False,
-            "restart_required": True,
-        }
+    return {"members": getattr(state.cloud_relay_client, "online_nodes", [])}
 
 
 # ---------------------------------------------------------------------------
@@ -683,428 +257,3 @@ async def update_team_policy(update: PolicyUpdate) -> PolicyResponse:
     state.ci_config = None
 
     return await get_team_policy()
-
-
-# ---------------------------------------------------------------------------
-# API Key management (server mode only)
-# ---------------------------------------------------------------------------
-
-
-@router.get(TEAM_API_PATH_KEYS)
-@handle_route_errors("team keys list")
-async def list_keys() -> list[KeyResponse]:
-    """List all API keys. Server mode only."""
-    _require_server_mode()
-    store = _require_activity_store()
-
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        list_api_keys,
-    )
-
-    conn = store._get_connection()
-    keys = list_api_keys(conn)
-    return [
-        KeyResponse(
-            id=k.id,
-            name=k.name,
-            machine_id=k.machine_id,
-            created_at=k.created_at,
-            last_used_at=k.last_used_at,
-            revoked_at=k.revoked_at,
-            permissions=k.permissions,
-        )
-        for k in keys
-        if k.name != TEAM_LOOPBACK_KEY_NAME
-    ]
-
-
-@router.post(TEAM_API_PATH_KEYS)
-@handle_route_errors("team key create")
-async def create_key(req: KeyCreateRequest) -> KeyCreateResponse:
-    """Create a new API key. Returns plaintext once. Server mode only."""
-    _require_server_mode()
-    store = _require_activity_store()
-
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        create_api_key,
-    )
-
-    conn = store._get_connection()
-    key_id, plaintext = create_api_key(conn, req.name)
-    return KeyCreateResponse(id=key_id, name=req.name, key=plaintext)
-
-
-@router.delete(f"{TEAM_API_PATH_KEYS}/{{key_id}}")
-@handle_route_errors("team key revoke")
-async def revoke_key(key_id: str) -> dict[str, bool]:
-    """Revoke an API key. Server mode only."""
-    _require_server_mode()
-    store = _require_activity_store()
-
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        revoke_api_key,
-    )
-
-    conn = store._get_connection()
-    success = revoke_api_key(conn, key_id)
-    if not success:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Key not found")
-    return {"revoked": True}
-
-
-# ---------------------------------------------------------------------------
-# Join request approval (server mode -- dashboard admin)
-# ---------------------------------------------------------------------------
-
-
-@router.get(TEAM_API_PATH_PENDING_JOINS)
-@handle_route_errors("team pending joins")
-async def get_pending_joins() -> list[dict[str, Any]]:
-    """List pending join requests via gateway."""
-    gateway = _require_gateway()
-    return await gateway.get_pending_joins()
-
-
-@router.post(f"{TEAM_API_PATH_APPROVE_JOIN}/{{key_id}}")
-@handle_route_errors("team approve join")
-async def approve_join(key_id: str) -> dict[str, bool]:
-    """Approve a pending join request via gateway."""
-    gateway = _require_gateway()
-    return await gateway.approve_join(key_id)
-
-
-@router.post(f"{TEAM_API_PATH_REJECT_JOIN}/{{key_id}}")
-@handle_route_errors("team reject join")
-async def reject_join(key_id: str) -> dict[str, bool]:
-    """Reject a pending join request via gateway."""
-    gateway = _require_gateway()
-    return await gateway.reject_join(key_id)
-
-
-# ---------------------------------------------------------------------------
-# Join status polling (client mode -- polls remote server)
-# ---------------------------------------------------------------------------
-
-
-@router.get(TEAM_API_PATH_JOIN_STATUS)
-@handle_route_errors("team join status")
-async def poll_join_status() -> dict[str, Any]:
-    """Poll remote server for join approval status.
-
-    Client mode only. On approval, enables auto_sync and returns the
-    new status so the UI can start showing sync info.
-    """
-    state = get_state()
-    ci_config = state.ci_config
-    if not ci_config or not ci_config.team.server_url:
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST, detail="Not connected to a team server"
-        )
-
-    # Server mode doesn't need to poll itself
-    if ci_config.team.server_mode:
-        return {"status": "server_mode", "pending_approval": False}
-
-    # If already syncing, no need to poll
-    if ci_config.team.auto_sync:
-        return {"status": "approved", "pending_approval": False}
-
-    # Without a key_id, we can only report the pending state.
-    # The UI should use GET /api/team/join-status/{key_id} instead.
-    return {"status": "pending", "pending_approval": True}
-
-
-@router.get(f"{TEAM_API_PATH_JOIN_STATUS}/{{key_id}}")
-@handle_route_errors("team join status poll")
-async def poll_join_status_by_key(key_id: str) -> dict[str, Any]:
-    """Poll join approval status by key_id via gateway.
-
-    On approval (client mode only), enables auto_sync so sync workers start.
-    """
-    state = get_state()
-    ci_config = state.ci_config
-    if not ci_config or not ci_config.team.server_url:
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST, detail="Not connected to a team server"
-        )
-
-    # Already approved and syncing — short-circuit
-    if ci_config.team.auto_sync and state.team_gateway and not state.team_gateway.is_server():
-        return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
-
-    if not state.team_gateway:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Team gateway not initialized"
-        )
-
-    result = await state.team_gateway.get_join_status(key_id)
-
-    # Side effect: enable auto_sync on approval (client mode only)
-    if result.get("status") == TEAM_JOIN_STATUS_APPROVED and not state.team_gateway.is_server():
-        project_root = _require_project_root()
-
-        from open_agent_kit.features.codebase_intelligence.config import (
-            load_ci_config,
-            save_ci_config,
-        )
-
-        fresh_config = load_ci_config(project_root)
-        fresh_config.team.auto_sync = True
-        fresh_config.team.pending_key_id = None  # Clear pending state
-        save_ci_config(project_root, fresh_config)
-        state.ci_config = None
-
-        # Start sync workers now that approval is confirmed
-        from open_agent_kit.features.codebase_intelligence.daemon.lifecycle.startup import (
-            _init_team_sync,
-        )
-
-        _init_team_sync(state)
-
-        return {"status": TEAM_JOIN_STATUS_APPROVED, "pending_approval": False}
-
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Backfill (manual trigger)
-# ---------------------------------------------------------------------------
-
-
-class BackfillStatusResponse(BaseModel):
-    """Response for backfill trigger endpoint."""
-
-    status: str
-    started_at: str
-    estimated_records: int | None = None
-
-
-class BackfillState(BaseModel):
-    """Current state of the team backfill and reconciliation."""
-
-    completed: bool = False
-    completed_at: str | None = None
-    schema_version: str | None = None
-    counts: dict | None = None
-    last_reconcile_at: str | None = None
-    last_missing_count: int | None = None
-
-
-@router.get(TEAM_API_PATH_BACKFILL_STATUS)
-@handle_route_errors("team backfill status")
-async def get_backfill_status() -> BackfillState:
-    """Return current backfill and reconciliation state."""
-    import json
-
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_BACKFILL_STATE_KEY_COMPLETED_AT,
-        TEAM_BACKFILL_STATE_KEY_COUNTS,
-        TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION,
-    )
-
-    store = _require_activity_store()
-    conn = store._get_connection()
-
-    rows = conn.execute(
-        "SELECT key, value FROM team_sync_state WHERE key IN (?, ?, ?)",
-        (
-            TEAM_BACKFILL_STATE_KEY_COMPLETED_AT,
-            TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION,
-            TEAM_BACKFILL_STATE_KEY_COUNTS,
-        ),
-    ).fetchall()
-    state_map = {r["key"]: r["value"] for r in rows}
-
-    completed_at = state_map.get(TEAM_BACKFILL_STATE_KEY_COMPLETED_AT)
-    counts_raw = state_map.get(TEAM_BACKFILL_STATE_KEY_COUNTS)
-    counts = None
-    if counts_raw:
-        try:
-            counts = json.loads(counts_raw)
-        except Exception:
-            pass
-
-    machine_id = store.machine_id or "unknown"
-    rec_row = conn.execute(
-        "SELECT last_reconcile_at, last_missing_count FROM team_reconcile_state"
-        " WHERE machine_id = ?",
-        (machine_id,),
-    ).fetchone()
-
-    return BackfillState(
-        completed=completed_at is not None,
-        completed_at=completed_at,
-        schema_version=state_map.get(TEAM_BACKFILL_STATE_KEY_SCHEMA_VERSION),
-        counts=counts,
-        last_reconcile_at=rec_row["last_reconcile_at"] if rec_row else None,
-        last_missing_count=rec_row["last_missing_count"] if rec_row else None,
-    )
-
-
-@router.post(TEAM_API_PATH_BACKFILL)
-@handle_route_errors("team backfill trigger")
-async def trigger_backfill() -> BackfillStatusResponse:
-    """Force a full re-backfill. Idempotent -- server dedup prevents duplicate sync."""
-    import asyncio
-    from datetime import UTC, datetime
-
-    state = get_state()
-    if not state.activity_store:
-        raise HTTPException(
-            status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail="Activity store not available"
-        )
-    if not state.activity_store.team_outbox_enabled:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Team sync not enabled")
-
-    from open_agent_kit.features.codebase_intelligence.team.backfill import TeamBackfillService
-
-    backfill_svc = TeamBackfillService()
-    task = asyncio.create_task(
-        backfill_svc.run_async(state.activity_store),
-        name="team_backfill_manual",
-    )
-    state.background_tasks.append(task)
-    return BackfillStatusResponse(
-        status="started",
-        started_at=datetime.now(UTC).isoformat(),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Machine resync (self-healing)
-# ---------------------------------------------------------------------------
-
-
-class MachineResyncRequest(BaseModel):
-    """Request body for machine resync."""
-
-    machine_id: str
-
-
-class MachineResyncResponse(BaseModel):
-    """Response from machine resync."""
-
-    machine_id: str
-    deleted: dict[str, int]
-    applied: int
-    skipped: int
-    errors: int
-
-
-async def _fetch_machine_events(state: Any, machine_id: str) -> list[dict]:
-    """Fetch all stored events for a machine, paging through results.
-
-    In server mode reads directly from the local DB; in client mode
-    fetches from the remote team server via HTTP.
-    """
-    from open_agent_kit.features.codebase_intelligence.config import load_ci_config
-
-    if state.project_root is None:
-        return []
-
-    config = load_ci_config(state.project_root)
-    all_events: list[dict] = []
-    page_size = 500
-
-    if config.team.server_mode:
-        # Server mode: read directly from the local team_events table
-        from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
-            get_events_for_machine,
-        )
-
-        conn = state.activity_store._get_connection()
-        offset = 0
-        while True:
-            page = get_events_for_machine(conn, machine_id, limit=page_size, offset=offset)
-            if not page:
-                break
-            all_events.extend(page)
-            offset += len(page)
-    else:
-        # Client mode: fetch from remote team server via HTTP
-        import httpx
-
-        server_url = config.team.server_url
-        api_key = config.team.api_key
-        if not server_url or not api_key:
-            return []
-
-        offset = 0
-        async with httpx.AsyncClient(timeout=TEAM_HTTP_TIMEOUT_SECONDS) as client:
-            while True:
-                resp = await client.get(
-                    f"{server_url}{TEAM_ROUTER_PREFIX}/machine/{machine_id}/events",
-                    params={"limit": page_size, "offset": offset},
-                    headers={"Authorization": f"Bearer {api_key}"},
-                )
-                resp.raise_for_status()
-                page = resp.json()
-                if not page:
-                    break
-                all_events.extend(page)
-                offset += len(page)
-
-    return all_events
-
-
-@router.post(TEAM_API_PATH_MACHINE_RESYNC)
-@handle_route_errors("machine resync")
-async def machine_resync(request: MachineResyncRequest) -> MachineResyncResponse:
-    """Delete all local data for a machine and re-apply from team_events."""
-    state = get_state()
-    if not state.activity_store or not state.activity_store.team_outbox_enabled:
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST,
-            detail=TEAM_MESSAGE_RESYNC_NOT_ENABLED,
-        )
-
-    machine_id = request.machine_id
-
-    # Step 1: wipe local data for the machine
-    from open_agent_kit.features.codebase_intelligence.activity.store.delete import (
-        delete_records_by_machine,
-    )
-
-    deleted = delete_records_by_machine(
-        state.activity_store, machine_id, vector_store=state.vector_store
-    )
-
-    # Step 2: fetch events from team_events
-    events = await _fetch_machine_events(state, machine_id)
-
-    # Step 3: re-apply via TeamEventApplier
-    import json
-
-    from open_agent_kit.features.codebase_intelligence.team.protocol import TeamEvent
-    from open_agent_kit.features.codebase_intelligence.team.pull.applier import TeamEventApplier
-
-    team_events = []
-    for e in events:
-        payload = e.get("payload", {})
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except (json.JSONDecodeError, TypeError):
-                payload = {}
-        team_events.append(
-            TeamEvent(
-                event_type=e["event_type"],
-                payload=payload,
-                source_machine_id=e["source_machine_id"],
-                content_hash=e["content_hash"],
-                schema_version=e.get("schema_version", 1),
-                timestamp=e.get("timestamp", ""),
-                project_id=e.get("project_id", ""),
-            )
-        )
-
-    applier = TeamEventApplier(state.activity_store)
-    result = applier.apply_batch(team_events)
-
-    return MachineResyncResponse(
-        machine_id=machine_id,
-        deleted=deleted,
-        applied=result.applied,
-        skipped=result.skipped,
-        errors=result.errors,
-    )

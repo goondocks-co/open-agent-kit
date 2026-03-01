@@ -12,31 +12,14 @@ CI_CONFIG_TEAM_KEY_SERVER_URL: Final[str] = "server_url"
 CI_CONFIG_TEAM_KEY_API_KEY: Final[str] = "api_key"
 CI_CONFIG_TEAM_KEY_AUTO_SYNC: Final[str] = "auto_sync"
 CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: Final[str] = "sync_interval_seconds"
-CI_CONFIG_TEAM_KEY_PULL_INTERVAL: Final[str] = "pull_interval_seconds"
 CI_CONFIG_TEAM_KEY_PROJECT_SLUG: Final[str] = "project_slug"
-CI_CONFIG_TEAM_KEY_TRANSPORT: Final[str] = "transport"
-CI_CONFIG_TEAM_KEY_SERVER_MODE: Final[str] = "server_mode"
-CI_CONFIG_TEAM_KEY_BIND_HOST: Final[str] = "bind_host"
-CI_CONFIG_TEAM_KEY_BIND_PORT: Final[str] = "bind_port"
 CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL: Final[str] = "relay_worker_url"
 CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME: Final[str] = "relay_worker_name"
-CI_CONFIG_TEAM_KEY_SERVER_SIDE_LLM: Final[str] = "server_side_llm"
-
-# Transport types
-TEAM_TRANSPORT_DIRECT: Final[str] = "direct"
-TEAM_TRANSPORT_RELAY: Final[str] = "relay"
-TEAM_TRANSPORT_LOCAL: Final[str] = "local"
-VALID_TEAM_TRANSPORTS: Final[tuple[str, ...]] = (TEAM_TRANSPORT_DIRECT, TEAM_TRANSPORT_RELAY)
 
 # Default values
 TEAM_DEFAULT_SYNC_INTERVAL_SECONDS: Final[int] = 3
-TEAM_DEFAULT_PULL_INTERVAL_SECONDS: Final[int] = 15
-TEAM_DEFAULT_BIND_HOST: Final[str] = "127.0.0.1"
-TEAM_DEFAULT_BIND_PORT: Final[int] = 8600
 TEAM_MIN_SYNC_INTERVAL_SECONDS: Final[int] = 1
 TEAM_MAX_SYNC_INTERVAL_SECONDS: Final[int] = 60
-TEAM_MIN_PULL_INTERVAL_SECONDS: Final[int] = 5
-TEAM_MAX_PULL_INTERVAL_SECONDS: Final[int] = 300
 
 # Event types
 TEAM_EVENT_OBSERVATION_UPSERT: Final[str] = "observation_upsert"
@@ -174,11 +157,7 @@ TEAM_API_KEY_ENV_VAR: Final[str] = "OAK_TEAM_API_KEY"
 TEAM_CLI_API_URL_TEMPLATE: Final[str] = "http://localhost:{port}{path}"
 
 # Validation error messages
-TEAM_ERROR_INVALID_TRANSPORT: Final[str] = "Invalid transport: {transport}"
-TEAM_ERROR_INVALID_TRANSPORT_EXPECTED: Final[str] = "one of {transports}"
-TEAM_ERROR_RELAY_URL_REQUIRED: Final[str] = "relay_worker_url is required when transport is 'relay'"
 TEAM_ERROR_SYNC_INTERVAL_RANGE: Final[str] = "sync_interval_seconds must be between {min} and {max}"
-TEAM_ERROR_PULL_INTERVAL_RANGE: Final[str] = "pull_interval_seconds must be between {min} and {max}"
 
 # Server mode env var
 TEAM_SERVER_MODE_ENV_VAR: Final[str] = "OAK_CI_TEAM_SERVER"
@@ -213,17 +192,6 @@ TEAM_TRANSPORT_ERROR_CONNECTION: Final[str] = "Failed to connect to team server:
 TEAM_TRANSPORT_ERROR_PUSH: Final[str] = "Failed to push events: {error}"
 TEAM_TRANSPORT_ERROR_PULL: Final[str] = "Failed to pull events: {error}"
 
-# HTTP transport timeout
-TEAM_HTTP_TIMEOUT_SECONDS: Final[float] = 10.0
-
-# HTTP transport paths (relative, without prefix — used by HttpTransport)
-TEAM_HTTP_PUSH_PATH: Final[str] = "/events/push"
-TEAM_HTTP_PULL_PATH: Final[str] = "/events/pull"
-TEAM_HTTP_STATUS_PATH: Final[str] = "/status"
-TEAM_HTTP_REQUEST_JOIN_PATH: Final[str] = "/request-join"
-TEAM_HTTP_JOIN_STATUS_PATH: Final[str] = "/join-status"
-TEAM_HTTP_MEMBERS_PATH: Final[str] = "/members"
-TEAM_HTTP_HEARTBEAT_PATH: Final[str] = "/members/heartbeat"
 
 # =============================================================================
 # Join request / approval flow
@@ -244,9 +212,6 @@ TEAM_JOIN_STATUS_REJECTED: Final[str] = "rejected"
 # Auto-generated key format
 TEAM_AUTO_KEY_PREFIX: Final[str] = "team_"
 TEAM_AUTO_KEY_RANDOM_BYTES: Final[int] = 32
-
-# Config keys for join flow persistence
-CI_CONFIG_TEAM_KEY_PENDING_KEY_ID: Final[str] = "pending_key_id"
 
 # Log messages for join flow
 TEAM_LOG_KEY_GENERATED: Final[str] = "Auto-generated team API key"

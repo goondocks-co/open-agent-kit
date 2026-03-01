@@ -57,37 +57,6 @@ def add_activity(store: ActivityStore, activity: Activity) -> int:
                 "UPDATE prompt_batches SET activity_count = activity_count + 1 WHERE id = ?",
                 (activity.prompt_batch_id,),
             )
-        # Enqueue team sync event for activity
-        if store.team_outbox_enabled:
-            from open_agent_kit.features.codebase_intelligence.constants.team import (
-                TEAM_EVENT_ACTIVITY_UPSERT,
-            )
-            from open_agent_kit.features.codebase_intelligence.governance.policies import (
-                should_sync_event,
-            )
-            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-                enqueue_team_event,
-            )
-
-            policy = store.get_team_policy()
-            if policy is None or should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy):
-                batch_pn = None
-                if activity.prompt_batch_id is not None:
-                    pn_row = conn.execute(
-                        "SELECT prompt_number FROM prompt_batches WHERE id = ?",
-                        (activity.prompt_batch_id,),
-                    ).fetchone()
-                    batch_pn = pn_row[0] if pn_row else None
-                event_payload = {**row, "batch_prompt_number": batch_pn}
-                enqueue_team_event(
-                    conn=conn,
-                    event_type=TEAM_EVENT_ACTIVITY_UPSERT,
-                    payload=event_payload,
-                    source_machine_id=activity.source_machine_id or store.machine_id,
-                    content_hash=row.get("content_hash") or "",
-                    schema_version=store.get_schema_version(),
-                )
-
         # Invalidate cache for this session
         store._invalidate_stats_cache(activity.session_id)
         return cursor.lastrowid or 0
@@ -250,62 +219,6 @@ def _apply_count_updates(
         )
 
 
-def _enqueue_activity_outbox_events(
-    store: ActivityStore,
-    conn: sqlite3.Connection,
-    activities: list[Activity],
-    rows: list[dict],
-) -> None:
-    """Enqueue team outbox events for a batch of activities (inside open transaction)."""
-    if not store.team_outbox_enabled:
-        return
-
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_EVENT_ACTIVITY_UPSERT,
-    )
-    from open_agent_kit.features.codebase_intelligence.governance.policies import (
-        should_sync_event,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-        enqueue_team_event,
-    )
-
-    policy = store.get_team_policy()
-    if policy is not None and not should_sync_event(TEAM_EVENT_ACTIVITY_UPSERT, policy):
-        return
-
-    schema_version = store.get_schema_version()
-
-    # Batch-fetch all prompt_numbers in one query instead of N+1
-    batch_ids = {a.prompt_batch_id for a in activities if a.prompt_batch_id is not None}
-    prompt_numbers: dict[int, int] = {}
-    if batch_ids:
-        placeholders = ",".join("?" * len(batch_ids))
-        prompt_numbers = {
-            pn_row["id"]: pn_row["prompt_number"]
-            for pn_row in conn.execute(
-                f"SELECT id, prompt_number FROM prompt_batches WHERE id IN ({placeholders})",
-                list(batch_ids),
-            ).fetchall()
-        }
-
-    for activity, row in zip(activities, rows, strict=True):
-        batch_pn = (
-            prompt_numbers.get(activity.prompt_batch_id)
-            if activity.prompt_batch_id is not None
-            else None
-        )
-        event_payload = {**row, "batch_prompt_number": batch_pn}
-        enqueue_team_event(
-            conn=conn,
-            event_type=TEAM_EVENT_ACTIVITY_UPSERT,
-            payload=event_payload,
-            source_machine_id=activity.source_machine_id or store.machine_id,
-            content_hash=row.get("content_hash") or "",
-            schema_version=schema_version,
-        )
-
-
 def _bulk_insert_transaction(
     store: ActivityStore,
     activities: list[Activity],
@@ -331,7 +244,6 @@ def _bulk_insert_transaction(
             )
             inserted_rows.append(row)
         _apply_count_updates(conn, session_updates, batch_updates)
-        _enqueue_activity_outbox_events(store, conn, activities, inserted_rows)
 
     return ids, session_updates, batch_updates, affected_sessions
 
@@ -376,7 +288,6 @@ def _individual_insert_fallback(
     if session_updates or batch_updates or inserted_rows:
         with store._transaction() as conn:
             _apply_count_updates(conn, session_updates, batch_updates)
-            _enqueue_activity_outbox_events(store, conn, inserted_activities, inserted_rows)
 
     if skipped:
         logger.warning(f"Skipped {skipped}/{len(activities)} activities due to FK violations")

@@ -203,6 +203,24 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
             error=CI_CLOUD_RELAY_ERROR_CONFIG_NOT_LOADED,
         )
 
+    # Guard: if this node is configured as a relay *consumer* (team.relay_worker_url
+    # points to a URL that is NOT the locally-deployed cloud relay), deploying a new
+    # Worker would overwrite the shared team credentials and disconnect this node from
+    # the rest of the team.  Only the node that owns the Cloudflare account should
+    # deploy; teammates configure via the Team Config tab instead.
+    _tc = state.ci_config.team
+    _rc = state.ci_config.cloud_relay
+    if _tc.relay_worker_url and _tc.relay_worker_url != _rc.worker_url:
+        return _make_error_response(
+            phase=CLOUD_RELAY_PHASE_SCAFFOLD,
+            error=(
+                "This node is already joined to a team relay at "
+                f"{_tc.relay_worker_url}. "
+                "Only the node that owns the Cloudflare account should deploy. "
+                "Teammates join via Team → Config."
+            ),
+        )
+
     from open_agent_kit.features.codebase_intelligence.cloud_relay.deploy import (
         check_wrangler_auth,
         run_npm_install,
@@ -412,9 +430,13 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
             error=relay_status.error or CLOUD_RELAY_ERROR_CONNECTION_FAILED,
         )
 
-    # Persist auto_connect so the relay reconnects after daemon restart
+    # Persist auto_connect so the relay reconnects after daemon restart.
+    # Also auto-populate team relay config — the team relay IS this Worker,
+    # so relay_worker_url and api_key are the same values.
     ci_config_ac = load_ci_config(project_root)
     ci_config_ac.cloud_relay.auto_connect = True
+    ci_config_ac.team.relay_worker_url = worker_url
+    ci_config_ac.team.api_key = token
     save_ci_config(project_root, ci_config_ac)
     state.ci_config = None
 

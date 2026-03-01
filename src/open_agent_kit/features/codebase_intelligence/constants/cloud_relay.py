@@ -104,6 +104,9 @@ CLOUD_RELAY_WS_TYPE_ERROR: Final[str] = "error"
 CLOUD_RELAY_WS_TYPE_REGISTERED: Final[str] = "registered"
 CLOUD_RELAY_WS_TYPE_HTTP_REQUEST: Final[str] = "http_request"
 CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE: Final[str] = "http_response"
+CLOUD_RELAY_WS_TYPE_OBS_PUSH: Final[str] = "obs_push"
+CLOUD_RELAY_WS_TYPE_OBS_BATCH: Final[str] = "obs_batch"
+CLOUD_RELAY_WS_TYPE_NODE_LIST: Final[str] = "node_list"
 
 # WebSocket protocol field names
 CLOUD_RELAY_WS_FIELD_TYPE: Final[str] = "type"
@@ -215,6 +218,7 @@ CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS: Final[float] = 10.0
 # HTTP proxy forwarding (used by cloud relay client for team API proxying)
 CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port}{path}"
 CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS: Final[float] = 30.0
+CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
 
 # WebSocket protocol — additional fields and default messages
 CLOUD_RELAY_WS_FIELD_MESSAGE: Final[str] = "message"

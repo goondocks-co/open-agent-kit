@@ -17,6 +17,11 @@ export const RelayMessageType = {
   HEARTBEAT: "heartbeat",
   HEARTBEAT_ACK: "heartbeat_ack",
   ERROR: "error",
+  HTTP_REQUEST: "http_request",
+  HTTP_RESPONSE: "http_response",
+  OBS_PUSH: "obs_push",
+  OBS_BATCH: "obs_batch",
+  NODE_LIST: "node_list",
 } as const;
 
 export type RelayMessageType =
@@ -30,6 +35,7 @@ export type RelayMessageType =
 export interface RegisterMessage {
   type: typeof RelayMessageType.REGISTER;
   token: string;
+  machine_id: string;
   tools: Array<Record<string, unknown>>;
 }
 
@@ -79,6 +85,52 @@ export interface RelayError {
 }
 
 // ---------------------------------------------------------------------------
+// Wire messages — HTTP proxy (bidirectional)
+// ---------------------------------------------------------------------------
+
+/** Sent by worker to forward an HTTP request to the local daemon. */
+export interface HttpRequestMessage {
+  type: typeof RelayMessageType.HTTP_REQUEST;
+  request_id: string;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body: string | null;
+}
+
+/** Sent by daemon in response to an HTTP proxy request. */
+export interface HttpResponseMessage {
+  type: typeof RelayMessageType.HTTP_RESPONSE;
+  request_id: string;
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+// ---------------------------------------------------------------------------
+// Wire messages — Observation sync (multi-node)
+// ---------------------------------------------------------------------------
+
+/** Sent by daemon to push observations to all other connected nodes. */
+export interface ObsPushMessage {
+  type: typeof RelayMessageType.OBS_PUSH;
+  observations: unknown[];
+}
+
+/** Sent by worker to deliver observations from another node. */
+export interface ObsBatchMessage {
+  type: typeof RelayMessageType.OBS_BATCH;
+  from_machine_id: string;
+  observations: unknown[];
+}
+
+/** Sent by worker to inform all nodes of the current node list. */
+export interface NodeListMessage {
+  type: typeof RelayMessageType.NODE_LIST;
+  nodes: { machine_id: string; online: boolean }[];
+}
+
+// ---------------------------------------------------------------------------
 // Union of all message types
 // ---------------------------------------------------------------------------
 
@@ -89,7 +141,12 @@ export type RelayMessage =
   | ToolCallResponse
   | HeartbeatPing
   | HeartbeatPong
-  | RelayError;
+  | RelayError
+  | HttpRequestMessage
+  | HttpResponseMessage
+  | ObsPushMessage
+  | ObsBatchMessage
+  | NodeListMessage;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -98,6 +155,13 @@ export type RelayMessage =
 /** Pending request waiting for a response from the local daemon. */
 export interface PendingRequest {
   resolve: (response: ToolCallResponse) => void;
+  reject: (reason: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** Pending HTTP proxy request waiting for a response from the local daemon. */
+export interface PendingHttpRequest {
+  resolve: (response: HttpResponseMessage) => void;
   reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }

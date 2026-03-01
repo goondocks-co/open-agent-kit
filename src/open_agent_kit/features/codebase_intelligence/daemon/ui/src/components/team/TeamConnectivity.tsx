@@ -1,9 +1,7 @@
 /**
  * Team Connectivity page — cloud relay controls, team join URL, and MCP server URL.
  *
- * Consolidates the old TeamSharing (tunnel) and CloudRelay pages into a single
- * tab within the Team section. Server mode shows relay controls + URLs;
- * non-server mode shows guidance to either enable server mode or join a team.
+ * Shows relay controls + URLs for remote access and agent registration.
  */
 
 import { useState, useEffect } from "react";
@@ -29,7 +27,6 @@ import {
     Settings,
     Globe,
     Link2,
-    Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CopyButton, CommandBlock } from "@/components/ui/command-block";
@@ -41,7 +38,6 @@ import {
     useCloudRelayUpdateSettings,
 } from "@/hooks/use-cloud-relay";
 import type { CloudRelayStartResponse } from "@/hooks/use-cloud-relay";
-import { useTeamConfig } from "@/hooks/use-team";
 
 // =============================================================================
 // Prerequisites Card
@@ -478,12 +474,10 @@ function CustomDomainSettings({ currentDomain, workerName, isConnected }: Custom
 // =============================================================================
 
 export default function TeamConnectivity() {
-    const { data: config, isLoading: isConfigLoading } = useTeamConfig();
     const { data: status, isLoading } = useCloudRelayStatus();
     const startRelay = useCloudRelayStart();
     const stopRelay = useCloudRelayStop();
 
-    const isServerMode = config?.server_mode ?? false;
     const isConnected = status?.connected ?? false;
     const isToggling = startRelay.isPending || stopRelay.isPending;
 
@@ -507,35 +501,13 @@ export default function TeamConnectivity() {
 
     const startError = startRelay.data?.error ? startRelay.data : null;
 
-    if (isConfigLoading) {
+    if (isLoading) {
         return (
             <div className="space-y-4">
                 <div className="border rounded-lg p-6 animate-pulse">
                     <div className="h-5 bg-muted rounded w-1/3 mb-3" />
                     <div className="h-4 bg-muted rounded w-2/3" />
                 </div>
-            </div>
-        );
-    }
-
-    // Not in server mode: show guidance
-    if (!isServerMode) {
-        return (
-            <div className="space-y-6">
-                <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                        <Server className="w-12 h-12 mb-4 opacity-30" />
-                        <p className="text-sm font-medium">Server mode is not enabled</p>
-                        <p className="text-xs mt-2 text-center max-w-md">
-                            Enable server mode in the{" "}
-                            <Link to="/team/config" className="text-primary hover:underline">
-                                Config tab
-                            </Link>{" "}
-                            to set up a Cloud Relay for remote access, or join an existing team
-                            to connect as a client.
-                        </p>
-                    </CardContent>
-                </Card>
             </div>
         );
     }

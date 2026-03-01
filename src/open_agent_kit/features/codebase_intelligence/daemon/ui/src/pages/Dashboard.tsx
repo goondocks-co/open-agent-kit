@@ -157,22 +157,16 @@ export default function Dashboard() {
             {(status?.team?.configured || status?.cloud_relay?.connected) && (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <StatCard
-                        title="Team Server"
+                        title="Team"
                         value={
-                            status?.team?.server_mode
-                                ? "Active"
-                                : status?.team?.connected
-                                    ? "Connected"
+                            status?.team?.connected
+                                ? "Connected"
+                                : status?.team?.configured
+                                    ? "Configured"
                                     : "Off"
                         }
                         icon={Server}
-                        subtext={
-                            status?.team?.server_mode
-                                ? "Running as server"
-                                : status?.team?.server_url
-                                    ? `Client → ${new URL(status.team.server_url).host}`
-                                    : "Team server"
-                        }
+                        subtext="Relay-based team sync"
                         loading={isLoading}
                         href="/team"
                     />
@@ -188,14 +182,14 @@ export default function Dashboard() {
                         loading={isLoading}
                         href="/cloud"
                     />
-                    {status?.team?.server_mode && (
+                    {(status?.team?.members_online ?? 0) > 0 && (
                         <StatCard
-                            title="Members"
-                            value={status.team.members_online}
+                            title="Nodes Online"
+                            value={status!.team!.members_online}
                             icon={Users}
-                            subtext="Online team members"
+                            subtext="Connected peer nodes"
                             loading={isLoading}
-                            href="/team"
+                            href="/team/members"
                         />
                     )}
                 </div>
@@ -336,15 +330,15 @@ export default function Dashboard() {
                                     "font-medium text-sm",
                                     status?.team?.configured ? "text-green-500" : "text-muted-foreground"
                                 )}>
-                                    {status?.team?.server_mode
+                                    {status?.team?.connected
                                         ? <span className="flex items-center gap-1">
                                             <Check className="w-3 h-3" />
-                                            Server
+                                            Connected
                                           </span>
                                         : status?.team?.configured
                                             ? <span className="flex items-center gap-1">
                                                 <Check className="w-3 h-3" />
-                                                Client
+                                                Configured
                                               </span>
                                             : <Link to="/team" className="hover:underline">Off</Link>
                                     }

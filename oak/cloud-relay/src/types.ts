@@ -19,6 +19,9 @@ export const RelayMessageType = {
   ERROR: "error",
   HTTP_REQUEST: "http_request",
   HTTP_RESPONSE: "http_response",
+  OBS_PUSH: "obs_push",
+  OBS_BATCH: "obs_batch",
+  NODE_LIST: "node_list",
 } as const;
 
 export type RelayMessageType =
@@ -32,6 +35,7 @@ export type RelayMessageType =
 export interface RegisterMessage {
   type: typeof RelayMessageType.REGISTER;
   token: string;
+  machine_id: string;
   tools: Array<Record<string, unknown>>;
 }
 
@@ -104,6 +108,29 @@ export interface HttpResponseMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Wire messages — Observation sync (multi-node)
+// ---------------------------------------------------------------------------
+
+/** Sent by daemon to push observations to all other connected nodes. */
+export interface ObsPushMessage {
+  type: typeof RelayMessageType.OBS_PUSH;
+  observations: unknown[];
+}
+
+/** Sent by worker to deliver observations from another node. */
+export interface ObsBatchMessage {
+  type: typeof RelayMessageType.OBS_BATCH;
+  from_machine_id: string;
+  observations: unknown[];
+}
+
+/** Sent by worker to inform all nodes of the current node list. */
+export interface NodeListMessage {
+  type: typeof RelayMessageType.NODE_LIST;
+  nodes: { machine_id: string; online: boolean }[];
+}
+
+// ---------------------------------------------------------------------------
 // Union of all message types
 // ---------------------------------------------------------------------------
 
@@ -116,7 +143,10 @@ export type RelayMessage =
   | HeartbeatPong
   | RelayError
   | HttpRequestMessage
-  | HttpResponseMessage;
+  | HttpResponseMessage
+  | ObsPushMessage
+  | ObsBatchMessage
+  | NodeListMessage;
 
 // ---------------------------------------------------------------------------
 // Internal helpers

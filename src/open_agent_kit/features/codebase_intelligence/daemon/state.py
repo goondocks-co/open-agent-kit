@@ -12,7 +12,6 @@ Benefits of this design:
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -47,13 +46,7 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.indexing.watcher import FileWatcher
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
-    from open_agent_kit.features.codebase_intelligence.team.gateway.base import TeamGateway
-    from open_agent_kit.features.codebase_intelligence.team.outbox.worker import TeamSyncWorker
-    from open_agent_kit.features.codebase_intelligence.team.pull.worker import TeamPullWorker
-    from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-        MembershipService,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
+    from open_agent_kit.features.codebase_intelligence.team.outbox.worker import ObsFlushWorker
 
 
 @dataclass
@@ -217,13 +210,8 @@ class DaemonState:
     last_hook_activity: float | None = None  # epoch of last hook event
     power_state: str = POWER_STATE_ACTIVE  # current power state
     _power_state_lock: RLock = field(default_factory=RLock, init=False, repr=False)
-    # Team sync (client mode)
-    team_transport: "TeamTransport | None" = None
-    team_membership_service: "MembershipService | None" = None
-    team_sync_worker: "TeamSyncWorker | None" = None
-    team_pull_worker: "TeamPullWorker | None" = None
-    team_gateway: "TeamGateway | None" = None
-    team_reconcile_trigger: Callable[[], None] | None = None
+    # Team sync
+    team_sync_worker: "ObsFlushWorker | None" = None
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -545,11 +533,6 @@ class DaemonState:
             self.activity_processor.schedule_background_processing(
                 state_accessor=lambda: self,
             )
-        if self.team_reconcile_trigger is not None:
-            try:
-                self.team_reconcile_trigger()
-            except Exception:
-                logger.exception("Reconcile trigger failed on wake")
 
     def reset(self) -> None:
         """Reset state for testing or restart."""
@@ -591,12 +574,7 @@ class DaemonState:
         self.pending_migration_count = 0
         self.last_hook_activity = None
         self.power_state = POWER_STATE_ACTIVE
-        self.team_transport = None
-        self.team_membership_service = None
         self.team_sync_worker = None
-        self.team_pull_worker = None
-        self.team_gateway = None
-        self.team_reconcile_trigger = None
 
 
 # Global daemon state instance

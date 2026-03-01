@@ -7,7 +7,6 @@ orchestrator. Init order is load-bearing:
 
 import asyncio
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,7 +14,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.config.governance import DataCollectionPolicy
-    from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
 
 from fastapi import FastAPI
 
@@ -40,46 +38,6 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.embeddings.base import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
-
-
-def _ensure_team_key(state: "DaemonState", project_root: Path) -> None:
-    """Ensure a local team API key exists in the user config.
-
-    Auto-generates ``team_<random>`` if ``ci_config.team.api_key`` is
-    ``None``.  The key is saved to ``config.{machine_id}.yaml`` (user-
-    classified) so it persists across restarts and is never committed.
-
-    Non-critical: failures are logged but do not prevent startup.
-    """
-    import secrets
-
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_AUTO_KEY_PREFIX,
-        TEAM_AUTO_KEY_RANDOM_BYTES,
-        TEAM_LOG_KEY_GENERATED,
-        TEAM_LOG_KEY_PRESERVED,
-    )
-
-    ci_config = state.ci_config
-    if ci_config is None:
-        return
-
-    if ci_config.team.api_key:
-        logger.debug(TEAM_LOG_KEY_PRESERVED)
-        return
-
-    try:
-        from open_agent_kit.features.codebase_intelligence.config import save_ci_config
-
-        ci_config.team.api_key = (
-            f"{TEAM_AUTO_KEY_PREFIX}{secrets.token_hex(TEAM_AUTO_KEY_RANDOM_BYTES)}"
-        )
-        save_ci_config(project_root, ci_config)
-        # Invalidate cached config so subsequent reads pick up the change
-        state.ci_config = None
-        logger.info(TEAM_LOG_KEY_GENERATED)
-    except (OSError, ValueError, RuntimeError) as e:
-        logger.warning(f"Failed to generate team API key: {e}")
 
 
 async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
@@ -387,20 +345,12 @@ def _init_team_sync(state: "DaemonState") -> None:
     """Initialize team outbox sync if configured.
 
     Enables outbox writes in the activity store and starts the background
-    sync worker.  Non-critical: failures are logged but do not prevent startup.
-
-    In **server mode** a ``LocalTransport`` writes events directly into the
-    ``team_events`` table (no HTTP loopback).  No pull worker is started
-    because client-pushed events are already applied in the push endpoint.
-
-    In **client mode** an HTTP transport is created and both the sync worker
-    (outbox flush) and pull worker (poll for teammate events) are started.
+    obs flush worker that pushes observations via the cloud relay.
+    Non-critical: failures are logged but do not prevent startup.
     """
     ci_config = state.ci_config
     if not ci_config or not ci_config.team.auto_sync:
         return
-    if not ci_config.team.server_mode and not ci_config.team.server_url:
-        return  # Client mode requires a server URL
     if not state.activity_store:
         logger.debug("Team sync skipped: no activity store")
         return
@@ -422,185 +372,30 @@ def _init_team_sync(state: "DaemonState") -> None:
 
     state.activity_store._team_policy_accessor = _policy_accessor
 
-    # Create transport for pushing/pulling events
     from open_agent_kit.features.codebase_intelligence.team.identity import (
         get_project_identity,
     )
     from open_agent_kit.features.codebase_intelligence.team.outbox.worker import (
-        TeamSyncWorker,
+        ObsFlushWorker,
     )
 
     project_id = (
         get_project_identity(state.project_root).full_id if state.project_root else "unknown"
     )
 
-    transport: TeamTransport
-    if ci_config.team.server_mode:
-        from open_agent_kit.features.codebase_intelligence.team.transport.local import (
-            LocalTransport,
-        )
-
-        transport = LocalTransport(
-            conn_factory=state.activity_store._get_connection,
-            project_id=project_id,
-            machine_id=state.machine_id or "unknown",
-        )
-    else:
-        from open_agent_kit.features.codebase_intelligence.team.transport.factory import (
-            create_transport,
-        )
-
-        transport = state.team_transport or create_transport(ci_config.team)
-
-    state.team_transport = transport
-
-    # Start sync worker (flushes outbox — both modes)
-    worker = TeamSyncWorker(
+    # Start obs flush worker (flushes outbox via cloud relay)
+    worker = ObsFlushWorker(
         store=state.activity_store,
         config=ci_config.team,
         project_id=project_id,
-        state_accessor=lambda: state.power_state,
     )
-    worker.set_transport(transport)  # type: ignore[arg-type]
+    # Relay client will be set when the cloud relay connects
+    if state.cloud_relay_client is not None:
+        worker.set_relay_client(state.cloud_relay_client)
 
     worker.start()
     state.team_sync_worker = worker
-    logger.info("Team sync worker started")
-
-    # Start pull worker (client mode only — polls server for teammate events)
-    if not ci_config.team.server_mode:
-        from open_agent_kit.features.codebase_intelligence.team.pull.worker import TeamPullWorker
-
-        pull_worker = TeamPullWorker(
-            store=state.activity_store,
-            config=ci_config.team,
-            project_id=project_id,
-            machine_id=state.machine_id or "unknown",
-        )
-        pull_worker.set_transport(transport)
-        pull_worker.start()
-        state.team_pull_worker = pull_worker
-        logger.info("Team pull worker started")
-
-    # Wire reconcile trigger: runs on daemon startup and wake-from-sleep
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.pull.applier import TeamEventApplier
-
-    def _reconcile_trigger() -> None:
-        """Fill local gaps by re-applying missed team_events. Idempotent."""
-        from datetime import UTC, datetime
-
-        if not state.activity_store:
-            return
-
-        # Gate: skip if reconciled recently (avoids spurious runs on quick wake cycles)
-        conn = state.activity_store._get_connection()
-        machine_id_str = state.machine_id or "unknown"
-        last_row = conn.execute(
-            "SELECT last_reconcile_at FROM team_reconcile_state WHERE machine_id = ?",
-            (machine_id_str,),
-        ).fetchone()
-        if last_row and last_row["last_reconcile_at"]:
-            try:
-                last_at = datetime.fromisoformat(last_row["last_reconcile_at"])
-                elapsed_minutes = (datetime.now(UTC) - last_at).total_seconds() / 60
-                if elapsed_minutes < TEAM_RECONCILE_SLEEP_THRESHOLD_MINUTES:
-                    return
-            except (ValueError, TypeError):
-                pass
-
-        # Read live config so server_mode reflects any config reload since startup
-        current_config = state.ci_config
-        if current_config and current_config.team.server_mode:
-            # Server node: local diff — re-apply team_events not yet in local store
-            applier = TeamEventApplier(state.activity_store)
-            result = applier.reconcile_local()
-            logger.info(
-                "Team reconcile (local): applied=%d skipped=%d errors=%d",
-                result.applied,
-                result.skipped,
-                result.errors,
-            )
-
-        # Update reconcile state
-        now_str = datetime.now(UTC).isoformat()
-        with state.activity_store._transaction() as wconn:
-            wconn.execute(
-                """INSERT OR REPLACE INTO team_reconcile_state
-                   (machine_id, last_reconcile_at, last_hash_count, last_missing_count)
-                   VALUES (?, ?, ?, ?)""",
-                (machine_id_str, now_str, 0, 0),
-            )
-
-    state.team_reconcile_trigger = _reconcile_trigger
-
-    # Run once at startup
-    try:
-        _reconcile_trigger()
-    except Exception:
-        logger.exception("Initial team reconcile failed")
-
-
-def _init_team_server(state: "DaemonState") -> None:
-    """Create server-side tables for team server mode.
-
-    Only called when OAK_CI_TEAM_SERVER env var is set.
-    Tables are created idempotently (IF NOT EXISTS).
-    Also runs column migrations for existing databases.
-    """
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_SERVER_LOG_INIT,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.server.auth import (
-        TEAM_API_KEYS_DDL,
-        migrate_api_keys_table,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.server.cursors import (
-        TEAM_EVENTS_DDL,
-    )
-    from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-        TEAM_MEMBERS_DDL,
-    )
-
-    if state.activity_store is None:
-        logger.warning("Cannot init team server tables: activity store not available")
-        return
-
-    conn = state.activity_store._get_connection()
-    conn.executescript(TEAM_API_KEYS_DDL)
-    conn.executescript(TEAM_MEMBERS_DDL)
-    conn.executescript(TEAM_EVENTS_DDL)
-
-    # Migrate existing tables to add new columns (idempotent)
-    migrate_api_keys_table(conn)
-
-    # Register the server node as a member so it appears in the members list
-    # for all connected clients.  The server is just another node playing the
-    # server role — it should be visible and resynable like any other member.
-    if state.machine_id:
-        from open_agent_kit.features.codebase_intelligence.team.server.membership import (
-            MembershipService,
-        )
-
-        project_id = "unknown"
-        if state.project_root:
-            try:
-                from open_agent_kit.features.codebase_intelligence.team.identity import (
-                    get_project_identity,
-                )
-
-                project_id = get_project_identity(state.project_root).full_id
-            except Exception:
-                pass
-        MembershipService(conn_factory=lambda: conn).register(
-            machine_id=state.machine_id,
-            display_name=state.machine_id,
-            project_id=project_id,
-        )
-
-    logger.info(TEAM_SERVER_LOG_INIT)
+    logger.info("Obs flush worker started")
 
 
 async def _shutdown(state: "DaemonState") -> None:
@@ -652,17 +447,7 @@ async def _shutdown(state: "DaemonState") -> None:
         finally:
             state.team_sync_worker = None
 
-    # 4b2. Stop team pull worker
-    if state.team_pull_worker:
-        logger.info("Stopping team pull worker...")
-        try:
-            state.team_pull_worker.stop()
-        except (RuntimeError, OSError) as e:
-            logger.warning(f"Error stopping team pull worker: {e}")
-        finally:
-            state.team_pull_worker = None
-
-    # 4c. Disconnect cloud relay if connected
+    # 4b. Disconnect cloud relay if connected
     if state.cloud_relay_client:
         logger.info("Disconnecting cloud relay...")
         try:
@@ -738,7 +523,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_redaction(ci_data_dir)
 
     # --- Subsystem init (order matters: embedding -> vector store -> activity -> agents) ---
-    _ensure_team_key(state, project_root)
     await _init_cloud_relay(state, project_root)
 
     provider_available = _init_embedding(state, project_root)
@@ -791,46 +575,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state.vector_store = None
         state.indexer = None
 
-    # Team server mode: create server-side tables
-    _server_mode = os.environ.get("OAK_CI_TEAM_SERVER") or (
-        ci_config and ci_config.team.server_mode
-    )
-    if _server_mode:
-        try:
-            _init_team_server(state)
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(f"Failed to initialize team server: {e}")
-
     # Team sync: start outbox sync worker
     try:
         _init_team_sync(state)
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Failed to initialize team sync: {e}")
-
-    # Auto-trigger backfill for historical data (runs in background, non-blocking)
-    if state.activity_store and state.activity_store.team_outbox_enabled:
-        try:
-            from open_agent_kit.features.codebase_intelligence.team.backfill import (
-                TeamBackfillService,
-            )
-
-            _backfill_svc = TeamBackfillService()
-            if _backfill_svc.needs_backfill(state.activity_store):
-                _backfill_task = asyncio.create_task(
-                    _backfill_svc.run_async(state.activity_store),
-                    name="team_backfill",
-                )
-                state.background_tasks.append(_backfill_task)
-                logger.info("Team backfill started in background")
-        except (OSError, ValueError, RuntimeError) as e:
-            logger.warning(f"Failed to start team backfill: {e}")
-
-    # Team gateway: abstracts server vs client mode for dashboard routes
-    from open_agent_kit.features.codebase_intelligence.team.gateway.factory import (
-        create_gateway,
-    )
-
-    state.team_gateway = create_gateway(state)
 
     # Run one immediate version + upgrade check, then launch periodic loop
     check_version(state)

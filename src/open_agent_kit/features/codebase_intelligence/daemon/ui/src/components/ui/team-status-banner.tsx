@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Server, Cloud, Users, ArrowRight } from "lucide-react";
+import { Cloud, Users, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/hooks/use-status";
 
@@ -35,29 +35,15 @@ export function TeamStatusBanner({ status }: TeamStatusBannerProps) {
     const showBanner = team?.configured || cloudRelay?.connected;
     if (!showBanner) return null;
 
-    const isServerMode = team?.server_mode ?? false;
-    const isConnectedClient = team?.configured && !isServerMode;
-
     return (
         <div className="flex items-center gap-2 px-4 py-2 rounded-lg mb-4 bg-primary/5 border border-primary/20">
             <div className="flex items-center gap-2 flex-1 flex-wrap">
-                {/* Server Mode pill */}
-                {team?.configured && isServerMode && (
-                    <Pill className="bg-green-500/10 text-green-700 dark:text-green-400">
-                        <Server className="w-3 h-3" />
-                        <StatusDot color="green" />
-                        Server
-                    </Pill>
-                )}
-
-                {/* Client Mode pill */}
-                {isConnectedClient && (
+                {/* Team connected pill */}
+                {team?.configured && (
                     <Pill className="bg-blue-500/10 text-blue-700 dark:text-blue-400">
-                        <Server className="w-3 h-3" />
-                        <StatusDot color="blue" />
-                        <span className="truncate max-w-[160px]" title={team.server_url || undefined}>
-                            {team.server_url ? new URL(team.server_url).host : "Connected"}
-                        </span>
+                        <Users className="w-3 h-3" />
+                        <StatusDot color={team.connected ? "green" : "blue"} />
+                        {team.connected ? "Team Connected" : "Team Configured"}
                     </Pill>
                 )}
 
@@ -70,11 +56,11 @@ export function TeamStatusBanner({ status }: TeamStatusBannerProps) {
                     </Pill>
                 )}
 
-                {/* Members pill (server mode only) */}
-                {isServerMode && (team?.members_online ?? 0) > 0 && (
+                {/* Members pill */}
+                {team?.configured && (team?.members_online ?? 0) > 0 && (
                     <Pill className="bg-muted text-muted-foreground">
                         <Users className="w-3 h-3" />
-                        {team!.members_online} {team!.members_online === 1 ? "member" : "members"}
+                        {team!.members_online} {team!.members_online === 1 ? "node" : "nodes"}
                     </Pill>
                 )}
             </div>

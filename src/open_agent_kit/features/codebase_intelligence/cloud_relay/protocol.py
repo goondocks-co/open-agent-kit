@@ -20,6 +20,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK,
     CLOUD_RELAY_WS_TYPE_HTTP_REQUEST,
     CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE,
+    CLOUD_RELAY_WS_TYPE_NODE_LIST,
+    CLOUD_RELAY_WS_TYPE_OBS_BATCH,
+    CLOUD_RELAY_WS_TYPE_OBS_PUSH,
     CLOUD_RELAY_WS_TYPE_REGISTER,
     CLOUD_RELAY_WS_TYPE_REGISTERED,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
@@ -42,6 +45,9 @@ class RelayMessageType(str, Enum):
     ERROR = CLOUD_RELAY_WS_TYPE_ERROR
     HTTP_REQUEST = CLOUD_RELAY_WS_TYPE_HTTP_REQUEST
     HTTP_RESPONSE = CLOUD_RELAY_WS_TYPE_HTTP_RESPONSE
+    OBS_PUSH = CLOUD_RELAY_WS_TYPE_OBS_PUSH
+    OBS_BATCH = CLOUD_RELAY_WS_TYPE_OBS_BATCH
+    NODE_LIST = CLOUD_RELAY_WS_TYPE_NODE_LIST
 
 
 # ---- Daemon -> Worker messages ----
@@ -56,6 +62,7 @@ class RegisterMessage(BaseModel):
     type: str = CLOUD_RELAY_WS_TYPE_REGISTER
     token: str
     tools: list[dict[str, Any]] = Field(default_factory=list)
+    machine_id: str = ""
 
 
 class ToolCallResponse(BaseModel):
@@ -145,3 +152,13 @@ class HttpResponseMessage(BaseModel):
     status: int
     headers: dict[str, str] = Field(default_factory=dict)
     body: str = ""
+
+
+# ---- Observation sync messages (bidirectional) ----
+
+
+class ObsPushMessage(BaseModel):
+    """Sent by daemon to push observations to peer nodes via relay."""
+
+    type: str = CLOUD_RELAY_WS_TYPE_OBS_PUSH
+    observations: list[dict[str, Any]] = Field(default_factory=list)

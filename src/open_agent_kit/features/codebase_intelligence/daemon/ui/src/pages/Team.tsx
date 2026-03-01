@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Wifi, Users, Settings, Shield, Key, HardDrive, Globe } from "lucide-react";
+import { Wifi, Users, Settings, Shield, HardDrive, Globe } from "lucide-react";
 
 export default function Team() {
     const location = useLocation();
@@ -11,7 +11,6 @@ export default function Team() {
         { id: "members", label: "Members", path: "/team/members", icon: Users },
         { id: "config", label: "Config", path: "/team/config", icon: Settings },
         { id: "policy", label: "Policy", path: "/team/policy", icon: Shield },
-        { id: "keys", label: "Keys", path: "/team/keys", icon: Key },
         { id: "backups", label: "Backups", path: "/team/backups", icon: HardDrive },
         { id: "connectivity", label: "Connectivity", path: "/team/connectivity", icon: Globe },
     ];

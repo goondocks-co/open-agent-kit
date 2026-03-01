@@ -1,17 +1,15 @@
 /**
- * React Query hooks for Team API endpoints.
+ * React Query hooks for Team API endpoints (relay model).
  *
  * Provides hooks for:
- * - Team status and connection monitoring
- * - Member directory
- * - Team configuration management
+ * - Team status and relay connection monitoring
+ * - Online node directory
+ * - Team configuration management (relay settings)
  * - Data collection policy toggles
- * - API key management (server mode)
- * - Sync control (flush/pull)
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson, postJson, deleteJson } from "@/lib/api";
+import { fetchJson, postJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 import { usePowerQuery } from "./use-power-query";
 
@@ -20,55 +18,37 @@ import { usePowerQuery } from "./use-power-query";
 // =============================================================================
 
 export interface TeamConfigResponse {
-    server_url: string | null;
+    relay_worker_url: string | null;
+    api_key: string | null;
     auto_sync: boolean;
     sync_interval_seconds: number;
-    pull_interval_seconds: number;
-    project_slug: string | null;
-    transport: string;
-    server_mode: boolean;
 }
 
 export interface TeamConfigUpdate {
-    server_url?: string | null;
+    relay_worker_url?: string | null;
     api_key?: string | null;
     auto_sync?: boolean | null;
     sync_interval_seconds?: number | null;
-    pull_interval_seconds?: number | null;
-    project_slug?: string | null;
-    transport?: string | null;
+}
+
+export interface OnlineNode {
+    machine_id: string;
+    online: boolean;
+}
+
+export interface RelayStatus {
+    connected: boolean;
+    worker_url: string | null;
+    [key: string]: unknown;
 }
 
 export interface TeamStatusResponse {
-    configured: boolean;
-    server_url: string | null;
-    connected: boolean;
-    project_id: string | null;
-    sync: TeamSyncStatus | null;
-    members_online: number;
-    pending_approval?: boolean;
-    pending_key_id?: string | null;
-}
-
-export interface TeamSyncStatus {
-    queue_depth?: number;
-    last_sync?: string | null;
-    last_error?: string | null;
-    events_sent_total?: number;
-    [key: string]: unknown;
-}
-
-export interface TeamMember {
-    display_name?: string;
-    machine_id: string;
-    last_seen?: string;
-    event_count?: number;
-    is_server?: boolean;
-    [key: string]: unknown;
+    relay: RelayStatus | null;
+    online_nodes: OnlineNode[];
 }
 
 export interface TeamMembersResponse {
-    members: TeamMember[];
+    online_nodes: OnlineNode[];
     error?: string;
 }
 
@@ -90,83 +70,14 @@ export interface PolicyUpdate {
     allow_server_llm?: boolean;
 }
 
-export interface KeyResponse {
-    id: string;
-    name: string;
-    machine_id: string | null;
-    created_at: string;
-    last_used_at: string | null;
-    revoked_at: string | null;
-    permissions: string;
-}
-
-export interface KeyCreateResponse {
-    id: string;
-    name: string;
-    key: string;
-}
-
-export interface TeamJoinRequest {
-    server_url: string;
-}
-
-export interface TeamJoinResponse {
-    status: string;
-    key_id?: string;
-    configured?: boolean;
-    connected?: boolean;
-}
-
-export interface JoinStatusResponse {
-    status: "pending" | "approved" | "rejected";
-}
-
-export interface PendingJoinEntry {
-    key_id: string;
-    display_name?: string;
-    machine_id?: string;
-    created_at: string;
-}
-
-export interface ServerModeResponse {
-    enabled: boolean;
-    server_url?: string;
-    restart_required: boolean;
-}
-
-export interface BackfillCounts {
-    sessions: number;
-    batches: number;
-    observations: number;
-    activities: number;
-    resolution_events: number;
-}
-
-export interface BackfillState {
-    completed: boolean;
-    completed_at: string | null;
-    schema_version: string | null;
-    counts: BackfillCounts | null;
-    last_reconcile_at: string | null;
-    last_missing_count: number | null;
-}
-
-export interface MachineResyncResponse {
-    machine_id: string;
-    deleted: Record<string, number>;
-    applied: number;
-    skipped: number;
-    errors: number;
-}
-
 // =============================================================================
 // Polling Constants
 // =============================================================================
 
-/** Aggressive polling interval for team status (5 seconds) */
+/** Polling interval for team status (5 seconds) */
 const TEAM_STATUS_POLL_MS = 5000;
 
-/** Standard polling interval for member list (15 seconds) */
+/** Polling interval for member list (15 seconds) */
 const TEAM_MEMBERS_POLL_MS = 15000;
 
 // =============================================================================
@@ -179,17 +90,13 @@ const teamKeys = {
     members: () => [...teamKeys.all, "members"] as const,
     config: () => [...teamKeys.all, "config"] as const,
     policy: () => [...teamKeys.all, "policy"] as const,
-    keys: () => [...teamKeys.all, "keys"] as const,
-    pendingJoins: () => [...teamKeys.all, "pending-joins"] as const,
-    joinStatus: (keyId: string) => [...teamKeys.all, "join-status", keyId] as const,
-    backfillStatus: () => [...teamKeys.all, "backfill-status"] as const,
 };
 
 // =============================================================================
 // Query Hooks
 // =============================================================================
 
-/** Fetch team connection and sync status with aggressive polling. */
+/** Fetch team status (relay info + online nodes). */
 export function useTeamStatus() {
     return usePowerQuery<TeamStatusResponse>({
         queryKey: teamKeys.status(),
@@ -200,7 +107,7 @@ export function useTeamStatus() {
     });
 }
 
-/** Fetch team member directory with standard polling. */
+/** Fetch online nodes from the relay. */
 export function useTeamMembers() {
     return usePowerQuery<TeamMembersResponse>({
         queryKey: teamKeys.members(),
@@ -227,44 +134,9 @@ export function useTeamPolicy() {
     });
 }
 
-/** Fetch API keys (server mode only, one-shot). */
-export function useTeamKeys() {
-    return useQuery<KeyResponse[]>({
-        queryKey: teamKeys.keys(),
-        queryFn: ({ signal }) => fetchJson<KeyResponse[]>(API_ENDPOINTS.TEAM_KEYS, { signal }),
-        retry: false,
-    });
-}
-
 // =============================================================================
 // Mutation Hooks
 // =============================================================================
-
-/** Join a team server (simplified: only server_url needed). */
-export function useJoinTeam() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (req: TeamJoinRequest) =>
-            postJson<TeamJoinResponse>(API_ENDPOINTS.TEAM_JOIN, req),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.all });
-        },
-    });
-}
-
-/** Leave (disconnect from) a team server. */
-export function useLeaveTeam() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: () =>
-            postJson<{ status: string }>(API_ENDPOINTS.TEAM_LEAVE, {}),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.all });
-        },
-    });
-}
 
 /** Update team configuration. */
 export function useUpdateTeamConfig() {
@@ -289,178 +161,6 @@ export function useUpdateTeamPolicy() {
             postJson<PolicyResponse>(API_ENDPOINTS.TEAM_POLICY, update),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: teamKeys.policy() });
-        },
-    });
-}
-
-/** Force-flush the outbox to the team server. */
-export function useFlushSync() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: () =>
-            postJson<{ flushed: number }>(API_ENDPOINTS.TEAM_SYNC_FLUSH, {}),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.status() });
-        },
-    });
-}
-
-/** Force-pull events from the team server. */
-export function usePullSync() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: () =>
-            postJson<{ applied?: number; status?: string }>(API_ENDPOINTS.TEAM_SYNC_PULL, {}),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.status() });
-        },
-    });
-}
-
-/** Create a new API key (server mode only). */
-export function useCreateKey() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (name: string) =>
-            postJson<KeyCreateResponse>(API_ENDPOINTS.TEAM_KEYS, { name }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
-        },
-    });
-}
-
-/** Revoke an API key (server mode only). */
-export function useRevokeKey() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (keyId: string) =>
-            deleteJson<{ revoked: boolean }>(`${API_ENDPOINTS.TEAM_KEYS}/${keyId}`),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
-        },
-    });
-}
-
-/** Toggle server mode (enable/disable). Requires restart. */
-export function useToggleServerMode() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (enable: boolean) =>
-            postJson<ServerModeResponse>(API_ENDPOINTS.TEAM_SERVE, { enable }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.all });
-        },
-    });
-}
-
-// =============================================================================
-// Join Approval Hooks (server mode)
-// =============================================================================
-
-/** Slow polling interval for backfill status (30 seconds — rarely changes). */
-const BACKFILL_STATUS_POLL_MS = 30000;
-
-/** Polling interval for join status checks (5 seconds). */
-const JOIN_STATUS_POLL_MS = 5000;
-
-/** Fetch pending join requests (server mode only). */
-export function usePendingJoins() {
-    return useQuery<PendingJoinEntry[]>({
-        queryKey: teamKeys.pendingJoins(),
-        queryFn: ({ signal }) =>
-            fetchJson<PendingJoinEntry[]>(API_ENDPOINTS.TEAM_PENDING_JOINS, { signal }),
-        retry: false,
-    });
-}
-
-/** Approve a pending join request (server mode only). */
-export function useApproveJoin() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (keyId: string) =>
-            postJson<{ status: string }>(`${API_ENDPOINTS.TEAM_APPROVE_JOIN}/${keyId}`, {}),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.pendingJoins() });
-            queryClient.invalidateQueries({ queryKey: teamKeys.members() });
-            queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
-        },
-    });
-}
-
-/** Reject a pending join request (server mode only). */
-export function useRejectJoin() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (keyId: string) =>
-            postJson<{ status: string }>(`${API_ENDPOINTS.TEAM_REJECT_JOIN}/${keyId}`, {}),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.pendingJoins() });
-            queryClient.invalidateQueries({ queryKey: teamKeys.keys() });
-        },
-    });
-}
-
-/** Fetch backfill and reconciliation state (slow poll — rarely changes). */
-export function useBackfillStatus() {
-    return usePowerQuery<BackfillState>({
-        queryKey: teamKeys.backfillStatus(),
-        queryFn: ({ signal }) =>
-            fetchJson<BackfillState>(API_ENDPOINTS.TEAM_BACKFILL_STATUS, { signal }),
-        refetchInterval: BACKFILL_STATUS_POLL_MS,
-        pollCategory: "standard",
-        staleTime: 20000,
-    });
-}
-
-/** Trigger a full historical data re-backfill. */
-export function useTriggerBackfill() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: () =>
-            postJson<{ status: string; started_at: string }>(API_ENDPOINTS.TEAM_BACKFILL, {}),
-        onSuccess: () => {
-            // Refresh after a short delay to show updated state once backfill runs
-            setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: teamKeys.backfillStatus() });
-            }, 3000);
-        },
-    });
-}
-
-/** Poll join status after submitting a join request (client mode). */
-export function useJoinStatus(keyId: string | null) {
-    return usePowerQuery<JoinStatusResponse>({
-        queryKey: teamKeys.joinStatus(keyId ?? ""),
-        queryFn: ({ signal }) =>
-            fetchJson<JoinStatusResponse>(
-                `${API_ENDPOINTS.TEAM_JOIN_STATUS}/${keyId}`,
-                { signal },
-            ),
-        refetchInterval: JOIN_STATUS_POLL_MS,
-        pollCategory: "standard",
-        enabled: !!keyId,
-    });
-}
-
-/** Re-fetch and re-apply all events for a specific peer machine. */
-export function useMachineResync() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: (machineId: string) =>
-            postJson<MachineResyncResponse>(API_ENDPOINTS.TEAM_MACHINE_RESYNC, {
-                machine_id: machineId,
-            }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: teamKeys.members() });
-            queryClient.invalidateQueries({ queryKey: teamKeys.status() });
         },
     });
 }

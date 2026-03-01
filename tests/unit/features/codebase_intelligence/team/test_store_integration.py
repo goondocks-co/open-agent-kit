@@ -1,7 +1,11 @@
 """Tests for team outbox integration with the activity store.
 
-Verifies that store operations (observations, sessions, resolution events)
-correctly enqueue outbox events when team_outbox_enabled is True.
+Verifies that store operations (observations, resolution events) correctly
+enqueue outbox events when team_outbox_enabled is True.
+
+Session, batch, and activity events are no longer enqueued to the outbox
+(relay-p2p refactoring moved to observations-only sync). Tests below verify
+that only observations and resolution events produce outbox rows.
 """
 
 import json
@@ -22,7 +26,6 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_EVENT_SESSION_TITLE_UPDATE,
     TEAM_EVENT_SESSION_UPSERT,
     TEAM_OUTBOX_STATUS_PENDING,
-    TEAM_REDACTED_BY_POLICY,
 )
 
 TEST_MACHINE_ID = "test-machine-integration"
@@ -112,7 +115,7 @@ def test_store_observation_with_outbox_disabled(store):
 
 
 def test_create_session_with_outbox_enabled(store):
-    """create_session should enqueue a session_upsert event when outbox is enabled."""
+    """create_session no longer enqueues session events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
         create_session,
     )
@@ -122,11 +125,7 @@ def test_create_session_with_outbox_enabled(store):
 
     rows = _get_outbox_rows(store)
     session_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_SESSION_UPSERT]
-    assert len(session_rows) == 1
-
-    payload = json.loads(session_rows[0]["payload"])
-    assert payload["id"] == "session-outbox-1"
-    assert payload["agent"] == TEST_AGENT
+    assert len(session_rows) == 0
 
 
 def test_create_session_with_outbox_disabled(store):
@@ -147,7 +146,7 @@ def test_create_session_with_outbox_disabled(store):
 
 
 def test_update_session_summary_with_outbox_enabled(store):
-    """update_session_summary should enqueue a summary_update event."""
+    """update_session_summary no longer enqueues summary events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
         create_session,
         update_session_summary,
@@ -159,11 +158,7 @@ def test_update_session_summary_with_outbox_enabled(store):
 
     rows = _get_outbox_rows(store)
     summary_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_SESSION_SUMMARY_UPDATE]
-    assert len(summary_rows) == 1
-
-    payload = json.loads(summary_rows[0]["payload"])
-    assert payload["session_id"] == "session-summary-1"
-    assert payload["summary"] == "This session fixed auth bugs"
+    assert len(summary_rows) == 0
 
 
 # ---- Resolution event tests ----
@@ -264,7 +259,7 @@ def test_outbox_and_observation_atomic(store):
 
 
 def test_end_session_with_outbox_enabled(store):
-    """end_session should enqueue a session_end event when outbox is enabled."""
+    """end_session no longer enqueues session_end events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
         create_session,
         end_session,
@@ -276,19 +271,14 @@ def test_end_session_with_outbox_enabled(store):
 
     rows = _get_outbox_rows(store)
     end_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_SESSION_END]
-    assert len(end_rows) == 1
-
-    payload = json.loads(end_rows[0]["payload"])
-    assert payload["session_id"] == "session-end-1"
-    assert payload["summary"] == "Session completed successfully"
-    assert payload["status"] == "completed"
+    assert len(end_rows) == 0
 
 
 # ---- Update session title tests ----
 
 
 def test_update_session_title_with_outbox_enabled(store):
-    """update_session_title should enqueue a title update event."""
+    """update_session_title no longer enqueues title events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.sessions.crud import (
         create_session,
         update_session_title,
@@ -300,19 +290,14 @@ def test_update_session_title_with_outbox_enabled(store):
 
     rows = _get_outbox_rows(store)
     title_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_SESSION_TITLE_UPDATE]
-    assert len(title_rows) == 1
-
-    payload = json.loads(title_rows[0]["payload"])
-    assert payload["session_id"] == "session-title-1"
-    assert payload["title"] == "Refactored auth module"
-    assert payload["title_manually_edited"] is True
+    assert len(title_rows) == 0
 
 
 # ---- Prompt batch tests ----
 
 
 def test_create_prompt_batch_with_outbox_enabled(store):
-    """create_prompt_batch should enqueue a prompt_batch_upsert event."""
+    """create_prompt_batch no longer enqueues batch events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
     )
@@ -326,15 +311,11 @@ def test_create_prompt_batch_with_outbox_enabled(store):
 
     rows = _get_outbox_rows(store)
     batch_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_PROMPT_BATCH_UPSERT]
-    assert len(batch_rows) == 1
-
-    payload = json.loads(batch_rows[0]["payload"])
-    assert payload["session_id"] == "session-batch-1"
-    assert payload["user_prompt"] == "Fix the login bug"
+    assert len(batch_rows) == 0
 
 
 def test_create_prompt_batch_redaction(store):
-    """Prompt content should be redacted when sync_prompts is disabled."""
+    """Prompt batch no longer enqueues events, so redaction is moot (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.batches.crud import (
         create_prompt_batch,
     )
@@ -352,17 +333,14 @@ def test_create_prompt_batch_redaction(store):
 
     rows = _get_outbox_rows(store)
     batch_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_PROMPT_BATCH_UPSERT]
-    assert len(batch_rows) == 1
-
-    payload = json.loads(batch_rows[0]["payload"])
-    assert payload["user_prompt"] == TEAM_REDACTED_BY_POLICY
+    assert len(batch_rows) == 0
 
 
 # ---- Activity tests ----
 
 
 def test_add_activity_with_outbox_enabled(store):
-    """add_activity should enqueue an activity_upsert event."""
+    """add_activity no longer enqueues activity events (observations-only sync)."""
     from open_agent_kit.features.codebase_intelligence.activity.store.activities import (
         add_activity,
     )
@@ -388,11 +366,7 @@ def test_add_activity_with_outbox_enabled(store):
 
     rows = _get_outbox_rows(store)
     act_rows = [r for r in rows if r["event_type"] == TEAM_EVENT_ACTIVITY_UPSERT]
-    assert len(act_rows) == 1
-
-    payload = json.loads(act_rows[0]["payload"])
-    assert payload["session_id"] == "session-act-1"
-    assert payload["tool_name"] == "Edit"
+    assert len(act_rows) == 0
 
 
 def test_add_activity_blocked_by_policy(store):

@@ -71,29 +71,6 @@ def create_session(
             row,
         )
 
-        # Enqueue team sync event in the same transaction
-        if store.team_outbox_enabled:
-            from open_agent_kit.features.codebase_intelligence.constants.team import (
-                TEAM_EVENT_SESSION_UPSERT,
-            )
-            from open_agent_kit.features.codebase_intelligence.governance.policies import (
-                should_sync_event,
-            )
-            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-                enqueue_team_event,
-            )
-
-            policy = store.get_team_policy()
-            if policy is None or should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy):
-                enqueue_team_event(
-                    conn=conn,
-                    event_type=TEAM_EVENT_SESSION_UPSERT,
-                    payload=row,
-                    source_machine_id=session.source_machine_id or store.machine_id,
-                    content_hash=session.id,
-                    schema_version=store.get_schema_version(),
-                )
-
     if parent_session_id:
         logger.debug(
             f"Created session {session_id} for agent {agent} "
@@ -219,33 +196,6 @@ def end_session(store: ActivityStore, session_id: str, summary: str | None = Non
             (ended_at, summary, session_id),
         )
 
-        # Enqueue team sync event
-        if store.team_outbox_enabled:
-            from open_agent_kit.features.codebase_intelligence.constants.team import (
-                TEAM_EVENT_SESSION_END,
-            )
-            from open_agent_kit.features.codebase_intelligence.governance.policies import (
-                should_sync_event,
-            )
-            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-                enqueue_team_event,
-            )
-
-            policy = store.get_team_policy()
-            if policy is None or should_sync_event(TEAM_EVENT_SESSION_END, policy):
-                enqueue_team_event(
-                    conn=conn,
-                    event_type=TEAM_EVENT_SESSION_END,
-                    payload={
-                        "session_id": session_id,
-                        "ended_at": ended_at,
-                        "summary": summary,
-                        "status": SESSION_STATUS_COMPLETED,
-                    },
-                    source_machine_id=store.machine_id,
-                    content_hash=f"{session_id}:end",
-                    schema_version=store.get_schema_version(),
-                )
     logger.debug(f"Ended session {session_id}")
 
 
@@ -267,32 +217,6 @@ def update_session_title(
             (title, manually_edited, session_id),
         )
 
-        # Enqueue team sync event
-        if store.team_outbox_enabled:
-            from open_agent_kit.features.codebase_intelligence.constants.team import (
-                TEAM_EVENT_SESSION_TITLE_UPDATE,
-            )
-            from open_agent_kit.features.codebase_intelligence.governance.policies import (
-                should_sync_event,
-            )
-            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-                enqueue_team_event,
-            )
-
-            policy = store.get_team_policy()
-            if policy is None or should_sync_event(TEAM_EVENT_SESSION_TITLE_UPDATE, policy):
-                enqueue_team_event(
-                    conn=conn,
-                    event_type=TEAM_EVENT_SESSION_TITLE_UPDATE,
-                    payload={
-                        "session_id": session_id,
-                        "title": title,
-                        "title_manually_edited": manually_edited,
-                    },
-                    source_machine_id=store.machine_id,
-                    content_hash=f"{session_id}:title:{title[:32]}",
-                    schema_version=store.get_schema_version(),
-                )
     logger.debug(f"Updated session {session_id} title: {title[:50]}...")
 
 
@@ -310,33 +234,6 @@ def update_session_summary(store: ActivityStore, session_id: str, summary: str) 
             "UPDATE sessions SET summary = ?, summary_updated_at = ? WHERE id = ?",
             (summary, now_epoch, session_id),
         )
-
-        # Enqueue team sync event in the same transaction
-        if store.team_outbox_enabled:
-            from open_agent_kit.features.codebase_intelligence.constants.team import (
-                TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-            )
-            from open_agent_kit.features.codebase_intelligence.governance.policies import (
-                should_sync_event,
-            )
-            from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-                enqueue_team_event,
-            )
-
-            policy = store.get_team_policy()
-            if policy is None or should_sync_event(TEAM_EVENT_SESSION_SUMMARY_UPDATE, policy):
-                enqueue_team_event(
-                    conn=conn,
-                    event_type=TEAM_EVENT_SESSION_SUMMARY_UPDATE,
-                    payload={
-                        "session_id": session_id,
-                        "summary": summary,
-                        "summary_updated_at": now_epoch,
-                    },
-                    source_machine_id=store.machine_id,
-                    content_hash=f"{session_id}:summary:{now_epoch}",
-                    schema_version=store.get_schema_version(),
-                )
 
     logger.debug(f"Updated session {session_id} summary: {summary[:50]}...")
 
@@ -374,29 +271,6 @@ def update_session_transcript_path(
             (transcript_path, session_id),
         )
 
-        if store.team_outbox_enabled:
-            sess_row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
-            if sess_row:
-                from open_agent_kit.features.codebase_intelligence.constants.team import (
-                    TEAM_EVENT_SESSION_UPSERT,
-                )
-                from open_agent_kit.features.codebase_intelligence.governance.policies import (
-                    should_sync_event,
-                )
-                from open_agent_kit.features.codebase_intelligence.team.outbox.writer import (
-                    enqueue_team_event,
-                )
-
-                policy = store.get_team_policy()
-                if policy is None or should_sync_event(TEAM_EVENT_SESSION_UPSERT, policy):
-                    enqueue_team_event(
-                        conn=conn,
-                        event_type=TEAM_EVENT_SESSION_UPSERT,
-                        payload=dict(sess_row),
-                        source_machine_id=store.machine_id,
-                        content_hash=f"session_transcript:{session_id}",
-                        schema_version=store.get_schema_version(),
-                    )
     logger.debug(f"Updated session {session_id} transcript_path: {transcript_path}")
 
 

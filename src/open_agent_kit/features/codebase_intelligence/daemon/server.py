@@ -57,21 +57,6 @@ def create_app(
 
     state.config = config or {}
 
-    # Bridge config.team.server_mode → env var so route registration
-    # (which happens before the lifespan loads config) picks it up.
-    from open_agent_kit.features.codebase_intelligence.constants.team import (
-        TEAM_SERVER_MODE_ENV_VAR,
-    )
-
-    try:
-        from open_agent_kit.features.codebase_intelligence.config import load_ci_config
-
-        _early_config = load_ci_config(state.project_root)
-        if _early_config.team.server_mode:
-            os.environ[TEAM_SERVER_MODE_ENV_VAR] = "1"
-    except Exception:
-        pass  # Config may not exist yet
-
     app = FastAPI(
         title="OAK Codebase Intelligence",
         description="Semantic search and persistent memory for AI assistants",
@@ -209,14 +194,6 @@ def create_app(
     )
 
     app.include_router(team_ui_router)
-
-    # Team server routes (only when running as team server)
-    if os.environ.get("OAK_CI_TEAM_SERVER"):
-        from open_agent_kit.features.codebase_intelligence.team.server.routes import (
-            router as team_server_router,
-        )
-
-        app.include_router(team_server_router)
 
     # UI router must be last to catch fallback routes
     app.include_router(ui.router)

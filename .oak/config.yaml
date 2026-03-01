@@ -163,6 +163,6 @@ codebase_intelligence:
     transport: direct
     bind_host: 127.0.0.1
     bind_port: 8600
-    relay_worker_url: null
+    relay_worker_url: https://oak-relay-open-agent-kit.goondocks.workers.dev
     relay_worker_name: null
     server_side_llm: false

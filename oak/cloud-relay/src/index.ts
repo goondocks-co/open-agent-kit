@@ -80,6 +80,14 @@ export default {
       return withCors(await doStub.fetch(request));
     }
 
+    // ----- GET /obs/pending — drain buffered obs for a reconnecting node -----
+    if (path === "/obs/pending" && request.method === "GET") {
+      const authErr = validateRelayToken(request, env);
+      if (authErr) return authErr;
+      const doStub = getDurableObject(env);
+      return doStub.fetch(request);
+    }
+
     // ----- GET /health -----
     if (path === "/health") {
       const doStub = getDurableObject(env);

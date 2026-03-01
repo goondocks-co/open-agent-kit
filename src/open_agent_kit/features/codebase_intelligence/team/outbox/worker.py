@@ -1,23 +1,19 @@
-"""Background worker that flushes the team outbox to the team server.
+"""Background worker that flushes observation events from the team outbox
+to the cloud relay.
 
-Uses a daemon thread with a timer loop, following the same pattern as
-cloud_relay/client.py for background work with reconnect/backoff.
+Uses a daemon thread with a timer loop and exponential backoff on failure.
+The relay client (CloudRelayClient) is injected via set_relay_client().
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import threading
-import time
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from open_agent_kit.features.codebase_intelligence.constants import POWER_STATE_DEEP_SLEEP
 from open_agent_kit.features.codebase_intelligence.constants.team import (
-    TEAM_HEARTBEAT_INTERVAL_SECONDS,
     TEAM_LOG_SYNC_ERROR,
     TEAM_LOG_SYNC_FLUSH,
     TEAM_LOG_SYNC_STARTED,
@@ -34,29 +30,27 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_SYNC_MAX_BACKOFF_SECONDS,
 )
 from open_agent_kit.features.codebase_intelligence.team.protocol import (
-    TeamEvent,
-    TeamEventBatch,
     TeamSyncStatus,
 )
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
     from open_agent_kit.features.codebase_intelligence.config.team import TeamConfig
-    from open_agent_kit.features.codebase_intelligence.team.transport.base import TeamTransport
 
 logger = logging.getLogger(__name__)
 
 
-class TeamSyncWorker:
-    """Background worker that flushes outbox events to the team server.
+class ObsFlushWorker:
+    """Background worker that flushes outbox observation events to the cloud relay.
 
     Lifecycle:
         1. start() spawns a daemon thread running _run_loop().
         2. _run_loop() sleeps for the configured interval, then calls _flush_outbox().
         3. stop() signals the thread to exit gracefully.
 
-    The transport is injected via set_transport(). If no transport is available,
-    flush is a no-op (events accumulate in the outbox until transport is set).
+    The relay client is injected via set_relay_client(). If no relay client is
+    available, flush is a no-op (events accumulate in the outbox until the
+    client is set).
     """
 
     def __init__(
@@ -64,13 +58,11 @@ class TeamSyncWorker:
         store: ActivityStore,
         config: TeamConfig,
         project_id: str,
-        state_accessor: Callable[[], str] | None = None,
     ) -> None:
         self._store = store
         self._config = config
         self._project_id = project_id
-        self._state_accessor = state_accessor
-        self._transport: TeamTransport | None = None
+        self._relay_client: Any | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
@@ -79,15 +71,14 @@ class TeamSyncWorker:
         self._last_sync: str | None = None
         self._last_error: str | None = None
         self._events_sent_total: int = 0
-        self._last_heartbeat_at: float | None = None
 
-    def set_transport(self, transport: TeamTransport) -> None:
-        """Set or replace the transport used for pushing events.
+    def set_relay_client(self, relay_client: Any) -> None:
+        """Set or replace the relay client used for pushing observations.
 
         Args:
-            transport: Transport implementation for pushing events.
+            relay_client: CloudRelayClient instance (or compatible).
         """
-        self._transport = transport
+        self._relay_client = relay_client
 
     def start(self) -> None:
         """Start the background flush timer."""
@@ -97,7 +88,7 @@ class TeamSyncWorker:
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run_loop,
-            name="team-sync-worker",
+            name="obs-flush-worker",
             daemon=True,
         )
         self._thread.start()
@@ -114,9 +105,8 @@ class TeamSyncWorker:
     def _run_loop(self) -> None:
         """Timer loop: sleep(interval), flush, repeat.
 
-        Uses exponential backoff on consecutive transport failures to avoid
-        hammering a downed server. Resets to the base interval on success.
-        Backoff doubles each failure up to TEAM_SYNC_MAX_BACKOFF_SECONDS.
+        Uses exponential backoff on consecutive failures to avoid
+        hammering a downed relay. Resets to the base interval on success.
         """
         consecutive_failures = 0
         while not self._stop_event.is_set():
@@ -132,54 +122,14 @@ class TeamSyncWorker:
                 consecutive_failures = 0
                 if flushed > 0:
                     logger.info(TEAM_LOG_SYNC_FLUSH.format(count=flushed))
-                else:
-                    # Queue empty: heartbeat keeps member presence alive
-                    self._heartbeat()
             except Exception as exc:
                 consecutive_failures += 1
                 logger.error(TEAM_LOG_SYNC_ERROR.format(error=exc))
                 with self._lock:
                     self._last_error = str(exc)
 
-    def _heartbeat(self) -> None:
-        """Send a presence heartbeat when the outbox is empty.
-
-        Skipped in DEEP_SLEEP — the member correctly appears offline when
-        the user has been away for 90+ minutes. On the next flush cycle
-        after waking, the stale _last_heartbeat_at triggers an immediate
-        reconnect without any special wake-up path.
-
-        Rate-limited to TEAM_HEARTBEAT_INTERVAL_SECONDS so the HTTP
-        transport isn't flooded on every short sync_interval tick.
-        """
-        if self._transport is None:
-            return
-
-        # Respect deep sleep: user is genuinely away, offline is correct
-        if self._state_accessor is not None:
-            if self._state_accessor() == POWER_STATE_DEEP_SLEEP:
-                return
-
-        # Rate limit: at most one heartbeat per TEAM_HEARTBEAT_INTERVAL_SECONDS
-        now = time.monotonic()
-        if (
-            self._last_heartbeat_at is not None
-            and now - self._last_heartbeat_at < TEAM_HEARTBEAT_INTERVAL_SECONDS
-        ):
-            return
-
-        try:
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(self._transport.send_heartbeat())
-            finally:
-                loop.close()
-            self._last_heartbeat_at = now
-        except Exception as exc:
-            logger.debug("Heartbeat failed (non-critical): %s", exc)
-
     def flush(self) -> int:
-        """Public entry point for on-demand outbox flush (e.g. from a route handler).
+        """Public entry point for on-demand outbox flush.
 
         Returns:
             Number of events flushed successfully.
@@ -187,22 +137,22 @@ class TeamSyncWorker:
         return self._flush_outbox()
 
     def _flush_outbox(self) -> int:
-        """Flush pending outbox events to the team server.
+        """Flush pending outbox events to the cloud relay.
 
-        SELECT pending events -> build TeamEventBatch -> push via transport
-        -> UPDATE status to sent. On failure: increment retry_count, set
-        error_message. Prune sent events older than the configured age.
+        SELECT pending events -> extract observation payloads ->
+        push via relay_client -> UPDATE status to sent.
+        On failure: increment retry_count.
+        Prune sent events older than the configured age.
 
         Returns:
             Number of events flushed successfully.
         """
-        if self._transport is None:
+        if self._relay_client is None:
             return 0
 
         conn = self._store._get_connection()
 
-        # Choose batch size: use burst limit when the queue is deep to drain
-        # a backlog with fewer HTTP round-trips.
+        # Choose batch size: use burst limit when the queue is deep
         depth_row = conn.execute(
             "SELECT COUNT(*) FROM team_outbox WHERE status = ?",
             (TEAM_OUTBOX_STATUS_PENDING,),
@@ -231,50 +181,35 @@ class TeamSyncWorker:
             self._prune_sent_events(conn)
             return 0
 
-        # Build batch
-        events: list[TeamEvent] = []
+        # Build observation list for relay
+        obs_list: list[dict[str, Any]] = []
         row_ids: list[int] = []
         for row in rows:
             row_ids.append(row[0])
             payload = json.loads(row[2]) if isinstance(row[2], str) else row[2]
-            events.append(
-                TeamEvent(
-                    event_type=row[1],
-                    payload=payload,
-                    source_machine_id=row[3],
-                    content_hash=row[4],
-                    schema_version=row[5],
-                    timestamp=row[6],
-                    project_id=self._project_id,
-                )
+            obs_list.append(
+                {
+                    "event_type": row[1],
+                    "payload": payload,
+                    "source_machine_id": row[3],
+                    "content_hash": row[4],
+                    "schema_version": row[5],
+                    "timestamp": row[6],
+                    "project_id": self._project_id,
+                }
             )
 
-        batch = TeamEventBatch(events=events)
-
-        # Push via transport (async -> sync bridge)
+        # Push via relay client
         try:
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(self._transport.push_events(batch))
-            finally:
-                loop.close()
-            accepted = result.accepted
+            self._relay_client.push_observations(obs_list)
+            accepted = len(obs_list)
         except Exception:
-            # Transport-level failure (server unreachable, connection refused,
-            # timeout, etc.). Events remain pending — retry_count is NOT
-            # incremented. The loop retries on the next tick. Only explicit
-            # server rejections (PushResult.rejected) count against the limit.
+            # Relay-level failure -- events remain pending, retry on next tick
             raise
 
-        # Mark accepted events as sent
+        # Mark all events as sent
         if accepted > 0:
-            sent_ids = row_ids[:accepted]
-            self._mark_sent(conn, sent_ids)
-
-        # Mark remaining (rejected) as retry
-        if accepted < len(row_ids):
-            rejected_ids = row_ids[accepted:]
-            self._mark_retry(conn, rejected_ids, "rejected by server")
+            self._mark_sent(conn, row_ids[:accepted])
 
         with self._lock:
             self._events_sent_total += accepted
@@ -339,7 +274,6 @@ class TeamSyncWorker:
         Returns:
             TeamSyncStatus with queue depth and sync state.
         """
-        # Get queue depth from database
         try:
             conn = self._store._get_connection()
             cursor = conn.execute(

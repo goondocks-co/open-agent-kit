@@ -5,6 +5,7 @@ import json
 from open_agent_kit.features.codebase_intelligence.cloud_relay.protocol import (
     HeartbeatPing,
     HeartbeatPong,
+    ObsPushMessage,
     RegisteredMessage,
     RegisterMessage,
     RelayError,
@@ -17,6 +18,9 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WS_TYPE_ERROR,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK,
+    CLOUD_RELAY_WS_TYPE_NODE_LIST,
+    CLOUD_RELAY_WS_TYPE_OBS_BATCH,
+    CLOUD_RELAY_WS_TYPE_OBS_PUSH,
     CLOUD_RELAY_WS_TYPE_REGISTER,
     CLOUD_RELAY_WS_TYPE_REGISTERED,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
@@ -213,3 +217,56 @@ class TestRelayError:
         assert data["type"] == CLOUD_RELAY_WS_TYPE_ERROR
         assert data["message"] == TEST_TOOL_ERROR
         assert data["code"] == "timeout"
+
+
+# ---- Observation sync message types (relay-p2p) ----
+
+
+class TestObsPushMessage:
+    """Tests for ObsPushMessage (daemon -> worker)."""
+
+    def test_serialization_has_correct_type(self) -> None:
+        msg = ObsPushMessage(observations=[{"id": "obs-1"}])
+        data = json.loads(msg.model_dump_json())
+        assert data["type"] == CLOUD_RELAY_WS_TYPE_OBS_PUSH
+
+    def test_empty_observations_default(self) -> None:
+        msg = ObsPushMessage()
+        assert msg.observations == []
+
+    def test_observations_roundtrip(self) -> None:
+        obs = [{"id": "obs-1", "memory_type": "pattern"}]
+        msg = ObsPushMessage(observations=obs)
+        data = json.loads(msg.model_dump_json())
+        assert len(data["observations"]) == 1
+        assert data["observations"][0]["id"] == "obs-1"
+
+
+class TestRegisterMessageMachineId:
+    """Tests for machine_id field on RegisterMessage."""
+
+    def test_machine_id_defaults_to_empty(self) -> None:
+        msg = RegisterMessage(token=TEST_RELAY_TOKEN)
+        assert msg.machine_id == ""
+
+    def test_machine_id_can_be_set(self) -> None:
+        msg = RegisterMessage(token=TEST_RELAY_TOKEN, machine_id="my-machine-123")
+        assert msg.machine_id == "my-machine-123"
+
+    def test_machine_id_serialized(self) -> None:
+        msg = RegisterMessage(token=TEST_RELAY_TOKEN, machine_id="m-456")
+        data = json.loads(msg.model_dump_json())
+        assert data["machine_id"] == "m-456"
+
+
+class TestRelayMessageTypeObsSync:
+    """Tests for observation sync enum values on RelayMessageType."""
+
+    def test_obs_push_value(self) -> None:
+        assert RelayMessageType.OBS_PUSH.value == CLOUD_RELAY_WS_TYPE_OBS_PUSH
+
+    def test_obs_batch_value(self) -> None:
+        assert RelayMessageType.OBS_BATCH.value == CLOUD_RELAY_WS_TYPE_OBS_BATCH
+
+    def test_node_list_value(self) -> None:
+        assert RelayMessageType.NODE_LIST.value == CLOUD_RELAY_WS_TYPE_NODE_LIST

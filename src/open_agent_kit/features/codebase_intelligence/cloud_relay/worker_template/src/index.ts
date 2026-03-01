@@ -74,6 +74,20 @@ export default {
       return doStub.fetch(request);
     }
 
+    // ----- /api/team/* — HTTP proxy to local daemon via Durable Object -----
+    if (path.startsWith("/api/team/")) {
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request));
+    }
+
+    // ----- GET /obs/pending — drain buffered obs for a reconnecting node -----
+    if (path === "/obs/pending" && request.method === "GET") {
+      const authErr = validateRelayToken(request, env);
+      if (authErr) return authErr;
+      const doStub = getDurableObject(env);
+      return doStub.fetch(request);
+    }
+
     // ----- GET /health -----
     if (path === "/health") {
       const doStub = getDurableObject(env);

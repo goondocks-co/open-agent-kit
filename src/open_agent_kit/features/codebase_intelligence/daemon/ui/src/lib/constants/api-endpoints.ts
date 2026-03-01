@@ -106,22 +106,9 @@ export const API_ENDPOINTS = {
 
     // Team endpoints
     TEAM_CONFIG: "/api/team/config",
-    TEAM_JOIN: "/api/team/join",
-    TEAM_LEAVE: "/api/team/leave",
     TEAM_STATUS: "/api/team/status",
-    TEAM_MEMBERS: "/api/team/status/members",
-    TEAM_SYNC_FLUSH: "/api/team/sync/flush",
-    TEAM_SYNC_PULL: "/api/team/sync/pull",
+    TEAM_MEMBERS: "/api/team/members",
     TEAM_POLICY: "/api/team/policy",
-    TEAM_KEYS: "/api/team/keys",
-    TEAM_SERVE: "/api/team/serve",
-    TEAM_PENDING_JOINS: "/api/team/pending-joins",
-    TEAM_APPROVE_JOIN: "/api/team/approve-join",
-    TEAM_REJECT_JOIN: "/api/team/reject-join",
-    TEAM_JOIN_STATUS: "/api/team/join-status",
-    TEAM_BACKFILL: "/api/team/backfill",
-    TEAM_BACKFILL_STATUS: "/api/team/backfill/status",
-    TEAM_MACHINE_RESYNC: "/api/team/machine/resync",
 } as const;
 
 // =============================================================================

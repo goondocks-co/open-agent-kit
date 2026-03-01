@@ -34,6 +34,8 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
         _migrate_v8_to_v9(conn)
     if from_version < 10:
         _migrate_v9_to_v10(conn)
+    if from_version < 11:
+        _migrate_v10_to_v11(conn)
 
     # Always run idempotent column checks for the current version.
     # This catches columns added mid-development after a version was
@@ -387,6 +389,29 @@ def _migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
     """)
 
     logger.info("Migration v9 -> v10 complete: team sync/reconcile state tables created")
+
+
+def _migrate_v10_to_v11(conn: sqlite3.Connection) -> None:
+    """Migrate schema v10 -> v11: drop legacy team server tables.
+
+    The team server infrastructure (server mode with team_events, team_members,
+    team_api_keys) is replaced by the relay-based sync model. These tables are
+    no longer used and can be safely removed.
+
+    Keeps team_outbox (still used by ObsFlushWorker for relay sync).
+    Keeps team_sync_state, team_reconcile_state, team_pull_cursor (used by
+    relay sync and backfill).
+
+    Idempotent: DROP TABLE IF EXISTS is safe to re-run.
+    """
+    logger.info("Migrating activity store schema v10 -> v11 (drop legacy team server tables)")
+
+    conn.execute("DROP TABLE IF EXISTS team_events")
+    conn.execute("DROP TABLE IF EXISTS team_members")
+    conn.execute("DROP TABLE IF EXISTS team_api_keys")
+    conn.execute("DROP TABLE IF EXISTS pending_joins")
+
+    logger.info("Migration v10 -> v11 complete: legacy team server tables dropped")
 
 
 def _ensure_v6_columns(conn: sqlite3.Connection) -> None:

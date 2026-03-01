@@ -27,7 +27,7 @@ def enqueue_team_event(
     """Enqueue a team sync event in the outbox.
 
     Called within the same transaction as the data write.
-    The TeamSyncWorker will flush these to the team server.
+    The ObsFlushWorker will flush these to the cloud relay.
 
     Args:
         conn: SQLite connection (already in an active transaction).

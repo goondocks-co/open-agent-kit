@@ -59,11 +59,8 @@ export interface UpgradeInfo {
 
 export interface TeamStatus {
     configured: boolean;
-    server_url: string | null;
     connected: boolean;
-    server_mode: boolean;
     members_online: number;
-    sync: Record<string, unknown> | null;
 }
 
 export interface CloudRelayStatus {
