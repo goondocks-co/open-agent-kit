@@ -736,10 +736,12 @@ export class RelayObject implements DurableObject {
 
     const searchResults = await resultsPromise;
 
-    // Merge results from all responding peers.
+    // Merge results from all responding peers, tagging each with source.
     const merged: Record<string, unknown>[] = [];
     for (const sr of searchResults) {
-      merged.push(...sr.results);
+      for (const item of sr.results) {
+        merged.push({ ...item, machine_id: sr.from_machine_id });
+      }
     }
 
     return Response.json({ results: merged });

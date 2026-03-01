@@ -275,13 +275,14 @@ class CloudRelayClient(RelayClient):
 
         logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=self._worker_url))
 
-        # Drain any observations buffered by the relay while we were offline
-        await self._drain_pending_obs()
-        await self._drain_obs_history()
-
-        # Start background loops
+        # Start background loops first so heartbeats are handled while draining.
         self._message_task = asyncio.ensure_future(self._message_loop())
         self._heartbeat_task = asyncio.ensure_future(self._heartbeat_loop())
+
+        # Drain any observations buffered by the relay while we were offline.
+        # Runs after the message loop is live to avoid heartbeat timeouts.
+        await self._drain_pending_obs()
+        await self._drain_obs_history()
 
     def _build_ws_url(self) -> str:
         """Build WebSocket URL from worker URL."""
@@ -547,7 +548,20 @@ class CloudRelayClient(RelayClient):
                 resp.raise_for_status()
                 data = resp.json()
 
-            results = data.get("results", [])
+            # Local /api/search returns {code, memory, plans, sessions}.
+            # Flatten into a single results list, tagging each with its type.
+            results: list[dict] = []
+            for item in data.get("memory", []):
+                item["_result_type"] = "memory"
+                results.append(item)
+            for item in data.get("plans", []):
+                item["_result_type"] = "plan"
+                results.append(item)
+            for item in data.get("sessions", []):
+                item["_result_type"] = "session"
+                results.append(item)
+            # Skip code — project-specific, not meaningful across nodes.
+
             response = SearchResultMessage(
                 request_id=query.request_id,
                 results=results,
