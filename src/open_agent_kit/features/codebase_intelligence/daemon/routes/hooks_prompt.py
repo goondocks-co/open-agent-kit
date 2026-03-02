@@ -165,8 +165,6 @@ async def hook_prompt_submit(request: Request) -> dict:
 
                 # Queue previous batch for processing
                 if state.activity_processor:
-                    import asyncio
-
                     from open_agent_kit.features.codebase_intelligence.activity import (
                         process_prompt_batch_async,
                     )

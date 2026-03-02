@@ -15,6 +15,7 @@ CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: Final[str] = "sync_interval_seconds"
 CI_CONFIG_TEAM_KEY_PROJECT_SLUG: Final[str] = "project_slug"
 CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL: Final[str] = "relay_worker_url"
 CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME: Final[str] = "relay_worker_name"
+CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE: Final[str] = "keep_relay_alive"
 
 # Default values
 TEAM_DEFAULT_SYNC_INTERVAL_SECONDS: Final[int] = 3
@@ -67,6 +68,13 @@ TEAM_LOG_SYNC_STARTED: Final[str] = "Team sync worker started (interval={interva
 TEAM_LOG_SYNC_STOPPED: Final[str] = "Team sync worker stopped"
 TEAM_LOG_SYNC_FLUSH: Final[str] = "Flushed {count} events to team server"
 TEAM_LOG_SYNC_ERROR: Final[str] = "Team sync error: {error}"
+TEAM_LOG_RELAY_POWER_DISCONNECT: Final[str] = "Power state: disconnecting cloud relay (deep sleep)"
+TEAM_LOG_RELAY_POWER_RECONNECT: Final[str] = "Power state: reconnecting cloud relay (wake)"
+TEAM_LOG_SYNC_WORKER_POWER_STOP: Final[str] = "Power state: stopping team sync worker (sleep)"
+TEAM_LOG_SYNC_WORKER_POWER_RESTART: Final[str] = "Power state: restarting team sync worker (wake)"
+TEAM_LOG_KEEP_RELAY_ALIVE: Final[str] = (
+    "Power state: keep_relay_alive=True, skipping team subsystem suspension"
+)
 
 # CLI messages (only those still used by commands/ci/team.py)
 TEAM_MESSAGE_NOT_CONFIGURED: Final[str] = "Team sync not configured"

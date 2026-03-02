@@ -93,7 +93,7 @@ def _parse_pypi_versions(raw: bytes) -> tuple[str | None, str | None]:
             else:
                 beta_versions.append(v)
         except Exception:
-            pass
+            pass  # skip unparseable version strings
 
     stable = str(max(stable_versions)) if stable_versions else None
     beta = str(max(beta_versions)) if beta_versions else None
@@ -160,7 +160,7 @@ async def get_channel() -> dict:
             if Version(available_beta) < Version(OAK_VERSION):
                 available_beta = None
         except Exception:
-            pass
+            pass  # best-effort comparison; keep beta if parsing fails
 
     install_method = detect_install_method(cli_command)
     switch_supported = install_method != CI_INSTALL_METHOD_UNKNOWN

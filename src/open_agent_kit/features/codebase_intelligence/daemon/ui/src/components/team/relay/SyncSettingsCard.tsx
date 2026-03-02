@@ -11,17 +11,19 @@ import { SYNC_INTERVAL_MIN, SYNC_INTERVAL_MAX } from "@/lib/constants";
 export interface SyncSettingsCardProps {
     autoSync: boolean;
     syncInterval: number;
+    keepRelayAlive: boolean;
     isSaving: boolean;
     isDirty: boolean;
     message: { type: "success" | "error"; text: string } | null;
     onAutoSyncChange: (v: boolean) => void;
     onIntervalChange: (v: number) => void;
+    onKeepRelayAliveChange: (v: boolean) => void;
     onSave: () => void;
 }
 
 export function SyncSettingsCard({
-    autoSync, syncInterval, isSaving, isDirty, message,
-    onAutoSyncChange, onIntervalChange, onSave,
+    autoSync, syncInterval, keepRelayAlive, isSaving, isDirty, message,
+    onAutoSyncChange, onIntervalChange, onKeepRelayAliveChange, onSave,
 }: SyncSettingsCardProps) {
     return (
         <Card>
@@ -64,6 +66,24 @@ export function SyncSettingsCard({
                     <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{SYNC_INTERVAL_MIN}s</span>
                         <span>{SYNC_INTERVAL_MAX}s</span>
+                    </div>
+                </div>
+                <div className="flex items-start gap-3 pt-2 border-t">
+                    <input
+                        type="checkbox"
+                        id="keep_relay_alive"
+                        checked={keepRelayAlive}
+                        onChange={(e) => onKeepRelayAliveChange(e.target.checked)}
+                        className="h-4 w-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <div>
+                        <label htmlFor="keep_relay_alive" className="text-sm font-medium">
+                            Keep relay alive during idle
+                        </label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Prevents the relay and sync worker from suspending when the daemon is idle.
+                            Enable this if teammates need to reach your daemon at all times.
+                        </p>
                     </div>
                 </div>
             </CardContent>

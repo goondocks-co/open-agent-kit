@@ -54,6 +54,7 @@ export default function TeamRelay() {
     // Sync settings form state
     const [autoSync, setAutoSync] = useState(false);
     const [syncInterval, setSyncInterval] = useState(3);
+    const [keepRelayAlive, setKeepRelayAlive] = useState(false);
     const [syncDirty, setSyncDirty] = useState(false);
     const [syncMessage, setSyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -68,6 +69,7 @@ export default function TeamRelay() {
         if (config && !syncDirty) {
             setAutoSync(config.auto_sync);
             setSyncInterval(config.sync_interval_seconds);
+            setKeepRelayAlive(config.keep_relay_alive);
         }
     }, [config, syncDirty]);
 
@@ -125,7 +127,11 @@ export default function TeamRelay() {
     const handleSaveSync = async () => {
         setSyncMessage(null);
         try {
-            await updateConfig.mutateAsync({ auto_sync: autoSync, sync_interval_seconds: syncInterval });
+            await updateConfig.mutateAsync({
+                auto_sync: autoSync,
+                sync_interval_seconds: syncInterval,
+                keep_relay_alive: keepRelayAlive,
+            });
             setSyncMessage({ type: "success", text: "Sync settings saved." });
             setSyncDirty(false);
         } catch (err) {
@@ -230,11 +236,13 @@ export default function TeamRelay() {
                     <SyncSettingsCard
                         autoSync={autoSync}
                         syncInterval={syncInterval}
+                        keepRelayAlive={keepRelayAlive}
                         isSaving={updateConfig.isPending}
                         isDirty={syncDirty}
                         message={syncMessage}
                         onAutoSyncChange={(v) => { setAutoSync(v); setSyncDirty(true); setSyncMessage(null); }}
                         onIntervalChange={(v) => { setSyncInterval(v); setSyncDirty(true); setSyncMessage(null); }}
+                        onKeepRelayAliveChange={(v) => { setKeepRelayAlive(v); setSyncDirty(true); setSyncMessage(null); }}
                         onSave={handleSaveSync}
                     />
 

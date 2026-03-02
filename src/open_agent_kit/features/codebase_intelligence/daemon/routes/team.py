@@ -43,6 +43,7 @@ class TeamConfigResponse(BaseModel):
     sync_interval_seconds: int = TEAM_DEFAULT_SYNC_INTERVAL_SECONDS
     relay_worker_url: str | None = None
     api_key: str | None = None
+    keep_relay_alive: bool = False
 
 
 class TeamConfigUpdate(BaseModel):
@@ -52,6 +53,7 @@ class TeamConfigUpdate(BaseModel):
     sync_interval_seconds: int | None = None
     relay_worker_url: str | None = None
     api_key: str | None = None
+    keep_relay_alive: bool | None = None
 
 
 class TeamStatusResponse(BaseModel):
@@ -132,6 +134,7 @@ async def get_team_config() -> TeamConfigResponse:
         sync_interval_seconds=tc.sync_interval_seconds,
         relay_worker_url=relay_worker_url,
         api_key=_mask_token(api_key),
+        keep_relay_alive=tc.keep_relay_alive,
     )
 
 
@@ -157,6 +160,8 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
         tc.relay_worker_url = update.relay_worker_url or None
     if update.api_key is not None:
         tc.api_key = update.api_key or None
+    if update.keep_relay_alive is not None:
+        tc.keep_relay_alive = update.keep_relay_alive
 
     save_ci_config(project_root, ci_config)
     # Invalidate cached config so subsequent reads pick up changes
@@ -194,6 +199,9 @@ async def leave_team() -> dict:
         finally:
             state.cloud_relay_client = None
             state.cf_account_name = None
+
+    # Clear cached relay credentials so power wake doesn't reconnect
+    state.clear_relay_credentials()
 
     # Clear team relay config + disable auto_connect so daemon stays off
     from open_agent_kit.features.codebase_intelligence.config import (

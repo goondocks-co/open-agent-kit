@@ -297,6 +297,45 @@ class TokenAuthMiddleware:
         await self.app(scope, receive, send)
 
 
+# Prefixes exempt from activity tracking (health/status endpoints that
+# may be polled by monitoring and should not reset the idle timer).
+_ACTIVITY_TRACKING_EXEMPT_PREFIXES: tuple[str, ...] = (
+    "/api/health",
+    "/api/status",
+)
+
+
+class ActivityTrackingMiddleware:
+    """ASGI middleware that records UI activity for power state management.
+
+    On any authenticated ``/api/*`` request (excluding health/status
+    endpoints), calls ``record_hook_activity()`` on DaemonState. This
+    resets the idle timer and wakes the daemon from deep sleep when a
+    user is actively browsing the dashboard.
+
+    Placed as the **innermost** middleware so it runs after auth —
+    only authenticated requests count as genuine activity.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != CI_CORS_SCOPE_HTTP:
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
+
+        # Only track /api/* requests, excluding health/status
+        if path.startswith("/api/"):
+            exempt = any(path.startswith(p) for p in _ACTIVITY_TRACKING_EXEMPT_PREFIXES)
+            if not exempt:
+                get_state().record_hook_activity()
+
+        await self.app(scope, receive, send)
+
+
 class RequestSizeLimitMiddleware:
     """ASGI middleware that enforces a maximum request body size.
 

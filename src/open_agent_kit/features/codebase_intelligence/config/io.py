@@ -29,6 +29,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_TEAM,
     CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
+    CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE,
     CI_CONFIG_TEAM_KEY_SERVER_URL,
 )
 from open_agent_kit.features.codebase_intelligence.exceptions import (
@@ -185,6 +186,7 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_API_KEY}",  # Team API keys are machine-local secrets
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_SERVER_URL}",  # Loopback or remote URL is per-machine
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_AUTO_SYNC}",  # Depends on per-machine state
+        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE}",  # Per-machine power preference
         CI_CONFIG_KEY_LOG_LEVEL,  # Personal debugging preference
         CI_CONFIG_KEY_LOG_ROTATION,  # Machine-local log management
         f"{BACKUP_CONFIG_KEY}.auto_enabled",  # Personal preference for auto-backup

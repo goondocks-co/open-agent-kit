@@ -22,6 +22,7 @@ export interface TeamConfigResponse {
     api_key: string | null;
     auto_sync: boolean;
     sync_interval_seconds: number;
+    keep_relay_alive: boolean;
 }
 
 export interface TeamConfigUpdate {
@@ -29,6 +30,7 @@ export interface TeamConfigUpdate {
     api_key?: string | null;
     auto_sync?: boolean | null;
     sync_interval_seconds?: number | null;
+    keep_relay_alive?: boolean | null;
 }
 
 export interface OnlineNode {

@@ -494,6 +494,7 @@ async def stop_cloud_relay() -> dict:
     finally:
         state.cloud_relay_client = None
         state.cf_account_name = None
+        state.clear_relay_credentials()
 
     # Clear auto_connect so relay stays off after restart
     if state.project_root:
@@ -737,9 +738,8 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
     )
 
     try:
-        relay_status = await client.connect(
-            worker_url, token, port, machine_id=state.machine_id or ""
-        )
+        machine_id = state.machine_id or ""
+        relay_status = await client.connect(worker_url, token, port, machine_id=machine_id)
         state.cloud_relay_client = client
 
         # Wire obs applier so incoming peer observations are applied locally
@@ -751,6 +751,7 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
             client.set_obs_applier(RemoteObsApplier(state.activity_store))
 
         if relay_status.connected:
+            state.cache_relay_credentials(worker_url, token, port, machine_id)
             return {
                 CLOUD_RELAY_RESPONSE_KEY_STATUS: CLOUD_RELAY_API_STATUS_CONNECTED,
                 **relay_status.to_dict(),

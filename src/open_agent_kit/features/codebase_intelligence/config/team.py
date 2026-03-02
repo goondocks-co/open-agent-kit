@@ -8,6 +8,7 @@ from typing import Any
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
+    CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE,
     CI_CONFIG_TEAM_KEY_PROJECT_SLUG,
     CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME,
     CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL,
@@ -39,6 +40,9 @@ class TeamConfig:
         project_slug: Project identifier override (defaults to directory name).
         relay_worker_url: URL of the relay worker.
         relay_worker_name: Name of the relay worker.
+        keep_relay_alive: If True, skip suspending team subsystems during
+            power sleep states. Keeps the relay connected and sync worker
+            running so the daemon stays reachable by teammates.
     """
 
     server_url: str | None = None
@@ -48,6 +52,7 @@ class TeamConfig:
     project_slug: str | None = None
     relay_worker_url: str | None = None
     relay_worker_name: str | None = None
+    keep_relay_alive: bool = False
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -101,6 +106,7 @@ class TeamConfig:
             project_slug=data.get(CI_CONFIG_TEAM_KEY_PROJECT_SLUG),
             relay_worker_url=data.get(CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL),
             relay_worker_name=data.get(CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME),
+            keep_relay_alive=data.get(CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE, False),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -113,4 +119,5 @@ class TeamConfig:
             CI_CONFIG_TEAM_KEY_PROJECT_SLUG: self.project_slug,
             CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL: self.relay_worker_url,
             CI_CONFIG_TEAM_KEY_RELAY_WORKER_NAME: self.relay_worker_name,
+            CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE: self.keep_relay_alive,
         }

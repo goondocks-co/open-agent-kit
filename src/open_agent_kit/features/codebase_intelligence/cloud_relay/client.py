@@ -109,7 +109,7 @@ def _is_auth_failure(exc: BaseException) -> bool:
         if isinstance(exc, InvalidStatus):
             return exc.response.status_code in CLOUD_RELAY_AUTH_FAILURE_STATUS_CODES
     except ImportError:
-        pass
+        pass  # websockets not installed; skip this check
 
     # httpx raises HTTPStatusError with response.status_code
     if isinstance(exc, httpx.HTTPStatusError):
@@ -243,7 +243,7 @@ class CloudRelayClient(RelayClient):
             try:
                 await self._http_client.aclose()
             except Exception:
-                pass
+                pass  # best-effort cleanup during disconnect
             self._http_client = None
 
         # Close WebSocket

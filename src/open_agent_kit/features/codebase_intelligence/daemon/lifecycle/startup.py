@@ -94,6 +94,7 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
 
         if relay_status.connected:
             logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=worker_url))
+            state.cache_relay_credentials(worker_url, token, port, machine_id)
         else:
             error_detail = relay_status.error or CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(
                 error="unknown"
@@ -295,8 +296,7 @@ async def _init_activity(state: "DaemonState", project_root: Path) -> None:
             state_accessor=lambda: state,
         )
         logger.info(
-            f"Activity processor initialized with background scheduling "
-            f"(interval={bg_interval}s)"
+            f"Activity processor initialized with background scheduling (interval={bg_interval}s)"
         )
 
 
