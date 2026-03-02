@@ -179,6 +179,11 @@ class CloudRelayClient(RelayClient):
         """Human-readable client name."""
         return CLOUD_RELAY_CLIENT_NAME
 
+    @property
+    def machine_id(self) -> str:
+        """Local machine identifier."""
+        return self._machine_id
+
     def get_status(self) -> RelayStatus:
         """Get current relay connection status (thread-safe)."""
         with self._lock:

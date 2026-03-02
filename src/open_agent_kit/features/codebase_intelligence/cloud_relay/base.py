@@ -108,6 +108,11 @@ class RelayClient(ABC):
     # ------------------------------------------------------------------
 
     @property
+    def machine_id(self) -> str:
+        """Local machine identifier. Empty string if not set."""
+        return ""
+
+    @property
     def online_nodes(self) -> list[dict[str, Any]]:
         """List of currently online peer nodes. Empty by default."""
         return []

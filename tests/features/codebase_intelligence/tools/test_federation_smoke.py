@@ -100,6 +100,7 @@ def mock_vector_store() -> MagicMock:
 @pytest.fixture
 def mock_relay_client() -> MagicMock:
     client = MagicMock()
+    client.machine_id = "smoke-local"
     client.online_nodes = [
         {
             "machine_id": "smoke-node-1",
@@ -219,6 +220,7 @@ class TestFederatedFanOutSmoke:
             result = handler.handle_tool_call("oak_sessions", {"limit": 5, "include_network": True})
         text = _text(result)
         assert "sessions" in text.lower()
+        assert "Local Results [smoke-local]" in text
         assert "Network Results" in text
 
     def test_oak_memories_federates(self, handler: MCPToolHandler) -> None:
@@ -233,6 +235,7 @@ class TestFederatedFanOutSmoke:
         with self._patch_loop(federated_return):
             result = handler.handle_tool_call("oak_memories", {"include_network": True})
         text = _text(result)
+        assert "Local Results [smoke-local]" in text
         assert "Network Results" in text
 
     def test_oak_stats_federates(self, handler: MCPToolHandler) -> None:
@@ -248,6 +251,7 @@ class TestFederatedFanOutSmoke:
             result = handler.handle_tool_call("oak_stats", {"include_network": True})
         text = _text(result)
         assert "Project Statistics" in text
+        assert "Local Results [smoke-local]" in text
         assert "Network Results" in text
 
     def test_oak_search_federates(
@@ -261,6 +265,7 @@ class TestFederatedFanOutSmoke:
                 "oak_search", {"query": "authentication", "include_network": True}
             )
         text = _text(result)
+        assert "Local Results [smoke-local]" in text
         assert "Network Results" in text
 
     def test_oak_context_federates_memories_only(
@@ -274,17 +279,20 @@ class TestFederatedFanOutSmoke:
                 "oak_context", {"task": "implement auth", "include_network": True}
             )
         text = _text(result)
+        assert "Local Results [smoke-local]" in text
         assert "Network Memories" in text
 
     def test_include_network_false_skips_federation(self, handler: MCPToolHandler) -> None:
         result = handler.handle_tool_call("oak_sessions", {"limit": 5, "include_network": False})
         text = _text(result)
         assert "Network Results" not in text
+        assert "Local Results" not in text
 
     def test_include_network_missing_skips_federation(self, handler: MCPToolHandler) -> None:
         result = handler.handle_tool_call("oak_stats", {})
         text = _text(result)
         assert "Network Results" not in text
+        assert "Local Results" not in text
 
 
 # =============================================================================
@@ -543,6 +551,7 @@ class TestFullRoundTripSmoke:
                 "oak_search", {"query": "auth bug", "include_network": True}
             )
         search_text = _text(search_result)
+        assert "Local Results [smoke-local]" in search_text
         assert "Network Results" in search_text
 
         # Step 3: Target a specific node for activity

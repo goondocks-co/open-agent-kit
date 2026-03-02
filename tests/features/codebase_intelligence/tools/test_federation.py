@@ -107,6 +107,7 @@ def mock_vector_store() -> MagicMock:
 def mock_relay_client() -> MagicMock:
     """Create a mock RelayClient with federation support."""
     client = MagicMock()
+    client.machine_id = "test-local"
     client.online_nodes = [
         {
             "machine_id": "node-abc",
@@ -317,6 +318,7 @@ class TestFederateIfRequested:
                 "oak_sessions", {"include_network": True}, "local data"
             )
             assert "local data" in result
+            assert "Local Results [test-local]" in result
             assert "Network Results" in result
 
     def test_federation_strips_include_network_from_remote_args(
@@ -417,6 +419,7 @@ class TestFederationWiring:
             }
             result = ops_with_relay.get_stats({"include_network": True})
             assert "Project Statistics" in result
+            assert "Local Results [test-local]" in result
             assert "Network Results" in result
 
     def test_list_activities_with_node_id(

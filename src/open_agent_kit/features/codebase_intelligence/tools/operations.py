@@ -142,6 +142,10 @@ class ToolOperations:
             )
             remote_results = network_result.get("results", [])
             if remote_results:
+                # Tag local section with home node machine_id for provenance
+                local_mid = self.relay_client.machine_id
+                if local_mid:
+                    local_result = f"## Local Results [{local_mid}]\n\n{local_result}"
                 local_result += "\n\n## Network Results\n\n"
                 local_result += format_federated_tool_results(remote_results)
         except Exception:
@@ -231,6 +235,9 @@ class ToolOperations:
                 )
                 network_items = network_result.get("results", [])
                 if network_items:
+                    local_mid = self.relay_client.machine_id
+                    if local_mid:
+                        output = f"## Local Results [{local_mid}]\n\n{output}"
                     output += "\n\n## Network Results\n\n"
                     output += format_network_search_results(network_items)
             except Exception:
@@ -297,6 +304,9 @@ class ToolOperations:
                 )
                 network_items = network_result.get("results", [])
                 if network_items:
+                    local_mid = self.relay_client.machine_id
+                    if local_mid:
+                        output = f"## Local Results [{local_mid}]\n\n{output}"
                     output += "\n\n## Network Memories\n\n"
                     output += format_network_search_results(network_items)
             except Exception:

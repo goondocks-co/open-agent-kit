@@ -126,6 +126,23 @@ export class RelayObject implements DurableObject {
     this.state.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS idx_obs_history_created ON obs_history(created_at)"
     );
+
+    // Persisted node state — survives DO hibernation and Worker redeployment.
+    // Stores tool lists and metadata (capabilities, version) for each node.
+    this.state.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS node_state (
+        machine_id TEXT PRIMARY KEY,
+        tools_json TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        is_home INTEGER NOT NULL DEFAULT 0,
+        registered_at TEXT NOT NULL
+      )
+    `);
+    // Migration: drop old table name if it exists from a prior deploy.
+    this.state.storage.sql.exec("DROP TABLE IF EXISTS node_tools");
+
+    // Rehydrate in-memory maps from SQLite on wake.
+    this.rehydrateNodeState();
   }
 
   // -----------------------------------------------------------------------
@@ -262,6 +279,7 @@ export class RelayObject implements DurableObject {
       this.stopHeartbeat(machineId);
       this.nodeMetadata.delete(machineId);
       this.nodeTools.delete(machineId);
+      this.removeNodeState(machineId);
       if (machineId === this.homeMachineId) {
         this.homeMachineId = null;
       }
@@ -275,6 +293,7 @@ export class RelayObject implements DurableObject {
       this.stopHeartbeat(machineId);
       this.nodeMetadata.delete(machineId);
       this.nodeTools.delete(machineId);
+      this.removeNodeState(machineId);
       if (machineId === this.homeMachineId) {
         this.homeMachineId = null;
       }
@@ -342,6 +361,20 @@ export class RelayObject implements DurableObject {
         | undefined,
     }));
     this.nodeTools.set(machineId, parsed);
+
+    // Persist to SQLite so tools/metadata survive DO hibernation and Worker redeploys.
+    this.persistNodeState(machineId);
+    // If this node is home, clear any stale is_home flags from other nodes.
+    if (machineId === this.homeMachineId) {
+      try {
+        this.state.storage.sql.exec(
+          "UPDATE node_state SET is_home = 0 WHERE machine_id != ?",
+          machineId,
+        );
+      } catch (err) {
+        console.error("Failed to clear stale is_home flags:", err);
+      }
+    }
 
     // Send registered confirmation.
     const registered: RegisteredMessage = {
@@ -1086,6 +1119,81 @@ export class RelayObject implements DurableObject {
       }
     }
     return null;
+  }
+
+  /** Rehydrate in-memory nodeTools, nodeMetadata, and homeMachineId from SQLite. */
+  private rehydrateNodeState(): void {
+    try {
+      const rows = this.state.storage.sql.exec(
+        "SELECT machine_id, tools_json, metadata_json, is_home FROM node_state ORDER BY registered_at ASC",
+      ).toArray();
+
+      for (const row of rows) {
+        const machineId = row.machine_id as string;
+
+        try {
+          const tools = JSON.parse(row.tools_json as string) as ToolInfo[];
+          this.nodeTools.set(machineId, tools);
+        } catch {
+          console.error("Failed to parse tools_json for", machineId);
+        }
+
+        try {
+          const meta = JSON.parse(row.metadata_json as string) as {
+            oak_version?: string;
+            template_hash?: string;
+            capabilities?: string[];
+          };
+          this.nodeMetadata.set(machineId, meta);
+        } catch {
+          console.error("Failed to parse metadata_json for", machineId);
+        }
+
+        if ((row.is_home as number) === 1) {
+          this.homeMachineId = machineId;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to rehydrate node state from SQLite:", err);
+    }
+  }
+
+  /** Persist node state to SQLite (upsert). */
+  private persistNodeState(machineId: string): void {
+    const tools = this.nodeTools.get(machineId) ?? [];
+    const meta = this.nodeMetadata.get(machineId) ?? {};
+    const isHome = machineId === this.homeMachineId ? 1 : 0;
+
+    try {
+      this.state.storage.sql.exec(
+        `INSERT INTO node_state (machine_id, tools_json, metadata_json, is_home, registered_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(machine_id) DO UPDATE SET
+           tools_json = excluded.tools_json,
+           metadata_json = excluded.metadata_json,
+           is_home = excluded.is_home,
+           registered_at = excluded.registered_at`,
+        machineId,
+        JSON.stringify(tools),
+        JSON.stringify(meta),
+        isHome,
+        new Date().toISOString(),
+      );
+    } catch (err) {
+      console.error("Failed to persist node state for", machineId, err);
+    }
+  }
+
+  /** Remove node state from SQLite. */
+  private removeNodeState(machineId: string): void {
+    try {
+      this.state.storage.sql.exec(
+        "DELETE FROM node_state WHERE machine_id = ?",
+        machineId,
+      );
+    } catch (err) {
+      console.error("Failed to remove node state for", machineId, err);
+    }
   }
 
   /** Compute the union of tool lists from all connected nodes, deduplicated by name. */
