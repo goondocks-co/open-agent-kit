@@ -20,7 +20,7 @@ oak ci port
 
 ## CORS
 
-The daemon only allows requests from `localhost` and active tunnel URLs. External origins are blocked by the CORS middleware. To access the API from another machine, you'll need an active tunnel (see [Teams — Sharing](/open-agent-kit/features/codebase-intelligence/teams/#sharing)).
+The daemon only allows requests from `localhost` and active tunnel URLs. External origins are blocked by the CORS middleware. To access the API from another machine, set up [Cloud Relay](/open-agent-kit/features/cloud-relay/) to expose MCP tools to remote agents.
 
 ## Endpoints
 

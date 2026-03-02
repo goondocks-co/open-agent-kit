@@ -45,10 +45,6 @@ export default defineConfig({
               slug: "features/codebase-intelligence/logs",
             },
             {
-              label: "Teams",
-              slug: "features/codebase-intelligence/teams",
-            },
-            {
               label: "Configuration",
               slug: "features/codebase-intelligence/configuration",
             },
@@ -79,6 +75,39 @@ export default defineConfig({
           ],
         },
         {
+          label: "Teams",
+          items: [
+            {
+              label: "Overview",
+              slug: "features/teams",
+            },
+            {
+              label: "Cloud Relay",
+              slug: "features/cloud-relay",
+            },
+            {
+              label: "Cloudflare Setup",
+              slug: "features/cloud-relay/cloudflare-setup",
+            },
+            {
+              label: "Deployment",
+              slug: "features/cloud-relay/deployment",
+            },
+            {
+              label: "Cloud Agents",
+              slug: "features/cloud-relay/cloud-agents",
+            },
+            {
+              label: "Authentication",
+              slug: "features/cloud-relay/authentication",
+            },
+            {
+              label: "Relay Troubleshooting",
+              slug: "features/cloud-relay/troubleshooting",
+            },
+          ],
+        },
+        {
           label: "OAK Agents",
           items: [
             {
@@ -104,29 +133,6 @@ export default defineConfig({
             {
               label: "Maintenance Agent",
               slug: "features/codebase-intelligence/maintenance-agent",
-            },
-          ],
-        },
-        {
-          label: "Cloud Relay",
-          items: [
-            { label: "Overview", slug: "features/cloud-relay" },
-            {
-              label: "Cloudflare Setup",
-              slug: "features/cloud-relay/cloudflare-setup",
-            },
-            { label: "Deployment", slug: "features/cloud-relay/deployment" },
-            {
-              label: "Cloud Agents",
-              slug: "features/cloud-relay/cloud-agents",
-            },
-            {
-              label: "Authentication",
-              slug: "features/cloud-relay/authentication",
-            },
-            {
-              label: "Troubleshooting",
-              slug: "features/cloud-relay/troubleshooting",
             },
           ],
         },

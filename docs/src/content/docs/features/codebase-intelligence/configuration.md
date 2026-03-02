@@ -111,7 +111,7 @@ oak ci config --sum-context show    # Show current setting
 
 ## Backup Settings
 
-Configure automatic backups and related policies from the Teams page or via the configuration file. See [Teams — Automatic Backups](/open-agent-kit/features/codebase-intelligence/teams/#automatic-backups) for the full guide.
+Configure automatic backups and related policies from the Teams page or via the configuration file. See [Teams — Automatic Backups](/open-agent-kit/features/teams/#automatic-backups) for the full guide.
 
 | Setting | Config Key | Default | Description |
 |---------|-----------|---------|-------------|

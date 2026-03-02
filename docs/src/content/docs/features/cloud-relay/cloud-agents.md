@@ -14,7 +14,7 @@ After starting the relay (via the dashboard or `oak ci cloud-init`), you need tw
 - **MCP Server URL**: `https://<your-worker>.workers.dev/mcp`
 - **Agent Token**: Displayed in the dashboard (masked with reveal/copy buttons) or printed by `cloud-init`
 
-Both values are also available on the dashboard's **Cloud** page when the relay is active.
+Both values are also available on the dashboard's **Teams** page when the relay is active.
 
 ## MCP Config File (mcp.json)
 

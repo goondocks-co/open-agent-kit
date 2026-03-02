@@ -38,7 +38,7 @@ Each major dashboard feature has its own dedicated page in the sidebar. Here's a
 | **[Activities](/open-agent-kit/features/codebase-intelligence/activities/)** | Browse sessions, plans, and memories with filtering and bulk actions |
 | **[OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/)** | View built-in agents, run tasks, create custom tasks |
 | **[Logs](/open-agent-kit/features/codebase-intelligence/logs/)** | Live log viewer for daemon and hooks activity |
-| **[Teams](/open-agent-kit/features/codebase-intelligence/teams/)** | Backup, restore, sync, and share with teammates |
+| **[Teams](/open-agent-kit/features/teams/)** | Team sync, backup, restore, and cloud agent access |
 | **[Configuration](/open-agent-kit/features/codebase-intelligence/configuration/)** | Models, session quality, logging, exclusions |
 | **[Governance](/open-agent-kit/features/codebase-intelligence/governance/)** | Rules, audit logging, and enforcement for agent tool calls |
 | **[DevTools](/open-agent-kit/features/codebase-intelligence/devtools/)** | Stats, maintenance, index rebuilds, cleanup |

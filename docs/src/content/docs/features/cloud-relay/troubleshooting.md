@@ -149,9 +149,9 @@ The token presented does not match what the Worker expects.
 
 ### Token Lost
 
-The `agent_token` is displayed in the dashboard (Cloud page, when connected) and stored in `.oak/config.yaml`. If you've lost it:
+The `agent_token` is displayed in the dashboard (Teams page, when connected) and stored in `.oak/config.yaml`. If you've lost it:
 
-1. Check the dashboard's **Cloud** page — click the reveal button next to the agent token
+1. Check the dashboard's **Teams** page — click the reveal button next to the agent token
 2. Check `.oak/config.yaml` for the `agent_token` value
 3. Check `oak/cloud-relay/wrangler.toml` for the token values
 4. If all else fails, re-scaffold: `rm -rf oak/cloud-relay && oak ci cloud-init`

@@ -1,11 +1,13 @@
 ---
 title: Teams
-description: Share observations across your team via a Cloudflare relay — real-time sync, federated search, and data governance.
+description: Share observations across your team via a Cloudflare relay — real-time sync, federated search, backups, and data governance.
 sidebar:
-  order: 6
+  order: 0
 ---
 
-The **Teams** page manages how you share Codebase Intelligence across developers and machines. OAK uses a **relay-based peer architecture** where all nodes push and receive observations through a shared Cloudflare Worker — there is no central server or peer-to-peer hub.
+**Teams** is OAK's collaboration layer. It lets you share Codebase Intelligence across developers and machines using a **relay-based peer architecture** — all nodes push and receive observations through a shared [Cloud Relay](/open-agent-kit/features/cloud-relay/) (a Cloudflare Worker). There is no central server or peer-to-peer hub.
+
+The same relay also powers [Cloud Agent Access](/open-agent-kit/features/cloud-relay/cloud-agents/) — letting cloud-hosted AI agents (Claude.ai, ChatGPT, etc.) call your local MCP tools through a secure HTTP endpoint.
 
 ## Architecture Overview
 
@@ -46,7 +48,7 @@ When team sync is active, search queries are automatically fanned out to all con
 If you're the first team member setting up sync:
 
 1. Open the **Teams** page in the dashboard
-2. Click **Deploy** — this runs the same turnkey pipeline as Cloud Relay:
+2. Click **Deploy** — this runs the [Cloud Relay](/open-agent-kit/features/cloud-relay/) turnkey pipeline:
    - Scaffolds a Cloudflare Worker project in `oak/cloud-relay/`
    - Installs dependencies and verifies Cloudflare authentication
    - Deploys the Worker via `wrangler`
@@ -135,7 +137,7 @@ codebase_intelligence:
       sync_observations: true
 ```
 
-You can also toggle this from the dashboard: **Teams → Policy**.
+You can also toggle this from the dashboard: **Teams > Policy**.
 
 ## Cloud Agent Access (MCP)
 
@@ -288,9 +290,15 @@ oak ci sync --dry-run    # Preview without applying changes
 Run `oak ci sync --team` after pulling from git to pick up your teammates' latest backups.
 :::
 
-## ⚠️ Known Issues & Gotchas
+## Next Steps
 
-:::caution[Auth token not persisted for additional nodes]
-The relay authentication token is only stored in memory on the server side. New nodes attempting to connect will receive a 401 error unless the token is shared out-of-band. Always share the API key with teammates when they join.
-:::
+- **[Cloud Relay](/open-agent-kit/features/cloud-relay/)** — How the Cloudflare Worker relay works under the hood
+- **[Cloudflare Setup](/open-agent-kit/features/cloud-relay/cloudflare-setup/)** — Create your free account and install wrangler
+- **[Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/)** — Register cloud AI agents with your relay
+- **[Authentication](/open-agent-kit/features/cloud-relay/authentication/)** — Understand the two-token security model
+
+## Known Issues & Gotchas
+
+:::caution[Share the API key out-of-band]
+The relay authentication token is only stored in the Worker's secrets and your local config. New nodes attempting to connect need the API key shared by the publisher — always share it securely with teammates when they join.
 :::

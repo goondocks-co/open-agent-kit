@@ -2,13 +2,13 @@
 title: Cloud Relay
 description: The Cloudflare Worker that powers team sync and cloud agent access.
 sidebar:
-  order: 0
+  order: 1
 ---
 
-**Cloud Relay** is the Cloudflare Worker that serves as the transport layer for two OAK features:
+**Cloud Relay** is the Cloudflare Worker that serves as the transport layer for [Teams](/open-agent-kit/features/teams/). It powers two capabilities:
 
-1. **[Team Sync](/open-agent-kit/features/codebase-intelligence/teams/)** — Share observations between team members in real time via WebSocket relay
-2. **Cloud Agent Access** — Let cloud-hosted AI agents (Claude.ai, ChatGPT, etc.) call your local MCP tools through a secure HTTP endpoint
+1. **[Team Sync](/open-agent-kit/features/teams/)** — Share observations between team members in real time via WebSocket relay
+2. **[Cloud Agent Access](/open-agent-kit/features/cloud-relay/cloud-agents/)** — Let cloud-hosted AI agents (Claude.ai, ChatGPT, etc.) call your local MCP tools through a secure HTTP endpoint
 
 Your codebase never leaves your machine — only MCP tool calls, their results, and observation payloads travel through the relay.
 
@@ -101,7 +101,7 @@ Before setting up Cloud Relay, you need:
 ## Next Steps
 
 - **[Cloudflare Setup](/open-agent-kit/features/cloud-relay/cloudflare-setup/)** — Create your free account and install wrangler
-- **[Teams](/open-agent-kit/features/codebase-intelligence/teams/)** — Set up team observation sync via the relay
+- **[Teams](/open-agent-kit/features/teams/)** — Set up team observation sync via the relay
 - **[Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/)** — Register cloud AI agents with your relay
 - **[Authentication](/open-agent-kit/features/cloud-relay/authentication/)** — Understand the two-token security model
 - **[Deployment](/open-agent-kit/features/cloud-relay/deployment/)** — Worker lifecycle, re-deployment, and management

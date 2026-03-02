@@ -58,7 +58,7 @@ The Worker accepts the token in two formats for flexibility:
 | Worker `wrangler.toml` | Both tokens as env vars | Local filesystem during deploy; encrypted at rest on Cloudflare |
 | Cloudflare Workers secrets | Both tokens | Encrypted at rest; only accessible by your Worker code |
 
-The `wrangler.toml` file is excluded from version control by the scaffold's `.gitignore`. Keep a copy of the agent token to register with cloud agents, or view it in the dashboard (Cloud page, when connected).
+The `wrangler.toml` file is excluded from version control by the scaffold's `.gitignore`. Keep a copy of the agent token to register with cloud agents, or view it in the dashboard (Teams page, when connected).
 
 ## Token Rotation
 

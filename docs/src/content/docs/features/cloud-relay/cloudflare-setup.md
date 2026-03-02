@@ -117,12 +117,12 @@ All three commands should succeed without errors.
 
 **Dashboard:**
 
-Open the Oak CI dashboard and navigate to the **Cloud** page. The **Prerequisites** card at the bottom shows live checks for npm, wrangler, and authentication status — including your Cloudflare account name when authenticated.
+Open the Oak CI dashboard and navigate to the **Teams** page. The **Prerequisites** card at the bottom shows live checks for npm, wrangler, and authentication status — including your Cloudflare account name when authenticated.
 
 ## Next Steps
 
 With your Cloudflare account and wrangler ready:
 
-- **[Teams](/open-agent-kit/features/codebase-intelligence/teams/)** — Set up team observation sync via the relay
+- **[Teams](/open-agent-kit/features/teams/)** — Set up team observation sync via the relay
 - **[Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/)** — Register cloud AI agents with your relay
 - **[Deployment](/open-agent-kit/features/cloud-relay/deployment/)** — Worker lifecycle and management details
