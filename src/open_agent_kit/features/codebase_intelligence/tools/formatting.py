@@ -380,22 +380,35 @@ def format_network_search_results(results: list[dict[str, Any]]) -> str:
     lines = [f"Found {len(results)} network results:\n"]
     for i, r in enumerate(results, 1):
         machine_id = r.get("machine_id", "unknown")
-        observation = r.get("observation", r.get("summary", ""))
+        result_type = r.get("_result_type", "")
         memory_type = r.get("memory_type", "")
         relevance = r.get("relevance")
         confidence = r.get("confidence", "medium")
 
+        # Extract display text — field name depends on result type.
+        # memory: summary/observation, plan/session: title + preview
+        text = r.get("observation", r.get("summary", ""))
+        if not text:
+            title = r.get("title", "")
+            preview = r.get("preview", "")
+            if title and preview:
+                text = f"{title}: {preview}"
+            else:
+                text = title or preview
+
+        # Build header with type badge
         header = f"{i}. [{machine_id}]"
-        if memory_type:
-            header += f" [{memory_type}]"
+        type_label = memory_type or result_type
+        if type_label:
+            header += f" [{type_label}]"
         if relevance is not None:
             header += f" (relevance: {round(relevance, 2)})"
         elif confidence:
             header += f" [{confidence}]"
 
         lines.append(header)
-        if observation:
-            lines.append(f"   {observation}")
+        if text:
+            lines.append(f"   {text}")
         lines.append("")
 
     return "\n".join(lines)
