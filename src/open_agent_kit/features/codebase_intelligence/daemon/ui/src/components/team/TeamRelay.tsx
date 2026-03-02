@@ -189,7 +189,7 @@ function ConnectionCard({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {isDeployed && !isConnected && (
+                        {isDeployed && (
                             <Button
                                 onClick={onRedeploy}
                                 disabled={isToggling}

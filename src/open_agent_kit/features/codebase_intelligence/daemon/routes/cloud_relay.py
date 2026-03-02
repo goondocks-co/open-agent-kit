@@ -219,6 +219,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
         make_worker_name,
         render_worker_template,
         render_wrangler_config,
+        sync_source_files,
     )
     from open_agent_kit.features.codebase_intelligence.config import (
         load_ci_config,
@@ -299,6 +300,12 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
         worker_name=relay_config.worker_name or make_worker_name(project_root.name),
         custom_domain=relay_config.custom_domain,
     )
+
+    # Always sync TypeScript source files from the bundled template so
+    # that every deploy picks up the latest code (e.g. after a package
+    # upgrade).  This is cheap (a handful of small files) and avoids the
+    # stale-scaffold problem where the deployed Worker lacks new features.
+    sync_source_files(scaffold_dir)
 
     # ------------------------------------------------------------------
     # Phase 3: npm install (skip if node_modules exists)
@@ -820,13 +827,19 @@ async def get_cloud_relay_status() -> dict:
 
         worker_name = make_worker_name(state.project_root.name)
 
-    # Compute update_available: True when deployed hash differs from current template
+    # Compute update_available: True when the scaffold source files differ from
+    # the bundled template.  This directly detects stale deploys regardless of
+    # config state or when the last deploy happened.
     from open_agent_kit.features.codebase_intelligence.cloud_relay.scaffold import (
+        compute_scaffold_hash,
         compute_template_hash,
     )
 
-    deployed_hash = state.ci_config.cloud_relay.deployed_template_hash if state.ci_config else None
-    update_available = deployed_hash is not None and deployed_hash != compute_template_hash()
+    scaffold_dir = (
+        state.project_root / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR if state.project_root else None
+    )
+    scaffold_hash = compute_scaffold_hash(scaffold_dir) if scaffold_dir else None
+    update_available = scaffold_hash is not None and scaffold_hash != compute_template_hash()
 
     if state.cloud_relay_client is None:
         # Surface config-backed values even when disconnected so the UI can
