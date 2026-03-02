@@ -113,7 +113,8 @@ MCP_TOOLS = [
             "Get relevant context for your current task. Call this when starting "
             "work on something to retrieve related code, past decisions, and "
             "applicable project guidelines. Returns a curated set of context "
-            "optimized for the task at hand."
+            "optimized for the task at hand. Set include_network=true to also "
+            "fetch memories from connected team nodes (code context stays local)."
         ),
         "inputSchema": {
             "type": "object",
@@ -132,6 +133,14 @@ MCP_TOOLS = [
                     "default": 2000,
                     "description": "Maximum tokens of context to return",
                 },
+                "include_network": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "If True, also fetch memories from connected team network nodes. "
+                        "Code context stays local-only (branch/worktree differences)."
+                    ),
+                },
             },
             "required": ["task"],
         },
@@ -141,7 +150,8 @@ MCP_TOOLS = [
         "description": (
             "Mark a memory observation as resolved or superseded. "
             "Use this after completing work that addresses a gotcha, fixing a bug that "
-            "was tracked as an observation, or when a newer observation replaces an older one."
+            "was tracked as an observation, or when a newer observation replaces an older one. "
+            "Set node_id to target a specific remote node (use oak_nodes to discover nodes)."
         ),
         "inputSchema": {
             "type": "object",
@@ -164,6 +174,12 @@ MCP_TOOLS = [
                     "type": "string",
                     "description": "Optional reason for resolution.",
                 },
+                "node_id": {
+                    "type": "string",
+                    "description": (
+                        "Target a specific node. Use oak_nodes to discover available nodes."
+                    ),
+                },
             },
             "required": ["id"],
         },
@@ -173,7 +189,8 @@ MCP_TOOLS = [
         "description": (
             "List recent coding sessions with their status and summaries. "
             "Use this to understand what work has been done recently and find "
-            "session IDs for deeper investigation with oak_activity."
+            "session IDs for deeper investigation with oak_activity. "
+            "Set include_network=true to also fetch sessions from connected team nodes."
         ),
         "inputSchema": {
             "type": "object",
@@ -190,6 +207,13 @@ MCP_TOOLS = [
                     "default": True,
                     "description": "Include session summaries in output",
                 },
+                "include_network": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "If True, also fetch sessions from connected team network nodes."
+                    ),
+                },
             },
         },
     },
@@ -198,7 +222,8 @@ MCP_TOOLS = [
         "description": (
             "Browse stored memories and observations. Use this to review what "
             "the system has learned about the codebase, including gotchas, "
-            "bug fixes, decisions, discoveries, and trade-offs."
+            "bug fixes, decisions, discoveries, and trade-offs. "
+            "Set include_network=true to also fetch memories from connected team nodes."
         ),
         "inputSchema": {
             "type": "object",
@@ -226,6 +251,13 @@ MCP_TOOLS = [
                     "default": False,
                     "description": "If True, include all statuses regardless of status filter",
                 },
+                "include_network": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "If True, also fetch memories from connected team network nodes."
+                    ),
+                },
             },
         },
     },
@@ -234,11 +266,18 @@ MCP_TOOLS = [
         "description": (
             "Get project intelligence statistics including indexed code chunks, "
             "unique files, memory count, and observation status breakdown. "
-            "Use this for a quick health check of the codebase intelligence system."
+            "Use this for a quick health check of the codebase intelligence system. "
+            "Set include_network=true to also fetch stats from connected team nodes."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "include_network": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": ("If True, also fetch stats from connected team network nodes."),
+                },
+            },
         },
     },
     {
@@ -246,7 +285,8 @@ MCP_TOOLS = [
         "description": (
             "View tool execution history for a specific session. Shows what tools "
             "were used, which files were affected, success/failure status, and "
-            "output summaries. Use oak_sessions first to find session IDs."
+            "output summaries. Use oak_sessions first to find session IDs. "
+            "Set node_id to query a specific remote node (use oak_nodes to discover nodes)."
         ),
         "inputSchema": {
             "type": "object",
@@ -266,6 +306,12 @@ MCP_TOOLS = [
                     "maximum": 200,
                     "description": "Maximum number of activities to return",
                 },
+                "node_id": {
+                    "type": "string",
+                    "description": (
+                        "Target a specific node. Use oak_nodes to discover available nodes."
+                    ),
+                },
             },
             "required": ["session_id"],
         },
@@ -276,7 +322,8 @@ MCP_TOOLS = [
             "Archive observations from the ChromaDB search index. Archived observations "
             "remain in SQLite for historical queries but stop appearing in vector search "
             "results. Provide specific IDs or use status_filter + older_than_days to "
-            "bulk archive stale resolved/superseded observations."
+            "bulk archive stale resolved/superseded observations. "
+            "Set node_id to target a specific remote node (use oak_nodes to discover nodes)."
         ),
         "inputSchema": {
             "type": "object",
@@ -303,7 +350,25 @@ MCP_TOOLS = [
                     "default": False,
                     "description": "If True, return count without actually archiving",
                 },
+                "node_id": {
+                    "type": "string",
+                    "description": (
+                        "Target a specific node. Use oak_nodes to discover available nodes."
+                    ),
+                },
             },
+        },
+    },
+    {
+        "name": "oak_nodes",
+        "description": (
+            "List connected team relay nodes. Shows machine IDs, online status, "
+            "OAK version, and capabilities for each node. Use this to discover "
+            "available nodes before targeting them with node_id in other tools."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
         },
     },
 ]
@@ -355,6 +420,7 @@ class MCPToolHandler:
             "oak_stats": lambda args: self.ops.get_stats(args),
             "oak_activity": self.ops.list_activities,
             "oak_archive_memories": self.ops.archive_memories,
+            "oak_nodes": lambda args: self.ops.list_nodes(args),
         }
 
         handler = handlers.get(tool_name)

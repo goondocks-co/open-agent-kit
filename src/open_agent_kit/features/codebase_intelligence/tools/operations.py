@@ -6,11 +6,15 @@ Both MCP handlers and SDK tool wrappers delegate to these operations.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     ARCHIVE_FILTER_BOTH,
+    CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT,
+    CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS,
+    CLOUD_RELAY_REMOTE_TOOL_BRIDGE_TIMEOUT_SECONDS,
     OBSERVATION_STATUS_RESOLVED,
     OBSERVATION_STATUS_SUPERSEDED,
     SEARCH_TYPE_ALL,
@@ -22,10 +26,13 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     VALID_OBSERVATION_STATUSES,
 )
 from open_agent_kit.features.codebase_intelligence.tools.formatting import (
+    extract_text_from_mcp_result,
     format_activity_results,
     format_context_results,
+    format_federated_tool_results,
     format_memory_results,
     format_network_search_results,
+    format_node_results,
     format_search_results,
     format_session_results,
     format_stats_results,
@@ -37,11 +44,15 @@ from open_agent_kit.features.codebase_intelligence.tools.schemas import (
     MemoriesInput,
     QueryInput,
     RememberInput,
+    ResolveInput,
     SearchInput,
     SessionsInput,
+    StatsInput,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
     from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
@@ -77,6 +88,93 @@ class ToolOperations:
         self.activity_store = activity_store
         self.vector_store = vector_store
         self.relay_client = relay_client
+
+    # ------------------------------------------------------------------
+    # Shared federation helpers
+    # ------------------------------------------------------------------
+
+    def _run_relay_coro(self, coro: Coroutine[Any, Any, Any], timeout: float) -> Any:
+        """Run an async relay coroutine from synchronous tool code.
+
+        Uses the running event loop when available (daemon context),
+        otherwise falls back to ``loop.run_until_complete``.
+
+        Args:
+            coro: Awaitable to execute.
+            timeout: Maximum seconds to wait for the result.
+
+        Returns:
+            The coroutine's return value.
+        """
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            return future.result(timeout=timeout)
+        return loop.run_until_complete(coro)
+
+    def list_nodes(self, args: dict[str, Any] | None = None) -> str:
+        """List connected relay nodes.
+
+        Returns:
+            Formatted node list as markdown string.
+        """
+        if self.relay_client is None:
+            return "Cloud relay not connected. No team nodes available."
+
+        nodes = self.relay_client.online_nodes
+        if not nodes:
+            return "Cloud relay connected but no peer nodes online."
+
+        return format_node_results(nodes)
+
+    def _federate_if_requested(
+        self, tool_name: str, args: dict[str, Any], local_result: str
+    ) -> str:
+        """Append federated results from peer nodes if include_network is set."""
+        if not args.get("include_network") or self.relay_client is None:
+            return local_result
+        try:
+            # Strip include_network to prevent recursion on peer nodes
+            remote_args = {k: v for k, v in args.items() if k != "include_network"}
+            coro = self.relay_client.federate_tool_call(tool_name, remote_args)
+            network_result = self._run_relay_coro(
+                coro, timeout=CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS
+            )
+            remote_results = network_result.get("results", [])
+            if remote_results:
+                local_result += "\n\n## Network Results\n\n"
+                local_result += format_federated_tool_results(remote_results)
+        except Exception:
+            logger.warning("Federated tool call failed", exc_info=True)
+        return local_result
+
+    def _route_to_node(self, tool_name: str, args: dict[str, Any]) -> str | None:
+        """If node_id in args, proxy to remote node. Returns None for local execution."""
+        node_id = args.get("node_id")
+        if not node_id:
+            return None
+        if self.relay_client is None:
+            return "Error: Cloud relay not connected."
+        try:
+            # Build args without node_id (avoid mutating caller's dict)
+            remote_args = {k: v for k, v in args.items() if k != "node_id"}
+            coro = self.relay_client.call_remote_tool(tool_name, remote_args, node_id)
+            result = self._run_relay_coro(
+                coro, timeout=CLOUD_RELAY_REMOTE_TOOL_BRIDGE_TIMEOUT_SECONDS
+            )
+
+            if result.get("error"):
+                return f"## Error from {node_id}\n\n{result['error']}"
+
+            text = extract_text_from_mcp_result(result.get("result"))
+            return f"## Results from {node_id}\n\n{text}"
+        except Exception:
+            logger.warning("Remote tool call to %s failed", node_id, exc_info=True)
+            return f"Error: Failed to reach node {node_id}."
+
+    # ------------------------------------------------------------------
+    # Tool operations
+    # ------------------------------------------------------------------
 
     def search(self, args: dict[str, Any]) -> str:
         """Execute search operation.
@@ -123,19 +221,14 @@ class ToolOperations:
             and search_type != SEARCH_TYPE_CODE
         ):
             try:
-                import asyncio
-
                 coro = self.relay_client.search_network(
                     query=input_data.query,
                     search_type=search_type,
                     limit=input_data.limit,
                 )
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    future = asyncio.run_coroutine_threadsafe(coro, loop)
-                    network_result = future.result(timeout=30)
-                else:
-                    network_result = loop.run_until_complete(coro)
+                network_result = self._run_relay_coro(
+                    coro, timeout=CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS
+                )
                 network_items = network_result.get("results", [])
                 if network_items:
                     output += "\n\n## Network Results\n\n"
@@ -173,7 +266,7 @@ class ToolOperations:
         """Execute context retrieval operation.
 
         Args:
-            args: Context arguments (task, current_files, max_tokens).
+            args: Context arguments (task, current_files, max_tokens, include_network).
 
         Returns:
             Formatted context as markdown string.
@@ -186,10 +279,30 @@ class ToolOperations:
             max_tokens=input_data.max_tokens,
         )
 
-        return format_context_results(
+        output = format_context_results(
             code=result.code,
             memories=result.memories,
         )
+
+        # Federate memories only (code stays local — branch/worktree differences).
+        if input_data.include_network and self.relay_client is not None:
+            try:
+                coro = self.relay_client.search_network(
+                    query=input_data.task,
+                    search_type=SEARCH_TYPE_MEMORY,
+                    limit=CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT,
+                )
+                network_result = self._run_relay_coro(
+                    coro, timeout=CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS
+                )
+                network_items = network_result.get("results", [])
+                if network_items:
+                    output += "\n\n## Network Memories\n\n"
+                    output += format_network_search_results(network_items)
+            except Exception:
+                logger.warning("Network context fetch failed", exc_info=True)
+
+        return output
 
     def list_memories(self, args: dict[str, Any]) -> str:
         """Execute memories listing operation.
@@ -211,11 +324,12 @@ class ToolOperations:
         )
 
         if not memories:
-            return "No memories found."
+            output = "No memories found."
+        else:
+            output = format_memory_results(memories)
+            output += f"\n(Showing {len(memories)} of {total} total memories)"
 
-        output = format_memory_results(memories)
-        output += f"\n(Showing {len(memories)} of {total} total memories)"
-        return output
+        return self._federate_if_requested("oak_memories", args, output)
 
     def list_sessions(self, args: dict[str, Any]) -> str:
         """Execute sessions listing operation.
@@ -256,7 +370,8 @@ class ToolOperations:
 
         output = format_session_results(session_dicts)
         output += f"\n(Showing {len(sessions)} sessions)"
-        return output
+
+        return self._federate_if_requested("oak_sessions", args, output)
 
     def resolve_memory(self, args: dict[str, Any]) -> str:
         """Resolve a memory observation.
@@ -265,7 +380,7 @@ class ToolOperations:
         write (SQLite + ChromaDB) as a single operation.
 
         Args:
-            args: Dict with 'id' (required), 'status' (default 'resolved').
+            args: Dict with 'id' (required), 'status' (default 'resolved'), 'node_id' (optional).
 
         Returns:
             Confirmation message string.
@@ -273,31 +388,38 @@ class ToolOperations:
         Raises:
             ValueError: If ID is missing or status is invalid.
         """
-        memory_id = args.get("id")
-        if not memory_id:
-            raise ValueError("Memory ID is required")
+        # Node-targeted routing
+        remote = self._route_to_node("oak_resolve_memory", args)
+        if remote is not None:
+            return remote
 
-        status = args.get("status", OBSERVATION_STATUS_RESOLVED)
-        if status not in VALID_OBSERVATION_STATUSES:
+        input_data = ResolveInput(**args)
+
+        if input_data.status not in VALID_OBSERVATION_STATUSES:
             raise ValueError(
-                f"Invalid status '{status}'. Must be one of: "
+                f"Invalid status '{input_data.status}'. Must be one of: "
                 f"{', '.join(VALID_OBSERVATION_STATUSES)}"
             )
 
-        success = self.engine.resolve_memory(memory_id, status)
+        success = self.engine.resolve_memory(input_data.id, input_data.status)
         if success:
-            return f"Memory {memory_id} marked as {status}."
-        return f"Memory {memory_id} not found or could not be updated."
+            return f"Memory {input_data.id} marked as {input_data.status}."
+        return f"Memory {input_data.id} not found or could not be updated."
 
     def get_stats(self, args: dict[str, Any] | None = None) -> str:
         """Execute project stats operation.
 
         Args:
-            args: Optional stats arguments (currently unused).
+            args: Optional stats arguments (include_network).
 
         Returns:
             Formatted stats as markdown string.
         """
+        if args is None:
+            args = {}
+
+        StatsInput(**args)  # validate input
+
         code_chunks = 0
         unique_files = 0
         memory_count = 0
@@ -314,7 +436,7 @@ class ToolOperations:
             observation_count = self.activity_store.count_observations()
             status_breakdown = self.activity_store.count_observations_by_status()
 
-        return format_stats_results(
+        output = format_stats_results(
             code_chunks=code_chunks,
             unique_files=unique_files,
             memory_count=memory_count,
@@ -322,11 +444,13 @@ class ToolOperations:
             status_breakdown=status_breakdown,
         )
 
+        return self._federate_if_requested("oak_stats", args, output)
+
     def list_activities(self, args: dict[str, Any]) -> str:
         """Execute activity listing operation.
 
         Args:
-            args: Activity arguments (session_id, tool_name, limit).
+            args: Activity arguments (session_id, tool_name, limit, node_id).
 
         Returns:
             Formatted activity list as markdown string.
@@ -334,6 +458,11 @@ class ToolOperations:
         Raises:
             ValueError: If activity store is not available.
         """
+        # Node-targeted routing
+        remote = self._route_to_node("oak_activity", args)
+        if remote is not None:
+            return remote
+
         if not self.activity_store:
             raise ValueError("Activity history not available.")
 
@@ -430,7 +559,7 @@ class ToolOperations:
         but remain in SQLite for historical queries.
 
         Args:
-            args: Archive arguments (ids, status_filter, older_than_days, dry_run).
+            args: Archive arguments (ids, status_filter, older_than_days, dry_run, node_id).
 
         Returns:
             Formatted summary of archival results.
@@ -439,6 +568,11 @@ class ToolOperations:
             ValueError: If neither ids nor status_filter is provided,
                 or if required stores are unavailable.
         """
+        # Node-targeted routing
+        remote = self._route_to_node("oak_archive_memories", args)
+        if remote is not None:
+            return remote
+
         if not self.vector_store:
             raise ValueError("Vector store not available for archiving.")
 

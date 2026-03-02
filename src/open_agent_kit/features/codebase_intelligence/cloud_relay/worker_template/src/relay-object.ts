@@ -22,12 +22,15 @@
 import {
   RelayMessageType,
   type Env,
+  type FederatedToolCallMessage,
+  type FederatedToolResultMessage,
   type HeartbeatPing,
   type HttpRequestMessage,
   type HttpResponseMessage,
   type NodeListMessage,
   type ObsBatchMessage,
   type ObsPushMessage,
+  type PendingFederatedTool,
   type PendingHttpRequest,
   type PendingRequest,
   type PendingSearch,
@@ -52,6 +55,9 @@ const FEDERATED_SEARCH_TIMEOUT_MS = 3_000;
 const FEDERATED_SEARCH_DEFAULT_LIMIT = 10;
 const FEDERATED_SEARCH_MAX_RESULTS = 50;
 const CAPABILITY_FEDERATED_SEARCH = "federated_search_v1";
+const CAPABILITY_FEDERATED_TOOLS = "federated_tools_v1";
+const FEDERATED_TOOL_TIMEOUT_MS = 10_000;
+const FEDERATED_TOOL_MAX_RESULTS = 50;
 /** Probability of running TTL cleanup on each obs push (1%). */
 const OBS_HISTORY_CLEANUP_PROBABILITY = 0.01;
 
@@ -59,8 +65,8 @@ export class RelayObject implements DurableObject {
   private state: DurableObjectState;
   private env: Env;
 
-  /** Cached tool list from the daemon's register message. */
-  private tools: ToolInfo[] = [];
+  /** Tool lists from each node's register message, keyed by machine_id. */
+  private nodeTools: Map<string, ToolInfo[]> = new Map();
 
   /** Pending tool call requests awaiting a response from the local daemon. */
   private pending: Map<string, PendingRequest> = new Map();
@@ -79,6 +85,12 @@ export class RelayObject implements DurableObject {
 
   /** Pending federated search requests awaiting results from peer nodes. */
   private pendingSearch: Map<string, PendingSearch> = new Map();
+
+  /** Pending federated tool call requests awaiting results from peer nodes. */
+  private pendingFederatedTool: Map<string, PendingFederatedTool> = new Map();
+
+  /** Machine ID of the first node to register (preferred target for unrouted calls). */
+  private homeMachineId: string | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -151,6 +163,14 @@ export class RelayObject implements DurableObject {
       return this.handleSearchFanout(request);
     }
 
+    if (url.pathname === "/federate-tool" && request.method === "POST") {
+      return this.handleFederatedToolFanout(request);
+    }
+
+    if (url.pathname === "/tool-call" && request.method === "POST") {
+      return this.handleToolCall(request);
+    }
+
     if (url.pathname === "/health") {
       const allSockets = this.state.getWebSockets();
       return Response.json({
@@ -161,7 +181,7 @@ export class RelayObject implements DurableObject {
     }
 
     if (url.pathname === "/tools") {
-      return Response.json({ tools: this.tools });
+      return Response.json({ tools: this.getAggregatedTools() });
     }
 
     return new Response("not found", { status: 404 });
@@ -223,6 +243,9 @@ export class RelayObject implements DurableObject {
       case RelayMessageType.SEARCH_RESULT:
         this.resolveSearchResult(msg as SearchResultMessage);
         break;
+      case RelayMessageType.FEDERATED_TOOL_RESULT:
+        this.resolveFederatedToolResult(msg as FederatedToolResultMessage);
+        break;
       default:
         break;
     }
@@ -238,6 +261,10 @@ export class RelayObject implements DurableObject {
     if (machineId) {
       this.stopHeartbeat(machineId);
       this.nodeMetadata.delete(machineId);
+      this.nodeTools.delete(machineId);
+      if (machineId === this.homeMachineId) {
+        this.homeMachineId = null;
+      }
     }
     this.broadcastNodeList();
   }
@@ -247,6 +274,10 @@ export class RelayObject implements DurableObject {
     if (machineId) {
       this.stopHeartbeat(machineId);
       this.nodeMetadata.delete(machineId);
+      this.nodeTools.delete(machineId);
+      if (machineId === this.homeMachineId) {
+        this.homeMachineId = null;
+      }
     }
     this.broadcastNodeList();
   }
@@ -290,6 +321,11 @@ export class RelayObject implements DurableObject {
     // above without a tag, we use serializeAttachment to store the machine_id.
     ws.serializeAttachment({ machineId });
 
+    // First node to register becomes the home node (preferred for unrouted calls).
+    if (!this.homeMachineId) {
+      this.homeMachineId = machineId;
+    }
+
     // Store version metadata and capabilities for this node.
     this.nodeMetadata.set(machineId, {
       oak_version: msg.oak_version,
@@ -297,14 +333,15 @@ export class RelayObject implements DurableObject {
       capabilities: msg.capabilities,
     });
 
-    // Store the tool list from the daemon.
-    this.tools = (msg.tools || []).map((t) => ({
+    // Store the tool list from this node (keyed by machine_id).
+    const parsed: ToolInfo[] = (msg.tools || []).map((t) => ({
       name: (t as Record<string, unknown>).name as string,
       description: (t as Record<string, unknown>).description as string | undefined,
       inputSchema: (t as Record<string, unknown>).inputSchema as
         | Record<string, unknown>
         | undefined,
     }));
+    this.nodeTools.set(machineId, parsed);
 
     // Send registered confirmation.
     const registered: RegisteredMessage = {
@@ -783,6 +820,119 @@ export class RelayObject implements DurableObject {
   }
 
   // -----------------------------------------------------------------------
+  // Federated tool call fan-out
+  // -----------------------------------------------------------------------
+
+  private async handleFederatedToolFanout(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const requesterMachineId = url.searchParams.get("machine_id");
+
+    let body: { tool_name: string; arguments?: Record<string, unknown> };
+    try {
+      body = (await request.json()) as { tool_name: string; arguments?: Record<string, unknown> };
+    } catch {
+      return Response.json({ error: "invalid request body" }, { status: 400 });
+    }
+
+    if (!body.tool_name) {
+      return Response.json({ error: "missing tool_name" }, { status: 400 });
+    }
+
+    // Find capable peer sockets (excluding requester).
+    const capablePeers: { machineId: string; ws: WebSocket }[] = [];
+    const allSockets = this.state.getWebSockets();
+    const seen = new Set<string>();
+
+    for (const ws of allSockets) {
+      const machineId = this.getMachineId(ws);
+      if (!machineId || machineId === requesterMachineId || seen.has(machineId)) continue;
+      seen.add(machineId);
+
+      const meta = this.nodeMetadata.get(machineId);
+      if (meta?.capabilities?.includes(CAPABILITY_FEDERATED_TOOLS)) {
+        capablePeers.push({ machineId, ws });
+      }
+    }
+
+    if (capablePeers.length === 0) {
+      return Response.json({ results: [] });
+    }
+
+    const requestId = crypto.randomUUID();
+    const callMsg: FederatedToolCallMessage = {
+      type: RelayMessageType.FEDERATED_TOOL_CALL,
+      request_id: requestId,
+      tool_name: body.tool_name,
+      arguments: body.arguments ?? {},
+      from_machine_id: requesterMachineId ?? "",
+    };
+    const serialized = JSON.stringify(callMsg);
+
+    let sentCount = 0;
+    for (const { machineId: peerId, ws } of capablePeers) {
+      try {
+        ws.send(serialized);
+        sentCount++;
+      } catch (err) {
+        console.error("Failed to send federated tool call to peer", peerId, err);
+      }
+    }
+
+    if (sentCount === 0) {
+      return Response.json({ results: [] });
+    }
+
+    // Create aggregation promise with timeout.
+    const resultsPromise = new Promise<FederatedToolResultMessage[]>((resolve) => {
+      const timer = setTimeout(() => {
+        const entry = this.pendingFederatedTool.get(requestId);
+        if (entry) {
+          this.pendingFederatedTool.delete(requestId);
+          resolve(entry.results);
+        } else {
+          resolve([]);
+        }
+      }, FEDERATED_TOOL_TIMEOUT_MS);
+
+      this.pendingFederatedTool.set(requestId, {
+        results: [],
+        expectedCount: sentCount,
+        resolve,
+        timer,
+      });
+    });
+
+    const toolResults = await resultsPromise;
+
+    // Merge results from all responding peers (cap to prevent oversized responses).
+    const merged: { from_machine_id: string; result?: unknown; error?: string }[] = [];
+    for (const tr of toolResults) {
+      if (merged.length >= FEDERATED_TOOL_MAX_RESULTS) break;
+      merged.push({
+        from_machine_id: tr.from_machine_id ?? "unknown",
+        result: tr.result,
+        error: tr.error,
+      });
+    }
+
+    return Response.json({ results: merged });
+  }
+
+  private resolveFederatedToolResult(msg: FederatedToolResultMessage): void {
+    const entry = this.pendingFederatedTool.get(msg.request_id);
+    if (!entry) return;
+
+    entry.results.push(msg);
+
+    // All peers responded — resolve early.
+    if (entry.results.length >= entry.expectedCount) {
+      clearTimeout(entry.timer);
+      this.pendingFederatedTool.delete(msg.request_id);
+      entry.resolve(entry.results);
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Node list broadcast
   // -----------------------------------------------------------------------
 
@@ -803,6 +953,7 @@ export class RelayObject implements DurableObject {
     const msg: NodeListMessage = {
       type: RelayMessageType.NODE_LIST,
       nodes,
+      home_machine_id: this.homeMachineId ?? undefined,
     };
     const payload = JSON.stringify(msg);
 
@@ -917,12 +1068,17 @@ export class RelayObject implements DurableObject {
     return null;
   }
 
-  /** Get the target socket for a request — specific machine or first available. */
+  /** Get the target socket for a request — specific machine, home node, or first available. */
   private getTargetSocket(machineId: string | null): WebSocket | null {
     if (machineId) {
       return this.getSocketByMachineId(machineId);
     }
-    // Return the first connected socket that has a machine_id (registered).
+    // Prefer the home node (first registrant) for stable routing.
+    if (this.homeMachineId) {
+      const homeWs = this.getSocketByMachineId(this.homeMachineId);
+      if (homeWs) return homeWs;
+    }
+    // Fallback: first connected socket that has a machine_id (registered).
     const allSockets = this.state.getWebSockets();
     for (const ws of allSockets) {
       if (this.getMachineId(ws)) {
@@ -930,6 +1086,21 @@ export class RelayObject implements DurableObject {
       }
     }
     return null;
+  }
+
+  /** Compute the union of tool lists from all connected nodes, deduplicated by name. */
+  private getAggregatedTools(): ToolInfo[] {
+    const seen = new Set<string>();
+    const merged: ToolInfo[] = [];
+    for (const tools of this.nodeTools.values()) {
+      for (const tool of tools) {
+        if (!seen.has(tool.name)) {
+          seen.add(tool.name);
+          merged.push(tool);
+        }
+      }
+    }
+    return merged;
   }
 
 }

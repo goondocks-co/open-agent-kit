@@ -2,10 +2,12 @@
  * Oak Cloud Relay — Cloudflare Worker entry point.
  *
  * Routes:
- *   POST /mcp    — cloud agents send MCP JSON-RPC requests (agent_token auth)
- *   GET  /ws     — local Oak CI daemon connects WebSocket (relay_token auth)
- *   POST /search — federated search fan-out to connected peers (relay_token auth)
- *   GET  /health — status check
+ *   POST /mcp            — cloud agents send MCP JSON-RPC requests (agent_token auth)
+ *   GET  /ws             — local Oak CI daemon connects WebSocket (relay_token auth)
+ *   POST /search         — federated search fan-out to connected peers (relay_token auth)
+ *   POST /federate-tool  — generic federated tool fan-out to peers (relay_token auth)
+ *   POST /tool-call      — node-to-node tool call routing (relay_token auth)
+ *   GET  /health         — status check
  */
 
 import { validateAgentToken, validateRelayToken, validateRelayTokenHttp } from "./auth";
@@ -94,6 +96,22 @@ export default {
 
     // ----- POST /search — federated search fan-out to connected peers -----
     if (path === "/search" && request.method === "POST") {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return authErr;
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request));
+    }
+
+    // ----- POST /federate-tool — generic federated tool fan-out to peers -----
+    if (path === "/federate-tool" && request.method === "POST") {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return authErr;
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request));
+    }
+
+    // ----- POST /tool-call — node-to-node tool call (relay-token auth) -----
+    if (path === "/tool-call" && request.method === "POST") {
       const authErr = validateRelayTokenHttp(request, env);
       if (authErr) return authErr;
       const doStub = getDurableObject(env);

@@ -309,13 +309,19 @@ def build_session_context(
             # there's no user prompt to filter relevance. Session summaries provide
             # sufficient context. Use oak_context tool for task-specific memories.
 
-    # Add team sync status hint so agents know cross-team search is available
+    # Add team sync status hint so agents know cross-team tools are available
     if state.cloud_relay_client is not None:
         relay_status = state.cloud_relay_client.get_status()
         if relay_status.connected:
+            online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
+            node_count = sum(1 for n in online_nodes if n.get("online"))
             parts.append(
-                "**Team Sync Active**: Connected to team relay. "
-                "Use `oak_search` with `include_network=true` for cross-team results."
+                f"**Team Sync Active**: {node_count} node(s) online. "
+                "Use `oak_nodes` to discover nodes. "
+                "Federated tools (add `include_network=true`): "
+                "oak_search, oak_sessions, oak_memories, oak_context, oak_stats. "
+                "Node-targeted tools (add `node_id`): "
+                "oak_activity, oak_resolve_memory, oak_archive_memories."
             )
 
     return "\n\n".join(parts) if parts else ""

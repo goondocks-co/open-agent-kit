@@ -76,6 +76,13 @@ class ContextInput(BaseModel):
         default=DEFAULT_MAX_CONTEXT_TOKENS,
         description="Maximum tokens of context to return",
     )
+    include_network: bool = Field(
+        default=False,
+        description=(
+            "If True, also fetch memories from connected team network nodes. "
+            "Code context stays local-only (branch/worktree differences)."
+        ),
+    )
 
 
 class MemoriesInput(BaseModel):
@@ -99,6 +106,10 @@ class MemoriesInput(BaseModel):
         default=False,
         description="If True, include all statuses regardless of status filter",
     )
+    include_network: bool = Field(
+        default=False,
+        description=("If True, also fetch memories from connected team network nodes."),
+    )
 
 
 class SessionsInput(BaseModel):
@@ -114,13 +125,19 @@ class SessionsInput(BaseModel):
         default=True,
         description="Include session summaries in output",
     )
+    include_network: bool = Field(
+        default=False,
+        description=("If True, also fetch sessions from connected team network nodes."),
+    )
 
 
 class StatsInput(BaseModel):
     """Input for project stats tool (ci_project_stats)."""
 
-    # No required inputs - returns all available stats
-    pass
+    include_network: bool = Field(
+        default=False,
+        description=("If True, also fetch stats from connected team network nodes."),
+    )
 
 
 class QueryInput(BaseModel):
@@ -149,6 +166,28 @@ class ActivityInput(BaseModel):
         ge=1,
         le=200,
     )
+    node_id: str | None = Field(
+        default=None,
+        description=("Target a specific node. Use oak_nodes to discover available nodes."),
+    )
+
+
+class ResolveInput(BaseModel):
+    """Input for resolve memory tool (oak_resolve_memory)."""
+
+    id: str = Field(..., description="The observation UUID to resolve")
+    status: str = Field(
+        default="resolved",
+        description="New status - 'resolved' (default) or 'superseded'",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Optional reason for resolution",
+    )
+    node_id: str | None = Field(
+        default=None,
+        description=("Target a specific node. Use oak_nodes to discover available nodes."),
+    )
 
 
 class ArchiveInput(BaseModel):
@@ -170,4 +209,8 @@ class ArchiveInput(BaseModel):
     dry_run: bool = Field(
         default=False,
         description="If True, return count without actually archiving",
+    )
+    node_id: str | None = Field(
+        default=None,
+        description=("Target a specific node. Use oak_nodes to discover available nodes."),
     )

@@ -143,8 +143,12 @@ interface DoResponse {
 async function forwardToDo(
   doStub: DurableObjectStub,
   toolCallRequest: ToolCallRequest,
+  machineId?: string,
 ): Promise<DoResponse> {
-  const response = await doStub.fetch("https://relay/mcp", {
+  const url = machineId
+    ? `https://relay/mcp?machine_id=${encodeURIComponent(machineId)}`
+    : "https://relay/mcp";
+  const response = await doStub.fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(toolCallRequest),

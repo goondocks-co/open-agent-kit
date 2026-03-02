@@ -24,6 +24,8 @@ export const RelayMessageType = {
   NODE_LIST: "node_list",
   SEARCH_QUERY: "search_query",
   SEARCH_RESULT: "search_result",
+  FEDERATED_TOOL_CALL: "federated_tool_call",
+  FEDERATED_TOOL_RESULT: "federated_tool_result",
 } as const;
 
 export type RelayMessageType =
@@ -133,6 +135,7 @@ export interface ObsBatchMessage {
 export interface NodeListMessage {
   type: typeof RelayMessageType.NODE_LIST;
   nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string; capabilities?: string[] }[];
+  home_machine_id?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +159,32 @@ export interface SearchResultMessage {
   results: Record<string, unknown>[];
   from_machine_id?: string;
   error?: string;
+}
+
+/** Sent to request a tool call be executed on peer nodes. */
+export interface FederatedToolCallMessage {
+  type: typeof RelayMessageType.FEDERATED_TOOL_CALL;
+  request_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  from_machine_id?: string;
+}
+
+/** Sent by a node in response to a FederatedToolCallMessage. */
+export interface FederatedToolResultMessage {
+  type: typeof RelayMessageType.FEDERATED_TOOL_RESULT;
+  request_id: string;
+  result?: unknown;
+  from_machine_id?: string;
+  error?: string;
+}
+
+/** Tracks pending federated tool call state in the DO. */
+export interface PendingFederatedTool {
+  results: FederatedToolResultMessage[];
+  expectedCount: number;
+  resolve: (value: FederatedToolResultMessage[]) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /** Tracks pending federated search state in the DO. */
@@ -184,7 +213,9 @@ export type RelayMessage =
   | ObsBatchMessage
   | NodeListMessage
   | SearchQueryMessage
-  | SearchResultMessage;
+  | SearchResultMessage
+  | FederatedToolCallMessage
+  | FederatedToolResultMessage;
 
 // ---------------------------------------------------------------------------
 // Internal helpers

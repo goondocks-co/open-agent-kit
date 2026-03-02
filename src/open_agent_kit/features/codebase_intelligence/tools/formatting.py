@@ -401,6 +401,104 @@ def format_network_search_results(results: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def format_node_results(nodes: list[dict[str, Any]]) -> str:
+    """Format node list for agent consumption.
+
+    Args:
+        nodes: Node info dicts from relay_client.online_nodes.
+
+    Returns:
+        Formatted markdown string with node details.
+    """
+    if not nodes:
+        return "No nodes currently online."
+
+    lines = [f"Found {len(nodes)} node(s):\n"]
+    for i, n in enumerate(nodes, 1):
+        machine_id = n.get("machine_id", "unknown")
+        online = n.get("online", False)
+        oak_version = n.get("oak_version", "")
+        capabilities = n.get("capabilities", [])
+        status_icon = "+" if online else "-"
+
+        header = f"{i}. [{status_icon}] {machine_id}"
+        if oak_version:
+            header += f" (v{oak_version})"
+        lines.append(header)
+
+        if capabilities:
+            lines.append(f"   Capabilities: {', '.join(capabilities)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_federated_tool_results(results: list[dict[str, Any]]) -> str:
+    """Format federated tool call results for agent consumption.
+
+    Each result includes a source machine_id badge to distinguish
+    which peer node contributed the result.
+
+    Args:
+        results: Federated results from relay, each containing
+            from_machine_id, result, and optional error.
+
+    Returns:
+        Formatted markdown string with federated results.
+    """
+    if not results:
+        return "No results from peer nodes."
+
+    lines = []
+    for r in results:
+        machine_id = r.get("from_machine_id", "unknown")
+        error = r.get("error")
+        result = r.get("result")
+
+        if error:
+            lines.append(f"### [{machine_id}] Error\n{error}\n")
+        elif result:
+            # Result may be a dict with content, or a plain string
+            if isinstance(result, dict):
+                content = result.get("content", [])
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            lines.append(f"### [{machine_id}]\n{item['text']}\n")
+                else:
+                    lines.append(f"### [{machine_id}]\n{result}\n")
+            else:
+                lines.append(f"### [{machine_id}]\n{result}\n")
+
+    return "\n".join(lines) if lines else "No results from peer nodes."
+
+
+def extract_text_from_mcp_result(tool_result: Any) -> str:
+    """Extract text content from an MCP-style tool result dict.
+
+    MCP tool results follow the shape ``{content: [{type: "text", text: "..."}]}``.
+    This helper normalises that into a plain string.
+
+    Args:
+        tool_result: Raw result from a remote tool call.
+
+    Returns:
+        Extracted text, or ``str(tool_result)`` as fallback.
+    """
+    if isinstance(tool_result, dict):
+        content = tool_result.get("content", [])
+        if isinstance(content, list):
+            texts = [
+                item.get("text", "")
+                for item in content
+                if isinstance(item, dict) and item.get("type") == "text"
+            ]
+            if texts:
+                return "\n".join(texts)
+        return str(tool_result)
+    return str(tool_result) if tool_result is not None else ""
+
+
 def format_stats_results(
     code_chunks: int = 0,
     unique_files: int = 0,

@@ -109,6 +109,8 @@ CLOUD_RELAY_WS_TYPE_OBS_BATCH: Final[str] = "obs_batch"
 CLOUD_RELAY_WS_TYPE_NODE_LIST: Final[str] = "node_list"
 CLOUD_RELAY_WS_TYPE_SEARCH_QUERY: Final[str] = "search_query"
 CLOUD_RELAY_WS_TYPE_SEARCH_RESULT: Final[str] = "search_result"
+CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_CALL: Final[str] = "federated_tool_call"
+CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_RESULT: Final[str] = "federated_tool_result"
 
 # WebSocket protocol field names
 CLOUD_RELAY_WS_FIELD_TYPE: Final[str] = "type"
@@ -317,6 +319,15 @@ CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH: Final[str] = "federated_search_v1"
 # Federated search
 CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS: Final[float] = 3.0
 CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT: Final[int] = 10
+
+# Federated tool calls (generic fan-out for any tool)
+CLOUD_RELAY_CAPABILITY_FEDERATED_TOOLS: Final[str] = "federated_tools_v1"
+CLOUD_RELAY_FEDERATED_TOOL_TIMEOUT_SECONDS: Final[float] = 10.0
+CLOUD_RELAY_FEDERATED_TOOL_MAX_RESULTS: Final[int] = 50
+CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS: Final[float] = 15.0
+CLOUD_RELAY_REMOTE_TOOL_BRIDGE_TIMEOUT_SECONDS: Final[float] = 35.0
+CLOUD_RELAY_FEDERATE_TOOL_PATH: Final[str] = "/federate-tool"
+CLOUD_RELAY_TOOL_CALL_PATH: Final[str] = "/tool-call"
 CLOUD_RELAY_OBS_HISTORY_PATH: Final[str] = "/obs/history"
 CLOUD_RELAY_SEARCH_PATH: Final[str] = "/search"
 

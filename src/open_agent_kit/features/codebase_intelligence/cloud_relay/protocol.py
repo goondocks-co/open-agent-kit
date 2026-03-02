@@ -17,6 +17,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
     CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT,
     CLOUD_RELAY_WS_TYPE_ERROR,
+    CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_CALL,
+    CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_RESULT,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT,
     CLOUD_RELAY_WS_TYPE_HEARTBEAT_ACK,
     CLOUD_RELAY_WS_TYPE_HTTP_REQUEST,
@@ -53,6 +55,8 @@ class RelayMessageType(str, Enum):
     NODE_LIST = CLOUD_RELAY_WS_TYPE_NODE_LIST
     SEARCH_QUERY = CLOUD_RELAY_WS_TYPE_SEARCH_QUERY
     SEARCH_RESULT = CLOUD_RELAY_WS_TYPE_SEARCH_RESULT
+    FEDERATED_TOOL_CALL = CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_CALL
+    FEDERATED_TOOL_RESULT = CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_RESULT
 
 
 # ---- Daemon -> Worker messages ----
@@ -197,5 +201,32 @@ class SearchResultMessage(BaseModel):
     type: str = CLOUD_RELAY_WS_TYPE_SEARCH_RESULT
     request_id: str
     results: list[dict[str, Any]] = Field(default_factory=list)
+    from_machine_id: str = ""
+    error: str | None = None
+
+
+# ---- Federated tool call messages (generic fan-out) ----
+
+
+class FederatedToolCallMessage(BaseModel):
+    """Sent to request a tool call be executed on peer nodes.
+
+    The relay fans this out to all nodes with the ``federated_tools_v1``
+    capability and collects results.
+    """
+
+    type: str = CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_CALL
+    request_id: str
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    from_machine_id: str = ""
+
+
+class FederatedToolResultMessage(BaseModel):
+    """Sent by a node in response to a FederatedToolCallMessage."""
+
+    type: str = CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_RESULT
+    request_id: str
+    result: Any | None = None
     from_machine_id: str = ""
     error: str | None = None

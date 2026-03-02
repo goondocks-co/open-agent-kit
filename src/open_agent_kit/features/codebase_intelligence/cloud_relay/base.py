@@ -107,6 +107,11 @@ class RelayClient(ABC):
     # Optional capabilities (concrete defaults for backward compat)
     # ------------------------------------------------------------------
 
+    @property
+    def online_nodes(self) -> list[dict[str, Any]]:
+        """List of currently online peer nodes. Empty by default."""
+        return []
+
     def set_obs_applier(self, applier: ObsApplierProtocol) -> None:  # noqa: B027
         """Set the applier for incoming observation batches from peers."""
 
@@ -125,3 +130,30 @@ class RelayClient(ABC):
             Dict with ``results`` list and optional ``error`` key.
         """
         return {"results": [], "error": "Not implemented"}
+
+    async def federate_tool_call(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        timeout: float = 10.0,
+    ) -> dict[str, Any]:
+        """Fan out a tool call to all peer nodes and collect results.
+
+        Returns:
+            Dict with ``results`` list (each entry has from_machine_id, result, error).
+        """
+        return {"results": [], "error": "Not implemented"}
+
+    async def call_remote_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        target_machine_id: str,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Call a tool on a specific remote node.
+
+        Returns:
+            Dict with tool result or error.
+        """
+        return {"error": "Not implemented"}
