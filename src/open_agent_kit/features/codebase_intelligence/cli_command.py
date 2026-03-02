@@ -58,11 +58,20 @@ def detect_invoked_cli_command() -> str:
 
     Returns the stem of sys.argv[0] if it matches the allowed pattern
     (e.g. 'oak', 'oak-beta', 'oak-dev'), falling back to the default.
+
+    Python module entry points (e.g. ``__main__.py`` from ``python -m
+    uvicorn``) are rejected because they are not real CLI commands.
     """
     import re
     import sys
 
     name = Path(sys.argv[0]).name
+    # Reject Python module entry points — when the daemon is started via
+    # ``python -m uvicorn``, argv[0] is uvicorn's ``__main__.py``.
+    # Persisting that as the CLI command breaks skill rendering and
+    # daemon self-restart.
+    if name.endswith(".py"):
+        return CI_CLI_COMMAND_DEFAULT
     if re.fullmatch(CI_CLI_COMMAND_VALIDATION_PATTERN, name):
         return name
     return CI_CLI_COMMAND_DEFAULT

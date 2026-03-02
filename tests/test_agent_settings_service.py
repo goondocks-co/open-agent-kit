@@ -53,3 +53,63 @@ def test_agent_settings_templates_use_cli_command_placeholder() -> None:
                 errors.append(f"{template_path}: contains hardcoded command pattern {pattern!r}")
 
     assert not errors, "Use '{oak-cli-command}' placeholder in:\n" + "\n".join(errors)
+
+
+class TestScrubInvalidCliEntries:
+    """Tests for _scrub_invalid_cli_entries removing stale .py entries."""
+
+    def test_scrub_removes_dict_keys_with_py_command(self) -> None:
+        """Dict keys containing a .py command should be removed."""
+        settings = {
+            "permission": {
+                "bash": {
+                    "oak *": "allow",
+                    "oak-dev *": "allow",
+                    "__main__.py *": "allow",
+                }
+            }
+        }
+        result = AgentSettingsService._scrub_invalid_cli_entries(settings)
+        assert "__main__.py *" not in result["permission"]["bash"]
+        assert "oak *" in result["permission"]["bash"]
+        assert "oak-dev *" in result["permission"]["bash"]
+
+    def test_scrub_removes_list_items_with_py_command(self) -> None:
+        """List items containing a .py command should be removed."""
+        settings = {
+            "permissions": {
+                "allow": [
+                    "Bash(oak-dev:*)",
+                    "Bash(oak-dev *)",
+                    "Bash(__main__.py:*)",
+                    "Bash(__main__.py *)",
+                ]
+            }
+        }
+        result = AgentSettingsService._scrub_invalid_cli_entries(settings)
+        allow = result["permissions"]["allow"]
+        assert "Bash(oak-dev:*)" in allow
+        assert "Bash(oak-dev *)" in allow
+        assert "Bash(__main__.py:*)" not in allow
+        assert "Bash(__main__.py *)" not in allow
+
+    def test_scrub_removes_shell_tool_py_entry(self) -> None:
+        """ShellTool entries with .py commands should be removed."""
+        settings = {
+            "allowlist": ["ShellTool(oak-dev *)", "ShellTool(__main__.py *)"]
+        }
+        result = AgentSettingsService._scrub_invalid_cli_entries(settings)
+        assert result["allowlist"] == ["ShellTool(oak-dev *)"]
+
+    def test_scrub_preserves_clean_settings(self) -> None:
+        """Settings without .py entries should be returned unchanged."""
+        settings = {
+            "permission": {"bash": {"oak-dev *": "allow"}},
+            "mcp": {"oak-ci": {"type": "local"}},
+        }
+        result = AgentSettingsService._scrub_invalid_cli_entries(settings)
+        assert result == settings
+
+    def test_scrub_handles_empty_settings(self) -> None:
+        """Empty settings dict should be returned as-is."""
+        assert AgentSettingsService._scrub_invalid_cli_entries({}) == {}

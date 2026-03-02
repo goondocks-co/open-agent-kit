@@ -1,10 +1,12 @@
 """Tests for CI CLI command resolution and rewrite helpers."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
 from open_agent_kit.features.codebase_intelligence.cli_command import (
+    detect_invoked_cli_command,
     resolve_ci_cli_command,
     rewrite_oak_command,
 )
@@ -46,3 +48,42 @@ def test_rewrite_oak_command_rewrites_prefixed_command() -> None:
 def test_rewrite_oak_command_keeps_non_oak_commands() -> None:
     """Rewriter should preserve non-oak commands."""
     assert rewrite_oak_command("python -m app", "oak-dev") == "python -m app"
+
+
+# -- detect_invoked_cli_command tests --
+
+
+def test_detect_rejects_dunder_main_py() -> None:
+    """Detector should reject __main__.py (e.g. python -m uvicorn)."""
+    with patch("sys.argv", ["/path/to/uvicorn/__main__.py"]):
+        assert detect_invoked_cli_command() == CI_CLI_COMMAND_DEFAULT
+
+
+def test_detect_rejects_any_py_suffix() -> None:
+    """Detector should reject any .py filename."""
+    with patch("sys.argv", ["main.py"]):
+        assert detect_invoked_cli_command() == CI_CLI_COMMAND_DEFAULT
+
+
+def test_detect_accepts_oak() -> None:
+    """Detector should accept plain 'oak' binary."""
+    with patch("sys.argv", ["/usr/local/bin/oak"]):
+        assert detect_invoked_cli_command() == "oak"
+
+
+def test_detect_accepts_oak_dev() -> None:
+    """Detector should accept 'oak-dev' binary."""
+    with patch("sys.argv", ["/home/user/.local/bin/oak-dev"]):
+        assert detect_invoked_cli_command() == "oak-dev"
+
+
+def test_detect_accepts_oak_beta() -> None:
+    """Detector should accept 'oak-beta' binary."""
+    with patch("sys.argv", ["/usr/bin/oak-beta"]):
+        assert detect_invoked_cli_command() == "oak-beta"
+
+
+def test_detect_fallback_on_invalid_chars() -> None:
+    """Detector should fall back when argv[0] contains invalid chars."""
+    with patch("sys.argv", ["some command with spaces"]):
+        assert detect_invoked_cli_command() == CI_CLI_COMMAND_DEFAULT

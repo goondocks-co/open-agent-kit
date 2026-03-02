@@ -158,6 +158,9 @@ class SyncCliCommandStage(BaseStage):
             save_ci_config,
         )
         from open_agent_kit.features.codebase_intelligence.config.ci_config import CIConfig
+        from open_agent_kit.features.codebase_intelligence.constants import (
+            CI_CLI_COMMAND_DEFAULT,
+        )
 
         detected = detect_invoked_cli_command()
 
@@ -168,6 +171,20 @@ class SyncCliCommandStage(BaseStage):
 
         if ci_config.cli_command == detected:
             return StageOutcome.skipped(f"CLI command already set to '{detected}'")
+
+        # When detection fell back to the default (e.g. running inside a
+        # daemon process where argv[0] is not a real CLI command), preserve
+        # an existing non-default value that looks valid — it was set by a
+        # real invocation (e.g. "oak-dev").  Still fix obviously broken
+        # values like "__main__.py" from a prior bug.
+        if (
+            detected == CI_CLI_COMMAND_DEFAULT
+            and ci_config.cli_command != CI_CLI_COMMAND_DEFAULT
+            and not ci_config.cli_command.endswith(".py")
+        ):
+            return StageOutcome.skipped(
+                f"Keeping configured CLI command '{ci_config.cli_command}'"
+            )
 
         ci_config.cli_command = detected
         save_ci_config(context.project_root, ci_config)
