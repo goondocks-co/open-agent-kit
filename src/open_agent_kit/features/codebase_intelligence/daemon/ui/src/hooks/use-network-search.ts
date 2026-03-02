@@ -45,12 +45,12 @@ export function useNetworkSearch(
 ) {
     return useQuery<NetworkSearchResponse>({
         queryKey: ["network-search", query, searchType, limit],
-        queryFn: () =>
+        queryFn: ({ signal }) =>
             postJson<NetworkSearchResponse>(API_ENDPOINTS.SEARCH_NETWORK, {
                 query,
                 search_type: searchType,
                 limit,
-            }),
+            }, { signal }),
         enabled: enabled && query.length > MIN_NETWORK_SEARCH_QUERY_LENGTH,
         staleTime: NETWORK_SEARCH_STALE_TIME_MS,
         retry: false,

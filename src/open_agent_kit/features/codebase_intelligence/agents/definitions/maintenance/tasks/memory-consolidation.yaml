@@ -23,65 +23,135 @@ default_task: |
   Your output serves as the decisions report — it will be captured in the
   run record. Do NOT write any files.
 
-  ## Phase 1 — Inventory
+  IMPORTANT: This task uses a budget-aware approach. Each phase has a turn
+  budget (1 turn = 1 LLM round-trip). Combine multiple tool calls into
+  single turns wherever possible. Total budget: ~45 turns.
 
-  Use `ci_project_stats` to get baseline counts and `ci_query` for detailed
-  breakdown:
-  - Total observations by type (discovery, gotcha, decision, bug_fix, trade_off)
-  - Total observations by status (active, resolved, superseded)
-  - Total sessions and recent activity volume
-  - Record these numbers — you will compare before/after at the end
+  ## Phase 1 — Inventory (budget: 3 turns)
 
-  ## Phase 2 — Duplicate Detection
+  Use `ci_project_stats` and a single `ci_query` call to get all baselines
+  in one shot:
+
+  ```sql
+  SELECT
+    memory_type,
+    status,
+    COUNT(*) as cnt
+  FROM observations
+  GROUP BY memory_type, status
+  ORDER BY memory_type, status
+  ```
+
+  Record these numbers — you will compare before/after at the end.
+
+  ## Phase 2 — Duplicate Detection (budget: 10 turns)
+
+  Use a hybrid SQL + sampled semantic approach. Do NOT iterate over every
+  observation individually.
+
+  ### Layer A — SQL clustering (1-2 turns)
+
+  Run these two `ci_query` calls (can be parallel):
+
+  1. Same-file/same-type clusters:
+     ```sql
+     SELECT file_path, memory_type, COUNT(*) as cnt,
+            GROUP_CONCAT(id, ',') as ids
+     FROM observations
+     WHERE status = 'active' AND file_path IS NOT NULL
+     GROUP BY file_path, memory_type
+     HAVING COUNT(*) > 1
+     ORDER BY cnt DESC
+     LIMIT 50
+     ```
+
+  2. Near-verbatim text duplicates (across any file):
+     ```sql
+     SELECT a.id as id_a, b.id as id_b,
+            a.observation as obs_a, b.observation as obs_b,
+            a.file_path as file_a, b.file_path as file_b
+     FROM observations a
+     JOIN observations b ON a.id < b.id
+       AND SUBSTR(a.observation, 1, 80) = SUBSTR(b.observation, 1, 80)
+     WHERE a.status = 'active' AND b.status = 'active'
+     LIMIT 50
+     ```
+
+  Group the SQL results into consolidation clusters.
+
+  ### Layer B — Sampled semantic search (~5 turns)
 
   For each memory type (discovery, gotcha, decision, bug_fix, trade_off):
-  1. Use `ci_memories(memory_type=TYPE, limit=100)` to list active observations
-  2. For each observation, use `ci_search(query=OBSERVATION_TEXT, search_type="memory")`
-     to find semantically similar ones
-  3. Group observations with high similarity into consolidation clusters
-  4. Skip clusters with only 1 member — these are unique
+  1. Pick 1 representative observation from each of the top 5 largest SQL
+     clusters for that type. If fewer than 5 clusters, pick randomly from
+     active observations of that type.
+  2. Run `ci_search(query=OBSERVATION_TEXT, search_type="memory")` on those
+     ~5 samples per type (~25 searches total, batched across turns).
+  3. Add any new duplicate pairs found to the consolidation clusters.
 
-  Be thorough but efficient: focus on the types with the most observations first.
+  Skip types with fewer than 5 active observations — not worth searching.
 
-  ## Phase 3 — Consolidation
+  ## Phase 3 — Consolidation (budget: 15 turns)
 
-  For each cluster of similar observations:
+  Act on the clusters found in Phase 2. Process clusters largest-first.
+
+  For each cluster:
   1. Read all observations in the cluster carefully
   2. If truly redundant (same insight, different wording):
      - Keep the most comprehensive version
      - Supersede the rest via `ci_resolve(id=ID, status="superseded",
        reason="Consolidated: duplicate of [kept_id]")`
+     - Batch multiple `ci_resolve` calls in a single turn
   3. If complementary (different facets of the same insight):
      - Create a new merged observation via `ci_remember(observation=MERGED_TEXT,
        memory_type=TYPE, context=CONTEXT)`
      - Supersede the originals, referencing the new merged observation
   4. Record each decision and your reasoning
 
-  ## Phase 4 — Relevance Review
+  If you approach the turn budget, stop and note remaining clusters for
+  the next consolidation run.
 
-  Find active observations with stale context:
-  1. Use `ci_query` to find observations referencing specific files
-  2. Cross-reference with the code index — use `Glob` or `Read` to check
-     if referenced files still exist
-  3. For observations about files that no longer exist or have substantially
-     changed: resolve via `ci_resolve(id=ID, status="resolved",
-     reason="Referenced file no longer exists/has changed significantly")`
-  4. For observations that are clearly outdated based on recent session
-     activity: resolve with appropriate reasoning
+  ## Phase 4 — Relevance Review (budget: 10 turns)
 
-  ## Phase 5 — Cross-Session Pattern Recognition
+  Batch file-existence checks instead of checking one-by-one.
+
+  1. Single SQL query to get all distinct file paths from active observations:
+     ```sql
+     SELECT DISTINCT file_path
+     FROM observations
+     WHERE status = 'active' AND file_path IS NOT NULL
+     ORDER BY file_path
+     ```
+
+  2. Use a single `Glob` call with pattern `**/*` or targeted patterns to
+     batch-check which files exist in the project.
+
+  3. Compare the two lists. For observations referencing files that no longer
+     exist, resolve them in bulk:
+     - `ci_resolve(id=ID, status="resolved",
+       reason="Referenced file no longer exists")`
+     - Batch multiple resolves per turn.
+
+  ## Phase 5 — Cross-Session Pattern Recognition (budget: 5 turns)
 
   Analyze recent sessions for recurring themes:
-  1. Use `ci_sessions(limit=20)` to review recent sessions
-  2. Use `ci_query` to find patterns:
-     - Same files touched repeatedly across sessions
-     - Same error patterns or gotchas encountered
-     - Consistent workflow patterns
+  1. Use `ci_sessions(limit=10)` to review recent sessions
+  2. Single SQL query for pattern detection:
+     ```sql
+     SELECT file_path, COUNT(DISTINCT session_id) as session_count
+     FROM observations
+     WHERE status = 'active' AND file_path IS NOT NULL
+       AND created_at > date('now', '-30 days')
+     GROUP BY file_path
+     HAVING COUNT(DISTINCT session_id) >= 3
+     ORDER BY session_count DESC
+     LIMIT 10
+     ```
   3. If a strong pattern exists and is NOT already captured as an observation:
      - Create a new observation via `ci_remember()` with synthesized wisdom
      - Use memory_type="discovery" for patterns, "gotcha" for recurring issues
 
-  ## Phase 6 — Decisions Summary
+  ## Phase 6 — Decisions Summary (budget: 1 turn)
 
   End with a structured decisions report. This is your final output and will
   be stored in the run record.
@@ -117,8 +187,8 @@ default_task: |
 #   description: "Weekly memory consolidation every Sunday at 3 AM"
 
 execution:
-  timeout_seconds: 600
-  max_turns: 100
+  timeout_seconds: 900
+  max_turns: 200
   model: claude-sonnet-4-6
 
 schema_version: 1

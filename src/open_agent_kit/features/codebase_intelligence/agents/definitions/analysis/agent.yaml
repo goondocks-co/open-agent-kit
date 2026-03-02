@@ -13,8 +13,8 @@ description: >
   actionable reports written to oak/insights/.
 
 execution:
-  max_turns: 75
-  timeout_seconds: 300
+  max_turns: 50
+  timeout_seconds: 240
   permission_mode: acceptEdits
 
 # Tools the agent can use

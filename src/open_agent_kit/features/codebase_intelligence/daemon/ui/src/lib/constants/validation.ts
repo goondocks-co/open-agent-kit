@@ -58,3 +58,13 @@ export function toApiNumber(value: unknown): number | null {
     const num = typeof value === "number" ? value : parseInt(String(value), 10);
     return isNaN(num) ? null : num;
 }
+
+// =============================================================================
+// Sync Settings
+// =============================================================================
+
+/** Minimum sync interval in seconds */
+export const SYNC_INTERVAL_MIN = 1;
+
+/** Maximum sync interval in seconds */
+export const SYNC_INTERVAL_MAX = 60;

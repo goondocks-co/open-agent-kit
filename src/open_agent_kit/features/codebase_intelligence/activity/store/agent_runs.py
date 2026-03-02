@@ -104,6 +104,7 @@ def update_run(
     files_modified: list[str] | None = None,
     files_deleted: list[str] | None = None,
     warnings: list[str] | None = None,
+    timeout_seconds: int | None = None,
 ) -> None:
     """Update an agent run record.
 
@@ -123,6 +124,7 @@ def update_run(
         files_modified: List of modified file paths.
         files_deleted: List of deleted file paths.
         warnings: List of warning messages.
+        timeout_seconds: Configured timeout for watchdog recovery.
     """
     updates: list[str] = []
     params: list[Any] = []
@@ -182,6 +184,10 @@ def update_run(
     if warnings is not None:
         updates.append("warnings = ?")
         params.append(json.dumps(warnings))
+
+    if timeout_seconds is not None:
+        updates.append("timeout_seconds = ?")
+        params.append(timeout_seconds)
 
     if not updates:
         return
@@ -381,10 +387,10 @@ def recover_stale_runs(
 
     A run is considered stale if:
     - status = 'running'
-    - started_at_epoch + default_timeout + buffer < now
+    - started_at_epoch + COALESCE(timeout_seconds, default_timeout) + buffer < now
 
-    This handles the case where the daemon crashes during agent execution,
-    leaving runs in RUNNING state indefinitely.
+    Uses the per-run ``timeout_seconds`` column when available (v10+),
+    falling back to ``default_timeout_seconds`` for older runs.
 
     Args:
         store: ActivityStore instance.
@@ -397,22 +403,19 @@ def recover_stale_runs(
     import time
 
     now_epoch = int(time.time())
-    # Consider stale if started_at + timeout + buffer < now
-    # Since we don't track per-run timeout, use default + buffer as cutoff
-    stale_threshold = now_epoch - (default_timeout_seconds + buffer_seconds)
 
     conn = store._get_connection()
 
-    # Find stale runs
+    # Use per-run timeout when stored, fall back to default for older runs
     cursor = conn.execute(
         """
-        SELECT id, agent_name, started_at_epoch
+        SELECT id, agent_name, started_at_epoch, timeout_seconds
         FROM agent_runs
         WHERE status = 'running'
           AND started_at_epoch IS NOT NULL
-          AND started_at_epoch < ?
+          AND started_at_epoch + COALESCE(timeout_seconds, ?) + ? < ?
         """,
-        (stale_threshold,),
+        (default_timeout_seconds, buffer_seconds, now_epoch),
     )
     stale_runs = cursor.fetchall()
 
@@ -426,8 +429,8 @@ def recover_stale_runs(
         run_id = row[0]
         agent_name = row[1]
         started_epoch = row[2]
+        run_timeout = row[3] or default_timeout_seconds
 
-        # Calculate how long the run was stuck
         stuck_seconds = now_epoch - started_epoch
 
         update_run(
@@ -435,12 +438,15 @@ def recover_stale_runs(
             run_id=run_id,
             status="failed",
             completed_at=now,
-            error=f"Recovered by watchdog - exceeded timeout (stuck for {stuck_seconds}s)",
+            error=(
+                f"Recovered by watchdog - exceeded timeout "
+                f"(stuck for {stuck_seconds}s, timeout was {run_timeout}s)"
+            ),
         )
         recovered_ids.append(run_id)
         logger.warning(
             f"Recovered stale agent run '{run_id}' for '{agent_name}' "
-            f"(stuck for {stuck_seconds}s)"
+            f"(stuck for {stuck_seconds}s, timeout={run_timeout}s)"
         )
 
     return recovered_ids

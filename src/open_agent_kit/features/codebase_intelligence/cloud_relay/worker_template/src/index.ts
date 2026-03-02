@@ -77,6 +77,9 @@ export default {
 
     // ----- /api/team/* — HTTP proxy to local daemon via Durable Object -----
     if (path.startsWith("/api/team/")) {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return withCors(authErr);
+
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request));
     }

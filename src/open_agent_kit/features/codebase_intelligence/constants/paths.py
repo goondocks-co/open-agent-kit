@@ -21,7 +21,7 @@ CI_SHARED_PORT_DIR: Final[str] = "oak"
 CI_SHARED_PORT_FILE: Final[str] = "daemon.port"
 
 # Activity store schema version
-CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 11
+CI_ACTIVITY_SCHEMA_VERSION: Final[int] = 10
 
 # Activity store columns
 CI_SESSION_COLUMN_TRANSCRIPT_PATH: Final[str] = "transcript_path"

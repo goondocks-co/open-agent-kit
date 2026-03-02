@@ -92,6 +92,7 @@ _PATCH_RUN_NPM_INSTALL = f"{_DEPLOY_MODULE}.run_npm_install"
 _PATCH_CHECK_WRANGLER_AUTH = f"{_DEPLOY_MODULE}.check_wrangler_auth"
 _PATCH_RUN_WRANGLER_DEPLOY = f"{_DEPLOY_MODULE}.run_wrangler_deploy"
 _PATCH_CHECK_WRANGLER_AVAILABLE = f"{_DEPLOY_MODULE}.check_wrangler_available"
+_PATCH_SYNC_SOURCE_FILES = f"{_SCAFFOLD_MODULE}.sync_source_files"
 _PATCH_LOAD_CI_CONFIG = f"{_CONFIG_MODULE}.load_ci_config"
 _PATCH_SAVE_CI_CONFIG = f"{_CONFIG_MODULE}.save_ci_config"
 
@@ -479,6 +480,7 @@ class TestCloudRelayStart:
                     authenticated=True,
                 ),
             ),
+            patch(_PATCH_SYNC_SOURCE_FILES, return_value=0),
             patch(_PATCH_RUN_NPM_INSTALL) as mock_npm,
             patch(
                 _PATCH_RUN_WRANGLER_DEPLOY,
@@ -534,6 +536,7 @@ class TestCloudRelayStart:
         with (
             patch(_PATCH_IS_SCAFFOLDED, return_value=True),
             patch(_PATCH_RENDER_WRANGLER),
+            patch(_PATCH_SYNC_SOURCE_FILES, return_value=0),
             patch(_PATCH_LOAD_CI_CONFIG, return_value=config),
             patch(
                 _PATCH_CHECK_WRANGLER_AUTH,
@@ -945,6 +948,7 @@ class TestCloudRelayWorkerNameInResponse:
         with (
             patch(_PATCH_IS_SCAFFOLDED, return_value=True),
             patch(_PATCH_RENDER_WRANGLER),
+            patch(_PATCH_SYNC_SOURCE_FILES, return_value=0),
             patch(_PATCH_LOAD_CI_CONFIG, return_value=config_with_url),
             patch(_PATCH_SAVE_CI_CONFIG),
             patch(

@@ -5,12 +5,19 @@ receives tool call requests from remote AI agents, forwards them to
 the local daemon API, and returns the results.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 from datetime import UTC, datetime
 from threading import RLock
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
+        ObsApplierProtocol,
+    )
 
 import httpx
 import websockets
@@ -84,6 +91,35 @@ from open_agent_kit.features.codebase_intelligence.constants import (
 logger = logging.getLogger(__name__)
 
 
+def _is_auth_failure(exc: BaseException) -> bool:
+    """Check whether an exception indicates an HTTP auth failure (401/403).
+
+    Inspects typed exception attributes rather than fragile string matching.
+    Handles websockets.exceptions.InvalidStatus (WS handshake rejection)
+    and httpx.HTTPStatusError (HTTP response errors).
+    """
+    from open_agent_kit.features.codebase_intelligence.constants import (
+        CLOUD_RELAY_AUTH_FAILURE_STATUS_CODES,
+    )
+
+    # websockets raises InvalidStatus with response.status_code on handshake rejection
+    try:
+        from websockets.exceptions import InvalidStatus
+
+        if isinstance(exc, InvalidStatus):
+            return exc.response.status_code in CLOUD_RELAY_AUTH_FAILURE_STATUS_CODES
+    except ImportError:
+        pass
+
+    # httpx raises HTTPStatusError with response.status_code
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in CLOUD_RELAY_AUTH_FAILURE_STATUS_CODES
+
+    # ConnectionError from _establish_connection carries the error text from the
+    # relay, but we only detect auth from typed exceptions above.
+    return False
+
+
 class CloudRelayClient(RelayClient):
     """WebSocket-based cloud relay client.
 
@@ -116,7 +152,10 @@ class CloudRelayClient(RelayClient):
         # Observation sync
         self._machine_id: str = ""
         self._online_nodes: list[dict] = []
-        self._obs_applier: Any = None
+        self._obs_applier: ObsApplierProtocol | None = None
+
+        # Persistent HTTP client for daemon calls (created on connect, closed on disconnect)
+        self._http_client: httpx.AsyncClient | None = None
 
         # Status tracking (thread-safe)
         self._lock = RLock()
@@ -199,6 +238,14 @@ class CloudRelayClient(RelayClient):
         self._heartbeat_task = None
         self._message_task = None
 
+        # Close persistent HTTP client
+        if self._http_client and not self._http_client.is_closed:
+            try:
+                await self._http_client.aclose()
+            except Exception:
+                pass
+            self._http_client = None
+
         # Close WebSocket
         if self._ws:
             try:
@@ -218,8 +265,28 @@ class CloudRelayClient(RelayClient):
     # Internal: connection lifecycle
     # ------------------------------------------------------------------
 
+    def _auth_headers(self) -> dict[str, str]:
+        """Build auth headers for daemon HTTP calls from the environment token."""
+        import os
+
+        headers: dict[str, str] = {}
+        auth_token = os.environ.get(CI_AUTH_ENV_VAR)
+        if auth_token:
+            headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
+        return headers
+
+    def _relay_auth_headers(self) -> dict[str, str]:
+        """Build auth headers for relay Worker HTTP calls using the relay token."""
+        if self._token:
+            return {"Authorization": f"Bearer {self._token}"}
+        return {}
+
     async def _establish_connection(self) -> None:
         """Open WebSocket, register, and start background loops."""
+        # Create persistent HTTP client for daemon calls
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient()
+
         ws_url = self._build_ws_url()
 
         # Send relay token as Sec-WebSocket-Protocol for Worker auth.
@@ -421,7 +488,7 @@ class CloudRelayClient(RelayClient):
     # Observation sync
     # ------------------------------------------------------------------
 
-    def set_obs_applier(self, applier: Any) -> None:
+    def set_obs_applier(self, applier: ObsApplierProtocol) -> None:
         """Set the applier for incoming obs batches from peer nodes."""
         self._obs_applier = applier
 
@@ -432,31 +499,36 @@ class CloudRelayClient(RelayClient):
             return list(self._online_nodes)
 
     async def push_observations(self, observations: list[dict]) -> None:
-        """Push observations to peer nodes via relay WebSocket."""
+        """Push observations to peer nodes via relay WebSocket.
+
+        Raises on failure so the outbox worker can mark events for retry
+        instead of incorrectly marking them as sent.
+        """
         if not self._ws or not self._connected:
             logger.debug("Relay not connected, skipping obs push (will retry on next tick)")
             return
         msg = ObsPushMessage(observations=observations)
-        try:
-            await self._ws.send(msg.model_dump_json())
-        except Exception as exc:
-            logger.warning("Failed to push observations: %s", exc)
+        await self._ws.send(msg.model_dump_json())
 
     async def _drain_pending_obs(self) -> None:
         """Drain buffered observations from the relay (called on reconnect)."""
         if not self._worker_url or not self._token or not self._machine_id:
             return
+        if not self._http_client or self._http_client.is_closed:
+            return
         try:
             url = f"{self._worker_url.rstrip('/')}/obs/pending?machine_id={self._machine_id}"
-            headers = {"Authorization": f"Bearer {self._token}"}
-            async with httpx.AsyncClient(timeout=CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS) as client:
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    observations = data.get("observations", [])
-                    if observations and self._obs_applier is not None:
-                        for item in observations:
-                            self._obs_applier.apply_batch([item["obs"]], item["from_machine_id"])
+            resp = await self._http_client.get(
+                url,
+                headers=self._relay_auth_headers(),
+                timeout=CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                observations = data.get("observations", [])
+                if observations and self._obs_applier is not None:
+                    for item in observations:
+                        self._obs_applier.apply_batch([item["obs"]], item["from_machine_id"])
         except Exception as exc:
             logger.warning("Failed to drain pending obs: %s", exc)
 
@@ -471,36 +543,45 @@ class CloudRelayClient(RelayClient):
             return
         if self._obs_applier is None:
             return
+        if not self._http_client or self._http_client.is_closed:
+            return
 
         try:
             base_url = (
                 f"{self._worker_url.rstrip('/')}"
                 f"{CLOUD_RELAY_OBS_HISTORY_PATH}?machine_id={self._machine_id}"
             )
-            headers = {"Authorization": f"Bearer {self._token}"}
+            headers = self._relay_auth_headers()
             offset = 0
 
-            async with httpx.AsyncClient(
-                timeout=CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
-            ) as client:
-                while True:
-                    url = f"{base_url}&offset={offset}"
-                    resp = await client.get(url, headers=headers)
-                    if resp.status_code != 200:
-                        break
-                    data = resp.json()
-                    observations = data.get("observations", [])
-                    if not observations:
-                        break
-                    for item in observations:
-                        self._obs_applier.apply_batch([item["obs"]], item["from_machine_id"])
-                    offset += len(observations)
+            while True:
+                url = f"{base_url}&offset={offset}"
+                resp = await self._http_client.get(
+                    url,
+                    headers=headers,
+                    timeout=CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
+                )
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+                observations = data.get("observations", [])
+                if not observations:
+                    break
+                for item in observations:
+                    self._obs_applier.apply_batch([item["obs"]], item["from_machine_id"])
+                offset += len(observations)
         except Exception as exc:
             logger.warning("Failed to drain obs history: %s", exc)
 
     def _handle_obs_batch(self, data: dict) -> None:
         """Handle incoming obs_batch from a peer node."""
         if self._obs_applier is None:
+            obs_count = len(data.get("observations", []))
+            logger.warning(
+                "Dropping %d obs from %s: no obs applier configured",
+                obs_count,
+                data.get("from_machine_id", "unknown"),
+            )
             return
         from_machine_id = data.get("from_machine_id", "unknown")
         observations = data.get("observations", [])
@@ -522,31 +603,23 @@ class CloudRelayClient(RelayClient):
         Args:
             query: The search query message from the relay.
         """
-        import os
-
         try:
             port = self._daemon_port
             url = CLOUD_RELAY_DAEMON_SEARCH_URL_TEMPLATE.format(port=port)
 
-            headers: dict[str, str] = {}
-            auth_token = os.environ.get(CI_AUTH_ENV_VAR)
-            if auth_token:
-                headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
-
-            async with httpx.AsyncClient(
+            client = self._http_client or httpx.AsyncClient()
+            resp = await client.post(
+                url,
+                json={
+                    "query": query.query,
+                    "search_type": query.search_type,
+                    "limit": query.limit,
+                },
+                headers=self._auth_headers(),
                 timeout=CLOUD_RELAY_DAEMON_SEARCH_TIMEOUT_SECONDS,
-            ) as client:
-                resp = await client.post(
-                    url,
-                    json={
-                        "query": query.query,
-                        "search_type": query.search_type,
-                        "limit": query.limit,
-                    },
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
             # Local /api/search returns {code, memory, plans, sessions}.
             # Flatten into a single results list, tagging each with its type.
@@ -572,7 +645,7 @@ class CloudRelayClient(RelayClient):
             response = SearchResultMessage(
                 request_id=query.request_id,
                 from_machine_id=self._machine_id,
-                error=str(exc),
+                error="Internal search error",
             )
 
         # Serialize and truncate if needed (same guard as _handle_tool_call)
@@ -620,22 +693,22 @@ class CloudRelayClient(RelayClient):
                 f"{self._worker_url.rstrip('/')}"
                 f"{CLOUD_RELAY_SEARCH_PATH}?machine_id={self._machine_id}"
             )
-            headers = {"Authorization": f"Bearer {self._token}"}
             timeout = CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS + 1.0
 
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(
-                    url,
-                    json={
-                        "query": query,
-                        "search_type": search_type,
-                        "limit": limit,
-                    },
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                data: dict[str, Any] = resp.json()
-                return data
+            client = self._http_client or httpx.AsyncClient()
+            resp = await client.post(
+                url,
+                json={
+                    "query": query,
+                    "search_type": search_type,
+                    "limit": limit,
+                },
+                headers=self._relay_auth_headers(),
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            data: dict[str, Any] = resp.json()
+            return data
         except Exception as exc:
             logger.warning("Federated search failed: %s", exc)
             return {"results": [], "error": str(exc)}
@@ -663,9 +736,10 @@ class CloudRelayClient(RelayClient):
                 result=result,
             )
         except Exception as exc:
+            logger.warning("Tool call %s failed: %s", request.tool_name, exc)
             response = ToolCallResponse(
                 call_id=request.call_id,
-                error=str(exc),
+                error="Internal tool call error",
             )
 
         # Serialize and truncate if needed
@@ -687,16 +761,36 @@ class CloudRelayClient(RelayClient):
     async def _handle_http_request(self, request: HttpRequestMessage) -> None:
         """Handle an HTTP proxy request by forwarding to the local daemon.
 
+        Only paths matching CLOUD_RELAY_ALLOWED_PROXY_PREFIXES are forwarded;
+        all others are rejected with 403 to prevent SSRF.
+
         Args:
             request: The HTTP request message from the worker.
         """
-        import os
-
         from open_agent_kit.features.codebase_intelligence.constants import (
             CI_RELAY_DAEMON_AUTH_HEADER,
             CI_RELAY_SOURCE_HEADER,
             CI_RELAY_SOURCE_VALUE,
+            CLOUD_RELAY_ALLOWED_PROXY_PREFIXES,
+            CLOUD_RELAY_PROXY_FORBIDDEN_STATUS,
         )
+
+        # SSRF protection: reject paths outside the allowlist
+        if not any(
+            request.path.startswith(prefix) for prefix in CLOUD_RELAY_ALLOWED_PROXY_PREFIXES
+        ):
+            logger.warning("Blocked proxy request to disallowed path: %s", request.path)
+            response = HttpResponseMessage(
+                request_id=request.request_id,
+                status=CLOUD_RELAY_PROXY_FORBIDDEN_STATUS,
+                body="Forbidden: path not in proxy allowlist",
+            )
+            if self._ws:
+                try:
+                    await self._ws.send(response.model_dump_json())
+                except Exception as exc:
+                    logger.error("Failed to send proxy forbidden response: %s", exc)
+            return
 
         try:
             port = self._daemon_port
@@ -706,19 +800,18 @@ class CloudRelayClient(RelayClient):
             # dedicated header, leaving Authorization for the team API key.
             fwd_headers = dict(request.headers) if request.headers else {}
             fwd_headers[CI_RELAY_SOURCE_HEADER] = CI_RELAY_SOURCE_VALUE
-            auth_token = os.environ.get(CI_AUTH_ENV_VAR)
-            if auth_token:
-                fwd_headers[CI_RELAY_DAEMON_AUTH_HEADER] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
+            daemon_auth = self._auth_headers()
+            if "Authorization" in daemon_auth:
+                fwd_headers[CI_RELAY_DAEMON_AUTH_HEADER] = daemon_auth["Authorization"]
 
-            async with httpx.AsyncClient(
+            client = self._http_client or httpx.AsyncClient()
+            resp = await client.request(
+                method=request.method,
+                url=url,
+                headers=fwd_headers,
+                content=request.body,
                 timeout=CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
-            ) as client:
-                resp = await client.request(
-                    method=request.method,
-                    url=url,
-                    headers=fwd_headers,
-                    content=request.body,
-                )
+            )
 
             response_headers = dict(resp.headers)
             response = HttpResponseMessage(
@@ -732,7 +825,7 @@ class CloudRelayClient(RelayClient):
             response = HttpResponseMessage(
                 request_id=request.request_id,
                 status=502,
-                body=str(exc),
+                body="Internal proxy error",
             )
 
         if self._ws:
@@ -760,24 +853,18 @@ class CloudRelayClient(RelayClient):
         Raises:
             Exception: If the daemon call fails.
         """
-        import os
-
         if timeout is None:
             timeout = float(self._tool_timeout + CLOUD_RELAY_DAEMON_CALL_OVERHEAD_SECONDS)
 
         port = self._daemon_port
         url = CLOUD_RELAY_DAEMON_MCP_CALL_URL_TEMPLATE.format(port=port, tool_name=tool_name)
 
-        # Read auth token from environment
-        headers: dict[str, str] = {}
-        auth_token = os.environ.get(CI_AUTH_ENV_VAR)
-        if auth_token:
-            headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
-
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, json=arguments, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        client = self._http_client or httpx.AsyncClient()
+        response = await client.post(
+            url, json=arguments, headers=self._auth_headers(), timeout=timeout
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def _get_available_tools(self) -> list[dict[str, Any]]:
         """Get the list of available MCP tools from the daemon.
@@ -785,27 +872,20 @@ class CloudRelayClient(RelayClient):
         Returns:
             List of tool descriptors (name, description, input_schema).
         """
-        import os
-
         port = self._daemon_port
         url = CLOUD_RELAY_DAEMON_MCP_TOOLS_URL_TEMPLATE.format(port=port)
 
-        headers: dict[str, str] = {}
-        auth_token = os.environ.get(CI_AUTH_ENV_VAR)
-        if auth_token:
-            headers["Authorization"] = f"{CI_AUTH_SCHEME_BEARER} {auth_token}"
-
         try:
-            async with httpx.AsyncClient(
+            client = self._http_client or httpx.AsyncClient()
+            response = await client.get(
+                url,
+                headers=self._auth_headers(),
                 timeout=CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS,
-            ) as client:
-                response = await client.get(url, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-                tools: list[dict[str, Any]] = data.get(
-                    CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY, []
-                )
-                return tools
+            )
+            response.raise_for_status()
+            data = response.json()
+            tools: list[dict[str, Any]] = data.get(CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY, [])
+            return tools
         except Exception as exc:
             logger.warning("Failed to get tool list from daemon: %s", exc)
             return []
@@ -847,7 +927,7 @@ class CloudRelayClient(RelayClient):
                 # Authentication failures (401/403) cannot be resolved by
                 # retrying — the token is wrong.  Stop the loop and let the
                 # user re-deploy via the Connectivity tab to re-sync tokens.
-                if "401" in error_str or "403" in error_str:
+                if _is_auth_failure(exc):
                     self._should_reconnect = False
                     logger.error(
                         "Relay auth failed (token mismatch). "

@@ -16,8 +16,8 @@ description: >
   ChromaDB and SQLite.
 
 execution:
-  max_turns: 100
-  timeout_seconds: 600
+  max_turns: 200
+  timeout_seconds: 900
   permission_mode: acceptEdits
 
 # Read-only file tools for checking if referenced files still exist

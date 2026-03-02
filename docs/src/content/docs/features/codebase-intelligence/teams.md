@@ -1,17 +1,164 @@
 ---
 title: Teams
-description: Backup, restore, sync, and share CI data across machines and developers.
+description: Share observations across your team via a Cloudflare relay — real-time sync, federated search, and data governance.
 sidebar:
   order: 6
 ---
 
-The **Teams** page manages how you preserve and share Codebase Intelligence data across machines and developers.
+The **Teams** page manages how you share Codebase Intelligence across developers and machines. OAK uses a **relay-based peer architecture** where all nodes push and receive observations through a shared Cloudflare Worker — there is no central server or peer-to-peer hub.
+
+## Architecture Overview
+
+```mermaid
+graph LR
+    A["Dev A<br/>(publisher)"] -->|WebSocket| R["Cloudflare<br/>Worker Relay"]
+    B["Dev B<br/>(consumer)"] -->|WebSocket| R
+    C["Dev C<br/>(consumer)"] -->|WebSocket| R
+    R -->|Observations| A
+    R -->|Observations| B
+    R -->|Observations| C
+```
+
+Every node is a peer. One developer **deploys** the relay Worker (the "publisher"), and teammates **join** by entering the relay URL and API key. Once connected, observations flow automatically in both directions.
+
+### What Gets Synced
+
+| Data | Synced | Notes |
+|------|--------|-------|
+| Memory observations | Yes | Gotchas, decisions, discoveries, bug fixes, trade-offs |
+| Sessions | No | Sessions are local to each machine |
+| Prompt batches | No | Prompt data stays local |
+| Activities | No | Tool execution logs stay local |
+| Code index | No | Each machine indexes its own codebase |
+
+:::note[Observations only]
+Team sync shares **observations only** — the distilled knowledge extracted from coding sessions. Raw session data, prompts, and tool logs remain on each developer's machine. This keeps the sync payload small and respects developer privacy.
+:::
+
+### Federated Search
+
+When team sync is active, search queries are automatically fanned out to all connected nodes. Each node searches its local index and returns results, which are merged and ranked. This means your agents can find code patterns and memories from across the entire team — without any node needing a copy of another's full index.
+
+## Getting Started
+
+### Option A: Deploy a Relay (Publisher)
+
+If you're the first team member setting up sync:
+
+1. Open the **Teams** page in the dashboard
+2. Click **Deploy** — this runs the same turnkey pipeline as Cloud Relay:
+   - Scaffolds a Cloudflare Worker project in `oak/cloud-relay/`
+   - Installs dependencies and verifies Cloudflare authentication
+   - Deploys the Worker via `wrangler`
+   - Connects the daemon over WebSocket
+3. Share the **Relay URL** and **API Key** with your team
+
+Or from the CLI:
+
+```bash
+oak ci cloud-init          # Deploy and connect
+```
+
+:::tip[Prerequisites]
+You need a free Cloudflare account and Node.js v18+. See [Cloudflare Setup](/open-agent-kit/features/cloud-relay/cloudflare-setup/) for account creation and wrangler authentication.
+:::
+
+### Option B: Join a Team (Consumer)
+
+If a teammate has already deployed a relay:
+
+1. Open the **Teams** page in the dashboard
+2. Enter the **Relay URL** and **API Key** your teammate shared
+3. Click **Connect**
+
+Or configure manually in `.oak/ci/config.yaml`:
+
+```yaml
+team:
+  relay_worker_url: https://oak-relay-myproject.you.workers.dev
+  api_key: <shared-api-key>
+  auto_sync: true
+  sync_interval_seconds: 3
+```
+
+Once connected, observations begin syncing immediately. On first connect, the relay drains any pending observations from other nodes so you receive the team's full history.
+
+## Team Status
+
+The Teams page shows real-time connection status:
+
+- **Connection Status** — Green when connected to the relay, with Cloudflare account name
+- **Online Nodes** — List of connected team members with machine IDs
+- **Sync Stats** — Queue depth, last sync time, total events sent
+- **Relay Buffer** — Pending observations waiting to be drained to your node
+
+### CLI Status
+
+```bash
+oak ci team status          # Show connection and sync status
+oak ci team members         # List online team members
+```
+
+## Sync Settings
+
+Control observation sync behavior from the Teams page or via configuration:
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| **Auto sync** | Off | — | Start sync automatically on daemon startup |
+| **Sync interval** | 3s | 1–60s | How often the outbox flushes observations to the relay |
+
+```yaml
+# In .oak/ci/config.yaml
+team:
+  auto_sync: true
+  sync_interval_seconds: 3
+```
+
+The outbox worker uses exponential backoff on failures (up to 300 seconds) and resets to the base interval on success.
+
+## Data Collection Policy
+
+Control what observations are synced via the **data collection policy** in Governance settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sync_observations` | `true` | Whether observations are written to the team outbox |
+
+When `sync_observations` is set to `false`, observations are stored locally only and never sent to the relay. This is useful for sensitive projects or temporary opt-outs.
+
+```yaml
+# In .oak/ci/config.yaml
+codebase_intelligence:
+  governance:
+    data_collection:
+      sync_observations: true
+```
+
+You can also toggle this from the dashboard: **Teams → Policy**.
+
+## Cloud Agent Access (MCP)
+
+When the relay is deployed, cloud AI agents can also connect via MCP. The relay exposes all registered MCP tools through a Streamable HTTP endpoint:
+
+- **MCP Endpoint**: `https://<your-worker>.workers.dev/mcp`
+- **Agent Token**: Displayed on the Teams page (masked with reveal/copy)
+
+See [Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/) for per-agent setup instructions (Claude.ai, ChatGPT, MCP config files).
+
+## Leaving a Team
+
+Click **Leave Team** on the Teams page, or disconnect via CLI:
+
+```bash
+oak ci cloud-disconnect
+```
+
+This disconnects the relay and clears team configuration. The Worker is **not** deleted — you can rejoin later by re-entering the URL and key.
 
 ## Team Backups
 
 Each machine produces its own backup file named `{github_user}_{hash}.sql`, stored in `oak/history/` (git-tracked by default). This means every developer on the team has their own backup alongside the source code.
-
-![Team backup status and controls](../../../../assets/images/team-backup.png)
 
 ### What Gets Backed Up
 
@@ -46,8 +193,6 @@ Multiple developers' backups can be merged without duplicates.
 ## Automatic Backups
 
 The daemon can create backups automatically on a configurable schedule. This ensures your CI data is always preserved without manual intervention.
-
-![Backup settings UI](../../../../assets/images/backup-settings.png)
 
 ### Enabling Automatic Backups
 
@@ -143,33 +288,9 @@ oak ci sync --dry-run    # Preview without applying changes
 Run `oak ci sync --team` after pulling from git to pick up your teammates' latest backups.
 :::
 
-## Sharing
+## ⚠️ Known Issues & Gotchas
 
-Share your local daemon instance with teammates using tunnels. This gives them read access to your dashboard, search, and session data — useful for pair programming or code review.
-
-![Sharing and tunnel UI](../../../../assets/images/team-sharing.png)
-
-### Tunnel Support
-
-OAK supports Cloudflare and ngrok tunnels:
-
-```bash
-oak ci tunnel-start      # Start a tunnel
-oak ci tunnel-stop       # Stop the tunnel
-oak ci tunnel-status     # Check tunnel status
-oak ci tunnel-url        # Get the shareable URL
-```
-
-### Auto-Start
-
-Configure tunnels to start automatically with the daemon by setting `tunnel.auto_start` in the configuration.
-
-### Use Cases
-
-- **Single developer, multiple machines**: Keep your CI data in sync across work and personal machines
-- **Team code review**: Share a session with a teammate so they can see exactly what the agent did
-- **Future**: Lays groundwork for shared OAK instances where a team runs a single daemon
-
-:::note[CORS restrictions]
-The daemon only allows connections from localhost and active tunnel URLs. External origins are blocked by the CORS middleware.
+:::caution[Auth token not persisted for additional nodes]
+The relay authentication token is only stored in memory on the server side. New nodes attempting to connect will receive a 401 error unless the token is shared out-of-band. Always share the API key with teammates when they join.
+:::
 :::

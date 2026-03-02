@@ -112,15 +112,10 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "features/cloud-relay" },
             {
-              label: "Getting Started",
-              slug: "features/cloud-relay/getting-started",
-            },
-            {
               label: "Cloudflare Setup",
               slug: "features/cloud-relay/cloudflare-setup",
             },
             { label: "Deployment", slug: "features/cloud-relay/deployment" },
-            { label: "Connecting", slug: "features/cloud-relay/connecting" },
             {
               label: "Cloud Agents",
               slug: "features/cloud-relay/cloud-agents",

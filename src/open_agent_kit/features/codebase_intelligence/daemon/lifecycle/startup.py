@@ -7,6 +7,7 @@ orchestrator. Init order is load-bearing:
 
 import asyncio
 import logging
+import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -562,7 +563,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         try:
             await _init_activity(state, project_root)
-        except (OSError, ValueError, RuntimeError) as e:
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as e:
             logger.warning(f"Failed to initialize activity store: {e}")
             state.activity_store = None
             state.activity_processor = None
@@ -600,7 +601,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Failed to initialize interactive session manager: {e}")
 
-    except (OSError, ValueError, RuntimeError) as e:
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as e:
         logger.warning(f"Failed to initialize: {e}")
         state.vector_store = None
         state.indexer = None
@@ -608,7 +609,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Team sync: start outbox sync worker
     try:
         _init_team_sync(state)
-    except (OSError, ValueError, RuntimeError) as e:
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as e:
         logger.warning(f"Failed to initialize team sync: {e}")
 
     # Run one immediate version + upgrade check, then launch periodic loop

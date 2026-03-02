@@ -12,7 +12,7 @@ import json
 import logging
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from open_agent_kit.features.codebase_intelligence.constants.team import (
     TEAM_LOG_SYNC_ERROR,
@@ -41,6 +41,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@runtime_checkable
+class RelayClientProtocol(Protocol):
+    """Protocol for relay clients used by ObsFlushWorker."""
+
+    async def push_observations(self, observations: list[dict]) -> None: ...
+
+
 class ObsFlushWorker:
     """Background worker that flushes outbox observation events to the cloud relay.
 
@@ -63,7 +70,7 @@ class ObsFlushWorker:
         self._store = store
         self._config = config
         self._project_id = project_id
-        self._relay_client: Any | None = None
+        self._relay_client: RelayClientProtocol | None = None
         self._event_loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -74,7 +81,7 @@ class ObsFlushWorker:
         self._last_error: str | None = None
         self._events_sent_total: int = 0
 
-    def set_relay_client(self, relay_client: Any) -> None:
+    def set_relay_client(self, relay_client: RelayClientProtocol) -> None:
         """Set or replace the relay client used for pushing observations.
 
         Captures the running event loop so the worker thread can schedule
@@ -187,7 +194,7 @@ class ObsFlushWorker:
         )
         rows = cursor.fetchall()
         if not rows:
-            self._prune_sent_events(conn)
+            self._prune_sent_events()
             return 0
 
         # Build observation list for relay
@@ -215,26 +222,25 @@ class ObsFlushWorker:
                 future = asyncio.run_coroutine_threadsafe(coro, self._event_loop)
                 future.result(timeout=30)
             else:
-                logger.warning("No event loop available for obs push, skipping")
-                return 0
+                raise RuntimeError("No event loop available for obs push")
             accepted = len(obs_list)
         except Exception as exc:
-            self._mark_retry(conn, row_ids, str(exc))
+            self._mark_retry(row_ids, str(exc))
             raise
 
         # Mark all events as sent
         if accepted > 0:
-            self._mark_sent(conn, row_ids[:accepted])
+            self._mark_sent(row_ids[:accepted])
 
         with self._lock:
             self._events_sent_total += accepted
             self._last_sync = datetime.now(UTC).isoformat()
             self._last_error = None
 
-        self._prune_sent_events(conn)
+        self._prune_sent_events()
         return accepted
 
-    def _mark_sent(self, conn: Any, row_ids: list[int]) -> None:
+    def _mark_sent(self, row_ids: list[int]) -> None:
         """Mark outbox rows as sent."""
         if not row_ids:
             return
@@ -245,7 +251,7 @@ class ObsFlushWorker:
                 [TEAM_OUTBOX_STATUS_SENT, *row_ids],
             )
 
-    def _mark_retry(self, conn: Any, row_ids: list[int], error: str) -> None:
+    def _mark_retry(self, row_ids: list[int], error: str) -> None:
         """Increment retry count and record error for outbox rows."""
         if not row_ids:
             return
@@ -265,7 +271,7 @@ class ObsFlushWorker:
                 [error, TEAM_OUTBOX_MAX_RETRY_COUNT, TEAM_OUTBOX_STATUS_FAILED, *row_ids],
             )
 
-    def _prune_sent_events(self, conn: Any) -> None:
+    def _prune_sent_events(self) -> None:
         """Delete sent and permanently-failed events older than the configured prune ages."""
         from datetime import timedelta
 
@@ -298,7 +304,8 @@ class ObsFlushWorker:
             result = cursor.fetchone()
             queue_depth = int(result[0]) if result else 0
         except Exception:
-            queue_depth = 0
+            logger.warning("Failed to query outbox queue depth", exc_info=True)
+            queue_depth = -1
 
         with self._lock:
             return TeamSyncStatus(

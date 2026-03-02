@@ -6,6 +6,7 @@ searching for relevant context to inject, and classifying prompt types.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -18,8 +19,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     HOOK_DROP_LOG_TAG,
     HOOK_EVENT_PROMPT_SUBMIT,
     HOOK_FIELD_PROMPT,
+    INJECTION_MAX_NETWORK_MEMORIES,
+    INJECTION_NETWORK_SEARCH_TIMEOUT_SECONDS,
     MEMORY_EMBED_LINE_SEPARATOR,
     PROMPT_SOURCE_PLAN,
+    SEARCH_TYPE_MEMORY,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.routes.hooks_common import (
     HOOK_STORE_EXCEPTIONS,
@@ -304,6 +308,26 @@ async def hook_prompt_submit(request: Request) -> dict:
         if session_record and session_record.title:
             search_query = MEMORY_EMBED_LINE_SEPARATOR.join([session_record.title, prompt])
 
+    # --- Fire network search (non-blocking) ---
+    # Kick off the relay request first so it runs in parallel with the
+    # local vector search (~20ms).  We await it after the local results
+    # are ready so that network latency is mostly hidden.
+    network_task: asyncio.Task[dict] | None = None
+    relay = state.cloud_relay_client
+    if relay is not None:
+        relay_status = relay.get_status()
+        if relay_status.connected:
+            network_task = asyncio.ensure_future(
+                asyncio.wait_for(
+                    relay.search_network(
+                        query=search_query,
+                        search_type=SEARCH_TYPE_MEMORY,
+                        limit=INJECTION_MAX_NETWORK_MEMORIES,
+                    ),
+                    timeout=INJECTION_NETWORK_SEARCH_TIMEOUT_SECONDS,
+                )
+            )
+
     # Search for relevant memories and code in a single call (W4.3).
     # Previously this used two separate searches (memory + code), each embedding
     # the query independently. Using search_type="all" embeds once and searches
@@ -386,6 +410,34 @@ async def hook_prompt_submit(request: Request) -> dict:
 
         except (OSError, ValueError, RuntimeError, AttributeError) as e:
             logger.debug(f"Failed to search for prompt context: {e}")
+
+    # --- Await network results ---
+    if network_task is not None:
+        try:
+            network_response = await network_task
+            network_items: list[dict] = network_response.get("results", [])
+            if network_items:
+                net_lines = []
+                for item in network_items[:INJECTION_MAX_NETWORK_MEMORIES]:
+                    mem_type = item.get("memory_type", "note")
+                    obs = item.get("observation", item.get("summary", ""))
+                    machine_id = item.get("machine_id", "peer")
+                    net_lines.append(f"- [{mem_type}] {obs} _(from: {machine_id})_")
+
+                if net_lines:
+                    net_text = "**Team knowledge (from network):**\n" + "\n".join(net_lines)
+                    if "injected_context" in context:
+                        context["injected_context"] = f"{context['injected_context']}\n\n{net_text}"
+                    else:
+                        context["injected_context"] = net_text
+                    logger.info(f"Injecting {len(net_lines)} network memories for prompt")
+                    hooks_logger.info(
+                        f"[CONTEXT-INJECT] network_memories={len(net_lines)} "
+                        f"session={session_id} hook=prompt-submit"
+                    )
+                    logger.debug(f"[INJECT:prompt-submit-network] Content:\n{net_text}")
+        except Exception as e:
+            logger.debug(f"Network search timed out or failed: {e}")
 
     hook_event_name = hook.raw.get("hook_event_name", "UserPromptSubmit")
     response = {"status": "ok", "context": context, "prompt_batch_id": prompt_batch_id}

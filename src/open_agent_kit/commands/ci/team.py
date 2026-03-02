@@ -125,7 +125,7 @@ def team_members() -> None:
                 raise typer.Exit(code=CI_EXIT_CODE_FAILURE)
 
             data = response.json()
-            members = data.get("members", [])
+            members = data.get("online_nodes", [])
             if not members:
                 print_info(TEAM_MESSAGE_NO_MEMBERS)
                 return

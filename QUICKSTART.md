@@ -124,6 +124,12 @@ This gives your agents access to:
 - **Session history** to recall past decisions
 - **MCP server** for direct tool access
 
+## Step 4: Enable Team Sync (Optional)
+
+Team Sync lets multiple machines share codebase memories and search results via a Cloudflare Worker relay, enabling cross-team semantic intelligence without exposing your local database.
+
+For full setup, see the [Team Sync guide](https://openagentkit.app/features/codebase-intelligence/teams/) in the documentation.
+
 ## Troubleshooting
 
 ### Python 3.14+ errors

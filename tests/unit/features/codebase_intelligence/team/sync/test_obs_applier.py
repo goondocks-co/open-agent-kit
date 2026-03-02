@@ -135,14 +135,14 @@ def test_obs_without_content_hash_skipped(applier):
     assert result.skipped == 1
 
 
-def test_exception_in_apply_one_counted_as_skipped(applier, monkeypatch):
-    """An exception in _apply_one should be caught and counted as skipped."""
+def test_exception_in_insert_counted_as_errored(applier, monkeypatch):
+    """An exception during per-observation insert should be caught and counted as errored."""
     obs = _make_obs()
 
     def _explode(*args, **kwargs):
         raise RuntimeError("simulated failure")
 
-    monkeypatch.setattr(applier, "_apply_one", _explode)
+    monkeypatch.setattr(applier, "_ensure_session_exists", _explode)
     result = applier.apply_batch([obs], TEST_FROM_MACHINE_ID)
     assert result.applied == 0
-    assert result.skipped == 1
+    assert result.errored == 1

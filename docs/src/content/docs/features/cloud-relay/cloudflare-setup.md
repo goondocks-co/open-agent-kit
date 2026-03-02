@@ -121,4 +121,8 @@ Open the Oak CI dashboard and navigate to the **Cloud** page. The **Prerequisite
 
 ## Next Steps
 
-With your Cloudflare account and wrangler ready, proceed to **[Getting Started](/open-agent-kit/features/cloud-relay/getting-started/)** to deploy your first Cloud Relay.
+With your Cloudflare account and wrangler ready:
+
+- **[Teams](/open-agent-kit/features/codebase-intelligence/teams/)** — Set up team observation sync via the relay
+- **[Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/)** — Register cloud AI agents with your relay
+- **[Deployment](/open-agent-kit/features/cloud-relay/deployment/)** — Worker lifecycle and management details

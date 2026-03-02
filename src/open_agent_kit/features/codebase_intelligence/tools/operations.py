@@ -125,13 +125,17 @@ class ToolOperations:
             try:
                 import asyncio
 
-                network_result = asyncio.get_event_loop().run_until_complete(
-                    self.relay_client.search_network(
-                        query=input_data.query,
-                        search_type=search_type,
-                        limit=input_data.limit,
-                    )
+                coro = self.relay_client.search_network(
+                    query=input_data.query,
+                    search_type=search_type,
+                    limit=input_data.limit,
                 )
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(coro, loop)
+                    network_result = future.result(timeout=30)
+                else:
+                    network_result = loop.run_until_complete(coro)
                 network_items = network_result.get("results", [])
                 if network_items:
                     output += "\n\n## Network Results\n\n"

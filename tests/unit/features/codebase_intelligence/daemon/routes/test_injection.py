@@ -393,6 +393,7 @@ class TestBuildSessionContext:
     def test_returns_empty_when_no_vector_store(self, mock_state):
         """Returns empty string when vector store is not available."""
         mock_state.vector_store = None
+        mock_state.cloud_relay_client = None
         result = build_session_context(mock_state)
         assert result == ""
 
@@ -465,13 +466,37 @@ class TestBuildSessionContext:
         assert "Codebase Intelligence Active" in result
 
     def test_returns_empty_when_no_index_data(self, mock_state):
-        """Returns empty when no code chunks or memories indexed."""
+        """Returns empty when no code chunks or memories indexed and no relay."""
         mock_state.vector_store.get_stats.return_value = {
             "code_chunks": 0,
             "memory_observations": 0,
         }
+        mock_state.cloud_relay_client = None
         result = build_session_context(mock_state)
         assert result == ""
+
+    def test_team_sync_active_when_relay_connected(self, mock_state):
+        """Includes team sync status when relay is connected."""
+        relay_mock = MagicMock()
+        relay_mock.get_status.return_value = MagicMock(connected=True)
+        mock_state.cloud_relay_client = relay_mock
+        result = build_session_context(mock_state)
+        assert "Team Sync Active" in result
+        assert "oak_search" in result
+
+    def test_no_team_sync_when_relay_disconnected(self, mock_state):
+        """Does not include team sync status when relay is disconnected."""
+        relay_mock = MagicMock()
+        relay_mock.get_status.return_value = MagicMock(connected=False)
+        mock_state.cloud_relay_client = relay_mock
+        result = build_session_context(mock_state)
+        assert "Team Sync Active" not in result
+
+    def test_no_team_sync_when_no_relay(self, mock_state):
+        """Does not include team sync status when no relay client."""
+        mock_state.cloud_relay_client = None
+        result = build_session_context(mock_state)
+        assert "Team Sync Active" not in result
 
     def test_includes_session_id_when_provided(self, mock_state):
         """Includes session_id in context when provided."""

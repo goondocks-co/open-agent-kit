@@ -110,18 +110,16 @@ export function validateRelayTokenHttp(
 
 /**
  * Constant-time string comparison to prevent timing attacks.
- * Falls back to byte-by-byte XOR when crypto.subtle is unavailable.
+ * Pads to max length and XORs all bytes to avoid leaking length via early return.
  */
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
   const encoder = new TextEncoder();
   const bufA = encoder.encode(a);
   const bufB = encoder.encode(b);
-  let mismatch = 0;
-  for (let i = 0; i < bufA.length; i++) {
-    mismatch |= bufA[i] ^ bufB[i];
+  const maxLen = Math.max(bufA.length, bufB.length);
+  let mismatch = bufA.length ^ bufB.length;
+  for (let i = 0; i < maxLen; i++) {
+    mismatch |= (bufA[i] ?? 0) ^ (bufB[i] ?? 0);
   }
   return mismatch === 0;
 }

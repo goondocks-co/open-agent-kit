@@ -22,41 +22,35 @@ default_task: |
 
   Query primarily against the prompt_batches table.
 
-  ## 1. Prompt Overview
+  EFFICIENCY: Most queries hit prompt_batches — combine related sub-queries
+  into single `ci_query` calls using UNION ALL or CTEs. Aim to gather all
+  raw data in 3-4 ci_query calls, then analyze and write.
 
-  Use ci_query to get baseline prompt statistics from prompt_batches:
+  ## 1. Prompt Overview & Quality Patterns
+
+  Use one or two ci_query calls to get baseline statistics and quality
+  correlations from prompt_batches:
   - Total prompts analyzed (exclude null/empty user prompts)
   - Prompts per session (average, median via percentile)
   - Prompt length distribution (min, max, average character length)
   - Prompts with vs without classification
-
-  ## 2. Prompt Quality Patterns
-
-  Analyze prompt characteristics that correlate with good outcomes:
   - Bucket prompts by length (short/medium/long/very long) and compare
     average activity count per bucket — do longer prompts lead to more work?
   - Cross-reference classification distribution by length bucket
-  - Compare prompts that lead to errors vs successful sessions
 
-  ## 3. Common Anti-Patterns
+  ## 2. Anti-Patterns & Exemplary Prompts
 
-  Identify problematic prompt patterns:
+  Use a single ci_query to find both ends of the quality spectrum:
   - Very short prompts (< 20 chars) — likely vague instructions
-  - Prompts without context (no file paths, no feature names)
   - Repeated similar prompts within the same session (rework indicator)
   - Prompts that correlate with high error rates in activities
-
-  ## 4. Exemplary Prompts
-
-  Find the best prompts from history:
   - Prompts that led to high activity count with low error rate
   - Prompts with clear classifications
-  - Highlight what makes them effective (length, specificity, context)
 
   Use truncated previews (first 200 chars) to protect privacy while
   still being instructive.
 
-  ## 5. Context Engineering Recommendations
+  ## 3. Context Engineering Recommendations
 
   Based on the analysis, provide:
   - Specific tips for writing better prompts (based on what worked)
@@ -65,14 +59,14 @@ default_task: |
   - Suggestions for providing better context (file paths, feature names)
   - How prompt quality has changed over time (improvement trend?)
 
-  ## 6. Write Report
+  ## 4. Write Report
 
   Write an educational report that helps the user improve their
   prompting skills. Focus on actionable advice backed by their own data.
 
 execution:
   timeout_seconds: 180
-  max_turns: 50
+  max_turns: 40
   permission_mode: acceptEdits
   model: claude-sonnet-4-6
 

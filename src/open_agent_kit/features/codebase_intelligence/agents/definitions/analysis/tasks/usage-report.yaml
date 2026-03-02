@@ -18,22 +18,23 @@ description: >
 default_task: |
   Generate a usage and cost report for the CI system.
 
-  ## 1. Agent Run Costs
+  EFFICIENCY: Combine related sub-queries into single `ci_query` calls
+  using UNION ALL where column shapes are compatible. Sections 1 and 2
+  both query agent_runs — combine them into one or two calls.
 
-  Use ci_query against agent_runs to analyze costs:
+  ## 1. Agent Run Costs & Token Usage
+
+  Use ci_query against agent_runs to analyze costs and token consumption
+  together (both come from the same table):
   - Total cost by agent name (all time and last 30 days)
   - Weekly cost trend (last 8 weeks)
   - Average cost per run by agent
   - Most expensive individual runs (top 5)
-
-  ## 2. Token Usage Trends
-
-  Use ci_query against agent_runs to analyze token consumption:
   - Total input and output tokens by week
   - Input/output ratio trends
   - Token usage broken down by agent
 
-  ## 3. Session Activity
+  ## 2. Session Activity
 
   Use ci_query against sessions to analyze activity volume:
   - Sessions per week (last 8 weeks)
@@ -41,7 +42,7 @@ default_task: |
   - Average session duration (derive from start/end timestamps)
   - Average tools per session
 
-  ## 4. Write Report
+  ## 3. Write Report
 
   Write the report to the maintained file with:
   - Key findings summary at the top
@@ -51,7 +52,7 @@ default_task: |
 
 execution:
   timeout_seconds: 180
-  max_turns: 50
+  max_turns: 40
   permission_mode: acceptEdits
   model: claude-sonnet-4-6
 

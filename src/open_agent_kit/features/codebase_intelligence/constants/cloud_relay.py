@@ -222,6 +222,13 @@ CLOUD_RELAY_DAEMON_HTTP_PROXY_URL_TEMPLATE: Final[str] = "http://127.0.0.1:{port
 CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS: Final[float] = 30.0
 CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
 
+# SSRF protection: only proxy requests to these path prefixes
+CLOUD_RELAY_ALLOWED_PROXY_PREFIXES: Final[tuple[str, ...]] = ("/api/team/",)
+CLOUD_RELAY_PROXY_FORBIDDEN_STATUS: Final[int] = 403
+
+# Auth failure HTTP status codes (stop reconnect loop on these)
+CLOUD_RELAY_AUTH_FAILURE_STATUS_CODES: Final[frozenset[int]] = frozenset({401, 403})
+
 # WebSocket protocol — additional fields and default messages
 CLOUD_RELAY_WS_FIELD_MESSAGE: Final[str] = "message"
 CLOUD_RELAY_WS_FIELD_TIMEOUT_MS: Final[str] = "timeout_ms"

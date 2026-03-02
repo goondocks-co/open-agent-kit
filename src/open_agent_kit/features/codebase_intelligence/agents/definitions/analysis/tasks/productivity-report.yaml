@@ -18,6 +18,10 @@ description: >
 default_task: |
   Generate a productivity analysis report.
 
+  EFFICIENCY: Combine related sub-queries into single `ci_query` calls
+  using UNION ALL where column shapes are compatible. Aim for ~1-2 ci_query
+  calls per section rather than one per bullet point.
+
   ## 1. Session Quality
 
   Use ci_query against sessions to analyze completion and quality:
@@ -33,29 +37,24 @@ default_task: |
   - Classification trends over time (weekly)
   - Which classifications correlate with longer sessions
 
-  ## 3. Error Rate Trends
+  ## 3. Error Rates & Time Patterns
 
-  Use ci_query against activities to analyze tool execution failures:
+  Combine error analysis and time pattern queries into one or two ci_query
+  calls against activities:
   - Error rate by tool name (only tools with meaningful sample size)
   - Error rate trend over time (weekly)
   - Most common error patterns (group by error message)
-
-  ## 4. Time Patterns
-
-  Use ci_query to identify productive time periods by extracting
-  hour-of-day and day-of-week from epoch timestamps:
-  - Activity volume by hour of day
-  - Activity volume by day of week
+  - Activity volume by hour of day and day of week
   - Most productive periods
 
-  ## 5. Write Report
+  ## 4. Write Report
 
   Write the report with key findings, tables, and recommendations
   for improving coding session quality.
 
 execution:
   timeout_seconds: 180
-  max_turns: 50
+  max_turns: 40
   permission_mode: acceptEdits
   model: claude-sonnet-4-6
 

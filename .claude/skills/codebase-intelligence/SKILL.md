@@ -135,6 +135,8 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "YOUR QUERY HERE"
 | `governance_audit_events` |  |  |
 | `team_outbox` |  |  |
 | `team_pull_cursor` |  |  |
+| `team_sync_state` | Team relay sync metadata | `key`, `value`, `updated_at` |
+| `team_reconcile_state` | Per-machine reconciliation tracking | `machine_id`, `last_reconcile_at`, `last_hash_count`, `last_missing_count` |
 <!-- END GENERATED CORE TABLES -->
 
 ### Memory Types

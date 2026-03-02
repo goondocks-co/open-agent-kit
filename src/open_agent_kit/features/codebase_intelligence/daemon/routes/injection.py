@@ -309,6 +309,15 @@ def build_session_context(
             # there's no user prompt to filter relevance. Session summaries provide
             # sufficient context. Use oak_context tool for task-specific memories.
 
+    # Add team sync status hint so agents know cross-team search is available
+    if state.cloud_relay_client is not None:
+        relay_status = state.cloud_relay_client.get_status()
+        if relay_status.connected:
+            parts.append(
+                "**Team Sync Active**: Connected to team relay. "
+                "Use `oak_search` with `include_network=true` for cross-team results."
+            )
+
     return "\n\n".join(parts) if parts else ""
 
 

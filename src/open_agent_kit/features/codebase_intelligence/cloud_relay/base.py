@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
+        ObsApplierProtocol,
+    )
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_RESPONSE_KEY_CONNECTED,
@@ -102,8 +107,11 @@ class RelayClient(ABC):
     # Optional capabilities (concrete defaults for backward compat)
     # ------------------------------------------------------------------
 
-    def set_obs_applier(self, applier: Any) -> None:  # noqa: B027
+    def set_obs_applier(self, applier: ObsApplierProtocol) -> None:  # noqa: B027
         """Set the applier for incoming observation batches from peers."""
+
+    async def push_observations(self, observations: list[dict]) -> None:  # noqa: B027
+        """Push observations to peer nodes via relay. No-op by default."""
 
     async def search_network(
         self,

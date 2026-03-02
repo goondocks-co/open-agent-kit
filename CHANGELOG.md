@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-03-02]
+
+### Added
+
+- **Federated network search on all agent surfaces** — Oak network search results are now automatically injected into every agent-facing surface; agents no longer need to explicitly call `oak_search` to benefit from network-aware results — [Implement federated network search integration for all agent surfaces](http://localhost:38388/activity/sessions/552059c7-fe38-49dc-8bb0-c44349c87f64)
+- **CI activity migrations and registry integration** — SQL schema migrations for new CI tables landed and the codebase intelligence feature is wired into the production registry, transitioning it from draft to active state — [Implement codebase intelligence migrations and registry integration](http://localhost:38388/activity/sessions/db72af02-1418-42ce-8487-e6efe5dc364a)
+- **Hybrid SQL‑semantic memory consolidation** — the Maintenance Agent's memory-consolidation task replaced an O(n) full semantic scan (which timed out after ~10 min on large codebases) with a hybrid SQL-first pre-filter followed by targeted semantic search; agent turn limit raised to 500 and timeout to 300 s — [Refactor memory consolidation with hybrid SQL‑semantic search](http://localhost:38388/activity/sessions/2e53aba6-43a0-4d3b-ba0f-8395e5439f7b), [Update memory-consolidation task with hybrid SQL‑semantic search](http://localhost:38388/activity/sessions/21efd4ac-7b7f-4ad9-affd-361b53c16d96)
+
+### Fixed
+
+- Fix hanging `make check` — resolved three pre-existing failures caused by a pytest/xdist version mismatch and a truncated string literal in [`hooks_prompt.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks_prompt.py) that produced a silent syntax error; added per-test timeouts to prevent future CI hangs — [Fix hanging tests, add timeouts, stabilize CI pipeline](http://localhost:38388/activity/sessions/c9a572ad-41ac-4223-9f5b-f9fc0b33419d)
+- Fix `ImportError` crash on daemon startup — [`skill_service.py`](src/open_agent_kit/services/skill_service.py) referenced the non-existent symbol `resolve_ci_cli_comma`; corrected to `resolve_ci_cli_command`, restoring startup for fresh installs — [Implement codebase intelligence migrations and registry integration](http://localhost:38388/activity/sessions/db72af02-1418-42ce-8487-e6efe5dc364a)
+
+### Changed
+
+- Workflow engine refactored for type safety and test coverage — strengthened TypeScript typing, resolved code smells, and expanded the test suite ahead of PR merge — [Refactor workflow engine, add type safety, and improve tests](http://localhost:38388/activity/sessions/0f933ac1-3231-470f-9b6b-b64ac286e90a)
+
+### Notes
+
+> **Gotcha**: `generate_schema_ref.py` must be run after any schema change and before the test suite — it writes [`schema.md`](src/open_agent_kit/features/codebase_intelligence/skills/codebase-intelligence/references/schema.md); omitting it causes tests to read stale schema data. The script is not invoked automatically by the build pipeline.
+
+> **Gotcha**: Always bump `CI_ACTIVITY_SCHEMA_VERSION` in [`constants/paths.py`](src/open_agent_kit/features/codebase_intelligence/constants/paths.py) when adding a migration. A missed bump leaves the database at an intermediate schema version and causes subsequent migrations to fail.
+
 ## [2026-03-01]
 
 ### Added

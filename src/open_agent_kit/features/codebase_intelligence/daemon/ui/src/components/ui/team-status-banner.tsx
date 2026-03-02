@@ -60,7 +60,7 @@ export function TeamStatusBanner({ status }: TeamStatusBannerProps) {
                 {team?.configured && (team?.members_online ?? 0) > 0 && (
                     <Pill className="bg-muted text-muted-foreground">
                         <Users className="w-3 h-3" />
-                        {team!.members_online} {team!.members_online === 1 ? "node" : "nodes"}
+                        {team?.members_online} {team?.members_online === 1 ? "node" : "nodes"}
                     </Pill>
                 )}
             </div>

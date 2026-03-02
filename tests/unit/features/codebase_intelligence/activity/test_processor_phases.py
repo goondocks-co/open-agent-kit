@@ -172,10 +172,12 @@ class TestPhaseErrorIsolation:
         activity_store.get_unprocessed_prompt_batches.return_value = []
         activity_store.get_unprocessed_sessions.return_value = []
 
-        # Phase 5 dependencies (index_pending_plans and generate_pending_titles
-        # are methods on the processor that call through to indexing/titles modules)
+        # Phase 5 dependencies (index_pending_plans, embed_pending_observations,
+        # and generate_pending_titles are methods on the processor that call
+        # through to indexing/titles modules)
         with (
             patch.object(processor, "index_pending_plans", return_value={"indexed": 0}),
+            patch.object(processor, "embed_pending_observations", return_value={"embedded": 0}),
             patch.object(processor, "generate_pending_titles", return_value=0),
         ):
             processor.run_background_cycle()
@@ -218,6 +220,7 @@ class TestPhaseErrorIsolation:
 
         with (
             patch.object(processor, "index_pending_plans", return_value={"indexed": 0}),
+            patch.object(processor, "embed_pending_observations", return_value={"embedded": 0}),
             patch.object(processor, "generate_pending_titles", return_value=0),
         ):
             processor.run_background_cycle()
@@ -255,6 +258,7 @@ class TestPhaseErrorIsolation:
 
         with (
             patch.object(processor, "index_pending_plans", return_value={"indexed": 0}),
+            patch.object(processor, "embed_pending_observations", return_value={"embedded": 0}),
             patch.object(processor, "generate_pending_titles", return_value=0),
         ):
             processor.run_background_cycle()
@@ -289,10 +293,12 @@ class TestPhaseErrorIsolation:
         activity_store.get_unprocessed_prompt_batches.side_effect = TypeError("bad arg")
 
         mock_index = MagicMock(return_value={"indexed": 0})
+        mock_embed = MagicMock(return_value={"embedded": 0})
         mock_titles = MagicMock(return_value=0)
 
         with (
             patch.object(processor, "index_pending_plans", mock_index),
+            patch.object(processor, "embed_pending_observations", mock_embed),
             patch.object(processor, "generate_pending_titles", mock_titles),
         ):
             processor.run_background_cycle()

@@ -1,8 +1,9 @@
-"""Tests for team sync outbox migration (v8 -> v9).
+"""Tests for relay-based team sync migration (v8 -> v9).
 
 Tests cover:
-- Migration creates team_outbox table
-- Migration creates team_pull_cursor table
+- Migration creates team_outbox, team_pull_cursor, team_sync_state,
+  team_reconcile_state tables
+- Migration creates unique partial index on prompt_batches.content_hash
 - Migration is idempotent (run twice, no error)
 """
 
@@ -26,11 +27,31 @@ def db_path():
 
 @pytest.fixture
 def db_conn(db_path):
-    """Create a SQLite connection with schema_version table for testing."""
+    """Create a SQLite connection with baseline tables for testing v8 -> v9."""
     conn = sqlite3.connect(str(db_path))
-    # Create minimal schema_version table (required baseline)
     conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
     conn.execute("INSERT INTO schema_version (version) VALUES (8)")
+    # prompt_batches and activities are needed for the stub cleanup query
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            prompt_number INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            created_at_epoch INTEGER NOT NULL,
+            content_hash TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            prompt_batch_id INTEGER,
+            tool_name TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            timestamp_epoch INTEGER NOT NULL
+        )
+    """)
     conn.commit()
     yield conn
     conn.close()
@@ -65,7 +86,7 @@ def _index_exists(conn: sqlite3.Connection, index_name: str) -> bool:
 
 
 class TestMigrateV8ToV9:
-    """Test v8 -> v9 migration (team sync outbox tables)."""
+    """Test v8 -> v9 migration (relay-based team sync tables)."""
 
     def test_creates_team_outbox_table(self, db_conn):
         """Test that migration creates the team_outbox table."""
@@ -104,12 +125,39 @@ class TestMigrateV8ToV9:
         }
         assert columns == expected_columns
 
+    def test_creates_team_sync_state_table(self, db_conn):
+        """Test that migration creates the team_sync_state table."""
+        assert not _table_exists(db_conn, "team_sync_state")
+
+        _migrate_v8_to_v9(db_conn)
+
+        assert _table_exists(db_conn, "team_sync_state")
+        columns = _get_column_names(db_conn, "team_sync_state")
+        assert columns == {"key", "value", "updated_at"}
+
+    def test_creates_team_reconcile_state_table(self, db_conn):
+        """Test that migration creates the team_reconcile_state table."""
+        assert not _table_exists(db_conn, "team_reconcile_state")
+
+        _migrate_v8_to_v9(db_conn)
+
+        assert _table_exists(db_conn, "team_reconcile_state")
+        columns = _get_column_names(db_conn, "team_reconcile_state")
+        assert columns == {
+            "machine_id",
+            "last_reconcile_at",
+            "last_hash_count",
+            "last_missing_count",
+        }
+
     def test_creates_indexes(self, db_conn):
         """Test that migration creates the expected indexes."""
         _migrate_v8_to_v9(db_conn)
 
         assert _index_exists(db_conn, "idx_team_outbox_status")
         assert _index_exists(db_conn, "idx_team_outbox_created")
+        assert _index_exists(db_conn, "idx_team_outbox_flush")
+        assert _index_exists(db_conn, "idx_prompt_batches_content_hash")
 
     def test_idempotent(self, db_conn):
         """Test that running migration twice does not error."""
@@ -119,6 +167,30 @@ class TestMigrateV8ToV9:
 
         assert _table_exists(db_conn, "team_outbox")
         assert _table_exists(db_conn, "team_pull_cursor")
+        assert _table_exists(db_conn, "team_sync_state")
+        assert _table_exists(db_conn, "team_reconcile_state")
+
+    def test_cleans_up_stub_prompt_batches(self, db_conn):
+        """Test that stub prompt_batches with NULL content_hash are removed."""
+        # Insert a stub (NULL content_hash, no linked activities)
+        db_conn.execute(
+            "INSERT INTO prompt_batches (session_id, prompt_number, started_at, "
+            "created_at_epoch, content_hash) VALUES (?, ?, ?, ?, ?)",
+            ("sess-1", 1, "2026-01-01T00:00:00Z", 1, None),
+        )
+        # Insert a real batch (has content_hash)
+        db_conn.execute(
+            "INSERT INTO prompt_batches (session_id, prompt_number, started_at, "
+            "created_at_epoch, content_hash) VALUES (?, ?, ?, ?, ?)",
+            ("sess-1", 2, "2026-01-01T00:00:00Z", 1, "hash-real"),
+        )
+        db_conn.commit()
+
+        _migrate_v8_to_v9(db_conn)
+
+        rows = db_conn.execute("SELECT content_hash FROM prompt_batches").fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "hash-real"
 
     def test_outbox_insert_works(self, db_conn):
         """Test that data can be inserted into team_outbox after migration."""

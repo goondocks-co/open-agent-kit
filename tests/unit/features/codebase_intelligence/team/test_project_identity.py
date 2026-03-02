@@ -80,7 +80,7 @@ class TestGetProjectIdentity:
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
-        expected_hash = hashlib.md5(SAMPLE_REMOTE_NORMALIZED.encode()).hexdigest()[
+        expected_hash = hashlib.sha256(SAMPLE_REMOTE_NORMALIZED.encode()).hexdigest()[
             :TEAM_REMOTE_HASH_LENGTH
         ]
 
@@ -113,7 +113,7 @@ class TestGetProjectIdentity:
         with patch("subprocess.run", return_value=mock_result):
             identity = get_project_identity(project_dir)
 
-        expected_hash = hashlib.md5(str(project_dir.resolve()).encode()).hexdigest()[
+        expected_hash = hashlib.sha256(str(project_dir.resolve()).encode()).hexdigest()[
             :TEAM_REMOTE_HASH_LENGTH
         ]
 
@@ -129,7 +129,7 @@ class TestGetProjectIdentity:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="git", timeout=5)):
             identity = get_project_identity(project_dir)
 
-        expected_hash = hashlib.md5(str(project_dir.resolve()).encode()).hexdigest()[
+        expected_hash = hashlib.sha256(str(project_dir.resolve()).encode()).hexdigest()[
             :TEAM_REMOTE_HASH_LENGTH
         ]
 

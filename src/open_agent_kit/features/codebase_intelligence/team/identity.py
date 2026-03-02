@@ -33,7 +33,7 @@ class ProjectIdentity:
 
     slug: str
     remote_hash: str
-    full_id: str  # "{slug}:{remote_hash}"
+    full_id: str  # "{slug}:{remote_hash}" (hash is truncated SHA-256)
 
 
 def _normalize_git_remote(url: str) -> str:
@@ -69,7 +69,7 @@ def get_project_identity(project_root: Path) -> ProjectIdentity:
     if remote_hash is None:
         # Fallback: hash the absolute path
         path_str = str(project_root.resolve())
-        remote_hash = hashlib.md5(path_str.encode()).hexdigest()[:TEAM_REMOTE_HASH_LENGTH]
+        remote_hash = hashlib.sha256(path_str.encode()).hexdigest()[:TEAM_REMOTE_HASH_LENGTH]
 
     full_id = f"{slug}{TEAM_PROJECT_ID_SEPARATOR}{remote_hash}"
     return ProjectIdentity(slug=slug, remote_hash=remote_hash, full_id=full_id)
@@ -82,7 +82,7 @@ def _get_remote_hash(project_root: Path) -> str | None:
         project_root: Project root directory.
 
     Returns:
-        Truncated MD5 hash string, or None if git remote is unavailable.
+        Truncated SHA-256 hash string, or None if git remote is unavailable.
     """
     try:
         result = subprocess.run(
@@ -97,7 +97,7 @@ def _get_remote_hash(project_root: Path) -> str | None:
             return None
 
         normalized = _normalize_git_remote(result.stdout.strip())
-        return hashlib.md5(normalized.encode()).hexdigest()[:TEAM_REMOTE_HASH_LENGTH]
+        return hashlib.sha256(normalized.encode()).hexdigest()[:TEAM_REMOTE_HASH_LENGTH]
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
         logger.debug("Failed to get git remote for project identity: %s", e)
         return None

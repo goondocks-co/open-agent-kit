@@ -27,18 +27,28 @@ default_task: |
 
   Build a comprehensive health picture using CI tools:
 
-  1. Use `ci_project_stats` to get baseline metrics:
-     - Total code chunks indexed, unique files
-     - Total memory/observation counts
+  1. Use `ci_project_stats` to get baseline metrics (code chunks, files, memory counts).
 
-  2. Use `ci_query` for detailed breakdowns:
-     - Observations by status: `SELECT status, COUNT(*) FROM observations GROUP BY status`
-     - Observations by type: `SELECT memory_type, COUNT(*) FROM observations GROUP BY memory_type`
-     - Recent observation activity: `SELECT date(created_at) as day, COUNT(*) FROM observations
-       WHERE created_at > date('now', '-30 days') GROUP BY day ORDER BY day DESC`
-     - Session count: `SELECT COUNT(*) FROM sessions`
-     - Average observations per session: `SELECT AVG(obs_count) FROM
-       (SELECT session_id, COUNT(*) as obs_count FROM observations GROUP BY session_id)`
+  2. Use a single `ci_query` call to get all breakdowns at once:
+     ```sql
+     SELECT 'by_status' as report, status as key, COUNT(*) as cnt, NULL as detail
+       FROM observations GROUP BY status
+     UNION ALL
+     SELECT 'by_type', memory_type, COUNT(*), NULL
+       FROM observations GROUP BY memory_type
+     UNION ALL
+     SELECT 'sessions', 'total', COUNT(*), NULL
+       FROM sessions
+     UNION ALL
+     SELECT 'avg_obs', 'per_session', CAST(AVG(obs_count) AS INTEGER), NULL
+       FROM (SELECT session_id, COUNT(*) as obs_count FROM observations GROUP BY session_id)
+     UNION ALL
+     SELECT 'recent', date(created_at), COUNT(*), NULL
+       FROM observations
+       WHERE created_at > date('now', '-30 days')
+       GROUP BY date(created_at)
+     ORDER BY report, key
+     ```
 
   Record all baseline numbers for the health report.
 
@@ -108,7 +118,7 @@ default_task: |
 
 execution:
   timeout_seconds: 300
-  max_turns: 50
+  max_turns: 35
   model: claude-sonnet-4-6
 
 schema_version: 1

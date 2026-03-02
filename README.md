@@ -95,13 +95,7 @@ claude
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor guide and [oak/constitution.md](oak/constitution.md) for project standards.
-
-```bash
-git clone https://github.com/goondocks-co/open-agent-kit.git
-cd open-agent-kit
-make setup && make check
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor guide and [oak/constitution.md](oak/constitution.md) for coding standards.
 
 ## Security
 

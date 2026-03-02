@@ -523,6 +523,7 @@ class AgentExecutor:
                 run_id=run.id,
                 status=run.status.value,
                 started_at=run.started_at,
+                timeout_seconds=execution.timeout_seconds,
             )
 
         # Determine effective provider: task override > global config > None (cloud default)

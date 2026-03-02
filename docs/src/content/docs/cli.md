@@ -110,6 +110,24 @@ oak ci backup      # Create a backup
 oak ci restore     # Restore from backup
 ```
 
+### Team Sync
+
+```bash
+oak ci team status     # Show team sync connection and relay status
+oak ci team members    # List online team members
+```
+
+### Cloud Relay
+
+```bash
+oak ci cloud-init          # Deploy relay Worker and connect (turnkey)
+oak ci cloud-init --force  # Re-scaffold and re-deploy with latest template
+oak ci cloud-connect [url] # Connect to a specific Worker URL
+oak ci cloud-disconnect    # Disconnect from the relay
+oak ci cloud-status        # Show relay connection state
+oak ci cloud-url           # Print Worker URL (for scripting)
+```
+
 :::tip
 After running `oak upgrade`, run `oak ci sync` to ensure the daemon picks up any schema changes and re-indexes if needed.
 :::

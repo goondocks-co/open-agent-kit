@@ -6,11 +6,7 @@
  */
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTeamStatus } from "@/hooks/use-team";
 import {
-    Wifi,
-    WifiOff,
-    CircleDot,
     Users,
     Clock,
     AlertCircle,
@@ -285,74 +281,3 @@ export function SyncStats({ sync }: { sync: SyncStatus }) {
     );
 }
 
-// =============================================================================
-// Main Component
-// =============================================================================
-
-export default function TeamStatus() {
-    const { data: status, isLoading } = useTeamStatus();
-
-    if (isLoading) {
-        return (
-            <div className="space-y-4">
-                {[1, 2].map((i) => (
-                    <div key={i} className="border rounded-lg p-6 animate-pulse">
-                        <div className="h-5 bg-muted rounded w-1/3 mb-3" />
-                        <div className="h-4 bg-muted rounded w-2/3" />
-                    </div>
-                ))}
-            </div>
-        );
-    }
-
-    const relay = status?.relay ?? null;
-    const onlineNodes = status?.online_nodes ?? [];
-    const onlineCount = onlineNodes.filter((n) => n.online).length;
-    const sync = status?.sync ?? null;
-    const relayPending = status?.relay_pending ?? {};
-
-    return (
-        <div className="space-y-6">
-            {/* Connection Status Card */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        {relay?.connected ? (
-                            <Wifi className="h-5 w-5 text-green-500" />
-                        ) : relay?.worker_url ? (
-                            <WifiOff className="h-5 w-5 text-red-500" />
-                        ) : (
-                            <CircleDot className="h-5 w-5 text-gray-400" />
-                        )}
-                        Relay Status
-                    </CardTitle>
-                    <CardDescription>
-                        Current relay connection and online peers.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {relay ? (
-                        <RelayDetails relay={relay} onlineCount={onlineCount} />
-                    ) : (
-                        <div className="text-center py-4 text-muted-foreground">
-                            <CircleDot className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                            <p className="text-sm">No relay configured.</p>
-                            <p className="text-xs mt-1">
-                                Go to the Config tab to set up a relay connection.
-                            </p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Connected Nodes — version info per node, always shown when relay is configured */}
-            {relay && <ConnectedNodes nodes={onlineNodes} />}
-
-            {/* Relay Buffer — pending obs for offline peers */}
-            <RelayBuffer pending={relayPending} />
-
-            {/* Sync Stats — only shown when sync worker is active */}
-            {sync?.enabled && <SyncStats sync={sync} />}
-        </div>
-    );
-}

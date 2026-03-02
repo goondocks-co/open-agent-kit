@@ -50,7 +50,10 @@ const OBS_HISTORY_DEFAULT_LIMIT = 500;
 const MS_PER_DAY = 86_400_000;
 const FEDERATED_SEARCH_TIMEOUT_MS = 3_000;
 const FEDERATED_SEARCH_DEFAULT_LIMIT = 10;
+const FEDERATED_SEARCH_MAX_RESULTS = 50;
 const CAPABILITY_FEDERATED_SEARCH = "federated_search_v1";
+/** Probability of running TTL cleanup on each obs push (1%). */
+const OBS_HISTORY_CLEANUP_PROBABILITY = 0.01;
 
 export class RelayObject implements DurableObject {
   private state: DurableObjectState;
@@ -106,7 +109,7 @@ export class RelayObject implements DurableObject {
       )
     `);
     this.state.storage.sql.exec(
-      "CREATE INDEX IF NOT EXISTS idx_obs_history_hash ON obs_history(content_hash)"
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_obs_history_hash ON obs_history(content_hash)"
     );
     this.state.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS idx_obs_history_created ON obs_history(created_at)"
@@ -276,8 +279,8 @@ export class RelayObject implements DurableObject {
       if (old !== ws && this.getMachineId(old) === machineId) {
         try {
           old.close(1000, "replaced by new connection");
-        } catch {
-          // already closed
+        } catch (err) {
+          console.error("Failed to close old WS for machine", machineId, err);
         }
       }
     }
@@ -353,7 +356,8 @@ export class RelayObject implements DurableObject {
     // Send the request over WebSocket to the local daemon.
     try {
       ws.send(JSON.stringify(body));
-    } catch {
+    } catch (err) {
+      console.error("Failed to send tool call to daemon:", err);
       this.pending.delete(body.call_id);
       return Response.json(
         { error: "failed to send to local instance" },
@@ -413,7 +417,8 @@ export class RelayObject implements DurableObject {
 
     try {
       ws.send(JSON.stringify(httpMsg));
-    } catch {
+    } catch (err) {
+      console.error("Failed to send HTTP proxy request to daemon:", err);
       this.pendingHttp.delete(requestId);
       return Response.json(
         { error: "failed to send to local instance" },
@@ -446,7 +451,7 @@ export class RelayObject implements DurableObject {
   // Observation sync
   // -----------------------------------------------------------------------
 
-  private handleObsPush(msg: ObsPushMessage, senderWs: WebSocket): void {
+  private async handleObsPush(msg: ObsPushMessage, senderWs: WebSocket): Promise<void> {
     const senderMachineId = this.getMachineId(senderWs) ?? "unknown";
     const allSockets = this.state.getWebSockets();
     const now = new Date().toISOString();
@@ -465,50 +470,59 @@ export class RelayObject implements DurableObject {
 
       try {
         ws.send(serialized);
-      } catch {
+      } catch (sendErr) {
         // WS closed — buffer all observations for this peer in one bulk INSERT.
+        console.error("Failed to send obs batch to peer", machineId, sendErr);
         if (machineId && msg.observations.length > 0) {
           const placeholders = msg.observations.map(() => "(?, ?, ?, ?)").join(", ");
           const values: unknown[] = [];
           for (const obs of msg.observations) {
             values.push(senderMachineId, JSON.stringify(obs), now, machineId);
           }
-          this.state.storage.sql.exec(
-            `INSERT INTO pending_obs (from_machine_id, payload, created_at, for_machine_id) VALUES ${placeholders}`,
-            ...values,
-          );
+          try {
+            this.state.storage.sql.exec(
+              `INSERT INTO pending_obs (from_machine_id, payload, created_at, for_machine_id) VALUES ${placeholders}`,
+              ...values,
+            );
+          } catch (sqlErr) {
+            console.error("Failed to buffer pending_obs for peer", machineId, sqlErr);
+          }
         }
       }
     }
 
-    // Store in obs_history for new-node catch-up (dedup by content_hash).
+    // Store in obs_history for new-node catch-up (dedup by content_hash via UNIQUE index).
     if (msg.observations.length > 0) {
+      const placeholders = msg.observations.map(() => "(?, ?, ?, ?)").join(", ");
+      const values: unknown[] = [];
       for (const obs of msg.observations) {
-        const payload = JSON.stringify(obs);
-        const contentHash = this.hashPayload(payload);
-        // INSERT OR IGNORE deduplicates by content_hash via unique index check.
-        // We use a subquery to skip if hash already exists.
-        const existing = this.state.storage.sql.exec(
-          "SELECT 1 FROM obs_history WHERE content_hash = ? LIMIT 1",
-          contentHash,
-        ).toArray();
-        if (existing.length === 0) {
-          this.state.storage.sql.exec(
-            "INSERT INTO obs_history (from_machine_id, payload, content_hash, created_at) VALUES (?, ?, ?, ?)",
-            senderMachineId,
-            payload,
-            contentHash,
-            now,
-          );
-        }
+        const record = obs as Record<string, unknown>;
+        const contentHash = typeof record.content_hash === "string"
+          ? record.content_hash
+          : await this.sha256Payload(JSON.stringify(obs));
+        values.push(senderMachineId, JSON.stringify(obs), contentHash, now);
+      }
+      try {
+        this.state.storage.sql.exec(
+          `INSERT OR IGNORE INTO obs_history (from_machine_id, payload, content_hash, created_at) VALUES ${placeholders}`,
+          ...values,
+        );
+      } catch (err) {
+        console.error("Failed to insert obs_history batch:", err);
       }
 
-      // TTL cleanup — remove rows older than retention period.
-      const cutoff = new Date(Date.now() - OBS_HISTORY_RETENTION_DAYS * MS_PER_DAY).toISOString();
-      this.state.storage.sql.exec(
-        "DELETE FROM obs_history WHERE created_at < ?",
-        cutoff,
-      );
+      // TTL cleanup — run probabilistically to avoid per-push overhead.
+      if (Math.random() < OBS_HISTORY_CLEANUP_PROBABILITY) {
+        const cutoff = new Date(Date.now() - OBS_HISTORY_RETENTION_DAYS * MS_PER_DAY).toISOString();
+        try {
+          this.state.storage.sql.exec(
+            "DELETE FROM obs_history WHERE created_at < ?",
+            cutoff,
+          );
+        } catch (err) {
+          console.error("Failed to clean up expired obs_history:", err);
+        }
+      }
     }
   }
 
@@ -526,8 +540,10 @@ export class RelayObject implements DurableObject {
 
     const ids = rows.map((r) => r.id as number);
     if (ids.length) {
+      const placeholders = ids.map(() => "?").join(", ");
       this.state.storage.sql.exec(
-        `DELETE FROM pending_obs WHERE id IN (${ids.join(",")})`,
+        `DELETE FROM pending_obs WHERE id IN (${placeholders})`,
+        ...ids,
       );
     }
 
@@ -595,13 +611,12 @@ export class RelayObject implements DurableObject {
     });
   }
 
-  /** Simple DJB2 hash for deduplication — not cryptographic, just fast. */
-  private hashPayload(payload: string): string {
-    let hash = 5381;
-    for (let i = 0; i < payload.length; i++) {
-      hash = ((hash << 5) + hash + payload.charCodeAt(i)) & 0xffffffff;
-    }
-    return hash.toString(16);
+  /** SHA-256 hash fallback for observations missing content_hash. */
+  private async sha256Payload(payload: string): Promise<string> {
+    const data = new TextEncoder().encode(payload);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = new Uint8Array(hashBuffer);
+    return Array.from(hashArray, (b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   private drainPendingObs(machineId: string, ws: WebSocket): void {
@@ -634,16 +649,19 @@ export class RelayObject implements DurableObject {
       };
       try {
         ws.send(JSON.stringify(batch));
-      } catch {
+      } catch (err) {
         // If send fails during drain, leave the rows — they'll be picked up later.
+        console.error("Failed to send drain batch to machine", machineId, err);
         return;
       }
     }
 
     // All sent successfully — delete drained rows.
     if (ids.length) {
+      const placeholders = ids.map(() => "?").join(", ");
       this.state.storage.sql.exec(
-        `DELETE FROM pending_obs WHERE id IN (${ids.join(",")})`,
+        `DELETE FROM pending_obs WHERE id IN (${placeholders})`,
+        ...ids,
       );
     }
   }
@@ -701,12 +719,12 @@ export class RelayObject implements DurableObject {
 
     // Track how many peers we actually sent to (some sends may fail).
     let sentCount = 0;
-    for (const { ws } of capablePeers) {
+    for (const { machineId: peerId, ws } of capablePeers) {
       try {
         ws.send(serialized);
         sentCount++;
-      } catch {
-        // Peer socket closed — skip it.
+      } catch (err) {
+        console.error("Failed to send search query to peer", peerId, err);
       }
     }
 
@@ -737,11 +755,14 @@ export class RelayObject implements DurableObject {
     const searchResults = await resultsPromise;
 
     // Merge results from all responding peers, tagging each with source.
+    // Cap total results to prevent unbounded response sizes.
     const merged: Record<string, unknown>[] = [];
     for (const sr of searchResults) {
       for (const item of sr.results) {
+        if (merged.length >= FEDERATED_SEARCH_MAX_RESULTS) break;
         merged.push({ ...item, machine_id: sr.from_machine_id });
       }
+      if (merged.length >= FEDERATED_SEARCH_MAX_RESULTS) break;
     }
 
     return Response.json({ results: merged });
@@ -788,8 +809,8 @@ export class RelayObject implements DurableObject {
     for (const ws of allSockets) {
       try {
         ws.send(payload);
-      } catch {
-        // ignore send errors — socket will be cleaned up on next event
+      } catch (err) {
+        console.error("Failed to broadcast node list:", err);
       }
     }
   }
@@ -835,7 +856,8 @@ export class RelayObject implements DurableObject {
 
     try {
       ws.send(JSON.stringify(ping));
-    } catch {
+    } catch (err) {
+      console.error("Failed to send heartbeat ping to", machineId, err);
       this.stopHeartbeat(machineId);
       this.broadcastNodeList();
       return;
@@ -849,8 +871,8 @@ export class RelayObject implements DurableObject {
         if (deadWs) {
           try {
             deadWs.close(1000, "heartbeat timeout");
-          } catch {
-            // already closed
+          } catch (err) {
+            console.error("Failed to close dead WS for", machineId, err);
           }
         }
         this.stopHeartbeat(machineId);
