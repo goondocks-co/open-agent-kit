@@ -21,6 +21,7 @@ from open_agent_kit.features.codebase_intelligence.config import (
     CIConfig,
     EmbeddingConfig,
     _deep_merge,
+    _scrub_dead_keys,
     _split_by_classification,
     _user_config_path,
     _write_yaml_config,
@@ -59,7 +60,6 @@ class TestEmbeddingConfigInit:
         assert default_embedding_config.base_url == DEFAULT_BASE_URL
         assert default_embedding_config.dimensions is None
         assert default_embedding_config.api_key is None
-        assert default_embedding_config.fallback_enabled is False
 
     def test_init_with_custom_values(self, custom_embedding_config: EmbeddingConfig):
         """Test embedding config with custom values.
@@ -80,7 +80,6 @@ class TestEmbeddingConfigInit:
             base_url="http://localhost:1234",
             dimensions=1024,
             api_key="secret-key",
-            fallback_enabled=False,
             context_tokens=512,
             max_chunk_chars=1000,
         )
@@ -89,7 +88,6 @@ class TestEmbeddingConfigInit:
         assert config.dimensions == 1024
         assert config.context_tokens == 512
         assert config.max_chunk_chars == 1000
-        assert config.fallback_enabled is False
 
 
 class TestEmbeddingConfigValidation:
@@ -384,16 +382,12 @@ class TestCIConfigInit:
     def test_init_with_defaults(self, default_ci_config: CIConfig):
         """Test default CI config initialization."""
         assert isinstance(default_ci_config.embedding, EmbeddingConfig)
-        assert default_ci_config.index_on_startup is True
-        assert default_ci_config.watch_files is True
         assert default_ci_config.cli_command == CI_CLI_COMMAND_DEFAULT
         assert default_ci_config.log_level == LOG_LEVEL_INFO
 
     def test_init_with_custom_values(self, custom_ci_config: CIConfig):
         """Test CI config with custom values."""
         assert custom_ci_config.embedding.provider == "openai"
-        assert custom_ci_config.index_on_startup is False
-        assert custom_ci_config.watch_files is False
         assert custom_ci_config.log_level == LOG_LEVEL_DEBUG
 
     def test_init_with_exclude_patterns(self):
@@ -508,22 +502,16 @@ class TestCIConfigFromDict:
     def test_from_dict_with_empty_dict(self):
         """Test from_dict with empty dictionary uses defaults."""
         config = CIConfig.from_dict({})
-        assert config.index_on_startup is True
-        assert config.watch_files is True
         assert config.cli_command == CI_CLI_COMMAND_DEFAULT
         assert config.log_level == LOG_LEVEL_INFO
 
     def test_from_dict_with_custom_values(self):
         """Test from_dict with custom values."""
         data = {
-            "index_on_startup": False,
-            "watch_files": False,
             "exclude_patterns": ["**/*.pyc"],
             "log_level": LOG_LEVEL_DEBUG,
         }
         config = CIConfig.from_dict(data)
-        assert config.index_on_startup is False
-        assert config.watch_files is False
         assert config.log_level == LOG_LEVEL_DEBUG
 
     def test_from_dict_with_embedding_config(self):
@@ -548,8 +536,6 @@ class TestCIConfigToDict:
         """Test that to_dict output can recreate config."""
         dict_repr = custom_ci_config.to_dict()
         recreated = CIConfig.from_dict(dict_repr)
-        assert recreated.index_on_startup == custom_ci_config.index_on_startup
-        assert recreated.watch_files == custom_ci_config.watch_files
         assert recreated.cli_command == custom_ci_config.cli_command
         assert recreated.log_level == custom_ci_config.log_level
 
@@ -571,7 +557,6 @@ class TestLoadCIConfig:
         config = load_ci_config(project_with_oak_config)
         assert config.embedding.provider == "ollama"
         assert config.embedding.model == "bge-m3"
-        assert config.index_on_startup is True
 
     def test_load_custom_config(self, project_with_custom_config: Path):
         """Test loading custom config values.
@@ -582,7 +567,6 @@ class TestLoadCIConfig:
         config = load_ci_config(project_with_custom_config)
         assert config.embedding.provider == "openai"
         assert config.embedding.model == "text-embedding-3-small"
-        assert config.index_on_startup is False
         assert config.log_level == LOG_LEVEL_DEBUG
 
     def test_load_config_returns_defaults_if_file_missing(self, project_without_config: Path):
@@ -594,7 +578,6 @@ class TestLoadCIConfig:
         config = load_ci_config(project_without_config)
         assert config.embedding.provider == DEFAULT_PROVIDER
         assert config.embedding.model == DEFAULT_MODEL
-        assert config.index_on_startup is True
 
     def test_load_config_returns_defaults_on_invalid_yaml(self, project_with_malformed_yaml: Path):
         """Test that defaults returned on malformed YAML.
@@ -755,6 +738,86 @@ class TestDeepMerge:
 # =============================================================================
 
 
+class TestScrubDeadKeys:
+    """Test _scrub_dead_keys helper function."""
+
+    def test_removes_top_level_dead_keys(self):
+        """Test that top-level dead keys are removed."""
+        ci_dict = {
+            "tunnel": {"host": "localhost"},
+            "index_on_startup": True,
+            "watch_files": True,
+            "exclude_patterns": ["*.pyc"],
+        }
+        _scrub_dead_keys(ci_dict)
+        assert "tunnel" not in ci_dict
+        assert "index_on_startup" not in ci_dict
+        assert "watch_files" not in ci_dict
+        assert "exclude_patterns" in ci_dict
+
+    def test_removes_embedding_fallback_enabled(self):
+        """Test that embedding.fallback_enabled is removed."""
+        ci_dict = {
+            "embedding": {
+                "provider": "ollama",
+                "model": "bge-m3",
+                "fallback_enabled": False,
+            },
+        }
+        _scrub_dead_keys(ci_dict)
+        assert "fallback_enabled" not in ci_dict["embedding"]
+        assert ci_dict["embedding"]["provider"] == "ollama"
+
+    def test_removes_dead_team_keys(self):
+        """Test that dead team sub-keys are removed."""
+        ci_dict = {
+            "team": {
+                "server_url": "http://localhost:8080",
+                "pull_interval_seconds": 30,
+                "transport": "http",
+                "bind_host": "0.0.0.0",
+                "bind_port": 9090,
+                "server_side_llm": True,
+            },
+        }
+        _scrub_dead_keys(ci_dict)
+        assert ci_dict["team"] == {"server_url": "http://localhost:8080"}
+
+    def test_removes_dead_governance_data_collection_keys(self):
+        """Test that dead governance.data_collection sub-keys are removed."""
+        ci_dict = {
+            "governance": {
+                "enforcement_mode": "advisory",
+                "data_collection": {
+                    "collect_activities": True,
+                    "collect_prompts": True,
+                    "sync_activities": False,
+                    "sync_prompts": False,
+                    "allow_server_llm": False,
+                },
+            },
+        }
+        _scrub_dead_keys(ci_dict)
+        assert ci_dict["governance"]["enforcement_mode"] == "advisory"
+        assert ci_dict["governance"]["data_collection"] == {}
+
+    def test_noop_on_clean_config(self):
+        """Test that scrubbing a clean config is a no-op."""
+        ci_dict = {
+            "embedding": {"provider": "ollama", "model": "bge-m3"},
+            "exclude_patterns": ["*.pyc"],
+        }
+        original = dict(ci_dict)
+        _scrub_dead_keys(ci_dict)
+        assert ci_dict == original
+
+    def test_handles_missing_sections(self):
+        """Test that missing sections don't cause errors."""
+        ci_dict: dict = {}
+        _scrub_dead_keys(ci_dict)
+        assert ci_dict == {}
+
+
 class TestSplitByClassification:
     """Test _split_by_classification helper function."""
 
@@ -772,8 +835,6 @@ class TestSplitByClassification:
         # Project-classified sections
         assert "session_quality" in project
         assert "exclude_patterns" in project
-        assert "index_on_startup" in project
-        assert "watch_files" in project
 
     def test_embedding_is_all_user(self):
         """Embedding section should be entirely user-classified."""

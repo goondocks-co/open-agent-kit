@@ -48,7 +48,6 @@ class EmbeddingConfig:
         base_url: Base URL for the embedding API.
         dimensions: Embedding dimensions (auto-detected if None).
         api_key: API key (supports ${ENV_VAR} syntax).
-        fallback_enabled: Reserved for future use (currently ignored).
         context_tokens: Max input tokens (auto-detect from known models).
         max_chunk_chars: Max chars per chunk (auto-detect from model).
     """
@@ -58,7 +57,6 @@ class EmbeddingConfig:
     base_url: str = DEFAULT_BASE_URL
     dimensions: int | None = None
     api_key: str | None = None
-    fallback_enabled: bool = False
     context_tokens: int | None = None
     max_chunk_chars: int | None = None
 
@@ -155,7 +153,6 @@ class EmbeddingConfig:
             base_url=data.get("base_url", DEFAULT_BASE_URL),
             dimensions=data.get("dimensions"),
             api_key=api_key,
-            fallback_enabled=data.get("fallback_enabled", False),
             context_tokens=data.get("context_tokens"),
             max_chunk_chars=data.get("max_chunk_chars"),
         )
@@ -168,7 +165,6 @@ class EmbeddingConfig:
             "base_url": self.base_url,
             "dimensions": self.dimensions,
             "api_key": self.api_key,
-            "fallback_enabled": self.fallback_enabled,
             "context_tokens": self.context_tokens,
             "max_chunk_chars": self.max_chunk_chars,
         }

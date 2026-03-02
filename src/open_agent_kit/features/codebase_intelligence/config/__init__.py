@@ -44,6 +44,7 @@ from open_agent_kit.features.codebase_intelligence.config.io import (
     DEFAULT_EXCLUDE_PATTERNS,
     USER_CLASSIFIED_PATHS,
     _deep_merge,
+    _scrub_dead_keys,
     _split_by_classification,
     _user_config_path,
     _write_yaml_config,
@@ -105,6 +106,7 @@ __all__ = [
     "save_ci_config",
     # Internal helpers (used by tests)
     "_deep_merge",
+    "_scrub_dead_keys",
     "_split_by_classification",
     "_user_config_path",
     "_write_yaml_config",

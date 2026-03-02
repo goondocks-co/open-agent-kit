@@ -49,8 +49,6 @@ codebase_intelligence:
     provider: ollama
     model: bge-m3
     base_url: http://localhost:11434
-  index_on_startup: true
-  watch_files: true
   log_level: INFO
 """)
 
@@ -70,7 +68,6 @@ def setup_state_with_project(tmp_project_with_config):
     state.ci_config.embedding.get_dimensions.return_value = 1024
     state.ci_config.embedding.get_context_tokens.return_value = 512
     state.ci_config.embedding.get_max_chunk_chars.return_value = 2000
-    state.ci_config.embedding.fallback_enabled = False
     state.ci_config.summarization = MagicMock()
     state.ci_config.summarization.enabled = False
     state.ci_config.summarization.provider = "ollama"
@@ -78,8 +75,6 @@ def setup_state_with_project(tmp_project_with_config):
     state.ci_config.summarization.base_url = "http://localhost:11434"
     state.ci_config.summarization.timeout = 30
     state.ci_config.summarization.context_tokens = 2000
-    state.ci_config.index_on_startup = True
-    state.ci_config.watch_files = True
     state.ci_config.log_level = "INFO"
     return state
 
@@ -134,8 +129,6 @@ class TestGetConfig:
 
         assert response.status_code == 200
         data = response.json()
-        assert "index_on_startup" in data
-        assert "watch_files" in data
         assert "log_level" in data
 
     def test_get_config_no_project_root(self, client):
@@ -256,17 +249,6 @@ class TestUpdateConfig:
         data = response.json()
         assert data["status"] == "updated"
         assert data["embedding_changed"] is True
-
-    def test_update_config_fallback_enabled(self, client, setup_state_with_project):
-        """Test updating fallback enabled flag."""
-        payload = {
-            "embedding": {"fallback_enabled": True},
-        }
-        response = client.put("/api/config", json=payload)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "updated"
 
     def test_update_config_invalid_json(self, client, setup_state_with_project):
         """Test update config with invalid JSON."""

@@ -395,12 +395,10 @@ from open_agent_kit.features.codebase_intelligence.constants.config_keys import 
     CI_CONFIG_KEY_EMBEDDING,
     CI_CONFIG_KEY_EXCLUDE_PATTERNS,
     CI_CONFIG_KEY_GOVERNANCE,
-    CI_CONFIG_KEY_INDEX_ON_STARTUP,
     CI_CONFIG_KEY_LOG_LEVEL,
     CI_CONFIG_KEY_LOG_ROTATION,
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
-    CI_CONFIG_KEY_WATCH_FILES,
 )
 
 # --- daemon ---

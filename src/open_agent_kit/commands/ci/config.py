@@ -277,7 +277,6 @@ def ci_config(
         print_info(f"  Max Chunk Chars: {emb.get_max_chunk_chars()}")
         dims = emb.get_dimensions()
         print_info(f"  Dimensions: {dims or 'auto-detect'}")
-        print_info(f"  Fallback Enabled: {emb.fallback_enabled}")
         print_info(f"  Context Tokens: {emb.get_context_tokens()}")
 
         # Summarization config

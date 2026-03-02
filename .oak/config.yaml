@@ -37,7 +37,6 @@ codebase_intelligence:
     base_url: http://localhost:11434
     context_tokens: 8192
     dimensions: 1024
-    fallback_enabled: false
     max_chunk_chars: 6553
     model: bge-m3
     provider: ollama
@@ -112,7 +111,6 @@ codebase_intelligence:
   - '*.po'
   - '*.pot'
   - '*.mo'
-  index_on_startup: true
   log_level: DEBUG
   log_rotation:
     backup_count: 3
@@ -129,12 +127,6 @@ codebase_intelligence:
     model: openai/gpt-oss-20b
     provider: lmstudio
     timeout: 180.0
-  tunnel:
-    auto_start: false
-    cloudflared_path: null
-    ngrok_path: null
-    provider: cloudflared
-  watch_files: true
   auto_resolve:
     enabled: true
     similarity_threshold: 0.85
@@ -150,19 +142,9 @@ codebase_intelligence:
         pattern: '', path_pattern: '*.env', action: warn, message: ''}]
     retention_days: 30
     data_collection:
-      collect_activities: true
-      collect_prompts: true
       sync_observations: true
-      sync_activities: true
-      sync_prompts: true
-      allow_server_llm: false
   team:
     sync_interval_seconds: 3
-    pull_interval_seconds: 15
     project_slug: null
-    transport: direct
-    bind_host: 127.0.0.1
-    bind_port: 8600
     relay_worker_url: https://oak-relay-open-agent-kit.goondocks.workers.dev
     relay_worker_name: null
-    server_side_llm: false

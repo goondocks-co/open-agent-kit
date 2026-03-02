@@ -12,8 +12,6 @@ class RFCConfig(BaseModel):
 
     directory: str = Field(default="oak/rfc", description="Directory for RFCs")
     template: str = Field(default="engineering", description="Default RFC template")
-    auto_number: bool = Field(default=True, description="Automatically assign RFC numbers")
-    number_format: str = Field(default="sequential", description="RFC number format")
     validate_on_create: bool = Field(default=True, description="Run validation after creating RFC")
 
 
@@ -110,6 +108,12 @@ class OakConfig(BaseModel):
             # Initialize languages if not present
             if "languages" not in data:
                 data["languages"] = {"installed": []}
+
+            # Migration: Remove dead RFC keys (auto_number, number_format)
+            rfc_data = data.get("rfc")
+            if isinstance(rfc_data, dict):
+                rfc_data.pop("auto_number", None)
+                rfc_data.pop("number_format", None)
 
             return cls(**data)
 

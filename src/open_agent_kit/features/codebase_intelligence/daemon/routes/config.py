@@ -20,12 +20,10 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     AUTO_RESOLVE_CONFIG_KEY,
     BACKUP_CONFIG_KEY,
     CI_CONFIG_KEY_EMBEDDING,
-    CI_CONFIG_KEY_INDEX_ON_STARTUP,
     CI_CONFIG_KEY_LOG_LEVEL,
     CI_CONFIG_KEY_LOG_ROTATION,
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
-    CI_CONFIG_KEY_WATCH_FILES,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
@@ -210,7 +208,6 @@ async def get_config() -> dict:
             "dimensions": config.embedding.get_dimensions(),
             "context_tokens": config.embedding.get_context_tokens(),
             "max_chunk_chars": config.embedding.get_max_chunk_chars(),
-            "fallback_enabled": config.embedding.fallback_enabled,
         },
         CI_CONFIG_KEY_SUMMARIZATION: {
             "enabled": config.summarization.enabled,
@@ -229,8 +226,6 @@ async def get_config() -> dict:
             "max_size_mb": config.log_rotation.max_size_mb,
             "backup_count": config.log_rotation.backup_count,
         },
-        CI_CONFIG_KEY_INDEX_ON_STARTUP: config.index_on_startup,
-        CI_CONFIG_KEY_WATCH_FILES: config.watch_files,
         BACKUP_CONFIG_KEY: {
             "auto_enabled": config.backup.auto_enabled,
             "include_activities": config.backup.include_activities,
@@ -290,8 +285,6 @@ async def update_config(request: Request) -> dict:
             config.embedding.dimensions = emb["dimensions"]
             if old_dims != emb["dimensions"]:
                 embedding_changed = True
-        if "fallback_enabled" in emb:
-            config.embedding.fallback_enabled = emb["fallback_enabled"]
         if "context_tokens" in emb:
             config.embedding.context_tokens = emb["context_tokens"]
             embedding_changed = True

@@ -124,8 +124,6 @@ def custom_ci_config() -> CIConfig:
             model="text-embedding-3-small",
             base_url="https://api.openai.com/v1",
         ),
-        index_on_startup=False,
-        watch_files=False,
         exclude_patterns=["**/*.pyc", "**/__pycache__/**"],
         log_level=LOG_LEVEL_DEBUG,
     )
@@ -232,8 +230,6 @@ codebase_intelligence:
     provider: ollama
     model: bge-m3
     base_url: http://localhost:11434
-  index_on_startup: true
-  watch_files: true
   log_level: INFO
 """)
 
@@ -262,8 +258,6 @@ codebase_intelligence:
     base_url: https://api.openai.com/v1
     api_key: ${OPENAI_API_KEY}
     dimensions: 1536
-  index_on_startup: false
-  watch_files: false
   exclude_patterns:
     - "**/*.pyc"
     - "**/venv/**"

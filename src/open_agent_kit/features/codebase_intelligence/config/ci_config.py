@@ -31,13 +31,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_EMBEDDING,
     CI_CONFIG_KEY_EXCLUDE_PATTERNS,
     CI_CONFIG_KEY_GOVERNANCE,
-    CI_CONFIG_KEY_INDEX_ON_STARTUP,
     CI_CONFIG_KEY_LOG_LEVEL,
     CI_CONFIG_KEY_LOG_ROTATION,
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TEAM,
-    CI_CONFIG_KEY_WATCH_FILES,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
     VALID_LOG_LEVELS,
@@ -61,8 +59,6 @@ class CIConfig:
         backup: Backup behavior configuration.
         auto_resolve: Auto-resolve (supersession) configuration.
         governance: Agent governance (observability and enforcement) configuration.
-        index_on_startup: Whether to build index when daemon starts.
-        watch_files: Whether to watch files for changes.
         exclude_patterns: Glob patterns to exclude from indexing.
         cli_command: CLI executable used for CI-managed integrations.
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
@@ -78,8 +74,6 @@ class CIConfig:
     backup: BackupConfig = field(default_factory=BackupConfig)
     auto_resolve: AutoResolveConfig = field(default_factory=AutoResolveConfig)
     governance: GovernanceConfig = field(default_factory=GovernanceConfig)
-    index_on_startup: bool = True
-    watch_files: bool = True
     exclude_patterns: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE_PATTERNS.copy())
     cli_command: str = CI_CLI_COMMAND_DEFAULT
     log_level: str = LOG_LEVEL_INFO
@@ -153,8 +147,6 @@ class CIConfig:
             backup=BackupConfig.from_dict(backup_data),
             auto_resolve=AutoResolveConfig.from_dict(auto_resolve_data),
             governance=GovernanceConfig.from_dict(governance_data),
-            index_on_startup=data.get(CI_CONFIG_KEY_INDEX_ON_STARTUP, True),
-            watch_files=data.get(CI_CONFIG_KEY_WATCH_FILES, True),
             exclude_patterns=data.get(
                 CI_CONFIG_KEY_EXCLUDE_PATTERNS, DEFAULT_EXCLUDE_PATTERNS.copy()
             ),
@@ -175,8 +167,6 @@ class CIConfig:
             BACKUP_CONFIG_KEY: self.backup.to_dict(),
             AUTO_RESOLVE_CONFIG_KEY: self.auto_resolve.to_dict(),
             CI_CONFIG_KEY_GOVERNANCE: self.governance.to_dict(),
-            CI_CONFIG_KEY_INDEX_ON_STARTUP: self.index_on_startup,
-            CI_CONFIG_KEY_WATCH_FILES: self.watch_files,
             CI_CONFIG_KEY_EXCLUDE_PATTERNS: self.exclude_patterns,
             CI_CONFIG_KEY_CLI_COMMAND: self.cli_command,
             CI_CONFIG_KEY_LOG_LEVEL: self.log_level,

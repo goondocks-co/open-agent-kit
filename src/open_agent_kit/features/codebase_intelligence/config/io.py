@@ -22,13 +22,11 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CONFIG_KEY_EMBEDDING,
     CI_CONFIG_KEY_EXCLUDE_PATTERNS,
     CI_CONFIG_KEY_GOVERNANCE,
-    CI_CONFIG_KEY_INDEX_ON_STARTUP,
     CI_CONFIG_KEY_LOG_LEVEL,
     CI_CONFIG_KEY_LOG_ROTATION,
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TEAM,
-    CI_CONFIG_KEY_WATCH_FILES,
     CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
     CI_CONFIG_TEAM_KEY_SERVER_URL,
@@ -268,6 +266,48 @@ def _split_by_classification(
     return user_dict, project_dict
 
 
+def _scrub_dead_keys(ci_dict: dict[str, Any]) -> None:
+    """Remove known dead/inert config keys from a CI config dict **in place**.
+
+    These keys were once stored but are no longer read by any code path.
+    Removing them on save keeps .oak/config.yaml clean and avoids user confusion.
+    """
+    # Top-level dead keys
+    for key in ("tunnel", "index_on_startup", "watch_files"):
+        ci_dict.pop(key, None)
+
+    # embedding.fallback_enabled
+    emb = ci_dict.get("embedding")
+    if isinstance(emb, dict):
+        emb.pop("fallback_enabled", None)
+
+    # Dead team sub-keys
+    team = ci_dict.get("team")
+    if isinstance(team, dict):
+        for key in (
+            "pull_interval_seconds",
+            "transport",
+            "bind_host",
+            "bind_port",
+            "server_side_llm",
+        ):
+            team.pop(key, None)
+
+    # Dead governance.data_collection sub-keys
+    gov = ci_dict.get("governance")
+    if isinstance(gov, dict):
+        dc = gov.get("data_collection")
+        if isinstance(dc, dict):
+            for key in (
+                "collect_activities",
+                "collect_prompts",
+                "sync_activities",
+                "sync_prompts",
+                "allow_server_llm",
+            ):
+                dc.pop(key, None)
+
+
 def _scrub_user_keys_from_project(ci_dict: dict[str, Any]) -> None:
     """Remove user-classified sub-keys from a project config dict **in place**.
 
@@ -439,6 +479,7 @@ def save_ci_config(
 
     if force_project:
         # Write everything to project config as team baseline
+        _scrub_dead_keys(ci_dict)
         existing_config["codebase_intelligence"] = ci_dict
         _write_yaml_config(config_file, existing_config)
         logger.info(f"Saved full CI config to project file {config_file}")
@@ -458,6 +499,7 @@ def save_ci_config(
             # Remove user-classified keys that may have been written
             # before they were reclassified (e.g. team.auto_sync).
             _scrub_user_keys_from_project(existing_ci_section)
+            _scrub_dead_keys(existing_ci_section)
             existing_team = existing_ci_section.get(CI_CONFIG_KEY_TEAM)
             if isinstance(existing_team, dict):
                 existing_team.pop("token", None)
@@ -529,8 +571,6 @@ def get_config_origins(project_root: Path) -> dict[str, str]:
         BACKUP_CONFIG_KEY,
         AUTO_RESOLVE_CONFIG_KEY,
         CI_CONFIG_KEY_GOVERNANCE,
-        CI_CONFIG_KEY_INDEX_ON_STARTUP,
-        CI_CONFIG_KEY_WATCH_FILES,
         CI_CONFIG_KEY_EXCLUDE_PATTERNS,
         CI_CONFIG_KEY_CLI_COMMAND,
         CI_CONFIG_KEY_LOG_LEVEL,
