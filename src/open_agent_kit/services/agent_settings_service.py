@@ -224,7 +224,11 @@ class AgentSettingsService:
                     cleaned[k] = _scrub(v)
                 return cleaned
             if isinstance(obj, list):
-                return [item for item in obj if not (isinstance(item, str) and _INVALID_CLI_RE.search(item))]
+                return [
+                    item
+                    for item in obj
+                    if not (isinstance(item, str) and _INVALID_CLI_RE.search(item))
+                ]
             return obj
 
         result: dict[str, Any] = _scrub(settings)

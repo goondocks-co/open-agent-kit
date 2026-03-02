@@ -182,9 +182,7 @@ class SyncCliCommandStage(BaseStage):
             and ci_config.cli_command != CI_CLI_COMMAND_DEFAULT
             and not ci_config.cli_command.endswith(".py")
         ):
-            return StageOutcome.skipped(
-                f"Keeping configured CLI command '{ci_config.cli_command}'"
-            )
+            return StageOutcome.skipped(f"Keeping configured CLI command '{ci_config.cli_command}'")
 
         ci_config.cli_command = detected
         save_ci_config(context.project_root, ci_config)

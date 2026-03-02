@@ -95,9 +95,7 @@ class TestScrubInvalidCliEntries:
 
     def test_scrub_removes_shell_tool_py_entry(self) -> None:
         """ShellTool entries with .py commands should be removed."""
-        settings = {
-            "allowlist": ["ShellTool(oak-dev *)", "ShellTool(__main__.py *)"]
-        }
+        settings = {"allowlist": ["ShellTool(oak-dev *)", "ShellTool(__main__.py *)"]}
         result = AgentSettingsService._scrub_invalid_cli_entries(settings)
         assert result["allowlist"] == ["ShellTool(oak-dev *)"]
 
