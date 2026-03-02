@@ -4,6 +4,7 @@ These routes expose MCP tool functionality via HTTP for external callers.
 The actual tool handlers use RetrievalEngine directly (same process).
 """
 
+import asyncio
 import json
 import logging
 
@@ -32,6 +33,12 @@ async def call_mcp_tool(
     """Call an MCP tool.
 
     The handler uses RetrievalEngine directly (same process, no HTTP overhead).
+
+    handle_tool_call() is synchronous but may internally schedule async relay
+    coroutines via run_coroutine_threadsafe (for federated/network calls).
+    Running it on the event loop thread would deadlock those coroutines, so
+    we dispatch to a thread pool and set the event loop reference so
+    _run_relay_coro can schedule work back onto the main loop.
     """
     from open_agent_kit.features.codebase_intelligence.daemon.mcp_tools import MCPToolHandler
 
@@ -52,4 +59,14 @@ async def call_mcp_tool(
         relay_client=state.cloud_relay_client,
     )
 
-    return handler.handle_tool_call(tool_name, arguments)
+    # Run in a thread pool so the event loop stays free for relay coroutines
+    # scheduled by _run_relay_coro() during federated/network tool calls.
+    loop = asyncio.get_running_loop()
+
+    def _execute() -> dict:
+        # Make the main event loop visible to this thread so
+        # asyncio.get_event_loop() in _run_relay_coro returns it.
+        asyncio.set_event_loop(loop)
+        return handler.handle_tool_call(tool_name, arguments)
+
+    return await loop.run_in_executor(None, _execute)
