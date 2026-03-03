@@ -72,6 +72,7 @@ Skills provide specialized capabilities to your AI agent:
 
 - **project-governance** — Create and maintain project constitutions, agent instruction files, and RFC/ADR documents
 - **codebase-intelligence** — Semantic search, impact analysis, and database queries against the Oak CI database
+- **context-engineering** — Prompt and context engineering guidance using the four strategies (Write, Select, Compress, Isolate)
 
 ```bash
 oak skill list         # List available skills

@@ -39,6 +39,7 @@ def apply_migrations(conn: sqlite3.Connection, from_version: int) -> None:
     # This catches columns added mid-development after a version was
     # first bumped (e.g. summary_embedded added to v6 after initial release).
     _ensure_v6_columns(conn)
+    _ensure_v10_columns(conn)
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -414,6 +415,20 @@ def _migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE agent_runs ADD COLUMN timeout_seconds INTEGER")
 
     logger.info("Migration v9 -> v10 complete: added timeout_seconds to agent_runs")
+
+
+def _ensure_v10_columns(conn: sqlite3.Connection) -> None:
+    """Ensure v10 columns exist even if the migration ran before they were added.
+
+    This handles databases where the version was bumped to 10 but the
+    timeout_seconds column was never actually created. Runs unconditionally
+    (cheap PRAGMA check).
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(agent_runs)").fetchall()}
+
+    if "timeout_seconds" not in existing:
+        conn.execute("ALTER TABLE agent_runs ADD COLUMN timeout_seconds INTEGER")
+        logger.info("Added missing timeout_seconds column to agent_runs table")
 
 
 def _ensure_v6_columns(conn: sqlite3.Connection) -> None:

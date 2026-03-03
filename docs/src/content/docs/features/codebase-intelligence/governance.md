@@ -229,6 +229,17 @@ Before enabling enforce mode, test your rules against hypothetical tool calls:
 
 The result shows which rule would match and what action would be taken.
 
+## Data Collection Policy
+
+Governance also includes **data collection policy** settings that control what data leaves your machine when [Team Sync](/open-agent-kit/features/teams/) is active:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sync_observations` | `true` | Whether observations are written to the team outbox |
+| `federated_tools` | `true` | Whether this node's MCP tools are advertised to the relay for remote calls |
+
+These settings live under `codebase_intelligence.governance.data_collection` in your config. See [Teams — Data Collection Policy](/open-agent-kit/features/teams/#data-collection-policy) for full details.
+
 ## Best Practices
 
 1. **Start with observe mode** — Get visibility before enforcement

@@ -129,13 +129,20 @@ The outbox worker uses exponential backoff on failures (up to 300 seconds) and r
 
 ## Data Collection Policy
 
-Control what observations are synced via the **data collection policy** in Governance settings:
+Control what data is shared via the **data collection policy** in Governance settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `sync_observations` | `true` | Whether observations are written to the team outbox |
+| `federated_tools` | `true` | Whether this node's MCP tools are advertised to the relay for remote calls |
 
 When `sync_observations` is set to `false`, observations are stored locally only and never sent to the relay. This is useful for sensitive projects or temporary opt-outs.
+
+When `federated_tools` is set to `false`, other team nodes and cloud agents cannot call this node's MCP tools remotely — even if the relay is connected. Local tool access is unaffected.
+
+:::caution[Federated tools default to enabled]
+The `federated_tools` setting defaults to `true`. If you want a conservative opt-in rollout, set it to `false` in your configuration and enable it explicitly after reviewing what gets exposed.
+:::
 
 ```yaml
 # In .oak/ci/config.yaml
@@ -143,9 +150,10 @@ codebase_intelligence:
   governance:
     data_collection:
       sync_observations: true
+      federated_tools: true
 ```
 
-You can also toggle this from the dashboard: **Teams > Policy**.
+You can also toggle both settings from the dashboard: **Teams > Policy**.
 
 ## Cloud Agent Access (MCP)
 

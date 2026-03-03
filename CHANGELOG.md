@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-03-03]
+
+### Added
+
+- **Federated MCP tool calls with short-TTL SQLite cache** — The team relay now caches federated MCP tool call results in a local SQLite table with a short TTL, cutting redundant fan-outs when multiple agents query the same tool in rapid succession; cache hits, misses, and eviction counts are exposed as Prometheus metrics on the team relay observability page — [Implement short‑TTL SQLite cache for federated tool calls](http://localhost:38388/activity/sessions/9270f5b8-e8e3-47e7-89cf-e2ef54e3937a), [Implement SQLite cache layer for federated tool calls](http://localhost:38388/activity/sessions/af3a5620-87eb-4470-a1d8-d59b7678d6ca)
+- **Policy-driven federated tools toggle** — A new `federated_tools` policy flag (default opt-in) controls whether a node exposes its MCP tools to network peers; UI capability badges now render dynamically from the live policy state instead of hardcoded flags, so the team status page accurately reflects each member's current configuration — [Implement federated tools policy toggle and dynamic capability registration](http://localhost:38388/activity/sessions/05d3d420-a9b5-4600-a898-b6c50bdb06b3), [Update federated tools policy toggle and UI badge rendering logic](http://localhost:38388/activity/sessions/5477f766-41c0-4305-aa65-1d05eb2eba69)
+- **`list_nodes` MCP tool and federated data aggregation** — New `list_nodes` MCP tool enumerates all reachable team nodes; the relay now aggregates memories, plans, sessions, and context across all team members while keeping code search local to the originating node — [Implement list_nodes tool and federated data aggregation](http://localhost:38388/activity/sessions/6ba379a8-ef9d-4e64-9a2e-5b4e0fd90f98)
+- **Full MCP tool federation with custom tool list preservation** — Federation support extended to most MCP tools so cloud agents can query any team member's tools; custom tool lists defined by the user are preserved through the federation layer — [Implement federation for MCP tools and preserve custom tool list](http://localhost:38388/activity/sessions/ccc92d29-cdd7-4fe4-aed3-53ef45bd9273)
+- **Power-state-aware teams relay** — The teams relay now respects macOS power state, allowing the system to sleep normally during idle periods; users can opt in to always-on mode to keep the relay active at all times — [Implement power-state aware teams relay with opt‑out](http://localhost:38388/activity/sessions/7c188874-9603-4535-97bb-e78cae84ea26)
+- **Response summary limit raised to 15k characters** — Agent response summaries can now store up to 15,000 characters (up from 5,000); the activity store was refactored to enforce this unified limit consistently across all code paths, preventing premature truncation of valuable agent output — [Update response summary limits to 15k characters](http://localhost:38388/activity/sessions/8769038e-a356-49e9-96ea-abb7dcffb023), [Refactor activity store to enforce unified 15k response summary limit](http://localhost:38388/activity/sessions/005e8d98-56d3-44c4-b380-5b100b5c8586)
+
+### Fixed
+
+- Fix GitHub Actions release step failing on stale release tag — a stale release/tag left over from a prior failed run blocked the "Create GitHub Release" action; deleting the stale tag restored the release pipeline — [Fix GitHub Actions release tag error by deleting stale release](http://localhost:38388/activity/sessions/9ca1f98f-3c67-43ec-b2a8-10cad4678f9d)
+- Fix Oak upgrade CLI path resolution for skills and MCP server commands — the upgrade command incorrectly resolved skill and MCP server entry points to `main.py` rather than the correct command path, causing upgrades to silently wire the wrong binary — [Fix Oak upgrade CLI command path resolution for skills and MCP servers](http://localhost:38388/activity/sessions/e1afcd26-14d8-43f4-8dbd-048498932b4a)
+
+### Changed
+
+- Remove unused keys from `.oak/config.yaml` — stale configuration keys that no longer map to any code paths were removed, slimming the config surface and reducing confusion for new users — [Refactor .oak/config.yaml by removing unused configuration keys](http://localhost:38388/activity/sessions/ce2b6057-e6d9-48fc-ade6-674d2136b1d9)
+- Resolve Dependabot security alerts and rebase PR 75 — outstanding security alerts addressed and the feature branch brought up to date with main ahead of merge — [Refactor PR 75, Resolve Dependabot Alerts, Rebase onto Main](http://localhost:38388/activity/sessions/cff1a079-7054-4427-92e9-ebc7e374fc6a)
+
+### Notes
+
+> **Gotcha**: The cloud-relay UI auto‑start toggle reads `team.cloudRelay.autoStart` from local component state, which is only populated when `GET /cloud-relay/status` is queried on mount. Any extension to the start/deploy route that omits `auto_start` from its response will cause the UI to always show "Auto‑start: off". See [`cloud_relay.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/cloud_relay.py) and [`TeamConfig.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/components/team/TeamConfig.tsx).
+
+> **Gotcha**: Rapid consecutive policy edits (e.g. toggling `federated_tools` quickly in the UI) can trigger a WebSocket reconnect storm — `update_team_policy()` calls `request_reconnect()` on the relay client, which relies on a backoff loop that may not be robust under aggressive saves. Debounce policy updates on the frontend to avoid spin-up loops. See [`cloud_relay/client.py`](src/open_agent_kit/features/codebase_intelligence/cloud_relay/client.py).
+
 ## [2026-03-02]
 
 ### Added

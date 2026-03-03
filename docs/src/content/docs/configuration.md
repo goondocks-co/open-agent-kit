@@ -20,8 +20,6 @@ agents:
 rfc:
   directory: oak/rfc
   template: engineering
-  auto_number: true
-  number_format: sequential
   validate_on_create: true
 ```
 
@@ -89,7 +87,7 @@ If your team already has these files, OAK will **append** constitution reference
 
 ## MCP Tools
 
-The daemon exposes eight tools for agents via the Model Context Protocol:
+The daemon exposes ten tools for agents via the Model Context Protocol:
 
 | Tool | Description |
 |------|-------------|
@@ -101,5 +99,7 @@ The daemon exposes eight tools for agents via the Model Context Protocol:
 | `oak_memories` | Browse stored memories/observations |
 | `oak_stats` | Get project intelligence statistics |
 | `oak_activity` | View tool execution history for a session |
+| `oak_archive_memories` | Archive observations from the search index |
+| `oak_nodes` | List connected team relay nodes |
 
 See the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for full parameter documentation.
