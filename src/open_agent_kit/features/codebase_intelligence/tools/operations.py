@@ -54,7 +54,10 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
 
     from open_agent_kit.features.codebase_intelligence.activity.store import ActivityStore
-    from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.base import (
+        PolicyAccessor,
+        RelayClient,
+    )
     from open_agent_kit.features.codebase_intelligence.memory.store import VectorStore
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
@@ -75,6 +78,7 @@ class ToolOperations:
         activity_store: ActivityStore | None = None,
         vector_store: VectorStore | None = None,
         relay_client: RelayClient | None = None,
+        policy_accessor: PolicyAccessor | None = None,
     ) -> None:
         """Initialize operations.
 
@@ -83,11 +87,13 @@ class ToolOperations:
             activity_store: ActivityStore for session data (optional).
             vector_store: VectorStore for stats (optional).
             relay_client: RelayClient for network search (optional).
+            policy_accessor: Callable returning DataCollectionPolicy (optional).
         """
         self.engine = retrieval_engine
         self.activity_store = activity_store
         self.vector_store = vector_store
         self.relay_client = relay_client
+        self._policy_accessor = policy_accessor
 
     # ------------------------------------------------------------------
     # Shared federation helpers
@@ -127,11 +133,20 @@ class ToolOperations:
 
         return format_node_results(nodes)
 
+    def _is_federation_allowed(self) -> bool:
+        """Check if federated tools are allowed by policy."""
+        if self._policy_accessor is None:
+            return True
+        policy = self._policy_accessor()
+        return policy.federated_tools if policy else True
+
     def _federate_if_requested(
         self, tool_name: str, args: dict[str, Any], local_result: str
     ) -> str:
         """Append federated results from peer nodes if include_network is set."""
         if not args.get("include_network") or self.relay_client is None:
+            return local_result
+        if not self._is_federation_allowed():
             return local_result
         try:
             # Strip include_network to prevent recursion on peer nodes
@@ -223,6 +238,7 @@ class ToolOperations:
             input_data.include_network
             and self.relay_client is not None
             and search_type != SEARCH_TYPE_CODE
+            and self._is_federation_allowed()
         ):
             try:
                 coro = self.relay_client.search_network(
@@ -292,7 +308,11 @@ class ToolOperations:
         )
 
         # Federate memories only (code stays local — branch/worktree differences).
-        if input_data.include_network and self.relay_client is not None:
+        if (
+            input_data.include_network
+            and self.relay_client is not None
+            and self._is_federation_allowed()
+        ):
             try:
                 coro = self.relay_client.search_network(
                     query=input_data.task,

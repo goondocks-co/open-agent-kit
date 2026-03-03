@@ -23,17 +23,25 @@ export default function TeamPolicy() {
     const updatePolicy = useUpdateTeamPolicy();
 
     const [syncObservations, setSyncObservations] = useState(true);
+    const [federatedTools, setFederatedTools] = useState(true);
     const [isDirty, setIsDirty] = useState(false);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     useEffect(() => {
         if (policy && !isDirty) {
             setSyncObservations(policy.sync_observations);
+            setFederatedTools(policy.federated_tools);
         }
     }, [policy, isDirty]);
 
-    const handleChange = (value: boolean) => {
+    const handleSyncObsChange = (value: boolean) => {
         setSyncObservations(value);
+        setIsDirty(true);
+        setMessage(null);
+    };
+
+    const handleFederatedToolsChange = (value: boolean) => {
+        setFederatedTools(value);
         setIsDirty(true);
         setMessage(null);
     };
@@ -41,7 +49,10 @@ export default function TeamPolicy() {
     const handleSave = async () => {
         setMessage(null);
         try {
-            await updatePolicy.mutateAsync({ sync_observations: syncObservations } as PolicyUpdate);
+            await updatePolicy.mutateAsync({
+                sync_observations: syncObservations,
+                federated_tools: federatedTools,
+            } as PolicyUpdate);
             setMessage({ type: "success", text: "Sync policy saved." });
             setIsDirty(false);
         } catch (err) {
@@ -84,21 +95,40 @@ export default function TeamPolicy() {
                     </div>
                 )}
 
-                <div className="flex items-start gap-3">
-                    <input
-                        type="checkbox"
-                        id="policy_sync_observations"
-                        checked={syncObservations}
-                        onChange={(e) => handleChange(e.target.checked)}
-                        disabled={updatePolicy.isPending}
-                        className="h-4 w-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
-                    <label htmlFor="policy_sync_observations" className="flex-1">
-                        <span className="text-sm font-medium">Sync observations</span>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Share codebase observations and plans with the team. Includes activity-based and agent-based observations.
-                        </p>
-                    </label>
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <input
+                            type="checkbox"
+                            id="policy_sync_observations"
+                            checked={syncObservations}
+                            onChange={(e) => handleSyncObsChange(e.target.checked)}
+                            disabled={updatePolicy.isPending}
+                            className="h-4 w-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <label htmlFor="policy_sync_observations" className="flex-1">
+                            <span className="text-sm font-medium">Sync observations</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Share codebase observations and plans with the team. Includes activity-based and agent-based observations.
+                            </p>
+                        </label>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <input
+                            type="checkbox"
+                            id="policy_federated_tools"
+                            checked={federatedTools}
+                            onChange={(e) => handleFederatedToolsChange(e.target.checked)}
+                            disabled={updatePolicy.isPending}
+                            className="h-4 w-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <label htmlFor="policy_federated_tools" className="flex-1">
+                            <span className="text-sm font-medium">Federated tools</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Allow your node to participate in cross-team tool calls and search.
+                                Other team members can query your memories, sessions, and context.
+                            </p>
+                        </label>
+                    </div>
                 </div>
             </CardContent>
             <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">

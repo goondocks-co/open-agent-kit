@@ -4,13 +4,18 @@ These routes expose MCP tool functionality via HTTP for external callers.
 The actual tool handlers use RetrievalEngine directly (same process).
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+from open_agent_kit.features.codebase_intelligence.daemon.state import (
+    get_data_collection_policy,
+    get_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +62,7 @@ async def call_mcp_tool(
     handler = MCPToolHandler(
         retrieval_engine=state.retrieval_engine,
         relay_client=state.cloud_relay_client,
+        policy_accessor=get_data_collection_policy,
     )
 
     # Run in a thread pool so the event loop stays free for relay coroutines

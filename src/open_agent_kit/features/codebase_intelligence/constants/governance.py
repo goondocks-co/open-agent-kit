@@ -66,3 +66,4 @@ GOVERNANCE_RETENTION_DAYS_MAX: Final[int] = 365
 # =============================================================================
 
 DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT: Final[bool] = True
+DATA_COLLECTION_FEDERATED_TOOLS_DEFAULT: Final[bool] = True

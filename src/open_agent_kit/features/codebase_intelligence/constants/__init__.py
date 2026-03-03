@@ -284,6 +284,7 @@ from open_agent_kit.features.codebase_intelligence.constants.cloud_relay import 
     CLOUD_RELAY_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
     CLOUD_RELAY_ERROR_CONNECTION_FAILED,
     CLOUD_RELAY_ERROR_DEPLOY_FAILED,
+    CLOUD_RELAY_ERROR_FEDERATION_DISABLED,
     CLOUD_RELAY_ERROR_NO_DEPLOY_URL,
     CLOUD_RELAY_ERROR_NOT_AUTHENTICATED,
     CLOUD_RELAY_ERROR_NPM_INSTALL_FAILED,
@@ -530,6 +531,7 @@ from open_agent_kit.features.codebase_intelligence.constants.daemon import (
 
 # --- governance ---
 from open_agent_kit.features.codebase_intelligence.constants.governance import (
+    DATA_COLLECTION_FEDERATED_TOOLS_DEFAULT,
     DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT,
     GOVERNANCE_ACTION_ALLOW,
     GOVERNANCE_ACTION_DENY,

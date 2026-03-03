@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from open_agent_kit.features.codebase_intelligence.constants import (
+    DATA_COLLECTION_FEDERATED_TOOLS_DEFAULT,
     DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT,
     GOVERNANCE_ACTION_OBSERVE,
     GOVERNANCE_ACTIONS,
@@ -28,6 +29,7 @@ class DataCollectionPolicy:
     """
 
     sync_observations: bool = DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT
+    federated_tools: bool = DATA_COLLECTION_FEDERATED_TOOLS_DEFAULT
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DataCollectionPolicy":
@@ -35,11 +37,13 @@ class DataCollectionPolicy:
             sync_observations=data.get(
                 "sync_observations", DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT
             ),
+            federated_tools=data.get("federated_tools", DATA_COLLECTION_FEDERATED_TOOLS_DEFAULT),
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "sync_observations": self.sync_observations,
+            "federated_tools": self.federated_tools,
         }
 
 

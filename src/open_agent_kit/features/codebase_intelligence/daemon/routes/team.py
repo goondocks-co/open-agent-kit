@@ -71,12 +71,14 @@ class PolicyResponse(BaseModel):
     """Data-collection policy (governance.data_collection)."""
 
     sync_observations: bool = True
+    federated_tools: bool = True
 
 
 class PolicyUpdate(BaseModel):
     """Partial update for data-collection policy."""
 
     sync_observations: bool | None = None
+    federated_tools: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +316,7 @@ async def get_team_policy() -> PolicyResponse:
     dc = ci_config.governance.data_collection
     return PolicyResponse(
         sync_observations=dc.sync_observations,
+        federated_tools=dc.federated_tools,
     )
 
 
@@ -331,11 +334,25 @@ async def update_team_policy(update: PolicyUpdate) -> PolicyResponse:
     ci_config = load_ci_config(project_root)
     dc = ci_config.governance.data_collection
 
+    # Snapshot capability-affecting fields before update
+    prev = (dc.sync_observations, dc.federated_tools)
+
     if update.sync_observations is not None:
         dc.sync_observations = update.sync_observations
+    if update.federated_tools is not None:
+        dc.federated_tools = update.federated_tools
+
+    capabilities_changed = (dc.sync_observations, dc.federated_tools) != prev
 
     save_ci_config(project_root, ci_config)
     state = get_state()
     state.ci_config = None
+
+    # Trigger relay reconnect so capabilities are re-registered
+    if capabilities_changed and state.cloud_relay_client is not None:
+        try:
+            await state.cloud_relay_client.request_reconnect()
+        except Exception as exc:
+            logger.warning("Failed to trigger relay reconnect after policy change: %s", exc)
 
     return await get_team_policy()

@@ -1,4 +1,4 @@
-version: 1.4.1.dev4+ga9eb47dba.d20260303
+version: 1.4.2.dev0+g29e956b6e.d20260303
 agents:
 - vscode-copilot
 - opencode
@@ -141,6 +141,7 @@ codebase_intelligence:
     retention_days: 30
     data_collection:
       sync_observations: true
+      federated_tools: true
   team:
     sync_interval_seconds: 3
     project_slug: null

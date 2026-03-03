@@ -585,3 +585,170 @@ class TestFullRoundTripSmoke:
             assert not result.get("isError"), f"{tool_name} returned error: {result}"
             assert result["content"][0]["type"] == "text"
             assert len(result["content"][0]["text"]) > 0, f"{tool_name} returned empty text"
+
+
+# =============================================================================
+# 10. Federation policy enforcement through MCPToolHandler
+# =============================================================================
+
+
+class TestFederationPolicySmoke:
+    """Full MCPToolHandler dispatch with federated_tools policy toggling.
+
+    Verifies that when the policy accessor returns federated_tools=False,
+    tools with include_network=True silently return local-only results
+    (no relay calls made). When policy allows federation, relay calls proceed.
+    """
+
+    @pytest.fixture
+    def disabled_policy_handler(
+        self,
+        mock_engine: MagicMock,
+        seeded_store: ActivityStore,
+        mock_vector_store: MagicMock,
+        mock_relay_client: MagicMock,
+    ) -> MCPToolHandler:
+        """MCPToolHandler with federated_tools=False policy."""
+        from open_agent_kit.features.codebase_intelligence.config.governance import (
+            DataCollectionPolicy,
+        )
+
+        mock_engine.activity_store = seeded_store
+        mock_engine.store = mock_vector_store
+        policy = DataCollectionPolicy(federated_tools=False)
+        return MCPToolHandler(
+            mock_engine,
+            relay_client=mock_relay_client,
+            policy_accessor=lambda: policy,
+        )
+
+    @pytest.fixture
+    def enabled_policy_handler(
+        self,
+        mock_engine: MagicMock,
+        seeded_store: ActivityStore,
+        mock_vector_store: MagicMock,
+        mock_relay_client: MagicMock,
+    ) -> MCPToolHandler:
+        """MCPToolHandler with federated_tools=True policy."""
+        from open_agent_kit.features.codebase_intelligence.config.governance import (
+            DataCollectionPolicy,
+        )
+
+        mock_engine.activity_store = seeded_store
+        mock_engine.store = mock_vector_store
+        policy = DataCollectionPolicy(federated_tools=True)
+        return MCPToolHandler(
+            mock_engine,
+            relay_client=mock_relay_client,
+            policy_accessor=lambda: policy,
+        )
+
+    def _patch_loop(self, relay_return: dict):
+        mock_loop = MagicMock()
+        mock_loop.is_running.return_value = False
+        mock_loop.run_until_complete.return_value = relay_return
+        return patch("asyncio.get_event_loop", return_value=mock_loop)
+
+    # -- Policy disabled: federation silently skipped -------------------------
+
+    def test_search_skips_network_when_disabled(
+        self, disabled_policy_handler: MCPToolHandler
+    ) -> None:
+        result = disabled_policy_handler.handle_tool_call(
+            "oak_search", {"query": "auth", "include_network": True}
+        )
+        text = _text(result)
+        assert "Network Results" not in text
+        assert "Network Memories" not in text
+
+    def test_sessions_skips_network_when_disabled(
+        self, disabled_policy_handler: MCPToolHandler
+    ) -> None:
+        result = disabled_policy_handler.handle_tool_call(
+            "oak_sessions", {"limit": 5, "include_network": True}
+        )
+        text = _text(result)
+        assert "Network Results" not in text
+
+    def test_memories_skips_network_when_disabled(
+        self, disabled_policy_handler: MCPToolHandler
+    ) -> None:
+        result = disabled_policy_handler.handle_tool_call(
+            "oak_memories", {"include_network": True}
+        )
+        text = _text(result)
+        assert "Network Results" not in text
+
+    def test_context_skips_network_when_disabled(
+        self, disabled_policy_handler: MCPToolHandler
+    ) -> None:
+        result = disabled_policy_handler.handle_tool_call(
+            "oak_context", {"task": "implement auth", "include_network": True}
+        )
+        text = _text(result)
+        assert "Network Memories" not in text
+
+    def test_stats_skips_network_when_disabled(
+        self, disabled_policy_handler: MCPToolHandler
+    ) -> None:
+        result = disabled_policy_handler.handle_tool_call(
+            "oak_stats", {"include_network": True}
+        )
+        text = _text(result)
+        assert "Network Results" not in text
+
+    # -- Policy enabled: federation proceeds ----------------------------------
+
+    def test_search_includes_network_when_enabled(
+        self,
+        enabled_policy_handler: MCPToolHandler,
+        mock_relay_client: MagicMock,
+    ) -> None:
+        network_return = {
+            "results": [{"observation": "Network hit", "machine_id": "smoke-node-1"}]
+        }
+        with self._patch_loop(network_return):
+            result = enabled_policy_handler.handle_tool_call(
+                "oak_search", {"query": "auth", "include_network": True}
+            )
+        text = _text(result)
+        assert "Network Results" in text
+
+    def test_sessions_includes_network_when_enabled(
+        self, enabled_policy_handler: MCPToolHandler
+    ) -> None:
+        federated_return = {
+            "results": [
+                {
+                    "from_machine_id": "smoke-node-1",
+                    "result": {"content": [{"type": "text", "text": "Remote sessions"}]},
+                }
+            ]
+        }
+        with self._patch_loop(federated_return):
+            result = enabled_policy_handler.handle_tool_call(
+                "oak_sessions", {"limit": 5, "include_network": True}
+            )
+        text = _text(result)
+        assert "Network Results" in text
+
+    # -- No relay calls made when policy disabled -----------------------------
+
+    def test_relay_not_called_when_policy_disabled(
+        self,
+        disabled_policy_handler: MCPToolHandler,
+        mock_relay_client: MagicMock,
+    ) -> None:
+        """Relay methods should never be invoked when policy disables federation."""
+        disabled_policy_handler.handle_tool_call(
+            "oak_search", {"query": "auth", "include_network": True}
+        )
+        disabled_policy_handler.handle_tool_call(
+            "oak_sessions", {"limit": 5, "include_network": True}
+        )
+        disabled_policy_handler.handle_tool_call(
+            "oak_context", {"task": "test", "include_network": True}
+        )
+        mock_relay_client.search_network.assert_not_called()
+        mock_relay_client.federate_tool_call.assert_not_called()

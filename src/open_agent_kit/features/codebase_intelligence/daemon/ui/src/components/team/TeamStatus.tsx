@@ -18,6 +18,9 @@ import {
 import { cn } from "@/lib/utils";
 import type { OnlineNode, RelayStatus, SyncStatus } from "@/hooks/use-team";
 
+// Capability subsumed by federated_tools_v1 — hidden from badge display.
+const CAPABILITY_FEDERATED_SEARCH = "federated_search_v1";
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -187,7 +190,9 @@ export function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
                                     <span className="text-sm font-mono">{node.machine_id}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    {node.capabilities?.map((cap) => (
+                                    {node.capabilities
+                                        ?.filter((cap) => cap !== CAPABILITY_FEDERATED_SEARCH)
+                                        .map((cap) => (
                                         <span
                                             key={cap}
                                             className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400"

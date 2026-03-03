@@ -20,6 +20,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.base import PolicyAccessor
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
@@ -384,12 +385,14 @@ class MCPToolHandler:
         self,
         retrieval_engine: RetrievalEngine,
         relay_client: Any | None = None,
+        policy_accessor: PolicyAccessor | None = None,
     ) -> None:
         """Initialize handler.
 
         Args:
             retrieval_engine: RetrievalEngine instance for all operations.
             relay_client: Optional RelayClient for network search.
+            policy_accessor: Optional callable returning DataCollectionPolicy.
         """
         from open_agent_kit.features.codebase_intelligence.tools import ToolOperations
 
@@ -398,6 +401,7 @@ class MCPToolHandler:
             activity_store=getattr(retrieval_engine, "activity_store", None),
             vector_store=getattr(retrieval_engine, "store", None),
             relay_client=relay_client,
+            policy_accessor=policy_accessor,
         )
 
     def handle_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:

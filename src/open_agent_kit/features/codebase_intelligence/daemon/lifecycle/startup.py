@@ -13,9 +13,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from open_agent_kit.features.codebase_intelligence.config.governance import DataCollectionPolicy
-
 from fastapi import FastAPI
 
 from open_agent_kit.config.paths import OAK_DIR
@@ -30,7 +27,10 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_LOG_FILE,
     SHUTDOWN_TASK_TIMEOUT_SECONDS,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+from open_agent_kit.features.codebase_intelligence.daemon.state import (
+    get_data_collection_policy,
+    get_state,
+)
 from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
 
 if TYPE_CHECKING:
@@ -374,18 +374,11 @@ def _init_team_sync(state: "DaemonState") -> None:
     state.activity_store.team_outbox_enabled = True
 
     # Wire policy accessor so outbox hooks can check data collection policy
-    def _policy_accessor() -> "DataCollectionPolicy":
-        from open_agent_kit.features.codebase_intelligence.config.governance import (
-            DataCollectionPolicy,
-        )
-        from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
+    state.activity_store._team_policy_accessor = get_data_collection_policy
 
-        s = get_state()
-        if s.ci_config and s.ci_config.governance:
-            return s.ci_config.governance.data_collection
-        return DataCollectionPolicy()
-
-    state.activity_store._team_policy_accessor = _policy_accessor
+    # Also wire policy accessor into the relay client so capabilities are dynamic
+    if state.cloud_relay_client is not None:
+        state.cloud_relay_client.set_policy_accessor(get_data_collection_policy)
 
     from open_agent_kit.features.codebase_intelligence.team.identity import (
         get_project_identity,

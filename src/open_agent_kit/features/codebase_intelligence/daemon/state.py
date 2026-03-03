@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.agents.scheduler import AgentScheduler
     from open_agent_kit.features.codebase_intelligence.cloud_relay.base import RelayClient
     from open_agent_kit.features.codebase_intelligence.config import CIConfig
+    from open_agent_kit.features.codebase_intelligence.config.governance import (
+        DataCollectionPolicy,
+    )
     from open_agent_kit.features.codebase_intelligence.embeddings import EmbeddingProviderChain
     from open_agent_kit.features.codebase_intelligence.governance.engine import GovernanceEngine
     from open_agent_kit.features.codebase_intelligence.indexing.indexer import (
@@ -690,3 +693,20 @@ def reset_state() -> None:
     Useful for testing.
     """
     daemon_state.reset()
+
+
+def get_data_collection_policy() -> "DataCollectionPolicy":
+    """Return the live data-collection policy from daemon state.
+
+    Falls back to a default ``DataCollectionPolicy`` when config is not
+    yet loaded.  Designed to be passed as a callable policy accessor to
+    relay clients, tool operations, and outbox hooks.
+    """
+    from open_agent_kit.features.codebase_intelligence.config.governance import (
+        DataCollectionPolicy,
+    )
+
+    s = get_state()
+    if s.ci_config and s.ci_config.governance:
+        return s.ci_config.governance.data_collection
+    return DataCollectionPolicy()

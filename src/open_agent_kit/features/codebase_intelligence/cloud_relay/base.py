@@ -7,13 +7,20 @@ WebSocket-based cloud relay through a Cloudflare Worker.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.config.governance import (
+        DataCollectionPolicy,
+    )
     from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
         ObsApplierProtocol,
     )
+
+    #: Callable that returns the live DataCollectionPolicy from daemon state.
+    PolicyAccessor = Callable[[], DataCollectionPolicy]
 
 from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_RESPONSE_KEY_CONNECTED,
@@ -119,6 +126,12 @@ class RelayClient(ABC):
 
     def set_obs_applier(self, applier: ObsApplierProtocol) -> None:  # noqa: B027
         """Set the applier for incoming observation batches from peers."""
+
+    def set_policy_accessor(self, accessor: PolicyAccessor) -> None:  # noqa: B027
+        """Set a callable that returns the current DataCollectionPolicy."""
+
+    async def request_reconnect(self) -> None:  # noqa: B027
+        """Close the WebSocket to trigger a reconnect with updated capabilities."""
 
     async def push_observations(self, observations: list[dict]) -> None:  # noqa: B027
         """Push observations to peer nodes via relay. No-op by default."""

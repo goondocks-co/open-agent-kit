@@ -74,10 +74,12 @@ export interface TeamMembersResponse {
 
 export interface PolicyResponse {
     sync_observations: boolean;
+    federated_tools: boolean;
 }
 
 export interface PolicyUpdate {
     sync_observations?: boolean;
+    federated_tools?: boolean;
 }
 
 // =============================================================================

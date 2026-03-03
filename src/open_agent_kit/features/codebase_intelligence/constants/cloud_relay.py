@@ -256,6 +256,9 @@ CLOUD_RELAY_ERROR_NOT_AUTHENTICATED: Final[str] = "Not authenticated with Cloudf
 CLOUD_RELAY_ERROR_DEPLOY_FAILED: Final[str] = "wrangler deploy failed"
 CLOUD_RELAY_ERROR_NO_DEPLOY_URL: Final[str] = "Could not parse Worker URL from deploy output"
 CLOUD_RELAY_ERROR_CONNECTION_FAILED: Final[str] = "Connection failed"
+CLOUD_RELAY_ERROR_FEDERATION_DISABLED: Final[str] = (
+    "Federated tools are disabled by policy on this node"
+)
 
 # Start endpoint phase log messages
 CI_CLOUD_RELAY_LOG_PHASE_SCAFFOLD: Final[str] = "Cloud relay: scaffolding Worker project"

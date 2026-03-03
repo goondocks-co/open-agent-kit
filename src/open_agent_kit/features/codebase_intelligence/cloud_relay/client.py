@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.codebase_intelligence.cloud_relay.base import PolicyAccessor
     from open_agent_kit.features.codebase_intelligence.team.sync.obs_applier import (
         ObsApplierProtocol,
     )
@@ -68,6 +69,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS,
     CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS,
     CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
+    CLOUD_RELAY_ERROR_FEDERATION_DISABLED,
     CLOUD_RELAY_FEDERATE_TOOL_PATH,
     CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS,
     CLOUD_RELAY_FEDERATED_TOOL_TIMEOUT_SECONDS,
@@ -161,6 +163,9 @@ class CloudRelayClient(RelayClient):
         self._machine_id: str = ""
         self._online_nodes: list[dict] = []
         self._obs_applier: ObsApplierProtocol | None = None
+
+        # Policy accessor (set during startup to read live governance config)
+        self._policy_accessor: PolicyAccessor | None = None
 
         # Persistent HTTP client for daemon calls (created on connect, closed on disconnect)
         self._http_client: httpx.AsyncClient | None = None
@@ -313,17 +318,23 @@ class CloudRelayClient(RelayClient):
         )
 
         tools = await self._get_available_tools()
+
+        # Build capabilities list dynamically based on policy settings
+        capabilities: list[str] = []
+        policy = self._policy_accessor() if self._policy_accessor else None
+        if policy is None or policy.sync_observations:
+            capabilities.append(CLOUD_RELAY_CAPABILITY_OBS_SYNC)
+        if policy is None or policy.federated_tools:
+            capabilities.append(CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH)
+            capabilities.append(CLOUD_RELAY_CAPABILITY_FEDERATED_TOOLS)
+
         register_msg = RegisterMessage(
             token=self._token or "",
             tools=tools,
             machine_id=self._machine_id,
             oak_version=getattr(open_agent_kit, "__version__", ""),
             template_hash=compute_template_hash(),
-            capabilities=[
-                CLOUD_RELAY_CAPABILITY_OBS_SYNC,
-                CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH,
-                CLOUD_RELAY_CAPABILITY_FEDERATED_TOOLS,
-            ],
+            capabilities=capabilities,
         )
         await self._ws.send(register_msg.model_dump_json())
 
@@ -515,6 +526,25 @@ class CloudRelayClient(RelayClient):
         """Set the applier for incoming obs batches from peer nodes."""
         self._obs_applier = applier
 
+    def set_policy_accessor(self, accessor: PolicyAccessor) -> None:
+        """Set a callable that returns the current DataCollectionPolicy."""
+        self._policy_accessor = accessor
+
+    def _is_federation_allowed(self) -> bool:
+        """Check if federated tools are allowed by the current policy."""
+        if not self._policy_accessor:
+            return True
+        policy = self._policy_accessor()
+        return policy is None or policy.federated_tools
+
+    async def request_reconnect(self) -> None:
+        """Close the WebSocket to trigger a reconnect with updated capabilities."""
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception as exc:
+                logger.debug("Error closing WS for reconnect: %s", exc)
+
     @property
     def online_nodes(self) -> list[dict]:
         """List of online nodes from relay presence updates."""
@@ -626,6 +656,17 @@ class CloudRelayClient(RelayClient):
         Args:
             query: The search query message from the relay.
         """
+        # Check policy before executing
+        if not self._is_federation_allowed():
+            response = SearchResultMessage(
+                request_id=query.request_id,
+                from_machine_id=self._machine_id,
+                error=CLOUD_RELAY_ERROR_FEDERATION_DISABLED,
+            )
+            if self._ws:
+                await self._ws.send(response.model_dump_json())
+            return
+
         try:
             port = self._daemon_port
             url = CLOUD_RELAY_DAEMON_SEARCH_URL_TEMPLATE.format(port=port)
@@ -746,6 +787,17 @@ class CloudRelayClient(RelayClient):
         Follows the same pattern as _handle_search_query: run the local call,
         build a response, apply the size guard, and send over WebSocket.
         """
+        # Check policy before executing
+        if not self._is_federation_allowed():
+            response = FederatedToolResultMessage(
+                request_id=call.request_id,
+                from_machine_id=self._machine_id,
+                error=CLOUD_RELAY_ERROR_FEDERATION_DISABLED,
+            )
+            if self._ws:
+                await self._ws.send(response.model_dump_json())
+            return
+
         try:
             result = await self._call_daemon(
                 call.tool_name,
