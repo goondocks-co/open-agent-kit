@@ -70,7 +70,10 @@ Cloud Relay exposes all MCP tools registered with your local Oak CI daemon. This
 - **Context** — Task-relevant context aggregation
 - **Activity history** — Session and activity browsing
 
-The relay also supports **federated search** — when team sync is active, search queries are fanned out to all connected nodes and results are merged.
+The relay also supports **federated queries** — when team sync is active:
+
+- **Federated search** — Search queries are fanned out to all connected nodes and results are merged. Agents use `include_network=true` on `oak_search`, `oak_context`, `oak_sessions`, `oak_memories`, or `oak_stats`.
+- **Federated tool calls** — Any MCP tool call can be routed to a specific remote node via `node_id`, or broadcast to all nodes. This works for both local agents with local MCP and cloud agents connected via Streamable HTTP.
 
 The relay does **not** expose the full Oak CI web dashboard or direct filesystem access. Cloud agents interact exclusively through the structured MCP tool protocol.
 

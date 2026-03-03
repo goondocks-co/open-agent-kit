@@ -38,6 +38,7 @@ The daemon only allows requests from `localhost` and active tunnel URLs. Externa
 |--------|------|-------------|
 | `GET` | `/api/search` | Semantic search. Query params: `q`, `limit`, `type` |
 | `POST` | `/api/search` | JSON body search |
+| `POST` | `/api/search/network` | Federated search across connected relay nodes |
 | `POST` | `/api/fetch` | Retrieve full content for specific chunk IDs |
 | `POST` | `/api/remember` | Store a memory observation |
 | `POST` | `/api/context` | Get relevant context for a task |
@@ -134,10 +135,10 @@ Endpoints for the [Agent Client Protocol](/open-agent-kit/features/codebase-inte
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/acp/server/status` | Check if ACP server is running |
-| `POST` | `/api/acp/server/start` | Start the ACP server subprocess |
-| `POST` | `/api/acp/server/stop` | Stop the ACP server subprocess |
-| `GET` | `/api/acp/server/logs` | Get recent ACP server logs |
+| `GET` | `/api/acp/status` | Check if ACP server is running |
+| `POST` | `/api/acp/start` | Start the ACP server subprocess |
+| `POST` | `/api/acp/stop` | Stop the ACP server subprocess |
+| `GET` | `/api/acp/logs` | Get recent ACP server logs |
 
 ### Backup
 
@@ -171,5 +172,21 @@ Endpoints for the [Agent Client Protocol](/open-agent-kit/features/codebase-inte
 | `POST` | `/api/devtools/reprocess-observations` | Reprocess observation extraction |
 | `POST` | `/api/devtools/resolve-stale-observations` | Find and resolve stale observations |
 | `GET` | `/api/devtools/memory-stats` | Get detailed memory statistics |
+
+### MCP
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/mcp/tools` | List available MCP tools |
+| `POST` | `/api/mcp/call` | Call an MCP tool (query param: `tool_name`) |
+
+### Cloud Relay & Team
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/team/status` | Team sync connection status |
+| `GET` | `/api/team/members` | List online team members |
+| `GET` | `/api/team/config` | Get team sync configuration |
+| `PUT` | `/api/team/config` | Update team sync configuration |
 
 See also the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for the MCP protocol tools exposed to agents.

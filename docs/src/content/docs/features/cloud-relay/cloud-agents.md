@@ -125,8 +125,14 @@ Cloud Relay exposes all MCP tools registered with your local Oak CI daemon. The 
 | `oak_memories` | Browse stored memories |
 | `oak_stats` | Get project intelligence statistics |
 | `oak_activity` | View tool execution history |
+| `oak_archive_memories` | Archive observations from search index |
+| `oak_nodes` | List connected team relay nodes |
 
 These are the same tools available to local agents — cloud agents get identical capabilities through the relay. See the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for full parameter documentation.
+
+### Federated Tool Calls
+
+When multiple nodes are connected through the relay, cloud agents can use the `include_network` parameter on supported tools (`oak_search`, `oak_context`, `oak_sessions`, `oak_memories`, `oak_stats`) to fan out queries to all nodes and receive merged results. The `node_id` parameter on `oak_resolve_memory`, `oak_activity`, and `oak_archive_memories` targets a specific remote node. Use `oak_nodes` to discover available nodes and their capabilities.
 
 ## Multiple Agents
 

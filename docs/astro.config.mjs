@@ -149,6 +149,7 @@ export default defineConfig({
             { label: "CLI Commands", slug: "cli" },
             { label: "Configuration", slug: "configuration" },
             { label: "MCP Tools", slug: "api/mcp-tools" },
+            { label: "Release Process", slug: "releasing" },
           ],
         },
         { label: "Troubleshooting", slug: "troubleshooting" },

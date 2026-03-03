@@ -37,9 +37,17 @@ Every node is a peer. One developer **deploys** the relay Worker (the "publisher
 Team sync shares **observations only** — the distilled knowledge extracted from coding sessions. Raw session data, prompts, and tool logs remain on each developer's machine. This keeps the sync payload small and respects developer privacy.
 :::
 
-### Federated Search
+### Federated Search & Tool Calls
 
-When team sync is active, search queries are automatically fanned out to all connected nodes. Each node searches its local index and returns results, which are merged and ranked. This means your agents can find code patterns and memories from across the entire team — without any node needing a copy of another's full index.
+When team sync is active, MCP tool queries can be **federated** across all connected nodes through the relay:
+
+- **Search fan-out** — Set `include_network=true` on `oak_search`, `oak_context`, `oak_sessions`, `oak_memories`, or `oak_stats` to fan the query out to all connected nodes. Each node executes against its local index and returns results, which are merged and ranked. This means your agents can find code patterns and memories from across the entire team — without any node needing a copy of another's full index.
+- **Targeted tool calls** — Set `node_id` on `oak_resolve_memory`, `oak_activity`, or `oak_archive_memories` to route the call to a specific remote node. Use `oak_nodes` to discover available nodes and their capabilities.
+- **Cloud agent access** — Cloud agents connected via [Streamable HTTP](/open-agent-kit/features/cloud-relay/cloud-agents/) have the same federation capabilities as local agents.
+
+:::note[Code search stays local]
+`include_network` is not available for `search_type="code"` — code is project-specific and searching another machine's index would return irrelevant file paths. Memory, session, plan, and stats queries federate well because they are project-agnostic knowledge.
+:::
 
 ## Getting Started
 

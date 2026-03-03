@@ -17,6 +17,7 @@ import {
     useAgentRuns,
     useCancelAgentRun,
     useRunAgent,
+    useRunTask,
     useDeleteAgentRun,
     type AgentRun,
     type AgentRunStatus,
@@ -478,7 +479,10 @@ export default function RunHistory() {
     );
     const cancelRun = useCancelAgentRun();
     const runAgent = useRunAgent();
+    const runTask = useRunTask();
     const deleteRun = useDeleteAgentRun();
+
+    const taskNames = new Set(agentsData?.tasks?.map((t) => t.name) || []);
 
     const runs = runsData?.runs || [];
     const total = runsData?.total || 0;
@@ -505,7 +509,11 @@ export default function RunHistory() {
 
     const handleRerun = async (agentName: string, task: string) => {
         try {
-            await runAgent.mutateAsync({ agentName, task });
+            if (taskNames.has(agentName)) {
+                await runTask.mutateAsync({ taskName: agentName });
+            } else {
+                await runAgent.mutateAsync({ agentName, task });
+            }
         } catch {
             // Error handling is in the mutation
         }
@@ -643,7 +651,7 @@ export default function RunHistory() {
                                 onRerun={handleRerun}
                                 onDelete={handleDeleteRun}
                                 isCancelling={cancelRun.isPending}
-                                isRerunning={runAgent.isPending}
+                                isRerunning={runAgent.isPending || runTask.isPending}
                                 isDeleting={deleteRun.isPending}
                             />
                         ))}

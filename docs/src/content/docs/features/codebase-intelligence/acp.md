@@ -127,10 +127,10 @@ The ACP integration adds these endpoints to the daemon's REST API:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/acp/server/status` | Check if the ACP server is running |
-| `POST` | `/api/acp/server/start` | Start the ACP server subprocess |
-| `POST` | `/api/acp/server/stop` | Stop the ACP server subprocess |
-| `GET` | `/api/acp/server/logs` | Get recent ACP server logs |
+| `GET` | `/api/acp/status` | Check if the ACP server is running |
+| `POST` | `/api/acp/start` | Start the ACP server subprocess |
+| `POST` | `/api/acp/stop` | Stop the ACP server subprocess |
+| `GET` | `/api/acp/logs` | Get recent ACP server logs |
 
 ## Execution Events
 

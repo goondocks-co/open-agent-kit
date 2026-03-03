@@ -3,7 +3,7 @@ title: MCP Tools Reference
 description: Reference documentation for the MCP tools exposed by the Codebase Intelligence daemon.
 ---
 
-The Codebase Intelligence daemon exposes eight tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
+The Codebase Intelligence daemon exposes ten tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
 
 | Tool | Purpose |
 |------|---------|
@@ -15,6 +15,21 @@ The Codebase Intelligence daemon exposes eight tools via the [Model Context Prot
 | [`oak_memories`](#oak_memories) | Browse stored memories |
 | [`oak_stats`](#oak_stats) | Get project intelligence statistics |
 | [`oak_activity`](#oak_activity) | View tool execution history |
+| [`oak_archive_memories`](#oak_archive_memories) | Archive observations from search index |
+| [`oak_nodes`](#oak_nodes) | List connected team relay nodes |
+
+### Federation Parameters
+
+When [Team Sync](/open-agent-kit/features/teams/) is active and a [Cloud Relay](/open-agent-kit/features/cloud-relay/) is connected, several tools support **federated queries** across connected nodes:
+
+| Parameter | Type | Available On | Description |
+|-----------|------|--------------|-------------|
+| `include_network` | boolean | `oak_search`, `oak_context`, `oak_sessions`, `oak_memories`, `oak_stats` | Fan out the query to all connected nodes and merge results |
+| `node_id` | string | `oak_resolve_memory`, `oak_activity`, `oak_archive_memories` | Target a specific remote node (use `oak_nodes` to discover nodes) |
+
+:::tip[Discover nodes first]
+Use `oak_nodes` to list connected relay nodes and their capabilities before targeting them with `node_id` in other tools.
+:::
 
 ## oak_search
 
@@ -28,6 +43,7 @@ Search the codebase, project memories, and past implementation plans using seman
 | `search_type` | string | No | `"all"` | What to search: `"all"`, `"code"`, `"memory"`, `"plans"`, or `"sessions"` |
 | `include_resolved` | boolean | No | `false` | Include resolved/superseded memories in results |
 | `limit` | integer | No | `10` | Maximum results to return (1–50) |
+| `include_network` | boolean | No | `false` | Also search across connected team nodes via the cloud relay. Not available for `"code"` searches. |
 
 ### Response
 
@@ -111,6 +127,7 @@ Get relevant context for your current task. Call this when starting work on some
 | `task` | string | Yes | — | Description of what you're working on |
 | `current_files` | array of strings | No | — | Files currently being viewed/edited |
 | `max_tokens` | integer | No | `2000` | Maximum tokens of context to return |
+| `include_network` | boolean | No | `false` | Also fetch memories from connected team nodes. Code context stays local-only. |
 
 ### Response
 
@@ -148,6 +165,7 @@ Mark a memory observation as resolved or superseded. Use this after completing w
 | `id` | string | Yes | — | The observation ID to resolve |
 | `status` | string | No | `"resolved"` | New status: `"resolved"` or `"superseded"` |
 | `reason` | string | No | — | Optional reason for resolution |
+| `node_id` | string | No | — | Target a specific remote node (use `oak_nodes` to discover nodes) |
 
 ### Response
 
@@ -186,6 +204,7 @@ List recent coding sessions with their status and summaries. Use this to underst
 |-----------|------|----------|---------|-------------|
 | `limit` | integer | No | `10` | Maximum sessions to return (1–20) |
 | `include_summary` | boolean | No | `true` | Include session summaries in output |
+| `include_network` | boolean | No | `false` | Also fetch sessions from connected team nodes |
 
 ### Response
 
@@ -226,6 +245,7 @@ Browse stored memories and observations. Use this to review what the system has 
 | `limit` | integer | No | `20` | Maximum memories to return (1–100) |
 | `status` | string | No | `"active"` | Filter by status: `"active"`, `"resolved"`, `"superseded"` |
 | `include_resolved` | boolean | No | `false` | Include all statuses regardless of status filter |
+| `include_network` | boolean | No | `false` | Also fetch memories from connected team nodes |
 
 ### Response
 
@@ -262,7 +282,9 @@ Get project intelligence statistics including indexed code chunks, unique files,
 
 ### Parameters
 
-This tool takes no parameters.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `include_network` | boolean | No | `false` | Also fetch stats from connected team nodes |
 
 ### Response
 
@@ -291,6 +313,7 @@ View tool execution history for a specific session. Shows what tools were used, 
 | `session_id` | string | Yes | — | The session ID to get activities for |
 | `tool_name` | string | No | — | Filter activities by tool name |
 | `limit` | integer | No | `50` | Maximum activities to return (1–200) |
+| `node_id` | string | No | — | Target a specific remote node (use `oak_nodes` to discover nodes) |
 
 ### Response
 
@@ -316,3 +339,67 @@ Returns a list of tool executions with:
   "tool_name": "Bash",
   "limit": 20
 }
+```
+
+---
+
+## oak_archive_memories
+
+Archive observations from the ChromaDB search index. Archived observations remain in SQLite for historical queries but stop appearing in vector search results. Use this for bulk cleanup of stale resolved or superseded observations.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `ids` | array of strings | No | — | Specific observation IDs to archive |
+| `status_filter` | string | No | — | Archive by status: `"resolved"`, `"superseded"`, or `"both"` |
+| `older_than_days` | integer | No | — | Only archive observations older than this many days (minimum 1) |
+| `dry_run` | boolean | No | `false` | If true, return count without actually archiving |
+| `node_id` | string | No | — | Target a specific remote node (use `oak_nodes` to discover nodes) |
+
+:::note
+You must provide either `ids` or `status_filter` — at least one selection criterion is required.
+:::
+
+### Response
+
+Returns the number of observations archived (or that would be archived in dry-run mode).
+
+### Examples
+
+```json
+{
+  "status_filter": "both",
+  "older_than_days": 30,
+  "dry_run": true
+}
+```
+
+```json
+{
+  "ids": ["obs_abc123", "obs_def456"]
+}
+```
+
+---
+
+## oak_nodes
+
+List connected team relay nodes. Shows machine IDs, online status, OAK version, and capabilities for each node. Use this to discover available nodes before targeting them with `node_id` in other tools.
+
+### Parameters
+
+This tool takes no parameters.
+
+### Response
+
+Returns a list of connected nodes with:
+- Machine ID
+- Online status
+- OAK version
+- Capabilities (`federated_search_v1`, `federated_tools_v1`)
+
+### Example
+
+```json
+{}

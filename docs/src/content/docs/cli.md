@@ -17,10 +17,11 @@ Initialize Open Agent Kit in the current project. Creates the `.oak` directory s
 
 | Flag | Description |
 |------|-------------|
-| `--agent, -a` | Choose AI agent(s) — can be specified multiple times (claude, copilot, codex, cursor, gemini, windsurf) |
-| `--language, -l` | Choose language(s) for code intelligence — can be specified multiple times |
+| `--agent, -a` | Choose AI agent(s) — can be specified multiple times (claude, vscode-copilot, codex, cursor, gemini, windsurf) |
 | `--force, -f` | Force re-initialization |
 | `--no-interactive` | Skip interactive prompts and use defaults |
+
+Language selection happens interactively during `oak init` when you choose which AST parsers to install.
 
 **Examples:**
 
@@ -28,11 +29,11 @@ Initialize Open Agent Kit in the current project. Creates the `.oak` directory s
 # Interactive mode with multi-select checkboxes
 oak init
 
-# With specific agent and languages
-oak init --agent claude --language python --language typescript
+# With specific agent
+oak init --agent claude
 
 # Multiple agents
-oak init --agent claude --agent copilot
+oak init --agent claude --agent vscode-copilot
 
 # Add agents to existing installation
 oak init --agent cursor

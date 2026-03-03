@@ -11,6 +11,7 @@ lifecycle including:
 import asyncio
 import logging
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
@@ -229,9 +230,16 @@ class AgentExecutor:
             model = effective_execution.provider.model
 
         # Build a clean env for the SDK subprocess.
-        # Strip CLAUDECODE so the child process doesn't refuse to start
-        # with "cannot be launched inside another Claude Code session".
+        # The SDK merges os.environ with options.env (user env wins on overlap),
+        # so we must explicitly blank CLAUDECODE rather than just omitting it —
+        # otherwise the daemon's value leaks through from os.environ.
         clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        clean_env["CLAUDECODE"] = ""
+
+        # Prefer the system-installed claude binary over the SDK's bundled one.
+        # The user authenticates via `/login` against the system binary; the
+        # bundled binary may be a different version with incompatible auth state.
+        system_cli = shutil.which("claude")
 
         options = ClaudeAgentOptions(
             system_prompt=agent.system_prompt,
@@ -241,6 +249,8 @@ class AgentExecutor:
             cwd=str(self._project_root),
             env=clean_env,
         )
+        if system_cli:
+            options.cli_path = system_cli
 
         # Set model if specified
         if model:
@@ -585,18 +595,51 @@ class AgentExecutor:
             run.turns_used = turns_count
             if result_text_parts:
                 run.result = "\n".join(result_text_parts)
-            run.status = AgentRunStatus.COMPLETED
-            run.completed_at = datetime.now()
-            logger.info(
-                f"Agent run {run.id} completed: status={run.status}, "
-                f"turns={run.turns_used}, cost=${run.cost_usd or 0:.4f}"
-            )
+
+            if self._is_auth_failure(run.result, run.cost_usd, turns_count):
+                run.status = AgentRunStatus.FAILED
+                run.error = (
+                    "Authentication failed: the Claude Code subprocess is not logged in. "
+                    "Try restarting the daemon after running /login, or check that the "
+                    "claude binary is accessible in the daemon's PATH."
+                )
+                run.completed_at = datetime.now()
+                logger.warning(
+                    f"Agent run {run.id} detected as auth failure: "
+                    f"result={run.result!r}, cost={run.cost_usd}, turns={turns_count}"
+                )
+            else:
+                run.status = AgentRunStatus.COMPLETED
+                run.completed_at = datetime.now()
+                logger.info(
+                    f"Agent run {run.id} completed: status={run.status}, "
+                    f"turns={run.turns_used}, cost=${run.cost_usd or 0:.4f}"
+                )
 
         finally:
             self._restore_provider_env(original_env)
 
         self._persist_run_completion(run)
         return run
+
+    @staticmethod
+    def _is_auth_failure(
+        result: str | None,
+        cost: float | None,
+        turns: int,
+    ) -> bool:
+        """Detect Claude Code auth failures that masquerade as successful completions.
+
+        When the subprocess can't authenticate (e.g. missing OAuth tokens after daemon
+        restart), it returns a short "Not logged in" message with zero cost in one turn.
+        """
+        if turns > 1:
+            return False
+        if cost is not None and cost > 0:
+            return False
+        if not result:
+            return False
+        return "not logged in" in result.lower()
 
     def _log_execution_start(
         self,
