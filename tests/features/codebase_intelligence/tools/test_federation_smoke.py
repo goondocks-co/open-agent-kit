@@ -674,9 +674,7 @@ class TestFederationPolicySmoke:
     def test_memories_skips_network_when_disabled(
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
-        result = disabled_policy_handler.handle_tool_call(
-            "oak_memories", {"include_network": True}
-        )
+        result = disabled_policy_handler.handle_tool_call("oak_memories", {"include_network": True})
         text = _text(result)
         assert "Network Results" not in text
 
@@ -692,9 +690,7 @@ class TestFederationPolicySmoke:
     def test_stats_skips_network_when_disabled(
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
-        result = disabled_policy_handler.handle_tool_call(
-            "oak_stats", {"include_network": True}
-        )
+        result = disabled_policy_handler.handle_tool_call("oak_stats", {"include_network": True})
         text = _text(result)
         assert "Network Results" not in text
 
@@ -705,9 +701,7 @@ class TestFederationPolicySmoke:
         enabled_policy_handler: MCPToolHandler,
         mock_relay_client: MagicMock,
     ) -> None:
-        network_return = {
-            "results": [{"observation": "Network hit", "machine_id": "smoke-node-1"}]
-        }
+        network_return = {"results": [{"observation": "Network hit", "machine_id": "smoke-node-1"}]}
         with self._patch_loop(network_return):
             result = enabled_policy_handler.handle_tool_call(
                 "oak_search", {"query": "auth", "include_network": True}
