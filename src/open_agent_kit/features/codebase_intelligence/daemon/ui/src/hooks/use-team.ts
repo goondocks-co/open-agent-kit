@@ -58,6 +58,25 @@ export interface SyncStatus {
     events_sent_total: number;
 }
 
+export interface RelayMetrics {
+    total_federated_calls: number;
+    cache_hits: number;
+    cache_misses: number;
+    cache_hit_rate: number;
+    per_tool: Record<string, {
+        total: number;
+        hits: number;
+        misses: number;
+        avg_latency_ms: number | null;
+        p95_latency_ms: number | null;
+    }>;
+    recent_latencies: Array<{
+        tool_name: string;
+        latency_ms: number;
+        created_at: string;
+    }>;
+}
+
 export interface TeamStatusResponse {
     configured: boolean;
     connected: boolean;
@@ -65,6 +84,7 @@ export interface TeamStatusResponse {
     online_nodes: OnlineNode[];
     sync: SyncStatus | null;
     relay_pending: Record<string, number>;
+    relay_metrics: RelayMetrics | null;
 }
 
 export interface TeamMembersResponse {

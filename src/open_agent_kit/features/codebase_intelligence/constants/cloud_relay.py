@@ -315,10 +315,12 @@ CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: Final[str] = "update_available"
 CLOUD_RELAY_OBS_STATS_PATH: Final[str] = "/obs/stats"
 CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS: Final[float] = 5.0
 
+# Federation metrics endpoint
+CLOUD_RELAY_METRICS_PATH: Final[str] = "/metrics"
+CLOUD_RELAY_METRICS_TIMEOUT_SECONDS: Final[float] = 5.0
+
 # Capability identifiers (sent in RegisterMessage for feature negotiation)
 CLOUD_RELAY_CAPABILITY_OBS_SYNC: Final[str] = "obs_sync_v1"
-CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH: Final[str] = "federated_search_v1"
-
 # Federated search
 CLOUD_RELAY_FEDERATED_SEARCH_TIMEOUT_SECONDS: Final[float] = 3.0
 CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT: Final[int] = 10

@@ -21,6 +21,9 @@ from open_agent_kit.features.codebase_intelligence.utils.redact import redact_se
 class Activity:
     """A single tool execution event."""
 
+    MAX_TOOL_OUTPUT_LENGTH = 4000
+    MAX_ERROR_MESSAGE_LENGTH = 2000
+
     id: int | None = None
     session_id: str = ""
     prompt_batch_id: int | None = None  # Links to the prompt batch
@@ -55,13 +58,17 @@ class Activity:
             "tool_name": self.tool_name,
             "tool_input": json.dumps(self.tool_input) if self.tool_input else None,
             "tool_output_summary": (
-                self.tool_output_summary[:2000] if self.tool_output_summary else None
+                self.tool_output_summary[: self.MAX_TOOL_OUTPUT_LENGTH]
+                if self.tool_output_summary
+                else None
             ),
             "file_path": self.file_path,
             "files_affected": json.dumps(self.files_affected) if self.files_affected else None,
             "duration_ms": self.duration_ms,
             "success": self.success,
-            "error_message": self.error_message[:1000] if self.error_message else None,
+            "error_message": (
+                self.error_message[: self.MAX_ERROR_MESSAGE_LENGTH] if self.error_message else None
+            ),
             "timestamp": self.timestamp.isoformat(),
             "timestamp_epoch": int(self.timestamp.timestamp()),
             "processed": self.processed,
@@ -136,8 +143,8 @@ class PromptBatch:
     MAX_PROMPT_LENGTH = 10000
     # Maximum plan content length (100K chars for large plans)
     MAX_PLAN_CONTENT_LENGTH = 100000
-    # Maximum response summary length (5K chars captures most summaries)
-    MAX_RESPONSE_SUMMARY_LENGTH = 5000
+    # Maximum response summary length (15K chars captures most summaries)
+    MAX_RESPONSE_SUMMARY_LENGTH = 15000
 
     def _compute_content_hash(self) -> str:
         """Compute content hash for deduplication."""

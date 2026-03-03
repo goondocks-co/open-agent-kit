@@ -260,7 +260,7 @@ def _try_promote_to_plan(
         agent,
     )
     # Re-fetch the full response at PLAN_CONTENT_MAX_LENGTH.
-    # response_summary is capped at RESPONSE_SUMMARY_MAX_LENGTH (5K)
+    # response_summary is capped at RESPONSE_SUMMARY_MAX_LENGTH
     # which is too short for plans. Re-parse from transcript or body
     # at the higher limit to capture the complete plan.
     from open_agent_kit.features.codebase_intelligence.constants import (
@@ -542,8 +542,12 @@ async def hook_agent_thought(request: Request) -> dict:
 
             prompt_batch_id = get_active_batch_id(state.activity_store, session_id)
 
-            # Truncate thought text if too long (keep first 2000 chars for summary)
-            summary = thought_text[:2000] if len(thought_text) > 2000 else thought_text
+            # Truncate thought text if too long
+            summary = (
+                thought_text[: Activity.MAX_TOOL_OUTPUT_LENGTH]
+                if len(thought_text) > Activity.MAX_TOOL_OUTPUT_LENGTH
+                else thought_text
+            )
 
             activity = Activity(
                 session_id=session_id,

@@ -7,6 +7,7 @@
  *   POST /search         — federated search fan-out to connected peers (relay_token auth)
  *   POST /federate-tool  — generic federated tool fan-out to peers (relay_token auth)
  *   POST /tool-call      — node-to-node tool call routing (relay_token auth)
+ *   GET  /metrics        — federation cache + latency metrics (relay_token auth)
  *   GET  /health         — status check
  */
 
@@ -128,6 +129,14 @@ export default {
 
     // ----- GET /obs/stats — pending obs counts per offline node -----
     if (path === "/obs/stats" && request.method === "GET") {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return authErr;
+      const doStub = getDurableObject(env);
+      return doStub.fetch(request);
+    }
+
+    // ----- GET /metrics — federation cache + latency metrics -----
+    if (path === "/metrics" && request.method === "GET") {
       const authErr = validateRelayTokenHttp(request, env);
       if (authErr) return authErr;
       const doStub = getDurableObject(env);

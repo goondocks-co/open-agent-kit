@@ -154,8 +154,16 @@ class RelayClient(ABC):
         tool_name: str,
         arguments: dict[str, Any],
         timeout: float = 10.0,
+        *,
+        no_cache: bool = False,
     ) -> dict[str, Any]:
         """Fan out a tool call to all peer nodes and collect results.
+
+        Args:
+            tool_name: MCP tool name to call on peers.
+            arguments: Tool arguments.
+            timeout: Request timeout in seconds.
+            no_cache: If True, bypass the relay-side result cache.
 
         Returns:
             Dict with ``results`` list (each entry has from_machine_id, result, error).

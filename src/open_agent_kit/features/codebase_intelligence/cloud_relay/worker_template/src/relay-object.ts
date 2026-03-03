@@ -39,6 +39,7 @@ import {
   type RelayMessage,
   type SearchQueryMessage,
   type SearchResultMessage,
+  type RelayMetricsResponse,
   type ToolCallRequest,
   type ToolCallResponse,
   type ToolInfo,
@@ -54,12 +55,27 @@ const MS_PER_DAY = 86_400_000;
 const FEDERATED_SEARCH_TIMEOUT_MS = 3_000;
 const FEDERATED_SEARCH_DEFAULT_LIMIT = 10;
 const FEDERATED_SEARCH_MAX_RESULTS = 50;
-const CAPABILITY_FEDERATED_SEARCH = "federated_search_v1";
 const CAPABILITY_FEDERATED_TOOLS = "federated_tools_v1";
 const FEDERATED_TOOL_TIMEOUT_MS = 10_000;
 const FEDERATED_TOOL_MAX_RESULTS = 50;
 /** Probability of running TTL cleanup on each obs push (1%). */
 const OBS_HISTORY_CLEANUP_PROBABILITY = 0.01;
+
+/** Cache TTL (in seconds) for federated tool calls, keyed by tool name. */
+const CACHE_TTL_BY_TOOL: Record<string, number> = {
+  oak_stats: 120,
+  oak_sessions: 60,
+  oak_memories: 60,
+};
+/** Probability of running expired-cache cleanup on each cache write (2%). */
+const CACHE_CLEANUP_PROBABILITY = 0.02;
+/** Maximum rows kept in relay_metrics before trimming oldest. */
+const METRICS_MAX_ROWS = 10_000;
+/** Probability of trimming relay_metrics on each metric insert (1%). */
+const METRICS_CLEANUP_PROBABILITY = 0.01;
+/** Metric event types recorded in relay_metrics. */
+const METRIC_EVENT_FAN_OUT = "fan_out";
+const METRIC_EVENT_CACHE_HIT = "cache_hit";
 
 export class RelayObject implements DurableObject {
   private state: DurableObjectState;
@@ -141,6 +157,35 @@ export class RelayObject implements DurableObject {
     // Migration: drop old table name if it exists from a prior deploy.
     this.state.storage.sql.exec("DROP TABLE IF EXISTS node_tools");
 
+    // Federated tool call cache — short-TTL results keyed by tool+args+peer set.
+    this.state.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS tool_cache (
+        cache_key TEXT PRIMARY KEY,
+        tool_name TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        node_set_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        ttl_seconds INTEGER NOT NULL
+      )
+    `);
+
+    // Relay metrics — fan-out and cache-hit counters + latency.
+    this.state.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS relay_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tool_name TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        latency_ms INTEGER,
+        node_count INTEGER,
+        created_at TEXT NOT NULL
+      )
+    `);
+    this.state.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_relay_metrics_tool_event ON relay_metrics(tool_name, event_type, latency_ms)"
+    );
+    // Drop legacy index superseded by the composite index above.
+    this.state.storage.sql.exec("DROP INDEX IF EXISTS idx_relay_metrics_created");
+
     // Rehydrate in-memory maps from SQLite on wake.
     this.rehydrateNodeState();
   }
@@ -182,6 +227,10 @@ export class RelayObject implements DurableObject {
 
     if (url.pathname === "/federate-tool" && request.method === "POST") {
       return this.handleFederatedToolFanout(request);
+    }
+
+    if (url.pathname === "/metrics" && request.method === "GET") {
+      return this.handleMetrics();
     }
 
     if (url.pathname === "/tool-call" && request.method === "POST") {
@@ -277,11 +326,17 @@ export class RelayObject implements DurableObject {
     const machineId = this.getMachineId(_ws);
     if (machineId) {
       this.stopHeartbeat(machineId);
-      this.nodeMetadata.delete(machineId);
-      this.nodeTools.delete(machineId);
-      this.removeNodeState(machineId);
-      if (machineId === this.homeMachineId) {
-        this.homeMachineId = null;
+      // Only clean up node state if this socket is still the active one for
+      // this machine.  When a node re-registers, handleRegister() closes the
+      // old socket *after* storing metadata for the new one.  If we
+      // unconditionally delete here, the new metadata is wiped.
+      if (this.isActiveSocket(_ws, machineId)) {
+        this.nodeMetadata.delete(machineId);
+        this.nodeTools.delete(machineId);
+        this.removeNodeState(machineId);
+        if (machineId === this.homeMachineId) {
+          this.homeMachineId = null;
+        }
       }
     }
     this.broadcastNodeList();
@@ -291,11 +346,13 @@ export class RelayObject implements DurableObject {
     const machineId = this.getMachineId(_ws);
     if (machineId) {
       this.stopHeartbeat(machineId);
-      this.nodeMetadata.delete(machineId);
-      this.nodeTools.delete(machineId);
-      this.removeNodeState(machineId);
-      if (machineId === this.homeMachineId) {
-        this.homeMachineId = null;
+      if (this.isActiveSocket(_ws, machineId)) {
+        this.nodeMetadata.delete(machineId);
+        this.nodeTools.delete(machineId);
+        this.removeNodeState(machineId);
+        if (machineId === this.homeMachineId) {
+          this.homeMachineId = null;
+        }
       }
     }
     this.broadcastNodeList();
@@ -320,6 +377,11 @@ export class RelayObject implements DurableObject {
 
     const machineId = msg.machine_id;
 
+    // Tag the new socket with machine_id BEFORE closing the old one.
+    // This ensures webSocketClose on the stale socket sees a newer active
+    // socket and skips metadata cleanup (via isActiveSocket).
+    ws.serializeAttachment({ machineId });
+
     // Close any existing connection for this machine_id.
     // NOTE: sockets are accepted without a CF tag (tag must be known at accept
     // time; machine_id arrives later in the register message). We use
@@ -334,11 +396,6 @@ export class RelayObject implements DurableObject {
         }
       }
     }
-
-    // Re-accept with machine_id tag. CF DO WS Hibernation API allows
-    // calling acceptWebSocket only once per WS. Since we already accepted
-    // above without a tag, we use serializeAttachment to store the machine_id.
-    ws.serializeAttachment({ machineId });
 
     // First node to register becomes the home node (preferred for unrouted calls).
     if (!this.homeMachineId) {
@@ -755,23 +812,8 @@ export class RelayObject implements DurableObject {
       return Response.json({ error: "missing query" }, { status: 400 });
     }
 
-    // Find capable peer sockets (excluding requester).
-    const capablePeers: { machineId: string; ws: WebSocket }[] = [];
-    const allSockets = this.state.getWebSockets();
-    const seen = new Set<string>();
+    const capablePeers = this.getCapablePeers(requesterMachineId, CAPABILITY_FEDERATED_TOOLS);
 
-    for (const ws of allSockets) {
-      const machineId = this.getMachineId(ws);
-      if (!machineId || machineId === requesterMachineId || seen.has(machineId)) continue;
-      seen.add(machineId);
-
-      const meta = this.nodeMetadata.get(machineId);
-      if (meta?.capabilities?.includes(CAPABILITY_FEDERATED_SEARCH)) {
-        capablePeers.push({ machineId, ws });
-      }
-    }
-
-    // No capable peers — return empty results immediately.
     if (capablePeers.length === 0) {
       return Response.json({ results: [] });
     }
@@ -787,7 +829,6 @@ export class RelayObject implements DurableObject {
     };
     const serialized = JSON.stringify(queryMsg);
 
-    // Track how many peers we actually sent to (some sends may fail).
     let sentCount = 0;
     for (const { machineId: peerId, ws } of capablePeers) {
       try {
@@ -802,7 +843,6 @@ export class RelayObject implements DurableObject {
       return Response.json({ results: [] });
     }
 
-    // Create aggregation promise with timeout.
     const resultsPromise = new Promise<SearchResultMessage[]>((resolve) => {
       const timer = setTimeout(() => {
         const entry = this.pendingSearch.get(requestId);
@@ -824,8 +864,6 @@ export class RelayObject implements DurableObject {
 
     const searchResults = await resultsPromise;
 
-    // Merge results from all responding peers, tagging each with source.
-    // Cap total results to prevent unbounded response sizes.
     const merged: Record<string, unknown>[] = [];
     for (const sr of searchResults) {
       for (const item of sr.results) {
@@ -844,7 +882,6 @@ export class RelayObject implements DurableObject {
 
     entry.results.push(msg);
 
-    // All peers responded — resolve early.
     if (entry.results.length >= entry.expectedCount) {
       clearTimeout(entry.timer);
       this.pendingSearch.delete(msg.request_id);
@@ -853,16 +890,17 @@ export class RelayObject implements DurableObject {
   }
 
   // -----------------------------------------------------------------------
-  // Federated tool call fan-out
+  // Federated tool call fan-out (with caching)
   // -----------------------------------------------------------------------
 
   private async handleFederatedToolFanout(request: Request): Promise<Response> {
+    const startTime = Date.now();
     const url = new URL(request.url);
     const requesterMachineId = url.searchParams.get("machine_id");
 
-    let body: { tool_name: string; arguments?: Record<string, unknown> };
+    let body: { tool_name: string; arguments?: Record<string, unknown>; no_cache?: boolean };
     try {
-      body = (await request.json()) as { tool_name: string; arguments?: Record<string, unknown> };
+      body = (await request.json()) as { tool_name: string; arguments?: Record<string, unknown>; no_cache?: boolean };
     } catch {
       return Response.json({ error: "invalid request body" }, { status: 400 });
     }
@@ -871,24 +909,27 @@ export class RelayObject implements DurableObject {
       return Response.json({ error: "missing tool_name" }, { status: 400 });
     }
 
-    // Find capable peer sockets (excluding requester).
-    const capablePeers: { machineId: string; ws: WebSocket }[] = [];
-    const allSockets = this.state.getWebSockets();
-    const seen = new Set<string>();
-
-    for (const ws of allSockets) {
-      const machineId = this.getMachineId(ws);
-      if (!machineId || machineId === requesterMachineId || seen.has(machineId)) continue;
-      seen.add(machineId);
-
-      const meta = this.nodeMetadata.get(machineId);
-      if (meta?.capabilities?.includes(CAPABILITY_FEDERATED_TOOLS)) {
-        capablePeers.push({ machineId, ws });
-      }
-    }
+    const capablePeers = this.getCapablePeers(requesterMachineId, CAPABILITY_FEDERATED_TOOLS);
 
     if (capablePeers.length === 0) {
       return Response.json({ results: [] });
+    }
+
+    // Check cache for cacheable tools.
+    const ttl = CACHE_TTL_BY_TOOL[body.tool_name];
+    let cacheKey: string | undefined;
+    let nodeSetHash: string | undefined;
+
+    if (ttl && !body.no_cache) {
+      const peerMachineIds = capablePeers.map((p) => p.machineId);
+      const keyResult = await this.buildCacheKey(body.tool_name, body.arguments ?? {}, peerMachineIds);
+      cacheKey = keyResult.cacheKey;
+      nodeSetHash = keyResult.nodeSetHash;
+      const cached = this.getCachedResult(cacheKey);
+      if (cached) {
+        this.recordMetric(body.tool_name, METRIC_EVENT_CACHE_HIT, Date.now() - startTime, 0);
+        return Response.json({ ...cached, _cache: { hit: true } });
+      }
     }
 
     const requestId = crypto.randomUUID();
@@ -915,7 +956,6 @@ export class RelayObject implements DurableObject {
       return Response.json({ results: [] });
     }
 
-    // Create aggregation promise with timeout.
     const resultsPromise = new Promise<FederatedToolResultMessage[]>((resolve) => {
       const timer = setTimeout(() => {
         const entry = this.pendingFederatedTool.get(requestId);
@@ -936,8 +976,8 @@ export class RelayObject implements DurableObject {
     });
 
     const toolResults = await resultsPromise;
+    const latencyMs = Date.now() - startTime;
 
-    // Merge results from all responding peers (cap to prevent oversized responses).
     const merged: { from_machine_id: string; result?: unknown; error?: string }[] = [];
     for (const tr of toolResults) {
       if (merged.length >= FEDERATED_TOOL_MAX_RESULTS) break;
@@ -948,7 +988,15 @@ export class RelayObject implements DurableObject {
       });
     }
 
-    return Response.json({ results: merged });
+    const responseBody = { results: merged };
+
+    // Record fan-out metric and cache result if cacheable.
+    this.recordMetric(body.tool_name, METRIC_EVENT_FAN_OUT, latencyMs, sentCount);
+    if (cacheKey && nodeSetHash) {
+      this.setCachedResult(cacheKey, body.tool_name, responseBody, nodeSetHash, ttl);
+    }
+
+    return Response.json({ ...responseBody, _cache: { hit: false } });
   }
 
   private resolveFederatedToolResult(msg: FederatedToolResultMessage): void {
@@ -957,11 +1005,249 @@ export class RelayObject implements DurableObject {
 
     entry.results.push(msg);
 
-    // All peers responded — resolve early.
     if (entry.results.length >= entry.expectedCount) {
       clearTimeout(entry.timer);
       this.pendingFederatedTool.delete(msg.request_id);
       entry.resolve(entry.results);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Metrics endpoint
+  // -----------------------------------------------------------------------
+
+  private handleMetrics(): Response {
+    try {
+      // Aggregate counts by event type in a single query.
+      const aggRows = this.state.storage.sql.exec(
+        `SELECT event_type, COUNT(*) as cnt FROM relay_metrics
+         WHERE event_type IN (?, ?)
+         GROUP BY event_type`,
+        METRIC_EVENT_CACHE_HIT,
+        METRIC_EVENT_FAN_OUT,
+      ).toArray();
+
+      let cacheHits = 0;
+      let fanOutCount = 0;
+      for (const row of aggRows) {
+        if (row.event_type === METRIC_EVENT_CACHE_HIT) cacheHits = row.cnt as number;
+        else if (row.event_type === METRIC_EVENT_FAN_OUT) fanOutCount = row.cnt as number;
+      }
+      const totalCalls = cacheHits + fanOutCount;
+      const cacheHitRate = totalCalls > 0 ? cacheHits / totalCalls : 0;
+
+      // Per-tool breakdown with p95 computed via NTILE to avoid N+1 queries.
+      const perToolRows = this.state.storage.sql.exec(`
+        SELECT tool_name,
+               COUNT(*) as total,
+               SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END) as hits,
+               SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END) as misses,
+               AVG(CASE WHEN event_type = ? THEN latency_ms END) as avg_latency_ms
+        FROM relay_metrics
+        GROUP BY tool_name`,
+        METRIC_EVENT_CACHE_HIT,
+        METRIC_EVENT_FAN_OUT,
+        METRIC_EVENT_FAN_OUT,
+      ).toArray();
+
+      // Compute p95 latency per tool in a single query using NTILE window function.
+      const p95Rows = this.state.storage.sql.exec(`
+        SELECT tool_name, latency_ms FROM (
+          SELECT tool_name, latency_ms,
+                 NTILE(20) OVER (PARTITION BY tool_name ORDER BY latency_ms) as tile
+          FROM relay_metrics
+          WHERE event_type = ? AND latency_ms IS NOT NULL
+        ) WHERE tile = 20
+        GROUP BY tool_name`,
+        METRIC_EVENT_FAN_OUT,
+      ).toArray();
+
+      const p95Map = new Map<string, number>();
+      for (const row of p95Rows) {
+        p95Map.set(row.tool_name as string, row.latency_ms as number);
+      }
+
+      const perTool: Record<string, {
+        total: number; hits: number; misses: number;
+        avg_latency_ms: number | null; p95_latency_ms: number | null;
+      }> = {};
+
+      for (const row of perToolRows) {
+        const toolName = row.tool_name as string;
+        perTool[toolName] = {
+          total: row.total as number,
+          hits: row.hits as number,
+          misses: row.misses as number,
+          avg_latency_ms: row.avg_latency_ms != null ? Math.round(row.avg_latency_ms as number) : null,
+          p95_latency_ms: p95Map.get(toolName) ?? null,
+        };
+      }
+
+      // Recent latencies (last 20 fan-out events).
+      const recentRows = this.state.storage.sql.exec(
+        "SELECT tool_name, latency_ms, created_at FROM relay_metrics WHERE event_type = ? ORDER BY id DESC LIMIT 20",
+        METRIC_EVENT_FAN_OUT,
+      ).toArray();
+
+      const body: RelayMetricsResponse = {
+        total_federated_calls: totalCalls,
+        cache_hits: cacheHits,
+        cache_misses: fanOutCount,
+        cache_hit_rate: Math.round(cacheHitRate * 1000) / 1000,
+        per_tool: perTool,
+        recent_latencies: recentRows.map((r) => ({
+          tool_name: r.tool_name as string,
+          latency_ms: r.latency_ms as number,
+          created_at: r.created_at as string,
+        })),
+      };
+      return Response.json(body);
+    } catch (err) {
+      console.error("Failed to compute relay metrics:", err);
+      return Response.json({ error: "metrics computation failed" }, { status: 500 });
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Cache helpers
+  // -----------------------------------------------------------------------
+
+  /** Find all connected peers with a given capability, excluding the requester. */
+  private getCapablePeers(
+    excludeMachineId: string | null,
+    capability: string,
+  ): { machineId: string; ws: WebSocket }[] {
+    const peers: { machineId: string; ws: WebSocket }[] = [];
+    const allSockets = this.state.getWebSockets();
+    const seen = new Set<string>();
+
+    for (const ws of allSockets) {
+      const machineId = this.getMachineId(ws);
+      if (!machineId || machineId === excludeMachineId || seen.has(machineId)) continue;
+      seen.add(machineId);
+
+      const meta = this.nodeMetadata.get(machineId);
+      if (meta?.capabilities?.includes(capability)) {
+        peers.push({ machineId, ws });
+      }
+    }
+    return peers;
+  }
+
+  /** Build a deterministic cache key from tool name, args, and sorted peer IDs. */
+  private async buildCacheKey(
+    toolName: string,
+    args: Record<string, unknown>,
+    peerMachineIds: string[],
+  ): Promise<{ cacheKey: string; nodeSetHash: string }> {
+    const argsStr = JSON.stringify(args, Object.keys(args).sort());
+    const argsHex = (await this.sha256Payload(argsStr)).slice(0, 16);
+
+    const nodeStr = [...peerMachineIds].sort().join(",");
+    const nodeSetHash = (await this.sha256Payload(nodeStr)).slice(0, 8);
+
+    return { cacheKey: `fedcache:${toolName}:${argsHex}:${nodeSetHash}`, nodeSetHash };
+  }
+
+  /** Look up a cached result, returning null if expired or missing. */
+  private getCachedResult(cacheKey: string): Record<string, unknown> | null {
+    try {
+      const rows = this.state.storage.sql.exec(
+        "SELECT result_json, created_at, ttl_seconds FROM tool_cache WHERE cache_key = ?",
+        cacheKey,
+      ).toArray();
+
+      if (rows.length === 0) return null;
+
+      const row = rows[0];
+      const createdAt = new Date(row.created_at as string).getTime();
+      const ttl = (row.ttl_seconds as number) * 1000;
+      if (Date.now() - createdAt > ttl) {
+        // Expired — delete and return miss.
+        this.state.storage.sql.exec("DELETE FROM tool_cache WHERE cache_key = ?", cacheKey);
+        return null;
+      }
+
+      return JSON.parse(row.result_json as string) as Record<string, unknown>;
+    } catch (err) {
+      console.error("Cache lookup failed:", err);
+      return null;
+    }
+  }
+
+  /** Upsert a cached result and probabilistically clean expired entries. */
+  private setCachedResult(
+    cacheKey: string,
+    toolName: string,
+    result: unknown,
+    nodeSetHash: string,
+    ttlSeconds: number,
+  ): void {
+    try {
+      this.state.storage.sql.exec(
+        `INSERT INTO tool_cache (cache_key, tool_name, result_json, node_set_hash, created_at, ttl_seconds)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(cache_key) DO UPDATE SET
+           result_json = excluded.result_json,
+           node_set_hash = excluded.node_set_hash,
+           created_at = excluded.created_at,
+           ttl_seconds = excluded.ttl_seconds`,
+        cacheKey,
+        toolName,
+        JSON.stringify(result),
+        nodeSetHash,
+        new Date().toISOString(),
+        ttlSeconds,
+      );
+    } catch (err) {
+      console.error("Cache write failed:", err);
+    }
+
+    // Probabilistic cleanup of expired entries.
+    if (Math.random() < CACHE_CLEANUP_PROBABILITY) {
+      try {
+        // Delete entries older than their TTL.
+        this.state.storage.sql.exec(
+          "DELETE FROM tool_cache WHERE (julianday('now') - julianday(created_at)) * 86400 > ttl_seconds",
+        );
+      } catch (err) {
+        console.error("Cache cleanup failed:", err);
+      }
+    }
+  }
+
+  /** Record a metric event (fan_out or cache_hit) with probabilistic trimming. */
+  private recordMetric(
+    toolName: string,
+    eventType: typeof METRIC_EVENT_FAN_OUT | typeof METRIC_EVENT_CACHE_HIT,
+    latencyMs: number,
+    nodeCount: number,
+  ): void {
+    try {
+      this.state.storage.sql.exec(
+        "INSERT INTO relay_metrics (tool_name, event_type, latency_ms, node_count, created_at) VALUES (?, ?, ?, ?, ?)",
+        toolName,
+        eventType,
+        latencyMs,
+        nodeCount,
+        new Date().toISOString(),
+      );
+    } catch (err) {
+      console.error("Metric insert failed:", err);
+    }
+
+    // Probabilistic trim to keep table bounded.
+    if (Math.random() < METRICS_CLEANUP_PROBABILITY) {
+      try {
+        this.state.storage.sql.exec(
+          `DELETE FROM relay_metrics WHERE id NOT IN (
+             SELECT id FROM relay_metrics ORDER BY id DESC LIMIT ?
+           )`,
+          METRICS_MAX_ROWS,
+        );
+      } catch (err) {
+        console.error("Metrics cleanup failed:", err);
+      }
     }
   }
 
@@ -1088,6 +1374,16 @@ export class RelayObject implements DurableObject {
     } catch {
       return null;
     }
+  }
+
+  /** Check if a socket is still the active (newest) connection for a machineId.
+   *  Returns false if another socket has since replaced it (e.g., re-register). */
+  private isActiveSocket(ws: WebSocket, machineId: string): boolean {
+    const current = this.getSocketByMachineId(machineId);
+    // If no socket found for this machine, the node is fully gone — treat as active
+    // so the close handler can clean up.  If a different socket owns the machine_id,
+    // this is a stale close and we should skip cleanup.
+    return current === null || current === ws;
   }
 
   /** Get a WebSocket by machine_id, or null if not connected. */

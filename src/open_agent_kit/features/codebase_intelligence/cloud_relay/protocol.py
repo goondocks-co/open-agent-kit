@@ -183,7 +183,7 @@ class ObsPushMessage(BaseModel):
 class SearchQueryMessage(BaseModel):
     """Sent to request a federated search across connected nodes.
 
-    The relay fans this out to all nodes with the ``federated_search_v1``
+    The relay fans this out to all nodes with the ``federated_tools_v1``
     capability and collects results.
     """
 

@@ -29,7 +29,7 @@ import {
     useUpdateTeamConfig,
     useTeamLeave,
 } from "@/hooks/use-team";
-import { RelayDetails, ConnectedNodes, RelayBuffer, SyncStats } from "./TeamStatus";
+import { RelayDetails, ConnectedNodes, RelayBuffer, SyncStats, FederatedMetrics } from "./TeamStatus";
 import {
     ConnectionCard,
     JoinTeamCard,
@@ -193,6 +193,9 @@ export default function TeamRelay() {
                     <ConnectedNodes nodes={teamStatus.online_nodes ?? []} />
                     <RelayBuffer pending={teamStatus.relay_pending ?? {}} />
                     {teamStatus.sync?.enabled && <SyncStats sync={teamStatus.sync} />}
+                    {teamStatus.relay_metrics && (
+                        <FederatedMetrics metrics={teamStatus.relay_metrics} />
+                    )}
                 </div>
             )}
 

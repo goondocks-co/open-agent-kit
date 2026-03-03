@@ -243,6 +243,30 @@ export interface ToolInfo {
 }
 
 // ---------------------------------------------------------------------------
+// Relay metrics response (GET /metrics)
+// ---------------------------------------------------------------------------
+
+/** Shape of the GET /metrics response from the relay DO. */
+export interface RelayMetricsResponse {
+  total_federated_calls: number;
+  cache_hits: number;
+  cache_misses: number;
+  cache_hit_rate: number;
+  per_tool: Record<string, {
+    total: number;
+    hits: number;
+    misses: number;
+    avg_latency_ms: number | null;
+    p95_latency_ms: number | null;
+  }>;
+  recent_latencies: Array<{
+    tool_name: string;
+    latency_ms: number;
+    created_at: string;
+  }>;
+}
+
+// ---------------------------------------------------------------------------
 // Cloudflare environment bindings
 // ---------------------------------------------------------------------------
 

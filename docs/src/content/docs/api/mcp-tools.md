@@ -397,7 +397,7 @@ Returns a list of connected nodes with:
 - Machine ID
 - Online status
 - OAK version
-- Capabilities (`federated_search_v1`, `federated_tools_v1`)
+- Capabilities (`federated_tools_v1`)
 
 ### Example
 

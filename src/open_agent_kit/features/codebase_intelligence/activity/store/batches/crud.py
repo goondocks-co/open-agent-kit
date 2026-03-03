@@ -274,7 +274,7 @@ def update_prompt_batch_response(
     store: ActivityStore,
     batch_id: int,
     response_summary: str,
-    max_length: int = 5000,
+    max_length: int = PromptBatch.MAX_RESPONSE_SUMMARY_LENGTH,
 ) -> None:
     """Update a prompt batch with the agent's response summary.
 
@@ -282,7 +282,7 @@ def update_prompt_batch_response(
         store: The ActivityStore instance.
         batch_id: Prompt batch to update.
         response_summary: Agent's final response text.
-        max_length: Maximum length to store (default 5000 chars).
+        max_length: Maximum length to store.
     """
     truncated = response_summary[:max_length] if response_summary else None
     if truncated:

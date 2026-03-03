@@ -65,6 +65,7 @@ class TeamStatusResponse(BaseModel):
     online_nodes: list[dict[str, Any]] = []
     sync: dict[str, Any] | None = None
     relay_pending: dict[str, int] = {}
+    relay_metrics: dict[str, Any] | None = None
 
 
 class PolicyResponse(BaseModel):
@@ -231,6 +232,8 @@ async def leave_team() -> dict:
 @handle_route_errors("team status")
 async def get_team_status() -> TeamStatusResponse:
     """Return team connection and sync status via cloud relay."""
+    import asyncio
+
     import httpx
 
     from open_agent_kit.features.codebase_intelligence.constants import (
@@ -244,6 +247,7 @@ async def get_team_status() -> TeamStatusResponse:
     online_nodes: list[dict[str, Any]] = []
     is_connected = False
     relay_pending: dict[str, int] = {}
+    relay_metrics: dict[str, Any] | None = None
 
     if state.cloud_relay_client:
         status = state.cloud_relay_client.get_status()
@@ -251,20 +255,46 @@ async def get_team_status() -> TeamStatusResponse:
         is_connected = status.connected
         online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
 
-        # Fetch pending obs counts from the cloud relay when connected.
-        if is_connected and status.worker_url:
-            try:
+        # Fetch pending obs counts and federation metrics concurrently.
+        worker_url: str | None = status.worker_url
+        if is_connected and worker_url:
+            _url_base: str = worker_url  # narrowed for closures
+            from open_agent_kit.features.codebase_intelligence.cloud_relay.client import (
+                CloudRelayClient,
+            )
+
+            relay_client = state.cloud_relay_client
+
+            async def _fetch_obs_stats() -> dict[str, int]:
                 token = state.ci_config.cloud_relay.token if state.ci_config else None
                 headers = {"Authorization": f"Bearer {token}"} if token else {}
-                url = status.worker_url.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH
-                async with httpx.AsyncClient(
-                    timeout=CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS
-                ) as client:
-                    resp = await client.get(url, headers=headers)
-                if resp.status_code == HTTPStatus.OK:
-                    relay_pending = resp.json().get("pending", {})
-            except Exception as exc:
-                logger.debug("Failed to fetch relay obs stats: %s", exc)
+                try:
+                    url = _url_base.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH
+                    async with httpx.AsyncClient(
+                        timeout=CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS
+                    ) as client:
+                        resp = await client.get(url, headers=headers)
+                    if resp.status_code == HTTPStatus.OK:
+                        result: dict[str, int] = resp.json().get("pending", {})
+                        return result
+                except Exception as exc:
+                    logger.debug("Failed to fetch relay obs stats: %s", exc)
+                return {}
+
+            async def _fetch_metrics() -> dict[str, Any] | None:
+                if not isinstance(relay_client, CloudRelayClient):
+                    return None
+                try:
+                    data = await relay_client.fetch_relay_metrics()
+                    if "error" not in data:
+                        return data
+                except Exception as exc:
+                    logger.debug("Failed to fetch relay metrics: %s", exc)
+                return None
+
+            relay_pending, relay_metrics = await asyncio.gather(
+                _fetch_obs_stats(), _fetch_metrics()
+            )
     else:
         # No live client yet — surface the configured URL so the UI shows
         # "Disconnected" rather than "Not Configured".
@@ -287,6 +317,7 @@ async def get_team_status() -> TeamStatusResponse:
         online_nodes=online_nodes,
         sync=sync_status,
         relay_pending=relay_pending,
+        relay_metrics=relay_metrics,
     )
 
 

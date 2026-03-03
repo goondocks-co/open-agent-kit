@@ -291,7 +291,7 @@ INJECTION_MAX_MEMORIES: Final[int] = 10
 INJECTION_MAX_SESSION_SUMMARIES: Final[int] = 3
 
 # Summary generation limits
-SUMMARY_MAX_PLAN_CONTEXT_LENGTH: Final[int] = 1500
+SUMMARY_MAX_PLAN_CONTEXT_LENGTH: Final[int] = 3000
 
 # Session start injection text
 INJECTION_SESSION_SUMMARIES_TITLE: Final[str] = "## Recent Session Summaries (most recent first)"

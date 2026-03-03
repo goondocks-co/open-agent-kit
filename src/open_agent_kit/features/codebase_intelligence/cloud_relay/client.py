@@ -55,7 +55,6 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_CLOUD_RELAY_LOG_HEARTBEAT,
     CI_CLOUD_RELAY_LOG_HEARTBEAT_TIMEOUT,
     CI_CLOUD_RELAY_LOG_RECONNECTING,
-    CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH,
     CLOUD_RELAY_CAPABILITY_FEDERATED_TOOLS,
     CLOUD_RELAY_CAPABILITY_OBS_SYNC,
     CLOUD_RELAY_CLIENT_NAME,
@@ -77,6 +76,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS,
     CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS,
     CLOUD_RELAY_MAX_RESPONSE_BYTES,
+    CLOUD_RELAY_METRICS_PATH,
+    CLOUD_RELAY_METRICS_TIMEOUT_SECONDS,
     CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS,
     CLOUD_RELAY_OBS_HISTORY_PATH,
     CLOUD_RELAY_RECONNECT_BACKOFF_FACTOR,
@@ -325,7 +326,6 @@ class CloudRelayClient(RelayClient):
         if policy is None or policy.sync_observations:
             capabilities.append(CLOUD_RELAY_CAPABILITY_OBS_SYNC)
         if policy is None or policy.federated_tools:
-            capabilities.append(CLOUD_RELAY_CAPABILITY_FEDERATED_SEARCH)
             capabilities.append(CLOUD_RELAY_CAPABILITY_FEDERATED_TOOLS)
 
         register_msg = RegisterMessage(
@@ -738,7 +738,7 @@ class CloudRelayClient(RelayClient):
         """Initiate a federated search across connected relay nodes.
 
         Sends an HTTP POST to the relay worker which fans the query out
-        to all nodes with the ``federated_search_v1`` capability and
+        to all nodes with the ``federated_tools_v1`` capability and
         aggregates results.
 
         Args:
@@ -840,6 +840,8 @@ class CloudRelayClient(RelayClient):
         tool_name: str,
         arguments: dict[str, Any],
         timeout: float = 10.0,
+        *,
+        no_cache: bool = False,
     ) -> dict[str, Any]:
         """Fan out a tool call to all peer nodes and collect results.
 
@@ -850,6 +852,7 @@ class CloudRelayClient(RelayClient):
             tool_name: MCP tool name to call on peers.
             arguments: Tool arguments.
             timeout: Request timeout in seconds.
+            no_cache: If True, bypass the relay-side result cache.
 
         Returns:
             Dict with ``results`` list (each entry has from_machine_id, result, error).
@@ -864,13 +867,17 @@ class CloudRelayClient(RelayClient):
             )
             http_timeout = max(timeout, CLOUD_RELAY_FEDERATED_TOOL_TIMEOUT_SECONDS) + 1.0
 
+            body: dict[str, Any] = {
+                "tool_name": tool_name,
+                "arguments": arguments,
+            }
+            if no_cache:
+                body["no_cache"] = True
+
             client = self._http_client or httpx.AsyncClient()
             resp = await client.post(
                 url,
-                json={
-                    "tool_name": tool_name,
-                    "arguments": arguments,
-                },
+                json=body,
                 headers=self._relay_auth_headers(),
                 timeout=http_timeout,
             )
@@ -880,6 +887,31 @@ class CloudRelayClient(RelayClient):
         except Exception as exc:
             logger.warning("Federated tool call failed: %s", exc)
             return {"results": [], "error": str(exc)}
+
+    async def fetch_relay_metrics(self) -> dict[str, Any]:
+        """Fetch federation metrics from the relay worker.
+
+        Returns:
+            Dict with cache hit/miss counts, per-tool stats, and recent
+            latencies.  Returns ``{"error": ...}`` on failure.
+        """
+        if not self._worker_url or not self._token:
+            return {"error": "Relay not configured"}
+
+        try:
+            url = f"{self._worker_url.rstrip('/')}{CLOUD_RELAY_METRICS_PATH}"
+            client = self._http_client or httpx.AsyncClient()
+            resp = await client.get(
+                url,
+                headers=self._relay_auth_headers(),
+                timeout=CLOUD_RELAY_METRICS_TIMEOUT_SECONDS,
+            )
+            resp.raise_for_status()
+            data: dict[str, Any] = resp.json()
+            return data
+        except Exception as exc:
+            logger.debug("Failed to fetch relay metrics: %s", exc)
+            return {"error": str(exc)}
 
     async def call_remote_tool(
         self,

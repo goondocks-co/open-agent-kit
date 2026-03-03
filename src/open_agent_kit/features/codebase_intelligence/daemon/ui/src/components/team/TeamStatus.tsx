@@ -14,12 +14,10 @@ import {
     Send,
     Inbox,
     Package,
+    Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { OnlineNode, RelayStatus, SyncStatus } from "@/hooks/use-team";
-
-// Capability subsumed by federated_tools_v1 — hidden from badge display.
-const CAPABILITY_FEDERATED_SEARCH = "federated_search_v1";
+import type { OnlineNode, RelayMetrics, RelayStatus, SyncStatus } from "@/hooks/use-team";
 
 // =============================================================================
 // Helpers
@@ -191,8 +189,7 @@ export function ConnectedNodes({ nodes }: { nodes: OnlineNode[] }) {
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     {node.capabilities
-                                        ?.filter((cap) => cap !== CAPABILITY_FEDERATED_SEARCH)
-                                        .map((cap) => (
+                                        ?.map((cap) => (
                                         <span
                                             key={cap}
                                             className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400"
@@ -279,6 +276,82 @@ export function SyncStats({ sync }: { sync: SyncStatus }) {
                     <div className="flex items-start gap-2 p-3 rounded-md bg-red-500/10 text-red-600 text-sm mt-2">
                         <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                         <span>{sync.last_error}</span>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+export function FederatedMetrics({ metrics }: { metrics: RelayMetrics }) {
+    const hitRate = Math.round(metrics.cache_hit_rate * 100);
+    const toolEntries = Object.entries(metrics.per_tool);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Activity className="h-4 w-4" />
+                    Federation Metrics
+                </CardTitle>
+                <CardDescription>
+                    Federated tool call performance and cache efficiency.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {/* Summary row */}
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center p-2 rounded-md bg-muted/50">
+                        <div className="text-lg font-semibold">{metrics.total_federated_calls}</div>
+                        <div className="text-xs text-muted-foreground">Total Calls</div>
+                    </div>
+                    <div className="text-center p-2 rounded-md bg-muted/50">
+                        <div className="text-lg font-semibold">{hitRate}%</div>
+                        <div className="text-xs text-muted-foreground">Cache Hit Rate</div>
+                    </div>
+                    <div className="text-center p-2 rounded-md bg-muted/50">
+                        <div className="text-lg font-semibold">
+                            <span className="text-green-600">{metrics.cache_hits}</span>
+                            {" / "}
+                            <span className="text-amber-600">{metrics.cache_misses}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">Hits / Misses</div>
+                    </div>
+                </div>
+
+                {/* Per-tool table */}
+                {toolEntries.length > 0 && (
+                    <div className="border rounded-md overflow-hidden">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="bg-muted/50 text-xs text-muted-foreground">
+                                    <th className="text-left px-3 py-1.5 font-medium">Tool</th>
+                                    <th className="text-right px-3 py-1.5 font-medium">Avg (ms)</th>
+                                    <th className="text-right px-3 py-1.5 font-medium">p95 (ms)</th>
+                                    <th className="text-right px-3 py-1.5 font-medium">Hits</th>
+                                    <th className="text-right px-3 py-1.5 font-medium">Misses</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {toolEntries.map(([name, stats]) => (
+                                    <tr key={name} className="border-t">
+                                        <td className="px-3 py-1.5 font-mono text-xs">{name}</td>
+                                        <td className="text-right px-3 py-1.5 font-mono text-xs">
+                                            {stats.avg_latency_ms ?? "—"}
+                                        </td>
+                                        <td className="text-right px-3 py-1.5 font-mono text-xs">
+                                            {stats.p95_latency_ms ?? "—"}
+                                        </td>
+                                        <td className="text-right px-3 py-1.5 font-mono text-xs text-green-600">
+                                            {stats.hits}
+                                        </td>
+                                        <td className="text-right px-3 py-1.5 font-mono text-xs text-amber-600">
+                                            {stats.misses}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 )}
             </CardContent>
