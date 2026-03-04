@@ -12,3 +12,6 @@ export const DEPLOY_POLL_MS = 10000;
 
 /** Logs polling (5s) */
 export const LOGS_POLL_MS = 5000;
+
+/** Agent runs polling (5s) */
+export const AGENT_RUNS_POLL_MS = 5000;

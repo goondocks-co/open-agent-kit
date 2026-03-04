@@ -1,0 +1,60 @@
+# =============================================================================
+# Built-in Task: Cross-Project Report
+# =============================================================================
+# Task for: swarm-analysis agent
+#
+# Gathers data from all connected swarm nodes and produces a comparative
+# report highlighting shared patterns and divergences.
+# =============================================================================
+
+name: cross-project-report
+display_name: "Cross-Project Report"
+agent_type: swarm-analysis
+is_builtin: true
+description: >
+  Gathers data from all connected swarm nodes and produces a comparative
+  report on project health, activity levels, and shared patterns.
+
+default_task: |
+  Generate a cross-project report from the connected swarm nodes.
+
+  ## 1. Node Inventory
+
+  List all connected nodes with their project names, status, and capabilities.
+
+  ## 2. Activity Comparison
+
+  Compare activity levels across projects:
+  - Recent commit frequency
+  - Active file count
+  - Tool usage patterns
+
+  ## 3. Shared Patterns
+
+  Identify patterns that appear across multiple projects:
+  - Common dependencies
+  - Similar file structures
+  - Shared coding conventions
+
+  ## 4. Recommendations
+
+  Based on the analysis, suggest:
+  - Opportunities for code sharing
+  - Projects that could benefit from collaboration
+  - Potential risks from divergent practices
+
+  ## 5. Write Report
+
+  Write the report to oak/insights/cross-project-report.md.
+
+execution:
+  timeout_seconds: 240
+  max_turns: 40
+  permission_mode: acceptEdits
+
+maintained_files:
+  - path: "{project_root}/oak/insights/cross-project-report.md"
+    purpose: "Cross-project comparative analysis report"
+    auto_create: true
+
+schema_version: 1

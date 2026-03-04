@@ -236,3 +236,24 @@ SWARM_RESTART_LOG_SIGTERM: Final[str] = "Sending SIGTERM to self for restart"
 
 # Swarm route tag
 SWARM_ROUTE_TAG: Final[str] = "swarm"
+
+# Agent route tag
+SWARM_AGENTS_ROUTE_TAG: Final[str] = "agents"
+
+# Agent definitions directory (relative to swarm feature package)
+SWARM_AGENTS_DEFINITIONS_DIR: Final[str] = "agents/definitions"
+
+# Config key for daemon port (inside swarm config.json)
+CI_CONFIG_SWARM_KEY_PORT: Final[str] = "daemon_port"
+
+# Port auto-assignment range (probes SWARM_DAEMON_DEFAULT_PORT + 0..99)
+SWARM_DAEMON_PORT_RANGE_SIZE: Final[int] = 100
+
+# Daemon API paths (agent routes)
+SWARM_DAEMON_API_PATH_AGENTS_RELOAD: Final[str] = "/api/agents/reload"
+SWARM_DAEMON_API_PATH_AGENTS_TASK_RUN: Final[str] = "/api/agents/tasks/{task_name}/run"
+SWARM_DAEMON_API_PATH_AGENTS_RUNS: Final[str] = "/api/agents/runs"
+SWARM_DAEMON_API_PATH_AGENTS_RUN_DETAIL: Final[str] = "/api/agents/runs/{run_id}"
+
+# Daemon API path (node removal)
+SWARM_DAEMON_API_PATH_NODE_REMOVE: Final[str] = "/api/swarm/nodes/remove"

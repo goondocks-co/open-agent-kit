@@ -9,7 +9,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from open_agent_kit.features.swarm.constants import SWARM_AUTH_ENV_VAR
+from open_agent_kit.features.swarm.constants import (
+    SWARM_AGENTS_DEFINITIONS_DIR,
+    SWARM_AUTH_ENV_VAR,
+)
 from open_agent_kit.features.swarm.daemon.middleware import TokenAuthMiddleware
 from open_agent_kit.features.swarm.daemon.routes import (
     agents,
@@ -57,6 +60,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning(
             "OAK_SWARM_URL or OAK_SWARM_TOKEN not set; swarm daemon running without worker connection"
         )
+
+    # Initialize agent runtime
+    try:
+        from open_agent_kit.features.agent_runtime.registry import AgentRegistry
+        from open_agent_kit.features.agent_runtime.run_store import RunStore
+        from open_agent_kit.features.agent_runtime.executor import AgentExecutor
+        from open_agent_kit.features.team.config.agents import AgentConfig
+
+        # Definitions live inside the swarm feature package
+        definitions_dir = Path(__file__).parent.parent / SWARM_AGENTS_DEFINITIONS_DIR
+
+        registry = AgentRegistry(
+            definitions_dir=definitions_dir,
+            project_root=None,
+        )
+        registry.load_all()
+
+        run_store = RunStore(activity_store=None)
+
+        agent_config = AgentConfig(enabled=True)
+        executor = AgentExecutor(
+            project_root=Path.cwd(),
+            agent_config=agent_config,
+        )
+
+        state.agent_registry = registry
+        state.agent_executor = executor
+        state.run_store = run_store
+
+        logger.info(
+            "Agent runtime initialized with %d templates", len(registry.templates)
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize agent runtime: %s", exc)
 
     yield
 

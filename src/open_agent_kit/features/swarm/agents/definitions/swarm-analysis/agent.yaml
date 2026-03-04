@@ -1,0 +1,49 @@
+# Swarm Analysis Agent
+#
+# This agent analyzes cross-project data from swarm nodes to identify
+# shared patterns, dependency risks, and collaboration opportunities.
+
+name: swarm-analysis
+display_name: "Swarm Analysis Agent"
+description: >
+  Analyzes cross-project data from connected swarm nodes to identify
+  shared patterns, dependency overlap, and collaboration opportunities.
+  Uses swarm search and broadcast tools to gather data from all nodes.
+
+execution:
+  max_turns: 50
+  timeout_seconds: 300
+  permission_mode: acceptEdits
+
+# Tools the agent can use
+allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+
+# Never allow shell access
+disallowed_tools:
+  - Bash
+  - Task
+
+# Path restrictions - agent can only write to insights directory
+allowed_paths:
+  - "oak/insights/**"
+  - "oak/insights/*.md"
+
+# Security: never touch sensitive files
+disallowed_paths:
+  - ".env"
+  - ".env.*"
+  - "*.pem"
+  - "*.key"
+
+# Data access
+tool_access:
+  code_search: false
+  memory_search: false
+  session_history: false
+  project_stats: false
+  sql_query: false

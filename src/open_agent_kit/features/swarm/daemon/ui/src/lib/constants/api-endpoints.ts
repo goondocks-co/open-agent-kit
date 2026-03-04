@@ -6,6 +6,13 @@ export const API_ENDPOINTS = {
 
     // Agents
     AGENTS: "/api/agents",
+    AGENTS_RELOAD: "/api/agents/reload",
+    AGENTS_TASK_RUN: "/api/agents/tasks/:taskName/run",
+    AGENTS_RUNS: "/api/agents/runs",
+    AGENTS_RUN_DETAIL: "/api/agents/runs/:runId",
+
+    // Node management
+    SWARM_NODE_REMOVE: "/api/swarm/nodes/remove",
 
     // Deploy
     DEPLOY_STATUS: "/api/deploy/status",

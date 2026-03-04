@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from open_agent_kit.features.agent_runtime.executor import AgentExecutor
+    from open_agent_kit.features.agent_runtime.registry import AgentRegistry
+    from open_agent_kit.features.agent_runtime.run_store import RunStore
     from open_agent_kit.features.swarm.daemon.client import (
         SwarmWorkerClient,
     )
@@ -59,6 +62,11 @@ class SwarmDaemonState:
     auth_token: str | None = None
     http_client: SwarmWorkerClient | None = None
     agent_sessions: _LRUDict = field(default_factory=_LRUDict)
+
+    # Agent runtime (initialized in server lifespan)
+    agent_registry: AgentRegistry | None = None
+    agent_executor: AgentExecutor | None = None
+    run_store: RunStore | None = None
 
 
 _state: SwarmDaemonState | None = None

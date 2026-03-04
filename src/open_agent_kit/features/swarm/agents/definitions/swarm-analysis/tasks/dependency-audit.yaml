@@ -1,0 +1,64 @@
+# =============================================================================
+# Built-in Task: Dependency Audit
+# =============================================================================
+# Task for: swarm-analysis agent
+#
+# Audits dependencies across swarm nodes to identify version conflicts,
+# outdated packages, and security risks.
+# =============================================================================
+
+name: dependency-audit
+display_name: "Dependency Audit"
+agent_type: swarm-analysis
+is_builtin: true
+description: >
+  Audits dependencies across swarm nodes to find version conflicts,
+  outdated packages, and potential security risks from shared dependencies.
+
+default_task: |
+  Audit dependencies across connected swarm nodes.
+
+  ## 1. Gather Dependency Data
+
+  Search each connected node for dependency manifests:
+  - package.json (Node.js)
+  - pyproject.toml / requirements.txt (Python)
+  - Cargo.toml (Rust)
+  - go.mod (Go)
+
+  ## 2. Version Conflict Analysis
+
+  Identify version conflicts where:
+  - Same package used at different major versions across projects
+  - Pinned versions that differ significantly
+  - Transitive dependency conflicts
+
+  ## 3. Security Assessment
+
+  Flag dependencies that may pose risks:
+  - Very outdated packages (more than 2 major versions behind)
+  - Packages with known deprecation notices
+  - Unusual or unmaintained dependencies
+
+  ## 4. Standardization Recommendations
+
+  Suggest version alignment opportunities:
+  - Packages that should be standardized to one version
+  - Shared internal packages that could reduce duplication
+  - Upgrade paths for outdated dependencies
+
+  ## 5. Write Report
+
+  Write the audit to oak/insights/dependency-audit-report.md.
+
+execution:
+  timeout_seconds: 240
+  max_turns: 40
+  permission_mode: acceptEdits
+
+maintained_files:
+  - path: "{project_root}/oak/insights/dependency-audit-report.md"
+    purpose: "Cross-project dependency audit report"
+    auto_create: true
+
+schema_version: 1

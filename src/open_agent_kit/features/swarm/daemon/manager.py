@@ -14,6 +14,7 @@ from typing import Any
 
 from open_agent_kit.features.swarm.config import get_swarm_config_dir
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_PORT,
     CI_CONFIG_SWARM_KEY_TOKEN,
     CI_CONFIG_SWARM_KEY_URL,
     SWARM_AUTH_ENV_VAR,
@@ -25,6 +26,7 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_DAEMON_LOG_FILE,
     SWARM_DAEMON_PID_FILE,
     SWARM_DAEMON_PORT_FILE,
+    SWARM_DAEMON_PORT_RANGE_SIZE,
     SWARM_DAEMON_STARTUP_TIMEOUT,
     SWARM_MESSAGE_ALREADY_RUNNING,
 )
@@ -93,8 +95,31 @@ class SwarmDaemonManager(BaseDaemonManager):
 
         return status
 
+    def _find_available_port(self) -> int:
+        """Probe ports starting from SWARM_DAEMON_DEFAULT_PORT.
+
+        Returns:
+            First available port in the range.
+
+        Raises:
+            RuntimeError: If no port is available in the range.
+        """
+        base = SWARM_DAEMON_DEFAULT_PORT
+        for offset in range(SWARM_DAEMON_PORT_RANGE_SIZE):
+            candidate = base + offset
+            if self._is_port_available(candidate):
+                return candidate
+        msg = (
+            f"No available port found in range "
+            f"{base}-{base + SWARM_DAEMON_PORT_RANGE_SIZE - 1}"
+        )
+        raise RuntimeError(msg)
+
     def start(self, wait: bool = True) -> bool:
         """Start the swarm daemon.
+
+        If the configured port is in use, auto-probes the port range to find
+        an available one and persists the choice in config.json.
 
         Args:
             wait: Wait for the daemon to be ready before returning.
@@ -114,6 +139,23 @@ class SwarmDaemonManager(BaseDaemonManager):
             self._remove_pid()
 
         self._ensure_config_dir()
+
+        # Auto-assign port if the configured one is taken
+        if not self._is_port_available(self.port):
+            new_port = self._find_available_port()
+            logger.info(
+                "Port %d in use, auto-assigned port %d", self.port, new_port
+            )
+            self.port = new_port
+            # Persist chosen port to config.json
+            from open_agent_kit.features.swarm.config import (
+                load_swarm_config,
+                save_swarm_config,
+            )
+
+            config = load_swarm_config(self.swarm_id) or {}
+            config[CI_CONFIG_SWARM_KEY_PORT] = new_port
+            save_swarm_config(self.swarm_id, config)
 
         # Write port file
         self.port_file.write_text(str(self.port))

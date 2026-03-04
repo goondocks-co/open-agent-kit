@@ -1,0 +1,57 @@
+# =============================================================================
+# Built-in Task: Pattern Finder
+# =============================================================================
+# Task for: swarm-analysis agent
+#
+# Searches across swarm nodes for recurring code patterns, architectural
+# decisions, and shared conventions.
+# =============================================================================
+
+name: pattern-finder
+display_name: "Pattern Finder"
+agent_type: swarm-analysis
+is_builtin: true
+description: >
+  Searches across swarm nodes for recurring code patterns, architectural
+  decisions, and shared conventions that could be standardized or extracted
+  into shared libraries.
+
+default_task: |
+  Find recurring patterns across connected swarm nodes.
+
+  ## 1. Search for Common Patterns
+
+  Use swarm search to identify:
+  - Shared utility functions that appear in multiple projects
+  - Common architectural patterns (e.g., similar service layers)
+  - Repeated configuration structures
+
+  ## 2. Analyze Conventions
+
+  Compare coding conventions across projects:
+  - Naming conventions
+  - Error handling patterns
+  - Testing approaches
+
+  ## 3. Extraction Candidates
+
+  Identify code that could be extracted into shared packages:
+  - Utility functions duplicated across projects
+  - Common middleware or service patterns
+  - Shared type definitions
+
+  ## 4. Write Report
+
+  Write findings to oak/insights/pattern-finder-report.md.
+
+execution:
+  timeout_seconds: 240
+  max_turns: 40
+  permission_mode: acceptEdits
+
+maintained_files:
+  - path: "{project_root}/oak/insights/pattern-finder-report.md"
+    purpose: "Cross-project pattern analysis report"
+    auto_create: true
+
+schema_version: 1
