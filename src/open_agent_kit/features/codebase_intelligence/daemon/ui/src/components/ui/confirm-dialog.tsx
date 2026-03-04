@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { Button } from "./button";
+import { Button } from "@oak/ui/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface ConfirmDialogProps {

@@ -4,7 +4,7 @@ import { useSession } from "@/hooks/use-activity";
 import { useAutoRefreshPlans } from "@/hooks/use-auto-refresh-plans";
 import { useDeleteSession, useDeletePromptBatch, usePromoteBatch } from "@/hooks/use-delete";
 import { useLinkSession, useUnlinkSession, useRegenerateSummary, useCompleteSession, useSessionRelated, useUpdateSessionTitle } from "@/hooks/use-session-link";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@oak/ui/components/ui/card";
 import { PromptBatchActivities } from "@/components/data/PromptBatchActivities";
 import { SessionLineage, SessionLineageBadge } from "@/components/data/SessionLineage";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,7 +14,7 @@ import { Markdown } from "@/components/ui/markdown";
 import { formatDate, getSessionTitle } from "@/lib/utils";
 import { ArrowLeft, Terminal, MessageSquare, Clock, ChevronDown, ChevronRight, Trash2, Bot, FileText, Settings, Eye, EyeOff, Sparkles, Loader2, Maximize2, GitBranch, Link2, Unlink, RefreshCw, FileDigit, Copy, Check, Share2, CheckCircle2, Circle, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button } from "@oak/ui/components/ui/button";
 import { DELETE_CONFIRMATIONS, type SessionLinkReason } from "@/lib/constants";
 import { useStatus } from "@/hooks/use-status";
 

@@ -1,6 +1,6 @@
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, STATUS_POLL_ACTIVE_MS, STATUS_POLL_IDLE_MS } from "@/lib/constants";
-import { usePowerQuery } from "./use-power-query";
+import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
 export interface IndexStats {
     files_indexed: number;

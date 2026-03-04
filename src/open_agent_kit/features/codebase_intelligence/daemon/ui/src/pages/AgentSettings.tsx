@@ -14,8 +14,8 @@ import {
     type ProviderModelsResponse,
     type TestProviderResponse,
 } from "@/hooks/use-agent-settings";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@oak/ui/components/ui/card";
 import {
     AlertCircle,
     Save,

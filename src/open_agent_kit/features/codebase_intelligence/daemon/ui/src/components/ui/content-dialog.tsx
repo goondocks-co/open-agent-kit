@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X, Copy, Check, FileText } from "lucide-react";
-import { Button } from "./button";
+import { Button } from "@oak/ui/components/ui/button";
 import { Markdown } from "./markdown";
 
 interface ContentDialogProps {

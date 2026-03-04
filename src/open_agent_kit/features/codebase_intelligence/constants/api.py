@@ -90,6 +90,18 @@ CI_TOOL_ARCHIVE: Final[str] = "ci_archive"
 CI_MCP_SERVER_NAME: Final[str] = "oak-ci"
 CI_MCP_SERVER_VERSION: Final[str] = "1.0.0"
 
+# MCP tool names (daemon HTTP/MCP protocol — distinct from CI_TOOL_* agent SDK names)
+MCP_TOOL_SEARCH: Final[str] = "oak_search"
+MCP_TOOL_REMEMBER: Final[str] = "oak_remember"
+MCP_TOOL_CONTEXT: Final[str] = "oak_context"
+MCP_TOOL_RESOLVE_MEMORY: Final[str] = "oak_resolve_memory"
+MCP_TOOL_SESSIONS: Final[str] = "oak_sessions"
+MCP_TOOL_MEMORIES: Final[str] = "oak_memories"
+MCP_TOOL_STATS: Final[str] = "oak_stats"
+MCP_TOOL_ACTIVITY: Final[str] = "oak_activity"
+MCP_TOOL_ARCHIVE_MEMORIES: Final[str] = "oak_archive_memories"
+MCP_TOOL_NODES: Final[str] = "oak_nodes"
+
 # CI query tool configuration (read-only SQL execution)
 CI_QUERY_MAX_ROWS: Final[int] = 500
 CI_QUERY_DEFAULT_LIMIT: Final[int] = 100

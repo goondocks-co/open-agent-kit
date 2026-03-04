@@ -1,0 +1,28 @@
+name = "{{ worker_name }}"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+[durable_objects]
+bindings = [{ name = "SWARM", class_name = "SwarmObject" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SwarmObject"]
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
+[vars]
+SWARM_TOKEN = "{{ swarm_token }}"
+{% if custom_domain %}
+
+[[routes]]
+pattern = "{{ worker_name }}.{{ custom_domain }}"
+custom_domain = true
+{% endif %}

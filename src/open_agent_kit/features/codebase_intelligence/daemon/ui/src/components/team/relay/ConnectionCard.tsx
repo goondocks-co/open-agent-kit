@@ -2,9 +2,9 @@
  * Connection status card with primary deploy/connect/disconnect action.
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
+import { Alert, AlertDescription } from "@oak/ui/components/ui/alert";
 import { Cloud, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CloudRelayStartResponse } from "@/hooks/use-cloud-relay";

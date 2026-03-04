@@ -2,7 +2,7 @@
  * Cloud Relay agents page — agent token display and registration instructions.
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { Bot, ExternalLink } from "lucide-react";
 import { CopyButton, CommandBlock } from "@/components/ui/command-block";
 import { useCloudRelayStatus } from "@/hooks/use-cloud-relay";

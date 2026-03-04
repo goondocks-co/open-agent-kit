@@ -37,7 +37,7 @@ import {
     POWER_MULTIPLIERS,
     HEARTBEAT_HIDDEN_CAP_MS,
     HEARTBEAT_DEEP_SLEEP_CAP_MS,
-} from "@/lib/constants";
+} from "../lib/constants";
 
 // =============================================================================
 // Types

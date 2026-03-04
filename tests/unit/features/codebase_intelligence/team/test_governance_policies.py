@@ -16,6 +16,9 @@ from open_agent_kit.features.codebase_intelligence.config.governance import (
     DataCollectionPolicy,
     GovernanceConfig,
 )
+from open_agent_kit.features.codebase_intelligence.constants import (
+    MCP_TOOL_MEMORIES,
+)
 from open_agent_kit.features.codebase_intelligence.constants.governance import (
     DATA_COLLECTION_FEDERATED_TOOLS_DEFAULT,
     DATA_COLLECTION_SYNC_OBSERVATIONS_DEFAULT,
@@ -275,7 +278,7 @@ class TestToolOperationsFederationPolicy:
         )
 
         result = ops._federate_if_requested(
-            "oak_memories",
+            MCP_TOOL_MEMORIES,
             {"include_network": True},
             "local results",
         )
@@ -304,7 +307,7 @@ class TestToolOperationsFederationPolicy:
         # Even though the relay is mocked, the function should proceed past
         # the policy check (it may raise due to the mock but that's fine)
         result = ops._federate_if_requested(
-            "oak_memories",
+            MCP_TOOL_MEMORIES,
             {"include_network": True},
             "local results",
         )

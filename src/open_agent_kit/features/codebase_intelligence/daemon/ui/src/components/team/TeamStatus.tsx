@@ -5,7 +5,7 @@
  * heartbeat freshness, reconnect attempts, errors, and sync stats.
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import {
     Users,
     Clock,

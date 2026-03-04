@@ -2,7 +2,7 @@ import * as React from "react";
 import { useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Link2, Loader2, Search, X, Calendar, Activity } from "lucide-react";
-import { Button } from "./button";
+import { Button } from "@oak/ui/components/ui/button";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { formatDate, getSessionTitle } from "@/lib/utils";
 import { cn } from "@/lib/utils";

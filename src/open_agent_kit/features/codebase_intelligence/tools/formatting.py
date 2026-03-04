@@ -512,6 +512,97 @@ def extract_text_from_mcp_result(tool_result: Any) -> str:
     return str(tool_result) if tool_result is not None else ""
 
 
+def format_swarm_search_results(results: dict[str, Any]) -> str:
+    """Format swarm search results for LLM consumption.
+
+    Each result includes a source project badge to distinguish
+    which swarm node contributed the result.
+
+    Args:
+        results: Swarm search response dict containing ``results`` list,
+            each with project, type, and content fields.
+
+    Returns:
+        Formatted markdown string with swarm search results.
+    """
+    items = results.get("results", [])
+    if not items:
+        return "No swarm search results found."
+
+    lines = [f"Found {len(items)} swarm result(s):\n"]
+    for i, r in enumerate(items, 1):
+        project = r.get("project", r.get("machine_id", "unknown"))
+        result_type = r.get("type", r.get("_result_type", ""))
+        memory_type = r.get("memory_type", "")
+        relevance = r.get("relevance")
+
+        # Extract display text — field depends on result type
+        text = r.get("observation", r.get("summary", ""))
+        if not text:
+            title = r.get("title", "")
+            preview = r.get("preview", "")
+            if title and preview:
+                text = f"{title}: {preview}"
+            else:
+                text = title or preview
+        if not text:
+            text = r.get("content", "")
+
+        # Build header with project badge
+        header = f"{i}. [{project}]"
+        type_label = memory_type or result_type
+        if type_label:
+            header += f" [{type_label}]"
+        if relevance is not None:
+            header += f" (relevance: {round(relevance, 2)})"
+
+        lines.append(header)
+        if text:
+            preview_text = (
+                text[:CI_FORMAT_PREVIEW_LENGTH] + "..."
+                if len(text) > CI_FORMAT_PREVIEW_LENGTH
+                else text
+            )
+            lines.append(f"   {preview_text}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_swarm_nodes(data: dict[str, Any]) -> str:
+    """Format swarm node list for LLM consumption.
+
+    Args:
+        data: Swarm nodes response dict containing ``nodes`` list,
+            each with project, status, and capability fields.
+
+    Returns:
+        Formatted markdown string with swarm node details.
+    """
+    nodes = data.get("nodes", [])
+    if not nodes:
+        return "No swarm nodes found."
+
+    lines = [f"Found {len(nodes)} swarm node(s):\n"]
+    for i, n in enumerate(nodes, 1):
+        project = n.get("project", n.get("machine_id", "unknown"))
+        online = n.get("online", n.get("connected", False))
+        oak_version = n.get("oak_version", "")
+        capabilities = n.get("capabilities", [])
+        status_icon = "+" if online else "-"
+
+        header = f"{i}. [{status_icon}] {project}"
+        if oak_version:
+            header += f" (v{oak_version})"
+        lines.append(header)
+
+        if capabilities:
+            lines.append(f"   Capabilities: {', '.join(capabilities)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def format_stats_results(
     code_chunks: int = 0,
     unique_files: int = 0,

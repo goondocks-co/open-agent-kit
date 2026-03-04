@@ -40,6 +40,10 @@ import {
   type SearchQueryMessage,
   type SearchResultMessage,
   type RelayMetricsResponse,
+  type SwarmBroadcastMessage,
+  type SwarmNodesMessage,
+  type SwarmSearchMessage,
+  type SwarmToolCallMessage,
   type ToolCallRequest,
   type ToolCallResponse,
   type ToolInfo,
@@ -60,6 +64,9 @@ const FEDERATED_TOOL_TIMEOUT_MS = 10_000;
 const FEDERATED_TOOL_MAX_RESULTS = 50;
 /** Probability of running TTL cleanup on each obs push (1%). */
 const OBS_HISTORY_CLEANUP_PROBABILITY = 0.01;
+const SWARM_HEARTBEAT_INTERVAL_MS = 60_000;
+const SWARM_SEARCH_TIMEOUT_MS = 10_000;
+const SWARM_TOOL_CALL_TIMEOUT_MS = 30_000;
 
 /** Cache TTL (in seconds) for federated tool calls, keyed by tool name. */
 const CACHE_TTL_BY_TOOL: Record<string, number> = {
@@ -107,6 +114,22 @@ export class RelayObject implements DurableObject {
 
   /** Machine ID of the first node to register (preferred target for unrouted calls). */
   private homeMachineId: string | null = null;
+
+  // --- Swarm state ---
+  /** Swarm Worker URL (e.g., https://oak-swarm-xxx.workers.dev). */
+  private swarmUrl: string | null = null;
+  /** Swarm authentication token. */
+  private swarmToken: string | null = null;
+  /** Sensitivity level for swarm participation (standard or restricted). */
+  private swarmSensitivity: string = "standard";
+  /** Whether this Team Worker is connected to a swarm. */
+  private swarmConnected: boolean = false;
+  /** Swarm ID returned from registration. */
+  private swarmId: string | null = null;
+  /** Callback token issued by the Swarm Worker for bidirectional auth. */
+  private swarmCallbackToken: string | null = null;
+  /** Swarm heartbeat interval handle. */
+  private swarmHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -188,6 +211,9 @@ export class RelayObject implements DurableObject {
 
     // Rehydrate in-memory maps from SQLite on wake.
     this.rehydrateNodeState();
+
+    // Rehydrate swarm config from DO key-value storage.
+    this.rehydrateSwarmConfig();
   }
 
   // -----------------------------------------------------------------------
@@ -235,6 +261,19 @@ export class RelayObject implements DurableObject {
 
     if (url.pathname === "/tool-call" && request.method === "POST") {
       return this.handleToolCall(request);
+    }
+
+    // --- Swarm config ---
+    if (url.pathname === "/api/swarm/config" && request.method === "PUT") {
+      return this.handleSwarmConfigUpdate(request);
+    }
+    if (url.pathname === "/api/swarm/config" && request.method === "GET") {
+      return Response.json({
+        swarm_url: this.swarmUrl,
+        swarm_connected: this.swarmConnected,
+        swarm_id: this.swarmId,
+        sensitivity: this.swarmSensitivity,
+      });
     }
 
     if (url.pathname === "/health") {
@@ -311,6 +350,19 @@ export class RelayObject implements DurableObject {
         break;
       case RelayMessageType.FEDERATED_TOOL_RESULT:
         this.resolveFederatedToolResult(msg as FederatedToolResultMessage);
+        break;
+      // Swarm messages from nodes — forward to Swarm Worker via HTTP
+      case RelayMessageType.SWARM_SEARCH:
+        this.handleSwarmSearch(msg as SwarmSearchMessage, _ws);
+        break;
+      case RelayMessageType.SWARM_TOOL_CALL:
+        this.handleSwarmToolCall(msg as SwarmToolCallMessage, _ws);
+        break;
+      case RelayMessageType.SWARM_BROADCAST:
+        this.handleSwarmBroadcast(msg as SwarmBroadcastMessage, _ws);
+        break;
+      case RelayMessageType.SWARM_NODES:
+        this.handleSwarmNodes(msg as SwarmNodesMessage, _ws);
         break;
       default:
         break;
@@ -1273,6 +1325,8 @@ export class RelayObject implements DurableObject {
       type: RelayMessageType.NODE_LIST,
       nodes,
       home_machine_id: this.homeMachineId ?? undefined,
+      swarm_connected: this.swarmConnected,
+      swarm_id: this.swarmId,
     };
     const payload = JSON.stringify(msg);
 
@@ -1505,6 +1559,448 @@ export class RelayObject implements DurableObject {
       }
     }
     return merged;
+  }
+
+  // -----------------------------------------------------------------------
+  // Timeout-wrapped fetch (used by swarm HTTP calls)
+  // -----------------------------------------------------------------------
+
+  /** Timeout-wrapped fetch. Aborts if the request exceeds `timeoutMs`. */
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Swarm config & connection
+  // -----------------------------------------------------------------------
+
+  /** Rehydrate swarm config from DO key-value storage on wake. */
+  private rehydrateSwarmConfig(): void {
+    try {
+      // Use blockConcurrencyWhile for async storage reads in constructor context.
+      this.state.blockConcurrencyWhile(async () => {
+        const values = await this.state.storage.get([
+          "swarm_url", "swarm_token", "swarm_sensitivity",
+          "swarm_connected", "swarm_id", "swarm_callback_token",
+        ]);
+        this.swarmUrl = (values.get("swarm_url") as string) ?? null;
+        this.swarmToken = (values.get("swarm_token") as string) ?? null;
+        this.swarmSensitivity = (values.get("swarm_sensitivity") as string) ?? "standard";
+        this.swarmConnected = (values.get("swarm_connected") as boolean) ?? false;
+        this.swarmId = (values.get("swarm_id") as string) ?? null;
+        this.swarmCallbackToken = (values.get("swarm_callback_token") as string) ?? null;
+
+        // Restart swarm heartbeat if connected.
+        if (this.swarmConnected && this.swarmUrl && this.swarmToken) {
+          this.startSwarmHeartbeat();
+        }
+      });
+    } catch (err) {
+      console.error("Failed to rehydrate swarm config:", err);
+    }
+  }
+
+  /** Handle PUT /api/swarm/config — set or clear swarm configuration. */
+  private async handleSwarmConfigUpdate(request: Request): Promise<Response> {
+    let body: { swarm_url?: string; swarm_token?: string; sensitivity?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "invalid request body" }, { status: 400 });
+    }
+
+    // If both url and token are empty/absent, disconnect from swarm.
+    if (!body.swarm_url && !body.swarm_token) {
+      await this.disconnectFromSwarm();
+      return Response.json({ status: "disconnected" });
+    }
+
+    if (!body.swarm_url || !body.swarm_token) {
+      return Response.json(
+        { error: "both swarm_url and swarm_token are required" },
+        { status: 400 },
+      );
+    }
+
+    // Store config.
+    this.swarmUrl = body.swarm_url;
+    this.swarmToken = body.swarm_token;
+    this.swarmSensitivity = body.sensitivity ?? "standard";
+
+    await this.state.storage.put({
+      swarm_url: this.swarmUrl,
+      swarm_token: this.swarmToken,
+      swarm_sensitivity: this.swarmSensitivity,
+    });
+
+    // Register with the Swarm Worker.
+    try {
+      await this.registerWithSwarm();
+      return Response.json({
+        status: "connected",
+        swarm_id: this.swarmId,
+        swarm_connected: this.swarmConnected,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "registration failed";
+      return Response.json({ error: message }, { status: 502 });
+    }
+  }
+
+  /** Register this Team Worker with the Swarm Worker. */
+  private async registerWithSwarm(): Promise<void> {
+    if (!this.swarmUrl || !this.swarmToken) return;
+
+    const connectedNodes = this.state.getWebSockets().length;
+    const teamId = this.getTeamId();
+
+    const response = await this.fetchWithTimeout(
+      `${this.swarmUrl}/api/swarm/register`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.swarmToken}`,
+        },
+        body: JSON.stringify({
+          team_id: teamId,
+          project_slug: this.getProjectSlug(),
+          callback_url: this.getCallbackUrl(),
+          capabilities: ["swarm_search_v1", "swarm_tools_v1"],
+          node_count: connectedNodes,
+          oak_version: this.getOakVersion(),
+          sensitivity: this.swarmSensitivity,
+        }),
+      },
+      SWARM_SEARCH_TIMEOUT_MS,
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Swarm registration failed: HTTP ${response.status} — ${text}`);
+    }
+
+    const data = (await response.json()) as {
+      swarm_id?: string;
+      team_count?: number;
+      callback_token?: string;
+    };
+
+    this.swarmId = data.swarm_id ?? null;
+    this.swarmCallbackToken = data.callback_token ?? null;
+    this.swarmConnected = true;
+
+    await this.state.storage.put({
+      swarm_id: this.swarmId ?? "",
+      swarm_callback_token: this.swarmCallbackToken ?? "",
+      swarm_connected: true,
+    });
+
+    this.startSwarmHeartbeat();
+    this.broadcastNodeList();
+  }
+
+  /** Disconnect from the swarm and clear config. */
+  private async disconnectFromSwarm(): Promise<void> {
+    // Unregister from Swarm Worker if connected.
+    if (this.swarmConnected && this.swarmUrl && this.swarmToken) {
+      try {
+        await this.fetchWithTimeout(
+          `${this.swarmUrl}/api/swarm/unregister`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.swarmToken}`,
+            },
+            body: JSON.stringify({ team_id: this.getTeamId() }),
+          },
+          SWARM_SEARCH_TIMEOUT_MS,
+        );
+      } catch (err) {
+        console.error("Swarm unregister failed:", err);
+      }
+    }
+
+    this.stopSwarmHeartbeat();
+    this.swarmUrl = null;
+    this.swarmToken = null;
+    this.swarmSensitivity = "standard";
+    this.swarmConnected = false;
+    this.swarmId = null;
+    this.swarmCallbackToken = null;
+
+    await this.state.storage.delete([
+      "swarm_url", "swarm_token", "swarm_sensitivity",
+      "swarm_connected", "swarm_id", "swarm_callback_token",
+    ]);
+
+    this.broadcastNodeList();
+  }
+
+  // -----------------------------------------------------------------------
+  // Swarm heartbeat
+  // -----------------------------------------------------------------------
+
+  private startSwarmHeartbeat(): void {
+    this.stopSwarmHeartbeat();
+    this.swarmHeartbeatTimer = setInterval(() => {
+      this.sendSwarmHeartbeat();
+    }, SWARM_HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopSwarmHeartbeat(): void {
+    if (this.swarmHeartbeatTimer) {
+      clearInterval(this.swarmHeartbeatTimer);
+      this.swarmHeartbeatTimer = null;
+    }
+  }
+
+  private async sendSwarmHeartbeat(): Promise<void> {
+    if (!this.swarmUrl || !this.swarmToken) return;
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${this.swarmUrl}/api/swarm/heartbeat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.swarmToken}`,
+          },
+          body: JSON.stringify({ team_id: this.getTeamId() }),
+        },
+        SWARM_SEARCH_TIMEOUT_MS,
+      );
+
+      if (!response.ok) {
+        console.error("Swarm heartbeat failed:", response.status);
+      }
+    } catch (err) {
+      console.error("Swarm heartbeat error:", err);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Swarm message forwarding (Node WS → Swarm Worker HTTP)
+  // -----------------------------------------------------------------------
+
+  /** Forward a swarm_search from a node to the Swarm Worker. */
+  private async handleSwarmSearch(msg: SwarmSearchMessage, ws: WebSocket): Promise<void> {
+    if (!this.swarmConnected || !this.swarmUrl || !this.swarmToken) {
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_SEARCH_RESULT,
+        request_id: msg.request_id,
+        results: [],
+        error: "not connected to swarm",
+      }));
+      return;
+    }
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${this.swarmUrl}/api/swarm/search`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.swarmToken}`,
+          },
+          body: JSON.stringify({
+            query: msg.query,
+            search_type: msg.search_type ?? "all",
+            limit: msg.limit ?? 10,
+          }),
+        },
+        SWARM_SEARCH_TIMEOUT_MS,
+      );
+
+      const data = (await response.json()) as { results?: Record<string, unknown>[] };
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_SEARCH_RESULT,
+        request_id: msg.request_id,
+        results: data.results ?? [],
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_SEARCH_RESULT,
+        request_id: msg.request_id,
+        results: [],
+        error: `swarm search failed: ${message}`,
+      }));
+    }
+  }
+
+  /** Forward a swarm_tool_call from a node to the Swarm Worker. */
+  private async handleSwarmToolCall(msg: SwarmToolCallMessage, ws: WebSocket): Promise<void> {
+    if (!this.swarmConnected || !this.swarmUrl || !this.swarmToken) {
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_TOOL_RESULT,
+        request_id: msg.request_id,
+        error: "not connected to swarm",
+      }));
+      return;
+    }
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${this.swarmUrl}/api/swarm/tool-call`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.swarmToken}`,
+          },
+          body: JSON.stringify({
+            tool_name: msg.tool_name,
+            arguments: msg.arguments ?? {},
+            target_project: msg.target_project,
+          }),
+        },
+        SWARM_TOOL_CALL_TIMEOUT_MS,
+      );
+
+      const data = await response.json();
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_TOOL_RESULT,
+        request_id: msg.request_id,
+        result: data,
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_TOOL_RESULT,
+        request_id: msg.request_id,
+        error: `swarm tool call failed: ${message}`,
+      }));
+    }
+  }
+
+  /** Forward a swarm_broadcast from a node to the Swarm Worker. */
+  private async handleSwarmBroadcast(msg: SwarmBroadcastMessage, ws: WebSocket): Promise<void> {
+    if (!this.swarmConnected || !this.swarmUrl || !this.swarmToken) {
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_BROADCAST_RESULT,
+        request_id: msg.request_id,
+        results: [],
+        error: "not connected to swarm",
+      }));
+      return;
+    }
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${this.swarmUrl}/api/swarm/broadcast`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.swarmToken}`,
+          },
+          body: JSON.stringify({
+            tool_name: msg.tool_name,
+            arguments: msg.arguments ?? {},
+          }),
+        },
+        SWARM_TOOL_CALL_TIMEOUT_MS,
+      );
+
+      const data = (await response.json()) as { results?: Record<string, unknown>[] };
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_BROADCAST_RESULT,
+        request_id: msg.request_id,
+        results: data.results ?? [],
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_BROADCAST_RESULT,
+        request_id: msg.request_id,
+        results: [],
+        error: `swarm broadcast failed: ${message}`,
+      }));
+    }
+  }
+
+  /** Forward a swarm_nodes request from a node to the Swarm Worker. */
+  private async handleSwarmNodes(msg: SwarmNodesMessage, ws: WebSocket): Promise<void> {
+    if (!this.swarmConnected || !this.swarmUrl || !this.swarmToken) {
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_NODE_LIST,
+        request_id: msg.request_id,
+        nodes: [],
+      }));
+      return;
+    }
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${this.swarmUrl}/api/swarm/nodes`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.swarmToken}`,
+          },
+        },
+        SWARM_SEARCH_TIMEOUT_MS,
+      );
+
+      const data = (await response.json()) as { teams?: Record<string, unknown>[] };
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_NODE_LIST,
+        request_id: msg.request_id,
+        nodes: data.teams ?? [],
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      ws.send(JSON.stringify({
+        type: RelayMessageType.SWARM_NODE_LIST,
+        request_id: msg.request_id,
+        nodes: [],
+      }));
+      console.error("Swarm nodes request failed:", message);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Swarm identity helpers
+  // -----------------------------------------------------------------------
+
+  /** Get a stable team ID for swarm registration (combines project slug + DO ID). */
+  private getTeamId(): string {
+    return this.state.id.toString();
+  }
+
+  /** Get the project slug from the first node's metadata, or fallback. */
+  private getProjectSlug(): string {
+    // Use the worker name as project identifier (set at deploy time).
+    return this.env.RELAY_TOKEN ? "team-" + this.state.id.toString().slice(0, 8) : "unknown";
+  }
+
+  /** Get the callback URL for this Team Worker (Swarm Worker calls back here). */
+  private getCallbackUrl(): string {
+    // The callback URL is the Worker's own public URL, set by deploy script via env var.
+    const workerUrl = (this.env as unknown as Record<string, unknown>).WORKER_URL;
+    return typeof workerUrl === "string" ? workerUrl : "";
+  }
+
+  /** Get the Oak version from the first connected node, if available. */
+  private getOakVersion(): string {
+    for (const meta of this.nodeMetadata.values()) {
+      if (meta.oak_version) return meta.oak_version;
+    }
+    return "";
   }
 
 }

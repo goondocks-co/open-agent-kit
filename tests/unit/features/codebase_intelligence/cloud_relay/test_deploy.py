@@ -19,9 +19,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
 )
 
-_PATCH_SUBPROCESS_RUN = (
-    "open_agent_kit.features.codebase_intelligence.cloud_relay.deploy.subprocess.run"
-)
+_PATCH_SUBPROCESS_RUN = "open_agent_kit.utils.worker_deploy_shared.subprocess.run"
 
 FAKE_SCAFFOLD_DIR = Path("/tmp/fake-scaffold")
 

@@ -26,6 +26,15 @@ export const RelayMessageType = {
   SEARCH_RESULT: "search_result",
   FEDERATED_TOOL_CALL: "federated_tool_call",
   FEDERATED_TOOL_RESULT: "federated_tool_result",
+  // Swarm messages (node <-> Team Worker, forwarded to Swarm Worker)
+  SWARM_SEARCH: "swarm_search",
+  SWARM_SEARCH_RESULT: "swarm_search_result",
+  SWARM_TOOL_CALL: "swarm_tool_call",
+  SWARM_TOOL_RESULT: "swarm_tool_result",
+  SWARM_BROADCAST: "swarm_broadcast",
+  SWARM_BROADCAST_RESULT: "swarm_broadcast_result",
+  SWARM_NODES: "swarm_nodes",
+  SWARM_NODE_LIST: "swarm_node_list",
 } as const;
 
 export type RelayMessageType =
@@ -136,6 +145,8 @@ export interface NodeListMessage {
   type: typeof RelayMessageType.NODE_LIST;
   nodes: { machine_id: string; online: boolean; oak_version?: string; template_hash?: string; capabilities?: string[] }[];
   home_machine_id?: string;
+  swarm_connected?: boolean;
+  swarm_id?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +190,73 @@ export interface FederatedToolResultMessage {
   error?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Wire messages — Swarm (node <-> Team Worker, forwarded to Swarm Worker)
+// ---------------------------------------------------------------------------
+
+/** Sent by node to request a cross-project search via the swarm. */
+export interface SwarmSearchMessage {
+  type: typeof RelayMessageType.SWARM_SEARCH;
+  request_id: string;
+  query: string;
+  search_type?: string;
+  limit?: number;
+}
+
+/** Sent by worker with aggregated cross-project search results. */
+export interface SwarmSearchResultMessage {
+  type: typeof RelayMessageType.SWARM_SEARCH_RESULT;
+  request_id: string;
+  results: Record<string, unknown>[];
+  error?: string;
+}
+
+/** Sent by node to call a tool on a specific project in the swarm. */
+export interface SwarmToolCallMessage {
+  type: typeof RelayMessageType.SWARM_TOOL_CALL;
+  request_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  target_project: string;
+}
+
+/** Sent by worker with the result of a targeted swarm tool call. */
+export interface SwarmToolResultMessage {
+  type: typeof RelayMessageType.SWARM_TOOL_RESULT;
+  request_id: string;
+  result?: unknown;
+  error?: string;
+}
+
+/** Sent by node to broadcast a tool call to all projects in the swarm. */
+export interface SwarmBroadcastMessage {
+  type: typeof RelayMessageType.SWARM_BROADCAST;
+  request_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+}
+
+/** Sent by worker with aggregated broadcast results from all projects. */
+export interface SwarmBroadcastResultMessage {
+  type: typeof RelayMessageType.SWARM_BROADCAST_RESULT;
+  request_id: string;
+  results: Record<string, unknown>[];
+  error?: string;
+}
+
+/** Sent by node to request the swarm membership list. */
+export interface SwarmNodesMessage {
+  type: typeof RelayMessageType.SWARM_NODES;
+  request_id: string;
+}
+
+/** Sent by worker with the list of teams in the swarm. */
+export interface SwarmNodeListMessage {
+  type: typeof RelayMessageType.SWARM_NODE_LIST;
+  request_id: string;
+  nodes: Record<string, unknown>[];
+}
+
 /** Tracks pending federated tool call state in the DO. */
 export interface PendingFederatedTool {
   results: FederatedToolResultMessage[];
@@ -215,7 +293,15 @@ export type RelayMessage =
   | SearchQueryMessage
   | SearchResultMessage
   | FederatedToolCallMessage
-  | FederatedToolResultMessage;
+  | FederatedToolResultMessage
+  | SwarmSearchMessage
+  | SwarmSearchResultMessage
+  | SwarmToolCallMessage
+  | SwarmToolResultMessage
+  | SwarmBroadcastMessage
+  | SwarmBroadcastResultMessage
+  | SwarmNodesMessage
+  | SwarmNodeListMessage;
 
 // ---------------------------------------------------------------------------
 // Internal helpers

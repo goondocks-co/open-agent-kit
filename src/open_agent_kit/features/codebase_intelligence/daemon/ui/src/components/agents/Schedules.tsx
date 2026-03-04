@@ -12,8 +12,8 @@
  */
 
 import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
     useSchedules,

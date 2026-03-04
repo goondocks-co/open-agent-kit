@@ -1,0 +1,15 @@
+"""Health route for the swarm daemon."""
+
+from fastapi import APIRouter
+
+from open_agent_kit.features.swarm.constants import (
+    SWARM_DAEMON_API_PATH_HEALTH,
+)
+
+router = APIRouter(tags=["health"])
+
+
+@router.get(SWARM_DAEMON_API_PATH_HEALTH)
+async def health() -> dict:
+    """Basic health check."""
+    return {"status": "ok"}

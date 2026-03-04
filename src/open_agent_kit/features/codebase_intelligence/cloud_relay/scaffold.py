@@ -2,13 +2,12 @@
 
 Copies the bundled Cloudflare Worker template to the user's directory and
 renders Jinja2 templates (wrangler.toml.j2) with the provided tokens.
+
+Shared logic lives in :mod:`worker_scaffold_shared`; this module provides
+the Cloud Relay–specific render functions and constant wiring.
 """
 
-import functools
-import hashlib
 import logging
-import re
-import secrets
 import shutil
 from pathlib import Path
 
@@ -26,58 +25,93 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WORKER_NAME_MAX_LENGTH,
     CLOUD_RELAY_WORKER_TEMPLATE_DIR,
 )
+from open_agent_kit.utils.worker_scaffold_shared import (
+    ScaffoldConfig,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    compute_scaffold_hash as _compute_scaffold_hash,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    compute_template_hash as _compute_template_hash,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    generate_token as _generate_token,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    get_default_output_dir as _get_default_output_dir,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    is_scaffolded as _is_scaffolded,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    make_worker_name as _make_worker_name,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    sync_source_files as _sync_source_files,
+)
 
 logger = logging.getLogger(__name__)
 
 # Resolve the bundled template directory relative to this file.
 _TEMPLATE_DIR = Path(__file__).parent / CLOUD_RELAY_WORKER_TEMPLATE_DIR
 
-# Cloudflare Worker name rules: lowercase, alphanumeric + hyphens.
-_WORKER_NAME_INVALID_CHARS = re.compile(r"[^a-z0-9-]")
-_WORKER_NAME_MULTI_HYPHENS = re.compile(r"-+")
+_CONFIG = ScaffoldConfig(
+    template_dir=_TEMPLATE_DIR,
+    token_bytes=CLOUD_RELAY_TOKEN_BYTES,
+    worker_name_prefix=CLOUD_RELAY_DEFAULT_WORKER_NAME_PREFIX,
+    worker_name_max_length=CLOUD_RELAY_WORKER_NAME_MAX_LENGTH,
+    worker_name_fallback=CLOUD_RELAY_WORKER_NAME_FALLBACK,
+    jinja2_extension=CLOUD_RELAY_JINJA2_EXTENSION,
+    scaffold_output_dir=CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR,
+    scaffold_package_json=CLOUD_RELAY_SCAFFOLD_PACKAGE_JSON,
+    scaffold_wrangler_toml=CLOUD_RELAY_SCAFFOLD_WRANGLER_TOML,
+    scaffold_gitignore_entries=CLOUD_RELAY_SCAFFOLD_GITIGNORE_ENTRIES,
+)
+
+
+# ---------------------------------------------------------------------------
+# Delegated shared functions (preserve public API)
+# ---------------------------------------------------------------------------
 
 
 def generate_token() -> str:
-    """Generate a cryptographically secure URL-safe token.
-
-    Returns:
-        A URL-safe token string of ``CLOUD_RELAY_TOKEN_BYTES`` random bytes.
-    """
-    return secrets.token_urlsafe(CLOUD_RELAY_TOKEN_BYTES)
+    """Generate a cryptographically secure URL-safe token."""
+    return _generate_token(_CONFIG)
 
 
 def make_worker_name(project_name: str) -> str:
-    """Build a valid Cloudflare Worker name from a project name.
+    """Build a valid Cloudflare Worker name from a project name."""
+    return _make_worker_name(_CONFIG, project_name)
 
-    Returns ``oak-relay-<sanitized-name>`` where the name is lowercased
-    and non-alphanumeric characters are replaced with hyphens.  This
-    ensures each project gets its own Worker deployment, avoiding
-    conflicts when multiple daemons share a Cloudflare account.
 
-    Args:
-        project_name: Human-readable project name (typically the directory
-            name, i.e. ``project_root.name``).
+def sync_source_files(scaffold_dir: Path) -> int:
+    """Copy non-config source files from the bundled template to *scaffold_dir*."""
+    return _sync_source_files(_CONFIG, scaffold_dir)
 
-    Returns:
-        A valid Cloudflare Worker name (lowercase, alphanumeric + hyphens,
-        max 63 characters).
-    """
-    prefix = CLOUD_RELAY_DEFAULT_WORKER_NAME_PREFIX + "-"
-    name = project_name.lower()
 
-    # Replace invalid chars with hyphens, collapse runs, strip edges
-    sanitized = _WORKER_NAME_INVALID_CHARS.sub("-", name)
-    sanitized = _WORKER_NAME_MULTI_HYPHENS.sub("-", sanitized)
-    sanitized = sanitized.strip("-")
+def get_default_output_dir() -> Path:
+    """Return the default scaffold output directory under the current working directory."""
+    return _get_default_output_dir(_CONFIG)
 
-    # Truncate to fit within max length with prefix
-    max_suffix_len = CLOUD_RELAY_WORKER_NAME_MAX_LENGTH - len(prefix)
-    sanitized = sanitized[:max_suffix_len].rstrip("-")
 
-    if not sanitized:
-        sanitized = CLOUD_RELAY_WORKER_NAME_FALLBACK
+def is_scaffolded(project_root: Path) -> bool:
+    """Check whether the cloud relay worker has been fully scaffolded."""
+    return _is_scaffolded(_CONFIG, project_root)
 
-    return f"{prefix}{sanitized}"
+
+def compute_template_hash() -> str:
+    """Compute SHA-256 hash of the bundled Worker template source files."""
+    return _compute_template_hash(_TEMPLATE_DIR)
+
+
+def compute_scaffold_hash(scaffold_dir: Path) -> str | None:
+    """Compute SHA-256 hash of the deployed scaffold source files."""
+    return _compute_scaffold_hash(scaffold_dir)
+
+
+# ---------------------------------------------------------------------------
+# Cloud Relay–specific functions (unique token signatures)
+# ---------------------------------------------------------------------------
 
 
 def render_worker_template(
@@ -91,23 +125,13 @@ def render_worker_template(
 ) -> Path:
     """Copy the Worker template to *output_dir* and render Jinja2 templates.
 
-    The directory is copied verbatim except for ``*.j2`` files, which are
-    rendered through Jinja2 with the supplied token variables and written
-    without the ``.j2`` extension.
-
     Args:
-        output_dir: Destination directory. Defaults to
-            ``<cwd>/CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR`` when the caller
-            passes a relative path.
+        output_dir: Destination directory.
         relay_token: Shared secret for local daemon authentication.
         agent_token: Shared secret for cloud agent authentication.
         worker_name: Cloudflare Worker name for ``wrangler.toml``.
-        custom_domain: Optional base domain for Cloudflare Workers Custom
-            Domains (e.g. ``example.com``).  When set, a ``[[routes]]``
-            section is added to ``wrangler.toml`` so Cloudflare provisions
-            the DNS record and SSL certificate during deploy.
+        custom_domain: Optional base domain for Workers Custom Domains.
         force: If ``True``, overwrite *output_dir* if it already exists.
-            Defaults to ``False`` (raises ``FileExistsError``).
 
     Returns:
         The resolved *output_dir* path.
@@ -167,98 +191,6 @@ def render_worker_template(
     return output_dir
 
 
-def sync_source_files(scaffold_dir: Path) -> int:
-    """Copy non-config source files from the bundled template to *scaffold_dir*.
-
-    Overwrites TypeScript sources, ``package.json``, and ``tsconfig.json``
-    so that every deploy picks up the latest bundled code.  Skips Jinja2
-    templates (rendered separately) and ``node_modules`` / build artefacts
-    that live only in the scaffold directory.
-
-    Args:
-        scaffold_dir: The scaffold output directory (must already exist).
-
-    Returns:
-        Number of files copied.
-    """
-    copied = 0
-    for src_path in _TEMPLATE_DIR.rglob("*"):
-        if not src_path.is_file():
-            continue
-        # Skip Jinja2 templates — handled by render_wrangler_config()
-        if src_path.suffix == CLOUD_RELAY_JINJA2_EXTENSION:
-            continue
-        rel = src_path.relative_to(_TEMPLATE_DIR)
-        dest = scaffold_dir / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_path, dest)
-        copied += 1
-    logger.debug("Synced %d source files from template to %s", copied, scaffold_dir)
-    return copied
-
-
-def get_default_output_dir() -> Path:
-    """Return the default scaffold output directory under the current working directory."""
-    return Path.cwd() / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR
-
-
-def is_scaffolded(project_root: Path) -> bool:
-    """Check whether the cloud relay worker has been fully scaffolded.
-
-    Args:
-        project_root: Root directory of the project.
-
-    Returns:
-        True if the scaffold output directory contains both ``package.json``
-        and ``wrangler.toml`` (the rendered Jinja2 template).
-    """
-    scaffold_dir = project_root / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR
-    return (scaffold_dir / CLOUD_RELAY_SCAFFOLD_PACKAGE_JSON).is_file() and (
-        scaffold_dir / CLOUD_RELAY_SCAFFOLD_WRANGLER_TOML
-    ).is_file()
-
-
-def _hash_source_dir(root: Path) -> str:
-    """Compute SHA-256 over TypeScript source files in *root*.
-
-    Only ``src/**/*.ts`` files are hashed — config files like
-    ``wrangler.toml`` (rendered from Jinja2) and ``package-lock.json``
-    (generated by npm) are excluded because they are expected to differ
-    between the bundled template and the scaffold directory.
-    """
-    h = hashlib.sha256()
-    src_dir = root / "src"
-    if src_dir.is_dir():
-        for path in sorted(src_dir.rglob("*.ts")):
-            h.update(path.read_bytes())
-    return h.hexdigest()
-
-
-@functools.lru_cache(maxsize=1)
-def compute_template_hash() -> str:
-    """Compute SHA-256 hash of the bundled Worker template source files.
-
-    Used to detect when a package update has changed the Worker template,
-    signalling that a redeploy is needed.  The result is cached because the
-    bundled template is read-only for the lifetime of the process.
-
-    Returns:
-        Hex digest of the hash.
-    """
-    return _hash_source_dir(_TEMPLATE_DIR)
-
-
-def compute_scaffold_hash(scaffold_dir: Path) -> str | None:
-    """Compute SHA-256 hash of the deployed scaffold source files.
-
-    Returns:
-        Hex digest, or ``None`` if *scaffold_dir* does not exist.
-    """
-    if not scaffold_dir.is_dir():
-        return None
-    return _hash_source_dir(scaffold_dir)
-
-
 def migrate_scaffold_dir(project_root: Path) -> None:
     """Migrate scaffold from legacy git-tracked location to .oak/ci/cloud-relay.
 
@@ -288,10 +220,6 @@ def render_wrangler_config(
     custom_domain: str | None = None,
 ) -> None:
     """Re-render only ``wrangler.toml`` inside an existing scaffold directory.
-
-    This is a lightweight operation (one Jinja2 render + file write) used to
-    sync the wrangler config with the current settings without requiring a
-    full re-scaffold.  Called before each deploy and when settings change.
 
     Args:
         scaffold_dir: The scaffold output directory (must already exist).

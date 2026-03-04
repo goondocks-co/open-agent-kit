@@ -4,7 +4,7 @@
 
 import { Loader2, RotateCw, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button } from "@oak/ui/components/ui/button";
 import { PROVIDER_OPTIONS, DEFAULT_PROVIDER_URLS, type ProviderType } from "@/lib/constants";
 import { Input, Select } from "./form-elements";
 

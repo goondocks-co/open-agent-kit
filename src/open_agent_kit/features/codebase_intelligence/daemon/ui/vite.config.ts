@@ -13,6 +13,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@oak/ui": path.resolve(__dirname, "../../../../ui/shared"),
     },
   },
 })

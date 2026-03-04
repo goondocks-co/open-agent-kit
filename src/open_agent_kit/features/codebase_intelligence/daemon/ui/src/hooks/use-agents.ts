@@ -10,7 +10,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson, postJson, deleteJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
-import { usePowerQuery } from "./use-power-query";
+import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
 // =============================================================================
 // Types

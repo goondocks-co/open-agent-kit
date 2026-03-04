@@ -4,7 +4,7 @@ import { useDeleteSession } from "@/hooks/use-delete";
 import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { usePlanPreview } from "@/hooks/use-plan-preview";
 import { Link, useNavigate } from "react-router-dom";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog } from "@/components/ui/content-dialog";
 import { formatDate, getSessionTitle } from "@/lib/utils";

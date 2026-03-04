@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useSearch } from "@/hooks/use-search";
 import { useNetworkSearch } from "@/hooks/use-network-search";
 import { useTeamStatus } from "@/hooks/use-team";
-import { Button } from "@/components/ui/button";
+import { Button } from "@oak/ui/components/ui/button";
 import { Input, Select } from "@/components/ui/config-components";
 import { Link, useSearchParams } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { Search as SearchIcon, FileText, Loader2, AlertCircle, Brain, ClipboardList, MessageSquare, Globe } from "lucide-react";
 import {
     FALLBACK_MESSAGES,

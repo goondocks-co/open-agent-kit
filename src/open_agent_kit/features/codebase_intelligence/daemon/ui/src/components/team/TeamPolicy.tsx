@@ -3,8 +3,8 @@
  */
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
 import {
     useTeamPolicy,
     useUpdateTeamPolicy,

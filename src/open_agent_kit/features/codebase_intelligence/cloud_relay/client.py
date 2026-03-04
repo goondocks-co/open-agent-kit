@@ -41,6 +41,10 @@ from open_agent_kit.features.codebase_intelligence.cloud_relay.protocol import (
     RelayMessageType,
     SearchQueryMessage,
     SearchResultMessage,
+    SwarmBroadcastMessage,
+    SwarmNodesMessage,
+    SwarmSearchMessage,
+    SwarmToolCallMessage,
     ToolCallRequest,
     ToolCallResponse,
 )
@@ -97,6 +101,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_WS_FIELD_TYPE,
     CLOUD_RELAY_WS_TYPE_SEARCH_QUERY,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
+    SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
+    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -180,6 +186,13 @@ class CloudRelayClient(RelayClient):
         self._reconnect_attempts = 0
         self._should_reconnect = False
 
+        # Swarm status from NODE_LIST broadcasts
+        self._swarm_connected: bool = False
+        self._swarm_id: str | None = None
+
+        # Pending swarm request/response correlation (request_id → Future)
+        self._pending_swarm: dict[str, asyncio.Future[dict[str, Any]]] = {}
+
     @property
     def name(self) -> str:
         """Human-readable client name."""
@@ -256,6 +269,12 @@ class CloudRelayClient(RelayClient):
         self._reconnect_task = None
         self._heartbeat_task = None
         self._message_task = None
+
+        # Fail-fast any pending swarm futures so callers don't hang
+        for _req_id, fut in self._pending_swarm.items():
+            if not fut.done():
+                fut.set_exception(ConnectionError("Relay disconnected"))
+        self._pending_swarm.clear()
 
         # Close persistent HTTP client
         if self._http_client and not self._http_client.is_closed:
@@ -440,6 +459,8 @@ class CloudRelayClient(RelayClient):
                     elif msg_type == RelayMessageType.NODE_LIST.value:
                         with self._lock:
                             self._online_nodes = msg.get("nodes", [])
+                            self._swarm_connected = msg.get("swarm_connected", False)
+                            self._swarm_id = msg.get("swarm_id")
 
                     elif msg_type == CLOUD_RELAY_WS_TYPE_SEARCH_QUERY:
                         query_msg = SearchQueryMessage(
@@ -460,6 +481,18 @@ class CloudRelayClient(RelayClient):
                         )
                         asyncio.ensure_future(self._handle_federated_tool_call(fed_call))
 
+                    # Swarm result messages — resolve pending futures
+                    elif msg_type in (
+                        RelayMessageType.SWARM_SEARCH_RESULT.value,
+                        RelayMessageType.SWARM_TOOL_RESULT.value,
+                        RelayMessageType.SWARM_BROADCAST_RESULT.value,
+                        RelayMessageType.SWARM_NODE_LIST.value,
+                    ):
+                        request_id = msg.get("request_id", "")
+                        fut = self._pending_swarm.pop(request_id, None)
+                        if fut and not fut.done():
+                            fut.set_result(msg)
+
                     elif msg_type == RelayMessageType.ERROR.value:
                         error_text = msg.get(
                             CLOUD_RELAY_WS_FIELD_MESSAGE,
@@ -479,7 +512,13 @@ class CloudRelayClient(RelayClient):
         except Exception as exc:
             logger.error(CI_CLOUD_RELAY_LOG_ERROR.format(error=str(exc)))
 
-        # Connection lost - mark disconnected and start reconnect
+        # Connection lost — fail pending swarm futures so callers don't hang
+        for _req_id, fut in self._pending_swarm.items():
+            if not fut.done():
+                fut.set_exception(ConnectionError("WebSocket connection lost"))
+        self._pending_swarm.clear()
+
+        # Mark disconnected and start reconnect
         with self._lock:
             self._connected = False
 
@@ -960,6 +999,119 @@ class CloudRelayClient(RelayClient):
         except Exception as exc:
             logger.warning("Remote tool call to %s failed: %s", target_machine_id, exc)
             return {"error": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Swarm operations (cross-project federation via WS)
+    # ------------------------------------------------------------------
+
+    async def _send_swarm_request(
+        self,
+        message: str,
+        request_id: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        """Send a swarm WS message and await the response.
+
+        Creates a Future keyed by request_id, sends the message, and awaits
+        the response with a timeout. The _handle_message loop resolves the
+        Future when the corresponding result message arrives.
+        """
+        if not self._ws or not self._connected:
+            return {"error": "Not connected to relay"}
+
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[dict[str, Any]] = loop.create_future()
+        self._pending_swarm[request_id] = fut
+
+        try:
+            await self._ws.send(message)
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except TimeoutError:
+            self._pending_swarm.pop(request_id, None)
+            return {"error": "Swarm request timed out"}
+        except Exception as exc:
+            self._pending_swarm.pop(request_id, None)
+            return {"error": str(exc)}
+
+    async def swarm_search(
+        self,
+        query: str,
+        search_type: str = "all",
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Search across all projects in the swarm."""
+        request_id = str(uuid4())
+        msg = SwarmSearchMessage(
+            request_id=request_id,
+            query=query,
+            search_type=search_type,
+            limit=limit,
+        )
+        return await self._send_swarm_request(
+            msg.model_dump_json(),
+            request_id,
+            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 1.0,
+        )
+
+    async def swarm_call(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        target_project: str,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Call a tool on a specific project in the swarm."""
+        request_id = str(uuid4())
+        msg = SwarmToolCallMessage(
+            request_id=request_id,
+            tool_name=tool_name,
+            arguments=arguments,
+            target_project=target_project,
+        )
+        return await self._send_swarm_request(
+            msg.model_dump_json(),
+            request_id,
+            timeout=max(timeout, SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS) + 1.0,
+        )
+
+    async def swarm_broadcast(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Broadcast a tool call to all projects in the swarm."""
+        request_id = str(uuid4())
+        msg = SwarmBroadcastMessage(
+            request_id=request_id,
+            tool_name=tool_name,
+            arguments=arguments,
+        )
+        return await self._send_swarm_request(
+            msg.model_dump_json(),
+            request_id,
+            timeout=max(timeout, SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS) + 1.0,
+        )
+
+    async def swarm_nodes(self) -> dict[str, Any]:
+        """List all teams in the swarm."""
+        request_id = str(uuid4())
+        msg = SwarmNodesMessage(request_id=request_id)
+        return await self._send_swarm_request(
+            msg.model_dump_json(),
+            request_id,
+            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 1.0,
+        )
+
+    async def swarm_status(self) -> dict[str, Any]:
+        """Get swarm connection status from the node_list broadcast."""
+        return {
+            "connected": self._swarm_connected,
+            "swarm_connected": self._swarm_connected,
+            "swarm_id": self._swarm_id,
+            "relay_connected": self._connected,
+            "worker_url": self._worker_url,
+        }
 
     # ------------------------------------------------------------------
     # Internal: tool call forwarding

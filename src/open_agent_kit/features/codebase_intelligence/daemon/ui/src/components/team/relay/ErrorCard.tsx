@@ -3,7 +3,7 @@
  */
 
 import { useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@oak/ui/components/ui/alert";
 import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import type { CloudRelayStartResponse } from "@/hooks/use-cloud-relay";
 

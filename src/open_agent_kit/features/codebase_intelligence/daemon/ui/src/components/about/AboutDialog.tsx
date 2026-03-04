@@ -2,7 +2,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Button } from "@oak/ui/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";

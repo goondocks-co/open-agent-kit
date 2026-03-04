@@ -984,10 +984,8 @@ class TestDaemonManagerStop:
         assert result is True
 
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
-    @patch(
-        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
-    )
-    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    @patch("open_agent_kit.utils.daemon_manager.platform_is_process_running")
+    @patch("open_agent_kit.utils.daemon_manager.terminate_process")
     def test_stop_sends_sigterm(
         self, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
     ):
@@ -1004,11 +1002,9 @@ class TestDaemonManagerStop:
         mock_terminate.assert_called_once_with(12345, graceful=True)
 
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
-    @patch(
-        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
-    )
-    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
-    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.time.sleep")
+    @patch("open_agent_kit.utils.daemon_manager.platform_is_process_running")
+    @patch("open_agent_kit.utils.daemon_manager.terminate_process")
+    @patch("open_agent_kit.utils.daemon_manager.time.sleep")
     def test_stop_force_kills_if_sigterm_fails(
         self, mock_sleep, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
     ):
@@ -1028,10 +1024,8 @@ class TestDaemonManagerStop:
         mock_terminate.assert_any_call(12345, graceful=False)
 
     @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._read_pid")
-    @patch(
-        "open_agent_kit.features.codebase_intelligence.daemon.manager.DaemonManager._is_process_running"
-    )
-    @patch("open_agent_kit.features.codebase_intelligence.daemon.manager.terminate_process")
+    @patch("open_agent_kit.utils.daemon_manager.platform_is_process_running")
+    @patch("open_agent_kit.utils.daemon_manager.terminate_process")
     def test_stop_handles_os_error(
         self, mock_terminate, mock_is_running, mock_read_pid, tmp_path: Path
     ):

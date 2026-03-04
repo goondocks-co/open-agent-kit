@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useLogs, DEFAULT_LOG_LINES, DEFAULT_LOG_FILE } from "@/hooks/use-logs";
 import { useConfig, toggleDebugLogging, restartDaemon } from "@/hooks/use-config";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
+import { Card, CardContent } from "@oak/ui/components/ui/card";
 import { RefreshCw, Pause, Play, Bug, Loader2, Copy, Check } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {

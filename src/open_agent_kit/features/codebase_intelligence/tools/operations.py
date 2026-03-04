@@ -7,6 +7,7 @@ Both MCP handlers and SDK tool wrappers delegate to these operations.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,12 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_FEDERATED_SEARCH_DEFAULT_LIMIT,
     CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS,
     CLOUD_RELAY_REMOTE_TOOL_BRIDGE_TIMEOUT_SECONDS,
+    MCP_TOOL_ACTIVITY,
+    MCP_TOOL_ARCHIVE_MEMORIES,
+    MCP_TOOL_MEMORIES,
+    MCP_TOOL_RESOLVE_MEMORY,
+    MCP_TOOL_SESSIONS,
+    MCP_TOOL_STATS,
     OBSERVATION_STATUS_RESOLVED,
     OBSERVATION_STATUS_SUPERSEDED,
     SEARCH_TYPE_ALL,
@@ -22,6 +29,8 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
+    SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
+    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     VALID_ARCHIVE_FILTERS,
     VALID_OBSERVATION_STATUSES,
 )
@@ -36,6 +45,8 @@ from open_agent_kit.features.codebase_intelligence.tools.formatting import (
     format_search_results,
     format_session_results,
     format_stats_results,
+    format_swarm_nodes,
+    format_swarm_search_results,
 )
 from open_agent_kit.features.codebase_intelligence.tools.schemas import (
     ActivityInput,
@@ -62,6 +73,25 @@ if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_json_arguments(raw: Any) -> tuple[dict[str, Any], str | None]:
+    """Parse tool arguments that may be a JSON string or a dict.
+
+    Args:
+        raw: Raw arguments value — either a JSON string or a dict.
+
+    Returns:
+        Tuple of (parsed_dict, error_message_or_none).
+    """
+    if isinstance(raw, dict):
+        return raw, None
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw), None
+        except json.JSONDecodeError as exc:
+            return {}, f"Error: Invalid JSON arguments: {exc}"
+    return {}, f"Error: arguments must be a JSON string or dict, got {type(raw).__name__}"
 
 
 class ToolOperations:
@@ -359,7 +389,7 @@ class ToolOperations:
             output = format_memory_results(memories)
             output += f"\n(Showing {len(memories)} of {total} total memories)"
 
-        return self._federate_if_requested("oak_memories", args, output)
+        return self._federate_if_requested(MCP_TOOL_MEMORIES, args, output)
 
     def list_sessions(self, args: dict[str, Any]) -> str:
         """Execute sessions listing operation.
@@ -401,7 +431,7 @@ class ToolOperations:
         output = format_session_results(session_dicts)
         output += f"\n(Showing {len(sessions)} sessions)"
 
-        return self._federate_if_requested("oak_sessions", args, output)
+        return self._federate_if_requested(MCP_TOOL_SESSIONS, args, output)
 
     def resolve_memory(self, args: dict[str, Any]) -> str:
         """Resolve a memory observation.
@@ -419,7 +449,7 @@ class ToolOperations:
             ValueError: If ID is missing or status is invalid.
         """
         # Node-targeted routing
-        remote = self._route_to_node("oak_resolve_memory", args)
+        remote = self._route_to_node(MCP_TOOL_RESOLVE_MEMORY, args)
         if remote is not None:
             return remote
 
@@ -474,7 +504,7 @@ class ToolOperations:
             status_breakdown=status_breakdown,
         )
 
-        return self._federate_if_requested("oak_stats", args, output)
+        return self._federate_if_requested(MCP_TOOL_STATS, args, output)
 
     def list_activities(self, args: dict[str, Any]) -> str:
         """Execute activity listing operation.
@@ -489,7 +519,7 @@ class ToolOperations:
             ValueError: If activity store is not available.
         """
         # Node-targeted routing
-        remote = self._route_to_node("oak_activity", args)
+        remote = self._route_to_node(MCP_TOOL_ACTIVITY, args)
         if remote is not None:
             return remote
 
@@ -599,7 +629,7 @@ class ToolOperations:
                 or if required stores are unavailable.
         """
         # Node-targeted routing
-        remote = self._route_to_node("oak_archive_memories", args)
+        remote = self._route_to_node(MCP_TOOL_ARCHIVE_MEMORIES, args)
         if remote is not None:
             return remote
 
@@ -686,3 +716,156 @@ class ToolOperations:
             f"These observations remain in SQLite for historical queries "
             f"but will no longer appear in vector search results."
         )
+
+    # ------------------------------------------------------------------
+    # Swarm operations (cross-project federation)
+    # ------------------------------------------------------------------
+
+    def swarm_search(self, args: dict[str, Any]) -> str:
+        """Search across all projects in the swarm.
+
+        Args:
+            args: Search arguments (query, search_type, limit).
+
+        Returns:
+            Formatted swarm search results as markdown string.
+        """
+        if self.relay_client is None:
+            return "Cloud relay not connected. Swarm search unavailable."
+
+        query = args.get("query", "")
+        if not query:
+            return "Error: query is required."
+
+        search_type = args.get("search_type", "all")
+        limit = min(max(1, args.get("limit", 10)), 50)
+
+        result = self._run_relay_coro(
+            self.relay_client.swarm_search(query, search_type, limit),
+            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 2.0,
+        )
+
+        if result.get("error"):
+            return f"Swarm search error: {result['error']}"
+
+        return format_swarm_search_results(result)
+
+    def swarm_nodes(self) -> str:
+        """List all teams in the swarm.
+
+        Returns:
+            Formatted swarm node list as markdown string.
+        """
+        if self.relay_client is None:
+            return "Cloud relay not connected. Swarm unavailable."
+
+        result = self._run_relay_coro(
+            self.relay_client.swarm_nodes(),
+            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 2.0,
+        )
+
+        if result.get("error"):
+            return f"Swarm nodes error: {result['error']}"
+
+        return format_swarm_nodes(result)
+
+    def swarm_call(self, args: dict[str, Any]) -> str:
+        """Call a tool on a specific project in the swarm.
+
+        Args:
+            args: Dict with tool_name, arguments (JSON string), target_project.
+
+        Returns:
+            Formatted tool call result as markdown string.
+        """
+        if self.relay_client is None:
+            return "Cloud relay not connected. Swarm unavailable."
+
+        tool_name = args.get("tool_name", "")
+        if not tool_name:
+            return "Error: tool_name is required."
+
+        target_project = args.get("target_project", "")
+        if not target_project:
+            return "Error: target_project is required."
+
+        # Parse arguments — accept both JSON string and dict
+        parsed_args, parse_error = _parse_json_arguments(args.get("arguments", "{}"))
+        if parse_error:
+            return parse_error
+
+        result = self._run_relay_coro(
+            self.relay_client.swarm_call(tool_name, parsed_args, target_project),
+            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
+        )
+
+        if result.get("error"):
+            return f"## Error from {target_project}\n\n{result['error']}"
+
+        text = extract_text_from_mcp_result(result.get("result", result))
+        return f"## Result from {target_project}\n\n{text}"
+
+    def swarm_broadcast(self, args: dict[str, Any]) -> str:
+        """Broadcast a tool call to all projects in the swarm.
+
+        Args:
+            args: Dict with tool_name and arguments (JSON string).
+
+        Returns:
+            Formatted aggregated results as markdown string.
+        """
+        if self.relay_client is None:
+            return "Cloud relay not connected. Swarm unavailable."
+
+        tool_name = args.get("tool_name", "")
+        if not tool_name:
+            return "Error: tool_name is required."
+
+        # Parse arguments — accept both JSON string and dict
+        parsed_args, parse_error = _parse_json_arguments(args.get("arguments", "{}"))
+        if parse_error:
+            return parse_error
+
+        result = self._run_relay_coro(
+            self.relay_client.swarm_broadcast(tool_name, parsed_args),
+            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
+        )
+
+        if result.get("error"):
+            return f"Swarm broadcast error: {result['error']}"
+
+        results = result.get("results", [])
+        if not results:
+            return "Broadcast completed but no results returned from swarm nodes."
+
+        return format_federated_tool_results(results)
+
+    def swarm_status(self) -> str:
+        """Get swarm connection status.
+
+        Returns:
+            Formatted swarm status as markdown string.
+        """
+        if self.relay_client is None:
+            return "Cloud relay not connected. Swarm unavailable."
+
+        result = self._run_relay_coro(
+            self.relay_client.swarm_status(),
+            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 2.0,
+        )
+
+        connected = result.get("connected", False)
+        relay_connected = result.get("relay_connected", False)
+        worker_url = result.get("worker_url", "")
+
+        lines = ["## Swarm Status\n"]
+        lines.append(f"- Connected: {'yes' if connected else 'no'}")
+        lines.append(f"- Relay connected: {'yes' if relay_connected else 'no'}")
+        if worker_url:
+            lines.append(f"- Worker URL: {worker_url}")
+
+        swarm_id = result.get("swarm_id")
+        if swarm_id:
+            lines.append(f"- Swarm ID: {swarm_id}")
+
+        return "\n".join(lines)

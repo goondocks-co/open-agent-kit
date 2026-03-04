@@ -1,7 +1,7 @@
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, DEFAULT_PLAN_SORT } from "@/lib/constants";
 import type { PlanSortOption } from "@/lib/constants";
-import { usePowerQuery } from "./use-power-query";
+import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
 /** Refetch interval for plans list (30 seconds) */
 const PLANS_REFETCH_INTERVAL_MS = 30000;

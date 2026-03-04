@@ -16,6 +16,7 @@ Domain modules:
     backup      — backup config, machine identifiers
     governance  — governance actions, modes, tool categories
     cloud_relay — cloud MCP relay
+    swarm       — swarm mode
     team        — team sync
     daemon      — CORS, logging, auth, ACP, restart, version
     processing  — power states, batching, scheduler/executor
@@ -133,6 +134,16 @@ from open_agent_kit.features.codebase_intelligence.constants.api import (
     MAX_OBSERVATION_LENGTH,
     MAX_QUERY_LENGTH,
     MAX_SEARCH_LIMIT,
+    MCP_TOOL_ACTIVITY,
+    MCP_TOOL_ARCHIVE_MEMORIES,
+    MCP_TOOL_CONTEXT,
+    MCP_TOOL_MEMORIES,
+    MCP_TOOL_NODES,
+    MCP_TOOL_REMEMBER,
+    MCP_TOOL_RESOLVE_MEMORY,
+    MCP_TOOL_SEARCH,
+    MCP_TOOL_SESSIONS,
+    MCP_TOOL_STATS,
     MIN_QUERY_LENGTH,
     PAGINATION_ACTIVITIES_MAX,
     PAGINATION_DEFAULT_LIMIT,
@@ -951,4 +962,23 @@ from open_agent_kit.features.codebase_intelligence.constants.team import (
 from open_agent_kit.features.codebase_intelligence.utils.version import (
     is_meaningful_upgrade,
     parse_base_release,
+)
+
+# --- swarm (only constants consumed by CI features) ---
+from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_KEY_SWARM,
+    CI_CONFIG_SWARM_KEY_SENSITIVITY,
+    CI_CONFIG_SWARM_KEY_SWARM_ID,
+    CI_CONFIG_SWARM_KEY_TOKEN,
+    CI_CONFIG_SWARM_KEY_URL,
+    SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
+    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
+    SWARM_WS_TYPE_BROADCAST,
+    SWARM_WS_TYPE_BROADCAST_RESULT,
+    SWARM_WS_TYPE_NODE_LIST,
+    SWARM_WS_TYPE_NODES,
+    SWARM_WS_TYPE_SEARCH,
+    SWARM_WS_TYPE_SEARCH_RESULT,
+    SWARM_WS_TYPE_TOOL_CALL,
+    SWARM_WS_TYPE_TOOL_RESULT,
 )

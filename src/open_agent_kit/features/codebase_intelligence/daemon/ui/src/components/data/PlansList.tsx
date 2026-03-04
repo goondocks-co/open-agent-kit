@@ -4,7 +4,7 @@ import { useAutoRefreshPlans } from "@/hooks/use-auto-refresh-plans";
 import { useDeleteMemory } from "@/hooks/use-delete";
 import { usePaginatedList } from "@/hooks/use-paginated-list";
 import { Link } from "react-router-dom";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@oak/ui/components/ui/card";
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContentDialog, useContentDialog } from "@/components/ui/content-dialog";
 import { formatDate } from "@/lib/utils";

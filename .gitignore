@@ -63,15 +63,16 @@ COVERAGE_STATUS.txt
 dmypy.json
 .pytype/
 
-# Documentation
+# Node
+node_modules/
+node_modules
+
+# Documentation / static-site builds
 docs/_build/
-docs/node_modules/
 docs/dist/
 docs/.astro/
 # Stray Astro/Node artifacts if build runs from project root
 /.astro/
-/dist/
-/node_modules/
 site/
 
 # OS files

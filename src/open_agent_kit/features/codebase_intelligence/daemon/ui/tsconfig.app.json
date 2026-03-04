@@ -31,10 +31,14 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@oak/ui/*": [
+        "../../../../ui/shared/*"
       ]
     }
   },
   "include": [
-    "src"
+    "src",
+    "../../../../ui/shared"
   ]
 }

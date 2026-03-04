@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { ExternalLink, BookOpen, Wrench, RefreshCw, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandBlock } from "@/components/ui/command-block";

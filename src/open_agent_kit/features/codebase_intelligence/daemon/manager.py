@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import IO, Any
 
 from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.codebase_intelligence.constants import (
@@ -28,6 +27,7 @@ from open_agent_kit.features.codebase_intelligence.constants import (
     CI_TOKEN_FILE,
     CI_TOKEN_FILE_PERMISSIONS,
 )
+from open_agent_kit.utils.daemon_manager import BaseDaemonManager, DaemonConfig
 from open_agent_kit.utils.platform import (
     acquire_file_lock,
     find_pid_by_port,
@@ -254,7 +254,7 @@ def get_project_port(project_root: Path, ci_data_dir: Path | None = None) -> int
         return derive_port_from_path(project_root)
 
 
-class DaemonManager:
+class DaemonManager(BaseDaemonManager):
     """Manage the Codebase Intelligence daemon lifecycle.
 
     Handles starting, stopping, and monitoring the daemon process.
@@ -275,37 +275,23 @@ class DaemonManager:
             ci_data_dir: Directory for CI data (default: .oak/ci).
         """
         self.project_root = project_root
-        self.port = port
         self.ci_data_dir = ci_data_dir or (project_root / OAK_DIR / CI_DATA_DIR)
-        self.pid_file = self.ci_data_dir / CI_PID_FILE
+        super().__init__(
+            DaemonConfig(
+                config_dir=self.ci_data_dir,
+                port=port,
+                pid_filename=CI_PID_FILE,
+                log_filename=CI_LOG_FILE,
+                health_endpoint="/api/health",
+                startup_timeout=STARTUP_TIMEOUT,
+                health_check_interval=HEALTH_CHECK_INTERVAL,
+            )
+        )
         self.token_file = self.ci_data_dir / CI_TOKEN_FILE
-        self.log_file = self.ci_data_dir / CI_LOG_FILE
         self.lock_file = self.ci_data_dir / LOCK_FILE
-        self.base_url = f"http://localhost:{port}"
-        self._lock_handle: IO[Any] | None = None
 
-    def _ensure_data_dir(self) -> None:
-        """Ensure the CI data directory exists."""
-        self.ci_data_dir.mkdir(parents=True, exist_ok=True)
-
-    def _read_pid(self) -> int | None:
-        """Read PID from file."""
-        if not self.pid_file.exists():
-            return None
-        try:
-            return int(self.pid_file.read_text().strip())
-        except (ValueError, OSError):
-            return None
-
-    def _write_pid(self, pid: int) -> None:
-        """Write PID to file."""
-        self._ensure_data_dir()
-        self.pid_file.write_text(str(pid))
-
-    def _remove_pid(self) -> None:
-        """Remove PID file."""
-        if self.pid_file.exists():
-            self.pid_file.unlink()
+    # Alias so existing start() calls to _ensure_data_dir still work
+    _ensure_data_dir = BaseDaemonManager._ensure_config_dir
 
     def _acquire_lock(self) -> bool:
         """Acquire exclusive lock on daemon startup.
@@ -618,89 +604,6 @@ class DaemonManager:
             # Always release lock after startup attempt (success or failure)
             self._release_lock()
 
-    def _wait_for_startup(self) -> bool:
-        """Wait for daemon to become ready."""
-        start_time = time.time()
-
-        while time.time() - start_time < STARTUP_TIMEOUT:
-            if self._health_check():
-                logger.info("Daemon is ready")
-                return True
-            time.sleep(HEALTH_CHECK_INTERVAL)
-
-        # Include helpful debug info in log
-        logger.error(
-            f"Daemon failed to start within {STARTUP_TIMEOUT}s timeout. "
-            f"Check logs at: {self.log_file}"
-        )
-
-        # Try to get last few lines of log for debugging
-        if self.log_file.exists():
-            try:
-                lines = self.log_file.read_text().strip().split("\n")[-10:]
-                for line in lines:
-                    logger.error(f"  {line}")
-            except (OSError, UnicodeDecodeError) as e:
-                logger.debug(f"Failed to read log file: {e}")
-
-        self.stop()  # Clean up
-        return False
-
-    def stop(self) -> bool:
-        """Stop the daemon.
-
-        Tries project-specific approaches only:
-        1. Use PID file if available
-        2. Find process by port if no PID file
-
-        Note: We intentionally do NOT use global process search (pgrep) as that
-        could kill daemons from other projects. If both PID file and port lookup
-        fail, we assume no daemon is running for this project.
-
-        Returns:
-            True if daemon was stopped successfully.
-        """
-        pid = self._read_pid()
-
-        # If no PID file, try to find by port (project-specific)
-        if not pid:
-            pid = self._find_pid_by_port()
-            if pid:
-                logger.info(f"Found daemon PID {pid} by port {self.port}")
-
-        if not pid:
-            logger.info("No daemon process found")
-            self._cleanup_files()
-            return True
-
-        if not self._is_process_running(pid):
-            logger.info("Daemon process is not running")
-            self._cleanup_files()
-            return True
-
-        # Try graceful shutdown first (platform-aware)
-        if not terminate_process(pid, graceful=True):
-            logger.error(f"Failed to send termination signal to daemon PID {pid}")
-            return False
-
-        logger.info(f"Sent termination signal to daemon PID {pid}")
-
-        # Wait for process to exit
-        for _ in range(10):
-            if not self._is_process_running(pid):
-                break
-            time.sleep(0.5)
-        else:
-            # Force kill if still running
-            if not terminate_process(pid, graceful=False):
-                logger.error(f"Failed to force kill daemon PID {pid}")
-                return False
-            logger.warning(f"Force killed daemon PID {pid}")
-
-        self._cleanup_files()
-        logger.info("Daemon stopped")
-        return True
-
     def _find_pid_by_port(self) -> int | None:
         """Find daemon PID by checking what's listening on our port.
 
@@ -758,45 +661,6 @@ class DaemonManager:
                 self.token_file.unlink()
             except OSError:
                 pass
-
-    def restart(self) -> bool:
-        """Restart the daemon.
-
-        Returns:
-            True if daemon restarted successfully.
-        """
-        self.stop()
-        time.sleep(0.5)  # Brief pause
-        return self.start()
-
-    def ensure_running(self) -> bool:
-        """Ensure daemon is running, starting it if necessary.
-
-        Returns:
-            True if daemon is running (either was already or started).
-        """
-        if self.is_running():
-            return True
-        return self.start()
-
-    def tail_logs(self, lines: int = 50) -> str:
-        """Get recent log output.
-
-        Args:
-            lines: Number of lines to return.
-
-        Returns:
-            Recent log content.
-        """
-        if not self.log_file.exists():
-            return "No log file found"
-
-        try:
-            content = self.log_file.read_text()
-            log_lines = content.strip().split("\n")
-            return "\n".join(log_lines[-lines:])
-        except OSError:
-            return "Failed to read log file"
 
     def get_daemon_version(self) -> dict | None:
         """Get version info from running daemon.

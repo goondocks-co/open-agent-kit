@@ -10,6 +10,11 @@ Exposes tools that AI agents can call via MCP protocol:
 - oak_stats: Get project intelligence statistics
 - oak_activity: View tool execution history for a session
 - oak_archive_memories: Archive observations from search index
+- swarm_search: Search across all projects in the swarm
+- swarm_nodes: List all teams in the swarm
+- swarm_call: Call a tool on a specific swarm project
+- swarm_broadcast: Broadcast a tool call to all swarm projects
+- swarm_status: Get swarm connection status
 
 These tools delegate to shared ToolOperations for actual implementation.
 """
@@ -18,6 +23,26 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
+
+from open_agent_kit.features.codebase_intelligence.constants import (
+    MCP_TOOL_ACTIVITY,
+    MCP_TOOL_ARCHIVE_MEMORIES,
+    MCP_TOOL_CONTEXT,
+    MCP_TOOL_MEMORIES,
+    MCP_TOOL_NODES,
+    MCP_TOOL_REMEMBER,
+    MCP_TOOL_RESOLVE_MEMORY,
+    MCP_TOOL_SEARCH,
+    MCP_TOOL_SESSIONS,
+    MCP_TOOL_STATS,
+)
+from open_agent_kit.features.swarm.constants import (
+    SWARM_TOOL_BROADCAST,
+    SWARM_TOOL_CALL,
+    SWARM_TOOL_NODES,
+    SWARM_TOOL_SEARCH,
+    SWARM_TOOL_STATUS,
+)
 
 if TYPE_CHECKING:
     from open_agent_kit.features.codebase_intelligence.cloud_relay.base import PolicyAccessor
@@ -31,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 MCP_TOOLS = [
     {
-        "name": "oak_search",
+        "name": MCP_TOOL_SEARCH,
         "description": (
             "Search the codebase, project memories, sessions, and past implementation plans using "
             "semantic similarity. Use this to find relevant code implementations, past "
@@ -79,7 +104,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_remember",
+        "name": MCP_TOOL_REMEMBER,
         "description": (
             "Store an observation, decision, or learning for future sessions. "
             "Use this when you discover something important about the codebase "
@@ -109,7 +134,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_context",
+        "name": MCP_TOOL_CONTEXT,
         "description": (
             "Get relevant context for your current task. Call this when starting "
             "work on something to retrieve related code, past decisions, and "
@@ -147,7 +172,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_resolve_memory",
+        "name": MCP_TOOL_RESOLVE_MEMORY,
         "description": (
             "Mark a memory observation as resolved or superseded. "
             "Use this after completing work that addresses a gotcha, fixing a bug that "
@@ -186,7 +211,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_sessions",
+        "name": MCP_TOOL_SESSIONS,
         "description": (
             "List recent coding sessions with their status and summaries. "
             "Use this to understand what work has been done recently and find "
@@ -219,7 +244,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_memories",
+        "name": MCP_TOOL_MEMORIES,
         "description": (
             "Browse stored memories and observations. Use this to review what "
             "the system has learned about the codebase, including gotchas, "
@@ -263,7 +288,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_stats",
+        "name": MCP_TOOL_STATS,
         "description": (
             "Get project intelligence statistics including indexed code chunks, "
             "unique files, memory count, and observation status breakdown. "
@@ -282,7 +307,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_activity",
+        "name": MCP_TOOL_ACTIVITY,
         "description": (
             "View tool execution history for a specific session. Shows what tools "
             "were used, which files were affected, success/failure status, and "
@@ -318,7 +343,7 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_archive_memories",
+        "name": MCP_TOOL_ARCHIVE_MEMORIES,
         "description": (
             "Archive observations from the ChromaDB search index. Archived observations "
             "remain in SQLite for historical queries but stop appearing in vector search "
@@ -361,11 +386,118 @@ MCP_TOOLS = [
         },
     },
     {
-        "name": "oak_nodes",
+        "name": MCP_TOOL_NODES,
         "description": (
             "List connected team relay nodes. Shows machine IDs, online status, "
             "OAK version, and capabilities for each node. Use this to discover "
             "available nodes before targeting them with node_id in other tools."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    # ------------------------------------------------------------------
+    # Swarm tools (cross-project federation)
+    # ------------------------------------------------------------------
+    {
+        "name": SWARM_TOOL_SEARCH,
+        "description": (
+            "Search across all projects in the swarm for code, memories, and observations. "
+            "Use this to find relevant implementations and learnings from other projects "
+            "connected to the same swarm."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "search_type": {
+                    "type": "string",
+                    "enum": ["all", "code", "memory"],
+                    "default": "all",
+                    "description": "Search scope: 'all', 'code', or 'memory'",
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "Maximum results to return",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": SWARM_TOOL_NODES,
+        "description": (
+            "List all teams in the swarm with their connection status. "
+            "Use this to see which projects are connected and available "
+            "for cross-project queries and tool calls."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": SWARM_TOOL_CALL,
+        "description": (
+            "Call a tool on a specific project in the swarm. Routes the tool "
+            "invocation to the target project's CI daemon, allowing cross-project "
+            "operations like searching a specific project's codebase or reading its memories."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tool_name": {
+                    "type": "string",
+                    "description": "Name of the tool to invoke (e.g., 'oak_search')",
+                },
+                "arguments": {
+                    "type": "string",
+                    "default": "{}",
+                    "description": "JSON string of tool arguments",
+                },
+                "target_project": {
+                    "type": "string",
+                    "description": "Project slug to route the call to",
+                },
+            },
+            "required": ["tool_name", "target_project"],
+        },
+    },
+    {
+        "name": SWARM_TOOL_BROADCAST,
+        "description": (
+            "Broadcast a tool call to all projects in the swarm. Sends the same "
+            "tool invocation to every connected project and aggregates the results. "
+            "Useful for swarm-wide searches or collecting information from all projects."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tool_name": {
+                    "type": "string",
+                    "description": "Name of the tool to invoke (e.g., 'oak_search')",
+                },
+                "arguments": {
+                    "type": "string",
+                    "default": "{}",
+                    "description": "JSON string of tool arguments",
+                },
+            },
+            "required": ["tool_name"],
+        },
+    },
+    {
+        "name": SWARM_TOOL_STATUS,
+        "description": (
+            "Get swarm connection status. Shows whether this node is connected "
+            "to the swarm, the swarm ID, and current connection state."
         ),
         "inputSchema": {
             "type": "object",
@@ -415,16 +547,22 @@ class MCPToolHandler:
             Tool result in MCP format.
         """
         handlers = {
-            "oak_search": self.ops.search,
-            "oak_remember": self.ops.remember,
-            "oak_context": self.ops.get_context,
-            "oak_resolve_memory": self.ops.resolve_memory,
-            "oak_sessions": self.ops.list_sessions,
-            "oak_memories": self.ops.list_memories,
-            "oak_stats": lambda args: self.ops.get_stats(args),
-            "oak_activity": self.ops.list_activities,
-            "oak_archive_memories": self.ops.archive_memories,
-            "oak_nodes": lambda args: self.ops.list_nodes(args),
+            MCP_TOOL_SEARCH: self.ops.search,
+            MCP_TOOL_REMEMBER: self.ops.remember,
+            MCP_TOOL_CONTEXT: self.ops.get_context,
+            MCP_TOOL_RESOLVE_MEMORY: self.ops.resolve_memory,
+            MCP_TOOL_SESSIONS: self.ops.list_sessions,
+            MCP_TOOL_MEMORIES: self.ops.list_memories,
+            MCP_TOOL_STATS: lambda args: self.ops.get_stats(args),
+            MCP_TOOL_ACTIVITY: self.ops.list_activities,
+            MCP_TOOL_ARCHIVE_MEMORIES: self.ops.archive_memories,
+            MCP_TOOL_NODES: lambda args: self.ops.list_nodes(args),
+            # Swarm tools
+            SWARM_TOOL_SEARCH: self.ops.swarm_search,
+            SWARM_TOOL_NODES: lambda args: self.ops.swarm_nodes(),
+            SWARM_TOOL_CALL: self.ops.swarm_call,
+            SWARM_TOOL_BROADCAST: self.ops.swarm_broadcast,
+            SWARM_TOOL_STATUS: lambda args: self.ops.swarm_status(),
         }
 
         handler = handlers.get(tool_name)

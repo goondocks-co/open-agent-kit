@@ -1,7 +1,7 @@
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, LOGS_POLL_INTERVAL_MS, LOG_FILES } from "@/lib/constants";
 import type { LogFileType } from "@/lib/constants";
-import { usePowerQuery } from "./use-power-query";
+import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
 export interface LogResponse {
     log_file: string | null;

@@ -183,3 +183,63 @@ class RelayClient(ABC):
             Dict with tool result or error.
         """
         return {"error": "Not implemented"}
+
+    # ------------------------------------------------------------------
+    # Swarm operations (cross-project federation)
+    # ------------------------------------------------------------------
+
+    async def swarm_search(
+        self,
+        query: str,
+        search_type: str = "all",
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Search across all projects in the swarm.
+
+        Returns:
+            Dict with ``results`` list and optional ``error`` key.
+        """
+        return {"results": [], "error": "Not connected to swarm"}
+
+    async def swarm_call(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        target_project: str,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Call a tool on a specific project in the swarm.
+
+        Returns:
+            Dict with result or error.
+        """
+        return {"error": "Not connected to swarm"}
+
+    async def swarm_broadcast(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Broadcast a tool call to all projects in the swarm.
+
+        Returns:
+            Dict with ``results`` list and optional ``error`` key.
+        """
+        return {"results": [], "error": "Not connected to swarm"}
+
+    async def swarm_nodes(self) -> dict[str, Any]:
+        """List all teams in the swarm.
+
+        Returns:
+            Dict with ``nodes`` list.
+        """
+        return {"nodes": [], "error": "Not connected to swarm"}
+
+    async def swarm_status(self) -> dict[str, Any]:
+        """Get swarm connection status.
+
+        Returns:
+            Dict with ``connected``, ``swarm_id``, etc.
+        """
+        return {"connected": False}

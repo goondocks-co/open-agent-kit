@@ -21,6 +21,16 @@ from open_agent_kit.features.codebase_intelligence.activity.store.core import Ac
 from open_agent_kit.features.codebase_intelligence.constants import (
     CLOUD_RELAY_FEDERATION_BRIDGE_TIMEOUT_SECONDS,
     CLOUD_RELAY_REMOTE_TOOL_BRIDGE_TIMEOUT_SECONDS,
+    MCP_TOOL_ACTIVITY,
+    MCP_TOOL_ARCHIVE_MEMORIES,
+    MCP_TOOL_CONTEXT,
+    MCP_TOOL_MEMORIES,
+    MCP_TOOL_NODES,
+    MCP_TOOL_REMEMBER,
+    MCP_TOOL_RESOLVE_MEMORY,
+    MCP_TOOL_SEARCH,
+    MCP_TOOL_SESSIONS,
+    MCP_TOOL_STATS,
     SEARCH_TYPE_MEMORY,
 )
 from open_agent_kit.features.codebase_intelligence.daemon.mcp_tools import MCPToolHandler
@@ -181,14 +191,14 @@ def _text(result: dict) -> str:
 
 class TestOakNodesSmoke:
     def test_returns_both_nodes(self, handler: MCPToolHandler) -> None:
-        result = handler.handle_tool_call("oak_nodes", {})
+        result = handler.handle_tool_call(MCP_TOOL_NODES, {})
         text = _text(result)
         assert "smoke-node-1" in text
         assert "smoke-node-2" in text
         assert "2 node(s)" in text
 
     def test_empty_args_accepted(self, handler: MCPToolHandler) -> None:
-        result = handler.handle_tool_call("oak_nodes", {})
+        result = handler.handle_tool_call(MCP_TOOL_NODES, {})
         assert not result.get("isError")
 
 
@@ -217,7 +227,9 @@ class TestFederatedFanOutSmoke:
             ]
         }
         with self._patch_loop(federated_return):
-            result = handler.handle_tool_call("oak_sessions", {"limit": 5, "include_network": True})
+            result = handler.handle_tool_call(
+                MCP_TOOL_SESSIONS, {"limit": 5, "include_network": True}
+            )
         text = _text(result)
         assert "sessions" in text.lower()
         assert "Local Results [smoke-local]" in text
@@ -233,7 +245,7 @@ class TestFederatedFanOutSmoke:
             ]
         }
         with self._patch_loop(federated_return):
-            result = handler.handle_tool_call("oak_memories", {"include_network": True})
+            result = handler.handle_tool_call(MCP_TOOL_MEMORIES, {"include_network": True})
         text = _text(result)
         assert "Local Results [smoke-local]" in text
         assert "Network Results" in text
@@ -248,7 +260,7 @@ class TestFederatedFanOutSmoke:
             ]
         }
         with self._patch_loop(federated_return):
-            result = handler.handle_tool_call("oak_stats", {"include_network": True})
+            result = handler.handle_tool_call(MCP_TOOL_STATS, {"include_network": True})
         text = _text(result)
         assert "Project Statistics" in text
         assert "Local Results [smoke-local]" in text
@@ -262,7 +274,7 @@ class TestFederatedFanOutSmoke:
         }
         with self._patch_loop(network_return):
             result = handler.handle_tool_call(
-                "oak_search", {"query": "authentication", "include_network": True}
+                MCP_TOOL_SEARCH, {"query": "authentication", "include_network": True}
             )
         text = _text(result)
         assert "Local Results [smoke-local]" in text
@@ -276,20 +288,20 @@ class TestFederatedFanOutSmoke:
         }
         with self._patch_loop(network_return):
             result = handler.handle_tool_call(
-                "oak_context", {"task": "implement auth", "include_network": True}
+                MCP_TOOL_CONTEXT, {"task": "implement auth", "include_network": True}
             )
         text = _text(result)
         assert "Local Results [smoke-local]" in text
         assert "Network Memories" in text
 
     def test_include_network_false_skips_federation(self, handler: MCPToolHandler) -> None:
-        result = handler.handle_tool_call("oak_sessions", {"limit": 5, "include_network": False})
+        result = handler.handle_tool_call(MCP_TOOL_SESSIONS, {"limit": 5, "include_network": False})
         text = _text(result)
         assert "Network Results" not in text
         assert "Local Results" not in text
 
     def test_include_network_missing_skips_federation(self, handler: MCPToolHandler) -> None:
-        result = handler.handle_tool_call("oak_stats", {})
+        result = handler.handle_tool_call(MCP_TOOL_STATS, {})
         text = _text(result)
         assert "Network Results" not in text
         assert "Local Results" not in text
@@ -313,7 +325,7 @@ class TestNodeTargetedSmoke:
         remote_return = {"result": {"content": [{"type": "text", "text": "Activities from node"}]}}
         with self._patch_loop(remote_return):
             result = handler.handle_tool_call(
-                "oak_activity", {"session_id": "s1", "node_id": "smoke-node-1"}
+                MCP_TOOL_ACTIVITY, {"session_id": "s1", "node_id": "smoke-node-1"}
             )
         text = _text(result)
         assert "smoke-node-1" in text
@@ -323,7 +335,7 @@ class TestNodeTargetedSmoke:
         remote_return = {"result": {"content": [{"type": "text", "text": "Resolved on remote"}]}}
         with self._patch_loop(remote_return):
             result = handler.handle_tool_call(
-                "oak_resolve_memory", {"id": "obs-1", "node_id": "smoke-node-1"}
+                MCP_TOOL_RESOLVE_MEMORY, {"id": "obs-1", "node_id": "smoke-node-1"}
             )
         text = _text(result)
         assert "smoke-node-1" in text
@@ -333,14 +345,14 @@ class TestNodeTargetedSmoke:
         remote_return = {"result": {"content": [{"type": "text", "text": "Archived on remote"}]}}
         with self._patch_loop(remote_return):
             result = handler.handle_tool_call(
-                "oak_archive_memories", {"ids": ["obs-1"], "node_id": "smoke-node-1"}
+                MCP_TOOL_ARCHIVE_MEMORIES, {"ids": ["obs-1"], "node_id": "smoke-node-1"}
             )
         text = _text(result)
         assert "smoke-node-1" in text
         assert "Archived on remote" in text
 
     def test_oak_activity_local_when_no_node_id(self, handler: MCPToolHandler) -> None:
-        result = handler.handle_tool_call("oak_activity", {"session_id": "smoke-session-1"})
+        result = handler.handle_tool_call(MCP_TOOL_ACTIVITY, {"session_id": "smoke-session-1"})
         text = _text(result)
         assert "activities" in text.lower()
         assert "smoke-session-1" in text
@@ -349,7 +361,7 @@ class TestNodeTargetedSmoke:
         remote_return = {"result": {"content": [{"type": "text", "text": "ok"}]}}
         args = {"session_id": "s1", "node_id": "smoke-node-1"}
         with self._patch_loop(remote_return):
-            handler.handle_tool_call("oak_activity", args)
+            handler.handle_tool_call(MCP_TOOL_ACTIVITY, args)
         assert "node_id" in args
         assert args["node_id"] == "smoke-node-1"
 
@@ -357,7 +369,7 @@ class TestNodeTargetedSmoke:
         error_return = {"error": "Node offline"}
         with self._patch_loop(error_return):
             result = handler.handle_tool_call(
-                "oak_activity", {"session_id": "s1", "node_id": "smoke-node-1"}
+                MCP_TOOL_ACTIVITY, {"session_id": "s1", "node_id": "smoke-node-1"}
             )
         text = _text(result)
         assert "Error" in text
@@ -483,20 +495,20 @@ class TestRunRelayCoroSmoke:
 
 class TestResolveInputWiringSmoke:
     def test_resolve_validates_via_schema(self, handler: MCPToolHandler) -> None:
-        result = handler.handle_tool_call("oak_resolve_memory", {})
+        result = handler.handle_tool_call(MCP_TOOL_RESOLVE_MEMORY, {})
         assert result.get("isError")
         assert "error" in result["content"][0]["text"].lower()
 
     def test_resolve_invalid_status_rejected(self, handler: MCPToolHandler) -> None:
         result = handler.handle_tool_call(
-            "oak_resolve_memory", {"id": "obs-1", "status": "invalid_status"}
+            MCP_TOOL_RESOLVE_MEMORY, {"id": "obs-1", "status": "invalid_status"}
         )
         assert result.get("isError")
         assert "invalid" in result["content"][0]["text"].lower()
 
     def test_resolve_valid_call(self, handler: MCPToolHandler) -> None:
         result = handler.handle_tool_call(
-            "oak_resolve_memory", {"id": "any-obs-id", "status": "resolved"}
+            MCP_TOOL_RESOLVE_MEMORY, {"id": "any-obs-id", "status": "resolved"}
         )
         text = _text(result)
         assert "resolved" in text.lower()
@@ -537,7 +549,7 @@ class TestFullRoundTripSmoke:
     def test_discovery_then_federated_then_targeted(self, handler: MCPToolHandler) -> None:
         """Agent workflow: discover nodes -> federated search -> targeted activity."""
         # Step 1: Discover nodes
-        nodes_result = handler.handle_tool_call("oak_nodes", {})
+        nodes_result = handler.handle_tool_call(MCP_TOOL_NODES, {})
         nodes_text = _text(nodes_result)
         assert "smoke-node-1" in nodes_text
         assert "smoke-node-2" in nodes_text
@@ -548,7 +560,7 @@ class TestFullRoundTripSmoke:
         }
         with self._patch_loop(search_return):
             search_result = handler.handle_tool_call(
-                "oak_search", {"query": "auth bug", "include_network": True}
+                MCP_TOOL_SEARCH, {"query": "auth bug", "include_network": True}
             )
         search_text = _text(search_result)
         assert "Local Results [smoke-local]" in search_text
@@ -560,7 +572,7 @@ class TestFullRoundTripSmoke:
         }
         with self._patch_loop(activity_return):
             activity_result = handler.handle_tool_call(
-                "oak_activity", {"session_id": "s1", "node_id": "smoke-node-1"}
+                MCP_TOOL_ACTIVITY, {"session_id": "s1", "node_id": "smoke-node-1"}
             )
         activity_text = _text(activity_result)
         assert "smoke-node-1" in activity_text
@@ -569,16 +581,16 @@ class TestFullRoundTripSmoke:
     def test_all_10_tools_callable(self, handler: MCPToolHandler) -> None:
         """Every registered tool can be called without crashing."""
         tool_args = {
-            "oak_search": {"query": "test"},
-            "oak_remember": {"observation": "test memory"},
-            "oak_context": {"task": "test task"},
-            "oak_resolve_memory": {"id": "any-obs-id"},
-            "oak_sessions": {"limit": 5},
-            "oak_memories": {},
-            "oak_stats": {},
-            "oak_activity": {"session_id": "smoke-session-1"},
-            "oak_archive_memories": {"ids": ["any-obs-id"], "dry_run": True},
-            "oak_nodes": {},
+            MCP_TOOL_SEARCH: {"query": "test"},
+            MCP_TOOL_REMEMBER: {"observation": "test memory"},
+            MCP_TOOL_CONTEXT: {"task": "test task"},
+            MCP_TOOL_RESOLVE_MEMORY: {"id": "any-obs-id"},
+            MCP_TOOL_SESSIONS: {"limit": 5},
+            MCP_TOOL_MEMORIES: {},
+            MCP_TOOL_STATS: {},
+            MCP_TOOL_ACTIVITY: {"session_id": "smoke-session-1"},
+            MCP_TOOL_ARCHIVE_MEMORIES: {"ids": ["any-obs-id"], "dry_run": True},
+            MCP_TOOL_NODES: {},
         }
         for tool_name, args in tool_args.items():
             result = handler.handle_tool_call(tool_name, args)
@@ -656,7 +668,7 @@ class TestFederationPolicySmoke:
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
         result = disabled_policy_handler.handle_tool_call(
-            "oak_search", {"query": "auth", "include_network": True}
+            MCP_TOOL_SEARCH, {"query": "auth", "include_network": True}
         )
         text = _text(result)
         assert "Network Results" not in text
@@ -666,7 +678,7 @@ class TestFederationPolicySmoke:
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
         result = disabled_policy_handler.handle_tool_call(
-            "oak_sessions", {"limit": 5, "include_network": True}
+            MCP_TOOL_SESSIONS, {"limit": 5, "include_network": True}
         )
         text = _text(result)
         assert "Network Results" not in text
@@ -674,7 +686,9 @@ class TestFederationPolicySmoke:
     def test_memories_skips_network_when_disabled(
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
-        result = disabled_policy_handler.handle_tool_call("oak_memories", {"include_network": True})
+        result = disabled_policy_handler.handle_tool_call(
+            MCP_TOOL_MEMORIES, {"include_network": True}
+        )
         text = _text(result)
         assert "Network Results" not in text
 
@@ -682,7 +696,7 @@ class TestFederationPolicySmoke:
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
         result = disabled_policy_handler.handle_tool_call(
-            "oak_context", {"task": "implement auth", "include_network": True}
+            MCP_TOOL_CONTEXT, {"task": "implement auth", "include_network": True}
         )
         text = _text(result)
         assert "Network Memories" not in text
@@ -690,7 +704,7 @@ class TestFederationPolicySmoke:
     def test_stats_skips_network_when_disabled(
         self, disabled_policy_handler: MCPToolHandler
     ) -> None:
-        result = disabled_policy_handler.handle_tool_call("oak_stats", {"include_network": True})
+        result = disabled_policy_handler.handle_tool_call(MCP_TOOL_STATS, {"include_network": True})
         text = _text(result)
         assert "Network Results" not in text
 
@@ -704,7 +718,7 @@ class TestFederationPolicySmoke:
         network_return = {"results": [{"observation": "Network hit", "machine_id": "smoke-node-1"}]}
         with self._patch_loop(network_return):
             result = enabled_policy_handler.handle_tool_call(
-                "oak_search", {"query": "auth", "include_network": True}
+                MCP_TOOL_SEARCH, {"query": "auth", "include_network": True}
             )
         text = _text(result)
         assert "Network Results" in text
@@ -722,7 +736,7 @@ class TestFederationPolicySmoke:
         }
         with self._patch_loop(federated_return):
             result = enabled_policy_handler.handle_tool_call(
-                "oak_sessions", {"limit": 5, "include_network": True}
+                MCP_TOOL_SESSIONS, {"limit": 5, "include_network": True}
             )
         text = _text(result)
         assert "Network Results" in text
@@ -736,13 +750,13 @@ class TestFederationPolicySmoke:
     ) -> None:
         """Relay methods should never be invoked when policy disables federation."""
         disabled_policy_handler.handle_tool_call(
-            "oak_search", {"query": "auth", "include_network": True}
+            MCP_TOOL_SEARCH, {"query": "auth", "include_network": True}
         )
         disabled_policy_handler.handle_tool_call(
-            "oak_sessions", {"limit": 5, "include_network": True}
+            MCP_TOOL_SESSIONS, {"limit": 5, "include_network": True}
         )
         disabled_policy_handler.handle_tool_call(
-            "oak_context", {"task": "test", "include_network": True}
+            MCP_TOOL_CONTEXT, {"task": "test", "include_network": True}
         )
         mock_relay_client.search_network.assert_not_called()
         mock_relay_client.federate_tool_call.assert_not_called()

@@ -12,10 +12,10 @@
  */
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
+import { Alert, AlertDescription } from "@oak/ui/components/ui/alert";
+import { Label } from "@oak/ui/components/ui/label";
 import {
     useAgents,
     useRunTask,

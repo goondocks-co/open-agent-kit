@@ -10,6 +10,8 @@ import typer
 from open_agent_kit.features.codebase_intelligence.constants import (
     HTTP_TIMEOUT_QUICK,
     HTTP_TIMEOUT_STANDARD,
+    MCP_TOOL_REMEMBER,
+    MCP_TOOL_SEARCH,
     OBSERVATION_STATUS_ACTIVE,
     VALID_OBSERVATION_STATUSES,
 )
@@ -489,7 +491,7 @@ def ci_test(
             r = client.get(f"{base_url}/api/mcp/tools")
             data = r.json()
             tools = [t["name"] for t in data.get("tools", [])]
-            return "oak_search" in tools and "oak_remember" in tools
+            return MCP_TOOL_SEARCH in tools and MCP_TOOL_REMEMBER in tools
 
     test("MCP tools available", test_mcp_tools)
 

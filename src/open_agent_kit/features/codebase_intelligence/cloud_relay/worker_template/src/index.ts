@@ -143,6 +143,14 @@ export default {
       return doStub.fetch(request);
     }
 
+    // ----- /api/swarm/config — swarm configuration (relay_token auth) -----
+    if (path === "/api/swarm/config" && (request.method === "PUT" || request.method === "GET")) {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return withCors(authErr);
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request));
+    }
+
     // ----- GET /health -----
     if (path === "/health") {
       const doStub = getDurableObject(env);

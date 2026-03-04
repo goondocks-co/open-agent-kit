@@ -5,7 +5,7 @@
  */
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@oak/ui/components/ui/button";
 import { Copy, Check, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 

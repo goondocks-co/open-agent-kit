@@ -18,6 +18,16 @@ import pytest
 from pydantic import ValidationError
 
 from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
+from open_agent_kit.features.codebase_intelligence.constants import (
+    MCP_TOOL_ACTIVITY,
+    MCP_TOOL_CONTEXT,
+    MCP_TOOL_MEMORIES,
+    MCP_TOOL_REMEMBER,
+    MCP_TOOL_RESOLVE_MEMORY,
+    MCP_TOOL_SEARCH,
+    MCP_TOOL_SESSIONS,
+    MCP_TOOL_STATS,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.mcp_tools import (
     MCP_TOOLS,
     MCPToolHandler,
@@ -215,14 +225,14 @@ class TestMCPToolHandlerDispatch:
     """Verifies handler routing for all tools."""
 
     EXPECTED_TOOLS = [
-        "oak_search",
-        "oak_remember",
-        "oak_context",
-        "oak_resolve_memory",
-        "oak_sessions",
-        "oak_memories",
-        "oak_stats",
-        "oak_activity",
+        MCP_TOOL_SEARCH,
+        MCP_TOOL_REMEMBER,
+        MCP_TOOL_CONTEXT,
+        MCP_TOOL_RESOLVE_MEMORY,
+        MCP_TOOL_SESSIONS,
+        MCP_TOOL_MEMORIES,
+        MCP_TOOL_STATS,
+        MCP_TOOL_ACTIVITY,
     ]
 
     def test_all_tools_registered(self, handler: MCPToolHandler) -> None:
@@ -247,13 +257,13 @@ class TestMCPToolHandlerDispatch:
         """When an ops method raises ValueError, response has isError: True."""
         # Force list_sessions to raise by setting activity_store to None
         handler.ops.activity_store = None
-        result = handler.handle_tool_call("oak_sessions", {})
+        result = handler.handle_tool_call(MCP_TOOL_SESSIONS, {})
         assert result["isError"] is True
         assert "Tool error" in result["content"][0]["text"]
 
     def test_successful_call_returns_content(self, handler: MCPToolHandler) -> None:
         """Successful tool call returns content key (no isError)."""
-        result = handler.handle_tool_call("oak_stats", {})
+        result = handler.handle_tool_call(MCP_TOOL_STATS, {})
         assert "content" in result
         assert "isError" not in result
 
@@ -261,14 +271,14 @@ class TestMCPToolHandlerDispatch:
     def _minimal_args(tool_name: str) -> dict:
         """Return minimal valid arguments for each tool."""
         minimal = {
-            "oak_search": {"query": "test"},
-            "oak_remember": {"observation": "test observation"},
-            "oak_context": {"task": "test task"},
-            "oak_resolve_memory": {"id": "test-id"},
-            "oak_sessions": {},
-            "oak_memories": {},
-            "oak_stats": {},
-            "oak_activity": {"session_id": "session-1"},
+            MCP_TOOL_SEARCH: {"query": "test"},
+            MCP_TOOL_REMEMBER: {"observation": "test observation"},
+            MCP_TOOL_CONTEXT: {"task": "test task"},
+            MCP_TOOL_RESOLVE_MEMORY: {"id": "test-id"},
+            MCP_TOOL_SESSIONS: {},
+            MCP_TOOL_MEMORIES: {},
+            MCP_TOOL_STATS: {},
+            MCP_TOOL_ACTIVITY: {"session_id": "session-1"},
         }
         return minimal.get(tool_name, {})
 
@@ -282,8 +292,8 @@ class TestMCPToolDefinitions:
     """Validates MCP_TOOLS schema definitions."""
 
     def test_tool_count(self) -> None:
-        """There are exactly 10 tools defined."""
-        assert len(MCP_TOOLS) == 10
+        """There are exactly 15 tools defined (10 CI + 5 swarm)."""
+        assert len(MCP_TOOLS) == 15
 
     def test_all_tools_have_required_fields(self) -> None:
         """Each tool definition has name, description, and inputSchema."""
@@ -294,18 +304,18 @@ class TestMCPToolDefinitions:
 
     def test_oak_search_includes_sessions_type(self) -> None:
         """oak_search search_type enum includes 'sessions'."""
-        search_tool = next(t for t in MCP_TOOLS if t["name"] == "oak_search")
+        search_tool = next(t for t in MCP_TOOLS if t["name"] == MCP_TOOL_SEARCH)
         search_type_enum = search_tool["inputSchema"]["properties"]["search_type"]["enum"]
         assert "sessions" in search_type_enum
 
     def test_oak_search_includes_include_resolved(self) -> None:
         """oak_search has include_resolved in properties."""
-        search_tool = next(t for t in MCP_TOOLS if t["name"] == "oak_search")
+        search_tool = next(t for t in MCP_TOOLS if t["name"] == MCP_TOOL_SEARCH)
         assert "include_resolved" in search_tool["inputSchema"]["properties"]
 
     def test_oak_activity_requires_session_id(self) -> None:
         """oak_activity has session_id in required list."""
-        activity_tool = next(t for t in MCP_TOOLS if t["name"] == "oak_activity")
+        activity_tool = next(t for t in MCP_TOOLS if t["name"] == MCP_TOOL_ACTIVITY)
         assert "session_id" in activity_tool["inputSchema"]["required"]
 
     def test_tool_names_match_handler_keys(self) -> None:

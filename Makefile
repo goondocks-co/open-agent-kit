@@ -14,7 +14,7 @@
 #   oak      → uv tool install oak-ci (stable from PyPI, separate venv)
 #   Both can coexist simultaneously.
 
-.PHONY: help setup setup-full sync lock uninstall cli-stable cli-dev cli-dual cli-verify test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart skill-build skill-check docs-dev docs-build docs-preview dogfood-reset acp-smoke
+.PHONY: help setup setup-full sync lock uninstall cli-stable cli-dev cli-dual cli-verify test test-fast test-parallel test-cov lint format format-check typecheck check clean build ci-dev ci-start ci-stop ci-restart ui-build ui-check ui-lint ui-dev ui-restart swarm-ui-build swarm-ui-check swarm-ui-lint swarm-ui-dev skill-build skill-check docs-dev docs-build docs-preview dogfood-reset acp-smoke
 
 # Where uv/pipx put global binaries (respect XDG on Linux)
 USER_BIN_DIR := $(or $(shell uv tool dir --bin 2>/dev/null),$(HOME)/.local/bin)
@@ -64,6 +64,12 @@ help:
 	@echo "    make ui-lint       Run ESLint on UI code"
 	@echo "    make ui-dev        Run UI development server with hot reload"
 	@echo "    make ui-restart    Build UI and restart daemon"
+	@echo ""
+	@echo "  Swarm UI Development:"
+	@echo "    make swarm-ui-build   Build swarm UI static assets"
+	@echo "    make swarm-ui-check   Verify swarm UI assets are in sync (for CI)"
+	@echo "    make swarm-ui-lint    Run ESLint on swarm UI code"
+	@echo "    make swarm-ui-dev     Run swarm UI development server with hot reload"
 	@echo ""
 	@echo "  Skills:"
 	@echo "    make skill-build   Generate skill reference files from schema"
@@ -250,6 +256,23 @@ ui-dev:
 # Combo target: build UI and restart daemon (for UI development workflow)
 ui-restart: ui-build ci-restart
 	@echo "UI rebuilt and daemon restarted."
+
+# Swarm UI Development targets
+swarm-ui-build:
+	cd src/open_agent_kit/features/swarm/daemon/ui && npm install && npm run build
+
+swarm-ui-check:
+	$(MAKE) swarm-ui-build
+	@if [ -n "$$(git status --porcelain src/open_agent_kit/features/swarm/daemon/static)" ]; then \
+		echo "Error: Swarm UI assets are out of sync. Please run 'make swarm-ui-build' and commit the changes."; \
+		exit 1; \
+	fi
+
+swarm-ui-lint:
+	cd src/open_agent_kit/features/swarm/daemon/ui && npm run lint
+
+swarm-ui-dev:
+	cd src/open_agent_kit/features/swarm/daemon/ui && npm run dev
 
 # Skill asset generation targets
 #

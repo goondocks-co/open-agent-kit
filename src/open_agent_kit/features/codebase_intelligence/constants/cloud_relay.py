@@ -2,6 +2,25 @@
 
 from typing import Final
 
+from open_agent_kit.utils.worker_deploy_shared import (
+    WORKER_DEPLOY_NPM_INSTALL_TIMEOUT,
+    WORKER_DEPLOY_NPM_NOT_FOUND,
+    WORKER_DEPLOY_NPX_NOT_FOUND,
+    WORKER_DEPLOY_WRANGLER_TIMEOUT,
+    WORKER_DEPLOY_WRANGLER_URL_PATTERN,
+    WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
+)
+from open_agent_kit.utils.worker_scaffold_shared import (
+    WORKER_JINJA2_EXTENSION,
+    WORKER_NAME_FALLBACK,
+    WORKER_NAME_MAX_LENGTH,
+    WORKER_SCAFFOLD_GITIGNORE_ENTRIES,
+    WORKER_SCAFFOLD_NODE_MODULES_DIR,
+    WORKER_SCAFFOLD_PACKAGE_JSON,
+    WORKER_SCAFFOLD_WRANGLER_TOML,
+    WORKER_TOKEN_BYTES,
+)
+
 # =============================================================================
 # Cloud MCP Relay
 # =============================================================================
@@ -14,7 +33,7 @@ CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS: Final[int] = 10
 
 # Payload limits
 CLOUD_RELAY_MAX_RESPONSE_BYTES: Final[int] = 524288  # 512 KB
-CLOUD_RELAY_TOKEN_BYTES: Final[int] = 32
+CLOUD_RELAY_TOKEN_BYTES: Final[int] = WORKER_TOKEN_BYTES
 
 # Config keys (inside codebase_intelligence.cloud_relay section)
 CI_CONFIG_KEY_CLOUD_RELAY: Final[str] = "cloud_relay"
@@ -132,20 +151,16 @@ CLOUD_RELAY_WS_CLOSE_TOKEN_INVALID: Final[int] = 4003
 # Scaffold constants
 CLOUD_RELAY_WORKER_TEMPLATE_DIR: Final[str] = "worker_template"
 CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR: Final[str] = ".oak/ci/cloud-relay"
-CLOUD_RELAY_JINJA2_EXTENSION: Final[str] = ".j2"
+CLOUD_RELAY_JINJA2_EXTENSION: Final[str] = WORKER_JINJA2_EXTENSION
 
 # Scaffold .gitignore entries
-CLOUD_RELAY_SCAFFOLD_GITIGNORE_ENTRIES: Final[tuple[str, ...]] = (
-    "wrangler.toml",
-    "node_modules/",
-    ".wrangler/",
-)
+CLOUD_RELAY_SCAFFOLD_GITIGNORE_ENTRIES: Final[tuple[str, ...]] = WORKER_SCAFFOLD_GITIGNORE_ENTRIES
 
 # Deploy subprocess timeouts (seconds)
-CLOUD_RELAY_DEPLOY_NPM_INSTALL_TIMEOUT: Final[int] = 120
-CLOUD_RELAY_DEPLOY_WRANGLER_TIMEOUT: Final[int] = 60
-CLOUD_RELAY_DEPLOY_WRANGLER_URL_PATTERN: Final[str] = r"https://[^\s]+\.workers\.dev[^\s]*"
-CLOUD_RELAY_DEPLOY_WRANGLER_WHOAMI_TIMEOUT: Final[int] = 15
+CLOUD_RELAY_DEPLOY_NPM_INSTALL_TIMEOUT: Final[int] = WORKER_DEPLOY_NPM_INSTALL_TIMEOUT
+CLOUD_RELAY_DEPLOY_WRANGLER_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_TIMEOUT
+CLOUD_RELAY_DEPLOY_WRANGLER_URL_PATTERN: Final[str] = WORKER_DEPLOY_WRANGLER_URL_PATTERN
+CLOUD_RELAY_DEPLOY_WRANGLER_WHOAMI_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT
 
 # Agent token config key
 CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN: Final[str] = "agent_token"
@@ -238,17 +253,17 @@ CLOUD_RELAY_WS_DEFAULT_REGISTRATION_REJECTED: Final[str] = "Registration rejecte
 CLOUD_RELAY_WS_DEFAULT_UNKNOWN_RELAY_ERROR: Final[str] = "Unknown relay error"
 
 # Scaffold file names
-CLOUD_RELAY_SCAFFOLD_PACKAGE_JSON: Final[str] = "package.json"
-CLOUD_RELAY_SCAFFOLD_WRANGLER_TOML: Final[str] = "wrangler.toml"
-CLOUD_RELAY_SCAFFOLD_NODE_MODULES_DIR: Final[str] = "node_modules"
+CLOUD_RELAY_SCAFFOLD_PACKAGE_JSON: Final[str] = WORKER_SCAFFOLD_PACKAGE_JSON
+CLOUD_RELAY_SCAFFOLD_WRANGLER_TOML: Final[str] = WORKER_SCAFFOLD_WRANGLER_TOML
+CLOUD_RELAY_SCAFFOLD_NODE_MODULES_DIR: Final[str] = WORKER_SCAFFOLD_NODE_MODULES_DIR
 
 # Worker name constraints
-CLOUD_RELAY_WORKER_NAME_MAX_LENGTH: Final[int] = 63
-CLOUD_RELAY_WORKER_NAME_FALLBACK: Final[str] = "default"
+CLOUD_RELAY_WORKER_NAME_MAX_LENGTH: Final[int] = WORKER_NAME_MAX_LENGTH
+CLOUD_RELAY_WORKER_NAME_FALLBACK: Final[str] = WORKER_NAME_FALLBACK
 
 # Deploy subprocess error strings (cross-referenced in route logic)
-CLOUD_RELAY_DEPLOY_NPM_NOT_FOUND: Final[str] = "npm not found"
-CLOUD_RELAY_DEPLOY_NPX_NOT_FOUND: Final[str] = "npx/wrangler not found"
+CLOUD_RELAY_DEPLOY_NPM_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPM_NOT_FOUND
+CLOUD_RELAY_DEPLOY_NPX_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPX_NOT_FOUND
 
 # Start endpoint error messages
 CLOUD_RELAY_ERROR_NPM_INSTALL_FAILED: Final[str] = "npm install failed"

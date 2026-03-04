@@ -18,6 +18,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from open_agent_kit.features.codebase_intelligence.activity.store.core import ActivityStore
+from open_agent_kit.features.codebase_intelligence.constants import (
+    MCP_TOOL_ACTIVITY,
+    MCP_TOOL_ARCHIVE_MEMORIES,
+    MCP_TOOL_CONTEXT,
+    MCP_TOOL_MEMORIES,
+    MCP_TOOL_NODES,
+    MCP_TOOL_REMEMBER,
+    MCP_TOOL_RESOLVE_MEMORY,
+    MCP_TOOL_SEARCH,
+    MCP_TOOL_SESSIONS,
+    MCP_TOOL_STATS,
+)
 from open_agent_kit.features.codebase_intelligence.daemon.mcp_tools import (
     MCP_TOOLS,
     MCPToolHandler,
@@ -207,7 +219,7 @@ class TestListNodes:
         mock_engine.activity_store = None
         mock_engine.store = None
         handler = MCPToolHandler(mock_engine, relay_client=mock_relay_client)
-        result = handler.handle_tool_call("oak_nodes", {})
+        result = handler.handle_tool_call(MCP_TOOL_NODES, {})
         assert not result.get("isError")
         text = result["content"][0]["text"]
         assert "node-abc" in text
@@ -286,18 +298,18 @@ class TestFederateIfRequested:
     """Tests for _federate_if_requested helper."""
 
     def test_no_include_network(self, ops_with_relay: ToolOperations) -> None:
-        result = ops_with_relay._federate_if_requested("oak_sessions", {}, "local data")
+        result = ops_with_relay._federate_if_requested(MCP_TOOL_SESSIONS, {}, "local data")
         assert result == "local data"
 
     def test_include_network_false(self, ops_with_relay: ToolOperations) -> None:
         result = ops_with_relay._federate_if_requested(
-            "oak_sessions", {"include_network": False}, "local data"
+            MCP_TOOL_SESSIONS, {"include_network": False}, "local data"
         )
         assert result == "local data"
 
     def test_no_relay_client(self, ops_no_relay: ToolOperations) -> None:
         result = ops_no_relay._federate_if_requested(
-            "oak_sessions", {"include_network": True}, "local data"
+            MCP_TOOL_SESSIONS, {"include_network": True}, "local data"
         )
         assert result == "local data"
 
@@ -315,7 +327,7 @@ class TestFederateIfRequested:
                 ]
             }
             result = ops_with_relay._federate_if_requested(
-                "oak_sessions", {"include_network": True}, "local data"
+                MCP_TOOL_SESSIONS, {"include_network": True}, "local data"
             )
             assert "local data" in result
             assert "Local Results [test-local]" in result
@@ -328,7 +340,7 @@ class TestFederateIfRequested:
             mock_loop.return_value.is_running.return_value = False
             mock_loop.return_value.run_until_complete.return_value = {"results": []}
             ops_with_relay._federate_if_requested(
-                "oak_sessions", {"include_network": True, "limit": 5}, "local data"
+                MCP_TOOL_SESSIONS, {"include_network": True, "limit": 5}, "local data"
             )
             call_args = mock_relay_client.federate_tool_call.call_args
             remote_args = call_args[0][1]
@@ -345,11 +357,11 @@ class TestRouteToNode:
     """Tests for _route_to_node helper."""
 
     def test_no_node_id_returns_none(self, ops_with_relay: ToolOperations) -> None:
-        result = ops_with_relay._route_to_node("oak_activity", {"session_id": "s1"})
+        result = ops_with_relay._route_to_node(MCP_TOOL_ACTIVITY, {"session_id": "s1"})
         assert result is None
 
     def test_no_relay_returns_error(self, ops_no_relay: ToolOperations) -> None:
-        result = ops_no_relay._route_to_node("oak_activity", {"node_id": "node-abc"})
+        result = ops_no_relay._route_to_node(MCP_TOOL_ACTIVITY, {"node_id": "node-abc"})
         assert result is not None
         assert "not connected" in result.lower()
 
@@ -364,7 +376,7 @@ class TestRouteToNode:
                 }
             }
             args = {"node_id": "node-abc", "session_id": "s1"}
-            result = ops_with_relay._route_to_node("oak_activity", args)
+            result = ops_with_relay._route_to_node(MCP_TOOL_ACTIVITY, args)
             assert result is not None
             assert "node-abc" in result
             assert "Remote response" in result
@@ -377,7 +389,7 @@ class TestRouteToNode:
         with patch("asyncio.get_event_loop") as mock_loop:
             mock_loop.return_value.is_running.return_value = False
             mock_loop.return_value.run_until_complete.return_value = {"error": "Node unreachable"}
-            result = ops_with_relay._route_to_node("oak_activity", {"node_id": "node-abc"})
+            result = ops_with_relay._route_to_node(MCP_TOOL_ACTIVITY, {"node_id": "node-abc"})
             assert result is not None
             assert "Error" in result
             assert "Node unreachable" in result
@@ -490,8 +502,14 @@ class TestFederationWiring:
 class TestMCPToolSchemaFederation:
     """Validates new include_network and node_id params in MCP tool definitions."""
 
-    FEDERABLE_TOOLS = {"oak_search", "oak_sessions", "oak_memories", "oak_context", "oak_stats"}
-    NODE_TARGETED_TOOLS = {"oak_activity", "oak_resolve_memory", "oak_archive_memories"}
+    FEDERABLE_TOOLS = {
+        MCP_TOOL_SEARCH,
+        MCP_TOOL_SESSIONS,
+        MCP_TOOL_MEMORIES,
+        MCP_TOOL_CONTEXT,
+        MCP_TOOL_STATS,
+    }
+    NODE_TARGETED_TOOLS = {MCP_TOOL_ACTIVITY, MCP_TOOL_RESOLVE_MEMORY, MCP_TOOL_ARCHIVE_MEMORIES}
 
     def _get_tool(self, name: str) -> dict:
         for tool in MCP_TOOLS:
@@ -514,22 +532,22 @@ class TestMCPToolSchemaFederation:
             assert props["node_id"]["type"] == "string"
 
     def test_oak_nodes_tool_exists(self) -> None:
-        tool = self._get_tool("oak_nodes")
+        tool = self._get_tool(MCP_TOOL_NODES)
         assert "description" in tool
         assert "nodes" in tool["description"].lower()
 
     def test_oak_nodes_has_empty_schema(self) -> None:
-        tool = self._get_tool("oak_nodes")
+        tool = self._get_tool(MCP_TOOL_NODES)
         props = tool["inputSchema"].get("properties", {})
         assert len(props) == 0
 
     def test_non_federable_tools_no_include_network(self) -> None:
         non_federable = {
-            "oak_remember",
-            "oak_resolve_memory",
-            "oak_activity",
-            "oak_archive_memories",
-            "oak_nodes",
+            MCP_TOOL_REMEMBER,
+            MCP_TOOL_RESOLVE_MEMORY,
+            MCP_TOOL_ACTIVITY,
+            MCP_TOOL_ARCHIVE_MEMORIES,
+            MCP_TOOL_NODES,
         }
         for tool_name in non_federable:
             tool = self._get_tool(tool_name)

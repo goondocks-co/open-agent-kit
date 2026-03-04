@@ -8,12 +8,12 @@
  * ## State Machine
  *
  * ```
- * Active ──(60s idle)──> Idle ──(5min idle)──> DeepSleep
+ * Active --(60s idle)--> Idle --(5min idle)--> DeepSleep
  *   ^                      ^                        |
- *   └──(user activity)─────┴───(user activity)──────┘
+ *   +--(user activity)-----+---(user activity)------+
  *
- * Any ──(tab hidden)──> Hidden
- * Hidden ──(tab visible)──> Active
+ * Any --(tab hidden)--> Hidden
+ * Hidden --(tab visible)--> Active
  * ```
  */
 
@@ -23,7 +23,7 @@ import {
     POWER_IDLE_THRESHOLD_MS,
     POWER_DEEP_SLEEP_THRESHOLD_MS,
     POWER_ACTIVITY_DEBOUNCE_MS,
-} from "@/lib/constants";
+} from "../lib/constants";
 
 // =============================================================================
 // Types

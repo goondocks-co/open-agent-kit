@@ -7,7 +7,7 @@ import {
     DEFAULT_SESSION_SORT,
 } from "@/lib/constants";
 import type { SessionSortOption } from "@/lib/constants";
-import { usePowerQuery } from "./use-power-query";
+import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
 export interface ActivityItem {
     id: string;

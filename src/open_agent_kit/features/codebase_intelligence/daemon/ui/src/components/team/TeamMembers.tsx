@@ -5,7 +5,7 @@
  * machine ID and online/offline status.
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { useTeamMembers } from "@/hooks/use-team";
 import { Users, AlertCircle, Package } from "lucide-react";
 import { cn } from "@/lib/utils";

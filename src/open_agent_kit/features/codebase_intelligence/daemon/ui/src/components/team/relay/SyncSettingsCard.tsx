@@ -2,8 +2,8 @@
  * Sync Settings card — auto-sync toggle and interval slider.
  */
 
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
 import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SYNC_INTERVAL_MIN, SYNC_INTERVAL_MAX } from "@/lib/constants";

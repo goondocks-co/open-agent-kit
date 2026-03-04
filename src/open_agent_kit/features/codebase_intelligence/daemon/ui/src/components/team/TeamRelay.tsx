@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { Settings, ChevronDown, ChevronRight } from "lucide-react";
 import {
     useCloudRelayStatus,

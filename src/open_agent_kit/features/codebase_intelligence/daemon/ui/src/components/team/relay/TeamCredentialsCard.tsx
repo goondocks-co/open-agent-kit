@@ -3,8 +3,8 @@
  */
 
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
 import { CopyButton, CommandBlock } from "@/components/ui/command-block";
 import { Link2, ExternalLink, Eye, EyeOff } from "lucide-react";
 

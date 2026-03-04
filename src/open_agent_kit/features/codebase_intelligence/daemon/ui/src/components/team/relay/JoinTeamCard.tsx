@@ -3,9 +3,9 @@
  */
 
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
+import { Button } from "@oak/ui/components/ui/button";
+import { Alert, AlertDescription } from "@oak/ui/components/ui/alert";
 import { Link2, Loader2, AlertCircle, CheckCircle2, Cloud } from "lucide-react";
 
 export interface JoinTeamCardProps {
