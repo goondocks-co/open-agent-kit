@@ -323,33 +323,43 @@ export default function Search() {
                             <Globe className="w-5 h-5" /> Network Results ({networkResults.results.length})
                         </h2>
                         <div className="space-y-3">
-                            {networkResults.results.map((match, i) => (
-                                <Card key={`network-${i}`} className="overflow-hidden">
-                                    <CardHeader className="py-3 bg-teal-500/5 border-l-2 border-teal-500">
-                                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                            <span className="text-xs px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 font-mono">
-                                                {match.machine_id}
-                                            </span>
-                                            {match.memory_type && (
-                                                <span className="capitalize text-muted-foreground">{match.memory_type}</span>
-                                            )}
-                                            <span className="ml-auto flex items-center gap-2">
-                                                {match.confidence && (
-                                                    <span className="text-xs px-2 py-0.5 rounded capitalize bg-gray-500/10 text-gray-500">
-                                                        {match.confidence}
-                                                    </span>
+                            {networkResults.results.map((match, i) => {
+                                const text = match.observation || match.summary || match.title || match.preview || "";
+                                const subtitle = (match.title && (match.observation || match.summary || match.preview))
+                                    ? match.title
+                                    : undefined;
+                                const body = match.observation || match.summary || match.preview || "";
+                                const typeLabel = match.memory_type || match._result_type;
+
+                                return (
+                                    <Card key={`network-${i}`} className={`overflow-hidden${!text ? " hidden" : ""}`}>
+                                        <CardHeader className="py-3 bg-teal-500/5 border-l-2 border-teal-500">
+                                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                <span className="text-xs px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 font-mono">
+                                                    {match.machine_id}
+                                                </span>
+                                                {typeLabel && (
+                                                    <span className="capitalize text-muted-foreground">{typeLabel}</span>
                                                 )}
-                                                {match.relevance != null && (
-                                                    <span className="text-xs text-muted-foreground">Score: {match.relevance.toFixed(SCORE_DISPLAY_PRECISION)}</span>
-                                                )}
-                                            </span>
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="p-4 text-sm">
-                                        {match.observation || match.summary}
-                                    </CardContent>
-                                </Card>
-                            ))}
+                                                <span className="ml-auto flex items-center gap-2">
+                                                    {match.confidence && (
+                                                        <span className={`text-xs px-2 py-0.5 rounded capitalize ${CONFIDENCE_BADGE_CLASSES[match.confidence as ConfidenceLevel] || "bg-gray-500/10 text-gray-500"}`}>
+                                                            {match.confidence}
+                                                        </span>
+                                                    )}
+                                                    {match.relevance != null && (
+                                                        <span className="text-xs text-muted-foreground">Score: {match.relevance.toFixed(SCORE_DISPLAY_PRECISION)}</span>
+                                                    )}
+                                                </span>
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="p-4 text-sm">
+                                            {subtitle && <p className="font-medium mb-1">{subtitle}</p>}
+                                            {body}
+                                        </CardContent>
+                                    </Card>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

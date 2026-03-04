@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-03-04]
+
+### Added
+
+- **`features/team/` repository restructure** — Renamed `features/codebase_intelligence/` to `features/team/`, the inner `team/` relay package to `features/team/relay/`, extracted shared agent runtime logic into a new top-level `features/agent_runtime/` package, and moved shared React/Tailwind components into `ui/shared/` (aliased as `@oak/ui` in both Vite configs); the `.oak/ci/` on-disk data path and `CI_DATA_DIR` constant are unchanged — [Refactor codebase intelligence to team feature structure](http://localhost:38388/activity/sessions/1d73badc-b5ec-444d-846a-b05d10fd1651), [Refactor team feature layout, update imports, rebuild UI and daemon](http://localhost:38388/activity/sessions/862a0f96-4b24-4b12-aa73-60ad9f68071d)
+- **Swarm `deploy` subcommand and daemon URL output** — `oak swarm create` now produces a lightweight local config without requiring Cloudflare credentials; a new `oak swarm deploy` command provisions the Cloudflare Worker separately; `oak swarm start` prints the local daemon URL on launch for immediate access — [Refactor swarm create to lightweight config and add deploy command](http://localhost:38388/activity/sessions/363074bf-8a13-494b-b436-cd47991d877e), [Add deploy subcommand, start daemon with URL output and config validation](http://localhost:38388/activity/sessions/1f8f7e70-64a1-4733-97b9-f8675524565b)
+- **Cloudflare Worker activity monitoring with Slack alerts** — Added spike detection for Durable Object reads/writes anomalies; fires a Slack alert when worker activity breaches configurable thresholds, providing early warning before quota overruns — [Implement worker activity monitoring and Slack alerts for spike detection](http://localhost:38388/activity/sessions/8bb16b89-0e77-4415-b9de-bdf9eb4ed810)
+
+### Fixed
+
+- Fix Cloudflare DO hibernation `rows_read` quota exhaustion — with the WebSocket Hibernation API the DO constructor runs on **every wake** (not just first start); 12 DDL statements (`CREATE TABLE IF NOT EXISTS`, etc.) each read `sqlite_schema` rows, adding up to ~60 rows_read per wake and ~5M rows_read/day—hitting the free-tier ceiling; DDL is now guarded behind a KV-backed `_schema_version` flag and only executes when the schema version constant changes; applied to both `relay-object.ts` (`SCHEMA_VERSION`) and `swarm-object.ts` (`SWARM_SCHEMA_VERSION`) — [Implement worker activity monitoring and Slack alerts for spike detection](http://localhost:38388/activity/sessions/8bb16b89-0e77-4415-b9de-bdf9eb4ed810)
+- Fix upgrade banner never clearing — `parse_base_release()` in [`version.py`](src/open_agent_kit/features/team/utils/version.py) returned `None` when the version string did not match the expected pattern, causing [`version_check.py`](src/open_agent_kit/features/team/daemon/lifecycle/version_check.py) to always evaluate the comparison as "upgrade required"; updated the parsing regex to handle the new semantic-version format and added a fallback that treats an unparsable version as equal to the current base release — [Refactor team feature layout, update imports, rebuild UI and daemon](http://localhost:38388/activity/sessions/862a0f96-4b24-4b12-aa73-60ad9f68071d)
+- Fix UI build failures after restructure — `package.json` scripts in both the team and swarm daemon UIs referenced a non-existent `tsconfig.app.json` path; additionally, the shared TypeScript config `ui/shared/tsconfig.json` was deleted during the refactor while downstream `tsconfig.app.json` files still extended it, causing `tsc -b` to fail with "File not found"; restored the shared config with correct compiler options and updated all `extends` paths — [Refactor team feature layout, update imports, rebuild UI and daemon](http://localhost:38388/activity/sessions/862a0f96-4b24-4b12-aa73-60ad9f68071d)
+- Fix `wrangler` subprocess using wrong working directory for worker deployment — [`worker_deploy_shared.py`](src/open_agent_kit/utils/worker_deploy_shared.py) set `cwd` to the swarm root rather than the `worker_template/` subdirectory, causing Node to fail to resolve `wrangler-dist/cli.js`; `run_cwd` now defaults to the worker template path — [Add deploy subcommand, start daemon with URL output and config validation](http://localhost:38388/activity/sessions/1f8f7e70-64a1-4733-97b9-f8675524565b)
+- Fix OTel Codex agent silently dropping telemetry — the `protocol` field was either missing or using an unsupported value; confirmed correct config requires `protocol = "binary"` nested under `otel.exporter.otlp-http` in the Codex TOML template — [Configure OTel agent for binary encoding usage](http://localhost:38388/activity/sessions/b87d410a-b387-4051-b28b-385ee82c31af)
+
+### Changed
+
+- CLI namespaces reorganized to match new feature structure — daemon lifecycle commands now live under `oak team` (e.g., `oak team start/stop/restart`); codebase intelligence commands under `oak ci` (e.g., `oak ci index/search/config`); both namespaces expose `oak team mcp` and `oak ci mcp` for backward compatibility — [Refactor codebase intelligence to team feature structure](http://localhost:38388/activity/sessions/1d73badc-b5ec-444d-846a-b05d10fd1651)
+
+### Notes
+
+> **Gotcha**: The Cloudflare Durable Object constructor re-runs on **every hibernation wake**, not just the first start. Any DDL executed unconditionally in the constructor counts toward `rows_read` quota on every wake. Always gate DDL behind a KV-backed schema-version flag (see `relay-object.ts` `SCHEMA_VERSION` / `swarm-object.ts` `SWARM_SCHEMA_VERSION`) and bump the constant only when the schema actually changes.
+
+> **Gotcha**: The OTLP `protocol` field is case-sensitive and must be exactly `"binary"` or `"json"`. An unsupported value or wrong casing silently disables the exporter with no error log. Additionally, the field must be nested as `otel.exporter.otlp-http.protocol` — a separate `[otel.exporter.otlp-http]` TOML table is no longer parsed by the current Codex runtime. See [`otel_config.toml.j2`](src/open_agent_kit/features/team/hooks/codex/otel_config.toml.j2).
+
+> **Gotcha**: The swarm daemon's agent state is held in memory only ([`state.py`](src/open_agent_kit/features/swarm/daemon/state.py)). A daemon restart loses all current agent statuses with no disk or database fallback. Plan for stateless restarts or implement persistence before relying on swarm state in production.
+
 ## [2026-03-03]
 
 ### Added

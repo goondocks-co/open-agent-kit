@@ -19,7 +19,10 @@ export interface NetworkSearchResult {
     machine_id: string;
     observation?: string;
     summary?: string;
+    title?: string;
+    preview?: string;
     memory_type?: string;
+    _result_type?: string;
     relevance?: number;
     confidence?: string;
 }
