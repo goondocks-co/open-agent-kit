@@ -41,6 +41,7 @@ CI_CONFIG_SWARM_KEY_URL: Final[str] = "swarm_url"
 CI_CONFIG_SWARM_KEY_TOKEN: Final[str] = "swarm_token"
 CI_CONFIG_SWARM_KEY_SENSITIVITY: Final[str] = "sensitivity"
 CI_CONFIG_SWARM_KEY_SWARM_ID: Final[str] = "swarm_id"
+CI_CONFIG_SWARM_KEY_WORKER_NAME: Final[str] = "worker_name"
 
 # API paths (Swarm Worker HTTP API)
 SWARM_API_PATH_REGISTER: Final[str] = "/api/swarm/register"
@@ -160,6 +161,23 @@ SWARM_MESSAGE_NO_SWARM_CONFIG: Final[str] = (
 SWARM_MESSAGE_DAEMON_NOT_RUNNING: Final[str] = (
     "Daemon is not running. Start it first: oak swarm start"
 )
+SWARM_MESSAGE_DEPLOY_STARTING: Final[str] = "Deploying swarm worker..."
+SWARM_MESSAGE_DEPLOY_SUCCESS: Final[str] = "Swarm worker deployed successfully."
+SWARM_MESSAGE_START_HINT: Final[str] = "Start the daemon with: oak swarm start -n {name}"
+SWARM_MESSAGE_WRANGLER_NOT_AVAILABLE: Final[str] = (
+    "npx wrangler is not available. Install wrangler first: npm install -g wrangler"
+)
+SWARM_MESSAGE_NPM_INSTALL_FAILED: Final[str] = "npm install failed: {output}"
+SWARM_MESSAGE_DEPLOY_FAILED: Final[str] = "Deploy failed: {output}"
+SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
+    "Swarm daemon failed to start. Check logs for details."
+)
+
+# Deploy route error messages
+SWARM_DEPLOY_ERROR_NO_SWARM_ID: Final[str] = "No swarm ID configured"
+SWARM_DEPLOY_ERROR_NO_SCAFFOLD_DIR: Final[str] = "Cannot determine scaffold directory"
+SWARM_DEPLOY_ERROR_NO_TOKEN: Final[str] = "No swarm token in daemon state"
+SWARM_DEPLOY_ERROR_NOT_SCAFFOLDED: Final[str] = "Worker not scaffolded. Run scaffold first."
 
 # Error messages
 SWARM_ERROR_NOT_CONNECTED: Final[str] = "Not connected to swarm"

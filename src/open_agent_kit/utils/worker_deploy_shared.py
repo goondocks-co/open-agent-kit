@@ -23,6 +23,24 @@ WORKER_DEPLOY_NPX_NOT_FOUND: Final[str] = "npx/wrangler not found"
 
 logger = logging.getLogger(__name__)
 
+# Path to wrangler's actual bin script inside node_modules.
+# Node.js v25+ copies .bin entries instead of symlinking, which breaks
+# wrangler's relative ``../wrangler-dist/cli.js`` resolution.  Using the
+# direct path avoids this issue entirely.
+_WRANGLER_BIN_RELATIVE: Final[str] = "node_modules/wrangler/bin/wrangler.js"
+
+
+def _wrangler_cmd(cwd: Path | None, *args: str) -> list[str]:
+    """Build the command list to invoke wrangler.
+
+    Prefers the local ``node_modules`` binary when *cwd* contains an installed
+    copy of wrangler (avoids Node.js v25 ``npx`` symlink-copy bug).  Falls
+    back to ``npx wrangler`` otherwise.
+    """
+    if cwd and (cwd / _WRANGLER_BIN_RELATIVE).is_file():
+        return ["node", str(cwd / _WRANGLER_BIN_RELATIVE), *args]
+    return ["npx", "wrangler", *args]
+
 
 @dataclass(frozen=True)
 class DeployConfig:
@@ -63,9 +81,10 @@ def check_wrangler_available(config: DeployConfig, cwd: Path | None = None) -> b
         True if ``npx wrangler --version`` succeeds.
     """
     run_cwd = cwd if cwd and cwd.is_dir() else None
+    cmd = _wrangler_cmd(run_cwd, "--version")
     try:
         result = subprocess.run(
-            ["npx", "wrangler", "--version"],
+            cmd,
             capture_output=True,
             text=True,
             cwd=run_cwd,
@@ -91,9 +110,10 @@ def check_wrangler_auth(config: DeployConfig, cwd: Path | None = None) -> Wrangl
         WranglerAuthInfo with parsed results, or None if the command fails.
     """
     run_cwd = cwd if cwd and cwd.is_dir() else None
+    cmd = _wrangler_cmd(run_cwd, "whoami")
     try:
         result = subprocess.run(
-            ["npx", "wrangler", "whoami"],
+            cmd,
             capture_output=True,
             text=True,
             cwd=run_cwd,
@@ -176,9 +196,10 @@ def run_wrangler_deploy(config: DeployConfig, scaffold_dir: Path) -> tuple[bool,
     Returns:
         Tuple of (success, worker_url_or_none, combined_output).
     """
+    cmd = _wrangler_cmd(scaffold_dir, "deploy")
     try:
         result = subprocess.run(
-            ["npx", "wrangler", "deploy"],
+            cmd,
             capture_output=True,
             text=True,
             cwd=scaffold_dir,

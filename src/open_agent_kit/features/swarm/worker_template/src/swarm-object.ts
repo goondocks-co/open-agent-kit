@@ -30,6 +30,11 @@ const STALE_THRESHOLD_MS = 300_000; // 5 minutes
 const SEARCH_TIMEOUT_MS = 10_000;
 const TOOL_CALL_TIMEOUT_MS = 30_000;
 const CALLBACK_TOKEN_LENGTH = 32;
+/**
+ * Schema version — bump whenever DDL changes.
+ * Checked via KV so DDL only runs once per deployment, not on every wake.
+ */
+const SWARM_SCHEMA_VERSION = 1;
 
 export class SwarmObject implements DurableObject {
   private state: DurableObjectState;
@@ -39,7 +44,18 @@ export class SwarmObject implements DurableObject {
     this.state = state;
     this.env = env;
 
-    // Initialize DO SQLite tables
+    // Guard DDL behind a schema version to avoid rows_read on every wake.
+    this.state.blockConcurrencyWhile(async () => {
+      const version = await this.state.storage.get<number>("_schema_version");
+      if (version !== SWARM_SCHEMA_VERSION) {
+        this.initSchema();
+        await this.state.storage.put("_schema_version", SWARM_SCHEMA_VERSION);
+      }
+    });
+  }
+
+  /** Run all DDL — only called when SWARM_SCHEMA_VERSION changes. */
+  private initSchema(): void {
     this.state.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS teams (
         team_id TEXT PRIMARY KEY,

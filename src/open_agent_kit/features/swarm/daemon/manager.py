@@ -14,6 +14,8 @@ from typing import Any
 
 from open_agent_kit.features.swarm.config import get_swarm_config_dir
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_TOKEN,
+    CI_CONFIG_SWARM_KEY_URL,
     SWARM_DAEMON_API_PATH_HEALTH,
     SWARM_DAEMON_CONFIG_FILE,
     SWARM_DAEMON_DEFAULT_PORT,
@@ -134,10 +136,10 @@ class SwarmDaemonManager(BaseDaemonManager):
         if self.config_file.exists():
             try:
                 config = json.loads(self.config_file.read_text())
-                if config.get("swarm_url"):
-                    env["OAK_SWARM_URL"] = config["swarm_url"]
-                if config.get("swarm_token"):
-                    env["OAK_SWARM_TOKEN"] = config["swarm_token"]
+                if config.get(CI_CONFIG_SWARM_KEY_URL):
+                    env["OAK_SWARM_URL"] = config[CI_CONFIG_SWARM_KEY_URL]
+                if config.get(CI_CONFIG_SWARM_KEY_TOKEN):
+                    env["OAK_SWARM_TOKEN"] = config[CI_CONFIG_SWARM_KEY_TOKEN]
             except (json.JSONDecodeError, OSError) as exc:
                 logger.warning("Failed to read swarm config: %s", exc)
 

@@ -1,4 +1,4 @@
-"""Swarm commands: create, destroy, start, stop, status."""
+"""Swarm commands: create, deploy, destroy, start, stop, status."""
 
 from typing import TYPE_CHECKING
 
@@ -13,21 +13,32 @@ from open_agent_kit.features.swarm.config import (
     save_swarm_config,
 )
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_SWARM_ID,
+    CI_CONFIG_SWARM_KEY_TOKEN,
+    CI_CONFIG_SWARM_KEY_URL,
+    CI_CONFIG_SWARM_KEY_WORKER_NAME,
     SWARM_DAEMON_DEFAULT_PORT,
     SWARM_MESSAGE_ALREADY_RUNNING,
     SWARM_MESSAGE_CREATED,
     SWARM_MESSAGE_CREATING,
+    SWARM_MESSAGE_DAEMON_START_FAILED,
+    SWARM_MESSAGE_DEPLOY_FAILED,
+    SWARM_MESSAGE_DEPLOY_STARTING,
+    SWARM_MESSAGE_DEPLOY_SUCCESS,
     SWARM_MESSAGE_DESTROYED,
     SWARM_MESSAGE_DESTROYING,
     SWARM_MESSAGE_NO_SWARM_CONFIG,
     SWARM_MESSAGE_NOT_RUNNING,
+    SWARM_MESSAGE_NPM_INSTALL_FAILED,
     SWARM_MESSAGE_SAVE_TOKEN,
+    SWARM_MESSAGE_START_HINT,
     SWARM_MESSAGE_STARTED,
     SWARM_MESSAGE_STARTING,
     SWARM_MESSAGE_STOPPED,
     SWARM_MESSAGE_STOPPING,
     SWARM_MESSAGE_SWARM_TOKEN,
     SWARM_MESSAGE_SWARM_URL,
+    SWARM_MESSAGE_WRANGLER_NOT_AVAILABLE,
     SWARM_SCAFFOLD_WORKER_SUBDIR,
 )
 from open_agent_kit.utils import print_error, print_info, print_warning
@@ -45,32 +56,57 @@ def _get_swarm_daemon_manager(name: str, port: int | None = None) -> "SwarmDaemo
 @swarm_app.command("create")
 def swarm_create(
     name: str = typer.Option(..., "--name", "-n", help="Name for the swarm"),
+) -> None:
+    """Create a new swarm configuration and token."""
+    from open_agent_kit.features.swarm.scaffold import generate_token, make_worker_name
+
+    print_info(SWARM_MESSAGE_CREATING.format(name=name))
+
+    swarm_token = generate_token()
+    worker_name = make_worker_name(name)
+
+    # save_swarm_config creates the directory via mkdir(parents=True)
+    save_swarm_config(
+        name,
+        {
+            CI_CONFIG_SWARM_KEY_SWARM_ID: name,
+            CI_CONFIG_SWARM_KEY_TOKEN: swarm_token,
+            CI_CONFIG_SWARM_KEY_WORKER_NAME: worker_name,
+        },
+    )
+
+    print_info(SWARM_MESSAGE_CREATED)
+    print_info(SWARM_MESSAGE_SWARM_TOKEN.format(swarm_token=swarm_token))
+    print_warning(SWARM_MESSAGE_SAVE_TOKEN)
+    print_info(SWARM_MESSAGE_START_HINT.format(name=name))
+
+
+@swarm_app.command("deploy")
+def swarm_deploy(
+    name: str = typer.Option(..., "--name", "-n", help="Name of the swarm to deploy"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing scaffold"),
 ) -> None:
-    """Create a new swarm and deploy the Swarm Worker."""
+    """Deploy the Swarm Worker to Cloudflare."""
     from open_agent_kit.features.swarm.deploy import (
         check_wrangler_available,
         run_npm_install,
         run_wrangler_deploy,
     )
-    from open_agent_kit.features.swarm.scaffold import (
-        generate_token,
-        make_worker_name,
-        render_worker_template,
-    )
+    from open_agent_kit.features.swarm.scaffold import render_worker_template
 
-    print_info(SWARM_MESSAGE_CREATING.format(name=name))
-
-    # Check wrangler is available before proceeding
-    if not check_wrangler_available():
-        print_error(
-            "npx wrangler is not available. Install wrangler first: npm install -g wrangler"
-        )
+    config = load_swarm_config(name)
+    if not config:
+        print_error(SWARM_MESSAGE_NO_SWARM_CONFIG)
         raise typer.Exit(code=1)
 
-    # Generate token and scaffold
-    swarm_token = generate_token()
-    worker_name = make_worker_name(name)
+    print_info(SWARM_MESSAGE_DEPLOY_STARTING)
+
+    if not check_wrangler_available():
+        print_error(SWARM_MESSAGE_WRANGLER_NOT_AVAILABLE)
+        raise typer.Exit(code=1)
+
+    swarm_token = config[CI_CONFIG_SWARM_KEY_TOKEN]
+    worker_name = config[CI_CONFIG_SWARM_KEY_WORKER_NAME]
 
     swarm_dir = get_swarm_config_dir(name)
     scaffold_dir = swarm_dir / SWARM_SCAFFOLD_WORKER_SUBDIR
@@ -85,31 +121,22 @@ def swarm_create(
     # npm install
     success, output = run_npm_install(scaffold_dir)
     if not success:
-        print_error(f"npm install failed: {output}")
+        print_error(SWARM_MESSAGE_NPM_INSTALL_FAILED.format(output=output))
         raise typer.Exit(code=1)
 
     # Deploy
     success, swarm_url, output = run_wrangler_deploy(scaffold_dir)
     if not success:
-        print_error(f"Deploy failed: {output}")
+        print_error(SWARM_MESSAGE_DEPLOY_FAILED.format(output=output))
         raise typer.Exit(code=1)
 
-    # Save config
-    save_swarm_config(
-        name,
-        {
-            "swarm_id": name,
-            "swarm_url": swarm_url,
-            "swarm_token": swarm_token,
-            "worker_name": worker_name,
-        },
-    )
+    # Update config with deployed URL
+    config[CI_CONFIG_SWARM_KEY_URL] = swarm_url
+    save_swarm_config(name, config)
 
-    print_info(SWARM_MESSAGE_CREATED)
+    print_info(SWARM_MESSAGE_DEPLOY_SUCCESS)
     if swarm_url:
         print_info(SWARM_MESSAGE_SWARM_URL.format(swarm_url=swarm_url))
-    print_info(SWARM_MESSAGE_SWARM_TOKEN.format(swarm_token=swarm_token))
-    print_warning(SWARM_MESSAGE_SAVE_TOKEN)
 
 
 @swarm_app.command("destroy")
@@ -160,7 +187,7 @@ def swarm_start(
     if manager.start():
         print_info(SWARM_MESSAGE_STARTED.format(port=port))
     else:
-        print_error("Swarm daemon failed to start. Check logs for details.")
+        print_error(SWARM_MESSAGE_DAEMON_START_FAILED)
         raise typer.Exit(code=1)
 
 
@@ -198,10 +225,10 @@ def swarm_status(
     manager = _get_swarm_daemon_manager(name)
     status = manager.get_status()
 
-    print_info(f"Swarm: {config.get('swarm_id', name)}")
-    if config.get("swarm_url"):
-        print_info(f"  URL: {config['swarm_url']}")
-    print_info(f"  Worker: {config.get('worker_name', 'unknown')}")
+    print_info(f"Swarm: {config.get(CI_CONFIG_SWARM_KEY_SWARM_ID, name)}")
+    if config.get(CI_CONFIG_SWARM_KEY_URL):
+        print_info(f"  URL: {config[CI_CONFIG_SWARM_KEY_URL]}")
+    print_info(f"  Worker: {config.get(CI_CONFIG_SWARM_KEY_WORKER_NAME, 'unknown')}")
     print_info(f"  Daemon: {'running' if status['running'] else 'stopped'}")
     if status["running"] and status.get("port"):
         print_info(f"  Port: {status['port']}")

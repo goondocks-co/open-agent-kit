@@ -65,6 +65,12 @@ const FEDERATED_TOOL_MAX_RESULTS = 50;
 /** Probability of running TTL cleanup on each obs push (1%). */
 const OBS_HISTORY_CLEANUP_PROBABILITY = 0.01;
 const SWARM_HEARTBEAT_INTERVAL_MS = 60_000;
+/**
+ * Schema version — bump whenever DDL changes.
+ * Checked via KV on each hibernation wake so that expensive DDL only runs
+ * once per deployment instead of on every wake (saves ~60 rows_read/wake).
+ */
+const SCHEMA_VERSION = 1;
 const SWARM_SEARCH_TIMEOUT_MS = 10_000;
 const SWARM_TOOL_CALL_TIMEOUT_MS = 30_000;
 
@@ -135,7 +141,45 @@ export class RelayObject implements DurableObject {
     this.state = state;
     this.env = env;
 
-    // Initialize DO SQLite table for buffering observations.
+    // Combine all async init into a single blockConcurrencyWhile to avoid
+    // nesting (only one is allowed per constructor).
+    this.state.blockConcurrencyWhile(async () => {
+      // --- Schema DDL (guarded by version to avoid ~60 rows_read per wake) ---
+      const version = await this.state.storage.get<number>("_schema_version");
+      if (version !== SCHEMA_VERSION) {
+        this.initSchema();
+        await this.state.storage.put("_schema_version", SCHEMA_VERSION);
+      }
+
+      // --- Rehydrate in-memory maps (always needed after hibernation) ---
+      this.rehydrateNodeState();
+
+      // --- Rehydrate swarm config from KV (always needed after hibernation) ---
+      const values = await this.state.storage.get([
+        "swarm_url", "swarm_token", "swarm_sensitivity",
+        "swarm_connected", "swarm_id", "swarm_callback_token",
+      ]);
+      this.swarmUrl = (values.get("swarm_url") as string) ?? null;
+      this.swarmToken = (values.get("swarm_token") as string) ?? null;
+      this.swarmSensitivity = (values.get("swarm_sensitivity") as string) ?? "standard";
+      this.swarmConnected = (values.get("swarm_connected") as boolean) ?? false;
+      this.swarmId = (values.get("swarm_id") as string) ?? null;
+      this.swarmCallbackToken = (values.get("swarm_callback_token") as string) ?? null;
+
+      if (this.swarmConnected && this.swarmUrl && this.swarmToken) {
+        this.startSwarmHeartbeat();
+      }
+    });
+  }
+
+  /**
+   * Run all DDL statements to create tables and indexes.
+   * Only called when SCHEMA_VERSION changes (i.e. on first deploy or migration),
+   * NOT on every hibernation wake. This saves ~60 rows_read per wake because
+   * each DDL checks sqlite_schema which counts toward the rows_read quota.
+   */
+  private initSchema(): void {
+    // Buffered observations for offline peers.
     this.state.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS pending_obs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,7 +211,6 @@ export class RelayObject implements DurableObject {
     );
 
     // Persisted node state — survives DO hibernation and Worker redeployment.
-    // Stores tool lists and metadata (capabilities, version) for each node.
     this.state.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS node_state (
         machine_id TEXT PRIMARY KEY,
@@ -180,7 +223,7 @@ export class RelayObject implements DurableObject {
     // Migration: drop old table name if it exists from a prior deploy.
     this.state.storage.sql.exec("DROP TABLE IF EXISTS node_tools");
 
-    // Federated tool call cache — short-TTL results keyed by tool+args+peer set.
+    // Federated tool call cache.
     this.state.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS tool_cache (
         cache_key TEXT PRIMARY KEY,
@@ -192,7 +235,7 @@ export class RelayObject implements DurableObject {
       )
     `);
 
-    // Relay metrics — fan-out and cache-hit counters + latency.
+    // Relay metrics.
     this.state.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS relay_metrics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,12 +251,6 @@ export class RelayObject implements DurableObject {
     );
     // Drop legacy index superseded by the composite index above.
     this.state.storage.sql.exec("DROP INDEX IF EXISTS idx_relay_metrics_created");
-
-    // Rehydrate in-memory maps from SQLite on wake.
-    this.rehydrateNodeState();
-
-    // Rehydrate swarm config from DO key-value storage.
-    this.rehydrateSwarmConfig();
   }
 
   // -----------------------------------------------------------------------
@@ -1584,31 +1621,9 @@ export class RelayObject implements DurableObject {
   // Swarm config & connection
   // -----------------------------------------------------------------------
 
-  /** Rehydrate swarm config from DO key-value storage on wake. */
-  private rehydrateSwarmConfig(): void {
-    try {
-      // Use blockConcurrencyWhile for async storage reads in constructor context.
-      this.state.blockConcurrencyWhile(async () => {
-        const values = await this.state.storage.get([
-          "swarm_url", "swarm_token", "swarm_sensitivity",
-          "swarm_connected", "swarm_id", "swarm_callback_token",
-        ]);
-        this.swarmUrl = (values.get("swarm_url") as string) ?? null;
-        this.swarmToken = (values.get("swarm_token") as string) ?? null;
-        this.swarmSensitivity = (values.get("swarm_sensitivity") as string) ?? "standard";
-        this.swarmConnected = (values.get("swarm_connected") as boolean) ?? false;
-        this.swarmId = (values.get("swarm_id") as string) ?? null;
-        this.swarmCallbackToken = (values.get("swarm_callback_token") as string) ?? null;
-
-        // Restart swarm heartbeat if connected.
-        if (this.swarmConnected && this.swarmUrl && this.swarmToken) {
-          this.startSwarmHeartbeat();
-        }
-      });
-    } catch (err) {
-      console.error("Failed to rehydrate swarm config:", err);
-    }
-  }
+  // NOTE: rehydrateSwarmConfig logic is inlined in the constructor's
+  // blockConcurrencyWhile block to avoid nested blockConcurrencyWhile calls
+  // (only one is allowed per constructor).
 
   /** Handle PUT /api/swarm/config — set or clear swarm configuration. */
   private async handleSwarmConfigUpdate(request: Request): Promise<Response> {

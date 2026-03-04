@@ -5,6 +5,7 @@ policy management via the cloud relay.
 """
 
 import logging
+import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,18 @@ from open_agent_kit.features.codebase_intelligence.daemon.state import get_state
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=[TEAM_ROUTE_TAG])
+
+# ---------------------------------------------------------------------------
+# TTL cache for relay stats (obs_stats + metrics) to avoid hitting the CF
+# Worker on every UI poll (5s).  These stats change slowly so a 30s TTL is
+# fine and saves ~10k+ CF Worker requests/day.
+# ---------------------------------------------------------------------------
+_RELAY_STATS_TTL_SECONDS = 30
+_relay_stats_cache: dict[str, Any] = {
+    "pending": {},
+    "metrics": None,
+    "fetched_at": 0.0,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -255,46 +268,55 @@ async def get_team_status() -> TeamStatusResponse:
         is_connected = status.connected
         online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
 
-        # Fetch pending obs counts and federation metrics concurrently.
+        # Fetch pending obs counts and federation metrics, cached to avoid
+        # hitting the CF Worker on every 5s UI poll.
         worker_url: str | None = status.worker_url
         if is_connected and worker_url:
-            _url_base: str = worker_url  # narrowed for closures
-            from open_agent_kit.features.codebase_intelligence.cloud_relay.client import (
-                CloudRelayClient,
-            )
+            now = time.monotonic()
+            if now - _relay_stats_cache["fetched_at"] > _RELAY_STATS_TTL_SECONDS:
+                _url_base: str = worker_url  # narrowed for closures
+                from open_agent_kit.features.codebase_intelligence.cloud_relay.client import (
+                    CloudRelayClient,
+                )
 
-            relay_client = state.cloud_relay_client
+                relay_client = state.cloud_relay_client
 
-            async def _fetch_obs_stats() -> dict[str, int]:
-                token = state.ci_config.cloud_relay.token if state.ci_config else None
-                headers = {"Authorization": f"Bearer {token}"} if token else {}
-                try:
-                    url = _url_base.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH
-                    async with httpx.AsyncClient(
-                        timeout=CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS
-                    ) as client:
-                        resp = await client.get(url, headers=headers)
-                    if resp.status_code == HTTPStatus.OK:
-                        result: dict[str, int] = resp.json().get("pending", {})
-                        return result
-                except Exception as exc:
-                    logger.debug("Failed to fetch relay obs stats: %s", exc)
-                return {}
+                async def _fetch_obs_stats() -> dict[str, int]:
+                    token = state.ci_config.cloud_relay.token if state.ci_config else None
+                    headers = {"Authorization": f"Bearer {token}"} if token else {}
+                    try:
+                        url = _url_base.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH
+                        async with httpx.AsyncClient(
+                            timeout=CLOUD_RELAY_OBS_STATS_TIMEOUT_SECONDS
+                        ) as client:
+                            resp = await client.get(url, headers=headers)
+                        if resp.status_code == HTTPStatus.OK:
+                            result: dict[str, int] = resp.json().get("pending", {})
+                            return result
+                    except Exception as exc:
+                        logger.debug("Failed to fetch relay obs stats: %s", exc)
+                    return {}
 
-            async def _fetch_metrics() -> dict[str, Any] | None:
-                if not isinstance(relay_client, CloudRelayClient):
+                async def _fetch_metrics() -> dict[str, Any] | None:
+                    if not isinstance(relay_client, CloudRelayClient):
+                        return None
+                    try:
+                        data = await relay_client.fetch_relay_metrics()
+                        if "error" not in data:
+                            return data
+                    except Exception as exc:
+                        logger.debug("Failed to fetch relay metrics: %s", exc)
                     return None
-                try:
-                    data = await relay_client.fetch_relay_metrics()
-                    if "error" not in data:
-                        return data
-                except Exception as exc:
-                    logger.debug("Failed to fetch relay metrics: %s", exc)
-                return None
 
-            relay_pending, relay_metrics = await asyncio.gather(
-                _fetch_obs_stats(), _fetch_metrics()
-            )
+                relay_pending, relay_metrics = await asyncio.gather(
+                    _fetch_obs_stats(), _fetch_metrics()
+                )
+                _relay_stats_cache["pending"] = relay_pending
+                _relay_stats_cache["metrics"] = relay_metrics
+                _relay_stats_cache["fetched_at"] = now
+            else:
+                relay_pending = _relay_stats_cache["pending"]
+                relay_metrics = _relay_stats_cache["metrics"]
     else:
         # No live client yet — surface the configured URL so the UI shows
         # "Disconnected" rather than "Not Configured".
