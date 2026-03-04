@@ -66,7 +66,17 @@ These are the first places to look. The full Anchor Index is in `oak/constitutio
 - `pyproject.toml`
 - `oak/constitution.md` (DoD + canonical Anchor Index)
 
-### Codebase Intelligence Data (Quick Reference)
+### Feature Layout
+| Feature | Path |
+|---------|------|
+| Team (daemon, CI, relay, cloud) | `src/open_agent_kit/features/team/` |
+| Agent Runtime (registry, executor) | `src/open_agent_kit/features/agent_runtime/` |
+| Swarm | `src/open_agent_kit/features/swarm/` |
+| Shared UI | `src/open_agent_kit/ui/shared/` |
+| Team CLI (`oak team`) | `src/open_agent_kit/commands/team/` |
+| CI CLI (`oak ci`) | `src/open_agent_kit/commands/ci/` |
+
+### Data Paths (Quick Reference)
 | Resource | Path |
 |----------|------|
 | SQLite (source of truth) | `.oak/ci/activities.db` |

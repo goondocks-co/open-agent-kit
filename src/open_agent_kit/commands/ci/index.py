@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from open_agent_kit.constants import SKIP_DIRECTORIES
-from open_agent_kit.features.codebase_intelligence.constants import HTTP_TIMEOUT_LONG
+from open_agent_kit.features.team.constants import HTTP_TIMEOUT_LONG
 from open_agent_kit.utils import (
     print_error,
     print_header,
@@ -43,7 +43,7 @@ def ci_index(
     manager = get_daemon_manager(project_root)
 
     if not manager.is_running():
-        print_error("Daemon is not running. Start it first with 'oak ci start'.")
+        print_error("Daemon is not running. Start it first with 'oak team start'.")
         raise typer.Exit(code=1)
 
     print_info("Triggering codebase indexing...")
@@ -96,7 +96,7 @@ def ci_install_parsers(
         oak ci install-parsers --all     # Install all supported parsers
         oak ci install-parsers --dry-run # Preview what would be installed
     """
-    from open_agent_kit.features.codebase_intelligence.indexing.chunker import (
+    from open_agent_kit.features.team.indexing.chunker import (
         LANGUAGE_MAP,
         TREE_SITTER_PACKAGES,
         CodeChunker,
@@ -178,7 +178,7 @@ def ci_install_parsers(
 
         console.print()
         print_info("Restart the daemon to use new parsers:")
-        print_info("  oak ci restart")
+        print_info("  oak team restart")
 
     except subprocess.CalledProcessError as e:
         print_error(f"Failed to install parsers: {e.stderr}")
@@ -192,7 +192,7 @@ def ci_languages() -> None:
     Displays which languages have tree-sitter parsers installed for
     better semantic chunking vs line-based fallback.
     """
-    from open_agent_kit.features.codebase_intelligence.indexing.chunker import (
+    from open_agent_kit.features.team.indexing.chunker import (
         LANGUAGE_MAP,
         CodeChunker,
     )

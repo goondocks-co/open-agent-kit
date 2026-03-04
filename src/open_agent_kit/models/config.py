@@ -63,12 +63,12 @@ class OakConfig(BaseModel):
         default_factory=SkillsConfig,
         description="Skills configuration",
     )
-    # Passthrough field for codebase-intelligence feature config
+    # Passthrough field for team feature config
     # Stored here to preserve it when OakConfig.save() is called
     # The CI feature has its own config models and save/load logic
-    codebase_intelligence: dict[str, Any] | None = Field(
+    team: dict[str, Any] | None = Field(
         default=None,
-        description="Codebase Intelligence configuration (managed by CI feature)",
+        description="Team configuration (managed by CI feature)",
     )
 
     @classmethod
@@ -114,6 +114,12 @@ class OakConfig(BaseModel):
             if isinstance(rfc_data, dict):
                 rfc_data.pop("auto_number", None)
                 rfc_data.pop("number_format", None)
+
+            # Migration: Rename old 'codebase_intelligence' key → 'team'
+            if "codebase_intelligence" in data and "team" not in data:
+                data["team"] = data.pop("codebase_intelligence")
+            elif "codebase_intelligence" in data:
+                data.pop("codebase_intelligence")
 
             return cls(**data)
 

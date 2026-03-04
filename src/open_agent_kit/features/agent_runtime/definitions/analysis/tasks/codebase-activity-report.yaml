@@ -1,0 +1,84 @@
+# =============================================================================
+# Built-in Task: Codebase Activity Report
+# =============================================================================
+# Task for: analysis agent
+#
+# Analyzes file hotspots, tool usage patterns, memory accumulation,
+# and active areas of the codebase.
+# =============================================================================
+
+name: codebase-activity-report
+display_name: "Codebase Activity Report"
+agent_type: analysis
+is_builtin: true
+description: >
+  Analyzes file modification hotspots, tool usage patterns, memory
+  accumulation over time, and identifies the most active areas of the codebase.
+
+default_task: |
+  Generate a codebase activity report.
+
+  EFFICIENCY: Combine related sub-queries into single `oak_query` calls
+  using UNION ALL where column shapes are compatible. Aim for ~1-2 oak_query
+  calls per section rather than one per bullet point.
+
+  ## 1. File Hotspot Analysis
+
+  Use a single oak_query against activities to get hotspot data:
+  - Top 20 files by write/edit count
+  - Top 20 files by read count
+  - Files with highest error rates
+  - Group hotspots by top-level directory to identify active areas
+
+  ## 2. Tool Usage Patterns
+
+  Use a single oak_query against activities to analyze tool usage:
+  - Tool usage frequency with success counts (overall)
+  - Tool usage trends over time (weekly)
+  - Average tools per session
+  - Which tools tend to be used together in the same session
+
+  ## 3. Memory Accumulation & Lifecycle
+
+  Combine memory accumulation and lifecycle into one or two oak_query calls
+  against memory_observations:
+  - Total memories by type and status (single GROUP BY)
+  - Memories by type over time (monthly)
+  - Recent memory trends (are new gotchas being discovered?)
+  - Memories per session ratio
+  - Resolution velocity: how quickly observations get resolved
+  - Unresolved planning observations that may be stale
+
+  ## 4. Active Codebase Areas
+
+  Use oak_query to identify which parts of the codebase are most active:
+  - Group file paths by top-level directory
+  - Activity density (activities per unique file)
+  - New vs modified files ratio
+
+  ## 5. Write Report
+
+  Write the report with hotspot visualizations (markdown tables),
+  trend analysis, and suggestions for areas needing attention.
+
+execution:
+  timeout_seconds: 180
+  max_turns: 40
+  permission_mode: acceptEdits
+  model: claude-sonnet-4-6
+
+maintained_files:
+  - path: "{project_root}/oak/insights/codebase-activity-report.md"
+    purpose: "Codebase activity analysis report"
+    auto_create: true
+
+oak_queries:
+  discovery:
+    - tool: oak_project_stats
+      purpose: "Get baseline codebase metrics"
+
+style:
+  tone: "analytical"
+  include_examples: false
+
+schema_version: 1

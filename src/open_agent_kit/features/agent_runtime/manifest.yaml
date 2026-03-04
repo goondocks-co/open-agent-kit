@@ -1,0 +1,7 @@
+name: agent-runtime
+display_name: "Agent Runtime"
+description: "Autonomous agent infrastructure (Claude Agent SDK) - registry, executor, scheduler"
+version: "1.0.0"
+default_enabled: false
+dependencies:
+  - team

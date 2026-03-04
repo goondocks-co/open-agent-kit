@@ -257,5 +257,5 @@ def ensure_gitignore_has_ci_data(project_root: Path) -> None:
     add_gitignore_entries(
         project_root,
         entries=[".oak/ci/"],
-        section_comment="open-agent-kit: Codebase Intelligence data (regenerated locally)",
+        section_comment="open-agent-kit: Team data (regenerated locally)",
     )

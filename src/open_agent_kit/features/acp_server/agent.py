@@ -70,7 +70,7 @@ from open_agent_kit.features.acp_server.constants import (
     ACP_VALID_FOCUSES,
 )
 from open_agent_kit.features.acp_server.daemon_client import DaemonClient, discover_daemon
-from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
+from open_agent_kit.features.team.daemon.models_acp import (
     DoneEvent,
 )
 

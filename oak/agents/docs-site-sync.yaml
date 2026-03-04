@@ -80,11 +80,11 @@ default_task: |
     endpoint paths), `acp_server/commands/serve_cmd.py` (CLI flags),
     `daemon/ui/src/components/agents/ACPIntegrations.tsx` (editor setup JSON),
     `daemon/routes/acp.py` (REST API)
-  - Agents: `features/codebase_intelligence/agents/definitions/` (templates),
+  - Agents: `features/team/agents/definitions/` (templates),
     `services/agent_service.py`
   - CLI: `src/open_agent_kit/cli.py`
-  - Config: `features/codebase_intelligence/config/`
-  - Daemon API: `features/codebase_intelligence/daemon/routes/`
+  - Config: `features/team/config/`
+  - Daemon API: `features/team/daemon/routes/`
 
   ## 3. Astro Check (Pre-edit Baseline)
 

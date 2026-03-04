@@ -1,4 +1,4 @@
-version: 1.4.2.dev0+g29e956b6e.d20260303
+version: 1.4.3.dev2+g7bed1c44c.d20260304
 agents:
 - vscode-copilot
 - opencode
@@ -16,53 +16,73 @@ constitution:
 languages:
   installed: [javascript, python, typescript]
 skills:
-  installed: [project-governance, codebase-intelligence, context-engineering]
+  installed: [project-governance, context-engineering, oak]
   auto_install: true
-codebase_intelligence:
+team:
   agents:
-    background_processing_interval_seconds: 60
     enabled: true
-    executor_cache_size: 100
     max_turns: 50
-    scheduler_interval_seconds: 60
     timeout_seconds: 600
-    background_processing_workers: 4
+    scheduler_interval_seconds: 60
+    executor_cache_size: 100
+    background_processing_interval_seconds: 60
+    background_processing_workers: 2
+  session_quality:
+    min_activities: 3
+    stale_timeout_seconds: 3600
+  team:
+    sync_interval_seconds: 3
+    project_slug: null
+    relay_worker_url: https://oak-relay-open-agent-kit.goondocks.workers.dev
+    relay_worker_name: null
   backup:
     on_upgrade: true
-  cli_command: oak-dev
-  embedding:
-    api_key: null
-    base_url: http://localhost:11434
-    context_tokens: 8192
-    dimensions: 1024
-    max_chunk_chars: 6553
-    model: bge-m3
-    provider: ollama
+  auto_resolve:
+    enabled: true
+    similarity_threshold: 0.8
+    similarity_threshold_no_context: 0.88
+    search_limit: 10
+  governance:
+    enabled: false
+    log_allowed: false
+    retention_days: 30
+    rules: []
+    data_collection:
+      sync_observations: true
+      federated_tools: true
   exclude_patterns:
   - .git
   - .git/**
   - .oak
   - .oak/**
-  - .agent/skills
+  - .agents/skills
   - .claude/commands
-  - .claude/settings.local.json
+  - .claude/settings.json
   - .claude/skills
+  - .codex/config.toml
   - .codex/prompts
-  - .codex/skills
   - .cursor/commands
   - .cursor/mcp.json
   - .cursor/settings.json
+  - .cursor/skills
   - .gemini/commands
   - .gemini/settings.json
   - .github/agents
-  - .github/skills
   - .mcp.json
+  - .opencode/commands
   - .vscode/mcp.json
   - .vscode/settings.json
   - .windsurf/commands
   - .windsurf/settings.json
+  - opencode.json
+  - .claude/settings.local.json
+  - .cursor/hooks.json
+  - .cursor/hooks
+  - .cursor/hooks/**
   - node_modules
   - node_modules/**
+  - '**/node_modules'
+  - '**/node_modules/**'
   - __pycache__
   - __pycache__/**
   - .mypy_cache
@@ -109,41 +129,4 @@ codebase_intelligence:
   - '*.po'
   - '*.pot'
   - '*.mo'
-  log_level: DEBUG
-  log_rotation:
-    backup_count: 3
-    enabled: true
-    max_size_mb: 20
-  session_quality:
-    min_activities: 3
-    stale_timeout_seconds: 3600
-  summarization:
-    api_key: null
-    base_url: http://localhost:1234
-    context_tokens: 131072
-    enabled: true
-    model: openai/gpt-oss-20b
-    provider: lmstudio
-    timeout: 180.0
-  auto_resolve:
-    enabled: true
-    similarity_threshold: 0.85
-    similarity_threshold_no_context: 0.92
-    search_limit: 5
-  governance:
-    enabled: true
-    log_allowed: false
-    rules: [{id: no-destructive-bash, description: Block destructive shell commands,
-        enabled: true, tool: Bash, pattern: rm\s+-rf, path_pattern: '', action: deny,
-        message: Destructive commands are blocked by governance policy.}, {id: warn-env-access,
-        description: Warn when agent reads or writes to env file, enabled: true, tool: '*',
-        pattern: '', path_pattern: '*.env', action: warn, message: ''}]
-    retention_days: 30
-    data_collection:
-      sync_observations: true
-      federated_tools: true
-  team:
-    sync_interval_seconds: 3
-    project_slug: null
-    relay_worker_url: https://oak-relay-open-agent-kit.goondocks.workers.dev
-    relay_worker_name: null
+  cli_command: oak-dev

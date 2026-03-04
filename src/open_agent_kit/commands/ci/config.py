@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from open_agent_kit.features.codebase_intelligence.constants import (
+from open_agent_kit.features.team.constants import (
     CI_CLI_COMMAND_VALIDATION_PATTERN,
     DAEMON_RESTART_DELAY_SECONDS,
     HTTP_TIMEOUT_QUICK,
@@ -100,7 +100,7 @@ def ci_config(
     project_root = Path.cwd()
 
     if list_models:
-        from open_agent_kit.features.codebase_intelligence.config import load_ci_config
+        from open_agent_kit.features.team.config import load_ci_config
 
         config = load_ci_config(project_root)
         emb_config = config.embedding
@@ -166,8 +166,8 @@ def ci_config(
         return
 
     if list_summarization_models:
-        from open_agent_kit.features.codebase_intelligence.config import load_ci_config
-        from open_agent_kit.features.codebase_intelligence.summarization import (
+        from open_agent_kit.features.team.config import load_ci_config
+        from open_agent_kit.features.team.summarization import (
             list_available_models,
         )
 
@@ -197,7 +197,7 @@ def ci_config(
         print_info("Set summarization model: oak ci config --sum-model <model>")
         return
 
-    from open_agent_kit.features.codebase_intelligence.config import (
+    from open_agent_kit.features.team.config import (
         load_ci_config,
         save_ci_config,
     )
@@ -221,7 +221,7 @@ def ci_config(
         return
 
     if summarization_context == "auto":
-        from open_agent_kit.features.codebase_intelligence.summarization import (
+        from open_agent_kit.features.team.summarization import (
             discover_model_context,
         )
 
@@ -240,7 +240,7 @@ def ci_config(
             config.summarization.context_tokens = discovered
             save_ci_config(project_root, config)
             print_success(f"Context tokens discovered and saved: {discovered:,}")
-            print_info("Restart the daemon to apply: oak ci restart")
+            print_info("Restart the daemon to apply: oak team restart")
         else:
             print_warning("Could not discover context window from API.")
             print_info(
@@ -266,7 +266,7 @@ def ci_config(
     )
 
     if show or no_changes:
-        print_header("Codebase Intelligence Configuration")
+        print_header("Team Configuration")
 
         # Embedding config
         console.print("[bold]Embedding:[/bold]")
@@ -420,18 +420,18 @@ def ci_config(
         console.print()
         if embedding_changed:
             print_warning("Restart the daemon and rebuild the index to apply embedding changes:")
-            print_info("  oak ci restart && oak ci reset -f")
+            print_info("  oak team restart && oak team reset -f")
         elif summarization_changed or debug is not None or log_level or cli_command_changed:
             print_info("Restart the daemon to apply changes:")
-            print_info(f"  {config.cli_command} ci restart")
+            print_info(f"  {config.cli_command} team restart")
 
         if cli_command_changed:
-            from open_agent_kit.features.codebase_intelligence.service import (
-                CodebaseIntelligenceService,
+            from open_agent_kit.features.team.service import (
+                TeamService,
             )
             from open_agent_kit.services.config_service import ConfigService
 
-            service = CodebaseIntelligenceService(project_root)
+            service = TeamService(project_root)
             agents = ConfigService(project_root).get_agents()
 
             if agents:
@@ -476,9 +476,9 @@ def ci_exclude(
         - '*.min.js' matches minified JS files
 
     After changing excludes, restart the daemon and rebuild the index:
-        oak ci restart && oak ci reset -f
+        oak team restart && oak team reset -f
     """
-    from open_agent_kit.features.codebase_intelligence.config import (
+    from open_agent_kit.features.team.config import (
         DEFAULT_EXCLUDE_PATTERNS,
         load_ci_config,
         save_ci_config,
@@ -495,7 +495,7 @@ def ci_exclude(
         config.exclude_patterns = DEFAULT_EXCLUDE_PATTERNS.copy()
         save_ci_config(project_root, config)
         print_success("Exclude patterns reset to defaults.")
-        print_info("Restart daemon and rebuild index: oak ci restart && oak ci reset -f")
+        print_info("Restart daemon and rebuild index: oak team restart && oak team reset -f")
         return
 
     # Add patterns
@@ -524,7 +524,7 @@ def ci_exclude(
         save_ci_config(project_root, config)
         console.print()
         print_info("Restart daemon and rebuild index to apply changes:")
-        print_info("  oak ci restart && oak ci reset -f")
+        print_info("  oak team restart && oak team reset -f")
         return
 
     # Show patterns (default behavior if no changes)
@@ -570,7 +570,7 @@ def ci_debug(
         oak ci debug false        # Disable debug mode
         oak ci debug --no-restart # Change without restart
     """
-    from open_agent_kit.features.codebase_intelligence.config import load_ci_config, save_ci_config
+    from open_agent_kit.features.team.config import load_ci_config, save_ci_config
 
     project_root = Path.cwd()
     check_oak_initialized(project_root)
@@ -611,4 +611,4 @@ def ci_debug(
             manager.start()
             print_success("Daemon restarted with new log level")
         else:
-            print_info("Daemon not running. Start with: oak ci start")
+            print_info("Daemon not running. Start with: oak team start")

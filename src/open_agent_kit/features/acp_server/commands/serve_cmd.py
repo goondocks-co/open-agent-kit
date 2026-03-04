@@ -186,7 +186,7 @@ class _StdoutTransport(asyncio.BaseTransport):
 
 def _configure_file_logging(project_root: Path) -> None:
     """Route all log output to .oak/ci/acp.log (stdout is JSON-RPC)."""
-    from open_agent_kit.features.codebase_intelligence.constants import CI_DATA_DIR
+    from open_agent_kit.features.team.constants import CI_DATA_DIR
 
     log_dir = project_root / OAK_DIR / CI_DATA_DIR
     log_dir.mkdir(parents=True, exist_ok=True)

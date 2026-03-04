@@ -1,6 +1,7 @@
 {
   "coreTools": [
-    "ShellTool(oak-dev *)"
+    "ShellTool(oak-dev *)",
+    "ShellTool(oak *)"
   ],
   "hooks": {
     "SessionStart": [
@@ -86,7 +87,7 @@
     "oak-ci": {
       "command": "oak-dev",
       "args": [
-        "ci",
+        "team",
         "mcp"
       ]
     }

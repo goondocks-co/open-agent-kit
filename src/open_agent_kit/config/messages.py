@@ -38,7 +38,8 @@ HELP_TEXT = f"""
 
 [bold]Primary Commands:[/bold]
   [cyan]init[/cyan]        Initialize .oak directory with templates and configs
-  [cyan]ci[/cyan]          Codebase Intelligence — daemon, search, memories
+  [cyan]team[/cyan]        Team daemon lifecycle and collaboration
+  [cyan]ci[/cyan]          Codebase index, search, and configuration
   [cyan]upgrade[/cyan]     Upgrade templates and agent commands to latest versions
   [cyan]languages[/cyan]   Manage language support for code intelligence
   [cyan]remove[/cyan]      Remove open-agent-kit from the current project
@@ -51,15 +52,15 @@ HELP_TEXT = f"""
   [dim]# One-shot initialize by setting agents[/dim]
   [dim]$ oak init --agent claude --agent cursor[/dim]
 
-  [dim]# Start Codebase Intelligence with the dashboard[/dim]
-  [dim]$ oak ci start --open[/dim]
+  [dim]# Start Team with the dashboard[/dim]
+  [dim]$ oak team start --open[/dim]
 
   [dim]# Upgrade to latest version[/dim]
   [dim]$ oak upgrade --dry-run[/dim]
 
 [bold]Get Started:[/bold]
   1. Run [cyan]oak init[/cyan] to set up your project
-  2. Run [cyan]oak ci start --open[/cyan] to launch Codebase Intelligence
+  2. Run [cyan]oak team start --open[/cyan] to launch Team
   3. See the Quick Start guide: [dim]QUICKSTART.md[/dim]
 
 For more information, visit: {PROJECT_URL}
@@ -78,7 +79,7 @@ OAK enhances your AI coding assistants with code intelligence.
   Type [cyan]/oak[/cyan] to see available commands.
 
 [bold]Start code intelligence:[/bold]
-  [dim]$ oak ci start[/dim]          # Start the CI daemon
+  [dim]$ oak team start[/dim]         # Start the team daemon
   [dim]$ oak languages list[/dim]    # See installed languages
   [dim]$ oak languages add ruby[/dim] # Add more language support"""
 

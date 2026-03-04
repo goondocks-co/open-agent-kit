@@ -35,7 +35,7 @@ SWARM_TOKEN_BYTES: Final[int] = WORKER_TOKEN_BYTES
 # Payload limits
 SWARM_MAX_RESPONSE_BYTES: Final[int] = 1048576  # 1 MB
 
-# Config keys (inside codebase_intelligence.swarm section)
+# Config keys (inside team.swarm section)
 CI_CONFIG_KEY_SWARM: Final[str] = "swarm"
 CI_CONFIG_SWARM_KEY_URL: Final[str] = "swarm_url"
 CI_CONFIG_SWARM_KEY_TOKEN: Final[str] = "swarm_token"
@@ -131,6 +131,20 @@ SWARM_DEPLOY_WRANGLER_WHOAMI_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_WHOAMI
 SWARM_DEPLOY_NPM_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPM_NOT_FOUND
 SWARM_DEPLOY_NPX_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPX_NOT_FOUND
 
+# Authentication
+SWARM_AUTH_ENV_VAR: Final[str] = "OAK_SWARM_DAEMON_TOKEN"
+SWARM_AUTH_HEADER_NAME: Final[str] = "authorization"
+SWARM_AUTH_SCHEME_BEARER: Final[str] = "Bearer"
+SWARM_AUTH_EPHEMERAL_TOKEN_BYTES: Final[int] = 32
+SWARM_CONFIG_FILE_PERMISSIONS: Final[int] = 0o600
+SWARM_AUTH_ERROR_MISSING: Final[str] = "Authorization header required"
+SWARM_AUTH_ERROR_INVALID_SCHEME: Final[str] = "Expected 'Bearer <token>'"
+SWARM_AUTH_ERROR_INVALID_TOKEN: Final[str] = "Invalid token"
+SWARM_AUTH_WARNING_NO_TOKEN: Final[str] = (
+    "No auth token configured; generated ephemeral token. "
+    "Set OAK_SWARM_DAEMON_TOKEN for stable authentication."
+)
+
 # Daemon defaults
 SWARM_DAEMON_DEFAULT_PORT: Final[int] = 38900
 SWARM_DAEMON_STARTUP_TIMEOUT: Final[float] = 15.0
@@ -206,6 +220,19 @@ SWARM_TOOL_STATUS: Final[str] = "swarm_status"
 # Health check
 SWARM_HEALTH_CHECK_PATH: Final[str] = "/health"
 SWARM_HEALTH_CHECK_TIMEOUT_SECONDS: Final[int] = 10
+SWARM_HEALTH_STATUS_OK: Final[str] = "ok"
+
+# Restart
+SWARM_RESTART_SHUTDOWN_DELAY_SECONDS: Final[float] = 0.5
+SWARM_RESTART_SUBPROCESS_DELAY_SECONDS: Final[int] = 2
+SWARM_RESTART_STATUS_RESTARTING: Final[str] = "restarting"
+SWARM_RESTART_ROUTE_TAG: Final[str] = "health"
+SWARM_RESTART_ERROR_NO_SWARM_ID: Final[str] = "Cannot restart: no swarm ID in environment"
+SWARM_RESTART_ERROR_SPAWN_DETAIL: Final[str] = "Failed to spawn restart process: {error}"
+SWARM_RESTART_LOG_SPAWNING: Final[str] = "Spawning restart subprocess: %s"
+SWARM_RESTART_LOG_SPAWN_FAILED: Final[str] = "Failed to spawn restart process: %s"
+SWARM_RESTART_LOG_SCHEDULING_SHUTDOWN: Final[str] = "Scheduling shutdown in {delay}s"
+SWARM_RESTART_LOG_SIGTERM: Final[str] = "Sending SIGTERM to self for restart"
 
 # Swarm route tag
 SWARM_ROUTE_TAG: Final[str] = "swarm"

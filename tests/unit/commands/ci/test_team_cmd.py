@@ -1,17 +1,17 @@
-"""Tests for oak ci team CLI commands."""
+"""Tests for oak team members CLI commands."""
 
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from open_agent_kit.commands.ci.team import team_app
+from open_agent_kit.commands.team.members import members_app
 
 runner = CliRunner()
 
 # Shared mock paths
-_CHECK_OAK = "open_agent_kit.commands.ci.team.check_oak_initialized"
-_CHECK_CI = "open_agent_kit.commands.ci.team.check_ci_enabled"
-_GET_DAEMON = "open_agent_kit.commands.ci.team.get_daemon_manager"
+_CHECK_OAK = "open_agent_kit.commands.team.members.check_oak_initialized"
+_CHECK_CI = "open_agent_kit.commands.team.members.check_ci_enabled"
+_GET_DAEMON = "open_agent_kit.commands.team.members.get_daemon_manager"
 
 
 def _mock_daemon_manager(running=True, port=37800):
@@ -22,8 +22,8 @@ def _mock_daemon_manager(running=True, port=37800):
     return manager
 
 
-class TestTeamStatus:
-    """Tests for team status command."""
+class TestMembersStatus:
+    """Tests for members status command."""
 
     @patch(_GET_DAEMON)
     @patch(_CHECK_CI)
@@ -32,7 +32,7 @@ class TestTeamStatus:
         """Test status shows warning when daemon is not running."""
         mock_daemon.return_value = _mock_daemon_manager(running=False)
 
-        result = runner.invoke(team_app, ["status"])
+        result = runner.invoke(members_app, ["status"])
 
         assert result.exit_code == 0
 
@@ -43,7 +43,7 @@ class TestTeamStatus:
         """Test status shows not-configured when relay not connected."""
         mock_daemon.return_value = _mock_daemon_manager()
 
-        with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
+        with patch("httpx.Client") as mock_client_cls:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"configured": False}
@@ -53,14 +53,14 @@ class TestTeamStatus:
             mock_client.get.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            result = runner.invoke(team_app, ["status"])
+            result = runner.invoke(members_app, ["status"])
 
         assert result.exit_code == 0
         assert "not configured" in result.output.lower() or "Not configured" in result.output
 
 
-class TestTeamMembers:
-    """Tests for team members command."""
+class TestMembersList:
+    """Tests for members list command."""
 
     @patch(_GET_DAEMON)
     @patch(_CHECK_CI)
@@ -69,7 +69,7 @@ class TestTeamMembers:
         """Test members shows message when no members found."""
         mock_daemon.return_value = _mock_daemon_manager()
 
-        with patch("open_agent_kit.commands.ci.team.httpx.Client") as mock_client_cls:
+        with patch("httpx.Client") as mock_client_cls:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"members": []}
@@ -79,7 +79,7 @@ class TestTeamMembers:
             mock_client.get.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            result = runner.invoke(team_app, ["members"])
+            result = runner.invoke(members_app, ["list"])
 
         assert result.exit_code == 0
 
@@ -87,28 +87,28 @@ class TestTeamMembers:
 class TestCommandRegistration:
     """Tests for command registration."""
 
-    def test_team_app_is_registered(self):
-        """Test that team_app is importable and has expected commands."""
-        from open_agent_kit.commands.ci.team import team_app
+    def test_members_app_is_registered(self):
+        """Test that members_app is importable and has expected commands."""
+        from open_agent_kit.commands.team.members import members_app
 
         # Get registered command names
         command_names = []
-        if hasattr(team_app, "registered_commands"):
-            command_names = [cmd.name for cmd in team_app.registered_commands if cmd.name]
+        if hasattr(members_app, "registered_commands"):
+            command_names = [cmd.name for cmd in members_app.registered_commands if cmd.name]
 
         # Verify core commands exist
         assert "status" in command_names
-        assert "members" in command_names
+        assert "list" in command_names
 
-    def test_team_app_registered_on_ci_app(self):
-        """Test that team_app is registered as a sub-typer on ci_app."""
-        from open_agent_kit.commands.ci import ci_app
+    def test_team_app_registered_on_main_app(self):
+        """Test that team_app is registered as a top-level command group."""
+        from open_agent_kit.cli import app
 
         group_names = []
-        if hasattr(ci_app, "registered_groups"):
+        if hasattr(app, "registered_groups"):
             group_names = [
                 g.typer_instance.info.name
-                for g in ci_app.registered_groups
+                for g in app.registered_groups
                 if g.typer_instance and g.typer_instance.info
             ]
 

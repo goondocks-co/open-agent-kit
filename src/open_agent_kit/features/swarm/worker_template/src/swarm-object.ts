@@ -30,15 +30,74 @@ const STALE_THRESHOLD_MS = 300_000; // 5 minutes
 const SEARCH_TIMEOUT_MS = 10_000;
 const TOOL_CALL_TIMEOUT_MS = 30_000;
 const CALLBACK_TOKEN_LENGTH = 32;
+const DEFAULT_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 100;
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REGISTRATIONS = 10; // per IP per window
 /**
  * Schema version — bump whenever DDL changes.
  * Checked via KV so DDL only runs once per deployment, not on every wake.
  */
-const SWARM_SCHEMA_VERSION = 1;
+const SWARM_SCHEMA_VERSION = 2;
+
+/** Private/reserved IPv4 CIDR ranges that must be blocked for SSRF prevention. */
+const PRIVATE_IP_RANGES: Array<{ base: number; mask: number }> = [
+  { base: 0x7f000000, mask: 0xff000000 }, // 127.0.0.0/8
+  { base: 0x0a000000, mask: 0xff000000 }, // 10.0.0.0/8
+  { base: 0xac100000, mask: 0xfff00000 }, // 172.16.0.0/12
+  { base: 0xc0a80000, mask: 0xffff0000 }, // 192.168.0.0/16
+  { base: 0xa9fe0000, mask: 0xffff0000 }, // 169.254.0.0/16
+  { base: 0x00000000, mask: 0xffffffff }, // 0.0.0.0/32
+];
+
+/**
+ * Validate a callback URL to prevent SSRF attacks.
+ * Returns an error message string if invalid, or null if the URL is safe.
+ */
+function validateCallbackUrl(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "callback_url is not a valid URL";
+  }
+
+  if (parsed.protocol !== "https:") {
+    return "callback_url must use https: protocol";
+  }
+
+  if (parsed.hostname === "localhost" || parsed.hostname.endsWith(".localhost")) {
+    return "callback_url must not target localhost";
+  }
+
+  // Check for IPv4 addresses in private/reserved ranges.
+  const ipv4Match = parsed.hostname.match(
+    /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+  );
+  if (ipv4Match) {
+    const [, a, b, c, d] = ipv4Match;
+    const numeric =
+      ((Number(a) << 24) | (Number(b) << 16) | (Number(c) << 8) | Number(d)) >>> 0;
+    for (const range of PRIVATE_IP_RANGES) {
+      if ((numeric & range.mask) === range.base) {
+        return "callback_url must not target a private or reserved IP address";
+      }
+    }
+  }
+
+  // Reject IPv6 loopback (e.g. [::1]).
+  if (parsed.hostname === "[::1]" || parsed.hostname === "::1") {
+    return "callback_url must not target a loopback address";
+  }
+
+  return null;
+}
 
 export class SwarmObject implements DurableObject {
   private state: DurableObjectState;
   private env: Env;
+  /** In-memory rate limiter: IP -> list of registration timestamps. */
+  private registrationTimestamps: Map<string, number[]> = new Map();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -79,6 +138,10 @@ export class SwarmObject implements DurableObject {
     } catch {
       // Column already exists — expected after first migration.
     }
+
+    this.state.storage.sql.exec(
+      `CREATE INDEX IF NOT EXISTS idx_teams_project ON teams(project_slug)`,
+    );
 
     this.state.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS swarm_config (
@@ -125,7 +188,14 @@ export class SwarmObject implements DurableObject {
 
       // --- List teams ---
       if (path === "/api/swarm/nodes" && request.method === "GET") {
-        return this.handleNodes();
+        const limitParam = url.searchParams.get("limit");
+        const offsetParam = url.searchParams.get("offset");
+        const limit = Math.min(
+          Math.max(1, Number(limitParam) || DEFAULT_PAGE_LIMIT),
+          MAX_PAGE_LIMIT,
+        );
+        const offset = Math.max(0, Number(offsetParam) || 0);
+        return this.handleNodes(limit, offset);
       }
 
       // --- Unregister ---
@@ -150,6 +220,13 @@ export class SwarmObject implements DurableObject {
   }
 
   private async handleRegister(request: Request): Promise<Response> {
+    // --- Rate limiting (per-IP sliding window) ---
+    const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const rateLimitError = this.checkRateLimit(clientIp);
+    if (rateLimitError) {
+      return Response.json({ error: rateLimitError }, { status: 429 });
+    }
+
     const body = (await request.json()) as RegisterRequest;
 
     if (!body.team_id || !body.project_slug || !body.callback_url) {
@@ -159,30 +236,47 @@ export class SwarmObject implements DurableObject {
       );
     }
 
+    const urlError = validateCallbackUrl(body.callback_url);
+    if (urlError) {
+      return Response.json({ error: urlError }, { status: 400 });
+    }
+
     const now = new Date().toISOString();
     const callbackToken = this.generateCallbackToken();
 
+    // Use COALESCE to preserve existing callback_token and registered_at
+    // when re-registering a known team_id.
     this.state.storage.sql.exec(
       `INSERT OR REPLACE INTO teams
         (team_id, project_slug, callback_url, capabilities, node_count, oak_version, registered_at, last_heartbeat, callback_token, sensitivity)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?,
+         COALESCE((SELECT registered_at FROM teams WHERE team_id = ?), ?),
+         ?,
+         COALESCE((SELECT callback_token FROM teams WHERE team_id = ?), ?),
+         ?)`,
       body.team_id,
       body.project_slug,
       body.callback_url,
       JSON.stringify(body.capabilities ?? []),
       body.node_count ?? 1,
       body.oak_version ?? "",
+      body.team_id,
       now,
       now,
+      body.team_id,
       callbackToken,
       body.sensitivity ?? "standard",
     );
+
+    // Retrieve the actual token (may be the preserved existing one).
+    const team = this.findTeamByProject(body.project_slug);
+    const actualToken = team?.callback_token ?? callbackToken;
 
     const count = this.getTeamCount();
     return Response.json({
       swarm_id: "swarm",
       team_count: count,
-      callback_token: callbackToken,
+      callback_token: actualToken,
     });
   }
 
@@ -397,17 +491,18 @@ export class SwarmObject implements DurableObject {
     return Response.json({ results });
   }
 
-  private handleNodes(): Response {
-    const teams = this.getAllTeams();
+  private handleNodes(limit: number, offset: number): Response {
+    const teams = this.getAllTeamsPaginated(limit, offset);
+    const totalCount = this.getTeamCount();
     const now = Date.now();
 
+    // Strip sensitive fields (callback_token, callback_url) from public response.
     const enriched = teams.map((team) => {
       const lastBeat = new Date(team.last_heartbeat).getTime();
       const stale = now - lastBeat > STALE_THRESHOLD_MS;
       return {
         team_id: team.team_id,
         project_slug: team.project_slug,
-        callback_url: team.callback_url,
         capabilities: team.capabilities,
         node_count: team.node_count,
         oak_version: team.oak_version,
@@ -418,7 +513,12 @@ export class SwarmObject implements DurableObject {
       };
     });
 
-    return Response.json({ teams: enriched, team_count: enriched.length });
+    return Response.json({
+      teams: enriched,
+      team_count: totalCount,
+      limit,
+      offset,
+    });
   }
 
   private async handleUnregister(request: Request): Promise<Response> {
@@ -476,9 +576,24 @@ export class SwarmObject implements DurableObject {
     return (row.cnt as number) ?? 0;
   }
 
-  /** Retrieve all registered teams from SQLite. */
+  /** Retrieve all registered teams from SQLite (includes sensitive fields for internal use). */
   private getAllTeams(): SwarmTeam[] {
     const cursor = this.state.storage.sql.exec(`SELECT * FROM teams`);
+    return this.rowsToTeams(cursor);
+  }
+
+  /** Retrieve a page of registered teams from SQLite (for external listing). */
+  private getAllTeamsPaginated(limit: number, offset: number): SwarmTeam[] {
+    const cursor = this.state.storage.sql.exec(
+      `SELECT * FROM teams ORDER BY registered_at DESC LIMIT ? OFFSET ?`,
+      limit,
+      offset,
+    );
+    return this.rowsToTeams(cursor);
+  }
+
+  /** Convert SQL cursor rows to SwarmTeam objects. */
+  private rowsToTeams(cursor: Iterable<Record<string, unknown>>): SwarmTeam[] {
     const teams: SwarmTeam[] = [];
     for (const row of cursor) {
       teams.push({
@@ -495,6 +610,36 @@ export class SwarmObject implements DurableObject {
       });
     }
     return teams;
+  }
+
+  /**
+   * Check per-IP registration rate limit (sliding window).
+   * Returns an error message if rate limited, null if allowed.
+   */
+  private checkRateLimit(ip: string): string | null {
+    const now = Date.now();
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+    let timestamps = this.registrationTimestamps.get(ip);
+    if (timestamps) {
+      // Evict entries outside the sliding window.
+      timestamps = timestamps.filter((t) => t > windowStart);
+      if (timestamps.length === 0) {
+        this.registrationTimestamps.delete(ip);
+        timestamps = [];
+      } else {
+        this.registrationTimestamps.set(ip, timestamps);
+      }
+    } else {
+      timestamps = [];
+    }
+
+    if (timestamps.length >= RATE_LIMIT_MAX_REGISTRATIONS) {
+      return "rate limit exceeded: too many registrations, try again later";
+    }
+
+    timestamps.push(now);
+    return null;
   }
 
   /** Find a team by project_slug. */

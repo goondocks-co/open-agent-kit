@@ -53,11 +53,12 @@ async def get_logs(lines: int = Query(default=100, ge=1, le=1000)) -> dict:
         return {"lines": [], "path": None}
     try:
         tailed = _tail_lines(log_path, lines)
-        # Strip trailing newlines from each line for clean JSON
+        stripped = [line.rstrip("\n") for line in tailed]
         return {
-            "lines": [line.rstrip("\n") for line in tailed],
+            "lines": stripped,
             "path": str(log_path),
+            "total_lines": len(stripped),
         }
     except OSError as exc:
         logger.error("Failed to read log file: %s", exc)
-        return {"lines": [], "path": str(log_path), "error": str(exc)}
+        return {"lines": [], "path": str(log_path), "total_lines": 0, "error": str(exc)}

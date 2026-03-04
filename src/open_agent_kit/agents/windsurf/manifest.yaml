@@ -36,7 +36,7 @@ capabilities:
   skills_folder: ".agents"      # Shared folder — reads .agents/skills/
   skills_directory: "skills"    # .agents/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   # Plan storage - Windsurf stores plans in .windsurf/plans/ (project) and ~/.windsurf/plans/ (global)
   plans_subfolder: "plans"
@@ -51,7 +51,7 @@ governance:
   supports_observe: true
   supports_deny: false
 
-# Hooks configuration for Codebase Intelligence
+# Hooks configuration for Team
 # Windsurf uses a standalone hooks.json with flat structure (same as Cursor)
 hooks:
   type: json

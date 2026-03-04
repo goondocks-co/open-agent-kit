@@ -146,7 +146,7 @@ The `federated_tools` setting defaults to `true`. If you want a conservative opt
 
 ```yaml
 # In .oak/ci/config.yaml
-codebase_intelligence:
+team:
   governance:
     data_collection:
       sync_observations: true
@@ -218,7 +218,7 @@ Automatic backups are **disabled by default**. Enable them from the **Backup Set
 
 ```yaml
 # In .oak/config.{machine_id}.yaml
-codebase_intelligence:
+team:
   backup:
     auto_enabled: true
     interval_minutes: 30

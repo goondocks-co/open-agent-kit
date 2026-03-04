@@ -149,7 +149,7 @@ REQUIRED_RFC_SECTIONS = [
 SUPPORTED_FEATURES = [
     "rules-management",
     "strategic-planning",
-    "codebase-intelligence",
+    "team",
     "context-engineering",
 ]
 
@@ -160,7 +160,7 @@ CORE_FEATURE = "rules-management"
 FEATURE_DISPLAY_NAMES = {
     "rules-management": "Rules Management",
     "strategic-planning": "Strategic Planning",
-    "codebase-intelligence": "Codebase Intelligence",
+    "team": "Team",
     "context-engineering": "Context Engineering",
 }
 
@@ -190,9 +190,9 @@ FEATURE_CONFIG: dict[str, FeatureConfigEntry] = {
             "rfc-validate",
         ],
     },
-    "codebase-intelligence": {
-        "name": "Codebase Intelligence",
-        "description": "AI-powered code analysis and search",
+    "team": {
+        "name": "Team",
+        "description": "Team daemon, codebase intelligence, and collaboration",
         "default_enabled": True,
         "dependencies": ["rules-management"],
         "commands": [],

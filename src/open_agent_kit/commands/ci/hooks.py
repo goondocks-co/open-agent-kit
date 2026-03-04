@@ -14,7 +14,7 @@ from typing import Any, cast
 import typer
 
 from open_agent_kit.config.paths import GIT_DIR, OAK_DIR
-from open_agent_kit.features.codebase_intelligence.constants import (
+from open_agent_kit.features.team.constants import (
     AGENT_CLAUDE,
     AGENT_CURSOR,
     AGENTS_REQUIRE_HOOK_SPECIFIC_OUTPUT,
@@ -77,7 +77,7 @@ def ci_hook(
         echo '{"session_id": "123"}' | oak ci hook SessionStart
         echo '{"prompt": "hello"}' | oak ci hook UserPromptSubmit --agent cursor
     """
-    from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
+    from open_agent_kit.features.team.daemon.manager import get_project_port
 
     # Find true project root by walking up from cwd.
     # Claude Code may change cwd (e.g., `cd daemon/ui && npm run build`),
@@ -233,7 +233,7 @@ def ci_hook(
         # Start daemon in background. Using Popen instead of subprocess.run
         # so we can poll health directly — this returns as soon as the daemon
         # is healthy rather than waiting for `oak ci start` to fully exit.
-        from open_agent_kit.features.codebase_intelligence.cli_command import (
+        from open_agent_kit.features.team.cli_command import (
             resolve_ci_cli_command,
         )
 
@@ -242,7 +242,7 @@ def ci_hook(
             import subprocess
 
             subprocess.Popen(
-                [cli_bin, "ci", "start", "--quiet"],
+                [cli_bin, "team", "start", "--quiet"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )

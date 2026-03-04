@@ -9,6 +9,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from open_agent_kit.features.swarm.constants import SWARM_AUTH_ENV_VAR
+from open_agent_kit.features.swarm.daemon.middleware import TokenAuthMiddleware
 from open_agent_kit.features.swarm.daemon.routes import (
     agents,
     deploy,
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.swarm_url = swarm_url
     state.swarm_token = swarm_token
     state.swarm_id = swarm_id
+    state.auth_token = os.environ.get(SWARM_AUTH_ENV_VAR)
 
     if swarm_url and swarm_token:
         from open_agent_kit.features.swarm.daemon.client import (
@@ -70,6 +73,9 @@ def create_app() -> FastAPI:
         Configured FastAPI application with swarm routes.
     """
     app = FastAPI(title="Oak Swarm Daemon", lifespan=lifespan)
+
+    # Middleware: TokenAuth protects /api/* routes (health exempt)
+    app.add_middleware(TokenAuthMiddleware)
 
     # API routes
     app.include_router(health.router)

@@ -56,7 +56,7 @@ class TestFeatureServiceBasics:
         # All supported features should be installed
         assert service.is_feature_installed("rules-management") is True
         assert service.is_feature_installed("strategic-planning") is True
-        assert service.is_feature_installed("codebase-intelligence") is True
+        assert service.is_feature_installed("team") is True
 
         # Non-existent features should not be installed
         assert service.is_feature_installed("nonexistent") is False
@@ -91,7 +91,7 @@ class TestFeatureDependencies:
         """Test resolving dependencies for multiple features."""
         service = FeatureService(initialized_project)
 
-        resolved = service.resolve_dependencies(["strategic-planning", "codebase-intelligence"])
+        resolved = service.resolve_dependencies(["strategic-planning", "team"])
         # Should include rules-management (dependency) and both requested features
         assert "rules-management" in resolved
         assert "strategic-planning" in resolved
@@ -128,8 +128,8 @@ class TestFeatureDependencies:
         """Test can_remove_feature for a feature that nothing depends on."""
         service = FeatureService(initialized_project)
 
-        # codebase-intelligence has no dependents
-        can_remove, blocking = service.can_remove_feature("codebase-intelligence")
+        # team has no dependents
+        can_remove, blocking = service.can_remove_feature("team")
         assert can_remove is True
         assert blocking == []
 
@@ -150,15 +150,15 @@ class TestFeatureInstallation:
         config.agents = ["cursor"]
         config_service.save_config(config)
 
-        # Install codebase-intelligence
-        results = service.install_feature("codebase-intelligence", ["cursor"])
+        # Install team
+        results = service.install_feature("team", ["cursor"])
 
         assert "commands_installed" in results
         assert results["commands_installed"] == []
         assert "cursor" in results["agents"]
 
         # All features are always installed
-        assert service.is_feature_installed("codebase-intelligence")
+        assert service.is_feature_installed("team")
 
     def test_install_feature_creates_directories(self, initialized_project: Path) -> None:
         """Test that install creates necessary directories.
@@ -243,11 +243,11 @@ class TestFeatureRemoval:
         config = config_service.load_config()
         config.agents = ["cursor"]
         config_service.save_config(config)
-        results = service.install_feature("codebase-intelligence", ["cursor"])
+        results = service.install_feature("team", ["cursor"])
         assert results["commands_installed"] == []
 
         # Remove completes without errors
-        service.remove_feature("codebase-intelligence", ["cursor"])
+        service.remove_feature("team", ["cursor"])
 
 
 class TestFeatureRefresh:

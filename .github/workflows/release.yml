@@ -76,24 +76,43 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: src/open_agent_kit/features/codebase_intelligence/daemon/ui/package-lock.json
+          cache-dependency-path: |
+            src/open_agent_kit/features/team/daemon/ui/package-lock.json
+            src/open_agent_kit/features/swarm/daemon/ui/package-lock.json
 
       - name: Build frontend assets
-        working-directory: src/open_agent_kit/features/codebase_intelligence/daemon/ui
+        working-directory: src/open_agent_kit/features/team/daemon/ui
         run: |
           npm ci
           npm run build
 
       - name: Clean frontend build artifacts
         run: |
-          rm -rf src/open_agent_kit/features/codebase_intelligence/daemon/ui/node_modules
+          rm -rf src/open_agent_kit/features/team/daemon/ui/node_modules
           echo "Removed node_modules to prevent leaking into wheel"
 
       - name: Verify frontend assets
         run: |
-          test -f src/open_agent_kit/features/codebase_intelligence/daemon/static/index.html
+          test -f src/open_agent_kit/features/team/daemon/static/index.html
           echo "Frontend assets built successfully:"
-          ls -lh src/open_agent_kit/features/codebase_intelligence/daemon/static/
+          ls -lh src/open_agent_kit/features/team/daemon/static/
+
+      - name: Build swarm frontend assets
+        working-directory: src/open_agent_kit/features/swarm/daemon/ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Clean swarm frontend build artifacts
+        run: |
+          rm -rf src/open_agent_kit/features/swarm/daemon/ui/node_modules
+          echo "Removed node_modules to prevent leaking into wheel"
+
+      - name: Verify swarm frontend assets
+        run: |
+          test -f src/open_agent_kit/features/swarm/daemon/static/index.html
+          echo "Swarm frontend assets built successfully:"
+          ls -lh src/open_agent_kit/features/swarm/daemon/static/
 
       - name: Build skill assets
         run: |

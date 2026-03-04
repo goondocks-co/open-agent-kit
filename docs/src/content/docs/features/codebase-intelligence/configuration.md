@@ -124,7 +124,7 @@ Backup settings are per-machine (stored in `.oak/config.{machine_id}.yaml`), exc
 
 ```yaml
 # Per-machine backup settings
-codebase_intelligence:
+team:
   backup:
     auto_enabled: true
     include_activities: true
@@ -133,7 +133,7 @@ codebase_intelligence:
 
 ```yaml
 # Project-level backup settings (in .oak/config.yaml)
-codebase_intelligence:
+team:
   backup:
     on_upgrade: true
 ```
@@ -217,7 +217,7 @@ Governance settings control what AI agents are allowed to do. Enable rules-based
 | Retention days | `governance.retention_days` | `30` | Days to keep audit events (1–365) |
 
 ```yaml
-codebase_intelligence:
+team:
   governance:
     enabled: true
     enforcement_mode: observe

@@ -36,7 +36,7 @@ capabilities:
   has_skills: true              # Claude Code supports SKILL.md files
   skills_directory: "skills"    # .claude/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   # Resume command template - allows UI to show copyable command for session continuation
   resume_command: "claude --resume {session_id}"
@@ -101,7 +101,7 @@ mcp:
     args: "{args}"
     env: {}
 
-# Hooks configuration for Codebase Intelligence
+# Hooks configuration for Team
 # Claude Code uses settings.json with nested hook structure
 hooks:
   type: json

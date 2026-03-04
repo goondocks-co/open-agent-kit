@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from open_agent_kit.features.codebase_intelligence.constants import (
+from open_agent_kit.features.team.constants import (
     CI_ACTIVITIES_DB_FILENAME,
 )
 from open_agent_kit.utils import (
@@ -25,14 +25,14 @@ from . import (
 
 def _show_backup_info(project_root: Path, machine_id: str) -> None:
     """Display backup directory configuration information."""
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    from open_agent_kit.features.team.activity.store.backup import (
         discover_backup_files,
         get_backup_dir,
         get_backup_dir_source,
         get_backup_filename,
         validate_backup_dir,
     )
-    from open_agent_kit.features.codebase_intelligence.constants import (
+    from open_agent_kit.features.team.constants import (
         CI_HISTORY_BACKUP_DIR,
         OAK_CI_BACKUP_DIR_ENV,
     )
@@ -123,7 +123,7 @@ def ci_backup(
         oak ci backup -o custom.sql      # Custom output path
         oak ci backup --info             # Show backup config info
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    from open_agent_kit.features.team.activity.store.backup import (
         get_machine_identifier,
     )
 
@@ -140,14 +140,14 @@ def ci_backup(
 
     db_path = resolve_ci_data_dir(project_root) / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
-        print_error("No CI database found. Start the daemon first: oak ci start")
+        print_error("No CI database found. Start the daemon first: oak team start")
         raise typer.Exit(code=1)
 
     print_info(f"Exporting CI database (machine: {machine_id})...")
     if include_activities:
         print_info("  Including activities table (may be large)")
 
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import create_backup
+    from open_agent_kit.features.team.activity.store.backup import create_backup
 
     result = create_backup(
         project_root=project_root,
@@ -201,7 +201,7 @@ def ci_restore(
         oak ci restore --all --dry-run    # Preview what would be imported
         oak ci restore -i backup.sql      # Restore from specific file
     """
-    from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+    from open_agent_kit.features.team.activity.store.backup import (
         discover_backup_files,
         extract_machine_id_from_filename,
         get_backup_dir,
@@ -213,7 +213,7 @@ def ci_restore(
 
     db_path = resolve_ci_data_dir(project_root) / CI_ACTIVITIES_DB_FILENAME
     if not db_path.exists():
-        print_error("No CI database found. Start the daemon first: oak ci start")
+        print_error("No CI database found. Start the daemon first: oak team start")
         raise typer.Exit(code=1)
 
     backup_dir = get_backup_dir(project_root)
@@ -237,7 +237,7 @@ def ci_restore(
 
         console.print()
 
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import restore_all
+        from open_agent_kit.features.team.activity.store.backup import restore_all
 
         all_result = restore_all(
             project_root=project_root,
@@ -305,7 +305,7 @@ def ci_restore(
             else:
                 print_info("Restoring CI database from machine backup...")
 
-        from open_agent_kit.features.codebase_intelligence.activity.store.backup import (
+        from open_agent_kit.features.team.activity.store.backup import (
             restore_backup,
         )
 
@@ -353,5 +353,5 @@ def ci_restore(
     if not dry_run:
         console.print()
         print_info("Next steps:")
-        print_info("  1. Restart daemon: oak ci restart")
+        print_info("  1. Restart daemon: oak team restart")
         print_info("  2. Re-embed memories: Use UI Dev Tools → Re-embed Memories to ChromaDB")

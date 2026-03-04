@@ -31,7 +31,7 @@ from open_agent_kit.config.paths import (
     SKILL_MANIFEST_FILE,
     SKILLS_DIR,
 )
-from open_agent_kit.features.codebase_intelligence.cli_command import resolve_ci_cli_command
+from open_agent_kit.features.team.cli_command import resolve_ci_cli_command
 from open_agent_kit.models.results import SkillInstallResult, SkillRefreshResult, SkillRemoveResult
 from open_agent_kit.models.skill import SkillManifest
 from open_agent_kit.services.config_service import ConfigService

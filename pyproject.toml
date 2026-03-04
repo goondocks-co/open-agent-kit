@@ -136,23 +136,36 @@ artifacts = [
     # (hatch artifacts override exclude, so broad globs like features/**/*.md are unsafe)
     "src/open_agent_kit/features/strategic_planning/**/*.md",
     "src/open_agent_kit/features/rules_management/**/*.md",
-    "src/open_agent_kit/features/codebase_intelligence/prompts/*.md",
-    "src/open_agent_kit/features/codebase_intelligence/agents/**/*.md",
-    "src/open_agent_kit/features/codebase_intelligence/commands/*.md",
-    "src/open_agent_kit/features/codebase_intelligence/skills/**/*.md",
+    "src/open_agent_kit/features/team/prompts/*.md",
+    "src/open_agent_kit/features/team/agents/**/*.md",
+    "src/open_agent_kit/features/team/commands/*.md",
+    "src/open_agent_kit/features/team/skills/**/*.md",
     # Agent settings JSON
     "src/open_agent_kit/features/core/agent-settings/*.json",
     # Cloud relay worker template (TypeScript source + config files bundled for scaffold)
-    "src/open_agent_kit/features/codebase_intelligence/cloud_relay/worker_template/**/*.ts",
-    "src/open_agent_kit/features/codebase_intelligence/cloud_relay/worker_template/**/*.json",
-    "src/open_agent_kit/features/codebase_intelligence/cloud_relay/worker_template/**/*.j2",
+    "src/open_agent_kit/features/team/cloud_relay/worker_template/**/*.ts",
+    "src/open_agent_kit/features/team/cloud_relay/worker_template/**/*.json",
+    "src/open_agent_kit/features/team/cloud_relay/worker_template/**/*.j2",
     # CI daemon UI static files (built by vite, not node_modules)
-    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.html",
-    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.css",
-    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.js",
-    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.png",
-    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.svg",
-    "src/open_agent_kit/features/codebase_intelligence/daemon/static/**/*.ico",
+    "src/open_agent_kit/features/team/daemon/static/**/*.html",
+    "src/open_agent_kit/features/team/daemon/static/**/*.css",
+    "src/open_agent_kit/features/team/daemon/static/**/*.js",
+    "src/open_agent_kit/features/team/daemon/static/**/*.png",
+    "src/open_agent_kit/features/team/daemon/static/**/*.svg",
+    "src/open_agent_kit/features/team/daemon/static/**/*.ico",
+    # Swarm worker template
+    "src/open_agent_kit/features/swarm/worker_template/**/*.ts",
+    "src/open_agent_kit/features/swarm/worker_template/**/*.json",
+    "src/open_agent_kit/features/swarm/worker_template/**/*.j2",
+    # Swarm daemon UI static files
+    "src/open_agent_kit/features/swarm/daemon/static/**/*.html",
+    "src/open_agent_kit/features/swarm/daemon/static/**/*.css",
+    "src/open_agent_kit/features/swarm/daemon/static/**/*.js",
+    "src/open_agent_kit/features/swarm/daemon/static/**/*.png",
+    "src/open_agent_kit/features/swarm/daemon/static/**/*.svg",
+    # Agent runtime definitions
+    "src/open_agent_kit/features/agent_runtime/definitions/**/*.yaml",
+    "src/open_agent_kit/features/agent_runtime/definitions/**/*.md",
 ]
 # Exclude development artifacts (defense-in-depth — artifacts above are already specific)
 exclude = [
@@ -198,7 +211,7 @@ files = ["src/open_agent_kit"]
 module = "mcp.*"
 ignore_missing_imports = true
 
-# Optional codebase-intelligence feature dependencies
+# Optional team feature dependencies
 # These are only installed with 'make setup-full' or 'oak init --enable-ci'
 [[tool.mypy.overrides]]
 module = [
@@ -227,7 +240,7 @@ ignore_missing_imports = true
 # Codebase Intelligence daemon files have type inference issues when
 # optional deps (fastapi, etc.) are not installed - relax type checking
 [[tool.mypy.overrides]]
-module = "open_agent_kit.features.codebase_intelligence.daemon.*"
+module = "open_agent_kit.features.team.daemon.*"
 disable_error_code = ["no-any-return"]
 
 [tool.ruff]

@@ -25,17 +25,17 @@ class ReconcileFeatureHooksStage(BaseStage):
     def _should_run(self, context: PipelineContext) -> bool:
         """Run if there are agents.
 
-        All features including codebase-intelligence are always enabled,
+        All features including team are always enabled,
         so we just need to check if agents are selected.
         """
         return bool(context.selections.agents)
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Reconcile feature hooks for all configured agents."""
-        # Use the codebase-intelligence hook update mechanism
+        # Use the team hook update mechanism
         # This ensures hook configs exist for all agents and removed agents are cleaned up
         try:
-            from open_agent_kit.features.codebase_intelligence.service import execute_hook
+            from open_agent_kit.features.team.service import execute_hook
 
             # First, remove hooks for agents that were removed
             agents_removed = list(context.selections.agents_removed)
@@ -91,7 +91,7 @@ class ReconcileFeatureHooksStage(BaseStage):
                     data={"message": result.get("message", "")},
                 )
         except ImportError:
-            # Codebase intelligence not available
+            # team not available
             return StageOutcome.skipped("No feature hooks to reconcile")
 
 

@@ -63,11 +63,11 @@ class ConstitutionHookHandler:
             raise ValueError(f"Unknown constitution hook action: {action}")
 
 
-class CodebaseIntelligenceHookHandler:
-    """Hook handler for the codebase-intelligence feature."""
+class TeamHookHandler:
+    """Hook handler for the team feature."""
 
     def execute(self, action: str, project_root: Path, **kwargs: Any) -> Any:
-        """Execute a codebase-intelligence hook action.
+        """Execute a team hook action.
 
         Args:
             action: Hook action name
@@ -77,7 +77,7 @@ class CodebaseIntelligenceHookHandler:
         Returns:
             Result from the action
         """
-        from open_agent_kit.features.codebase_intelligence.service import execute_hook
+        from open_agent_kit.features.team.service import execute_hook
 
         # For update_agent_hooks, we need to handle agent removal first
         if action == "update_agent_hooks":
@@ -108,7 +108,7 @@ class HookDispatcher:
     def _register_defaults(self) -> None:
         """Register the built-in feature hook handlers."""
         self.register("constitution", ConstitutionHookHandler())
-        self.register("codebase-intelligence", CodebaseIntelligenceHookHandler())
+        self.register("team", TeamHookHandler())
 
     def register(self, feature_name: str, handler: HookHandler) -> None:
         """Register a hook handler for a feature.

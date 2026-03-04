@@ -1,0 +1,93 @@
+# =============================================================================
+# Built-in Task: Prompt Quality Analysis
+# =============================================================================
+# Task for: analysis agent
+#
+# Analyzes user prompts for quality patterns, correlates prompt quality
+# with session outcomes, and provides actionable recommendations for
+# improving prompting and context engineering.
+# =============================================================================
+
+name: prompt-analysis
+display_name: "Prompt Quality Analysis"
+agent_type: analysis
+is_builtin: true
+description: >
+  Analyzes user prompts for clarity, specificity, and context-richness.
+  Correlates prompt quality with session outcomes and provides actionable
+  recommendations for improving prompting and context engineering.
+
+default_task: |
+  Generate a prompt quality analysis report.
+
+  Query primarily against the prompt_batches table.
+
+  EFFICIENCY: Most queries hit prompt_batches — combine related sub-queries
+  into single `oak_query` calls using UNION ALL or CTEs. Aim to gather all
+  raw data in 3-4 oak_query calls, then analyze and write.
+
+  ## 1. Prompt Overview & Quality Patterns
+
+  Use one or two oak_query calls to get baseline statistics and quality
+  correlations from prompt_batches:
+  - Total prompts analyzed (exclude null/empty user prompts)
+  - Prompts per session (average, median via percentile)
+  - Prompt length distribution (min, max, average character length)
+  - Prompts with vs without classification
+  - Bucket prompts by length (short/medium/long/very long) and compare
+    average activity count per bucket — do longer prompts lead to more work?
+  - Cross-reference classification distribution by length bucket
+
+  ## 2. Anti-Patterns & Exemplary Prompts
+
+  Use a single oak_query to find both ends of the quality spectrum:
+  - Very short prompts (< 20 chars) — likely vague instructions
+  - Repeated similar prompts within the same session (rework indicator)
+  - Prompts that correlate with high error rates in activities
+  - Prompts that led to high activity count with low error rate
+  - Prompts with clear classifications
+
+  Use truncated previews (first 200 chars) to protect privacy while
+  still being instructive.
+
+  ## 3. Context Engineering Recommendations
+
+  Based on the analysis, provide:
+  - Specific tips for writing better prompts (based on what worked)
+  - Common mistakes to avoid (based on anti-patterns found)
+  - Optimal prompt length range for this project
+  - Suggestions for providing better context (file paths, feature names)
+  - How prompt quality has changed over time (improvement trend?)
+
+  ## 4. Write Report
+
+  Write an educational report that helps the user improve their
+  prompting skills. Focus on actionable advice backed by their own data.
+
+execution:
+  timeout_seconds: 180
+  max_turns: 40
+  permission_mode: acceptEdits
+  model: claude-sonnet-4-6
+
+maintained_files:
+  - path: "{project_root}/oak/insights/prompt-analysis.md"
+    purpose: "Prompt quality analysis and recommendations"
+    auto_create: true
+
+oak_queries:
+  discovery:
+    - tool: oak_project_stats
+      purpose: "Get baseline metrics"
+
+  context:
+    - tool: oak_memories
+      filter: discovery
+      limit: 5
+      purpose: "Context about project patterns"
+
+style:
+  tone: "educational"
+  include_examples: true
+
+schema_version: 1

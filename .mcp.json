@@ -4,7 +4,7 @@
       "type": "stdio",
       "command": "oak-dev",
       "args": [
-        "ci",
+        "team",
         "mcp"
       ],
       "env": {}

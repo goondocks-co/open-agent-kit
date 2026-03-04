@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from open_agent_kit.features.codebase_intelligence.cli_command import CLI_COMMAND_PLACEHOLDER
+from open_agent_kit.features.team.cli_command import CLI_COMMAND_PLACEHOLDER
 from open_agent_kit.services.agent_settings_service import AgentSettingsService
 
 AGENT_SETTINGS_DIR = Path("src/open_agent_kit/features/core/agent-settings")

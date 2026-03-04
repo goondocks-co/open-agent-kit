@@ -35,7 +35,7 @@ capabilities:
   skills_folder: ".agents"      # Shared folder — reads .agents/skills/
   skills_directory: "skills"    # .agents/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   # Resume command template - allows UI to show copyable command for session continuation
   resume_command: "codex resume {session_id}"
@@ -53,7 +53,7 @@ governance:
   supports_observe: true
   supports_deny: false
 
-# Hooks configuration for Codebase Intelligence
+# Hooks configuration for Team
 # Codex uses OpenTelemetry events instead of traditional hooks
 # See: https://github.com/openai/codex/pull/2103
 hooks:
@@ -75,7 +75,7 @@ hooks:
       "codex.tool_decision": "prompt-submit"
       "codex.tool_result": "post-tool-use"
 
-# Notifications configuration for Codebase Intelligence
+# Notifications configuration for Team
 # Codex notify handler emits "agent-turn-complete" after each response.
 notifications:
   type: notify

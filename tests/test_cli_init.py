@@ -67,22 +67,22 @@ def test_init_with_claude_agent(temp_project_dir: Path) -> None:
 
     Note: Claude has has_skills=True, so skill files are installed instead
     of command prompt files. Skills go to .claude/skills/ directory.
-    Default features are rules-management and codebase-intelligence.
+    Default features are rules-management and team.
     """
     init_command(force=False, agent=["claude"], no_interactive=True)
     # Claude uses skills in .claude/skills/, not commands
     skills_dir = temp_project_dir / ".claude" / "skills"
     assert skills_dir.exists()
-    # Check for skills from installed features (rules-management, codebase-intelligence)
+    # Check for skills from installed features (rules-management, team)
     assert (skills_dir / "project-governance" / "SKILL.md").exists()
-    assert (skills_dir / "codebase-intelligence" / "SKILL.md").exists()
+    assert (skills_dir / "oak" / "SKILL.md").exists()
 
 
 def test_init_with_multiple_agents(temp_project_dir: Path) -> None:
     """Test init with multiple agents creates appropriate files for each.
 
     Both Claude and Cursor have has_skills=True, so they get skill files.
-    Default features are rules-management and codebase-intelligence.
+    Default features are rules-management and team.
     """
     init_command(force=False, agent=["claude", "cursor"], no_interactive=True)
     # Claude gets skills (has_skills=True) in .claude/skills/

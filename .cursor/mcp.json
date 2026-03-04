@@ -3,7 +3,7 @@
     "oak-ci": {
       "command": "oak-dev",
       "args": [
-        "ci",
+        "team",
         "mcp"
       ]
     }

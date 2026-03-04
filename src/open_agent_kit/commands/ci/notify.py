@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import typer
 
-from open_agent_kit.features.codebase_intelligence.constants import (
+from open_agent_kit.features.team.constants import (
     AGENT_CODEX,
     AGENT_NOTIFY_ENDPOINT,
     AGENT_NOTIFY_FIELD_AGENT,
@@ -61,7 +61,7 @@ def ci_notify(
     Example:
         oak ci notify --agent codex '{"type": "agent-turn-complete", ...}'
     """
-    from open_agent_kit.features.codebase_intelligence.daemon.manager import get_project_port
+    from open_agent_kit.features.team.daemon.manager import get_project_port
 
     project_root = Path.cwd()
 
@@ -99,7 +99,7 @@ def ci_notify(
             import subprocess
 
             subprocess.run(
-                ["oak", "ci", "start", "--quiet"],
+                ["oak", "team", "start", "--quiet"],
                 capture_output=True,
                 timeout=DAEMON_START_TIMEOUT_SECONDS,
             )

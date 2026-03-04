@@ -70,7 +70,7 @@ After installing, run `oak-beta init` in your project — this automatically set
 Open the OAK Dashboard in your browser:
 
 ```bash
-oak ci start --open
+oak team start --open
 ```
 
 Start coding!

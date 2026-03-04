@@ -37,7 +37,7 @@ capabilities:
   has_skills: true
   skills_directory: "skills"    # .cursor/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   # Plan storage - Cursor stores plans in ~/.cursor/plans/ (global) or .cursor/plans/ (project)
   # Detected via postToolUse hook when Write occurs to .cursor/plans/ path
@@ -92,7 +92,7 @@ mcp:
     command: "{cmd}"
     args: "{args}"
 
-# Hooks configuration for Codebase Intelligence
+# Hooks configuration for Team
 # Cursor uses a standalone hooks.json with flat structure
 hooks:
   type: json

@@ -16,6 +16,8 @@ from open_agent_kit.features.swarm.config import get_swarm_config_dir
 from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_TOKEN,
     CI_CONFIG_SWARM_KEY_URL,
+    SWARM_AUTH_ENV_VAR,
+    SWARM_AUTH_EPHEMERAL_TOKEN_BYTES,
     SWARM_DAEMON_API_PATH_HEALTH,
     SWARM_DAEMON_CONFIG_FILE,
     SWARM_DAEMON_DEFAULT_PORT,
@@ -47,6 +49,7 @@ class SwarmDaemonManager(BaseDaemonManager):
             port: Port to run the daemon on (default from constants).
         """
         self.swarm_id = swarm_id
+        self._auth_token: str | None = None
         config_dir = get_swarm_config_dir(swarm_id)
         actual_port = port or SWARM_DAEMON_DEFAULT_PORT
         super().__init__(
@@ -78,8 +81,11 @@ class SwarmDaemonManager(BaseDaemonManager):
             try:
                 import httpx
 
+                headers: dict[str, str] = {}
+                if self._auth_token:
+                    headers["Authorization"] = f"Bearer {self._auth_token}"
                 with httpx.Client(timeout=2.0) as client:
-                    response = client.get(f"{self.base_url}/api/swarm/status")
+                    response = client.get(f"{self.base_url}/api/swarm/status", headers=headers)
                     if response.status_code == 200:
                         status.update(response.json())
             except Exception as exc:
@@ -131,6 +137,13 @@ class SwarmDaemonManager(BaseDaemonManager):
         # Environment
         env = os.environ.copy()
         env["OAK_SWARM_ID"] = self.swarm_id
+
+        # Generate auth token for daemon authentication
+        import secrets
+
+        auth_token = secrets.token_hex(SWARM_AUTH_EPHEMERAL_TOKEN_BYTES)
+        self._auth_token = auth_token
+        env[SWARM_AUTH_ENV_VAR] = auth_token
 
         # Load swarm config and pass as env vars
         if self.config_file.exists():

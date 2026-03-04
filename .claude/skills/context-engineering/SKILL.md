@@ -221,7 +221,7 @@ See `references/agent-context-patterns.md` and `references/memory-and-sessions.m
 
 ## CI Integration: Context Engineering in Practice
 
-OAK's Codebase Intelligence tools directly implement the four context engineering strategies:
+OAK's Team tools directly implement the four context engineering strategies:
 
 | Strategy | CI Tool | What It Does |
 |----------|---------|--------------|

@@ -778,11 +778,11 @@ class TestManifestSkillsConsistency:
             f"  In directory but not manifest: {set(actual_skills) - set(manifest_skills)}"
         )
 
-    def test_codebase_intelligence_manifest_skills_match_directories(self, package_features_path):
-        """Validate codebase-intelligence feature manifest skills match skill directories."""
+    def test_team_manifest_skills_match_directories(self, package_features_path):
+        """Validate team feature manifest skills match skill directories."""
         from open_agent_kit.models.feature import FeatureManifest
 
-        feature_dir = package_features_path / "codebase_intelligence"
+        feature_dir = package_features_path / "team"
         manifest = FeatureManifest.load(feature_dir / "manifest.yaml")
 
         skills_dir = feature_dir / "skills"
@@ -796,7 +796,7 @@ class TestManifestSkillsConsistency:
         manifest_skills = sorted(manifest.skills)
 
         assert manifest_skills == actual_skills, (
-            f"codebase-intelligence manifest skills mismatch:\n"
+            f"team manifest skills mismatch:\n"
             f"  In manifest but not directory: {set(manifest_skills) - set(actual_skills)}\n"
             f"  In directory but not manifest: {set(actual_skills) - set(manifest_skills)}"
         )
@@ -1146,8 +1146,8 @@ class TestMigrateSkillsToSharedAgentsDir:
         assert not (tmp_path / ".codex" / "skills").exists()
 
 
-class TestCodebaseIntelligenceSkillSync:
-    """Verify the codebase-intelligence skill stays in sync with the actual schema.
+class TestTeamSkillSync:
+    """Verify the oak skill stays in sync with the actual schema.
 
     When schema.py changes (new tables, version bump), the skill's reference
     files must be updated too. These tests catch drift at the quality gate.
@@ -1158,14 +1158,14 @@ class TestCodebaseIntelligenceSkillSync:
         / "src"
         / "open_agent_kit"
         / "features"
-        / "codebase_intelligence"
+        / "team"
         / "skills"
-        / "codebase-intelligence"
+        / "oak"
     )
 
     def test_schema_version_matches(self):
         """Skill schema reference must mention the current schema version."""
-        from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
+        from open_agent_kit.features.team.activity.store.schema import (
             SCHEMA_VERSION,
         )
 
@@ -1179,7 +1179,7 @@ class TestCodebaseIntelligenceSkillSync:
 
     def test_all_tables_documented(self):
         """Skill schema reference must document every CREATE TABLE in the schema."""
-        from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
+        from open_agent_kit.features.team.activity.store.schema import (
             SCHEMA_SQL,
         )
 
@@ -1206,7 +1206,7 @@ class TestCodebaseIntelligenceSkillSync:
 
     def test_skill_md_core_tables_listed(self):
         """SKILL.md must list the core (non-FTS, non-internal) tables in its overview."""
-        from open_agent_kit.features.codebase_intelligence.activity.store.schema import (
+        from open_agent_kit.features.team.activity.store.schema import (
             SCHEMA_SQL,
         )
 

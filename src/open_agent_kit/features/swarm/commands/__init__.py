@@ -7,42 +7,6 @@ import typer
 if TYPE_CHECKING:
     from open_agent_kit.features.swarm.daemon.manager import SwarmDaemonManager
 
-from open_agent_kit.features.swarm.config import (
-    get_swarm_config_dir,
-    load_swarm_config,
-    save_swarm_config,
-)
-from open_agent_kit.features.swarm.constants import (
-    CI_CONFIG_SWARM_KEY_SWARM_ID,
-    CI_CONFIG_SWARM_KEY_TOKEN,
-    CI_CONFIG_SWARM_KEY_URL,
-    CI_CONFIG_SWARM_KEY_WORKER_NAME,
-    SWARM_DAEMON_DEFAULT_PORT,
-    SWARM_MESSAGE_ALREADY_RUNNING,
-    SWARM_MESSAGE_CREATED,
-    SWARM_MESSAGE_CREATING,
-    SWARM_MESSAGE_DAEMON_START_FAILED,
-    SWARM_MESSAGE_DEPLOY_FAILED,
-    SWARM_MESSAGE_DEPLOY_STARTING,
-    SWARM_MESSAGE_DEPLOY_SUCCESS,
-    SWARM_MESSAGE_DESTROYED,
-    SWARM_MESSAGE_DESTROYING,
-    SWARM_MESSAGE_NO_SWARM_CONFIG,
-    SWARM_MESSAGE_NOT_RUNNING,
-    SWARM_MESSAGE_NPM_INSTALL_FAILED,
-    SWARM_MESSAGE_SAVE_TOKEN,
-    SWARM_MESSAGE_START_HINT,
-    SWARM_MESSAGE_STARTED,
-    SWARM_MESSAGE_STARTING,
-    SWARM_MESSAGE_STOPPED,
-    SWARM_MESSAGE_STOPPING,
-    SWARM_MESSAGE_SWARM_TOKEN,
-    SWARM_MESSAGE_SWARM_URL,
-    SWARM_MESSAGE_WRANGLER_NOT_AVAILABLE,
-    SWARM_SCAFFOLD_WORKER_SUBDIR,
-)
-from open_agent_kit.utils import print_error, print_info, print_warning
-
 swarm_app = typer.Typer(name="swarm", help="Swarm management.", no_args_is_help=True)
 
 
@@ -58,7 +22,19 @@ def swarm_create(
     name: str = typer.Option(..., "--name", "-n", help="Name for the swarm"),
 ) -> None:
     """Create a new swarm configuration and token."""
+    from open_agent_kit.features.swarm.config import save_swarm_config
+    from open_agent_kit.features.swarm.constants import (
+        CI_CONFIG_SWARM_KEY_SWARM_ID,
+        CI_CONFIG_SWARM_KEY_TOKEN,
+        CI_CONFIG_SWARM_KEY_WORKER_NAME,
+        SWARM_MESSAGE_CREATED,
+        SWARM_MESSAGE_CREATING,
+        SWARM_MESSAGE_SAVE_TOKEN,
+        SWARM_MESSAGE_START_HINT,
+        SWARM_MESSAGE_SWARM_TOKEN,
+    )
     from open_agent_kit.features.swarm.scaffold import generate_token, make_worker_name
+    from open_agent_kit.utils import print_info, print_warning
 
     print_info(SWARM_MESSAGE_CREATING.format(name=name))
 
@@ -87,12 +63,31 @@ def swarm_deploy(
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing scaffold"),
 ) -> None:
     """Deploy the Swarm Worker to Cloudflare."""
+    from open_agent_kit.features.swarm.config import (
+        get_swarm_config_dir,
+        load_swarm_config,
+        save_swarm_config,
+    )
+    from open_agent_kit.features.swarm.constants import (
+        CI_CONFIG_SWARM_KEY_TOKEN,
+        CI_CONFIG_SWARM_KEY_URL,
+        CI_CONFIG_SWARM_KEY_WORKER_NAME,
+        SWARM_MESSAGE_DEPLOY_FAILED,
+        SWARM_MESSAGE_DEPLOY_STARTING,
+        SWARM_MESSAGE_DEPLOY_SUCCESS,
+        SWARM_MESSAGE_NO_SWARM_CONFIG,
+        SWARM_MESSAGE_NPM_INSTALL_FAILED,
+        SWARM_MESSAGE_SWARM_URL,
+        SWARM_MESSAGE_WRANGLER_NOT_AVAILABLE,
+        SWARM_SCAFFOLD_WORKER_SUBDIR,
+    )
     from open_agent_kit.features.swarm.deploy import (
         check_wrangler_available,
         run_npm_install,
         run_wrangler_deploy,
     )
     from open_agent_kit.features.swarm.scaffold import render_worker_template
+    from open_agent_kit.utils import print_error, print_info
 
     config = load_swarm_config(name)
     if not config:
@@ -146,6 +141,17 @@ def swarm_destroy(
     """Destroy a swarm and clean up."""
     import shutil
 
+    from open_agent_kit.features.swarm.config import (
+        get_swarm_config_dir,
+        load_swarm_config,
+    )
+    from open_agent_kit.features.swarm.constants import (
+        SWARM_MESSAGE_DESTROYED,
+        SWARM_MESSAGE_DESTROYING,
+        SWARM_MESSAGE_NO_SWARM_CONFIG,
+    )
+    from open_agent_kit.utils import print_error, print_info
+
     config = load_swarm_config(name)
     if not config:
         print_error(SWARM_MESSAGE_NO_SWARM_CONFIG)
@@ -168,9 +174,23 @@ def swarm_destroy(
 @swarm_app.command("start")
 def swarm_start(
     name: str = typer.Option(..., "--name", "-n", help="Name of the swarm"),
-    port: int = typer.Option(SWARM_DAEMON_DEFAULT_PORT, "--port", "-p", help="Daemon port"),
+    port: int = typer.Option(None, "--port", "-p", help="Daemon port"),
 ) -> None:
     """Start the swarm daemon."""
+    from open_agent_kit.features.swarm.config import load_swarm_config
+    from open_agent_kit.features.swarm.constants import (
+        SWARM_DAEMON_DEFAULT_PORT,
+        SWARM_MESSAGE_ALREADY_RUNNING,
+        SWARM_MESSAGE_DAEMON_START_FAILED,
+        SWARM_MESSAGE_NO_SWARM_CONFIG,
+        SWARM_MESSAGE_STARTED,
+        SWARM_MESSAGE_STARTING,
+    )
+    from open_agent_kit.utils import print_error, print_info, print_warning
+
+    if port is None:
+        port = SWARM_DAEMON_DEFAULT_PORT
+
     config = load_swarm_config(name)
     if not config:
         print_error(SWARM_MESSAGE_NO_SWARM_CONFIG)
@@ -186,6 +206,7 @@ def swarm_start(
 
     if manager.start():
         print_info(SWARM_MESSAGE_STARTED.format(port=port))
+        print_info(f"  http://localhost:{port}")
     else:
         print_error(SWARM_MESSAGE_DAEMON_START_FAILED)
         raise typer.Exit(code=1)
@@ -196,6 +217,15 @@ def swarm_stop(
     name: str = typer.Option(..., "--name", "-n", help="Name of the swarm"),
 ) -> None:
     """Stop the swarm daemon."""
+    from open_agent_kit.features.swarm.config import load_swarm_config
+    from open_agent_kit.features.swarm.constants import (
+        SWARM_MESSAGE_NO_SWARM_CONFIG,
+        SWARM_MESSAGE_NOT_RUNNING,
+        SWARM_MESSAGE_STOPPED,
+        SWARM_MESSAGE_STOPPING,
+    )
+    from open_agent_kit.utils import print_error, print_info
+
     config = load_swarm_config(name)
     if not config:
         print_error(SWARM_MESSAGE_NO_SWARM_CONFIG)
@@ -217,6 +247,15 @@ def swarm_status(
     name: str = typer.Option(..., "--name", "-n", help="Name of the swarm"),
 ) -> None:
     """Show swarm status."""
+    from open_agent_kit.features.swarm.config import load_swarm_config
+    from open_agent_kit.features.swarm.constants import (
+        CI_CONFIG_SWARM_KEY_SWARM_ID,
+        CI_CONFIG_SWARM_KEY_URL,
+        CI_CONFIG_SWARM_KEY_WORKER_NAME,
+        SWARM_MESSAGE_NO_SWARM_CONFIG,
+    )
+    from open_agent_kit.utils import print_error, print_info
+
     config = load_swarm_config(name)
     if not config:
         print_error(SWARM_MESSAGE_NO_SWARM_CONFIG)

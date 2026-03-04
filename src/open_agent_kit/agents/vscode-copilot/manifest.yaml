@@ -34,7 +34,7 @@ capabilities:
   skills_folder: ".agents"      # Shared folder — reads .agents/skills/
   skills_directory: "skills"    # .agents/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   # Plan storage - Copilot may store plans in .github/plans/ (TBD - needs verification)
   # Set to null until plan storage location is confirmed
@@ -77,7 +77,7 @@ mcp:
     command: "{cmd}"
     args: "{args}"
 
-# Hooks configuration for Codebase Intelligence
+# Hooks configuration for Team
 # VS Code Copilot hooks use Claude Code-compatible format
 # https://code.visualstudio.com/docs/copilot/customization/hooks
 hooks:

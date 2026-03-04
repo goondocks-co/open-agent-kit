@@ -137,7 +137,7 @@ Use these to quickly understand what's happening across your agents.
 Governance settings are stored in your project's `.oak/config.yaml`:
 
 ```yaml
-codebase_intelligence:
+team:
   governance:
     enabled: true
     enforcement_mode: observe  # or "enforce"
@@ -238,7 +238,7 @@ Governance also includes **data collection policy** settings that control what d
 | `sync_observations` | `true` | Whether observations are written to the team outbox |
 | `federated_tools` | `true` | Whether this node's MCP tools are advertised to the relay for remote calls |
 
-These settings live under `codebase_intelligence.governance.data_collection` in your config. See [Teams — Data Collection Policy](/open-agent-kit/features/teams/#data-collection-policy) for full details.
+These settings live under `team.governance.data_collection` in your config. See [Teams — Data Collection Policy](/open-agent-kit/features/teams/#data-collection-policy) for full details.
 
 ## Best Practices
 

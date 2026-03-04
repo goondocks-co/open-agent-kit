@@ -14,6 +14,7 @@ from open_agent_kit.commands.remove_cmd import remove_command
 from open_agent_kit.commands.rfc_cmd import rfc_app
 from open_agent_kit.commands.rules_cmd import rules_app
 from open_agent_kit.commands.skill_cmd import skill_app
+from open_agent_kit.commands.team import team_app
 from open_agent_kit.commands.upgrade_cmd import upgrade_command
 from open_agent_kit.config.messages import HELP_TEXT, PROJECT_TAGLINE, PROJECT_URL
 from open_agent_kit.constants import VERSION
@@ -39,6 +40,7 @@ app.add_typer(rfc_app, name="rfc")
 app.add_typer(languages_app, name="languages")
 app.add_typer(skill_app, name="skill")
 app.add_typer(ci_app, name="ci")
+app.add_typer(team_app, name="team")
 app.add_typer(acp_app, name="acp")
 app.add_typer(swarm_app, name="swarm")
 
@@ -175,7 +177,7 @@ def main(
 
     Get started:
         oak init              # Initialize project
-        oak ci start --open   # Start Codebase Intelligence
+        oak team start --open # Start Team daemon
 
     For more information, visit: https://openagentkit.app
     """
@@ -198,7 +200,7 @@ def main(
 def _stamp_cli_version() -> None:
     """Write current CLI version to .oak/ci/cli_version for daemon version detection."""
     from open_agent_kit.config.paths import OAK_DIR
-    from open_agent_kit.features.codebase_intelligence.constants import (
+    from open_agent_kit.features.team.constants import (
         CI_CLI_VERSION_FILE,
         CI_DATA_DIR,
     )
@@ -215,7 +217,7 @@ def _stamp_cli_version() -> None:
 def _check_daemon_version_hint() -> None:
     """Print a hint if the running daemon version differs from the installed CLI."""
     from open_agent_kit.config.paths import OAK_DIR
-    from open_agent_kit.features.codebase_intelligence.constants import (
+    from open_agent_kit.features.team.constants import (
         CI_CLI_HINT_TIMEOUT,
         CI_CLI_HINT_VERSION_MISMATCH,
         CI_DATA_DIR,
@@ -230,10 +232,10 @@ def _check_daemon_version_hint() -> None:
     try:
         import httpx
 
-        from open_agent_kit.features.codebase_intelligence.cli_command import (
+        from open_agent_kit.features.team.cli_command import (
             resolve_ci_cli_command,
         )
-        from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+        from open_agent_kit.features.team.daemon.manager import (
             get_project_port,
         )
 

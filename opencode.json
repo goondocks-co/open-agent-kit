@@ -11,7 +11,7 @@
       "type": "local",
       "command": [
         "oak-dev",
-        "ci",
+        "team",
         "mcp"
       ]
     }

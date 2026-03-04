@@ -5,10 +5,12 @@ Used by both CLI commands and the daemon manager.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from open_agent_kit.features.swarm.constants import (
+    SWARM_CONFIG_FILE_PERMISSIONS,
     SWARM_DAEMON_CONFIG_DIR,
     SWARM_DAEMON_CONFIG_FILE,
 )
@@ -45,3 +47,4 @@ def save_swarm_config(swarm_id: str, config: dict[str, Any]) -> None:
     swarm_dir.mkdir(parents=True, exist_ok=True)
     config_file = swarm_dir / SWARM_DAEMON_CONFIG_FILE
     config_file.write_text(json.dumps(config, indent=2))
+    os.chmod(config_file, SWARM_CONFIG_FILE_PERMISSIONS)

@@ -150,15 +150,15 @@ class SyncCliCommandStage(BaseStage):
         return True
 
     def _execute(self, context: PipelineContext) -> StageOutcome:
-        from open_agent_kit.features.codebase_intelligence.cli_command import (
+        from open_agent_kit.features.team.cli_command import (
             detect_invoked_cli_command,
         )
-        from open_agent_kit.features.codebase_intelligence.config import (
+        from open_agent_kit.features.team.config import (
             load_ci_config,
             save_ci_config,
         )
-        from open_agent_kit.features.codebase_intelligence.config.ci_config import CIConfig
-        from open_agent_kit.features.codebase_intelligence.constants import (
+        from open_agent_kit.features.team.config.ci_config import CIConfig
+        from open_agent_kit.features.team.constants import (
             CI_CLI_COMMAND_DEFAULT,
         )
 

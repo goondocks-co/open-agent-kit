@@ -40,7 +40,7 @@ capabilities:
   skills_folder: ".agents"      # Shared folder — reads .agents/skills/
   skills_directory: "skills"    # .agents/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   resume_command: "opencode --session {session_id}"
   # Plan storage - OpenCode Plan mode uses in-memory planning, doesn't persist to disk

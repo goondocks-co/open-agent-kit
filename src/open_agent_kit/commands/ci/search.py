@@ -6,7 +6,7 @@ from typing import Any
 
 import typer
 
-from open_agent_kit.features.codebase_intelligence.constants import (
+from open_agent_kit.features.team.constants import (
     HTTP_TIMEOUT_LONG,
     HTTP_TIMEOUT_STANDARD,
 )
@@ -65,7 +65,7 @@ def ci_search(
 
     manager = get_daemon_manager(project_root)
     if not manager.is_running():
-        print_error("CI daemon not running. Start with: oak ci start")
+        print_error("CI daemon not running. Start with: oak team start")
         raise typer.Exit(code=1)
 
     try:
@@ -186,7 +186,7 @@ def ci_remember(
 
     manager = get_daemon_manager(project_root)
     if not manager.is_running():
-        print_error("CI daemon not running. Start with: oak ci start")
+        print_error("CI daemon not running. Start with: oak team start")
         raise typer.Exit(code=1)
 
     valid_types = ["gotcha", "bug_fix", "decision", "discovery", "trade_off"]
@@ -264,7 +264,7 @@ def ci_context(
 
     manager = get_daemon_manager(project_root)
     if not manager.is_running():
-        print_error("CI daemon not running. Start with: oak ci start")
+        print_error("CI daemon not running. Start with: oak team start")
         raise typer.Exit(code=1)
 
     try:

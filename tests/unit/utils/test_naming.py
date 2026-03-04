@@ -17,7 +17,7 @@ from open_agent_kit.utils.naming import feature_name_to_dir
 
 _CONVERSION_CASES = [
     # (input, expected, description)
-    ("codebase-intelligence", "codebase_intelligence", "basic single-hyphen"),
+    ("team", "team", "basic single-hyphen"),
     ("rules", "rules", "no hyphens unchanged"),
     ("foo-bar-baz", "foo_bar_baz", "multiple hyphens"),
     ("", "", "empty string"),
@@ -41,7 +41,7 @@ def test_feature_name_to_dir(input_name: str, expected: str) -> None:
 
 def test_feature_name_to_dir_is_idempotent() -> None:
     """Applying the conversion twice yields the same result."""
-    name = "codebase-intelligence"
+    name = "team"
     once = feature_name_to_dir(name)
     twice = feature_name_to_dir(once)
     assert once == twice

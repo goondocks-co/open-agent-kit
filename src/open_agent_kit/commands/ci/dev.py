@@ -30,7 +30,7 @@ def ci_port() -> None:
     Each project gets a unique port derived from its path, allowing
     multiple CI daemons to run simultaneously on different projects.
     """
-    from open_agent_kit.features.codebase_intelligence.daemon.manager import (
+    from open_agent_kit.features.team.daemon.manager import (
         get_project_port,
     )
 
@@ -41,7 +41,7 @@ def ci_port() -> None:
     port = get_project_port(project_root)
     manager = get_daemon_manager(project_root)
 
-    print_header("Codebase Intelligence Port")
+    print_header("Team Port")
     print_info(f"Project: {project_root}")
     print_info(f"Port: {port}")
     print_info(f"Dashboard: http://localhost:{port}/ui")
@@ -49,7 +49,7 @@ def ci_port() -> None:
     if manager.is_running():
         print_success("Daemon is running.")
     else:
-        print_warning("Daemon is not running. Start with: oak ci start")
+        print_warning("Daemon is not running. Start with: oak team start")
 
 
 @ci_app.command("dev")
@@ -95,7 +95,7 @@ def ci_dev(
             print_error(f"Another process is using port {run_port}.")
             raise typer.Exit(code=1)
 
-    print_header("Codebase Intelligence Development Server")
+    print_header("Team Development Server")
     print_info(f"Project: {project_root}")
     print_info(f"Port: {run_port}")
     print_info(f"Dashboard: http://localhost:{run_port}/ui")
@@ -137,7 +137,7 @@ def ci_dev(
         sys.executable,
         "-m",
         "uvicorn",
-        "open_agent_kit.features.codebase_intelligence.daemon.server:create_app",
+        "open_agent_kit.features.team.daemon.server:create_app",
         "--factory",
         "--host",
         "127.0.0.1",

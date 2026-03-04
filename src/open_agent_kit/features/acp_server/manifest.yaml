@@ -12,4 +12,4 @@ tags:
   - integration
   - agents
 dependencies:
-  - codebase_intelligence
+  - team

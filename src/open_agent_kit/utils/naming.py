@@ -8,8 +8,8 @@ service that needs it imports from one place.
 def feature_name_to_dir(feature_name: str) -> str:
     """Convert feature name to directory name (hyphens to underscores).
 
-    Feature names use hyphens (codebase-intelligence) but Python packages
-    use underscores (codebase_intelligence).
+    Feature names use hyphens (team) but Python packages
+    use underscores (team).
 
     Args:
         feature_name: Feature name with hyphens

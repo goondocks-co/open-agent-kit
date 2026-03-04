@@ -2,7 +2,7 @@
 
 MCP (Model Context Protocol) servers are a separate integration mechanism
 from hooks. This module handles registering/updating MCP servers for
-features that provide them (like codebase-intelligence).
+features that provide them (like team).
 """
 
 from open_agent_kit.pipeline.context import PipelineContext
@@ -30,7 +30,7 @@ class ReconcileMcpServersStage(BaseStage):
     def _should_run(self, context: PipelineContext) -> bool:
         """Run if there are agents with MCP support.
 
-        All features including codebase-intelligence are always enabled,
+        All features including team are always enabled,
         so we just need to check if agents are selected.
         """
         return bool(context.selections.agents)
@@ -38,7 +38,7 @@ class ReconcileMcpServersStage(BaseStage):
     def _execute(self, context: PipelineContext) -> StageOutcome:
         """Reconcile MCP server registrations for all configured agents."""
         try:
-            from open_agent_kit.features.codebase_intelligence.service import execute_hook
+            from open_agent_kit.features.team.service import execute_hook
 
             result = execute_hook(
                 "update_mcp_servers",
@@ -69,7 +69,7 @@ class ReconcileMcpServersStage(BaseStage):
                     data={"message": result.get("message", "")},
                 )
         except ImportError:
-            # Codebase intelligence not available
+            # team not available
             return StageOutcome.skipped("No MCP servers to reconcile")
 
 

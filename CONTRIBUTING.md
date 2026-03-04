@@ -70,7 +70,7 @@ Run `make help` to see all available commands:
    >
    > ⚠️ **Gotcha**: When adding a new database migration, you must also bump
    > `CI_ACTIVITY_SCHEMA_VERSION` in
-   > [`src/open_agent_kit/features/codebase_intelligence/constants/paths.py`](src/open_agent_kit/features/codebase_intelligence/constants/paths.py).
+   > [`src/open_agent_kit/features/team/constants/paths.py`](src/open_agent_kit/features/team/constants/paths.py).
    > If you forget, the database is left at an intermediate version and subsequent
    > migrations may silently fail on fresh clones.
 

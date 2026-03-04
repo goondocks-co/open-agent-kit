@@ -832,7 +832,7 @@ class TestIntegration:
         features = [
             ("strategic-planning", "strategic_planning"),
             ("rules-management", "rules_management"),
-            ("codebase-intelligence", "codebase_intelligence"),
+            ("team", "team"),
         ]
         for canonical_name, dir_name in features:
             feature_dir = mock_pkg_dir / dir_name / "templates"
@@ -843,7 +843,7 @@ class TestIntegration:
             templates = service.list_templates()
             assert "strategic-planning/strategic-planning.md" in templates
             assert "rules-management/rules-management.md" in templates
-            assert "codebase-intelligence/codebase-intelligence.md" in templates
+            assert "team/team.md" in templates
 
     def test_template_with_filters_and_globals(self, tmp_path: Path) -> None:
         """Test template rendering with multiple filters and globals."""

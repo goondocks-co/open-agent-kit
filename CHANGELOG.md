@@ -33,9 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-> **Gotcha**: The cloud-relay UI auto‑start toggle reads `team.cloudRelay.autoStart` from local component state, which is only populated when `GET /cloud-relay/status` is queried on mount. Any extension to the start/deploy route that omits `auto_start` from its response will cause the UI to always show "Auto‑start: off". See [`cloud_relay.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/cloud_relay.py) and [`TeamConfig.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/components/team/TeamConfig.tsx).
+> **Gotcha**: The cloud-relay UI auto‑start toggle reads `team.cloudRelay.autoStart` from local component state, which is only populated when `GET /cloud-relay/status` is queried on mount. Any extension to the start/deploy route that omits `auto_start` from its response will cause the UI to always show "Auto‑start: off". See [`cloud_relay.py`](src/open_agent_kit/features/team/daemon/routes/cloud_relay.py) and [`TeamConfig.tsx`](src/open_agent_kit/features/team/daemon/ui/src/components/team/TeamConfig.tsx).
 
-> **Gotcha**: Rapid consecutive policy edits (e.g. toggling `federated_tools` quickly in the UI) can trigger a WebSocket reconnect storm — `update_team_policy()` calls `request_reconnect()` on the relay client, which relies on a backoff loop that may not be robust under aggressive saves. Debounce policy updates on the frontend to avoid spin-up loops. See [`cloud_relay/client.py`](src/open_agent_kit/features/codebase_intelligence/cloud_relay/client.py).
+> **Gotcha**: Rapid consecutive policy edits (e.g. toggling `federated_tools` quickly in the UI) can trigger a WebSocket reconnect storm — `update_team_policy()` calls `request_reconnect()` on the relay client, which relies on a backoff loop that may not be robust under aggressive saves. Debounce policy updates on the frontend to avoid spin-up loops. See [`cloud_relay/client.py`](src/open_agent_kit/features/team/cloud_relay/client.py).
 
 ## [2026-03-02]
 
@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fix hanging `make check` — resolved three pre-existing failures caused by a pytest/xdist version mismatch and a truncated string literal in [`hooks_prompt.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks_prompt.py) that produced a silent syntax error; added per-test timeouts to prevent future CI hangs — [Fix hanging tests, add timeouts, stabilize CI pipeline](http://localhost:38388/activity/sessions/c9a572ad-41ac-4223-9f5b-f9fc0b33419d)
+- Fix hanging `make check` — resolved three pre-existing failures caused by a pytest/xdist version mismatch and a truncated string literal in [`hooks_prompt.py`](src/open_agent_kit/features/team/daemon/routes/hooks_prompt.py) that produced a silent syntax error; added per-test timeouts to prevent future CI hangs — [Fix hanging tests, add timeouts, stabilize CI pipeline](http://localhost:38388/activity/sessions/c9a572ad-41ac-4223-9f5b-f9fc0b33419d)
 - Fix `ImportError` crash on daemon startup — [`skill_service.py`](src/open_agent_kit/services/skill_service.py) referenced the non-existent symbol `resolve_ci_cli_comma`; corrected to `resolve_ci_cli_command`, restoring startup for fresh installs — [Implement codebase intelligence migrations and registry integration](http://localhost:38388/activity/sessions/db72af02-1418-42ce-8487-e6efe5dc364a)
 
 ### Changed
@@ -56,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-> **Gotcha**: `generate_schema_ref.py` must be run after any schema change and before the test suite — it writes [`schema.md`](src/open_agent_kit/features/codebase_intelligence/skills/codebase-intelligence/references/schema.md); omitting it causes tests to read stale schema data. The script is not invoked automatically by the build pipeline.
+> **Gotcha**: `generate_schema_ref.py` must be run after any schema change and before the test suite — it writes [`schema.md`](src/open_agent_kit/features/team/skills/codebase-intelligence/references/schema.md); omitting it causes tests to read stale schema data. The script is not invoked automatically by the build pipeline.
 
-> **Gotcha**: Always bump `CI_ACTIVITY_SCHEMA_VERSION` in [`constants/paths.py`](src/open_agent_kit/features/codebase_intelligence/constants/paths.py) when adding a migration. A missed bump leaves the database at an intermediate schema version and causes subsequent migrations to fail.
+> **Gotcha**: Always bump `CI_ACTIVITY_SCHEMA_VERSION` in [`constants/paths.py`](src/open_agent_kit/features/team/constants/paths.py) when adding a migration. A missed bump leaves the database at an intermediate schema version and causes subsequent migrations to fail.
 
 ## [2026-03-01]
 
@@ -68,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fix observation upsert silently dropping rows — SQL `INSERT` in [`team/pull/applier.py`](src/open_agent_kit/features/codebase_intelligence/team/pull/applier.py) omitted the `team_id` column, causing a `FOREIGN KEY constraint failed` error on every new observation write; `team_id` is now drawn from the event payload and included in the statement — [Implement team resync CLI command to recover machine events from snapshot](http://localhost:38388/activity/sessions/c4ac862f-7d51-4fd1-b41d-98a144f03176)
+- Fix observation upsert silently dropping rows — SQL `INSERT` in [`team/pull/applier.py`](src/open_agent_kit/features/team/team/pull/applier.py) omitted the `team_id` column, causing a `FOREIGN KEY constraint failed` error on every new observation write; `team_id` is now drawn from the event payload and included in the statement — [Implement team resync CLI command to recover machine events from snapshot](http://localhost:38388/activity/sessions/c4ac862f-7d51-4fd1-b41d-98a144f03176)
 
 ### Notes
 
@@ -101,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Gotcha**: `TeamStatus.tsx` expects the backend to return a `status` field; a missing or mistyped field causes the component to silently render an empty status with no error. Add a defensive default or null-check when extending the `/team` endpoint.
 
-> **Gotcha**: The outbox worker does not buffer events locally — if the server is offline when a sync is attempted, the payload is discarded immediately. Changes made while the server is unreachable are lost until a new sync cycle runs after reconnection. See [`team/outbox/worker.py`](src/open_agent_kit/features/codebase_intelligence/team/outbox/worker.py).
+> **Gotcha**: The outbox worker does not buffer events locally — if the server is offline when a sync is attempted, the payload is discarded immediately. Changes made while the server is unreachable are lost until a new sync cycle runs after reconnection. See [`team/outbox/worker.py`](src/open_agent_kit/features/team/team/outbox/worker.py).
 
 ## [2026-02-27]
 
@@ -145,7 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Gotcha**: `SESSION_SECRET` must be present in the environment where Cursor hooks execute. If absent, the hook drops the session silently and logs a `[DROP]` message. Check `.cursor/hooks.json` environment configuration if Cursor sessions are not appearing in the activity log.
 
-> **Gotcha**: Oak Teams API keys serve two purposes — loopback (internal daemon communication) and user-generated (external access) — both stored in the same SQLite table. A missing unique constraint or column mismatch can cause silent key duplication. Inspect [`team/server/auth.py`](src/open_agent_kit/features/codebase_intelligence/team/server/auth.py) if duplicate loopback keys appear after a daemon restart.
+> **Gotcha**: Oak Teams API keys serve two purposes — loopback (internal daemon communication) and user-generated (external access) — both stored in the same SQLite table. A missing unique constraint or column mismatch can cause silent key duplication. Inspect [`team/server/auth.py`](src/open_agent_kit/features/team/team/server/auth.py) if duplicate loopback keys appear after a daemon restart.
 
 ## [2026-02-25]
 
@@ -307,7 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Batch processing performance improved — batch sizes increased from 10 to 50 items per cycle with parallel processing, significantly reducing memory processing time — [Optimize batch processing and database performance](http://localhost:38388/activity/sessions/e54fa8e6-6ce9-4141-91e3-8ca5ca51c3dc)
 - Codebase refactored into six parallel build streams for independent testing — core, daemon, indexing, memory, activity, and agents can now be tested and validated separately, reducing CI time and enabling targeted development — [Refactor OAK codebase into six parallel build streams for independent testing](http://localhost:38388/activity/sessions/cebab386-ae4e-4327-8840-15976114029b), [Refactor OAK codebase into six parallel work streams](http://localhost:38388/activity/sessions/666ef8df-666b-482b-a36b-44fa9d63826e)
 - Built-in agent task YAMLs no longer copied into `oak/agents/` during installation — the registry now loads built-ins directly from the package, reducing installation footprint and preventing accidental overwrites of user customizations. A cleanup migration removes existing copies on upgrade — [Remove built‑in agent task copies and add cleanup migration](http://localhost:38388/activity/sessions/ea8917a0-aebb-4616-be07-14b5e7843e56), [Refactor installation to remove built‑in agent task copies](http://localhost:38388/activity/sessions/12a1a982-0d3a-401b-b9d0-d38083fafa85)
-- `generate_schema_ref.py` relocated from installed skill directory to `src/open_agent_kit/features/codebase_intelligence/scripts/`, keeping the build-time script out of agent skill payloads and reducing installed footprint — [Refactor schema generation script placement to feature source tree](http://localhost:38388/activity/sessions/f0e6bfbe-cee4-431c-848b-10ad9929adb8), [Refactor generate_schema_ref.py relocation to centralized scripts folder](http://localhost:38388/activity/sessions/9e9f814a-1a6b-49ab-a299-ee6632f5b6e0)
+- `generate_schema_ref.py` relocated from installed skill directory to `src/open_agent_kit/features/team/scripts/`, keeping the build-time script out of agent skill payloads and reducing installed footprint — [Refactor schema generation script placement to feature source tree](http://localhost:38388/activity/sessions/f0e6bfbe-cee4-431c-848b-10ad9929adb8), [Refactor generate_schema_ref.py relocation to centralized scripts folder](http://localhost:38388/activity/sessions/9e9f814a-1a6b-49ab-a299-ee6632f5b6e0)
 - Hooks-reference documentation cleaned for end-user focus — removed Oak contributor sections and added a "not" section to clarify feature boundaries — [Update documentation with Oak‑not section and clean hooks reference](http://localhost:38388/activity/sessions/d46e5c83-ff36-4eea-a77c-ba8bbf9cb74d)
 
 ### Fixed
@@ -566,16 +566,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `uv tool install` silently destroying editable installs by detecting PEP 610 `direct_url.json` and conditionally passing `-e` — [Configure CI backup directory via environment variable](http://localhost:38388/activity/sessions/13eb1949-dc1a-4105-82ae-f45e69449808)
 - Fixed missing `.oak/agents/` directory after `oak init` causing downstream failures — [Fix missing agents directory after oak init](http://localhost:38388/activity/sessions/f1573859-be5a-4016-8bb9-37005f3cca11)
 - Fixed `hooks.py` using `Path.cwd()` instead of project root, causing silent data loss when Claude Code changes working directory — see [`hooks.py`](src/open_agent_kit/commands/ci/hooks.py)
-- Fixed `get_backup_dir` resolving relative to cwd instead of project root, causing misplaced backups in tests — see [`backup.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/backup.py)
-- Fixed session schema drift: SQL queries referencing renamed `sessions.session_id` and removed `started_at_epoch` columns — see [`sessions.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/sessions.py)
-- Fixed `SessionLineage` query running when `sessionId` is undefined after refactor removed `enabled` guard — see [`SessionLineage`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/)
+- Fixed `get_backup_dir` resolving relative to cwd instead of project root, causing misplaced backups in tests — see [`backup.py`](src/open_agent_kit/features/team/activity/store/backup.py)
+- Fixed session schema drift: SQL queries referencing renamed `sessions.session_id` and removed `started_at_epoch` columns — see [`sessions.py`](src/open_agent_kit/features/team/activity/store/sessions.py)
+- Fixed `SessionLineage` query running when `sessionId` is undefined after refactor removed `enabled` guard — see [`SessionLineage`](src/open_agent_kit/features/team/daemon/ui/src/)
 - Renamed agent tasks now correctly installed during upgrade (name-based lookup replaced with stable identifiers) — [Implement upgrade logic for built‑in task templates](http://localhost:38388/activity/sessions/73094f41-9caa-4c8b-b2ad-5594e21f49b3)
 - Fixed Vite configuration causing UI build failure — [Configure minimal Vite config to fix UI build](http://localhost:38388/activity/sessions/c0457435-38b1-4d48-bd53-af22a6ac08ae)
 - Fixed UI build error related to dependency injection setup — [Fix UI build error and outline DI plan](http://localhost:38388/activity/sessions/461a8c4d-b772-4f41-8075-f4dd993ea874)
-- Fixed filter chips in Logs page clearing entire log list instead of filtering — see [`Logs.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/pages/Logs.tsx)
-- Fixed `indexStats` variable not defined in Dashboard.tsx causing TypeScript build failure — see [`Dashboard.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/pages/Dashboard.tsx)
-- Fixed session summary not rendering as Markdown in MemoriesList component — see [`MemoriesList.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/components/data/MemoriesList.tsx)
-- Fixed DevTools maintenance card layout wrapping below header instead of beside it — see [`DevTools.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/pages/DevTools.tsx)
+- Fixed filter chips in Logs page clearing entire log list instead of filtering — see [`Logs.tsx`](src/open_agent_kit/features/team/daemon/ui/src/pages/Logs.tsx)
+- Fixed `indexStats` variable not defined in Dashboard.tsx causing TypeScript build failure — see [`Dashboard.tsx`](src/open_agent_kit/features/team/daemon/ui/src/pages/Dashboard.tsx)
+- Fixed session summary not rendering as Markdown in MemoriesList component — see [`MemoriesList.tsx`](src/open_agent_kit/features/team/daemon/ui/src/components/data/MemoriesList.tsx)
+- Fixed DevTools maintenance card layout wrapping below header instead of beside it — see [`DevTools.tsx`](src/open_agent_kit/features/team/daemon/ui/src/pages/DevTools.tsx)
 - Fixed Daemon UI bugs and added developer tools — [Fix Daemon UI bugs and add developer tools](http://localhost:38388/activity/sessions/969a6fa5-114f-4340-a403-b3ebed248d48)
 - Fixed failing hook import in CI test suite — [Debug failing hook import in CI test suite](http://localhost:38388/activity/sessions/315e7240-ee03-49be-8320-4c403d54e0c7)
 - Fixed plan capture workflow for Claude sessions — [Configure plan capture workflow for Claude sessions](http://localhost:38388/activity/sessions/96d99f2a-0e0f-449d-b3b3-ccd584f944a7)
@@ -590,12 +590,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed upgrade service leaving empty parent directories after settings file deletion
 - Fixed orphan-recovery logic not detecting plans due to `PROMPT_SOURCE_PLAN` constant mismatch
 - Fixed CI backup filename leaking full path by using privacy-preserving hash — [Fix CI backup filename privacy bug](http://localhost:38388/activity/sessions/414c1ebe-fff6-40f2-876c-9a7df59ed469)
-- Fixed agent executor crash on unexpected errors by adding broad exception handling — see [`executor.py`](src/open_agent_kit/features/codebase_intelligence/agents/executor.py)
+- Fixed agent executor crash on unexpected errors by adding broad exception handling — see [`executor.py`](src/open_agent_kit/features/team/agents/executor.py)
 - Fixed CI process hanging when MCP configuration is missing by adding defensive check and fallback — see [`.mcp.json`](.cursor/mcp.json)
 - Fixed macOS hook hang caused by missing `timeout` utility by using portable alternative — see [`oak-ci-hook.sh`](.claude/hooks/oak-ci-hook.sh)
 - Fixed startup indexer globbing entire home directory due to unescaped path characters
 - Fixed daemon startup failure caused by `sleep` receiving non-numeric argument
-- Fixed TypeScript build error from missing `Switch` component export — see [`Schedules.tsx`](src/open_agent_kit/features/codebase_intelligence/daemon/ui/src/components/agents/Schedules.tsx)
+- Fixed TypeScript build error from missing `Switch` component export — see [`Schedules.tsx`](src/open_agent_kit/features/team/daemon/ui/src/components/agents/Schedules.tsx)
 - Fixed duplicate parent suggestions by checking existing linked sessions before proposing
 - Fixed `VectorStore.find_similar_sessions` method signature mismatch with call site
 - Fixed `rebuild_index` endpoint type error when stores are `None` by adding explicit dependency injection
@@ -603,39 +603,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed agent removal not cleaning up plugin directory and opencode.json by adding deletion logic to pipeline stages
 - Fixed plan file not being captured by adding `postToolUse` hook entry
 - Fixed skill upgrade detection only checking first agent by iterating over all configured agents
-- Fixed MCP tools endpoint returning empty response due to malformed constant definition — see [`mcp_tools.py`](src/open_agent_kit/features/codebase_intelligence/daemon/mcp_tools.py)
+- Fixed MCP tools endpoint returning empty response due to malformed constant definition — see [`mcp_tools.py`](src/open_agent_kit/features/team/daemon/mcp_tools.py)
 - Fixed upgrade service only reporting Claude hook updates by rewriting detection loop to iterate all agent directories
 - Fixed memory listing UI incorrectly showing plan entries by adding type filter
 - Fixed UI build failure caused by missing `react-scripts` dependency
 - Fixed CI plan capture and Markdown UI rendering issues — [Fix CI plan capture and Markdown UI rendering](http://localhost:38388/activity/sessions/f388d75b-245d-43e9-9702-590873c80f84)
 - Fixed backup and restore feature completion status — [Debug backup and restore feature completion status](http://localhost:38388/activity/sessions/446cb7d6-81a4-4cad-8ff2-df895880b193)
-- Fixed `/plans` API endpoint returning 500 error when no plans exist by ensuring `get_plans()` always returns a list — see [`store.py`](src/open_agent_kit/features/codebase_intelligence/activity/store.py)
+- Fixed `/plans` API endpoint returning 500 error when no plans exist by ensuring `get_plans()` always returns a list — see [`store.py`](src/open_agent_kit/features/team/activity/store.py)
 - Fixed session summary endpoint returning empty strings by adding missing `Summarizer.process_session` call
-- Fixed `RetrievalEngine` not being exported correctly from its package, causing `ImportError` — see [`retrieval/__init__.py`](src/open_agent_kit/features/codebase_intelligence/retrieval/__init__.py)
+- Fixed `RetrievalEngine` not being exported correctly from its package, causing `ImportError` — see [`retrieval/__init__.py`](src/open_agent_kit/features/team/retrieval/__init__.py)
 - Fixed race condition where concurrent hook calls could corrupt in-memory state by adding thread-safety around state mutations
 - Fixed off-by-one error in `PromptBatchActivities.tsx` that skipped rendering the last activity
-- Fixed backup process not triggering recomputation of `computed_hash`, leading to stale backups — see [`backup.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/backup.py)
+- Fixed backup process not triggering recomputation of `computed_hash`, leading to stale backups — see [`backup.py`](src/open_agent_kit/features/team/activity/store/backup.py)
 - Fixed `parent_session_id` foreign key not being re-established during backup restore
 - Fixed deletion routine causing orphaned Chroma embeddings by reordering operations to delete from Chroma before SQLite commit
-- Fixed watcher showing inflated file counts after deletions by adding `watcher_state.reset()` after full rescan — see [`watcher.py`](src/open_agent_kit/features/codebase_intelligence/indexing/watcher.py)
+- Fixed watcher showing inflated file counts after deletions by adding `watcher_state.reset()` after full rescan — see [`watcher.py`](src/open_agent_kit/features/team/indexing/watcher.py)
 - Fixed batch status being set to 'completed' before patches were applied, causing the loop to skip processing
 - Fixed first prompt in session incorrectly marked as plan by checking prompt text against known patterns
 - Fixed duplicate plans appearing by adding `session_id` filter to `get_plans` query
 - Fixed internal server error caused by missing newline before `ActivityStore` class definition
 - Fixed legacy null-check for `source_machine_id` column that caused unnecessary conditional logic in restore
 - Fixed summary capture activity and Cursor hook payload handling — [Add summary to capture activity and fix cursor hook](http://localhost:38388/activity/sessions/3a594cc8-1f9a-475a-8062-d1640bbffe50)
-- Fixed notification deduplication dropping events due to timestamp suffix in event key — see [`notifications.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/notifications.py)
-- Fixed Claude Code transcript parsing to handle nested message format (`{type: "assistant", message: {...}}`) — see [`transcript.py`](src/open_agent_kit/features/codebase_intelligence/transcript.py)
-- Fixed notification installer guard logic incorrectly skipping script generation — see [`installer.py`](src/open_agent_kit/features/codebase_intelligence/notifications/installer.py)
+- Fixed notification deduplication dropping events due to timestamp suffix in event key — see [`notifications.py`](src/open_agent_kit/features/team/daemon/routes/notifications.py)
+- Fixed Claude Code transcript parsing to handle nested message format (`{type: "assistant", message: {...}}`) — see [`transcript.py`](src/open_agent_kit/features/team/transcript.py)
+- Fixed notification installer guard logic incorrectly skipping script generation — see [`installer.py`](src/open_agent_kit/features/team/notifications/installer.py)
 - Fixed CI command package missing submodule exports causing import failures — see [`ci/__init__.py`](src/open_agent_kit/commands/ci/__init__.py)
-- Fixed OTEL route accessing manifest as dict instead of Pydantic model — see [`otel.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/otel.py)
-- Fixed response summary not captured when user queues a new message while Claude is responding (interrupt bypasses Stop hook) — added fallback capture in `UserPromptSubmit` — see [`hooks.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks.py)
-- Fixed stale session recovery race condition where resumed sessions were immediately marked stale due to empty prompt batch — see [`sessions.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/sessions.py)
-- Fixed backup restoration failing when run from different working directory due to relative path check — see [`backup.py`](src/open_agent_kit/features/codebase_intelligence/activity/store/backup.py)
-- Fixed SQL query referencing non-existent `parent_reason` column in sessions table — see [`hooks.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks.py)
-- Fixed syntax errors in `hooks.py` caused by incomplete edits leaving stray characters — see [`hooks.py`](src/open_agent_kit/features/codebase_intelligence/daemon/routes/hooks.py)
-- Fixed notification config template auto-generating unwanted language field — see [`notify_config.toml.j2`](src/open_agent_kit/features/codebase_intelligence/notifications/codex/notify_config.toml.j2)
-- Fixed prompt batch finalization logic duplicated across routes by extracting to shared helper — see [`batches.py`](src/open_agent_kit/features/codebase_intelligence/activity/batches.py)
+- Fixed OTEL route accessing manifest as dict instead of Pydantic model — see [`otel.py`](src/open_agent_kit/features/team/daemon/routes/otel.py)
+- Fixed response summary not captured when user queues a new message while Claude is responding (interrupt bypasses Stop hook) — added fallback capture in `UserPromptSubmit` — see [`hooks.py`](src/open_agent_kit/features/team/daemon/routes/hooks.py)
+- Fixed stale session recovery race condition where resumed sessions were immediately marked stale due to empty prompt batch — see [`sessions.py`](src/open_agent_kit/features/team/activity/store/sessions.py)
+- Fixed backup restoration failing when run from different working directory due to relative path check — see [`backup.py`](src/open_agent_kit/features/team/activity/store/backup.py)
+- Fixed SQL query referencing non-existent `parent_reason` column in sessions table — see [`hooks.py`](src/open_agent_kit/features/team/daemon/routes/hooks.py)
+- Fixed syntax errors in `hooks.py` caused by incomplete edits leaving stray characters — see [`hooks.py`](src/open_agent_kit/features/team/daemon/routes/hooks.py)
+- Fixed notification config template auto-generating unwanted language field — see [`notify_config.toml.j2`](src/open_agent_kit/features/team/notifications/codex/notify_config.toml.j2)
+- Fixed prompt batch finalization logic duplicated across routes by extracting to shared helper — see [`batches.py`](src/open_agent_kit/features/team/activity/batches.py)
 
 ### Improved
 

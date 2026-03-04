@@ -298,7 +298,7 @@ class UpgradePlanner:
                 if not manifest or not manifest.hooks:
                     continue
 
-                from open_agent_kit.features.codebase_intelligence.hooks.installer import (
+                from open_agent_kit.features.team.hooks.installer import (
                     HOOKS_TEMPLATE_DIR,
                     HooksInstaller,
                 )
@@ -309,7 +309,7 @@ class UpgradePlanner:
 
                 result.append(
                     {
-                        "feature": "codebase-intelligence",
+                        "feature": "team",
                         "agent": agent,
                         "source_path": HOOKS_TEMPLATE_DIR / agent / manifest.hooks.template_file,
                         "target_description": get_hook_target_description(manifest),
@@ -337,7 +337,7 @@ class UpgradePlanner:
                 if not notifications_config.notify or not notifications_config.notify.enabled:
                     continue
 
-                from open_agent_kit.features.codebase_intelligence.notifications.installer import (
+                from open_agent_kit.features.team.notifications.installer import (
                     NotificationsInstaller,
                 )
 
@@ -354,7 +354,7 @@ class UpgradePlanner:
 
                 result.append(
                     {
-                        "feature": "codebase-intelligence",
+                        "feature": "team",
                         "agent": agent,
                         "target_description": target_desc,
                     }

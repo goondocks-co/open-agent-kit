@@ -144,7 +144,7 @@ class TriggerPreRemoveHooksStage(BaseStage):
 class CleanupCiArtifactsStage(BaseStage):
     """Clean up CI artifacts (hooks, MCP) even if feature wasn't fully installed.
 
-    This stage handles cleanup of codebase-intelligence artifacts that may have
+    This stage handles cleanup of team artifacts that may have
     been created even when the feature failed to install (e.g., pip packages failed).
     It runs unconditionally during removal and delegates to the existing CI service
     cleanup methods when available.
@@ -174,11 +174,11 @@ class CleanupCiArtifactsStage(BaseStage):
 
         # Use CI service cleanup if packages are available
         try:
-            from open_agent_kit.features.codebase_intelligence.service import (
-                CodebaseIntelligenceService,
+            from open_agent_kit.features.team.service import (
+                TeamService,
             )
 
-            ci_service = CodebaseIntelligenceService(context.project_root)
+            ci_service = TeamService(context.project_root)
 
             # Remove hooks using existing CI service method
             hook_results = ci_service._remove_agent_hooks(available_agents)

@@ -9,9 +9,7 @@ from typing import Final
 # Agent identity
 ACP_AGENT_NAME = "oak"
 ACP_AGENT_DISPLAY_NAME = "OAK Agent"
-ACP_AGENT_DESCRIPTION = (
-    "AI-powered development workflows with project conventions and codebase intelligence"
-)
+ACP_AGENT_DESCRIPTION = "AI-powered development workflows with project conventions and team"
 
 # Tool kind classification for ACP
 ACP_READ_TOOLS = frozenset({"Read", "Glob", "Grep", "LS", "NotebookRead"})
@@ -65,7 +63,7 @@ ACP_ERROR_INVALID_FOCUS = "Invalid focus: {focus}. Valid focuses: {valid_focuses
 ACP_ERROR_NO_PROJECT_ROOT = "OAK is not initialized in the current directory. Run 'oak init' first."
 
 # Daemon communication errors
-ACP_ERROR_DAEMON_UNREACHABLE = "OAK daemon is not running. Start it with 'oak ci start'."
+ACP_ERROR_DAEMON_UNREACHABLE = "OAK daemon is not running. Start it with 'oak team start'."
 ACP_ERROR_DAEMON_SESSION_FAILED = "Failed to create daemon session: {error}"
 ACP_ERROR_DAEMON_PROMPT_FAILED = "Failed to send prompt to daemon: {error}"
 

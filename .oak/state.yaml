@@ -3,6 +3,7 @@ migrations:
 - cleanup-skill-generate-scripts
 - hooks-local-only
 - migrate-skills-to-shared-agents-dir
+- rename-ci-config-key
 - rename-copilot-to-vscode-copilot
 managed_assets:
   directories:
@@ -41,3 +42,4 @@ initialized_features:
 - context-engineering
 - rules-management
 - strategic-planning
+- team

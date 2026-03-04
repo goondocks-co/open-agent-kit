@@ -7,6 +7,7 @@ swarm_status) via stdio or HTTP transport.
 The MCP server proxies all calls to the local swarm daemon HTTP API.
 """
 
+import atexit
 import json
 import logging
 import sys
@@ -41,6 +42,11 @@ logger = logging.getLogger(__name__)
 _CONNECT_RETRY_ATTEMPTS = 3
 _CONNECT_RETRY_DELAY_S = 1.0
 
+# Connection pool limits for the shared httpx client
+_POOL_MAX_CONNECTIONS = 20
+_POOL_MAX_KEEPALIVE = 10
+_DEFAULT_TIMEOUT_S = 30.0
+
 
 def _find_daemon_port() -> int:
     """Find the swarm daemon port by reading port files.
@@ -63,6 +69,26 @@ def _find_daemon_port() -> int:
     return SWARM_DAEMON_DEFAULT_PORT
 
 
+def _create_pooled_client(base_url: str) -> httpx.Client:
+    """Create a shared httpx.Client with connection pooling.
+
+    Args:
+        base_url: Base URL for the swarm daemon.
+
+    Returns:
+        Configured httpx.Client with connection pool limits.
+    """
+    pool_limits = httpx.Limits(
+        max_connections=_POOL_MAX_CONNECTIONS,
+        max_keepalive_connections=_POOL_MAX_KEEPALIVE,
+    )
+    return httpx.Client(
+        base_url=base_url,
+        limits=pool_limits,
+        timeout=_DEFAULT_TIMEOUT_S,
+    )
+
+
 def create_mcp_server() -> FastMCP:
     """Create an MCP server that wraps the swarm daemon REST API.
 
@@ -71,6 +97,9 @@ def create_mcp_server() -> FastMCP:
     """
     port = _find_daemon_port()
     base_url = f"http://localhost:{port}"
+
+    http_client = _create_pooled_client(base_url)
+    atexit.register(http_client.close)
 
     mcp = FastMCP(
         "oak-swarm",
@@ -81,7 +110,7 @@ def create_mcp_server() -> FastMCP:
         endpoint: str,
         data: dict[str, Any] | None = None,
         method: str | None = None,
-        timeout: float = 30.0,
+        timeout: float = _DEFAULT_TIMEOUT_S,
     ) -> dict[str, Any]:
         """Call the swarm daemon REST API.
 
@@ -98,21 +127,19 @@ def create_mcp_server() -> FastMCP:
         Raises:
             Exception: If daemon is unreachable after retries.
         """
-        url = f"{base_url}{endpoint}"
 
         def _make_request() -> dict[str, Any]:
-            with httpx.Client(timeout=timeout) as client:
-                resolved_method = method
-                if resolved_method is None:
-                    resolved_method = "POST" if data is not None else "GET"
-                resolved_method = resolved_method.upper()
+            resolved_method = method
+            if resolved_method is None:
+                resolved_method = "POST" if data is not None else "GET"
+            resolved_method = resolved_method.upper()
 
-                if resolved_method == "POST":
-                    response = client.post(url, json=data)
-                else:
-                    response = client.get(url)
-                response.raise_for_status()
-                return cast(dict[str, Any], response.json())
+            if resolved_method == "POST":
+                response = http_client.post(endpoint, json=data, timeout=timeout)
+            else:
+                response = http_client.get(endpoint, timeout=timeout)
+            response.raise_for_status()
+            return cast(dict[str, Any], response.json())
 
         # Happy path
         try:

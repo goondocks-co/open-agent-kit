@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(oak-dev:*)",
-      "Bash(oak-dev *)"
+      "Bash(oak-dev *)",
+      "Bash(oak:*)",
+      "Bash(oak *)"
     ]
   },
   "hooks": {

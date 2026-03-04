@@ -331,7 +331,7 @@ class TestHookStages:
     def test_reconcile_feature_hooks_stage(self, tmp_path: Path):
         """Test ReconcileFeatureHooksStage runs when agents are configured.
 
-        All features including codebase-intelligence are always enabled,
+        All features including team are always enabled,
         so we just need to check if agents are present.
         """
         from open_agent_kit.pipeline.stages.hooks import ReconcileFeatureHooksStage

@@ -185,7 +185,7 @@ its own page."
 
 ```
 "looks good. in the daemon.log, i keeps seeing this warning, what's going on?
-16:39:04 [DEBUG] open_agent_kit.features.codebase_intelligence.activity.processor.llm:79 -
+16:39:04 [DEBUG] open_agent_kit.features.team.activity.processor.llm:79 -
 [LLM] Response status: 400..."
 ```
 *Why it works*: Includes actual log output, specific timestamp, asks for explanation

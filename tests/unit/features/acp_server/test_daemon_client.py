@@ -27,7 +27,7 @@ from open_agent_kit.features.acp_server.daemon_client import (
     DaemonClient,
     discover_daemon,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
+from open_agent_kit.features.team.daemon.models_acp import (
     DoneEvent,
     ErrorEvent,
     TextEvent,
@@ -74,7 +74,7 @@ class TestDiscoverDaemon:
 
     def test_reads_auth_token_from_env(self, tmp_path: Path) -> None:
         """discover_daemon should read auth token from OAK_CI_TOKEN env var."""
-        from open_agent_kit.features.codebase_intelligence.constants import CI_AUTH_ENV_VAR
+        from open_agent_kit.features.team.constants import CI_AUTH_ENV_VAR
 
         port_file = tmp_path / ACP_DAEMON_PORT_FILE_LOCAL
         port_file.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +87,7 @@ class TestDiscoverDaemon:
 
     def test_reads_auth_token_from_file_fallback(self, tmp_path: Path) -> None:
         """discover_daemon should fall back to token file when env var not set."""
-        from open_agent_kit.features.codebase_intelligence.constants import (
+        from open_agent_kit.features.team.constants import (
             CI_AUTH_ENV_VAR,
             CI_DATA_DIR,
             CI_TOKEN_FILE,
@@ -110,7 +110,7 @@ class TestDiscoverDaemon:
 
     def test_empty_token_when_no_source(self, tmp_path: Path) -> None:
         """discover_daemon should return empty token when no source available."""
-        from open_agent_kit.features.codebase_intelligence.constants import CI_AUTH_ENV_VAR
+        from open_agent_kit.features.team.constants import CI_AUTH_ENV_VAR
 
         port_file = tmp_path / ACP_DAEMON_PORT_FILE_LOCAL
         port_file.parent.mkdir(parents=True, exist_ok=True)

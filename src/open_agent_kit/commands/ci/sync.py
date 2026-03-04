@@ -65,8 +65,8 @@ def ci_sync(
         oak ci sync --full       # Sync + full index rebuild
         oak ci sync --dry-run    # Preview what would happen
     """
-    from open_agent_kit.features.codebase_intelligence.sync import SyncService
-    from open_agent_kit.features.codebase_intelligence.sync.models import SyncReason
+    from open_agent_kit.features.team.sync import SyncService
+    from open_agent_kit.features.team.sync.models import SyncReason
 
     project_root = Path.cwd()
     check_oak_initialized(project_root)
@@ -77,7 +77,7 @@ def ci_sync(
     # Detect what needs to sync
     plan = service.detect_changes(include_team=team, force_full=full)
 
-    print_header("Codebase Intelligence Sync")
+    print_header("Team Sync")
 
     # Show version info
     console.print()

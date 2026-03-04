@@ -104,7 +104,7 @@ When triggered, the hook:
 To disable pre-upgrade backups:
 ```yaml
 # In .oak/config.yaml
-codebase_intelligence:
+team:
   backup:
     on_upgrade: false
 ```

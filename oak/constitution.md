@@ -126,7 +126,7 @@ If an anchor does not fit the work, stop and ask—do not invent new patterns.
 **Other exemplar feature services:**
 
 - `src/open_agent_kit/features/rules_management/constitution.py`
-- `src/open_agent_kit/features/codebase_intelligence/service.py`
+- `src/open_agent_kit/features/team/service.py`
 
 ### Golden Path: Add a New Agent
 
@@ -162,8 +162,8 @@ If an anchor does not fit the work, stop and ask—do not invent new patterns.
 - `src/open_agent_kit/config/settings.py`
 - `src/open_agent_kit/models/enums.py`
 - `src/open_agent_kit/constants.py`
-- `src/open_agent_kit/features/codebase_intelligence/constants.py`
-- `src/open_agent_kit/features/codebase_intelligence/config.py`
+- `src/open_agent_kit/features/team/constants.py`
+- `src/open_agent_kit/features/team/config.py`
 
 ### Upgrade + migrations
 
@@ -173,27 +173,27 @@ If an anchor does not fit the work, stop and ask—do not invent new patterns.
 
 ### Feature-managed data evolution (CI)
 
-- `src/open_agent_kit/features/codebase_intelligence/schema.yaml`
-- `src/open_agent_kit/features/codebase_intelligence/activity/store.py`
-- `src/open_agent_kit/features/codebase_intelligence/memory/store.py`
+- `src/open_agent_kit/features/team/schema.yaml`
+- `src/open_agent_kit/features/team/activity/store.py`
+- `src/open_agent_kit/features/team/memory/store.py`
 
 ### CI “big rocks” (daemon, indexing, retrieval, MCP)
 
-- `src/open_agent_kit/features/codebase_intelligence/daemon/server.py`
-- `src/open_agent_kit/features/codebase_intelligence/daemon/manager.py`
-- `src/open_agent_kit/features/codebase_intelligence/daemon/routes/`
-- `src/open_agent_kit/features/codebase_intelligence/daemon/ui/`
-- `src/open_agent_kit/features/codebase_intelligence/daemon/static/`
-- `src/open_agent_kit/features/codebase_intelligence/indexing/chunker.py`
-- `src/open_agent_kit/features/codebase_intelligence/indexing/indexer.py`
-- `src/open_agent_kit/features/codebase_intelligence/indexing/watcher.py`
-- `src/open_agent_kit/features/codebase_intelligence/retrieval/engine.py`
-- `src/open_agent_kit/features/codebase_intelligence/daemon/mcp_server.py`
-- `src/open_agent_kit/features/codebase_intelligence/daemon/mcp_tools.py`
-- `src/open_agent_kit/features/codebase_intelligence/mcp/mcp.yaml`
-- `src/open_agent_kit/features/codebase_intelligence/hooks/claude/hooks.json`
-- `src/open_agent_kit/features/codebase_intelligence/hooks/cursor/hooks.json`
-- `src/open_agent_kit/features/codebase_intelligence/hooks/gemini/hooks.json`
+- `src/open_agent_kit/features/team/daemon/server.py`
+- `src/open_agent_kit/features/team/daemon/manager.py`
+- `src/open_agent_kit/features/team/daemon/routes/`
+- `src/open_agent_kit/features/team/daemon/ui/`
+- `src/open_agent_kit/features/team/daemon/static/`
+- `src/open_agent_kit/features/team/indexing/chunker.py`
+- `src/open_agent_kit/features/team/indexing/indexer.py`
+- `src/open_agent_kit/features/team/indexing/watcher.py`
+- `src/open_agent_kit/features/team/retrieval/engine.py`
+- `src/open_agent_kit/features/team/daemon/mcp_server.py`
+- `src/open_agent_kit/features/team/daemon/mcp_tools.py`
+- `src/open_agent_kit/features/team/mcp/mcp.yaml`
+- `src/open_agent_kit/features/team/hooks/claude/hooks.json`
+- `src/open_agent_kit/features/team/hooks/cursor/hooks.json`
+- `src/open_agent_kit/features/team/hooks/gemini/hooks.json`
 
 ### CI Data and Logs (Quick Reference)
 
@@ -267,8 +267,8 @@ Exemplar anchors (created during the Feb 2026 architecture refactoring):
 
 | Pattern | Anchor |
 |---------|--------|
-| Constants barrel | `codebase_intelligence/constants/__init__.py` (15 domain modules) |
-| Config barrel | `codebase_intelligence/config/__init__.py` (8 domain modules) |
+| Constants barrel | `team/constants/__init__.py` (15 domain modules) |
+| Config barrel | `team/config/__init__.py` (8 domain modules) |
 | Store sub-package | `activity/store/sessions/` (4 modules: crud, queries, lifecycle, linking) |
 | Lifecycle extraction | `daemon/lifecycle/` (startup, version_check, sync_check, maintenance, logging_setup) |
 | Strategy pattern | `hooks/strategies.py` (JsonHookStrategy, PluginHookStrategy, OtelHookStrategy) |
@@ -385,7 +385,7 @@ There are two categories of migration:
 
 2) **Feature-Managed Migrations**
 
-- Some features (e.g., codebase intelligence) may manage their own schema/data migrations after upgrade.
+- Some features (e.g., team) may manage their own schema/data migrations after upgrade.
 - Feature-managed migrations must be automatic, safe, and testable.
 
 Rule of thumb:
@@ -527,8 +527,8 @@ If you deviate because a better pattern is needed:
 
 ### 9.3 Where Decisions Live
 
-- Formal design decisions → oak codebase-intelligence plans
-- Less formal decisions → oak codebase-intelligence memories
+- Formal design decisions → oak team plans
+- Less formal decisions → oak team memories
 - All deviations should result in clearer future rules (reduce repeat friction)
 
 ---

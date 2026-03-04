@@ -48,6 +48,11 @@ export function validateSwarmToken(
 /**
  * Constant-time string comparison to prevent timing attacks.
  * Pads to max length and XORs all bytes to avoid leaking length via early return.
+ *
+ * NOTE: This function is intentionally duplicated in
+ * `features/team/cloud_relay/worker_template/src/auth.ts` because the two workers
+ * are deployed independently and cannot share a runtime import.  Keep both copies
+ * identical; any change here MUST be mirrored there.
  */
 function timingSafeEqual(a: string, b: string): boolean {
   const encoder = new TextEncoder();

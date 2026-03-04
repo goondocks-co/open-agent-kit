@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from open_agent_kit.config.paths import FEATURES_DIR
-from open_agent_kit.features.codebase_intelligence.cli_command import (
+from open_agent_kit.features.team.cli_command import (
     render_cli_command_placeholder,
     resolve_ci_cli_command,
 )

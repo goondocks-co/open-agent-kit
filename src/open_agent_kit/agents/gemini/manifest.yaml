@@ -38,7 +38,7 @@ capabilities:
   skills_folder: ".agents"      # Shared folder — reads .agents/skills/
   skills_directory: "skills"    # .agents/skills/
 
-# Codebase Intelligence configuration
+# Team configuration
 ci:
   resume_command: "gemini --resume {session_id}"
 
@@ -77,7 +77,7 @@ mcp:
     command: "{cmd}"
     args: "{args}"
 
-# Hooks configuration for Codebase Intelligence
+# Hooks configuration for Team
 # Gemini CLI uses settings.json with nested hook structure (like Claude)
 hooks:
   type: json

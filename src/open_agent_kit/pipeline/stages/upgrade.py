@@ -493,7 +493,7 @@ class UpgradeHooksStage(BaseStage):
         for feature_name, agents in hooks_by_feature.items():
             try:
                 # Trigger the feature's update_agent_hooks action
-                from open_agent_kit.features.codebase_intelligence.service import execute_hook
+                from open_agent_kit.features.team.service import execute_hook
 
                 result = execute_hook(
                     "update_agent_hooks",

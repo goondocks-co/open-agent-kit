@@ -20,7 +20,7 @@ from open_agent_kit.features.acp_server.constants import (
     ACP_TOOL_KIND_EDIT,
     ACP_TOOL_KIND_READ,
 )
-from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
+from open_agent_kit.features.team.daemon.models_acp import (
     CancelledEvent,
     CostEvent,
     DoneEvent,

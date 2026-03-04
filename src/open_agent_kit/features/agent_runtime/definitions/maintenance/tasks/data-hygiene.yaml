@@ -1,0 +1,124 @@
+# =============================================================================
+# Built-in Task: Data Hygiene
+# =============================================================================
+# Task for: maintenance agent
+#
+# Analyzes memory store health, archives stale search entries, verifies
+# ChromaDB/SQLite sync, and produces a health report.
+#
+# Output is captured in agent_runs.result — no files written to project.
+# =============================================================================
+
+name: data-hygiene
+display_name: "Data Hygiene"
+agent_type: maintenance
+is_builtin: true
+description: >
+  Analyzes memory store health, archives old resolved/superseded
+  observations from search index, verifies ChromaDB/SQLite sync,
+  and reports on data integrity.
+
+default_task: |
+  Perform a data hygiene check on the project's memory store.
+  Your output serves as the health report — it will be captured in the
+  run record. Do NOT write any files.
+
+  ## Phase 1 — Health Inventory
+
+  Build a comprehensive health picture using CI tools:
+
+  1. Use `oak_project_stats` to get baseline metrics (code chunks, files, memory counts).
+
+  2. Use a single `oak_query` call to get all breakdowns at once:
+     ```sql
+     SELECT 'by_status' as report, status as key, COUNT(*) as cnt, NULL as detail
+       FROM observations GROUP BY status
+     UNION ALL
+     SELECT 'by_type', memory_type, COUNT(*), NULL
+       FROM observations GROUP BY memory_type
+     UNION ALL
+     SELECT 'sessions', 'total', COUNT(*), NULL
+       FROM sessions
+     UNION ALL
+     SELECT 'avg_obs', 'per_session', CAST(AVG(obs_count) AS INTEGER), NULL
+       FROM (SELECT session_id, COUNT(*) as obs_count FROM observations GROUP BY session_id)
+     UNION ALL
+     SELECT 'recent', date(created_at), COUNT(*), NULL
+       FROM observations
+       WHERE created_at > date('now', '-30 days')
+       GROUP BY date(created_at)
+     ORDER BY report, key
+     ```
+
+  Record all baseline numbers for the health report.
+
+  ## Phase 2 — Archive Stale Search Entries
+
+  Remove old resolved/superseded observations from the ChromaDB search index.
+  These remain in SQLite as history but stop polluting vector search results.
+
+  1. First, do a dry run to see the scope:
+     - `oak_archive(status_filter="resolved", older_than_days=30, dry_run=true)`
+     - `oak_archive(status_filter="superseded", older_than_days=14, dry_run=true)`
+
+  2. Review the counts. If reasonable, proceed with actual archival:
+     - `oak_archive(status_filter="resolved", older_than_days=30)`
+     - `oak_archive(status_filter="superseded", older_than_days=14)`
+
+  3. Record what was archived and why those thresholds were chosen:
+     - Resolved observations older than 30 days: the fix is established
+     - Superseded observations older than 14 days: the replacement is established
+
+  ## Phase 3 — Sync Verification
+
+  Check consistency between ChromaDB and SQLite:
+
+  1. Get ChromaDB count from `oak_project_stats` (memory_count field)
+  2. Get SQLite count: `SELECT COUNT(*) FROM observations WHERE embedded = 1`
+  3. Compare the numbers:
+     - If they match: sync is healthy
+     - If ChromaDB > SQLite: possible orphans in ChromaDB
+     - If SQLite > ChromaDB: possible missing embeddings
+  4. Flag any discrepancies but do NOT attempt fixes — report only
+
+  ## Phase 4 — Health Summary
+
+  End with a structured health report. This is your final output and will
+  be stored in the run record.
+
+  Structure your report as:
+
+  ### Memory Store Health
+  - Total observations: N (active: N, resolved: N, superseded: N)
+  - Observation types distribution: discovery: N, gotcha: N, etc.
+  - Code chunks indexed: N across N files
+  - Sessions tracked: N
+
+  ### Archival Actions
+  - Resolved observations archived: N (older than 30 days)
+  - Superseded observations archived: N (older than 14 days)
+  - Total removed from search index: N
+  - These remain accessible via SQL queries
+
+  ### Sync Status
+  - ChromaDB observation count: N
+  - SQLite embedded observation count: N
+  - Status: IN SYNC / DRIFT DETECTED
+  - Details of any discrepancies found
+
+  ### Recommendations
+  - List any issues that need manual attention
+  - Suggest thresholds adjustments if observation volume is unusually high/low
+  - Note any patterns in the data that suggest configuration changes
+
+# Schedule: uncomment to enable periodic hygiene checks
+# schedule:
+#   cron: "0 4 * * WED"
+#   description: "Weekly data hygiene check every Wednesday at 4 AM"
+
+execution:
+  timeout_seconds: 300
+  max_turns: 35
+  model: claude-sonnet-4-6
+
+schema_version: 1

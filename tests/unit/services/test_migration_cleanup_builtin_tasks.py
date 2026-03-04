@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from open_agent_kit.features.codebase_intelligence.constants import (
+from open_agent_kit.features.team.constants import (
     AGENT_PROJECT_CONFIG_DIR,
     AGENT_PROJECT_CONFIG_EXTENSION,
 )

@@ -131,7 +131,7 @@ class AgentSessionContinuationConfig(BaseModel):
 
 
 class AgentCIConfig(BaseModel):
-    """Codebase Intelligence configuration for an agent.
+    """Team configuration for an agent.
 
     These settings control how CI detects and processes agent-specific
     events like plan mode execution and exit. All plan-related settings
@@ -376,7 +376,7 @@ class AgentNotifyConfig(BaseModel):
 
 
 class AgentNotificationsConfig(BaseModel):
-    """Notifications configuration for Codebase Intelligence integration.
+    """Notifications configuration for Team integration.
 
     Defines how agent notification handlers are installed for this agent.
     """
@@ -400,7 +400,7 @@ class AgentNotificationsConfig(BaseModel):
 
 
 class AgentHooksConfig(BaseModel):
-    """Hooks configuration for Codebase Intelligence integration.
+    """Hooks configuration for Team integration.
 
     Defines how CI hooks are installed for this agent. Hooks enable
     session tracking, activity capture, and context injection.
@@ -532,7 +532,7 @@ class AgentManifest(BaseModel):
         description="MCP server registration configuration",
     )
 
-    # Hooks configuration for Codebase Intelligence
+    # Hooks configuration for Team
     hooks: AgentHooksConfig | None = Field(
         default=None,
         description="Hooks configuration for CI integration",
@@ -544,10 +544,10 @@ class AgentManifest(BaseModel):
         description="Agent notification configuration for CI integration",
     )
 
-    # Codebase Intelligence configuration
+    # Team configuration
     ci: AgentCIConfig = Field(
         default_factory=AgentCIConfig,
-        description="Codebase Intelligence configuration for plan mode detection",
+        description="Team configuration for plan mode detection",
     )
 
     # Governance capabilities

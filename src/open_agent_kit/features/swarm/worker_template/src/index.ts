@@ -21,17 +21,26 @@ export { SwarmObject } from "./swarm-object";
 // Single Durable Object ID — one DO per deployment.
 const DO_ID_KEY = "singleton";
 
-// CORS headers for browser-based clients.
-const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+// Localhost origin pattern for CORS (local daemon UIs only).
+const LOCALHOST_ORIGIN_RE = /^https?:\/\/localhost(:\d+)?$/;
 
-/** Add CORS headers to an existing Response. */
-function withCors(response: Response): Response {
+/** Build CORS headers scoped to the request origin, if it matches localhost. */
+function corsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("Origin");
+  if (!origin || !LOCALHOST_ORIGIN_RE.test(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
+/** Add CORS headers to an existing Response (only when Origin matches). */
+function withCors(response: Response, request: Request): Response {
+  const headers = corsHeaders(request);
+  if (Object.keys(headers).length === 0) return response;
   const patched = new Response(response.body, response);
-  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+  for (const [k, v] of Object.entries(headers)) {
     patched.headers.set(k, v);
   }
   return patched;
@@ -44,63 +53,63 @@ export default {
 
     // ----- OPTIONS preflight (CORS) -----
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
 
     // ----- POST /api/swarm/register — register a team -----
     if (path === "/api/swarm/register" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /api/swarm/heartbeat — team heartbeat -----
     if (path === "/api/swarm/heartbeat" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /api/swarm/search — federated search across swarm -----
     if (path === "/api/swarm/search" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /api/swarm/tool-call — route tool call to a project -----
     if (path === "/api/swarm/tool-call" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /api/swarm/broadcast — broadcast tool call to all teams -----
     if (path === "/api/swarm/broadcast" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- GET /api/swarm/nodes — list registered teams -----
     if (path === "/api/swarm/nodes" && request.method === "GET") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /api/swarm/unregister — remove a team from the swarm -----
     if (path === "/api/swarm/unregister" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr);
+      if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request));
+      return withCors(await doStub.fetch(request), request);
     }
 
     // ----- GET /health -----

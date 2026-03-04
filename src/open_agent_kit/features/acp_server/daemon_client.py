@@ -28,8 +28,8 @@ from open_agent_kit.features.acp_server.constants import (
     ACP_LOG_DAEMON_CONNECTING,
     ACP_LOG_DAEMON_SESSION_CREATED,
 )
-from open_agent_kit.features.codebase_intelligence.constants import CI_AUTH_ENV_VAR
-from open_agent_kit.features.codebase_intelligence.daemon.models_acp import (
+from open_agent_kit.features.team.constants import CI_AUTH_ENV_VAR
+from open_agent_kit.features.team.daemon.models_acp import (
     AnyExecutionEvent,
     parse_execution_event,
 )
@@ -73,7 +73,7 @@ def discover_daemon(project_root: Path) -> tuple[str, str]:
 
     # Also try reading from the token file if env var is not set
     if not auth_token:
-        from open_agent_kit.features.codebase_intelligence.constants import (
+        from open_agent_kit.features.team.constants import (
             CI_DATA_DIR,
             CI_TOKEN_FILE,
         )
