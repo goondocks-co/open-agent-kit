@@ -11,10 +11,12 @@
  *   POST /api/swarm/unregister  — remove a team from the swarm (swarm_token auth)
  *   POST /api/swarm/health-check — health check for a specific team (swarm_token auth)
  *   GET|PUT /api/swarm/config/min-oak-version — version policy config (swarm_token auth)
+ *   POST /mcp                   — MCP JSON-RPC endpoint (agent_token auth)
  *   GET  /health                — status check
  */
 
-import { validateSwarmToken } from "./auth";
+import { validateAgentToken, validateSwarmToken } from "./auth";
+import { handleMcpRequest } from "./mcp-handler";
 import type { Env } from "./types";
 
 // Re-export the Durable Object class so the runtime can find it.
@@ -56,6 +58,27 @@ export default {
     // ----- OPTIONS preflight (CORS) -----
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
+
+    // ----- POST /mcp — cloud agent tool calls -----
+    if (path === "/mcp" && request.method === "POST") {
+      const authErr = validateAgentToken(request, env);
+      if (authErr) return authErr;
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return new Response(
+          JSON.stringify({ error: "invalid JSON body" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const doId = env.SWARM.idFromName(DO_ID_KEY);
+      const doStub = env.SWARM.get(doId);
+      const result = await handleMcpRequest(body, doStub);
+      return Response.json(result);
     }
 
     // ----- POST /api/swarm/register — register a team -----
