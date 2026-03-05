@@ -6,14 +6,17 @@ the next daemon restart (mirroring the team daemon pattern).
 """
 
 import logging
+import os
 from http import HTTPStatus
 
 from fastapi import APIRouter, HTTPException, Request
 
 from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_SWARM_KEY_LOG_LEVEL,
     CI_CONFIG_SWARM_KEY_LOG_ROTATION,
+    CI_CONFIG_SWARM_KEY_URL,
     SWARM_DAEMON_API_PATH_CONFIG,
     SWARM_DAEMON_DEFAULT_LOG_LEVEL,
     SWARM_ERROR_NOT_CONNECTED,
@@ -136,6 +139,35 @@ async def update_config(request: Request) -> dict:
         "log_level": config.get(CI_CONFIG_SWARM_KEY_LOG_LEVEL, SWARM_DAEMON_DEFAULT_LOG_LEVEL),
         "log_rotation": _get_log_rotation(config),
         "changed": changed,
+    }
+
+
+# ---------------------------------------------------------------------------
+# MCP configuration — endpoint URL and agent token for cloud agents
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/config/mcp")
+async def get_mcp_config() -> dict:
+    """Get MCP endpoint configuration for cloud agents."""
+    state = get_swarm_state()
+    config = load_swarm_config(state.swarm_id) or {} if state.swarm_id else {}
+
+    swarm_url = os.environ.get("OAK_SWARM_URL", "")
+    custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "")
+    # Prefer custom domain; also check config for persisted values
+    base_url = (
+        custom_domain
+        or (config or {}).get(CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN, "")
+        or swarm_url
+        or (config or {}).get(CI_CONFIG_SWARM_KEY_URL, "")
+    )
+    agent_token = (config or {}).get("agent_token", "")
+
+    return {
+        "mcp_endpoint": f"{base_url}/mcp" if base_url else "",
+        "agent_token": agent_token,
+        "has_agent_token": bool(agent_token),
     }
 
 

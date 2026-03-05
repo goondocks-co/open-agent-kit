@@ -28,6 +28,7 @@ export const API_ENDPOINTS = {
     HEALTH: "/api/health",
     RESTART: "/api/restart",
     CONFIG: "/api/config",
+    CONFIG_MCP: "/api/config/mcp",
     CONFIG_MIN_OAK_VERSION: "/api/config/min-oak-version",
     LOGS: "/api/logs",
 } as const;

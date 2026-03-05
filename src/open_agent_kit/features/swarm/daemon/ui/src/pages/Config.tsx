@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { Button } from "@oak/ui/components/ui/button";
+import { CopyButton } from "@oak/ui/components/ui/command-block";
 import { Label } from "@oak/ui/components/ui/label";
-import { AlertCircle, Loader2, Save, Shield } from "lucide-react";
+import { AlertCircle, Globe, Bot, Eye, EyeOff, Loader2, Save, Shield } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConfig, updateConfig, type LogRotationConfig } from "@/hooks/use-config";
 import { fetchJson } from "@/lib/api";
@@ -43,6 +44,16 @@ export default function Config() {
         queryKey: ["min-oak-version"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.CONFIG_MIN_OAK_VERSION, { signal }),
     });
+    // MCP config (read-only display)
+    const { data: mcpConfig } = useQuery<{ mcp_endpoint: string; agent_token: string; has_agent_token: boolean }>({
+        queryKey: ["mcp-config"],
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.CONFIG_MCP, { signal }),
+    });
+    const [showToken, setShowToken] = useState(false);
+    const maskedToken = mcpConfig?.agent_token
+        ? "\u2022".repeat(Math.min(mcpConfig.agent_token.length, 32))
+        : null;
+
     const [minVersion, setMinVersion] = useState("");
     const [versionDirty, setVersionDirty] = useState(false);
     const [versionSaving, setVersionSaving] = useState(false);
@@ -113,6 +124,52 @@ export default function Config() {
                     Configure swarm daemon behavior. Changes require a daemon restart.
                 </p>
             </div>
+
+            {/* MCP Endpoint Section */}
+            {mcpConfig?.mcp_endpoint && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Globe className="h-5 w-5" />
+                            MCP Endpoint
+                        </CardTitle>
+                        <CardDescription>
+                            Use this endpoint and token to connect cloud agents to the swarm.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Endpoint URL</Label>
+                            <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
+                                <code className="flex-1 truncate">{mcpConfig.mcp_endpoint}</code>
+                                <CopyButton text={mcpConfig.mcp_endpoint} />
+                            </div>
+                        </div>
+
+                        {mcpConfig.has_agent_token && (
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                    <Bot className="h-4 w-4" />
+                                    Agent Token
+                                </Label>
+                                <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
+                                    <code className="flex-1 truncate">
+                                        {showToken ? mcpConfig.agent_token : maskedToken}
+                                    </code>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
+                                        onClick={() => setShowToken(!showToken)}>
+                                        {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                    <CopyButton text={mcpConfig.agent_token} />
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Include this token in the <code className="bg-muted px-1 rounded">Authorization: Bearer</code> header when connecting.
+                                </p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Version Policy Section */}
             <Card>
