@@ -75,8 +75,7 @@ export default {
         );
       }
 
-      const doId = env.SWARM.idFromName(DO_ID_KEY);
-      const doStub = env.SWARM.get(doId);
+      const doStub = getDurableObject(env);
       const result = await handleMcpRequest(body, doStub);
       return Response.json(result);
     }

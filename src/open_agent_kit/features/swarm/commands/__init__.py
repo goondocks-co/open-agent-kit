@@ -69,6 +69,7 @@ def swarm_deploy(
         save_swarm_config,
     )
     from open_agent_kit.features.swarm.constants import (
+        CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
         CI_CONFIG_SWARM_KEY_TOKEN,
         CI_CONFIG_SWARM_KEY_URL,
         CI_CONFIG_SWARM_KEY_WORKER_NAME,
@@ -104,10 +105,10 @@ def swarm_deploy(
     worker_name = config[CI_CONFIG_SWARM_KEY_WORKER_NAME]
 
     # Generate agent token for MCP endpoint
-    agent_token = config.get("agent_token")
+    agent_token = config.get(CI_CONFIG_SWARM_KEY_AGENT_TOKEN)
     if not agent_token:
         agent_token = generate_token()
-        config["agent_token"] = agent_token
+        config[CI_CONFIG_SWARM_KEY_AGENT_TOKEN] = agent_token
         save_swarm_config(name, config)
 
     swarm_dir = get_swarm_config_dir(name)
@@ -320,20 +321,8 @@ def swarm_mcp(
         "-t",
         help="MCP transport type.",
     ),
-    name: str = typer.Option(
-        "",
-        "--name",
-        "-n",
-        help="Swarm name.",
-    ),
-    port: int = typer.Option(
-        0,
-        "--port",
-        "-p",
-        help="HTTP port for streamable-http transport.",
-    ),
 ) -> None:
     """Run the swarm MCP server."""
     from open_agent_kit.features.swarm.commands.mcp import mcp_command
 
-    mcp_command(transport=transport, name=name, port=port)
+    mcp_command(transport=transport)

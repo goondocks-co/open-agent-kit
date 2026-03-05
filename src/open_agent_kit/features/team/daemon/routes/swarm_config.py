@@ -19,6 +19,7 @@ from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_KEY_SWARM,
     CI_CONFIG_SWARM_KEY_TOKEN,
     CI_CONFIG_SWARM_KEY_URL,
+    SWARM_MESSAGE_MCP_HINT,
     SWARM_RESPONSE_KEY_ERROR,
 )
 from open_agent_kit.features.team.constants.api import (
@@ -167,7 +168,7 @@ async def join_swarm(request: _JoinSwarmRequest) -> dict:
             "success": True,
             "swarm_url": request.swarm_url,
             "relay_synced": relay_ok,
-            "mcp_hint": "Run 'oak init' to install the swarm MCP server for your agents.",
+            "mcp_hint": SWARM_MESSAGE_MCP_HINT,
         }
     except Exception as exc:
         logger.error("Failed to join swarm: %s", exc)

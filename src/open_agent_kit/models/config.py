@@ -70,6 +70,12 @@ class OakConfig(BaseModel):
         default=None,
         description="Team configuration (managed by CI feature)",
     )
+    # Passthrough field for swarm feature config
+    # Preserved across save/load cycles — swarm feature manages this data
+    swarm: dict[str, Any] | None = Field(
+        default=None,
+        description="Swarm configuration (managed by swarm feature)",
+    )
 
     @classmethod
     def load(cls, config_path: Path) -> "OakConfig":

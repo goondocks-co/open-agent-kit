@@ -3,31 +3,10 @@
 import logging
 import sys
 
-import typer
-
 logger = logging.getLogger(__name__)
 
 
-def mcp_command(
-    transport: str = typer.Option(
-        "stdio",
-        "--transport",
-        "-t",
-        help="MCP transport type (stdio, sse, streamable-http).",
-    ),
-    name: str = typer.Option(
-        "",
-        "--name",
-        "-n",
-        help="Swarm name. Auto-detected from ~/.oak/swarms/ if omitted.",
-    ),
-    port: int = typer.Option(
-        0,
-        "--port",
-        "-p",
-        help="HTTP port for streamable-http transport.",
-    ),
-) -> None:
+def mcp_command(transport: str = "stdio") -> None:
     """Run the swarm MCP server for AI agent integration."""
     from open_agent_kit.features.swarm.daemon.mcp_server import run_mcp_server
 

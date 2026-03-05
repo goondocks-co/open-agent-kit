@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
     CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_SWARM_KEY_LOG_LEVEL,
     CI_CONFIG_SWARM_KEY_LOG_ROTATION,
@@ -162,7 +163,7 @@ async def get_mcp_config() -> dict:
         or swarm_url
         or (config or {}).get(CI_CONFIG_SWARM_KEY_URL, "")
     )
-    agent_token = (config or {}).get("agent_token", "")
+    agent_token = (config or {}).get(CI_CONFIG_SWARM_KEY_AGENT_TOKEN, "")
 
     return {
         "mcp_endpoint": f"{base_url}/mcp" if base_url else "",

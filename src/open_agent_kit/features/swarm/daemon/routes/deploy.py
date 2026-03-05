@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from open_agent_kit.features.swarm.config import get_swarm_config_dir
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
     CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_SWARM_KEY_URL,
     SWARM_DAEMON_API_PATH_DEPLOY_AUTH,
@@ -140,13 +141,13 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
     from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
 
     config = load_swarm_config(state.swarm_id) if state.swarm_id else {}
-    agent_token = config.get("agent_token", "") if config else ""
+    agent_token = config.get(CI_CONFIG_SWARM_KEY_AGENT_TOKEN, "") if config else ""
     if not agent_token:
         from open_agent_kit.features.swarm.scaffold import generate_token
 
         agent_token = generate_token()
         if state.swarm_id and config is not None:
-            config["agent_token"] = agent_token
+            config[CI_CONFIG_SWARM_KEY_AGENT_TOKEN] = agent_token
             save_swarm_config(state.swarm_id, config)
 
     try:
@@ -291,7 +292,7 @@ async def deploy_settings(body: DeploySettingsRequest) -> dict:
     # Re-render wrangler.toml if scaffold exists
     scaffold_dir = _get_scaffold_dir()
     if scaffold_dir and scaffold_dir.is_dir():
-        agent_token = config.get("agent_token", "")
+        agent_token = config.get(CI_CONFIG_SWARM_KEY_AGENT_TOKEN, "")
         await asyncio.to_thread(
             render_wrangler_config,
             scaffold_dir,

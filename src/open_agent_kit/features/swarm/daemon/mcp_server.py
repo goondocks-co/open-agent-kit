@@ -35,6 +35,7 @@ from open_agent_kit.features.swarm.constants import (  # noqa: E402
     SWARM_DAEMON_PORT_FILE,
     SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS,
     SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
+    SWARM_MCP_TIMEOUT_PADDING_SECONDS,
     SWARM_RESPONSE_KEY_ERROR,
 )
 
@@ -251,7 +252,7 @@ def create_mcp_server() -> FastMCP:
                     "arguments": parsed_args,
                     "target_project": target_project,
                 },
-                timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
+                timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
             )
             return json.dumps(result, indent=2)
         except RuntimeError as exc:
@@ -287,7 +288,7 @@ def create_mcp_server() -> FastMCP:
                     "tool_name": tool_name,
                     "arguments": parsed_args,
                 },
-                timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
+                timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
             )
             return json.dumps(result, indent=2)
         except RuntimeError as exc:
@@ -336,7 +337,7 @@ def create_mcp_server() -> FastMCP:
                     "ids": ids,
                     "project_slug": project_slug,
                 },
-                timeout=SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS + 2.0,
+                timeout=SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
             )
             return json.dumps(result, indent=2)
         except RuntimeError as exc:

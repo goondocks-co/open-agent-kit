@@ -28,6 +28,8 @@ from open_agent_kit.utils.worker_scaffold_shared import (
 # Timeouts and intervals
 SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS: Final[int] = 10
 SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS: Final[int] = 30
+# Extra seconds added to httpx timeout to allow the daemon's internal timeout to fire first
+SWARM_MCP_TIMEOUT_PADDING_SECONDS: Final[float] = 2.0
 SWARM_HEARTBEAT_INTERVAL_SECONDS: Final[int] = 60
 SWARM_STALE_THRESHOLD_SECONDS: Final[int] = 300  # 5 minutes
 SWARM_TOKEN_BYTES: Final[int] = WORKER_TOKEN_BYTES
@@ -43,6 +45,7 @@ CI_CONFIG_SWARM_KEY_SENSITIVITY: Final[str] = "sensitivity"
 CI_CONFIG_SWARM_KEY_SWARM_ID: Final[str] = "swarm_id"
 CI_CONFIG_SWARM_KEY_WORKER_NAME: Final[str] = "worker_name"
 CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN: Final[str] = "custom_domain"
+CI_CONFIG_SWARM_KEY_AGENT_TOKEN: Final[str] = "agent_token"
 
 # API paths (Swarm Worker HTTP API)
 SWARM_API_PATH_REGISTER: Final[str] = "/api/swarm/register"
@@ -230,7 +233,7 @@ SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
     "Swarm daemon failed to start. Check logs for details."
 )
 SWARM_MESSAGE_MCP_HINT: Final[str] = (
-    "To install the swarm MCP server for your agents, " "run: {cli_command} init"
+    "Run 'oak init' to install the swarm MCP server for your agents."
 )
 
 # Deploy route error messages

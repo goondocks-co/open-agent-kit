@@ -566,20 +566,24 @@ class TeamService:
     # --- MCP Server Registration Methods ---
 
     def _load_mcp_config(self) -> dict[str, Any] | None:
-        """Load MCP server configuration from mcp.yaml.
+        """Load team MCP server configuration from mcp.yaml."""
+        return self._load_mcp_config_from(MCP_TEMPLATE_DIR / "mcp.yaml")
+
+    @staticmethod
+    def _load_mcp_config_from(mcp_yaml_path: Path) -> dict[str, Any] | None:
+        """Load MCP server configuration from a given mcp.yaml path.
 
         Returns:
             MCP configuration dict, or None if not found.
         """
         import yaml
 
-        mcp_config_path = MCP_TEMPLATE_DIR / "mcp.yaml"
-        if not mcp_config_path.exists():
-            logger.warning(f"MCP config not found: {mcp_config_path}")
+        if not mcp_yaml_path.exists():
+            logger.warning(f"MCP config not found: {mcp_yaml_path}")
             return None
 
         try:
-            with open(mcp_config_path) as f:
+            with open(mcp_yaml_path) as f:
                 config = yaml.safe_load(f)
             return cast(dict[str, Any], config)
         except (OSError, ValueError, yaml.YAMLError) as e:
@@ -615,14 +619,15 @@ class TeamService:
         Returns True if swarm URL and token are configured in .oak/config.yaml.
         """
         try:
-            config_file = self.project_root / ".oak" / "config.yaml"
-            if not config_file.is_file():
-                return False
-            import yaml
+            from open_agent_kit.features.swarm.constants import (
+                CI_CONFIG_SWARM_KEY_TOKEN,
+                CI_CONFIG_SWARM_KEY_URL,
+            )
+            from open_agent_kit.services.config_service import ConfigService
 
-            config = yaml.safe_load(config_file.read_text()) or {}
-            swarm = config.get("swarm", {})
-            return bool(swarm.get("url") and swarm.get("token"))
+            config = ConfigService(self.project_root).load_config(auto_migrate=False)
+            swarm = config.swarm or {}
+            return bool(swarm.get(CI_CONFIG_SWARM_KEY_URL) and swarm.get(CI_CONFIG_SWARM_KEY_TOKEN))
         except Exception:
             return False
 
@@ -686,12 +691,10 @@ class TeamService:
         from open_agent_kit.features.team.mcp import install_mcp_server
 
         swarm_mcp_yaml = Path(__file__).resolve().parent.parent / "swarm" / "mcp" / "mcp.yaml"
-        if not swarm_mcp_yaml.is_file():
+        mcp_config = self._load_mcp_config_from(swarm_mcp_yaml)
+        if not mcp_config:
             return dict.fromkeys(agents, "skipped (swarm mcp config not found)")
 
-        import yaml
-
-        mcp_config = yaml.safe_load(swarm_mcp_yaml.read_text()) or {}
         server_name = mcp_config.get("name", "oak-swarm")
         command = mcp_config.get("command", f"{MCP_CLI_COMMAND_PLACEHOLDER} swarm mcp")
         command = command.replace(
