@@ -40,11 +40,16 @@ const RATE_LIMIT_MAX_REGISTRATIONS = 10; // per IP per window
  */
 const SWARM_SCHEMA_VERSION = 3;
 
+/** Capability identifier constants — must match Python SWARM_CAPABILITY_* values. */
+const CAPABILITY_SEARCH = "swarm_search_v1";
+const CAPABILITY_TOOLS = "swarm_tools_v1";
+const CAPABILITY_BROADCAST = "swarm_broadcast_v1";
+
 /** Canonical set of swarm capabilities — unknown strings are stripped on registration. */
 const KNOWN_CAPABILITIES = new Set([
-  "swarm_search_v1",
-  "swarm_tools_v1",
-  "swarm_broadcast_v1",
+  CAPABILITY_SEARCH,
+  CAPABILITY_TOOLS,
+  CAPABILITY_BROADCAST,
 ]);
 
 /** Private/reserved IPv4 CIDR ranges that must be blocked for SSRF prevention. */
@@ -308,14 +313,33 @@ export class SwarmObject implements DurableObject {
     }
 
     const now = new Date().toISOString();
+
+    // Build a dynamic UPDATE that only touches columns present in the body,
+    // so a bare heartbeat (team_id only) doesn't clobber registration data.
+    const setClauses: string[] = ["last_heartbeat = ?"];
+    const params: unknown[] = [now];
+
+    if (body.capabilities !== undefined) {
+      setClauses.push("capabilities = ?");
+      params.push(JSON.stringify(this.validateCapabilities(body.capabilities)));
+    }
+    if (body.node_count !== undefined) {
+      setClauses.push("node_count = ?");
+      params.push(body.node_count);
+    }
+    if (body.oak_version !== undefined) {
+      setClauses.push("oak_version = ?");
+      params.push(body.oak_version);
+    }
+    if (body.tool_names !== undefined) {
+      setClauses.push("tool_names = ?");
+      params.push(JSON.stringify(body.tool_names));
+    }
+
+    params.push(body.team_id);
     this.state.storage.sql.exec(
-      `UPDATE teams SET last_heartbeat = ?, capabilities = ?, node_count = ?, oak_version = ?, tool_names = ? WHERE team_id = ?`,
-      now,
-      JSON.stringify(body.capabilities ?? []),
-      body.node_count ?? 0,
-      body.oak_version ?? "",
-      JSON.stringify(body.tool_names ?? []),
-      body.team_id,
+      `UPDATE teams SET ${setClauses.join(", ")} WHERE team_id = ?`,
+      ...params,
     );
 
     return Response.json({ status: "ok" });
@@ -331,8 +355,8 @@ export class SwarmObject implements DurableObject {
       );
     }
 
-    // Only fan out to teams that advertise swarm_search_v1 (and any extra required caps).
-    const teams = this.getTeamsWithCapability("swarm_search_v1", body.required_capabilities);
+    // Only fan out to teams that advertise search capability (and any extra required caps).
+    const teams = this.getTeamsWithCapability(CAPABILITY_SEARCH, body.required_capabilities);
     if (teams.length === 0) {
       return Response.json({ results: [], warning: "no teams with required capability" });
     }
@@ -416,10 +440,10 @@ export class SwarmObject implements DurableObject {
       );
     }
 
-    if (!team.capabilities.includes("swarm_tools_v1")) {
+    if (!team.capabilities.includes(CAPABILITY_TOOLS)) {
       return Response.json(
         {
-          error: `team '${body.target_project}' does not advertise capability: swarm_tools_v1`,
+          error: `team '${body.target_project}' does not advertise capability: ${CAPABILITY_TOOLS}`,
           team_capabilities: team.capabilities,
         },
         { status: 422 },
@@ -475,8 +499,8 @@ export class SwarmObject implements DurableObject {
       );
     }
 
-    // Only fan out to teams that advertise swarm_tools_v1 (and any extra required caps).
-    const teams = this.getTeamsWithCapability("swarm_tools_v1", body.required_capabilities);
+    // Only fan out to teams that advertise broadcast capability (and any extra required caps).
+    const teams = this.getTeamsWithCapability(CAPABILITY_BROADCAST, body.required_capabilities);
     if (teams.length === 0) {
       return Response.json({ results: [], warning: "no teams with required capability" });
     }

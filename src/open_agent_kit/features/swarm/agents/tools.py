@@ -130,7 +130,7 @@ def create_swarm_tools(
             """List connected swarm nodes."""
             try:
                 result = await client.nodes()
-                return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+                return {"content": [{"type": "text", "text": _format_result(result)}]}
             except Exception as e:
                 logger.error("Swarm nodes failed: %s", e)
                 return {
@@ -175,7 +175,7 @@ def create_swarm_tools(
                     target_project=target_project,
                     timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
                 )
-                return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+                return {"content": [{"type": "text", "text": _format_result(result)}]}
             except Exception as e:
                 error_msg = str(e)
                 # Surface capability-mismatch details from 422 responses.

@@ -5,24 +5,16 @@ follow naming conventions (must align with the TypeScript side).
 """
 
 from open_agent_kit.features.swarm.constants import (
+    SWARM_CAPABILITY_BROADCAST,
     SWARM_CAPABILITY_SEARCH,
     SWARM_CAPABILITY_TOOLS,
 )
 
-# Conditionally collect SWARM_CAPABILITY_BROADCAST if Unit 1 has been merged.
-try:
-    from open_agent_kit.features.swarm.constants import (
-        SWARM_CAPABILITY_BROADCAST,  # type: ignore[attr-defined]
-    )
-
-    _HAS_BROADCAST = True
-except ImportError:
-    _HAS_BROADCAST = False
-
-# Gather all available capability constants for parametric checks.
-_ALL_CAPABILITIES: list[str] = [SWARM_CAPABILITY_SEARCH, SWARM_CAPABILITY_TOOLS]
-if _HAS_BROADCAST:
-    _ALL_CAPABILITIES.append(SWARM_CAPABILITY_BROADCAST)  # type: ignore[possibly-undefined]
+_ALL_CAPABILITIES: list[str] = [
+    SWARM_CAPABILITY_SEARCH,
+    SWARM_CAPABILITY_TOOLS,
+    SWARM_CAPABILITY_BROADCAST,
+]
 
 
 class TestCapabilityConstants:
@@ -54,9 +46,7 @@ class TestCapabilityConstants:
 
 
 class TestBroadcastCapability:
-    """Tests for SWARM_CAPABILITY_BROADCAST (only if Unit 1 merged)."""
+    """Tests for SWARM_CAPABILITY_BROADCAST."""
 
     def test_broadcast_capability_value(self) -> None:
-        if not _HAS_BROADCAST:
-            return  # Unit 1 not merged yet — nothing to test
-        assert SWARM_CAPABILITY_BROADCAST == "swarm_broadcast_v1"  # type: ignore[possibly-undefined]
+        assert SWARM_CAPABILITY_BROADCAST == "swarm_broadcast_v1"
