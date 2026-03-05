@@ -1,0 +1,11 @@
+name: oak-swarm
+description: "OAK Swarm - cross-project search and federation for AI assistants"
+command: "{oak-cli-command} swarm mcp"
+capabilities:
+  tools:
+    - swarm_search
+    - swarm_fetch
+    - swarm_nodes
+    - swarm_call
+    - swarm_broadcast
+    - swarm_status
