@@ -102,7 +102,7 @@ class BaseDaemonManager(abc.ABC):
             candidate = start_port + offset
             if self._is_port_available(candidate):
                 return candidate
-        msg = f"No available port found in range " f"{start_port}-{start_port + range_size - 1}"
+        msg = f"No available port found in range {start_port}-{start_port + range_size - 1}"
         raise RuntimeError(msg)
 
     def _health_check(self, timeout: float = 2.0) -> bool:

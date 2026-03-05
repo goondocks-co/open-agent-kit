@@ -61,7 +61,7 @@ def check_ci_enabled(project_root: Path) -> None:
     """Check if Team feature is enabled."""
     ci_dir = resolve_ci_data_dir(project_root)
     if not dir_exists(ci_dir):
-        print_error("Team is not enabled. " "Run 'oak feature add team' first.")
+        print_error("Team is not enabled. Run 'oak feature add team' first.")
         raise typer.Exit(code=1)
 
 

@@ -65,7 +65,7 @@ def apply_governance_decision(
         gov_config = manifest.governance
     except (ValueError, AttributeError) as e:
         logger.warning(
-            "Cannot determine deny format for agent %s: %s. " "Falling back to hookSpecificOutput.",
+            "Cannot determine deny format for agent %s: %s. Falling back to hookSpecificOutput.",
             agent,
             e,
         )
@@ -139,7 +139,7 @@ def _apply_cursor_deny(
     hook_output["permission"] = "deny"
     hook_output["userMessage"] = reason
     hook_output["agentMessage"] = (
-        f"Tool call blocked by governance policy (rule: {decision.rule_id}). " f"{reason}"
+        f"Tool call blocked by governance policy (rule: {decision.rule_id}). {reason}"
     )
 
     return hook_output

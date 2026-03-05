@@ -93,8 +93,7 @@ def bg_recover_stuck_data(processor: "ActivityProcessor") -> None:
         )
         if stale_run_ids:
             logger.info(
-                f"Recovered {len(stale_run_ids)} stale agent runs: "
-                f"{[r[:8] for r in stale_run_ids]}"
+                f"Recovered {len(stale_run_ids)} stale agent runs: {[r[:8] for r in stale_run_ids]}"
             )
 
         # Associate orphaned activities with batches
@@ -115,8 +114,7 @@ def bg_recover_stale_sessions(processor: "ActivityProcessor") -> None:
         )
         if deleted_ids:
             logger.info(
-                f"Deleted {len(deleted_ids)} empty stale sessions: "
-                f"{[s[:8] for s in deleted_ids]}"
+                f"Deleted {len(deleted_ids)} empty stale sessions: {[s[:8] for s in deleted_ids]}"
             )
         if recovered_ids:
             logger.info(f"Recovered {len(recovered_ids)} stale sessions")
@@ -161,7 +159,7 @@ def bg_cleanup_and_summarize(processor: "ActivityProcessor") -> None:
                     summary, _title = processor.process_session_summary_with_title(session.id)
                     if summary:
                         logger.info(
-                            f"Generated summary for session {session.id[:8]}: " f"{summary[:50]}..."
+                            f"Generated summary for session {session.id[:8]}: {summary[:50]}..."
                         )
                 except (OSError, ValueError, TypeError, RuntimeError) as e:
                     logger.warning(f"Failed to summarize session {session.id[:8]}: {e}")

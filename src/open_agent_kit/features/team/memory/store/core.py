@@ -105,7 +105,7 @@ class VectorStore:
 
         except ImportError as e:
             raise RuntimeError(
-                "ChromaDB is not installed. Install with: " "pip install oak-ci[team]"
+                "ChromaDB is not installed. Install with: pip install oak-ci[team]"
             ) from e
 
     def _get_or_recreate_collection(self, name: str, hnsw_config: dict, expected_dims: int) -> Any:

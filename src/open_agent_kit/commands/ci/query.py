@@ -95,8 +95,7 @@ def ci_memories(
     # Validate status if provided
     if status not in VALID_OBSERVATION_STATUSES:
         print_error(
-            f"Invalid status '{status}'. Must be one of: "
-            f"{', '.join(VALID_OBSERVATION_STATUSES)}"
+            f"Invalid status '{status}'. Must be one of: {', '.join(VALID_OBSERVATION_STATUSES)}"
         )
         raise typer.Exit(code=1)
 

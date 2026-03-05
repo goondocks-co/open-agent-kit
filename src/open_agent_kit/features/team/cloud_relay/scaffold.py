@@ -148,7 +148,7 @@ def render_worker_template(
 
     if output_dir.exists():
         if not force:
-            msg = f"Output directory already exists: {output_dir}. " "Use --force to overwrite."
+            msg = f"Output directory already exists: {output_dir}. Use --force to overwrite."
             raise FileExistsError(msg)
         shutil.rmtree(output_dir)
 

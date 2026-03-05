@@ -62,9 +62,7 @@ def _run_session_summary_rebuild_sync(state: "DaemonState") -> None:
             state.activity_store,
             state.vector_store,
         )
-        logger.info(
-            f"Background session summary rebuild complete: " f"{embedded}/{processed} embedded"
-        )
+        logger.info(f"Background session summary rebuild complete: {embedded}/{processed} embedded")
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Background session summary rebuild failed: {e}")
 
@@ -83,9 +81,7 @@ def _run_plan_index_rebuild_sync(state: "DaemonState") -> None:
             state.vector_store,
             batch_size=50,
         )
-        logger.info(
-            f"Background plan index rebuild complete: " f"{stats.get('indexed', 0)} indexed"
-        )
+        logger.info(f"Background plan index rebuild complete: {stats.get('indexed', 0)} indexed")
     except (OSError, ValueError, RuntimeError) as e:
         logger.warning(f"Background plan index rebuild failed: {e}")
 

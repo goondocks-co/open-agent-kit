@@ -306,7 +306,7 @@ def format_context_results(
 
     if not parts:
         parts.append(
-            "No specific context found for this task. " "This may be a new area of the codebase."
+            "No specific context found for this task. This may be a new area of the codebase."
         )
 
     return "\n".join(parts)

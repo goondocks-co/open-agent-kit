@@ -200,7 +200,6 @@ class PackageInstallerService:
                 python_version,
             ] + with_args
             manual_cmd = (
-                f"uv tool install oak-ci --upgrade "
-                f"--python {python_version} {' '.join(with_args)}"
+                f"uv tool install oak-ci --upgrade --python {python_version} {' '.join(with_args)}"
             )
         return cmd, manual_cmd

@@ -226,8 +226,7 @@ def synthesize_derived_plan(
     )
 
     logger.debug(
-        f"Synthesized derived plan for session {session_id[:8]}...: "
-        f"{len(tasks)} tasks extracted"
+        f"Synthesized derived plan for session {session_id[:8]}...: {len(tasks)} tasks extracted"
     )
 
     return plan

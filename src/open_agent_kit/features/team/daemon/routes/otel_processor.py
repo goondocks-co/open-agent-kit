@@ -571,8 +571,7 @@ async def _handle_tool_result(
         )
         state.activity_store.add_activity_buffered(activity)
         logger.debug(
-            f"Stored activity from OTEL: {tool_name} (batch={prompt_batch_id}, "
-            f"call_id={call_id})"
+            f"Stored activity from OTEL: {tool_name} (batch={prompt_batch_id}, call_id={call_id})"
         )
 
     except (OSError, ValueError, RuntimeError) as e:

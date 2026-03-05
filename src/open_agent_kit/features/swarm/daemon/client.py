@@ -45,14 +45,25 @@ class SwarmWorkerClient:
         Returns:
             Search results from the swarm worker.
         """
-        logger.debug("HTTP POST %s query=%r type=%s limit=%d", SWARM_API_PATH_SEARCH, query, search_type, limit)
+        logger.debug(
+            "HTTP POST %s query=%r type=%s limit=%d",
+            SWARM_API_PATH_SEARCH,
+            query,
+            search_type,
+            limit,
+        )
         resp = await self._client.post(
             self._url(SWARM_API_PATH_SEARCH),
             json={"query": query, "search_type": search_type, "limit": limit},
             timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 2.0,
         )
         resp.raise_for_status()
-        logger.debug("HTTP POST %s -> %d (%d bytes)", SWARM_API_PATH_SEARCH, resp.status_code, len(resp.content))
+        logger.debug(
+            "HTTP POST %s -> %d (%d bytes)",
+            SWARM_API_PATH_SEARCH,
+            resp.status_code,
+            len(resp.content),
+        )
         return cast(dict[str, Any], resp.json())
 
     async def call(
@@ -73,7 +84,13 @@ class SwarmWorkerClient:
         Returns:
             Tool call result from the target node.
         """
-        logger.debug("HTTP POST %s tool=%s target=%s timeout=%.1f", SWARM_API_PATH_TOOL_CALL, tool_name, target_project, timeout)
+        logger.debug(
+            "HTTP POST %s tool=%s target=%s timeout=%.1f",
+            SWARM_API_PATH_TOOL_CALL,
+            tool_name,
+            target_project,
+            timeout,
+        )
         resp = await self._client.post(
             self._url(SWARM_API_PATH_TOOL_CALL),
             json={
@@ -84,7 +101,12 @@ class SwarmWorkerClient:
             timeout=timeout + 2.0,
         )
         resp.raise_for_status()
-        logger.debug("HTTP POST %s -> %d (%d bytes)", SWARM_API_PATH_TOOL_CALL, resp.status_code, len(resp.content))
+        logger.debug(
+            "HTTP POST %s -> %d (%d bytes)",
+            SWARM_API_PATH_TOOL_CALL,
+            resp.status_code,
+            len(resp.content),
+        )
         return cast(dict[str, Any], resp.json())
 
     async def broadcast(
@@ -100,14 +122,21 @@ class SwarmWorkerClient:
         Returns:
             Aggregated results from all nodes.
         """
-        logger.debug("HTTP POST %s tool=%s timeout=%.1f", SWARM_API_PATH_BROADCAST, tool_name, timeout)
+        logger.debug(
+            "HTTP POST %s tool=%s timeout=%.1f", SWARM_API_PATH_BROADCAST, tool_name, timeout
+        )
         resp = await self._client.post(
             self._url(SWARM_API_PATH_BROADCAST),
             json={"tool_name": tool_name, "arguments": arguments},
             timeout=timeout + 2.0,
         )
         resp.raise_for_status()
-        logger.debug("HTTP POST %s -> %d (%d bytes)", SWARM_API_PATH_BROADCAST, resp.status_code, len(resp.content))
+        logger.debug(
+            "HTTP POST %s -> %d (%d bytes)",
+            SWARM_API_PATH_BROADCAST,
+            resp.status_code,
+            len(resp.content),
+        )
         return cast(dict[str, Any], resp.json())
 
     async def nodes(self) -> dict[str, Any]:
@@ -122,7 +151,12 @@ class SwarmWorkerClient:
             timeout=SWARM_HEALTH_CHECK_TIMEOUT_SECONDS,
         )
         resp.raise_for_status()
-        logger.debug("HTTP GET %s -> %d (%d bytes)", SWARM_API_PATH_NODES, resp.status_code, len(resp.content))
+        logger.debug(
+            "HTTP GET %s -> %d (%d bytes)",
+            SWARM_API_PATH_NODES,
+            resp.status_code,
+            len(resp.content),
+        )
         return cast(dict[str, Any], resp.json())
 
     async def heartbeat(self, team_id: str) -> dict[str, Any]:
