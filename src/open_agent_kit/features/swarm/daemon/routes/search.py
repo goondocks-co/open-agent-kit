@@ -106,15 +106,21 @@ async def swarm_search(body: SearchRequest) -> dict:
         result_count = sum(
             len(g.get("matches", [])) for g in grouped.get(SWARM_RESPONSE_KEY_RESULTS, [])
         )
-        logger.info("Swarm search complete: %d results across %d projects",
-                     result_count, len(grouped.get(SWARM_RESPONSE_KEY_RESULTS, [])))
+        logger.info(
+            "Swarm search complete: %d results across %d projects",
+            result_count,
+            len(grouped.get(SWARM_RESPONSE_KEY_RESULTS, [])),
+        )
         if result_count > 0:
             for group in grouped.get(SWARM_RESPONSE_KEY_RESULTS, []):
                 slug = group.get("project_slug", "unknown")
                 matches = group.get("matches", [])
-                logger.debug("  project=%s matches=%d top_score=%.3f",
-                             slug, len(matches),
-                             max((m.get("score") or 0 for m in matches), default=0))
+                logger.debug(
+                    "  project=%s matches=%d top_score=%.3f",
+                    slug,
+                    len(matches),
+                    max((m.get("score") or 0 for m in matches), default=0),
+                )
         return grouped
     except Exception as exc:
         logger.error("Swarm search failed: %s", exc)
