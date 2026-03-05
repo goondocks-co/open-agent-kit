@@ -8,6 +8,8 @@
  *   POST /federate-tool  — generic federated tool fan-out to peers (relay_token auth)
  *   POST /tool-call      — node-to-node tool call routing (relay_token auth)
  *   GET  /metrics        — federation cache + latency metrics (relay_token auth)
+ *   GET  /swarm/advisories — cached swarm advisories (relay_token auth)
+ *   POST /health-check   — swarm-initiated health check (callback_token auth via DO)
  *   GET  /health         — status check
  */
 
@@ -154,6 +156,20 @@ export default {
     if (path === "/api/swarm/config" && (request.method === "PUT" || request.method === "GET")) {
       const authErr = validateRelayTokenHttp(request, env);
       if (authErr) return withCors(authErr, request);
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request), request);
+    }
+
+    // ----- GET /swarm/advisories — cached swarm advisories from last heartbeat -----
+    if (path === "/swarm/advisories" && request.method === "GET") {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return withCors(authErr, request);
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request), request);
+    }
+
+    // ----- POST /health-check — swarm-initiated health check -----
+    if (path === "/health-check" && request.method === "POST") {
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request), request);
     }

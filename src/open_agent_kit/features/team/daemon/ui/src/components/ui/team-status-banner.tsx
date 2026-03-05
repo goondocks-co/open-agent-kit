@@ -1,7 +1,10 @@
 import { Link } from "react-router-dom";
-import { Cloud, Users, ArrowRight } from "lucide-react";
+import { Cloud, Users, ArrowRight, AlertTriangle, Info, AlertOctagon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/hooks/use-status";
+import { useSwarmAdvisories, type SwarmAdvisory } from "@/hooks/use-swarm";
+
+const OAK_RELEASES_URL = "https://github.com/goondocks-co/open-agent-kit/releases";
 
 interface TeamStatusBannerProps {
     status: DaemonStatus | undefined;
@@ -28,9 +31,41 @@ function StatusDot({ color }: { color: "green" | "blue" }) {
     );
 }
 
+const ADVISORY_STYLES: Record<SwarmAdvisory["severity"], { pill: string; icon: typeof AlertTriangle }> = {
+    info: { pill: "bg-blue-500/10 text-blue-700 dark:text-blue-400", icon: Info },
+    warning: { pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400", icon: AlertTriangle },
+    critical: { pill: "bg-red-500/10 text-red-700 dark:text-red-400", icon: AlertOctagon },
+};
+
+function AdvisoryPill({ advisory }: { advisory: SwarmAdvisory }) {
+    const style = ADVISORY_STYLES[advisory.severity];
+    const Icon = style.icon;
+
+    // For version_drift, show a concise clickable pill linking to releases
+    if (advisory.type === "version_drift" && advisory.metadata?.minimum) {
+        return (
+            <a href={OAK_RELEASES_URL} target="_blank" rel="noopener noreferrer">
+                <Pill className={cn(style.pill, "cursor-pointer hover:opacity-80")}>
+                    <Icon className="w-3 h-3" />
+                    min {String(advisory.metadata.minimum)} recommended
+                </Pill>
+            </a>
+        );
+    }
+
+    return (
+        <Pill className={style.pill}>
+            <Icon className="w-3 h-3" />
+            {advisory.message}
+        </Pill>
+    );
+}
+
 export function TeamStatusBanner({ status }: TeamStatusBannerProps) {
     const team = status?.team;
     const cloudRelay = status?.cloud_relay;
+    const { data: advisoryData } = useSwarmAdvisories();
+    const advisories = advisoryData?.advisories ?? [];
 
     const showBanner = team?.configured || cloudRelay?.connected;
     if (!showBanner) return null;
@@ -63,6 +98,11 @@ export function TeamStatusBanner({ status }: TeamStatusBannerProps) {
                         {team?.members_online} {team?.members_online === 1 ? "node" : "nodes"}
                     </Pill>
                 )}
+
+                {/* Swarm advisories */}
+                {advisories.map((advisory, i) => (
+                    <AdvisoryPill key={`${advisory.type}-${i}`} advisory={advisory} />
+                ))}
             </div>
 
             <Link

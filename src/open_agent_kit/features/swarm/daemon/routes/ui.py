@@ -37,6 +37,7 @@ async def favicon() -> Response:
 @router.get("/deploy", response_class=HTMLResponse)
 @router.get("/agents", response_class=HTMLResponse)
 @router.get("/logs", response_class=HTMLResponse)
+@router.get("/config", response_class=HTMLResponse)
 # Catch-all for sub-routes
 @router.get("/deploy/{rest:path}", response_class=HTMLResponse)
 @router.get("/agents/{rest:path}", response_class=HTMLResponse)

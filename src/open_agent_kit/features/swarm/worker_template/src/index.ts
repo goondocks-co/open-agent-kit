@@ -9,6 +9,8 @@
  *   POST /api/swarm/broadcast   — broadcast a tool call to all teams (swarm_token auth)
  *   GET  /api/swarm/nodes       — list registered teams (swarm_token auth)
  *   POST /api/swarm/unregister  — remove a team from the swarm (swarm_token auth)
+ *   POST /api/swarm/health-check — health check for a specific team (swarm_token auth)
+ *   GET|PUT /api/swarm/config/min-oak-version — version policy config (swarm_token auth)
  *   GET  /health                — status check
  */
 
@@ -30,7 +32,7 @@ function corsHeaders(request: Request): Record<string, string> {
   if (!origin || !LOCALHOST_ORIGIN_RE.test(origin)) return {};
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Methods": "POST, GET, PUT, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 }
@@ -106,6 +108,22 @@ export default {
 
     // ----- POST /api/swarm/unregister — remove a team from the swarm -----
     if (path === "/api/swarm/unregister" && request.method === "POST") {
+      const authErr = validateSwarmToken(request, env);
+      if (authErr) return withCors(authErr, request);
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request), request);
+    }
+
+    // ----- POST /api/swarm/health-check — health check for a specific team -----
+    if (path === "/api/swarm/health-check" && request.method === "POST") {
+      const authErr = validateSwarmToken(request, env);
+      if (authErr) return withCors(authErr, request);
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request), request);
+    }
+
+    // ----- GET/PUT /api/swarm/config/min-oak-version — version policy config -----
+    if (path === "/api/swarm/config/min-oak-version" && (request.method === "GET" || request.method === "PUT")) {
       const authErr = validateSwarmToken(request, env);
       if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);

@@ -17,6 +17,18 @@ interface SwarmStatusResponse {
     error?: string;
 }
 
+export interface SwarmAdvisory {
+    type: "version_drift" | "capability_gap" | "general";
+    severity: "info" | "warning" | "critical";
+    message: string;
+    metadata?: Record<string, unknown>;
+}
+
+interface SwarmAdvisoriesResponse {
+    advisories: SwarmAdvisory[];
+    connected: boolean;
+}
+
 interface JoinSwarmParams {
     swarm_url: string;
     swarm_token: string;
@@ -61,5 +73,16 @@ export function useLeaveSwarm() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["swarm", "status"] });
         },
+    });
+}
+
+/** Poll swarm advisories (version drift, capability gaps, etc.). */
+export function useSwarmAdvisories() {
+    return usePowerQuery<SwarmAdvisoriesResponse>({
+        queryKey: ["swarm", "advisories"],
+        queryFn: ({ signal }) =>
+            fetchJson<SwarmAdvisoriesResponse>(API_ENDPOINTS.SWARM_ADVISORIES, { signal }),
+        refetchInterval: SWARM_STATUS_POLL_MS,
+        pollCategory: "standard",
     });
 }
