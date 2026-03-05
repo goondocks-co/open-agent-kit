@@ -35,6 +35,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _format_result(result: Any) -> str:
+    """Serialize *result* to JSON, prepending any ``warning`` field."""
+    warning = result.get("warning", "") if isinstance(result, dict) else ""
+    text = json.dumps(result, indent=2)
+    if warning:
+        text = f"Warning: {warning}\n\n{text}"
+    return text
+
+
 def create_swarm_tools(
     client: SwarmWorkerClient,
     enabled_tools: set[str] | None = None,
@@ -98,7 +107,7 @@ def create_swarm_tools(
                     search_type=args.get("search_type", "all"),
                     limit=args.get("limit", 10),
                 )
-                return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+                return {"content": [{"type": "text", "text": _format_result(result)}]}
             except Exception as e:
                 logger.error("Swarm search failed: %s", e)
                 return {
@@ -168,9 +177,21 @@ def create_swarm_tools(
                 )
                 return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
             except Exception as e:
-                logger.error("Swarm call failed: %s", e)
+                error_msg = str(e)
+                # Surface capability-mismatch details from 422 responses.
+                if hasattr(e, "response"):
+                    try:
+                        detail = e.response.json()
+                        if "team_capabilities" in detail:
+                            error_msg = (
+                                f"{detail.get('error', error_msg)}\n"
+                                f"Available capabilities: {detail['team_capabilities']}"
+                            )
+                    except Exception:
+                        pass
+                logger.error("Swarm call failed: %s", error_msg)
                 return {
-                    "content": [{"type": "text", "text": f"Swarm call error: {e}"}],
+                    "content": [{"type": "text", "text": f"Swarm call error: {error_msg}"}],
                     "is_error": True,
                 }
 
@@ -203,7 +224,7 @@ def create_swarm_tools(
                     arguments=args.get("arguments", {}),
                     timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
                 )
-                return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+                return {"content": [{"type": "text", "text": _format_result(result)}]}
             except Exception as e:
                 logger.error("Swarm broadcast failed: %s", e)
                 return {
