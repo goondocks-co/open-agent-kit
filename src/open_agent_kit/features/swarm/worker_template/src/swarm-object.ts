@@ -38,7 +38,7 @@ const RATE_LIMIT_MAX_REGISTRATIONS = 10; // per IP per window
  * Schema version — bump whenever DDL changes.
  * Checked via KV so DDL only runs once per deployment, not on every wake.
  */
-const SWARM_SCHEMA_VERSION = 2;
+const SWARM_SCHEMA_VERSION = 3;
 
 /** Canonical set of swarm capabilities — unknown strings are stripped on registration. */
 const KNOWN_CAPABILITIES = new Set([
@@ -141,6 +141,15 @@ export class SwarmObject implements DurableObject {
     try {
       this.state.storage.sql.exec(
         `ALTER TABLE teams ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'standard'`,
+      );
+    } catch {
+      // Column already exists — expected after first migration.
+    }
+
+    // Migration: add tool_names column for capability-aware routing.
+    try {
+      this.state.storage.sql.exec(
+        `ALTER TABLE teams ADD COLUMN tool_names TEXT NOT NULL DEFAULT '[]'`,
       );
     } catch {
       // Column already exists — expected after first migration.
@@ -255,8 +264,8 @@ export class SwarmObject implements DurableObject {
     // when re-registering a known team_id.
     this.state.storage.sql.exec(
       `INSERT OR REPLACE INTO teams
-        (team_id, project_slug, callback_url, capabilities, node_count, oak_version, registered_at, last_heartbeat, callback_token, sensitivity)
-       VALUES (?, ?, ?, ?, ?, ?,
+        (team_id, project_slug, callback_url, capabilities, tool_names, node_count, oak_version, registered_at, last_heartbeat, callback_token, sensitivity)
+       VALUES (?, ?, ?, ?, ?, ?, ?,
          COALESCE((SELECT registered_at FROM teams WHERE team_id = ?), ?),
          ?,
          COALESCE((SELECT callback_token FROM teams WHERE team_id = ?), ?),
@@ -265,6 +274,7 @@ export class SwarmObject implements DurableObject {
       body.project_slug,
       body.callback_url,
       JSON.stringify(this.validateCapabilities(body.capabilities ?? [])),
+      JSON.stringify(body.tool_names ?? []),
       body.node_count ?? 1,
       body.oak_version ?? "",
       body.team_id,
@@ -299,8 +309,12 @@ export class SwarmObject implements DurableObject {
 
     const now = new Date().toISOString();
     this.state.storage.sql.exec(
-      `UPDATE teams SET last_heartbeat = ? WHERE team_id = ?`,
+      `UPDATE teams SET last_heartbeat = ?, capabilities = ?, node_count = ?, oak_version = ?, tool_names = ? WHERE team_id = ?`,
       now,
+      JSON.stringify(body.capabilities ?? []),
+      body.node_count ?? 0,
+      body.oak_version ?? "",
+      JSON.stringify(body.tool_names ?? []),
       body.team_id,
     );
 
@@ -523,6 +537,7 @@ export class SwarmObject implements DurableObject {
         team_id: team.team_id,
         project_slug: team.project_slug,
         capabilities: team.capabilities,
+        tool_names: team.tool_names,
         node_count: team.node_count,
         oak_version: team.oak_version,
         registered_at: team.registered_at,
@@ -620,6 +635,7 @@ export class SwarmObject implements DurableObject {
         project_slug: row.project_slug as string,
         callback_url: row.callback_url as string,
         capabilities: JSON.parse((row.capabilities as string) || "[]"),
+        tool_names: JSON.parse((row.tool_names as string) || "[]"),
         node_count: row.node_count as number,
         oak_version: row.oak_version as string,
         registered_at: row.registered_at as string,
@@ -674,6 +690,7 @@ export class SwarmObject implements DurableObject {
       project_slug: row.project_slug as string,
       callback_url: row.callback_url as string,
       capabilities: JSON.parse((row.capabilities as string) || "[]"),
+      tool_names: JSON.parse((row.tool_names as string) || "[]"),
       node_count: row.node_count as number,
       oak_version: row.oak_version as string,
       registered_at: row.registered_at as string,
