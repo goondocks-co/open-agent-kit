@@ -16,9 +16,25 @@ description: "OAK Team - semantic code search and persistent memory for AI assis
 # Uses a CLI command placeholder rendered from CI config (cli_command).
 command: "{oak-cli-command} team mcp"
 
-# Server capabilities (for documentation/validation)
+# Server capabilities (documentation only — not read at runtime).
+# Actual tool registration lives in daemon/mcp_server.py and daemon/mcp_tools.py.
 capabilities:
   tools:
-    - oak_search    # Semantic search across code and memories
-    - oak_remember  # Store observations for future sessions
-    - oak_context   # Get curated context for a task
+    # Core CI tools
+    - oak_search            # Semantic search across code, memories, plans, sessions
+    - oak_remember          # Store observations for future sessions
+    - oak_context           # Get curated context for a task
+    - oak_resolve_memory    # Mark observations as resolved/superseded
+    - oak_sessions          # List recent coding sessions
+    - oak_memories          # Browse stored observations
+    - oak_stats             # Project intelligence statistics
+    - oak_activity          # Tool execution history for a session
+    - oak_archive_memories  # Archive observations from search index
+    - oak_fetch             # Fetch full content for chunk IDs
+    - oak_nodes             # List connected team relay nodes
+    # Swarm tools (cross-project federation)
+    - swarm_search          # Search across all swarm projects
+    - swarm_nodes           # List swarm teams and status
+    - swarm_call            # Call a tool on a specific swarm project
+    - swarm_broadcast       # Broadcast a tool call to all swarm projects
+    - swarm_status          # Swarm connection status
