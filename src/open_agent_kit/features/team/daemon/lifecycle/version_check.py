@@ -6,21 +6,9 @@ checks into a single module.
 
 import asyncio
 import logging
-import os
-import shlex
-import signal
-import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from open_agent_kit.features.team.constants import (
-    CI_RESTART_SHUTDOWN_DELAY_SECONDS,
-    CI_RESTART_SUBPROCESS_DELAY_SECONDS,
-    CI_STALE_INSTALL_DETECTED_LOG,
-)
-from open_agent_kit.features.team.daemon.state import get_state
-from open_agent_kit.utils.platform import get_process_detach_kwargs
 
 if TYPE_CHECKING:
     from open_agent_kit.features.team.daemon.state import DaemonState
@@ -122,39 +110,27 @@ def _is_install_stale() -> bool:
     return False
 
 
-async def _trigger_stale_restart() -> None:
-    """Spawn a self-restart when the daemon's install path is gone."""
-    from open_agent_kit.features.team.cli_command import (
-        resolve_ci_cli_command,
-    )
-
-    state = get_state()
-    if not state.project_root:
-        return
-    cli_command = resolve_ci_cli_command(state.project_root)
-    restart_cmd = (
-        f"sleep {CI_RESTART_SUBPROCESS_DELAY_SECONDS} && {shlex.quote(cli_command)} team restart"
-    )
-    subprocess.Popen(
-        ["/bin/sh", "-c", restart_cmd],
-        cwd=str(state.project_root),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        **get_process_detach_kwargs(),
-    )
-    await asyncio.sleep(CI_RESTART_SHUTDOWN_DELAY_SECONDS)
-    os.kill(os.getpid(), signal.SIGTERM)
-
-
 async def periodic_version_check() -> None:
-    """Periodically check for version/upgrade issues (power-state-aware)."""
+    """Periodically check for version/upgrade issues (power-state-aware).
+
+    Detects version mismatches and stale installs, setting state flags that
+    the UI reads to show the upgrade banner.  Does NOT auto-restart — the
+    user controls restarts via the UI banner or ``oak team restart``.
+
+    Previous versions auto-restarted the daemon when a mismatch was detected,
+    but this caused infinite restart loops when the condition persisted
+    (e.g. editable installs, stamp file mismatches), accumulating hundreds
+    of orphaned daemon processes.
+    """
     from open_agent_kit.features.team.constants import (
         CI_VERSION_CHECK_INTERVAL_SECONDS,
         POWER_STATE_DEEP_SLEEP,
     )
+    from open_agent_kit.features.team.daemon.state import get_state
 
     state = get_state()
+    _stale_logged = False
+
     while True:
         await asyncio.sleep(CI_VERSION_CHECK_INTERVAL_SECONDS)
 
@@ -173,28 +149,24 @@ async def periodic_version_check() -> None:
         except (OSError, ValueError, RuntimeError):
             logger.debug("Upgrade check failed", exc_info=True)
 
-        # Auto-restart when installed package version is newer than running
-        # version.  This handles in-place package upgrades where the daemon's
-        # Python process still runs old bytecode but the on-disk package has
-        # already been replaced.  File-existence checks (_is_install_stale)
-        # miss this case because the files still exist -- just with new content.
         if state.update_available:
             from open_agent_kit.constants import VERSION
 
-            logger.warning(
-                "Package version mismatch (running=%s, installed=%s) "
-                "-- auto-restarting daemon to pick up new code",
+            logger.info(
+                "Package update available (running=%s, installed=%s) "
+                "-- restart daemon to pick up new code",
                 VERSION,
                 state.installed_version,
             )
-            await _trigger_stale_restart()
-            return  # Stop loop -- process is about to exit
 
-        # Detect stale installation (e.g. package upgraded, old cellar deleted)
+        # Detect stale installation (e.g. package upgraded, old cellar deleted).
+        # Log once to avoid spamming; the UI banner handles user notification.
         try:
-            if _is_install_stale():
-                logger.warning(CI_STALE_INSTALL_DETECTED_LOG)
-                await _trigger_stale_restart()
-                return  # Stop loop -- process is about to exit
+            if _is_install_stale() and not _stale_logged:
+                logger.warning(
+                    "Stale install detected (Python executable or static "
+                    "assets missing from disk). Restart the daemon to resolve."
+                )
+                _stale_logged = True
         except (OSError, RuntimeError):
             logger.debug("Stale install check failed", exc_info=True)

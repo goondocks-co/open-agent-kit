@@ -8,14 +8,15 @@ import {
     Rocket,
     Bot,
     ScrollText,
+    Settings,
     PanelLeftClose,
     PanelLeft,
     Sun,
     Moon,
-    Monitor,
-    RotateCcw,
+    Laptop,
+    RefreshCw,
 } from "lucide-react";
-import { Button } from "@oak/ui/components/ui/button";
+import { cn } from "@oak/ui/lib/utils";
 import { useTheme } from "@oak/ui/components/theme-provider";
 import { useSwarmStatus } from "@/hooks/use-swarm-status";
 import { useRestart } from "@/hooks/use-restart";
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
     { to: "/deploy", icon: Rocket, label: "Deploy" },
     { to: "/agents", icon: Bot, label: "Agents" },
     { to: "/logs", icon: ScrollText, label: "Logs" },
+    { to: "/config", icon: Settings, label: "Settings" },
 ] as const;
 
 export default function Layout() {
@@ -90,67 +92,80 @@ export default function Layout() {
                 </nav>
 
                 {/* Footer */}
-                <div className="border-t p-2 space-y-2">
-                    {/* Theme switcher */}
-                    <div className="flex justify-center gap-1">
-                        <Button
-                            variant={theme === "light" ? "secondary" : "ghost"}
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setTheme("light")}
-                        >
-                            <Sun className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                            variant={theme === "system" ? "secondary" : "ghost"}
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setTheme("system")}
-                        >
-                            <Monitor className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                            variant={theme === "dark" ? "secondary" : "ghost"}
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setTheme("dark")}
-                        >
-                            <Moon className="h-3.5 w-3.5" />
-                        </Button>
-                    </div>
+                <div className={cn("border-t", collapsed ? "p-2" : "p-4")}>
+                    {/* Restart daemon button */}
+                    <button
+                        onClick={() => restart()}
+                        disabled={isRestarting}
+                        title="Restart daemon"
+                        aria-label="Restart daemon"
+                        className={cn(
+                            "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground mb-2",
+                            collapsed && "justify-center px-2",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                        )}
+                    >
+                        <RefreshCw className={cn("w-4 h-4 flex-shrink-0", isRestarting && "animate-spin")} />
+                        {!collapsed && <span>{isRestarting ? "Restarting..." : "Restart"}</span>}
+                    </button>
 
                     {/* Restart error */}
                     {restartError && (
-                        <p className="text-xs text-destructive px-1 truncate" title={restartError}>
+                        <p className="text-xs text-destructive px-1 truncate mb-2" title={restartError}>
                             {restartError}
                         </p>
                     )}
 
-                    {/* Restart + Collapse */}
-                    <div className="flex justify-between">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => restart()}
-                            disabled={isRestarting}
-                            title="Restart daemon"
+                    {/* Theme switcher */}
+                    <div className={cn(
+                        "flex items-center rounded-md bg-muted/50 mb-2",
+                        collapsed ? "flex-col gap-1 px-1 py-2" : "justify-between px-2 py-1"
+                    )}>
+                        <button
+                            onClick={() => setTheme("light")}
+                            title="Light theme"
+                            aria-label="Light theme"
+                            className={cn("p-1.5 rounded-sm transition-all", theme === "light" && "bg-background shadow-sm")}
                         >
-                            <RotateCcw className={`h-3.5 w-3.5 ${isRestarting ? "animate-spin" : ""}`} />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={toggleCollapse}
+                            <Sun className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setTheme("system")}
+                            title="System theme"
+                            aria-label="System theme"
+                            className={cn("p-1.5 rounded-sm transition-all", theme === "system" && "bg-background shadow-sm")}
                         >
-                            {collapsed ? (
-                                <PanelLeft className="h-3.5 w-3.5" />
-                            ) : (
-                                <PanelLeftClose className="h-3.5 w-3.5" />
-                            )}
-                        </Button>
+                            <Laptop className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setTheme("dark")}
+                            title="Dark theme"
+                            aria-label="Dark theme"
+                            className={cn("p-1.5 rounded-sm transition-all", theme === "dark" && "bg-background shadow-sm")}
+                        >
+                            <Moon className="w-4 h-4" />
+                        </button>
                     </div>
+
+                    {/* Collapse toggle */}
+                    <button
+                        onClick={toggleCollapse}
+                        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className={cn(
+                            "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
+                            collapsed && "justify-center px-2"
+                        )}
+                    >
+                        {collapsed ? (
+                            <PanelLeft className="w-4 h-4" />
+                        ) : (
+                            <>
+                                <PanelLeftClose className="w-4 h-4" />
+                                <span>Collapse</span>
+                            </>
+                        )}
+                    </button>
                 </div>
             </aside>
 

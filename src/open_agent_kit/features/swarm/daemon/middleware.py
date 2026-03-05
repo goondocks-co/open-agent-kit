@@ -39,6 +39,13 @@ _AUTH_EXEMPT_PREFIXES: tuple[str, ...] = (
     "/logo.png",
 )
 
+# High-frequency polling paths — suppress "Auth OK" debug noise.
+_AUTH_QUIET_PATHS: tuple[str, ...] = (
+    "/api/swarm/status",
+    "/api/logs",
+    "/api/config",
+)
+
 # Dashboard HTML routes served without auth (SPA shell).
 _DASHBOARD_ROUTES: tuple[str, ...] = (
     "/",
@@ -134,6 +141,7 @@ class TokenAuthMiddleware:
         auth_value = headers.get(SWARM_AUTH_HEADER_NAME)
 
         if not auth_value:
+            logger.debug("Auth rejected: missing header for %s %s", method, path)
             await _send_json_error(send, HTTPStatus.UNAUTHORIZED, SWARM_AUTH_ERROR_MISSING)
             return
 
@@ -144,8 +152,11 @@ class TokenAuthMiddleware:
             return
 
         if not hmac.compare_digest(parts[1], state.auth_token):
+            logger.debug("Auth rejected: invalid token for %s %s", method, path)
             await _send_json_error(send, HTTPStatus.UNAUTHORIZED, SWARM_AUTH_ERROR_INVALID_TOKEN)
             return
 
-        # Token valid -- proceed
+        # Token valid -- proceed (suppress debug noise for polling paths)
+        if path not in _AUTH_QUIET_PATHS:
+            logger.debug("Auth OK: %s %s", method, path)
         await self.app(scope, receive, send)

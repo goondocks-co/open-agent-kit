@@ -281,6 +281,8 @@ CREATE TABLE IF NOT EXISTS resolution_events (
 
 ## governance_audit_events
 
+Audit trail for governance rule enforcement actions.
+
 ```sql
 CREATE TABLE IF NOT EXISTS governance_audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -308,6 +310,8 @@ CREATE TABLE IF NOT EXISTS governance_audit_events (
 
 ## team_outbox
 
+Outbound sync queue for team relay events.
+
 ```sql
 CREATE TABLE IF NOT EXISTS team_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,6 +330,8 @@ CREATE TABLE IF NOT EXISTS team_outbox (
 **Key indexes:** `idx_team_outbox_status`, `idx_team_outbox_created`, `idx_team_outbox_flush`
 
 ## team_pull_cursor
+
+Inbound sync cursor tracking per relay server.
 
 ```sql
 CREATE TABLE IF NOT EXISTS team_pull_cursor (

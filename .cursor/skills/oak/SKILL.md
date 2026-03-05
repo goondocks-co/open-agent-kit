@@ -1,62 +1,65 @@
 ---
 name: oak
 description: >-
-  Search, analyze, and query your codebase using semantic vector search, impact
-  analysis, and direct SQL queries against the Oak CI database. Use when finding
-  semantically related code, analyzing code change impacts before refactoring,
-  discovering component relationships, recalling what was discussed or decided
-  in previous sessions, looking up past conversations or outcomes, querying
-  session history, checking activity logs, browsing memories, running SQL
-  against activities.db, or exploring patterns that grep would miss. Do NOT use
-  for storing memories — use oak_remember or oak-dev ci remember instead.
+  Find out what happened, what was decided, and what depends on what in your
+  codebase. Use this skill whenever you need to: recall past decisions or
+  discussions ("what did we decide about X?"), check what might break before
+  refactoring ("what depends on this module?"), find conceptually similar code
+  that grep would miss ("all the retry/backoff logic"), look up past bugs,
+  gotchas, or learnings, query session history or agent run costs, store
+  observations about the codebase, or understand how components connect
+  end-to-end. Powered by semantic search, memory lookup, and direct SQL against
+  the Oak CI database (.oak/ci/activities.db). Also use when the user mentions
+  oak_search, oak_context, oak_remember, oak_resolve_memory, or asks to run
+  queries against activities.db.
 allowed-tools: Bash, Read
 user-invocable: true
 ---
 
 # OAK
 
-Search, analyze, and query your codebase using semantic vector search, impact analysis, and direct SQL queries against the Oak CI database.
+Prefer MCP tools (`oak_search`, `oak_context`, `oak_remember`, `oak_resolve_memory`) over CLI when available. Fall back to CLI or direct SQL for queries not covered by MCP tools. If `.oak/ci/activities.db` does not exist, inform the user to run `oak-dev team start` first.
 
 ## Quick Start
 
-### Semantic search
+### MCP tools (preferred when available)
 
-```bash
-# Find code related to a concept
-oak-dev ci search "form validation logic" --type code
+```
+# Semantic search for code or memories
+oak_search(query="form validation logic", search_type="code")
+oak_search(query="authentication refactor decision", search_type="memory")
 
-# Find similar patterns
-oak-dev ci search "retry with exponential backoff" --type code
+# Impact analysis — get context for a specific file
+oak_context(task="impact of changes to executor", files=["src/features/agent_runtime/executor.py"])
+
+# Store an observation
+oak_remember(observation="The backup dir uses a 3-tier priority", memory_type="decision")
+
+# Mark a resolved gotcha
+oak_resolve_memory(id="<uuid from oak_search>")
 ```
 
-### Impact analysis
+### CLI fallback
 
 ```bash
-# Find all code related to what you're changing
-oak-dev ci search "AuthService token validation" --type code -n 20
+# Semantic search
+oak-dev ci search "retry with exponential backoff" --type code
+
+# Browse memories by type
+oak-dev ci memories --type decision
 
 # Get impact context for a specific file
 oak-dev ci context "impact of changes" -f src/services/auth.py
 ```
 
-### Session and memory lookup
+### Direct SQL (for aggregations, history, custom queries)
 
 ```bash
-# What happened in recent sessions?
+# Recent sessions
 sqlite3 -readonly -header -column .oak/ci/activities.db \
   "SELECT id, agent, title, status, datetime(created_at_epoch, 'unixepoch', 'localtime') as started FROM sessions ORDER BY created_at_epoch DESC LIMIT 5;"
 
-# Search past decisions and learnings
-oak-dev ci search "authentication refactor decision" --type memory
-
-# Browse memories by type
-oak-dev ci memories --type decision
-```
-
-### Database query
-
-```bash
-# Open the database in read-only mode
+# Query anything
 sqlite3 -readonly -header -column .oak/ci/activities.db "SELECT count(*) FROM sessions;"
 ```
 
@@ -132,9 +135,9 @@ sqlite3 -readonly -header -column .oak/ci/activities.db "YOUR QUERY HERE"
 | `session_relationships` | Semantic session relationships | `session_a_id`, `session_b_id`, `relationship_type`, `similarity_score` |
 | `agent_schedules` | Cron scheduling state | `task_name`, `cron_expression`, `enabled`, `additional_prompt`, `last_run_at`, `next_run_at` |
 | `resolution_events` | Cross-machine resolution propagation | `observation_id`, `action`, `source_machine_id`, `applied`, `content_hash` |
-| `governance_audit_events` |  |  |
-| `team_outbox` |  |  |
-| `team_pull_cursor` |  |  |
+| `governance_audit_events` | Audit trail for governance actions | `session_id`, `agent`, `tool_name`, `action`, `rule_id`, `enforcement_mode`, `created_at` |
+| `team_outbox` | Outbound sync queue for team relay | `event_type`, `payload`, `source_machine_id`, `content_hash`, `status`, `created_at` |
+| `team_pull_cursor` | Inbound sync cursor per relay | `server_url`, `cursor_value`, `updated_at` |
 | `team_sync_state` | Team relay sync metadata | `key`, `value`, `updated_at` |
 | `team_reconcile_state` | Per-machine reconciliation tracking | `machine_id`, `last_reconcile_at`, `last_hash_count`, `last_missing_count` |
 <!-- END GENERATED CORE TABLES -->
@@ -310,11 +313,11 @@ Reports are written to `oak/insights/` (git-tracked, team-shareable).
 
 ## Deep Dives
 
-For detailed guidance, consult the reference documents:
+Consult these reference documents when the task requires deeper detail:
 
-- **`references/finding-related-code.md`** — Semantic search for code relationships and patterns
-- **`references/impact-analysis.md`** — Assessing change impact before refactoring
-- **`references/querying-databases.md`** — Full database querying guide with schema overview
-- **`references/schema.md`** — Complete CREATE TABLE statements, indexes, FTS5 tables (auto-generated)
-- **`references/queries.md`** — Advanced query cookbook with joins, aggregations, and debugging queries
-- **`references/analysis-playbooks.md`** — Structured multi-query workflows for usage, productivity, and activity analysis
+- **`references/finding-related-code.md`** — Consult when searching for semantically related code across files or discovering component relationships
+- **`references/impact-analysis.md`** — Consult before refactoring to assess blast radius and identify affected consumers
+- **`references/querying-databases.md`** — Consult when writing custom SQL queries beyond the essential queries above
+- **`references/schema.md`** — Consult for complete CREATE TABLE statements, indexes, and FTS5 table definitions (auto-generated)
+- **`references/queries.md`** — Consult for advanced joins, aggregations, window functions, and debugging queries
+- **`references/analysis-playbooks.md`** — Consult when running structured multi-query workflows for usage, productivity, or activity analysis

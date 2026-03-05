@@ -12,12 +12,19 @@ from fastapi.staticfiles import StaticFiles
 from open_agent_kit.features.agent_runtime.executor import AgentExecutor
 from open_agent_kit.features.agent_runtime.registry import AgentRegistry
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_LOG_LEVEL,
+    CI_CONFIG_SWARM_KEY_LOG_ROTATION,
     SWARM_AGENTS_DEFINITIONS_DIR,
     SWARM_AUTH_ENV_VAR,
+    SWARM_DAEMON_DEFAULT_LOG_LEVEL,
+    SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT,
+    SWARM_LOG_ROTATION_DEFAULT_ENABLED,
+    SWARM_LOG_ROTATION_DEFAULT_MAX_SIZE_MB,
 )
 from open_agent_kit.features.swarm.daemon.middleware import TokenAuthMiddleware
 from open_agent_kit.features.swarm.daemon.routes import (
     agents,
+    config,
     deploy,
     fetch,
     health,
@@ -40,13 +47,36 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown lifecycle."""
-    logger.info("Swarm daemon starting")
-
     # Initialize SwarmWorkerClient from env vars set by SwarmDaemonManager
     state = get_swarm_state()
     swarm_url = os.environ.get("OAK_SWARM_URL", "")
     swarm_token = os.environ.get("OAK_SWARM_TOKEN", "")
     swarm_id = os.environ.get("OAK_SWARM_ID", "")
+
+    # Read persisted log level from config (set via PUT /api/config)
+    from open_agent_kit.features.swarm.config import load_swarm_config
+    from open_agent_kit.features.swarm.daemon.logging_setup import configure_swarm_logging
+
+    swarm_config = load_swarm_config(swarm_id) or {} if swarm_id else {}
+    log_level = swarm_config.get(CI_CONFIG_SWARM_KEY_LOG_LEVEL, SWARM_DAEMON_DEFAULT_LOG_LEVEL)
+
+    # Read log rotation settings from config
+    rotation = swarm_config.get(CI_CONFIG_SWARM_KEY_LOG_ROTATION, {})
+    rotation_enabled = rotation.get("enabled", SWARM_LOG_ROTATION_DEFAULT_ENABLED)
+    rotation_max_size_mb = rotation.get("max_size_mb", SWARM_LOG_ROTATION_DEFAULT_MAX_SIZE_MB)
+    rotation_backup_count = rotation.get("backup_count", SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT)
+
+    # Configure structured logging BEFORE any log calls so all output
+    # goes through the file handler with [INFO]/[DEBUG]/etc. tags.
+    configure_swarm_logging(
+        swarm_id,
+        log_level=log_level,
+        max_size_mb=rotation_max_size_mb,
+        backup_count=rotation_backup_count,
+        rotation_enabled=rotation_enabled,
+    )
+    logger.info("Swarm daemon starting (log_level=%s)", log_level)
+    logger.debug("Environment: OAK_SWARM_ID=%s OAK_SWARM_URL=%s", swarm_id, swarm_url[:50] if swarm_url else "<unset>")
     custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "")
 
     # When a custom domain is configured, derive the effective URL so the UI
@@ -86,6 +116,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             project_root=None,
         )
         registry.load_all()
+        logger.debug("Agent definitions dir: %s", definitions_dir)
+        logger.debug("Loaded templates: %s", [t.name for t in registry.templates.values()])
 
         agent_config = AgentConfig(enabled=True)
         executor = AgentExecutor(
@@ -142,6 +174,7 @@ def create_app() -> FastAPI:
     app.include_router(tools.router)
     app.include_router(agents.router)
     app.include_router(restart.router)
+    app.include_router(config.router)
     app.include_router(logs.router)
     app.include_router(deploy.router)
 

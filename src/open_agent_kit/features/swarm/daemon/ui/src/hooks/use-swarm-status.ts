@@ -14,6 +14,6 @@ export function useSwarmStatus() {
         queryKey: ["swarm", "status"],
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.SWARM_STATUS, { signal }),
         refetchInterval: SWARM_STATUS_POLL_MS,
-        pollCategory: "standard",
+        pollCategory: "heartbeat",
     });
 }

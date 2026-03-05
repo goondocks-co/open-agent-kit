@@ -227,7 +227,7 @@ def _normalize_domain(raw: str) -> str:
     domain = raw.strip()
     for prefix in ("https://", "http://"):
         if domain.lower().startswith(prefix):
-            domain = domain[len(prefix):]
+            domain = domain[len(prefix) :]
     return domain.rstrip("/")
 
 

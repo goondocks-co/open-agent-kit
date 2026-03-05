@@ -49,6 +49,8 @@ async def swarm_nodes() -> dict:
             data[SWARM_RESPONSE_KEY_TEAMS] = [
                 _enrich_team(t) for t in data[SWARM_RESPONSE_KEY_TEAMS]
             ]
+        node_count = len(data.get(SWARM_RESPONSE_KEY_TEAMS, []))
+        logger.debug("Nodes list: %d nodes", node_count)
         return data
     except Exception as exc:
         logger.error("Swarm nodes request failed: %s", exc)
@@ -61,9 +63,11 @@ async def remove_node(request: _RemoveNodeRequest) -> dict:
     state = get_swarm_state()
     if not state.http_client:
         return {SWARM_RESPONSE_KEY_ERROR: SWARM_ERROR_NOT_CONNECTED}
+    logger.info("Removing node: team_id=%s", request.team_id)
     try:
         result = await state.http_client.unregister(request.team_id)
+        logger.info("Node removed: team_id=%s", request.team_id)
         return {"success": True, **result}
     except Exception as exc:
-        logger.error("Swarm node remove failed: %s", exc)
+        logger.error("Swarm node remove failed: team_id=%s error=%s", request.team_id, exc)
         return {SWARM_RESPONSE_KEY_ERROR: str(exc)}

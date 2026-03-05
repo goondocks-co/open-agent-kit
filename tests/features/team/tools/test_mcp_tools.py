@@ -292,8 +292,8 @@ class TestMCPToolDefinitions:
     """Validates MCP_TOOLS schema definitions."""
 
     def test_tool_count(self) -> None:
-        """There are exactly 15 tools defined (10 CI + 5 swarm)."""
-        assert len(MCP_TOOLS) == 15
+        """There are exactly 16 tools defined (11 CI + 5 swarm)."""
+        assert len(MCP_TOOLS) == 16
 
     def test_all_tools_have_required_fields(self) -> None:
         """Each tool definition has name, description, and inputSchema."""

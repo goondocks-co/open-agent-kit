@@ -9,11 +9,11 @@ interface LogsResponse {
     error?: string;
 }
 
-export function useLogs(lines: number = 100) {
+export function useLogs(lines: number = 500, enabled: boolean = true) {
     return usePowerQuery<LogsResponse>({
         queryKey: ["logs", lines],
         queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.LOGS}?lines=${lines}`, { signal }),
-        refetchInterval: LOGS_POLL_MS,
-        pollCategory: "standard",
+        refetchInterval: enabled ? LOGS_POLL_MS : false,
+        pollCategory: "realtime",
     });
 }

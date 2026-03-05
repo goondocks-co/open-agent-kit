@@ -19,6 +19,7 @@ from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_URL,
     SWARM_AUTH_ENV_VAR,
     SWARM_AUTH_EPHEMERAL_TOKEN_BYTES,
+    SWARM_CLI_COMMAND_ENV_VAR,
     SWARM_DAEMON_API_PATH_HEALTH,
     SWARM_DAEMON_CONFIG_FILE,
     SWARM_DAEMON_DEFAULT_PORT,
@@ -168,6 +169,12 @@ class SwarmDaemonManager(BaseDaemonManager):
         # Environment
         env = os.environ.copy()
         env["OAK_SWARM_ID"] = self.swarm_id
+
+        # Pass the CLI command so the daemon can self-restart using the
+        # correct binary (oak / oak-dev / oak-beta).
+        from open_agent_kit.features.team.cli_command import detect_invoked_cli_command
+
+        env[SWARM_CLI_COMMAND_ENV_VAR] = detect_invoked_cli_command()
 
         # Generate auth token for daemon authentication
         import secrets

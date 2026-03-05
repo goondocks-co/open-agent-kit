@@ -66,7 +66,21 @@ SWARM_DAEMON_API_PATH_AGENTS: Final[str] = "/api/agents"
 
 # Daemon UI API paths (local swarm daemon - UI endpoints)
 SWARM_DAEMON_API_PATH_RESTART: Final[str] = "/api/restart"
+SWARM_DAEMON_API_PATH_CONFIG: Final[str] = "/api/config"
 SWARM_DAEMON_API_PATH_LOGS: Final[str] = "/api/logs"
+
+# Config keys (inside swarm config.json — daemon-level settings)
+CI_CONFIG_SWARM_KEY_LOG_LEVEL: Final[str] = "log_level"
+SWARM_DAEMON_DEFAULT_LOG_LEVEL: Final[str] = "INFO"
+CI_CONFIG_SWARM_KEY_LOG_ROTATION: Final[str] = "log_rotation"
+
+# Log rotation defaults and limits (must match UI constants)
+SWARM_LOG_ROTATION_DEFAULT_ENABLED: Final[bool] = True
+SWARM_LOG_ROTATION_DEFAULT_MAX_SIZE_MB: Final[int] = 10
+SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT: Final[int] = 3
+SWARM_LOG_ROTATION_MIN_SIZE_MB: Final[int] = 1
+SWARM_LOG_ROTATION_MAX_SIZE_MB: Final[int] = 100
+SWARM_LOG_ROTATION_MAX_BACKUP_COUNT: Final[int] = 10
 SWARM_DAEMON_API_PATH_DEPLOY_STATUS: Final[str] = "/api/deploy/status"
 SWARM_DAEMON_API_PATH_DEPLOY_AUTH: Final[str] = "/api/deploy/auth"
 SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD: Final[str] = "/api/deploy/scaffold"
@@ -134,6 +148,11 @@ SWARM_DEPLOY_WRANGLER_WHOAMI_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_WHOAMI
 SWARM_DEPLOY_NPM_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPM_NOT_FOUND
 SWARM_DEPLOY_NPX_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPX_NOT_FOUND
 
+# CLI command env var — set by SwarmDaemonManager.start() so the daemon
+# process knows which CLI binary (oak / oak-dev / oak-beta) to use for
+# self-restart.  Falls back to "oak" when unset.
+SWARM_CLI_COMMAND_ENV_VAR: Final[str] = "OAK_CLI_COMMAND"
+
 # Authentication
 SWARM_AUTH_ENV_VAR: Final[str] = "OAK_SWARM_DAEMON_TOKEN"
 SWARM_AUTH_HEADER_NAME: Final[str] = "authorization"
@@ -188,9 +207,7 @@ SWARM_MESSAGE_NPM_INSTALL_FAILED: Final[str] = "npm install failed: {output}"
 SWARM_MESSAGE_DEPLOY_FAILED: Final[str] = "Deploy failed: {output}"
 SWARM_MESSAGE_RESTARTING: Final[str] = "Restarting swarm daemon..."
 SWARM_MESSAGE_RESTARTED: Final[str] = "Swarm daemon restarted at http://localhost:{port}"
-SWARM_MESSAGE_RESTART_FAILED: Final[str] = (
-    "Failed to restart swarm daemon. Check logs: {log_file}"
-)
+SWARM_MESSAGE_RESTART_FAILED: Final[str] = "Failed to restart swarm daemon. Check logs: {log_file}"
 SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
     "Swarm daemon failed to start. Check logs for details."
 )

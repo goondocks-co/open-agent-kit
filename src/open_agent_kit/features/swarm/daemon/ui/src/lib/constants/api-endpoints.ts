@@ -26,5 +26,6 @@ export const API_ENDPOINTS = {
     // System
     HEALTH: "/api/health",
     RESTART: "/api/restart",
+    CONFIG: "/api/config",
     LOGS: "/api/logs",
 } as const;

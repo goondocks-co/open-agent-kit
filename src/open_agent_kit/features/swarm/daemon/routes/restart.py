@@ -1,7 +1,8 @@
 """Self-restart route for the swarm daemon.
 
-Spawns a detached subprocess that re-launches the uvicorn server after the
-current process exits, then sends SIGTERM to trigger graceful shutdown.
+Spawns a detached subprocess that runs ``oak swarm restart -n <swarm_id>``
+after the current process exits, then sends SIGTERM to trigger graceful
+shutdown.
 
 Uses ``/bin/sh`` (not ``sys.executable``) for the restarter subprocess because
 after a package-manager upgrade the old Python interpreter that started this
@@ -14,14 +15,13 @@ import os
 import shlex
 import signal
 import subprocess
-import sys
 from http import HTTPStatus
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from open_agent_kit.features.swarm.constants import (
+    SWARM_CLI_COMMAND_ENV_VAR,
     SWARM_DAEMON_API_PATH_RESTART,
-    SWARM_DAEMON_DEFAULT_PORT,
     SWARM_RESPONSE_KEY_STATUS,
     SWARM_RESTART_ERROR_NO_SWARM_ID,
     SWARM_RESTART_ERROR_SPAWN_DETAIL,
@@ -40,26 +40,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=[SWARM_RESTART_ROUTE_TAG])
 
-# /bin/sh is guaranteed to exist on all POSIX systems.
+# /bin/sh is guaranteed to exist on all POSIX systems.  We use it instead of
+# sys.executable because after a Homebrew (or similar) upgrade the old Python
+# interpreter path baked into the running process may no longer exist on disk.
 _SHELL = "/bin/sh"
 
+# Default CLI command — matches CI_CLI_COMMAND_DEFAULT from team constants.
+_CLI_COMMAND_DEFAULT = "oak"
 
-def _build_uvicorn_command(port: int) -> str:
-    """Build the uvicorn command string to re-launch this daemon.
 
-    Re-uses ``sys.executable`` to ensure the same Python is used.  The port
-    is taken from the currently running server so it binds to the same address.
+def _resolve_cli_command() -> str:
+    """Resolve the CLI command to use for the restart subprocess.
+
+    Reads ``OAK_CLI_COMMAND`` env var (set by ``SwarmDaemonManager.start()``
+    at daemon launch time).  This ensures the restart uses the same binary
+    that started the daemon (e.g. ``oak-dev`` in development).
+
+    Falls back to ``shutil.which("oak")`` if the env var is unset.
     """
-    python = shlex.quote(sys.executable)
-    return (
-        f"{python} -m uvicorn"
-        " open_agent_kit.features.swarm.daemon.server:create_app"
-        " --factory"
-        " --host 127.0.0.1"
-        f" --port {port}"
-        " --log-level warning"
-        " --no-access-log"
-    )
+    import shutil
+
+    from_env = os.environ.get(SWARM_CLI_COMMAND_ENV_VAR, "").strip()
+    if from_env:
+        # Resolve full path so the detached subprocess doesn't depend on $PATH
+        resolved = shutil.which(from_env)
+        return resolved or from_env
+
+    path = shutil.which(_CLI_COMMAND_DEFAULT)
+    return path or _CLI_COMMAND_DEFAULT
 
 
 async def _delayed_shutdown() -> None:
@@ -70,13 +78,13 @@ async def _delayed_shutdown() -> None:
 
 
 @router.post(SWARM_DAEMON_API_PATH_RESTART)
-async def restart_daemon(request: Request) -> dict:
+async def restart_daemon() -> dict:
     """Trigger a graceful self-restart of the swarm daemon.
 
     Spawns a detached ``/bin/sh`` subprocess that waits for the current process
-    to exit, then re-launches the uvicorn server with the same environment
-    variables.  After spawning, schedules a SIGTERM to shut down the current
-    process.
+    to exit, then runs ``oak swarm restart -n <swarm_id>`` to bring the daemon
+    back up.  This routes through ``SwarmDaemonManager.restart()`` which
+    properly manages the PID file and process lifecycle (stop → start).
     """
     swarm_id = os.environ.get("OAK_SWARM_ID", "")
     if not swarm_id:
@@ -85,27 +93,21 @@ async def restart_daemon(request: Request) -> dict:
             detail=SWARM_RESTART_ERROR_NO_SWARM_ID,
         )
 
-    # Determine the port the server is currently listening on.
-    port = request.url.port or SWARM_DAEMON_DEFAULT_PORT
-
-    uvicorn_cmd = _build_uvicorn_command(port)
+    cli_command = _resolve_cli_command()
+    cli_restart = f"{shlex.quote(cli_command)} swarm restart -n {shlex.quote(swarm_id)}"
 
     # Build a shell one-liner: sleep (so the current process can finish
-    # shutting down), then re-launch uvicorn with the same env vars.
-    restart_cmd = f"sleep {SWARM_RESTART_SUBPROCESS_DELAY_SECONDS} && {uvicorn_cmd}"
-
-    # Pass through swarm env vars so the new process inherits them.
-    env = os.environ.copy()
+    # shutting down), then restart via the CLI which manages the full lifecycle.
+    restart_cmd = f"sleep {SWARM_RESTART_SUBPROCESS_DELAY_SECONDS} && {cli_restart}"
 
     detach_kwargs = get_process_detach_kwargs()
-    logger.info(SWARM_RESTART_LOG_SPAWNING, uvicorn_cmd)
+    logger.info(SWARM_RESTART_LOG_SPAWNING, cli_restart)
     try:
         subprocess.Popen(
             [_SHELL, "-c", restart_cmd],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            env=env,
             **detach_kwargs,
         )
     except OSError as exc:

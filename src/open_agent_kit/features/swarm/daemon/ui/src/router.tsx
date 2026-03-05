@@ -6,6 +6,7 @@ import Nodes from "./pages/Nodes";
 import Deploy from "./pages/Deploy";
 import Agents from "./pages/Agents";
 import Logs from "./pages/Logs";
+import Config from "./pages/Config";
 
 export const router = createBrowserRouter([
     {
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
             { path: "deploy", element: <Deploy /> },
             { path: "agents", element: <Agents /> },
             { path: "logs", element: <Logs /> },
+            { path: "config", element: <Config /> },
             { path: "*", element: <Navigate to="/" replace /> },
         ],
     },

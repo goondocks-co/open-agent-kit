@@ -1292,15 +1292,26 @@ class CloudRelayClient(RelayClient):
                 )
                 response.raise_for_status()
                 data = response.json()
-                tools: list[dict[str, Any]] = data.get(CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY, [])
+                tools: list[dict[str, Any]] = data.get(
+                    CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY, []
+                )
                 return tools
             except Exception as exc:
                 if attempt < max_attempts:
-                    logger.debug("Tool list fetch attempt %d failed, retrying in %.0fs: %s", attempt, delay, exc)
+                    logger.debug(
+                        "Tool list fetch attempt %d failed, retrying in %.0fs: %s",
+                        attempt,
+                        delay,
+                        exc,
+                    )
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 8.0)
                 else:
-                    logger.warning("Failed to get tool list from daemon after %d attempts: %s", max_attempts, exc)
+                    logger.warning(
+                        "Failed to get tool list from daemon after %d attempts: %s",
+                        max_attempts,
+                        exc,
+                    )
                     return []
         return []  # unreachable, satisfies type checker
 

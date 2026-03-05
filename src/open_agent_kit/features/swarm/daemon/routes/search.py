@@ -38,8 +38,8 @@ def _normalize_match(item: dict) -> dict:
     """
     result_type = item.pop("_result_type", item.get("type", "unknown"))
     content = (
-        item.get("summary")       # memory
-        or item.get("preview")    # plan / session
+        item.get("summary")  # memory
+        or item.get("preview")  # plan / session
         or item.get("observation")
         or item.get("content", "")
     )
@@ -80,8 +80,7 @@ def _group_results_by_project(raw: dict) -> dict:
 
     result: dict = {
         SWARM_RESPONSE_KEY_RESULTS: [
-            {"project_slug": slug, "matches": matches}
-            for slug, matches in grouped.items()
+            {"project_slug": slug, "matches": matches} for slug, matches in grouped.items()
         ],
     }
     # Preserve errors from the swarm worker response.
@@ -97,10 +96,26 @@ async def swarm_search(body: SearchRequest) -> dict:
     """Search across swarm nodes."""
     state = get_swarm_state()
     if not state.http_client:
+        logger.warning("Search request dropped: not connected to swarm worker")
         return {SWARM_RESPONSE_KEY_ERROR: SWARM_ERROR_NOT_CONNECTED, SWARM_RESPONSE_KEY_RESULTS: []}
+    logger.info("Swarm search: query=%r type=%s limit=%d", body.query, body.search_type, body.limit)
     try:
         raw = await state.http_client.search(body.query, body.search_type, body.limit)
-        return _group_results_by_project(raw)
+        logger.debug("Swarm search raw response keys: %s", list(raw.keys()))
+        grouped = _group_results_by_project(raw)
+        result_count = sum(
+            len(g.get("matches", [])) for g in grouped.get(SWARM_RESPONSE_KEY_RESULTS, [])
+        )
+        logger.info("Swarm search complete: %d results across %d projects",
+                     result_count, len(grouped.get(SWARM_RESPONSE_KEY_RESULTS, [])))
+        if result_count > 0:
+            for group in grouped.get(SWARM_RESPONSE_KEY_RESULTS, []):
+                slug = group.get("project_slug", "unknown")
+                matches = group.get("matches", [])
+                logger.debug("  project=%s matches=%d top_score=%.3f",
+                             slug, len(matches),
+                             max((m.get("score") or 0 for m in matches), default=0))
+        return grouped
     except Exception as exc:
         logger.error("Swarm search failed: %s", exc)
         return {SWARM_RESPONSE_KEY_ERROR: str(exc), SWARM_RESPONSE_KEY_RESULTS: []}

@@ -46,7 +46,7 @@ def _tail_lines(path: Path, n: int) -> list[str]:
 
 
 @router.get(SWARM_DAEMON_API_PATH_LOGS)
-async def get_logs(lines: int = Query(default=100, ge=1, le=1000)) -> dict:
+async def get_logs(lines: int = Query(default=500, ge=1, le=10000)) -> dict:
     """Tail the daemon log file."""
     log_path = _find_log_file()
     if not log_path or not log_path.exists():
