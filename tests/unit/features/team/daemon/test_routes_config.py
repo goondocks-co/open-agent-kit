@@ -43,16 +43,14 @@ def tmp_project_with_config(tmp_path: Path):
     oak_dir.mkdir(parents=True)
 
     config_file = oak_dir.parent / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 team:
   embedding:
     provider: ollama
     model: bge-m3
     base_url: http://localhost:11434
   log_level: INFO
-"""
-    )
+""")
 
     return tmp_path
 

@@ -242,8 +242,7 @@ class TestSkillManifestLoad:
     def test_load_from_file(self, tmp_path):
         """Load a valid SKILL.md file."""
         skill_file = tmp_path / "SKILL.md"
-        skill_file.write_text(
-            """---
+        skill_file.write_text("""---
 name: test-skill
 description: A test skill for loading
 ---
@@ -251,8 +250,7 @@ description: A test skill for loading
 # Test Skill
 
 This is the body.
-"""
-        )
+""")
         manifest = SkillManifest.load(skill_file)
         assert manifest.name == "test-skill"
         assert manifest.description == "A test skill for loading"
@@ -264,30 +262,26 @@ This is the body.
         skills_dir = tmp_path / ".claude" / "skills" / "test-skill"
         skills_dir.mkdir(parents=True)
         skill_file = skills_dir / "SKILL.md"
-        skill_file.write_text(
-            """---
+        skill_file.write_text("""---
 name: test-skill
 description: A test skill
 ---
 
 Body
-"""
-        )
+""")
         manifest = SkillManifest.load(skill_file)
         assert manifest.location == "project"
 
     def test_load_sets_location_user(self, tmp_path):
         """Loading from unknown location sets location to 'user'."""
         skill_file = tmp_path / "SKILL.md"
-        skill_file.write_text(
-            """---
+        skill_file.write_text("""---
 name: test-skill
 description: A test skill
 ---
 
 Body
-"""
-        )
+""")
         manifest = SkillManifest.load(skill_file)
         assert manifest.location == "user"
 

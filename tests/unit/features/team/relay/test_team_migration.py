@@ -32,8 +32,7 @@ def db_conn(db_path):
     conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
     conn.execute("INSERT INTO schema_version (version) VALUES (8)")
     # prompt_batches and activities are needed for the stub cleanup query
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS prompt_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
@@ -42,10 +41,8 @@ def db_conn(db_path):
             created_at_epoch INTEGER NOT NULL,
             content_hash TEXT
         )
-    """
-    )
-    conn.execute(
-        """
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS activities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
@@ -54,8 +51,7 @@ def db_conn(db_path):
             timestamp TEXT NOT NULL,
             timestamp_epoch INTEGER NOT NULL
         )
-    """
-    )
+    """)
     conn.commit()
     yield conn
     conn.close()

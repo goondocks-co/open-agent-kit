@@ -124,15 +124,13 @@ def reembed_session_summaries(
 
     # Get all sessions with summaries stored in the sessions table
     conn = activity_store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT s.id, s.title, s.agent, s.project_root, s.created_at_epoch,
                s.summary
         FROM sessions s
         WHERE s.summary IS NOT NULL
         ORDER BY s.created_at_epoch DESC
-        """
-    )
+        """)
 
     sessions_processed = 0
     sessions_embedded = 0
@@ -187,15 +185,13 @@ def backfill_session_summaries(
 
     # Get all sessions with summaries from the sessions table
     conn = activity_store._get_connection()
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT s.id, s.title, s.agent, s.project_root, s.created_at_epoch,
                s.summary
         FROM sessions s
         WHERE s.summary IS NOT NULL
         ORDER BY s.created_at_epoch DESC
-        """
-    )
+        """)
 
     sessions_checked = 0
     sessions_embedded = 0

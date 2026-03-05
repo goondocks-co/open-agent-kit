@@ -32,8 +32,7 @@ class TestMigrateV3ToV4:
     @staticmethod
     def _create_v3_table(conn: sqlite3.Connection) -> None:
         """Create the agent_schedules table at v3 (no additional_prompt)."""
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE agent_schedules (
                 task_name TEXT PRIMARY KEY,
                 enabled INTEGER DEFAULT 1,
@@ -51,8 +50,7 @@ class TestMigrateV3ToV4:
                 updated_at_epoch INTEGER NOT NULL,
                 source_machine_id TEXT
             )
-        """
-        )
+        """)
 
     def test_adds_additional_prompt_column(self) -> None:
         """Migration should add additional_prompt column to agent_schedules."""

@@ -19,16 +19,14 @@ def temp_project(tmp_path):
 
     # Create minimal config.yaml
     config_file = oak_dir / "config.yaml"
-    config_file.write_text(
-        """
+    config_file.write_text("""
 version: "1.0"
 agents: [claude]
 features: [strategic-planning]
 skills:
   installed: []
   auto_install: true
-"""
-    )
+""")
 
     # Create .claude directory
     claude_dir = tmp_path / ".claude"
@@ -75,13 +73,11 @@ def package_skills_dir(tmp_path):
     plan_dir.mkdir()
 
     # Create feature manifest
-    (plan_dir / "manifest.yaml").write_text(
-        """
+    (plan_dir / "manifest.yaml").write_text("""
 name: strategic-planning
 description: Strategic planning feature
 version: 1.0.0
-"""
-    )
+""")
 
     # Create skills directory
     skills_dir = plan_dir / "skills"
@@ -90,8 +86,7 @@ version: 1.0.0
     # Create test skill
     test_skill_dir = skills_dir / "test-skill"
     test_skill_dir.mkdir()
-    (test_skill_dir / "SKILL.md").write_text(
-        """---
+    (test_skill_dir / "SKILL.md").write_text("""---
 name: test-skill
 description: A test skill for testing
 ---
@@ -99,14 +94,12 @@ description: A test skill for testing
 # Test Skill
 
 This is a test skill.
-"""
-    )
+""")
 
     # Create another skill
     other_skill_dir = skills_dir / "other-skill"
     other_skill_dir.mkdir()
-    (other_skill_dir / "SKILL.md").write_text(
-        """---
+    (other_skill_dir / "SKILL.md").write_text("""---
 name: other-skill
 description: Another test skill
 ---
@@ -114,8 +107,7 @@ description: Another test skill
 # Other Skill
 
 Another skill body.
-"""
-    )
+""")
 
     return features_dir
 

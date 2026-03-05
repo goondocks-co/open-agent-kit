@@ -104,13 +104,11 @@ def cleanup_cross_machine_pollution(
 
     # Find cross-machine observations: observation created by machine X
     # referencing a session owned by machine Y
-    cursor = conn.execute(
-        """
+    cursor = conn.execute("""
         SELECT mo.id FROM memory_observations mo
         JOIN sessions s ON mo.session_id = s.id
         WHERE mo.source_machine_id != s.source_machine_id
-        """
-    )
+        """)
     polluted_ids = [row[0] for row in cursor.fetchall()]
 
     if not polluted_ids:
