@@ -25,6 +25,7 @@ export interface SwarmTeam {
   project_slug: string;
   callback_url: string;
   capabilities: string[];
+  tool_names: string[];
   node_count: number;
   oak_version: string;
   registered_at: string;
@@ -44,6 +45,7 @@ export interface RegisterRequest {
   project_slug: string;
   callback_url: string;
   capabilities: string[];
+  tool_names: string[];
   node_count: number;
   oak_version: string;
   sensitivity?: string;
@@ -54,6 +56,7 @@ export interface SwarmSearchRequest {
   query: string;
   search_type?: string;
   limit?: number;
+  required_capabilities: string[];
 }
 
 /** Tool call request body */
@@ -61,17 +64,23 @@ export interface SwarmToolCallRequest {
   tool_name: string;
   arguments: Record<string, unknown>;
   target_project: string;
+  required_capabilities: string[];
 }
 
 /** Broadcast request body */
 export interface SwarmBroadcastRequest {
   tool_name: string;
   arguments: Record<string, unknown>;
+  required_capabilities: string[];
 }
 
 /** Heartbeat request body */
 export interface HeartbeatRequest {
   team_id: string;
+  capabilities: string[];
+  node_count: number;
+  oak_version: string;
+  tool_names: string[];
 }
 
 /** Unregister request body */
