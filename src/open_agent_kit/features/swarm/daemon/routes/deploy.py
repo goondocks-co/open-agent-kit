@@ -136,6 +136,19 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
     if not swarm_token:
         return {"success": False, "error": SWARM_DEPLOY_ERROR_NO_TOKEN}
 
+    # Get or generate agent token
+    from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
+
+    config = load_swarm_config(state.swarm_id) if state.swarm_id else {}
+    agent_token = config.get("agent_token", "") if config else ""
+    if not agent_token:
+        from open_agent_kit.features.swarm.scaffold import generate_token
+
+        agent_token = generate_token()
+        if state.swarm_id and config is not None:
+            config["agent_token"] = agent_token
+            save_swarm_config(state.swarm_id, config)
+
     try:
         worker_name = make_worker_name(state.swarm_id)
         await asyncio.to_thread(
@@ -145,6 +158,7 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
             worker_name=worker_name,
             custom_domain=state.custom_domain or None,
             force=body.force,
+            agent_token=agent_token,
         )
         _invalidate_scaffold_hash_cache()
         return {
@@ -277,12 +291,14 @@ async def deploy_settings(body: DeploySettingsRequest) -> dict:
     # Re-render wrangler.toml if scaffold exists
     scaffold_dir = _get_scaffold_dir()
     if scaffold_dir and scaffold_dir.is_dir():
+        agent_token = config.get("agent_token", "")
         await asyncio.to_thread(
             render_wrangler_config,
             scaffold_dir,
             state.swarm_token,
             worker_name,
             custom_domain or None,
+            agent_token,
         )
         _invalidate_scaffold_hash_cache()
 

@@ -86,7 +86,7 @@ def swarm_deploy(
         run_npm_install,
         run_wrangler_deploy,
     )
-    from open_agent_kit.features.swarm.scaffold import render_worker_template
+    from open_agent_kit.features.swarm.scaffold import generate_token, render_worker_template
     from open_agent_kit.utils import print_error, print_info
 
     config = load_swarm_config(name)
@@ -103,6 +103,13 @@ def swarm_deploy(
     swarm_token = config[CI_CONFIG_SWARM_KEY_TOKEN]
     worker_name = config[CI_CONFIG_SWARM_KEY_WORKER_NAME]
 
+    # Generate agent token for MCP endpoint
+    agent_token = config.get("agent_token")
+    if not agent_token:
+        agent_token = generate_token()
+        config["agent_token"] = agent_token
+        save_swarm_config(name, config)
+
     swarm_dir = get_swarm_config_dir(name)
     scaffold_dir = swarm_dir / SWARM_SCAFFOLD_WORKER_SUBDIR
 
@@ -110,6 +117,7 @@ def swarm_deploy(
         output_dir=scaffold_dir,
         swarm_token=swarm_token,
         worker_name=worker_name,
+        agent_token=agent_token,
         force=force,
     )
 

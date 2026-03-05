@@ -121,6 +121,7 @@ def render_worker_template(
     custom_domain: str | None = None,
     *,
     force: bool = False,
+    agent_token: str = "",
 ) -> Path:
     """Copy the Worker template to *output_dir* and render Jinja2 templates.
 
@@ -162,6 +163,7 @@ def render_worker_template(
         "swarm_token": swarm_token,
         "worker_name": worker_name,
         "custom_domain": custom_domain,
+        "agent_token": agent_token,
     }
 
     jinja_env = jinja2.Environment(
@@ -193,6 +195,7 @@ def render_wrangler_config(
     swarm_token: str,
     worker_name: str,
     custom_domain: str | None = None,
+    agent_token: str = "",
 ) -> None:
     """Re-render only ``wrangler.toml`` inside an existing scaffold directory.
 
@@ -206,6 +209,7 @@ def render_wrangler_config(
         "swarm_token": swarm_token,
         "worker_name": worker_name,
         "custom_domain": custom_domain,
+        "agent_token": agent_token,
     }
 
     jinja_env = jinja2.Environment(
