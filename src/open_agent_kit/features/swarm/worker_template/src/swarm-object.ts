@@ -40,6 +40,13 @@ const RATE_LIMIT_MAX_REGISTRATIONS = 10; // per IP per window
  */
 const SWARM_SCHEMA_VERSION = 2;
 
+/** Canonical set of swarm capabilities — unknown strings are stripped on registration. */
+const KNOWN_CAPABILITIES = new Set([
+  "swarm_search_v1",
+  "swarm_tools_v1",
+  "swarm_broadcast_v1",
+]);
+
 /** Private/reserved IPv4 CIDR ranges that must be blocked for SSRF prevention. */
 const PRIVATE_IP_RANGES: Array<{ base: number; mask: number }> = [
   { base: 0x7f000000, mask: 0xff000000 }, // 127.0.0.0/8
@@ -257,7 +264,7 @@ export class SwarmObject implements DurableObject {
       body.team_id,
       body.project_slug,
       body.callback_url,
-      JSON.stringify(body.capabilities ?? []),
+      JSON.stringify(this.validateCapabilities(body.capabilities ?? [])),
       body.node_count ?? 1,
       body.oak_version ?? "",
       body.team_id,
@@ -674,5 +681,18 @@ export class SwarmObject implements DurableObject {
       callback_token: row.callback_token as string,
       sensitivity: (row.sensitivity as string) || "standard",
     };
+  }
+
+  /**
+   * Filter capabilities to the known set.
+   * Unknown capabilities are logged and stripped.
+   */
+  private validateCapabilities(caps: string[]): string[] {
+    for (const cap of caps) {
+      if (!KNOWN_CAPABILITIES.has(cap)) {
+        console.warn(`Unknown capability rejected: ${cap}`);
+      }
+    }
+    return caps.filter((cap) => KNOWN_CAPABILITIES.has(cap));
   }
 }
