@@ -1134,7 +1134,7 @@ class CloudRelayClient(RelayClient):
             )
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get("advisories", [])
+                return list(data.get("advisories", []))
         except Exception as exc:
             logger.debug("Failed to fetch swarm advisories: %s", exc)
         return []
