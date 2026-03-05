@@ -457,8 +457,14 @@ class TeamService:
             Result dictionary with status.
         """
         logger.info(f"Updating MCP servers for agents: {agents}")
-        results = self.install_mcp_server(agents)
-        return {"status": "success", "agents": results}
+        results: dict[str, Any] = {"agents": self.install_mcp_server(agents)}
+
+        # Conditionally install swarm MCP server
+        if self._is_swarm_joined():
+            swarm_results = self._install_swarm_mcp_server(agents)
+            results["swarm"] = swarm_results
+
+        return {"status": "success", **results}
 
     def update_agent_notifications(self, agents: list[str]) -> dict:
         """Install or update agent notification handlers.
@@ -603,6 +609,23 @@ class TeamService:
             logger.warning(f"Failed to check MCP capability for {agent}: {e}")
             return False
 
+    def _is_swarm_joined(self) -> bool:
+        """Check if this project has joined a swarm.
+
+        Returns True if swarm URL and token are configured in .oak/config.yaml.
+        """
+        try:
+            config_file = self.project_root / ".oak" / "config.yaml"
+            if not config_file.is_file():
+                return False
+            import yaml
+
+            config = yaml.safe_load(config_file.read_text()) or {}
+            swarm = config.get("swarm", {})
+            return bool(swarm.get("url") and swarm.get("token"))
+        except Exception:
+            return False
+
     def install_mcp_server(self, agents: list[str]) -> dict[str, str]:
         """Install MCP server for agents that support it.
 
@@ -652,6 +675,54 @@ class TeamService:
             else:
                 results[agent] = f"error: {result.message}"
                 logger.warning(f"Failed to install MCP server for {agent}: {result.message}")
+
+        return results
+
+    def _install_swarm_mcp_server(self, agents: list[str]) -> dict[str, str]:
+        """Install swarm MCP server for agents that support MCP.
+
+        Only called when the project has joined a swarm.
+        """
+        from open_agent_kit.features.team.mcp import install_mcp_server
+
+        swarm_mcp_yaml = (
+            Path(__file__).resolve().parent.parent
+            / "swarm"
+            / "mcp"
+            / "mcp.yaml"
+        )
+        if not swarm_mcp_yaml.is_file():
+            return dict.fromkeys(agents, "skipped (swarm mcp config not found)")
+
+        import yaml
+
+        mcp_config = yaml.safe_load(swarm_mcp_yaml.read_text()) or {}
+        server_name = mcp_config.get("name", "oak-swarm")
+        command = mcp_config.get("command", f"{MCP_CLI_COMMAND_PLACEHOLDER} swarm mcp")
+        command = command.replace(
+            MCP_CLI_COMMAND_PLACEHOLDER,
+            resolve_ci_cli_command(self.project_root),
+        )
+
+        results = {}
+        for agent in agents:
+            if not self._get_agent_has_mcp(agent):
+                results[agent] = "skipped (no MCP support)"
+                continue
+
+            result = install_mcp_server(
+                project_root=self.project_root,
+                agent=agent,
+                server_name=server_name,
+                command=command,
+            )
+
+            if result.success:
+                results[agent] = "installed"
+                logger.info(f"Installed swarm MCP server for {agent} via {result.method}")
+            else:
+                results[agent] = f"error: {result.message}"
+                logger.warning(f"Failed swarm MCP install for {agent}: {result.message}")
 
         return results
 
