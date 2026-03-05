@@ -21,12 +21,21 @@ const STATUS_DOT_COLORS = {
     disconnected: "bg-gray-400",
 } as const;
 
+const CAPABILITY_COLORS: Record<string, string> = {
+    swarm_search_v1: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    swarm_tools_v1: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    swarm_broadcast_v1: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+} as const;
+
 interface SwarmNode {
     team_id: string;
     project_slug: string;
     status: string;
     last_seen?: string;
     capabilities?: string[];
+    tool_names?: string[];
+    oak_version?: string;
+    node_count?: number;
 }
 
 interface NodeCardProps {
@@ -72,17 +81,40 @@ export function NodeCard({ node, onRemove, isRemoving }: NodeCardProps) {
                         {node.last_seen && (
                             <p>Last seen: {new Date(node.last_seen).toLocaleString()}</p>
                         )}
+                        {node.oak_version && (
+                            <p>Version: {node.oak_version}</p>
+                        )}
+                        {node.node_count != null && (
+                            <p>Nodes: {node.node_count}</p>
+                        )}
                         {node.capabilities?.length ? (
                             <div className="flex gap-1 flex-wrap mt-2">
                                 {node.capabilities.map((cap) => (
                                     <span
                                         key={cap}
-                                        className="px-1.5 py-0.5 rounded bg-muted text-xs"
+                                        className={`px-1.5 py-0.5 rounded text-xs ${CAPABILITY_COLORS[cap] ?? "bg-muted"}`}
                                     >
-                                        {cap}
+                                        {cap.replace(/_v\d+$/, "").replace(/_/g, " ")}
                                     </span>
                                 ))}
                             </div>
+                        ) : null}
+                        {node.tool_names?.length ? (
+                            <details className="mt-2">
+                                <summary className="text-xs cursor-pointer hover:text-foreground">
+                                    {node.tool_names.length} tool{node.tool_names.length !== 1 ? "s" : ""} available
+                                </summary>
+                                <div className="flex gap-1 flex-wrap mt-1">
+                                    {node.tool_names.map((name) => (
+                                        <span
+                                            key={name}
+                                            className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono"
+                                        >
+                                            {name}
+                                        </span>
+                                    ))}
+                                </div>
+                            </details>
                         ) : null}
                     </div>
                 </CardContent>
