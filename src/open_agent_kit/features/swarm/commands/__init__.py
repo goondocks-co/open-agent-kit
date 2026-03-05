@@ -302,3 +302,30 @@ def swarm_status(
         print_info(f"  Port: {status['port']}")
     if status["running"] and status.get("pid"):
         print_info(f"  PID: {status['pid']}")
+
+
+@swarm_app.command("mcp")
+def swarm_mcp(
+    transport: str = typer.Option(
+        "stdio",
+        "--transport",
+        "-t",
+        help="MCP transport type.",
+    ),
+    name: str = typer.Option(
+        "",
+        "--name",
+        "-n",
+        help="Swarm name.",
+    ),
+    port: int = typer.Option(
+        0,
+        "--port",
+        "-p",
+        help="HTTP port for streamable-http transport.",
+    ),
+) -> None:
+    """Run the swarm MCP server."""
+    from open_agent_kit.features.swarm.commands.mcp import mcp_command
+
+    mcp_command(transport=transport, name=name, port=port)
