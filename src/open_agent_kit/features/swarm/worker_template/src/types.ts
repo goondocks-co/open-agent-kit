@@ -56,7 +56,7 @@ export interface SwarmSearchRequest {
   query: string;
   search_type?: string;
   limit?: number;
-  required_capabilities: string[];
+  required_capabilities?: string[];
 }
 
 /** Tool call request body */
@@ -64,14 +64,14 @@ export interface SwarmToolCallRequest {
   tool_name: string;
   arguments: Record<string, unknown>;
   target_project: string;
-  required_capabilities: string[];
+  required_capabilities?: string[];
 }
 
 /** Broadcast request body */
 export interface SwarmBroadcastRequest {
   tool_name: string;
   arguments: Record<string, unknown>;
-  required_capabilities: string[];
+  required_capabilities?: string[];
 }
 
 /** Heartbeat request body */

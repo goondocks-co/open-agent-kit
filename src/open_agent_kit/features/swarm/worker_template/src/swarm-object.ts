@@ -331,10 +331,10 @@ export class SwarmObject implements DurableObject {
       );
     }
 
-    // Exclude restricted teams from search fan-out.
-    const teams = this.getAllTeams().filter((t) => t.sensitivity !== "restricted");
+    // Only fan out to teams that advertise swarm_search_v1 (and any extra required caps).
+    const teams = this.getTeamsWithCapability("swarm_search_v1", body.required_capabilities);
     if (teams.length === 0) {
-      return Response.json({ results: [] });
+      return Response.json({ results: [], warning: "no teams with required capability" });
     }
 
     // Fan out search to all eligible teams
@@ -416,6 +416,16 @@ export class SwarmObject implements DurableObject {
       );
     }
 
+    if (!team.capabilities.includes("swarm_tools_v1")) {
+      return Response.json(
+        {
+          error: `team '${body.target_project}' does not advertise capability: swarm_tools_v1`,
+          team_capabilities: team.capabilities,
+        },
+        { status: 422 },
+      );
+    }
+
     try {
       const response = await this.fetchWithTimeout(
         `${team.callback_url}/tool-call`,
@@ -465,10 +475,10 @@ export class SwarmObject implements DurableObject {
       );
     }
 
-    // Exclude restricted teams from broadcast fan-out.
-    const teams = this.getAllTeams().filter((t) => t.sensitivity !== "restricted");
+    // Only fan out to teams that advertise swarm_tools_v1 (and any extra required caps).
+    const teams = this.getTeamsWithCapability("swarm_tools_v1", body.required_capabilities);
     if (teams.length === 0) {
-      return Response.json({ results: [] });
+      return Response.json({ results: [], warning: "no teams with required capability" });
     }
 
     // Fan out tool call to all eligible teams
@@ -711,5 +721,20 @@ export class SwarmObject implements DurableObject {
       }
     }
     return caps.filter((cap) => KNOWN_CAPABILITIES.has(cap));
+  }
+
+  /** Return non-restricted teams that advertise the given capability (plus any extras). */
+  private getTeamsWithCapability(
+    capability: string,
+    requiredCapabilities?: string[],
+  ): SwarmTeam[] {
+    const caps = requiredCapabilities?.length
+      ? [capability, ...requiredCapabilities]
+      : [capability];
+    return this.getAllTeams().filter(
+      (t) =>
+        t.sensitivity !== "restricted" &&
+        caps.every((c) => t.capabilities.includes(c)),
+    );
   }
 }
