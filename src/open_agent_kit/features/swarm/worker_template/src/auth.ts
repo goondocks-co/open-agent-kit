@@ -46,6 +46,51 @@ export function validateSwarmToken(
 }
 
 /**
+ * Validate a cloud agent request against the configured agent token.
+ *
+ * Returns null on success, or a 401 Response on failure.
+ */
+export function validateAgentToken(
+  request: Request,
+  env: Env,
+): Response | null {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(
+      JSON.stringify({
+        error: "missing Authorization header",
+        hint: "Set header: Authorization: Bearer <agent-token>",
+      }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  const [scheme, token] = authHeader.split(" ", 2);
+  if (scheme !== "Bearer" || !token) {
+    return new Response(
+      JSON.stringify({ error: "invalid Authorization header format" }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (!env.AGENT_TOKEN) {
+    return new Response(
+      JSON.stringify({ error: "agent token not configured" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (!timingSafeEqual(token, env.AGENT_TOKEN)) {
+    return new Response(
+      JSON.stringify({ error: "invalid agent token" }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  return null;
+}
+
+/**
  * Constant-time string comparison to prevent timing attacks.
  * Pads to max length and XORs all bytes to avoid leaking length via early return.
  *

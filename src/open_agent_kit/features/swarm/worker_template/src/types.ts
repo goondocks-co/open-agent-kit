@@ -13,6 +13,7 @@
 export interface Env {
   SWARM: DurableObjectNamespace;
   SWARM_TOKEN: string;
+  AGENT_TOKEN: string;
 }
 
 // ---------------------------------------------------------------------------
