@@ -122,6 +122,7 @@ SWARM_SENSITIVITY_RESTRICTED: Final[str] = "restricted"
 # Capability identifiers
 SWARM_CAPABILITY_SEARCH: Final[str] = "swarm_search_v1"
 SWARM_CAPABILITY_TOOLS: Final[str] = "swarm_tools_v1"
+SWARM_CAPABILITY_BROADCAST: Final[str] = "swarm_broadcast_v1"
 
 # Scaffold constants
 SWARM_WORKER_TEMPLATE_DIR: Final[str] = "worker_template"
