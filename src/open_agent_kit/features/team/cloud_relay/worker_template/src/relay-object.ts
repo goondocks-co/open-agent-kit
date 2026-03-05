@@ -63,6 +63,7 @@ const CAPABILITY_FEDERATED_TOOLS = "federated_tools_v1";
 const CAPABILITY_SWARM_SEARCH = "swarm_search_v1";
 const CAPABILITY_SWARM_TOOLS = "swarm_tools_v1";
 const CAPABILITY_SWARM_BROADCAST = "swarm_broadcast_v1";
+const CAPABILITY_SWARM_MANAGEMENT = "swarm_management_v1";
 const FEDERATED_TOOL_TIMEOUT_MS = 10_000;
 const FEDERATED_TOOL_MAX_RESULTS = 50;
 /** Probability of running TTL cleanup on each obs push (1%). */
@@ -140,6 +141,8 @@ export class RelayObject implements DurableObject {
   private swarmCallbackToken: string | null = null;
   /** Swarm heartbeat interval handle. */
   private swarmHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  /** Advisories received from the swarm in the last heartbeat response. */
+  private swarmAdvisories: Array<{ type: string; severity: string; message: string; metadata?: Record<string, unknown> }> = [];
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -321,6 +324,18 @@ export class RelayObject implements DurableObject {
         swarm_id: this.swarmId,
         sensitivity: this.swarmSensitivity,
       });
+    }
+
+    // --- Swarm advisories (consumed by team daemon) ---
+    if (url.pathname === "/swarm/advisories" && request.method === "GET") {
+      return Response.json({ advisories: this.swarmAdvisories });
+    }
+
+    // --- Swarm health check (called by swarm DO via callback) ---
+    if (url.pathname === "/health-check" && request.method === "POST") {
+      const authErr = this.validateRelayOrSwarmToken(request);
+      if (authErr) return authErr;
+      return this.handleSwarmHealthCheck();
     }
 
     if (url.pathname === "/health") {
@@ -1644,6 +1659,7 @@ export class RelayObject implements DurableObject {
       caps.add(CAPABILITY_SWARM_SEARCH);
       caps.add(CAPABILITY_SWARM_TOOLS);
       caps.add(CAPABILITY_SWARM_BROADCAST);
+      caps.add(CAPABILITY_SWARM_MANAGEMENT);
     }
 
     return [...caps].sort();
@@ -1865,6 +1881,18 @@ export class RelayObject implements DurableObject {
 
       if (!response.ok) {
         console.error("Swarm heartbeat failed:", response.status);
+        return;
+      }
+
+      // Parse advisories from the enriched heartbeat response.
+      try {
+        const data = (await response.json()) as {
+          status?: string;
+          advisories?: Array<{ type: string; severity: string; message: string; metadata?: Record<string, unknown> }>;
+        };
+        this.swarmAdvisories = data.advisories ?? [];
+      } catch {
+        // Response may not be JSON — ignore.
       }
     } catch (err) {
       console.error("Swarm heartbeat error:", err);
@@ -2051,6 +2079,39 @@ export class RelayObject implements DurableObject {
       }));
       console.error("Swarm nodes request failed:", message);
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Swarm health check (called by swarm DO)
+  // -----------------------------------------------------------------------
+
+  /** Return per-node health data from in-memory state. */
+  private handleSwarmHealthCheck(): Response {
+    const allSockets = this.state.getWebSockets();
+    const nodes: Array<{
+      machine_id: string;
+      oak_version: string;
+      capabilities: string[];
+      connected: boolean;
+    }> = [];
+
+    for (const ws of allSockets) {
+      const tags = this.state.getTags(ws);
+      const machineId = tags.find((t) => t.startsWith("machine:"))?.slice(8) ?? "unknown";
+      const meta = this.nodeMetadata.get(machineId);
+      nodes.push({
+        machine_id: machineId,
+        oak_version: meta?.oak_version ?? "",
+        capabilities: meta?.capabilities ?? [],
+        connected: true,
+      });
+    }
+
+    return Response.json({
+      team_id: this.getTeamId(),
+      project_slug: this.getProjectSlug(),
+      nodes,
+    });
   }
 
   // -----------------------------------------------------------------------

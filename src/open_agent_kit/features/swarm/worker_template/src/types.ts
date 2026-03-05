@@ -87,3 +87,54 @@ export interface HeartbeatRequest {
 export interface UnregisterRequest {
   team_id: string;
 }
+
+// ---------------------------------------------------------------------------
+// Advisory system
+// ---------------------------------------------------------------------------
+
+/** Advisory severity levels */
+export type AdvisorySeverity = "info" | "warning" | "critical";
+
+/** Advisory type identifiers */
+export type AdvisoryType = "version_drift" | "capability_gap" | "general";
+
+/** A swarm advisory returned in heartbeat responses */
+export interface SwarmAdvisory {
+  type: AdvisoryType;
+  severity: AdvisorySeverity;
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Heartbeat response body (enriched with advisories) */
+export interface HeartbeatResponse {
+  status: string;
+  advisories: SwarmAdvisory[];
+}
+
+// ---------------------------------------------------------------------------
+// Health check
+// ---------------------------------------------------------------------------
+
+/** Health check request body */
+export interface SwarmHealthCheckRequest {
+  team_slug: string;
+}
+
+/** Per-node health data returned from a team relay */
+export interface NodeHealthData {
+  machine_id: string;
+  oak_version: string;
+  uptime_seconds: number;
+  db_size?: number;
+  schema_version?: number;
+  indexing_status?: string;
+}
+
+/** Health check response for a single team */
+export interface SwarmHealthCheckResponse {
+  team_id: string;
+  project_slug: string;
+  nodes: NodeHealthData[];
+  error?: string;
+}

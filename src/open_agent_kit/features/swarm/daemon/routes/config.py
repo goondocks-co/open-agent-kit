@@ -16,12 +16,14 @@ from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_LOG_ROTATION,
     SWARM_DAEMON_API_PATH_CONFIG,
     SWARM_DAEMON_DEFAULT_LOG_LEVEL,
+    SWARM_ERROR_NOT_CONNECTED,
     SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT,
     SWARM_LOG_ROTATION_DEFAULT_ENABLED,
     SWARM_LOG_ROTATION_DEFAULT_MAX_SIZE_MB,
     SWARM_LOG_ROTATION_MAX_BACKUP_COUNT,
     SWARM_LOG_ROTATION_MAX_SIZE_MB,
     SWARM_LOG_ROTATION_MIN_SIZE_MB,
+    SWARM_RESPONSE_KEY_ERROR,
     SWARM_ROUTE_TAG,
 )
 from open_agent_kit.features.swarm.daemon.state import get_swarm_state
@@ -70,7 +72,7 @@ async def update_config(request: Request) -> dict:
 
     try:
         data = await request.json()
-    except (ValueError, Exception):
+    except Exception:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid JSON") from None
 
     config = load_swarm_config(state.swarm_id) or {}
@@ -135,3 +137,47 @@ async def update_config(request: Request) -> dict:
         "log_rotation": _get_log_rotation(config),
         "changed": changed,
     }
+
+
+# ---------------------------------------------------------------------------
+# min_oak_version — proxied to the swarm DO's swarm_config table
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/config/min-oak-version")
+async def get_min_oak_version() -> dict:
+    """Get the minimum OAK version configured on the swarm DO."""
+    state = get_swarm_state()
+    if not state.http_client:
+        return {SWARM_RESPONSE_KEY_ERROR: SWARM_ERROR_NOT_CONNECTED, "min_oak_version": ""}
+    try:
+        return await state.http_client.get_min_oak_version()
+    except Exception as exc:
+        logger.error("Failed to fetch min_oak_version: %s", exc)
+        return {SWARM_RESPONSE_KEY_ERROR: str(exc), "min_oak_version": ""}
+
+
+@router.put("/api/config/min-oak-version")
+async def set_min_oak_version(request: Request) -> dict:
+    """Set the minimum OAK version on the swarm DO."""
+    state = get_swarm_state()
+    if not state.http_client:
+        raise HTTPException(
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            detail=SWARM_ERROR_NOT_CONNECTED,
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid JSON") from None
+
+    try:
+        result = await state.http_client.set_min_oak_version(data)
+        logger.info("min_oak_version updated: %s", result.get("min_oak_version", ""))
+        return result
+    except Exception as exc:
+        logger.error("Failed to set min_oak_version: %s", exc)
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc

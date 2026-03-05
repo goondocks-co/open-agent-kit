@@ -14,6 +14,7 @@ export const API_ENDPOINTS = {
 
     // Node management
     SWARM_NODE_REMOVE: "/api/swarm/nodes/remove",
+    SWARM_HEALTH_CHECK: "/api/swarm/health-check",
 
     // Deploy
     DEPLOY_STATUS: "/api/deploy/status",
@@ -27,5 +28,6 @@ export const API_ENDPOINTS = {
     HEALTH: "/api/health",
     RESTART: "/api/restart",
     CONFIG: "/api/config",
+    CONFIG_MIN_OAK_VERSION: "/api/config/min-oak-version",
     LOGS: "/api/logs",
 } as const;

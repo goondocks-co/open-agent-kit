@@ -22,6 +22,7 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     SWARM_TOOL_BROADCAST,
     SWARM_TOOL_CALL,
+    SWARM_TOOL_HEALTH_CHECK,
     SWARM_TOOL_NODES,
     SWARM_TOOL_SEARCH,
     SWARM_TOOL_STATUS,
@@ -74,6 +75,7 @@ def create_swarm_tools(
         SWARM_TOOL_CALL,
         SWARM_TOOL_BROADCAST,
         SWARM_TOOL_STATUS,
+        SWARM_TOOL_HEALTH_CHECK,
     }
     active_tools = enabled_tools if enabled_tools is not None else default_tools
 
@@ -274,6 +276,51 @@ def create_swarm_tools(
                 }
 
         tools.append(swarm_status)
+
+    # Tool: swarm_health_check - Check health of a specific team
+    if SWARM_TOOL_HEALTH_CHECK in active_tools:
+
+        @tool(
+            SWARM_TOOL_HEALTH_CHECK,
+            "Check the health status of a connected team in the swarm. "
+            "Returns version info, capabilities, and connection status for each node. "
+            "Requires the team to have swarm_management_v1 capability.",
+            {
+                "team_slug": str,  # Project slug of the team to check
+            },
+        )
+        async def swarm_health_check(args: dict[str, Any]) -> dict[str, Any]:
+            """Check health of a swarm team."""
+            team_slug = args.get("team_slug", "")
+            if not team_slug:
+                return {
+                    "content": [{"type": "text", "text": "Error: team_slug is required"}],
+                    "is_error": True,
+                }
+            try:
+                result = await client.health_check(team_slug=team_slug)
+                return {"content": [{"type": "text", "text": _format_result(result)}]}
+            except Exception as e:
+                error_msg = str(e)
+                if hasattr(e, "response"):
+                    try:
+                        detail = e.response.json()
+                        if "team_capabilities" in detail:
+                            error_msg = (
+                                f"{detail.get('error', error_msg)}\n"
+                                f"Available capabilities: {detail['team_capabilities']}"
+                            )
+                        else:
+                            error_msg = detail.get("error", error_msg)
+                    except Exception:
+                        pass
+                logger.error("Swarm health check failed: %s", error_msg)
+                return {
+                    "content": [{"type": "text", "text": f"Swarm health check error: {error_msg}"}],
+                    "is_error": True,
+                }
+
+        tools.append(swarm_health_check)
 
     return tools
 

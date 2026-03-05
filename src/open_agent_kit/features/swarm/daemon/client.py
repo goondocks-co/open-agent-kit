@@ -9,6 +9,8 @@ import httpx
 
 from open_agent_kit.features.swarm.constants import (
     SWARM_API_PATH_BROADCAST,
+    SWARM_API_PATH_CONFIG_MIN_OAK_VERSION,
+    SWARM_API_PATH_HEALTH_CHECK,
     SWARM_API_PATH_HEARTBEAT,
     SWARM_API_PATH_NODES,
     SWARM_API_PATH_REGISTER,
@@ -16,6 +18,7 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_API_PATH_TOOL_CALL,
     SWARM_API_PATH_UNREGISTER,
     SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
+    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     SWARM_HEALTH_CHECK_TIMEOUT_SECONDS,
 )
 
@@ -248,6 +251,64 @@ class SwarmWorkerClient:
         )
         resp.raise_for_status()
         logger.info("Unregistered from swarm: team_id=%s", team_id)
+        return cast(dict[str, Any], resp.json())
+
+    async def health_check(self, team_slug: str) -> dict[str, Any]:
+        """Request a health check for a specific team.
+
+        Args:
+            team_slug: Project slug of the team to check.
+
+        Returns:
+            Health check data including per-node status.
+        """
+        logger.debug(
+            "HTTP POST %s team_slug=%s",
+            SWARM_API_PATH_HEALTH_CHECK,
+            team_slug,
+        )
+        resp = await self._client.post(
+            self._url(SWARM_API_PATH_HEALTH_CHECK),
+            json={"team_slug": team_slug},
+            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
+        )
+        resp.raise_for_status()
+        logger.debug(
+            "HTTP POST %s -> %d (%d bytes)",
+            SWARM_API_PATH_HEALTH_CHECK,
+            resp.status_code,
+            len(resp.content),
+        )
+        return cast(dict[str, Any], resp.json())
+
+    async def get_min_oak_version(self) -> dict[str, Any]:
+        """Get the minimum OAK version configured on the swarm DO.
+
+        Returns:
+            Dict with ``min_oak_version`` key.
+        """
+        resp = await self._client.get(
+            self._url(SWARM_API_PATH_CONFIG_MIN_OAK_VERSION),
+            timeout=SWARM_HEALTH_CHECK_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        return cast(dict[str, Any], resp.json())
+
+    async def set_min_oak_version(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Set the minimum OAK version on the swarm DO.
+
+        Args:
+            data: Dict with ``min_oak_version`` key.
+
+        Returns:
+            Updated config from the swarm DO.
+        """
+        resp = await self._client.put(
+            self._url(SWARM_API_PATH_CONFIG_MIN_OAK_VERSION),
+            json=data,
+            timeout=SWARM_HEALTH_CHECK_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
         return cast(dict[str, Any], resp.json())
 
     async def close(self) -> None:

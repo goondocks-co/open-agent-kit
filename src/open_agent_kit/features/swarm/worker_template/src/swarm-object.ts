@@ -24,6 +24,8 @@ import type {
   SwarmBroadcastRequest,
   HeartbeatRequest,
   UnregisterRequest,
+  SwarmAdvisory,
+  SwarmHealthCheckResponse,
 } from "./types";
 
 const STALE_THRESHOLD_MS = 300_000; // 5 minutes
@@ -44,12 +46,17 @@ const SWARM_SCHEMA_VERSION = 3;
 const CAPABILITY_SEARCH = "swarm_search_v1";
 const CAPABILITY_TOOLS = "swarm_tools_v1";
 const CAPABILITY_BROADCAST = "swarm_broadcast_v1";
+const CAPABILITY_MANAGEMENT = "swarm_management_v1";
+
+/** Swarm config keys stored in swarm_config table. */
+const CONFIG_KEY_MIN_OAK_VERSION = "min_oak_version";
 
 /** Canonical set of swarm capabilities — unknown strings are stripped on registration. */
 const KNOWN_CAPABILITIES = new Set([
   CAPABILITY_SEARCH,
   CAPABILITY_TOOLS,
   CAPABILITY_BROADCAST,
+  CAPABILITY_MANAGEMENT,
 ]);
 
 /** Private/reserved IPv4 CIDR ranges that must be blocked for SSRF prevention. */
@@ -110,6 +117,8 @@ export class SwarmObject implements DurableObject {
   private env: Env;
   /** In-memory rate limiter: IP -> list of registration timestamps. */
   private registrationTimestamps: Map<string, number[]> = new Map();
+  /** Cached min_oak_version — avoids SQL read on every heartbeat. null = not loaded yet. */
+  private cachedMinOakVersion: string | null | undefined = undefined;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -222,6 +231,21 @@ export class SwarmObject implements DurableObject {
       // --- Unregister ---
       if (path === "/api/swarm/unregister" && request.method === "POST") {
         return this.handleUnregister(request);
+      }
+
+      // --- Health check (targeted at a specific team) ---
+      if (path === "/api/swarm/health-check" && request.method === "POST") {
+        return this.handleHealthCheck(request);
+      }
+
+      // --- Config: min_oak_version ---
+      if (path === "/api/swarm/config/min-oak-version") {
+        if (request.method === "GET") {
+          return this.handleGetMinOakVersion();
+        }
+        if (request.method === "PUT") {
+          return this.handleSetMinOakVersion(request);
+        }
       }
 
       return Response.json({ error: "not found" }, { status: 404 });
@@ -342,7 +366,11 @@ export class SwarmObject implements DurableObject {
       ...params,
     );
 
-    return Response.json({ status: "ok" });
+    // Generate advisories for this team based on current state.
+    const team = this.findTeamById(body.team_id);
+    const advisories = team ? this.generateAdvisories(team) : [];
+
+    return Response.json({ status: "ok", advisories });
   }
 
   private async handleSearch(request: Request): Promise<Response> {
@@ -664,19 +692,7 @@ export class SwarmObject implements DurableObject {
   private rowsToTeams(cursor: Iterable<Record<string, unknown>>): SwarmTeam[] {
     const teams: SwarmTeam[] = [];
     for (const row of cursor) {
-      teams.push({
-        team_id: row.team_id as string,
-        project_slug: row.project_slug as string,
-        callback_url: row.callback_url as string,
-        capabilities: JSON.parse((row.capabilities as string) || "[]"),
-        tool_names: JSON.parse((row.tool_names as string) || "[]"),
-        node_count: row.node_count as number,
-        oak_version: row.oak_version as string,
-        registered_at: row.registered_at as string,
-        last_heartbeat: row.last_heartbeat as string,
-        callback_token: row.callback_token as string,
-        sensitivity: (row.sensitivity as string) || "standard",
-      });
+      teams.push(this.rowToTeam(row));
     }
     return teams;
   }
@@ -718,20 +734,7 @@ export class SwarmObject implements DurableObject {
       projectSlug,
     );
     const row = [...cursor][0];
-    if (!row) return null;
-    return {
-      team_id: row.team_id as string,
-      project_slug: row.project_slug as string,
-      callback_url: row.callback_url as string,
-      capabilities: JSON.parse((row.capabilities as string) || "[]"),
-      tool_names: JSON.parse((row.tool_names as string) || "[]"),
-      node_count: row.node_count as number,
-      oak_version: row.oak_version as string,
-      registered_at: row.registered_at as string,
-      last_heartbeat: row.last_heartbeat as string,
-      callback_token: row.callback_token as string,
-      sensitivity: (row.sensitivity as string) || "standard",
-    };
+    return row ? this.rowToTeam(row) : null;
   }
 
   /**
@@ -761,4 +764,232 @@ export class SwarmObject implements DurableObject {
         caps.every((c) => t.capabilities.includes(c)),
     );
   }
+
+  /** Find a team by team_id. */
+  private findTeamById(teamId: string): SwarmTeam | null {
+    const cursor = this.state.storage.sql.exec(
+      `SELECT * FROM teams WHERE team_id = ? LIMIT 1`,
+      teamId,
+    );
+    const row = [...cursor][0];
+    return row ? this.rowToTeam(row) : null;
+  }
+
+  /** Convert a single SQL row to a SwarmTeam object. */
+  private rowToTeam(row: Record<string, unknown>): SwarmTeam {
+    return {
+      team_id: row.team_id as string,
+      project_slug: row.project_slug as string,
+      callback_url: row.callback_url as string,
+      capabilities: JSON.parse((row.capabilities as string) || "[]"),
+      tool_names: JSON.parse((row.tool_names as string) || "[]"),
+      node_count: row.node_count as number,
+      oak_version: row.oak_version as string,
+      registered_at: row.registered_at as string,
+      last_heartbeat: row.last_heartbeat as string,
+      callback_token: row.callback_token as string,
+      sensitivity: (row.sensitivity as string) || "standard",
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Config helpers (swarm_config table)
+  // -------------------------------------------------------------------------
+
+  /** Get a value from the swarm_config table. */
+  private getConfig(key: string): string | null {
+    const cursor = this.state.storage.sql.exec(
+      `SELECT value FROM swarm_config WHERE key = ?`,
+      key,
+    );
+    const row = [...cursor][0];
+    return row ? (row.value as string) : null;
+  }
+
+  /** Set a value in the swarm_config table. */
+  private setConfig(key: string, value: string): void {
+    this.state.storage.sql.exec(
+      `INSERT OR REPLACE INTO swarm_config (key, value) VALUES (?, ?)`,
+      key,
+      value,
+    );
+  }
+
+  /** Delete a value from the swarm_config table. */
+  private deleteConfig(key: string): void {
+    this.state.storage.sql.exec(
+      `DELETE FROM swarm_config WHERE key = ?`,
+      key,
+    );
+  }
+
+  /** Return cached min_oak_version, loading from DB on first call. */
+  private getMinOakVersionCached(): string | null {
+    if (this.cachedMinOakVersion === undefined) {
+      this.cachedMinOakVersion = this.getConfig(CONFIG_KEY_MIN_OAK_VERSION);
+    }
+    return this.cachedMinOakVersion;
+  }
+
+  // -------------------------------------------------------------------------
+  // min_oak_version config endpoints
+  // -------------------------------------------------------------------------
+
+  private handleGetMinOakVersion(): Response {
+    const value = this.getConfig(CONFIG_KEY_MIN_OAK_VERSION);
+    return Response.json({ min_oak_version: value ?? "" });
+  }
+
+  private async handleSetMinOakVersion(request: Request): Promise<Response> {
+    const body = (await request.json()) as { min_oak_version?: string };
+    const version = body.min_oak_version?.trim() ?? "";
+
+    if (version && !isValidSemver(version)) {
+      return Response.json(
+        { error: "invalid version format — expected major.minor.patch (e.g. 1.4.0)" },
+        { status: 400 },
+      );
+    }
+
+    if (version) {
+      this.setConfig(CONFIG_KEY_MIN_OAK_VERSION, version);
+      this.cachedMinOakVersion = version;
+    } else {
+      this.deleteConfig(CONFIG_KEY_MIN_OAK_VERSION);
+      this.cachedMinOakVersion = null;
+    }
+
+    return Response.json({ min_oak_version: version });
+  }
+
+  // -------------------------------------------------------------------------
+  // Advisory generation
+  // -------------------------------------------------------------------------
+
+  /** Generate advisories for a team based on current swarm configuration. */
+  private generateAdvisories(team: SwarmTeam): SwarmAdvisory[] {
+    const advisories: SwarmAdvisory[] = [];
+
+    // Version drift: team is running below the configured minimum.
+    // Use cached value to avoid SQL read on every heartbeat (rows_read quota).
+    const minVersion = this.getMinOakVersionCached();
+    if (minVersion && team.oak_version && isVersionBelow(team.oak_version, minVersion)) {
+      advisories.push({
+        type: "version_drift",
+        severity: "warning",
+        message: `OAK version ${team.oak_version} is below the swarm minimum ${minVersion}. Please upgrade.`,
+        metadata: { current: team.oak_version, minimum: minVersion },
+      });
+    }
+
+    // Capability gap: team does not have management capability.
+    if (!team.capabilities.includes(CAPABILITY_MANAGEMENT)) {
+      advisories.push({
+        type: "capability_gap",
+        severity: "info",
+        message: "Upgrade to enable health monitoring (swarm_management_v1).",
+      });
+    }
+
+    return advisories;
+  }
+
+  // -------------------------------------------------------------------------
+  // Health check
+  // -------------------------------------------------------------------------
+
+  private async handleHealthCheck(request: Request): Promise<Response> {
+    const body = (await request.json()) as { team_slug?: string };
+
+    if (!body.team_slug) {
+      return Response.json(
+        { error: "missing required field: team_slug" },
+        { status: 400 },
+      );
+    }
+
+    const team = this.findTeamByProject(body.team_slug);
+    if (!team) {
+      return Response.json(
+        { error: `no team registered for project: ${body.team_slug}` },
+        { status: 404 },
+      );
+    }
+
+    if (!team.capabilities.includes(CAPABILITY_MANAGEMENT)) {
+      return Response.json(
+        {
+          error: `team '${body.team_slug}' does not advertise capability: ${CAPABILITY_MANAGEMENT}`,
+          team_capabilities: team.capabilities,
+        },
+        { status: 422 },
+      );
+    }
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${team.callback_url}/health-check`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${team.callback_token}`,
+          },
+          body: JSON.stringify({ team_id: team.team_id }),
+        },
+        TOOL_CALL_TIMEOUT_MS,
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return Response.json(
+          { error: `team returned HTTP ${response.status}`, detail: text },
+          { status: 502 },
+        );
+      }
+
+      const result = (await response.json()) as SwarmHealthCheckResponse;
+      return Response.json({
+        team_id: team.team_id,
+        project_slug: team.project_slug,
+        nodes: result.nodes ?? [],
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      return Response.json(
+        { error: `health check failed: ${message}` },
+        { status: 502 },
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Semver utilities (outside class — pure functions)
+// ---------------------------------------------------------------------------
+
+/** Parse a version string into numeric parts. Handles dev suffixes like "1.4.3.dev2+g...". */
+function parseSemver(version: string): [number, number, number] | null {
+  // Strip common suffixes: .devN, +hash, -rc1, etc.
+  const cleaned = version.replace(/[.+\-](dev|rc|alpha|beta|pre).*$/i, "");
+  const match = cleaned.match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/** Check if a version string is a valid semver-like format. */
+function isValidSemver(version: string): boolean {
+  return parseSemver(version) !== null;
+}
+
+/** Return true if `version` is strictly below `minVersion`. */
+function isVersionBelow(version: string, minVersion: string): boolean {
+  const v = parseSemver(version);
+  const m = parseSemver(minVersion);
+  if (!v || !m) return false;
+  for (let i = 0; i < 3; i++) {
+    if (v[i] < m[i]) return true;
+    if (v[i] > m[i]) return false;
+  }
+  return false; // equal
 }

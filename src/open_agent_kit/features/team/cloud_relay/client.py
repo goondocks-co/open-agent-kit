@@ -1117,6 +1117,28 @@ class CloudRelayClient(RelayClient):
             "worker_url": self._worker_url,
         }
 
+    async def get_swarm_advisories(self) -> list[dict[str, Any]]:
+        """Fetch swarm advisories from the relay Worker via HTTP.
+
+        Returns:
+            List of advisory dicts, or empty list on failure.
+        """
+        if not self._worker_url or not self._token:
+            return []
+        try:
+            client = self._http_client or httpx.AsyncClient()
+            resp = await client.get(
+                f"{self._worker_url}/swarm/advisories",
+                headers=self._relay_auth_headers(),
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("advisories", [])
+        except Exception as exc:
+            logger.debug("Failed to fetch swarm advisories: %s", exc)
+        return []
+
     # ------------------------------------------------------------------
     # Internal: tool call forwarding
     # ------------------------------------------------------------------

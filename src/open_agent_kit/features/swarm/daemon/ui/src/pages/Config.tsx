@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
 import { Button } from "@oak/ui/components/ui/button";
 import { Label } from "@oak/ui/components/ui/label";
-import { AlertCircle, Loader2, Save } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Loader2, Save, Shield } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConfig, updateConfig, type LogRotationConfig } from "@/hooks/use-config";
+import { fetchJson } from "@/lib/api";
+import { API_ENDPOINTS } from "@/lib/constants";
 
 /** Log rotation defaults (must match Python constants) */
 const LOG_ROTATION_DEFAULTS = {
@@ -35,6 +37,44 @@ export default function Config() {
     });
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+
+    // min_oak_version state (stored in swarm DO, not local config)
+    const { data: versionConfig } = useQuery<{ min_oak_version: string }>({
+        queryKey: ["min-oak-version"],
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.CONFIG_MIN_OAK_VERSION, { signal }),
+    });
+    const [minVersion, setMinVersion] = useState("");
+    const [versionDirty, setVersionDirty] = useState(false);
+    const [versionSaving, setVersionSaving] = useState(false);
+    const [versionError, setVersionError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (versionConfig?.min_oak_version != null) {
+            setMinVersion(versionConfig.min_oak_version);
+            setVersionDirty(false);
+        }
+    }, [versionConfig]);
+
+    const handleVersionSave = async () => {
+        setVersionSaving(true);
+        setVersionError(null);
+        try {
+            const resp = await fetchJson(API_ENDPOINTS.CONFIG_MIN_OAK_VERSION, {
+                method: "PUT",
+                body: JSON.stringify({ min_oak_version: minVersion.trim() }),
+            }) as { error?: string; min_oak_version?: string };
+            if (resp.error) {
+                setVersionError(resp.error);
+            } else {
+                queryClient.invalidateQueries({ queryKey: ["min-oak-version"] });
+                setVersionDirty(false);
+            }
+        } catch (e) {
+            setVersionError(e instanceof Error ? e.message : "Failed to save");
+        } finally {
+            setVersionSaving(false);
+        }
+    };
 
     // Sync form state when config loads
     useEffect(() => {
@@ -73,6 +113,53 @@ export default function Config() {
                     Configure swarm daemon behavior. Changes require a daemon restart.
                 </p>
             </div>
+
+            {/* Version Policy Section */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Shield className="h-5 w-5" />
+                        Version Policy
+                    </CardTitle>
+                    <CardDescription>
+                        Set a minimum OAK version for connected teams. Teams running older versions will receive upgrade advisories via heartbeat.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label>Minimum OAK Version</Label>
+                        <input
+                            type="text"
+                            placeholder="e.g. 1.4.0 (leave empty to disable)"
+                            value={minVersion}
+                            onChange={(e) => {
+                                setMinVersion(e.target.value);
+                                setVersionDirty(true);
+                                setVersionError(null);
+                            }}
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Format: major.minor.patch — teams below this version will see a warning advisory.
+                        </p>
+                    </div>
+                    {versionError && (
+                        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                            <AlertCircle className="h-4 w-4" />
+                            <span>{versionError}</span>
+                        </div>
+                    )}
+                </CardContent>
+                <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                        Takes effect on the next team heartbeat (within 60s).
+                    </p>
+                    <Button onClick={handleVersionSave} disabled={!versionDirty || versionSaving} size="sm">
+                        {versionSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
+                </CardFooter>
+            </Card>
 
             {/* Logging Section */}
             <Card>

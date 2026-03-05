@@ -311,6 +311,27 @@ def _get_cloud_relay_status(state: object) -> dict | None:
     }
 
 
+@router.get("/api/swarm-advisories")
+async def get_swarm_advisories() -> dict:
+    """Get swarm advisories from the relay.
+
+    Returns advisories pushed by the swarm during heartbeat responses,
+    such as version drift warnings or capability gap notices.
+    """
+    state = get_state()
+    client = getattr(state, "cloud_relay_client", None)
+    if client is None:
+        return {"advisories": [], "connected": False}
+
+    try:
+        advisories = await client.get_swarm_advisories()
+    except Exception as exc:
+        logger.debug("Failed to fetch swarm advisories: %s", exc)
+        advisories = []
+
+    return {"advisories": advisories, "connected": True}
+
+
 @router.get("/api/logs")
 async def get_logs(
     lines: int = Query(

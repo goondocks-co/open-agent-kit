@@ -53,6 +53,8 @@ SWARM_API_PATH_BROADCAST: Final[str] = "/api/swarm/broadcast"
 SWARM_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_API_PATH_UNREGISTER: Final[str] = "/api/swarm/unregister"
 SWARM_API_PATH_CONFIG: Final[str] = "/api/swarm/config"
+SWARM_API_PATH_CONFIG_MIN_OAK_VERSION: Final[str] = "/api/swarm/config/min-oak-version"
+SWARM_API_PATH_HEALTH_CHECK: Final[str] = "/api/swarm/health-check"
 
 # Daemon API paths (local swarm daemon)
 SWARM_DAEMON_API_PATH_HEALTH: Final[str] = "/api/health"
@@ -61,6 +63,7 @@ SWARM_DAEMON_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_DAEMON_API_PATH_STATUS: Final[str] = "/api/swarm/status"
 SWARM_DAEMON_API_PATH_TOOL_CALL: Final[str] = "/api/swarm/tool-call"
 SWARM_DAEMON_API_PATH_BROADCAST: Final[str] = "/api/swarm/broadcast"
+SWARM_DAEMON_API_PATH_HEALTH_CHECK: Final[str] = "/api/swarm/health-check"
 SWARM_DAEMON_API_PATH_CREDENTIALS: Final[str] = "/api/swarm/credentials"
 SWARM_DAEMON_API_PATH_AGENTS: Final[str] = "/api/agents"
 
@@ -87,6 +90,19 @@ SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD: Final[str] = "/api/deploy/scaffold"
 SWARM_DAEMON_API_PATH_DEPLOY_INSTALL: Final[str] = "/api/deploy/install"
 SWARM_DAEMON_API_PATH_DEPLOY_RUN: Final[str] = "/api/deploy/run"
 SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS: Final[str] = "/api/deploy/settings"
+
+# Swarm config keys (inside swarm_config table in Swarm DO)
+SWARM_CONFIG_KEY_MIN_OAK_VERSION: Final[str] = "min_oak_version"
+
+# Advisory severity levels
+SWARM_ADVISORY_SEVERITY_INFO: Final[str] = "info"
+SWARM_ADVISORY_SEVERITY_WARNING: Final[str] = "warning"
+SWARM_ADVISORY_SEVERITY_CRITICAL: Final[str] = "critical"
+
+# Advisory types
+SWARM_ADVISORY_TYPE_VERSION_DRIFT: Final[str] = "version_drift"
+SWARM_ADVISORY_TYPE_CAPABILITY_GAP: Final[str] = "capability_gap"
+SWARM_ADVISORY_TYPE_GENERAL: Final[str] = "general"
 
 # WebSocket protocol message types (node <-> Team Worker)
 SWARM_WS_TYPE_SEARCH: Final[str] = "swarm_search"
@@ -123,6 +139,7 @@ SWARM_SENSITIVITY_RESTRICTED: Final[str] = "restricted"
 SWARM_CAPABILITY_SEARCH: Final[str] = "swarm_search_v1"
 SWARM_CAPABILITY_TOOLS: Final[str] = "swarm_tools_v1"
 SWARM_CAPABILITY_BROADCAST: Final[str] = "swarm_broadcast_v1"
+SWARM_CAPABILITY_MANAGEMENT: Final[str] = "swarm_management_v1"
 
 # Scaffold constants
 SWARM_WORKER_TEMPLATE_DIR: Final[str] = "worker_template"
@@ -242,6 +259,7 @@ SWARM_TOOL_NODES: Final[str] = "swarm_nodes"
 SWARM_TOOL_CALL: Final[str] = "swarm_call"
 SWARM_TOOL_BROADCAST: Final[str] = "swarm_broadcast"
 SWARM_TOOL_STATUS: Final[str] = "swarm_status"
+SWARM_TOOL_HEALTH_CHECK: Final[str] = "swarm_health_check"
 
 # Health check
 SWARM_HEALTH_CHECK_PATH: Final[str] = "/health"
