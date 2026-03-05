@@ -229,6 +229,10 @@ SWARM_MESSAGE_RESTART_FAILED: Final[str] = "Failed to restart swarm daemon. Chec
 SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
     "Swarm daemon failed to start. Check logs for details."
 )
+SWARM_MESSAGE_MCP_HINT: Final[str] = (
+    "To install the swarm MCP server for your agents, "
+    "run: {cli_command} init"
+)
 
 # Deploy route error messages
 SWARM_DEPLOY_ERROR_NO_SWARM_ID: Final[str] = "No swarm ID configured"

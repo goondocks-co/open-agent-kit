@@ -167,6 +167,7 @@ async def join_swarm(request: _JoinSwarmRequest) -> dict:
             "success": True,
             "swarm_url": request.swarm_url,
             "relay_synced": relay_ok,
+            "mcp_hint": "Run 'oak init' to install the swarm MCP server for your agents.",
         }
     except Exception as exc:
         logger.error("Failed to join swarm: %s", exc)
