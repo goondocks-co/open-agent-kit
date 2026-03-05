@@ -585,8 +585,12 @@ def format_swarm_nodes(data: dict[str, Any]) -> str:
 
     lines = [f"Found {len(nodes)} swarm node(s):\n"]
     for i, n in enumerate(nodes, 1):
-        project = n.get("project", n.get("machine_id", "unknown"))
-        online = n.get("online", n.get("connected", False))
+        project = n.get("project_slug", n.get("project", n.get("machine_id", "unknown")))
+        # Swarm returns "stale" (True = offline), team returns "online"/"connected"
+        if "stale" in n:
+            online = not n["stale"]
+        else:
+            online = n.get("online", n.get("connected", False))
         oak_version = n.get("oak_version", "")
         capabilities = n.get("capabilities", [])
         status_icon = "+" if online else "-"
