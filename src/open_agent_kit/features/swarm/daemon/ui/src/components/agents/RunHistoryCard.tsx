@@ -1,6 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
-import { Badge } from "@oak/ui/components/ui/badge";
-import { Clock, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import {
+    AGENT_RUN_STATUS_LABELS,
+    AGENT_RUN_STATUS_COLORS,
+    type AgentRunStatusType,
+} from "@oak/ui/lib/agent-status";
+import { formatRelativeTime } from "@oak/ui/lib/time-utils";
 
 interface RunHistoryCardProps {
     runId: string;
@@ -13,15 +17,6 @@ interface RunHistoryCardProps {
     error?: string;
 }
 
-const STATUS_CONFIG: Record<string, { icon: React.ComponentType<{ className?: string }>; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-    running: { icon: Loader2, variant: "default" },
-    completed: { icon: CheckCircle, variant: "secondary" },
-    failed: { icon: XCircle, variant: "destructive" },
-    cancelled: { icon: XCircle, variant: "outline" },
-    timeout: { icon: Clock, variant: "destructive" },
-    pending: { icon: Clock, variant: "outline" },
-};
-
 export function RunHistoryCard({
     runId,
     agentName,
@@ -32,16 +27,8 @@ export function RunHistoryCard({
     turnsUsed,
     error,
 }: RunHistoryCardProps) {
-    const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
-    const StatusIcon = config.icon;
-
-    const formatTime = (iso: string) => {
-        try {
-            return new Date(iso).toLocaleString();
-        } catch {
-            return iso;
-        }
-    };
+    const statusLabel = AGENT_RUN_STATUS_LABELS[status as AgentRunStatusType] ?? status;
+    const colors = AGENT_RUN_STATUS_COLORS[status as AgentRunStatusType] ?? AGENT_RUN_STATUS_COLORS.pending;
 
     return (
         <Card>
@@ -55,16 +42,16 @@ export function RunHistoryCard({
                             {runId.slice(0, 8)}
                         </p>
                     </div>
-                    <Badge variant={config.variant} className="flex items-center gap-1">
-                        <StatusIcon className={`h-3 w-3 ${status === "running" ? "animate-spin" : ""}`} />
-                        {status}
-                    </Badge>
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${colors.badge}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${colors.dot}`} />
+                        {statusLabel}
+                    </span>
                 </div>
             </CardHeader>
             <CardContent>
                 <div className="flex gap-4 text-xs text-muted-foreground">
-                    <span>Started: {formatTime(createdAt)}</span>
-                    {completedAt && <span>Finished: {formatTime(completedAt)}</span>}
+                    <span>Started: {formatRelativeTime(createdAt)}</span>
+                    {completedAt && <span>Finished: {formatRelativeTime(completedAt)}</span>}
                     {turnsUsed != null && <span>{turnsUsed} turns</span>}
                 </div>
                 {error && (

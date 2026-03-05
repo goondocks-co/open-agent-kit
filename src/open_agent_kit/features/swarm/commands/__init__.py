@@ -242,6 +242,35 @@ def swarm_stop(
     print_info(SWARM_MESSAGE_STOPPED)
 
 
+@swarm_app.command("restart")
+def swarm_restart(
+    name: str = typer.Option(..., "--name", "-n", help="Name of the swarm"),
+) -> None:
+    """Restart the swarm daemon."""
+    from open_agent_kit.features.swarm.config import load_swarm_config
+    from open_agent_kit.features.swarm.constants import (
+        SWARM_MESSAGE_NO_SWARM_CONFIG,
+        SWARM_MESSAGE_RESTART_FAILED,
+        SWARM_MESSAGE_RESTARTED,
+        SWARM_MESSAGE_RESTARTING,
+    )
+    from open_agent_kit.utils import print_error, print_info, print_success
+
+    config = load_swarm_config(name)
+    if not config:
+        print_error(SWARM_MESSAGE_NO_SWARM_CONFIG)
+        raise typer.Exit(code=1)
+
+    manager = _get_swarm_daemon_manager(name)
+
+    print_info(SWARM_MESSAGE_RESTARTING)
+    if manager.restart():
+        print_success(SWARM_MESSAGE_RESTARTED.format(port=manager.port))
+    else:
+        print_error(SWARM_MESSAGE_RESTART_FAILED.format(log_file=manager.log_file))
+        raise typer.Exit(code=1)
+
+
 @swarm_app.command("status")
 def swarm_status(
     name: str = typer.Option(..., "--name", "-n", help="Name of the swarm"),

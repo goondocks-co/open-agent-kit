@@ -1,6 +1,7 @@
 import { Bot, RefreshCw } from "lucide-react";
 import { Button } from "@oak/ui/components/ui/button";
 import { Card, CardContent } from "@oak/ui/components/ui/card";
+import { AGENT_RUN_STATUS } from "@oak/ui/lib/agent-status";
 import { TaskCard, RunHistoryCard } from "@/components/agents";
 import { useAgents, useAgentRuns, useRunTask, useReloadAgents } from "@/hooks/use-agents";
 
@@ -14,7 +15,7 @@ export default function Agents() {
     const runs = runsData?.runs ?? [];
 
     const runningTaskNames = new Set(
-        runs.filter((r) => r.status === "running").map((r) => r.task_name ?? r.agent_name)
+        runs.filter((r) => r.status === AGENT_RUN_STATUS.RUNNING && r.task_name).map((r) => r.task_name!)
     );
 
     const handleRunTask = (taskName: string) => {

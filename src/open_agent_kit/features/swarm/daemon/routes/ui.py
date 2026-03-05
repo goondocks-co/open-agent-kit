@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
+from open_agent_kit.features.swarm.daemon.state import get_swarm_state
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["ui"])
@@ -49,4 +51,16 @@ async def dashboard(rest: str | None = None) -> HTMLResponse:
             "<p>Run <code>make swarm-ui-build</code> to build the swarm UI.</p></body></html>",
             status_code=503,
         )
-    return HTMLResponse(content=content)
+
+    # Inject auth token as meta tag so the UI JS can read it
+    state = get_swarm_state()
+    if state.auth_token:
+        content = content.replace(
+            "</head>",
+            f'<meta name="oak-auth-token" content="{state.auth_token}" />\n</head>',
+        )
+
+    return HTMLResponse(
+        content=content,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )

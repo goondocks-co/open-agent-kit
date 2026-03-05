@@ -106,6 +106,11 @@ export const API_ENDPOINTS = {
     CHANNEL: "/api/channel",
     CHANNEL_SWITCH: "/api/channel/switch",
 
+    // Swarm endpoints
+    SWARM_STATUS: "/api/swarm/status",
+    SWARM_JOIN: "/api/swarm/join",
+    SWARM_LEAVE: "/api/swarm/leave",
+
     // Team endpoints
     TEAM_CONFIG: "/api/team/config",
     TEAM_STATUS: "/api/team/status",

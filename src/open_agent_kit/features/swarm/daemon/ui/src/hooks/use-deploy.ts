@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 import { fetchJson, postJson } from "@/lib/api";
 import { API_ENDPOINTS, DEPLOY_POLL_MS } from "@/lib/constants";
@@ -9,6 +9,9 @@ interface DeployStatus {
     node_modules_installed: boolean;
     worker_url: string | null;
     swarm_id: string;
+    worker_name: string | null;
+    custom_domain: string | null;
+    update_available: boolean;
 }
 
 interface AuthStatus {
@@ -50,5 +53,19 @@ export function useDeployInstall() {
 export function useDeployRun() {
     return useMutation<{ success: boolean; worker_url?: string; output: string }, Error, void>({
         mutationFn: () => postJson(API_ENDPOINTS.DEPLOY_RUN, {}),
+    });
+}
+
+export function useDeploySettings() {
+    const queryClient = useQueryClient();
+    return useMutation<DeployStatus, Error, { custom_domain: string | null }>({
+        mutationFn: (settings) =>
+            fetchJson(API_ENDPOINTS.DEPLOY_SETTINGS, {
+                method: "PUT",
+                body: JSON.stringify(settings),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["deploy"] });
+        },
     });
 }

@@ -21,9 +21,13 @@ from open_agent_kit.features.agent_runtime.models import (
     AgentRunListResponse,
     AgentRunStatus,
 )
-from open_agent_kit.features.team.daemon.routes._agents_common import (
+from open_agent_kit.features.agent_runtime.routes.agents import (
+    get_run_detail,
+)
+from open_agent_kit.features.agent_runtime.routes.common import (
     get_agent_components,
 )
+from open_agent_kit.features.team.daemon.state import get_state
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +53,10 @@ async def list_runs(
 ) -> AgentRunListResponse:
     """List agent runs with optional filtering and sorting.
 
-    Args:
-        limit: Maximum runs to return.
-        offset: Pagination offset.
-        agent_name: Filter by agent name.
-        status: Filter by run status.
-        created_after: Filter runs created after this time.
-        created_before: Filter runs created before this time.
-        sort_by: Sort field (created_at, duration, cost).
-        sort_order: Sort order (asc, desc).
-
-    Returns:
-        List of runs with pagination info.
+    Team-specific: supports sort_by, sort_order, created_after, created_before
+    parameters that the shared handler does not expose.
     """
-    _registry, executor, _state = get_agent_components()
+    _registry, executor, _state = get_agent_components(get_state())
 
     # Validate sort_by
     valid_sort_fields = {"created_at", "duration", "cost"}
@@ -111,21 +105,9 @@ async def list_runs(
 
 @router.get("/runs/{run_id}", response_model=AgentRunDetailResponse)
 async def get_run(run_id: str) -> AgentRunDetailResponse:
-    """Get detailed information about a specific run.
-
-    Args:
-        run_id: Run identifier.
-
-    Returns:
-        Full run details including results.
-    """
-    _registry, executor, _state = get_agent_components()
-
-    run = executor.get_run(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-
-    return AgentRunDetailResponse(run=run)
+    """Get detailed information about a specific run."""
+    _registry, executor, _state = get_agent_components(get_state())
+    return get_run_detail(executor, run_id)
 
 
 @router.post("/runs/{run_id}/cancel")
@@ -138,7 +120,7 @@ async def cancel_run(run_id: str) -> dict:
     Returns:
         Cancellation result.
     """
-    _registry, executor, _state = get_agent_components()
+    _registry, executor, _state = get_agent_components(get_state())
 
     run = executor.get_run(run_id)
     if not run:
@@ -171,7 +153,7 @@ async def delete_run(run_id: str) -> dict:
     Returns:
         Deletion result.
     """
-    _registry, executor, state = get_agent_components()
+    _registry, executor, state = get_agent_components(get_state())
 
     run = executor.get_run(run_id)
     if not run:
@@ -217,7 +199,7 @@ async def bulk_delete_runs(
     Returns:
         Number of runs deleted.
     """
-    _registry, _executor, state = get_agent_components()
+    _registry, _executor, state = get_agent_components(get_state())
 
     # Validate status if provided
     terminal_statuses = {"completed", "failed", "cancelled", "timeout"}

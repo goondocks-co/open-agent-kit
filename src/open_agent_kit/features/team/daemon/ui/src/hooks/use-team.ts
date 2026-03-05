@@ -44,6 +44,8 @@ export interface OnlineNode {
 export interface RelayStatus {
     connected: boolean;
     worker_url: string | null;
+    custom_domain: string | null;
+    worker_name: string | null;
     connected_at: string | null;
     last_heartbeat: string | null;
     error: string | null;

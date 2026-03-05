@@ -358,14 +358,23 @@ export class SwarmObject implements DurableObject {
 
     const settled = await Promise.allSettled(promises);
     const allResults: Record<string, unknown>[] = [];
+    const errors: { project_slug: string; error: string }[] = [];
 
     for (const outcome of settled) {
-      if (outcome.status === "fulfilled" && outcome.value.results) {
-        allResults.push(...outcome.value.results);
+      if (outcome.status === "fulfilled") {
+        if (outcome.value.error) {
+          errors.push({ project_slug: outcome.value.project_slug, error: outcome.value.error });
+        }
+        if (outcome.value.results) {
+          allResults.push(...outcome.value.results);
+        }
       }
     }
 
-    return Response.json({ results: allResults });
+    return Response.json({
+      results: allResults,
+      ...(errors.length > 0 ? { errors } : {}),
+    });
   }
 
   private async handleToolCall(request: Request): Promise<Response> {

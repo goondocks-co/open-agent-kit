@@ -4,6 +4,7 @@ import {
     LayoutDashboard,
     Search,
     Network,
+    Hexagon,
     Rocket,
     Bot,
     ScrollText,
@@ -34,7 +35,7 @@ export default function Layout() {
     );
     const { theme, setTheme } = useTheme();
     const { data: swarmStatus } = useSwarmStatus();
-    const restartMutation = useRestart();
+    const { restart, isRestarting, error: restartError } = useRestart();
 
     const toggleCollapse = () => {
         const next = !collapsed;
@@ -52,10 +53,10 @@ export default function Layout() {
             >
                 {/* Header */}
                 <div className="flex items-center gap-2 border-b px-4 py-3">
-                    <Network className="h-5 w-5 text-primary shrink-0" />
+                    <Hexagon className="h-5 w-5 text-primary shrink-0" />
                     {!collapsed && (
                         <span className="font-semibold text-sm truncate">
-                            Oak Swarm
+                            {swarmStatus?.swarm_id || "Oak Swarm"}
                         </span>
                     )}
                 </div>
@@ -118,17 +119,24 @@ export default function Layout() {
                         </Button>
                     </div>
 
+                    {/* Restart error */}
+                    {restartError && (
+                        <p className="text-xs text-destructive px-1 truncate" title={restartError}>
+                            {restartError}
+                        </p>
+                    )}
+
                     {/* Restart + Collapse */}
                     <div className="flex justify-between">
                         <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => restartMutation.mutate()}
-                            disabled={restartMutation.isPending}
+                            onClick={() => restart()}
+                            disabled={isRestarting}
                             title="Restart daemon"
                         >
-                            <RotateCcw className={`h-3.5 w-3.5 ${restartMutation.isPending ? "animate-spin" : ""}`} />
+                            <RotateCcw className={`h-3.5 w-3.5 ${isRestarting ? "animate-spin" : ""}`} />
                         </Button>
                         <Button
                             variant="ghost"

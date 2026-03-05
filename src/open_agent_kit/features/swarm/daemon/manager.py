@@ -5,15 +5,15 @@ operations from ``BaseDaemonManager`` and adds swarm-specific behaviour
 (config loading, swarm status endpoint).
 """
 
-import json
 import logging
 import os
 import subprocess
 import sys
 from typing import Any
 
-from open_agent_kit.features.swarm.config import get_swarm_config_dir
+from open_agent_kit.features.swarm.config import get_swarm_config_dir, load_swarm_config
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_SWARM_KEY_PORT,
     CI_CONFIG_SWARM_KEY_TOKEN,
     CI_CONFIG_SWARM_KEY_URL,
@@ -53,7 +53,17 @@ class SwarmDaemonManager(BaseDaemonManager):
         self.swarm_id = swarm_id
         self._auth_token: str | None = None
         config_dir = get_swarm_config_dir(swarm_id)
-        actual_port = port or SWARM_DAEMON_DEFAULT_PORT
+
+        # Read config once — reused by start() to avoid a second disk read
+        self._saved_config: dict = load_swarm_config(swarm_id) or {}
+
+        # Read previously assigned port from config, fall back to default
+        if port:
+            actual_port = port
+        else:
+            actual_port = self._saved_config.get(
+                CI_CONFIG_SWARM_KEY_PORT, SWARM_DAEMON_DEFAULT_PORT
+            )
         super().__init__(
             DaemonConfig(
                 config_dir=config_dir,
@@ -95,26 +105,6 @@ class SwarmDaemonManager(BaseDaemonManager):
 
         return status
 
-    def _find_available_port(self) -> int:
-        """Probe ports starting from SWARM_DAEMON_DEFAULT_PORT.
-
-        Returns:
-            First available port in the range.
-
-        Raises:
-            RuntimeError: If no port is available in the range.
-        """
-        base = SWARM_DAEMON_DEFAULT_PORT
-        for offset in range(SWARM_DAEMON_PORT_RANGE_SIZE):
-            candidate = base + offset
-            if self._is_port_available(candidate):
-                return candidate
-        msg = (
-            f"No available port found in range "
-            f"{base}-{base + SWARM_DAEMON_PORT_RANGE_SIZE - 1}"
-        )
-        raise RuntimeError(msg)
-
     def start(self, wait: bool = True) -> bool:
         """Start the swarm daemon.
 
@@ -140,20 +130,19 @@ class SwarmDaemonManager(BaseDaemonManager):
 
         self._ensure_config_dir()
 
+        # Reuse config loaded in __init__ (avoids second disk read)
+        from open_agent_kit.features.swarm.config import save_swarm_config
+
+        config = self._saved_config
+
         # Auto-assign port if the configured one is taken
         if not self._is_port_available(self.port):
-            new_port = self._find_available_port()
-            logger.info(
-                "Port %d in use, auto-assigned port %d", self.port, new_port
+            new_port = self._find_available_port(
+                SWARM_DAEMON_DEFAULT_PORT, SWARM_DAEMON_PORT_RANGE_SIZE
             )
+            logger.info("Port %d in use, auto-assigned port %d", self.port, new_port)
             self.port = new_port
             # Persist chosen port to config.json
-            from open_agent_kit.features.swarm.config import (
-                load_swarm_config,
-                save_swarm_config,
-            )
-
-            config = load_swarm_config(self.swarm_id) or {}
             config[CI_CONFIG_SWARM_KEY_PORT] = new_port
             save_swarm_config(self.swarm_id, config)
 
@@ -187,16 +176,13 @@ class SwarmDaemonManager(BaseDaemonManager):
         self._auth_token = auth_token
         env[SWARM_AUTH_ENV_VAR] = auth_token
 
-        # Load swarm config and pass as env vars
-        if self.config_file.exists():
-            try:
-                config = json.loads(self.config_file.read_text())
-                if config.get(CI_CONFIG_SWARM_KEY_URL):
-                    env["OAK_SWARM_URL"] = config[CI_CONFIG_SWARM_KEY_URL]
-                if config.get(CI_CONFIG_SWARM_KEY_TOKEN):
-                    env["OAK_SWARM_TOKEN"] = config[CI_CONFIG_SWARM_KEY_TOKEN]
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Failed to read swarm config: %s", exc)
+        # Pass swarm config as env vars
+        if config.get(CI_CONFIG_SWARM_KEY_URL):
+            env["OAK_SWARM_URL"] = config[CI_CONFIG_SWARM_KEY_URL]
+        if config.get(CI_CONFIG_SWARM_KEY_TOKEN):
+            env["OAK_SWARM_TOKEN"] = config[CI_CONFIG_SWARM_KEY_TOKEN]
+        if config.get(CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN):
+            env["OAK_SWARM_CUSTOM_DOMAIN"] = config[CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN]
 
         # Start the process
         try:

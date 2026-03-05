@@ -1,5 +1,6 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
-import { fetchJson } from "@/lib/api";
+import { fetchJson, postJson } from "@/lib/api";
 import { API_ENDPOINTS, NODES_POLL_MS } from "@/lib/constants";
 
 interface SwarmNode {
@@ -22,5 +23,13 @@ export function useSwarmNodes() {
         queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.SWARM_NODES, { signal }),
         refetchInterval: NODES_POLL_MS,
         pollCategory: "standard",
+    });
+}
+
+export function useRemoveNode() {
+    const queryClient = useQueryClient();
+    return useMutation<{ success: boolean }, Error, { team_id: string }>({
+        mutationFn: (params) => postJson(API_ENDPOINTS.SWARM_NODE_REMOVE, params),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["swarm", "nodes"] }),
     });
 }

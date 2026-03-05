@@ -262,9 +262,18 @@ async def get_team_status() -> TeamStatusResponse:
     relay_pending: dict[str, int] = {}
     relay_metrics: dict[str, Any] | None = None
 
+    # Resolve custom_domain / worker_name from config for URL display.
+    custom_domain: str | None = None
+    worker_name: str | None = None
+    if state.ci_config:
+        custom_domain = getattr(state.ci_config.cloud_relay, "custom_domain", None)
+        worker_name = getattr(state.ci_config.cloud_relay, "worker_name", None)
+
     if state.cloud_relay_client:
         status = state.cloud_relay_client.get_status()
         relay_status = status.to_dict()
+        relay_status["custom_domain"] = custom_domain
+        relay_status["worker_name"] = worker_name
         is_connected = status.connected
         online_nodes = getattr(state.cloud_relay_client, "online_nodes", [])
 
@@ -326,7 +335,12 @@ async def get_team_status() -> TeamStatusResponse:
             rc = ci_config.cloud_relay
             worker_url = tc.relay_worker_url or (rc.worker_url if rc else None)
             if worker_url:
-                relay_status = {"connected": False, "worker_url": worker_url}
+                relay_status = {
+                    "connected": False,
+                    "worker_url": worker_url,
+                    "custom_domain": custom_domain,
+                    "worker_name": worker_name,
+                }
 
     sync_status = None
     if state.team_sync_worker:

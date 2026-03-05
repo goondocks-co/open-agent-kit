@@ -130,3 +130,6 @@ team:
   - '*.pot'
   - '*.mo'
   cli_command: oak-dev
+swarm:
+  swarm_url: https://oak-swarm-oss-swarm.openagentkit.app
+  swarm_token: 3u0nsMcgYMqlLox9xfDHIdr4LQex-g144vAKzEreBD0

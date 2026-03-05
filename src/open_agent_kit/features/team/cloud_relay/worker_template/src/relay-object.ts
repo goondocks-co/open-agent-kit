@@ -286,10 +286,14 @@ export class RelayObject implements DurableObject {
     }
 
     if (url.pathname === "/search" && request.method === "POST") {
+      const authErr = this.validateRelayOrSwarmToken(request);
+      if (authErr) return authErr;
       return this.handleSearchFanout(request);
     }
 
     if (url.pathname === "/federate-tool" && request.method === "POST") {
+      const authErr = this.validateRelayOrSwarmToken(request);
+      if (authErr) return authErr;
       return this.handleFederatedToolFanout(request);
     }
 
@@ -298,6 +302,8 @@ export class RelayObject implements DurableObject {
     }
 
     if (url.pathname === "/tool-call" && request.method === "POST") {
+      const authErr = this.validateRelayOrSwarmToken(request);
+      if (authErr) return authErr;
       return this.handleToolCall(request);
     }
 
@@ -1998,14 +2004,53 @@ export class RelayObject implements DurableObject {
   // Swarm identity helpers
   // -----------------------------------------------------------------------
 
+  /**
+   * Validate an HTTP request's Bearer token against both the relay token
+   * and the swarm callback token.  Returns null on success, or a 401
+   * Response if neither token matches.
+   */
+  private validateRelayOrSwarmToken(request: Request): Response | null {
+    const header = request.headers.get("Authorization");
+    if (!header) {
+      return Response.json({ error: "missing authorization" }, { status: 401 });
+    }
+
+    const token = header.startsWith("Bearer ")
+      ? header.slice(7)
+      : header;
+
+    // Accept relay token (from local daemon) or swarm callback token (from swarm worker).
+    if (this.timingSafeEqual(token, this.env.RELAY_TOKEN)) return null;
+    if (this.swarmCallbackToken && this.timingSafeEqual(token, this.swarmCallbackToken)) return null;
+
+    return Response.json({ error: "invalid token" }, { status: 401 });
+  }
+
+  /** Constant-time string comparison to prevent timing attacks. */
+  private timingSafeEqual(a: string, b: string): boolean {
+    const encoder = new TextEncoder();
+    const bufA = encoder.encode(a);
+    const bufB = encoder.encode(b);
+    const maxLen = Math.max(bufA.length, bufB.length);
+    let mismatch = bufA.length ^ bufB.length;
+    for (let i = 0; i < maxLen; i++) {
+      mismatch |= (bufA[i] ?? 0) ^ (bufB[i] ?? 0);
+    }
+    return mismatch === 0;
+  }
+
   /** Get a stable team ID for swarm registration (combines project slug + DO ID). */
   private getTeamId(): string {
     return this.state.id.toString();
   }
 
-  /** Get the project slug from the first node's metadata, or fallback. */
+  /** Get the project slug from WORKER_NAME env var, or fallback to DO ID prefix. */
   private getProjectSlug(): string {
-    // Use the worker name as project identifier (set at deploy time).
+    const workerName = (this.env as unknown as Record<string, unknown>).WORKER_NAME;
+    if (typeof workerName === "string" && workerName) {
+      // Strip "oak-relay-" prefix if present to get the project name.
+      return workerName.startsWith("oak-relay-") ? workerName.slice(10) : workerName;
+    }
     return this.env.RELAY_TOKEN ? "team-" + this.state.id.toString().slice(0, 8) : "unknown";
   }
 

@@ -67,6 +67,8 @@ export interface CloudRelayStatus {
     connected: boolean;
     worker_url: string | null;
     mcp_endpoint: string | null;
+    custom_domain: string | null;
+    worker_name: string | null;
 }
 
 export interface DaemonStatus {

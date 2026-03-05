@@ -187,6 +187,11 @@ def create_app(
     app.include_router(acp.router)
     app.include_router(acp_sessions.router)
 
+    # Swarm config routes (join/leave/status)
+    from open_agent_kit.features.team.daemon.routes import swarm_config
+
+    app.include_router(swarm_config.router)
+
     # Release channel routes
     from open_agent_kit.features.team.daemon.routes import (
         release_channel,

@@ -117,12 +117,14 @@ export function RelayDetails({ relay, onlineCount }: { relay: RelayStatus; onlin
                 )}
             </div>
 
-            {/* Worker URL */}
+            {/* Worker URL (prefer custom domain when set) */}
             {relay.worker_url && (
                 <div className="space-y-1">
                     <div className="text-xs text-muted-foreground">Relay Worker URL</div>
                     <code className="text-sm bg-muted px-2 py-1 rounded block truncate">
-                        {relay.worker_url}
+                        {relay.custom_domain && relay.worker_name
+                            ? `https://${relay.worker_name}.${relay.custom_domain}`
+                            : relay.worker_url}
                     </code>
                 </div>
             )}

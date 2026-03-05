@@ -29,6 +29,68 @@ class SearchRequest(BaseModel):
     limit: int = 10
 
 
+def _normalize_match(item: dict) -> dict:
+    """Normalize a flat search result into the UI's SearchMatch shape.
+
+    The relay client tags items with ``_result_type`` and type-specific
+    field names.  The UI expects ``type``, ``content``, ``score``,
+    ``doc_type``, and optionally ``file_path``.
+    """
+    result_type = item.pop("_result_type", item.get("type", "unknown"))
+    content = (
+        item.get("summary")       # memory
+        or item.get("preview")    # plan / session
+        or item.get("observation")
+        or item.get("content", "")
+    )
+    score = item.get("relevance") or item.get("score")
+    doc_type = item.get("doc_type") or item.get("memory_type") or result_type
+
+    return {
+        "type": result_type,
+        "content": content,
+        "score": score,
+        "doc_type": doc_type,
+        "file_path": item.get("file_path") or item.get("filepath"),
+    }
+
+
+def _group_results_by_project(raw: dict) -> dict:
+    """Group flat results into ``{project_slug, matches[]}`` groups.
+
+    The swarm worker returns a flat array where each item has a
+    ``project_slug`` key.  The UI expects an array of per-project groups,
+    each containing a ``matches`` list with normalized field names.
+    """
+    flat = raw.get(SWARM_RESPONSE_KEY_RESULTS, [])
+    if not flat:
+        return raw
+
+    # If already grouped (has ``matches`` key), pass through unchanged.
+    if flat and isinstance(flat[0], dict) and "matches" in flat[0]:
+        return raw
+
+    grouped: dict[str, list[dict]] = {}
+    for item in flat:
+        slug = item.pop("project_slug", "unknown")
+        # Remove relay metadata not needed by the UI.
+        item.pop("machine_id", None)
+        grouped.setdefault(slug, []).append(_normalize_match(item))
+
+    result: dict = {
+        SWARM_RESPONSE_KEY_RESULTS: [
+            {"project_slug": slug, "matches": matches}
+            for slug, matches in grouped.items()
+        ],
+    }
+    # Preserve errors from the swarm worker response.
+    if "errors" in raw:
+        result["errors"] = raw["errors"]
+    if SWARM_RESPONSE_KEY_ERROR in raw:
+        result[SWARM_RESPONSE_KEY_ERROR] = raw[SWARM_RESPONSE_KEY_ERROR]
+    return result
+
+
 @router.post(SWARM_DAEMON_API_PATH_SEARCH)
 async def swarm_search(body: SearchRequest) -> dict:
     """Search across swarm nodes."""
@@ -36,7 +98,8 @@ async def swarm_search(body: SearchRequest) -> dict:
     if not state.http_client:
         return {SWARM_RESPONSE_KEY_ERROR: SWARM_ERROR_NOT_CONNECTED, SWARM_RESPONSE_KEY_RESULTS: []}
     try:
-        return await state.http_client.search(body.query, body.search_type, body.limit)
+        raw = await state.http_client.search(body.query, body.search_type, body.limit)
+        return _group_results_by_project(raw)
     except Exception as exc:
         logger.error("Swarm search failed: %s", exc)
         return {SWARM_RESPONSE_KEY_ERROR: str(exc), SWARM_RESPONSE_KEY_RESULTS: []}

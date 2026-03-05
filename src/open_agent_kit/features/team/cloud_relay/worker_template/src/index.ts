@@ -106,25 +106,22 @@ export default {
     }
 
     // ----- POST /search — federated search fan-out to connected peers -----
+    // Auth delegated to DO (accepts both relay_token and swarm callback_token).
     if (path === "/search" && request.method === "POST") {
-      const authErr = validateRelayTokenHttp(request, env);
-      if (authErr) return authErr;
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /federate-tool — generic federated tool fan-out to peers -----
+    // Auth delegated to DO (accepts both relay_token and swarm callback_token).
     if (path === "/federate-tool" && request.method === "POST") {
-      const authErr = validateRelayTokenHttp(request, env);
-      if (authErr) return authErr;
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request), request);
     }
 
     // ----- POST /tool-call — node-to-node tool call (relay-token auth) -----
+    // Auth delegated to DO (accepts both relay_token and swarm callback_token).
     if (path === "/tool-call" && request.method === "POST") {
-      const authErr = validateRelayTokenHttp(request, env);
-      if (authErr) return authErr;
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request), request);
     }

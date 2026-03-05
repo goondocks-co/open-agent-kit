@@ -87,6 +87,9 @@ class AgentExecutor:
             vector_store=vector_store,
         )
 
+        # Additional MCP servers injected at runtime (name -> server config)
+        self._additional_mcp_servers: dict[str, Any] = {}
+
     @property
     def _agent_config(self) -> "AgentConfig":
         """Get agent config from live config accessor or static fallback."""
@@ -110,6 +113,15 @@ class AgentExecutor:
     def max_cache_size(self) -> int:
         """Get the maximum in-memory cache size from config."""
         return self._agent_config.executor_cache_size
+
+    def add_mcp_server(self, name: str, server: Any) -> None:
+        """Register an additional MCP server to be injected into all agent runs.
+
+        Args:
+            name: Server name (used as key in mcp_servers dict).
+            server: McpSdkServerConfig instance from create_sdk_mcp_server().
+        """
+        self._additional_mcp_servers[name] = server
 
     def _get_external_mcp_servers(self, agent: AgentDefinition) -> dict[str, Any]:
         """Phase 2 injection point for SDLC provider MCP servers. Returns empty dict."""
@@ -200,6 +212,9 @@ class AgentExecutor:
         mcp_servers: dict[str, Any] = {}
         external_servers = self._get_external_mcp_servers(agent)
         mcp_servers.update(external_servers)
+
+        # Inject additional MCP servers registered via add_mcp_server()
+        mcp_servers.update(self._additional_mcp_servers)
 
         # Build enabled OAK tools set from tool_access flags
         enabled_oak_tools = build_oak_tools_from_access(agent.tool_access)
@@ -678,9 +693,13 @@ class AgentExecutor:
         run.completed_at = datetime.now()
         logger.warning(f"Agent run {run.id} timed out")
 
-    def _persist_run_completion(self, run: AgentRun) -> None:
+    def persist_completion(self, run: AgentRun) -> None:
         """Persist run completion state to SQLite (delegates to RunStore)."""
         self._run_store.persist_completion(run)
+
+    def _persist_run_completion(self, run: AgentRun) -> None:
+        """Backward-compatible alias — prefer ``persist_completion``."""
+        self.persist_completion(run)
 
     async def cancel(self, run_id: str) -> bool:
         """Cancel a running agent (delegates to RunStore)."""

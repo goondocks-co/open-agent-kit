@@ -9,6 +9,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from open_agent_kit.features.agent_runtime.executor import AgentExecutor
+from open_agent_kit.features.agent_runtime.registry import AgentRegistry
 from open_agent_kit.features.swarm.constants import (
     SWARM_AGENTS_DEFINITIONS_DIR,
     SWARM_AUTH_ENV_VAR,
@@ -29,6 +31,7 @@ from open_agent_kit.features.swarm.daemon.routes import (
 from open_agent_kit.features.swarm.daemon.state import (
     get_swarm_state,
 )
+from open_agent_kit.features.team.config.agents import AgentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +46,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     swarm_url = os.environ.get("OAK_SWARM_URL", "")
     swarm_token = os.environ.get("OAK_SWARM_TOKEN", "")
     swarm_id = os.environ.get("OAK_SWARM_ID", "")
+    custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "")
 
-    state.swarm_url = swarm_url
+    # When a custom domain is configured, derive the effective URL so the UI
+    # and credentials display the custom domain instead of the workers.dev URL.
+    effective_url = swarm_url
+    if custom_domain and swarm_id and swarm_url:
+        from open_agent_kit.features.swarm.scaffold import make_worker_name
+
+        worker_name = make_worker_name(swarm_id)
+        effective_url = f"https://{worker_name}.{custom_domain}"
+
+    state.swarm_url = effective_url
     state.swarm_token = swarm_token
     state.swarm_id = swarm_id
+    state.custom_domain = custom_domain
     state.auth_token = os.environ.get(SWARM_AUTH_ENV_VAR)
 
     if swarm_url and swarm_token:
@@ -54,8 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             SwarmWorkerClient,
         )
 
-        state.http_client = SwarmWorkerClient(swarm_url, swarm_token)
-        logger.info("Connected to swarm worker at %s", swarm_url)
+        state.http_client = SwarmWorkerClient(effective_url, swarm_token)
+        logger.info("Connected to swarm worker at %s", effective_url)
     else:
         logger.warning(
             "OAK_SWARM_URL or OAK_SWARM_TOKEN not set; swarm daemon running without worker connection"
@@ -63,11 +77,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Initialize agent runtime
     try:
-        from open_agent_kit.features.agent_runtime.registry import AgentRegistry
-        from open_agent_kit.features.agent_runtime.run_store import RunStore
-        from open_agent_kit.features.agent_runtime.executor import AgentExecutor
-        from open_agent_kit.features.team.config.agents import AgentConfig
-
         # Definitions live inside the swarm feature package
         definitions_dir = Path(__file__).parent.parent / SWARM_AGENTS_DEFINITIONS_DIR
 
@@ -77,8 +86,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         registry.load_all()
 
-        run_store = RunStore(activity_store=None)
-
         agent_config = AgentConfig(enabled=True)
         executor = AgentExecutor(
             project_root=Path.cwd(),
@@ -87,11 +94,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         state.agent_registry = registry
         state.agent_executor = executor
-        state.run_store = run_store
 
-        logger.info(
-            "Agent runtime initialized with %d templates", len(registry.templates)
-        )
+        # Inject swarm MCP server so agents can use swarm tools
+        if state.http_client:
+            try:
+                from open_agent_kit.features.swarm.agents.tools import (
+                    create_swarm_mcp_server,
+                )
+
+                swarm_mcp = create_swarm_mcp_server(state.http_client)
+                if swarm_mcp:
+                    executor.add_mcp_server("oak-swarm", swarm_mcp)
+                    logger.info("Swarm MCP server injected into agent executor")
+            except Exception as mcp_exc:
+                logger.warning("Failed to inject swarm MCP server: %s", mcp_exc)
+
+        logger.info("Agent runtime initialized with %d templates", len(registry.templates))
     except Exception as exc:
         logger.warning("Failed to initialize agent runtime: %s", exc)
 

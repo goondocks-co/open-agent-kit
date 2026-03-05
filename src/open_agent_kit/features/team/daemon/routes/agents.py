@@ -19,25 +19,28 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from pydantic import BaseModel, Field
 
 from open_agent_kit.features.agent_runtime.models import (
     AgentDetailResponse,
-    AgentListItem,
     AgentListResponse,
     AgentRunRequest,
     AgentRunResponse,
     AgentRunStatus,
-    AgentTaskListItem,
-    AgentTemplateListItem,
     CreateTaskRequest,
+    TaskRunRequest,
+)
+from open_agent_kit.features.agent_runtime.routes.agents import (
+    build_agent_list_response,
+    reload_registry,
+    start_task_run,
+)
+from open_agent_kit.features.agent_runtime.routes.common import (
+    get_agent_components,
 )
 from open_agent_kit.features.team.constants import (
     AGENT_PROJECT_CONFIG_DIR,
 )
-from open_agent_kit.features.team.daemon.routes._agents_common import (
-    get_agent_components,
-)
+from open_agent_kit.features.team.daemon.state import get_state
 
 logger = logging.getLogger(__name__)
 
@@ -51,78 +54,9 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 @router.get("", response_model=AgentListResponse)
 async def list_agents() -> AgentListResponse:
-    """List all available templates and tasks.
-
-    Templates define capabilities but cannot be run directly.
-    Tasks are runnable - they have a configured default_task.
-    """
-    registry, _executor, _state = get_agent_components()
-
-    templates = [t for t in registry.list_templates() if not t.internal]
-    tasks = registry.list_tasks()
-
-    # Build template list items
-    template_items = [
-        AgentTemplateListItem(
-            name=t.name,
-            display_name=t.display_name,
-            description=t.description,
-            max_turns=t.execution.max_turns,
-            timeout_seconds=t.execution.timeout_seconds,
-        )
-        for t in templates
-    ]
-
-    # Build task list items (use effective execution settings - task override or template default)
-    task_items = []
-    for task in tasks:
-        template = registry.get_template(task.agent_type)
-        if template:
-            # Compute effective execution config (task override takes precedence)
-            has_override = task.execution is not None
-            if has_override and task.execution:
-                effective_max_turns = task.execution.max_turns or template.execution.max_turns
-                effective_timeout = (
-                    task.execution.timeout_seconds or template.execution.timeout_seconds
-                )
-            else:
-                effective_max_turns = template.execution.max_turns
-                effective_timeout = template.execution.timeout_seconds
-
-            task_items.append(
-                AgentTaskListItem(
-                    name=task.name,
-                    display_name=task.display_name,
-                    agent_type=task.agent_type,
-                    description=task.description,
-                    default_task=task.default_task,
-                    max_turns=effective_max_turns,
-                    timeout_seconds=effective_timeout,
-                    has_execution_override=has_override,
-                    is_builtin=task.is_builtin,
-                )
-            )
-
-    # Legacy: also return agents list for backwards compatibility
-    legacy_items = [
-        AgentListItem(
-            name=t.name,
-            display_name=t.display_name,
-            description=t.description,
-            max_turns=t.execution.max_turns,
-            timeout_seconds=t.execution.timeout_seconds,
-            project_config=t.project_config,
-        )
-        for t in templates
-    ]
-
-    return AgentListResponse(
-        templates=template_items,
-        tasks=task_items,
-        tasks_dir=AGENT_PROJECT_CONFIG_DIR,
-        agents=legacy_items,
-        total=len(templates),
-    )
+    """List all available templates and tasks."""
+    registry, _executor, _state = get_agent_components(get_state())
+    return build_agent_list_response(registry, tasks_dir=AGENT_PROJECT_CONFIG_DIR)
 
 
 # =============================================================================
@@ -132,37 +66,14 @@ async def list_agents() -> AgentListResponse:
 
 @router.post("/reload")
 async def reload_agents() -> dict:
-    """Reload agent definitions from disk.
-
-    Useful after adding or modifying agent YAML files.
-
-    Returns:
-        Number of agents loaded.
-    """
-    registry, _executor, _state = get_agent_components()
-
-    count = registry.reload()
-
-    return {
-        "success": True,
-        "message": f"Reloaded {count} agents",
-        "agents": registry.list_names(),
-    }
+    """Reload agent definitions from disk."""
+    registry, _executor, _state = get_agent_components(get_state())
+    return reload_registry(registry)
 
 
 # =============================================================================
 # Task Routes (MUST come before /{agent_name} wildcard)
 # =============================================================================
-
-
-class TaskRunRequest(BaseModel):
-    """Request body for running a task with optional runtime direction."""
-
-    additional_prompt: str | None = Field(
-        default=None,
-        max_length=10000,
-        description="Optional runtime direction for the task (what to work on)",
-    )
 
 
 @router.post("/tasks/{task_name}/run", response_model=AgentRunResponse)
@@ -171,63 +82,14 @@ async def run_task(
     background_tasks: BackgroundTasks,
     request: TaskRunRequest | None = None,
 ) -> AgentRunResponse:
-    """Run a task using its configured default_task.
-
-    Tasks are the preferred way to run agents - they have a pre-configured
-    task so no task input is required. Optionally accepts an additional_prompt
-    to provide runtime direction (e.g., "Focus on the backup system").
-
-    Args:
-        task_name: Name of the task to run.
-        request: Optional request body with additional_prompt.
-
-    Returns:
-        Run ID and initial status.
-    """
-    registry, executor, _state = get_agent_components()
-
-    # Get task
-    task = registry.get_task(task_name)
-    if not task:
-        raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
-
-    # Get template
-    template = registry.get_template(task.agent_type)
-    if not template:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Template '{task.agent_type}' not found for task '{task_name}'",
-        )
-
-    # Compose task prompt: prepend assignment if provided
-    task_prompt = task.default_task
-    if request and request.additional_prompt:
-        task_prompt = f"## Assignment\n{request.additional_prompt}\n\n---\n\n{task.default_task}"
-
-    # Create run record with task
-    run = executor.create_run(template, task_prompt, task)
-
-    logger.info(f"Starting task run: {run.id} for {task_name}")
-
-    # Execute in background
-    async def _execute_task() -> None:
-        try:
-            await executor.execute(template, task_prompt, run, task)
-        except (OSError, RuntimeError, ValueError) as e:
-            logger.error(f"Task run {run.id} failed: {e}")
-            run.status = AgentRunStatus.FAILED
-            run.error = str(e)
-            run.completed_at = datetime.now()
-            # Persist failure state to database
-            executor._persist_run_completion(run)
-
-    # Schedule background execution
-    background_tasks.add_task(_execute_task)
-
-    return AgentRunResponse(
-        run_id=run.id,
-        status=run.status,
-        message=f"Task '{task_name}' started",
+    """Run a task using its configured default_task."""
+    registry, executor, _state = get_agent_components(get_state())
+    return start_task_run(
+        registry,
+        executor,
+        task_name,
+        request.additional_prompt if request else None,
+        background_tasks,
     )
 
 
@@ -253,7 +115,7 @@ async def create_task(
     Returns:
         Created task details.
     """
-    registry, _executor, _state = get_agent_components()
+    registry, _executor, _state = get_agent_components(get_state())
 
     try:
         task = registry.create_task(
@@ -298,7 +160,7 @@ async def copy_task(
     Returns:
         Copied task details.
     """
-    registry, _executor, _state = get_agent_components()
+    registry, _executor, _state = get_agent_components(get_state())
 
     try:
         task = registry.copy_task(task_name, new_name)
@@ -336,7 +198,7 @@ async def get_agent(agent_name: str) -> AgentDetailResponse:
     Returns:
         Agent definition and recent run history.
     """
-    registry, executor, _state = get_agent_components()
+    registry, executor, _state = get_agent_components(get_state())
 
     agent = registry.get(agent_name)
     if not agent:
@@ -366,7 +228,7 @@ async def run_agent(
     Returns:
         Run ID and initial status.
     """
-    registry, executor, _state = get_agent_components()
+    registry, executor, _state = get_agent_components(get_state())
 
     agent = registry.get(agent_name)
     if not agent:
@@ -387,7 +249,7 @@ async def run_agent(
             run.error = str(e)
             run.completed_at = datetime.now()
             # Persist failure state to database
-            executor._persist_run_completion(run)
+            executor.persist_completion(run)
 
     # Schedule background execution
     background_tasks.add_task(_execute_agent)

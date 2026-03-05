@@ -583,6 +583,16 @@ class AgentRunDetailResponse(BaseModel):
     run: AgentRun
 
 
+class TaskRunRequest(BaseModel):
+    """Request body for running a task with optional runtime direction."""
+
+    additional_prompt: str | None = Field(
+        default=None,
+        max_length=10000,
+        description="Optional runtime direction for the task (what to work on)",
+    )
+
+
 class CreateTaskRequest(BaseModel):
     """Request to create a new agent task from a template."""
 

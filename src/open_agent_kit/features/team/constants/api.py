@@ -144,6 +144,14 @@ TOOL_NAME_GREP: Final[str] = "Grep"
 TOOL_NAME_GLOB: Final[str] = "Glob"
 
 # =============================================================================
+# Team Daemon Swarm API Paths
+# =============================================================================
+
+CI_DAEMON_API_PATH_SWARM_JOIN: Final[str] = "/api/swarm/join"
+CI_DAEMON_API_PATH_SWARM_LEAVE: Final[str] = "/api/swarm/leave"
+CI_DAEMON_API_PATH_SWARM_STATUS: Final[str] = "/api/swarm/status"
+
+# =============================================================================
 # Time and Formatting Constants
 # =============================================================================
 

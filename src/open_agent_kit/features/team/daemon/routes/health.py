@@ -285,17 +285,29 @@ def _get_cloud_relay_status(state: object) -> dict | None:
 
     worker_url = relay_status.worker_url
     mcp_endpoint = None
+    custom_domain: str | None = None
+    worker_name: str | None = None
+
+    # Resolve custom_domain and worker_name from config so we can derive
+    # the correct public URL (custom domain takes precedence over workers.dev).
+    ci_config = getattr(state, "ci_config", None)
+    if ci_config:
+        custom_domain = getattr(ci_config.cloud_relay, "custom_domain", None)
+        worker_name = getattr(ci_config.cloud_relay, "worker_name", None)
+
     if worker_url:
-        from open_agent_kit.features.team.constants import (
-            CLOUD_RELAY_MCP_ENDPOINT_SUFFIX,
+        from open_agent_kit.features.team.daemon.routes.cloud_relay import (
+            _mcp_endpoint,
         )
 
-        mcp_endpoint = worker_url + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
+        mcp_endpoint = _mcp_endpoint(worker_url, custom_domain, worker_name)
 
     return {
         "connected": True,
         "worker_url": worker_url,
         "mcp_endpoint": mcp_endpoint,
+        "custom_domain": custom_domain,
+        "worker_name": worker_name,
     }
 
 

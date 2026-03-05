@@ -1,5 +1,5 @@
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
-import { fetchJson } from "@/lib/api";
+import { fetchJson, postJson } from "@/lib/api";
 import { API_ENDPOINTS, AGENTS_POLL_MS, AGENT_RUNS_POLL_MS } from "@/lib/constants";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -85,16 +85,7 @@ export function useRunTask() {
         mutationFn: async ({ taskName, additionalPrompt }) => {
             const url = API_ENDPOINTS.AGENTS_TASK_RUN.replace(":taskName", taskName);
             const body = additionalPrompt ? { additional_prompt: additionalPrompt } : {};
-            const response = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                throw new Error(error.detail ?? `Failed to run task: ${response.status}`);
-            }
-            return response.json();
+            return postJson<AgentRunResponse>(url, body);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
@@ -106,14 +97,7 @@ export function useReloadAgents() {
     const queryClient = useQueryClient();
 
     return useMutation<{ success: boolean; message: string; agents: string[] }, Error, void>({
-        mutationFn: async () => {
-            const response = await fetch(API_ENDPOINTS.AGENTS_RELOAD, { method: "POST" });
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                throw new Error(error.detail ?? `Failed to reload: ${response.status}`);
-            }
-            return response.json();
-        },
+        mutationFn: () => postJson(API_ENDPOINTS.AGENTS_RELOAD, {}),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
         },

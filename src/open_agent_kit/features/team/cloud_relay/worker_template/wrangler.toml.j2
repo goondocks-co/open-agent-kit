@@ -25,6 +25,12 @@ head_sampling_rate = 1
 [vars]
 AGENT_TOKEN = "{{ agent_token }}"
 RELAY_TOKEN = "{{ relay_token }}"
+WORKER_NAME = "{{ worker_name }}"
+{% if custom_domain %}
+WORKER_URL = "https://{{ worker_name }}.{{ custom_domain }}"
+{% else %}
+WORKER_URL = "https://{{ worker_name }}.workers.dev"
+{% endif %}
 {% if custom_domain %}
 
 [[routes]]

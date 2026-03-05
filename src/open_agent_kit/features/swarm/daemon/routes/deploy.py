@@ -9,11 +9,13 @@ from pydantic import BaseModel
 
 from open_agent_kit.features.swarm.config import get_swarm_config_dir
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_SWARM_KEY_URL,
     SWARM_DAEMON_API_PATH_DEPLOY_AUTH,
     SWARM_DAEMON_API_PATH_DEPLOY_INSTALL,
     SWARM_DAEMON_API_PATH_DEPLOY_RUN,
     SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD,
+    SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS,
     SWARM_DAEMON_API_PATH_DEPLOY_STATUS,
     SWARM_DEPLOY_ERROR_NO_SCAFFOLD_DIR,
     SWARM_DEPLOY_ERROR_NO_SWARM_ID,
@@ -85,6 +87,7 @@ async def deploy_status() -> dict:
         "worker_url": state.swarm_url or None,
         "swarm_id": state.swarm_id,
         "worker_name": worker_name,
+        "custom_domain": state.custom_domain or None,
         "update_available": update_available,
     }
 
@@ -140,6 +143,7 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
             output_dir=scaffold_dir,
             swarm_token=swarm_token,
             worker_name=worker_name,
+            custom_domain=state.custom_domain or None,
             force=body.force,
         )
         _invalidate_scaffold_hash_cache()
@@ -180,20 +184,28 @@ async def deploy_run() -> dict:
     success, worker_url, output = await asyncio.to_thread(run_wrangler_deploy, scaffold_dir)
 
     if success and worker_url and state.swarm_id:
+        from open_agent_kit.features.swarm.scaffold import make_worker_name
+
+        # Prefer custom domain URL when configured
+        effective_url = worker_url
+        if state.custom_domain:
+            worker_name = make_worker_name(state.swarm_id)
+            effective_url = f"https://{worker_name}.{state.custom_domain}"
+
         # Persist swarm_url to config on disk
         config = load_swarm_config(state.swarm_id) or {}
-        config[CI_CONFIG_SWARM_KEY_URL] = worker_url
+        config[CI_CONFIG_SWARM_KEY_URL] = effective_url
         save_swarm_config(state.swarm_id, config)
 
         # Update in-memory state so daemon connects without restart
-        state.swarm_url = worker_url
+        state.swarm_url = effective_url
         _invalidate_scaffold_hash_cache()
 
         # Create a fresh SwarmWorkerClient for the new URL
         from open_agent_kit.features.swarm.daemon.client import SwarmWorkerClient
 
         state.http_client = SwarmWorkerClient(
-            swarm_url=worker_url,
+            swarm_url=effective_url,
             swarm_token=state.swarm_token,
         )
 
@@ -202,3 +214,76 @@ async def deploy_run() -> dict:
         "worker_url": worker_url,
         "output": output,
     }
+
+
+class DeploySettingsRequest(BaseModel):
+    """Deploy settings request body."""
+
+    custom_domain: str | None = None
+
+
+def _normalize_domain(raw: str) -> str:
+    """Strip protocol prefix and trailing slashes from a domain string."""
+    domain = raw.strip()
+    for prefix in ("https://", "http://"):
+        if domain.lower().startswith(prefix):
+            domain = domain[len(prefix):]
+    return domain.rstrip("/")
+
+
+@router.put(SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS)
+async def deploy_settings(body: DeploySettingsRequest) -> dict:
+    """Save deploy settings (custom domain) and re-render wrangler.toml."""
+    from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
+    from open_agent_kit.features.swarm.scaffold import make_worker_name, render_wrangler_config
+
+    state = get_swarm_state()
+    if not state.swarm_id:
+        return {"success": False, "error": SWARM_DEPLOY_ERROR_NO_SWARM_ID}
+
+    # Normalize and persist
+    custom_domain = _normalize_domain(body.custom_domain) if body.custom_domain else ""
+
+    config = load_swarm_config(state.swarm_id) or {}
+    config[CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN] = custom_domain
+    save_swarm_config(state.swarm_id, config)
+
+    state.custom_domain = custom_domain
+
+    worker_name = make_worker_name(state.swarm_id)
+
+    # Update swarm_url to reflect custom domain when deployed
+    if state.swarm_url:
+        if custom_domain:
+            effective_url = f"https://{worker_name}.{custom_domain}"
+        else:
+            # Clearing domain: fall back to workers.dev URL from wrangler output.
+            # We can't recover the original workers.dev URL, so keep current.
+            effective_url = state.swarm_url
+
+        if effective_url != state.swarm_url:
+            state.swarm_url = effective_url
+            config[CI_CONFIG_SWARM_KEY_URL] = effective_url
+            save_swarm_config(state.swarm_id, config)
+
+            # Reconnect client with new URL
+            from open_agent_kit.features.swarm.daemon.client import SwarmWorkerClient
+
+            state.http_client = SwarmWorkerClient(
+                swarm_url=effective_url,
+                swarm_token=state.swarm_token,
+            )
+
+    # Re-render wrangler.toml if scaffold exists
+    scaffold_dir = _get_scaffold_dir()
+    if scaffold_dir and scaffold_dir.is_dir():
+        await asyncio.to_thread(
+            render_wrangler_config,
+            scaffold_dir,
+            state.swarm_token,
+            worker_name,
+            custom_domain or None,
+        )
+        _invalidate_scaffold_hash_cache()
+
+    return await deploy_status()

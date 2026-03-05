@@ -108,4 +108,7 @@ async def dashboard(rest: str | None = None) -> HTMLResponse:
             f'<meta name="oak-auth-token" content="{state.auth_token}" />\n</head>',
         )
 
-    return HTMLResponse(content=content)
+    return HTMLResponse(
+        content=content,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )

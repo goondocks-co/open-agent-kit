@@ -85,6 +85,26 @@ class BaseDaemonManager(abc.ABC):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("localhost", port)) != 0
 
+    def _find_available_port(self, start_port: int, range_size: int) -> int:
+        """Probe ports starting from *start_port* up to *range_size* offsets.
+
+        Args:
+            start_port: First port to try.
+            range_size: Number of consecutive ports to probe.
+
+        Returns:
+            First available port in the range.
+
+        Raises:
+            RuntimeError: If no port is available in the range.
+        """
+        for offset in range(range_size):
+            candidate = start_port + offset
+            if self._is_port_available(candidate):
+                return candidate
+        msg = f"No available port found in range " f"{start_port}-{start_port + range_size - 1}"
+        raise RuntimeError(msg)
+
     def _health_check(self, timeout: float = 2.0) -> bool:
         try:
             import httpx

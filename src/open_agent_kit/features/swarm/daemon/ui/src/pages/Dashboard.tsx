@@ -11,13 +11,13 @@ export default function Dashboard() {
     const { data: status } = useSwarmStatus();
     const { data: nodes } = useSwarmNodes();
     const { data: agentsData } = useAgents();
-    const { data: runsData } = useAgentRuns(5);
+    const { data: runsData } = useAgentRuns();
     const runTask = useRunTask();
 
     const connected = status?.connected ?? false;
     const nodeCount = nodes?.teams?.length ?? 0;
     const taskCount = agentsData?.tasks?.length ?? 0;
-    const recentRuns = runsData?.runs ?? [];
+    const recentRuns = (runsData?.runs ?? []).slice(0, 5);
 
     const handleQuickRun = (taskName: string) => {
         runTask.mutate({ taskName });

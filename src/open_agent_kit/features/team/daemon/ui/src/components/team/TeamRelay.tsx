@@ -39,6 +39,8 @@ import {
     DeploymentCard,
     LeaveTeamSection,
 } from "./relay";
+import { JoinSwarmCard } from "./swarm/JoinSwarmCard";
+import { useSwarmStatus, useJoinSwarm, useLeaveSwarm } from "@/hooks/use-swarm";
 
 export default function TeamRelay() {
     const { data: status, isLoading: statusLoading } = useCloudRelayStatus();
@@ -50,6 +52,15 @@ export default function TeamRelay() {
     const stopRelay = useCloudRelayStop();
     const updateConfig = useUpdateTeamConfig();
     const leaveTeam = useTeamLeave();
+
+    // Swarm hooks
+    const { data: swarmStatus } = useSwarmStatus();
+    const joinSwarm = useJoinSwarm();
+    const leaveSwarmMutation = useLeaveSwarm();
+
+    // Swarm join flow state
+    const [swarmJoinError, setSwarmJoinError] = useState<string | null>(null);
+    const [swarmJoinSuccess, setSwarmJoinSuccess] = useState(false);
 
     // Sync settings form state
     const [autoSync, setAutoSync] = useState(false);
@@ -141,6 +152,23 @@ export default function TeamRelay() {
 
     const handleLeave = () => { leaveTeam.mutate(); };
 
+    const handleJoinSwarm = async (swarmUrl: string, swarmToken: string) => {
+        setSwarmJoinError(null);
+        setSwarmJoinSuccess(false);
+        try {
+            const result = await joinSwarm.mutateAsync({ swarm_url: swarmUrl, swarm_token: swarmToken });
+            if (result.error) {
+                setSwarmJoinError(result.error);
+            } else {
+                setSwarmJoinSuccess(true);
+            }
+        } catch (err) {
+            setSwarmJoinError(err instanceof Error ? err.message : "Failed to join swarm.");
+        }
+    };
+
+    const handleLeaveSwarm = () => { leaveSwarmMutation.mutate(); };
+
     if (statusLoading || configLoading) {
         return (
             <div className="space-y-4">
@@ -197,6 +225,19 @@ export default function TeamRelay() {
                         <FederatedMetrics metrics={teamStatus.relay_metrics} />
                     )}
                 </div>
+            )}
+
+            {/* Swarm — only shown when relay is connected (callback URL required) */}
+            {isConnected && (
+                <JoinSwarmCard
+                    onJoin={handleJoinSwarm}
+                    onLeave={handleLeaveSwarm}
+                    isJoining={joinSwarm.isPending}
+                    isLeaving={leaveSwarmMutation.isPending}
+                    joinError={swarmJoinError}
+                    joinSuccess={swarmJoinSuccess}
+                    swarmStatus={swarmStatus ?? null}
+                />
             )}
 
             {/* Config toggle — only shown when connected */}

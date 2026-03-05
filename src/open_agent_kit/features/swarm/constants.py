@@ -42,6 +42,7 @@ CI_CONFIG_SWARM_KEY_TOKEN: Final[str] = "swarm_token"
 CI_CONFIG_SWARM_KEY_SENSITIVITY: Final[str] = "sensitivity"
 CI_CONFIG_SWARM_KEY_SWARM_ID: Final[str] = "swarm_id"
 CI_CONFIG_SWARM_KEY_WORKER_NAME: Final[str] = "worker_name"
+CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN: Final[str] = "custom_domain"
 
 # API paths (Swarm Worker HTTP API)
 SWARM_API_PATH_REGISTER: Final[str] = "/api/swarm/register"
@@ -60,6 +61,7 @@ SWARM_DAEMON_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_DAEMON_API_PATH_STATUS: Final[str] = "/api/swarm/status"
 SWARM_DAEMON_API_PATH_TOOL_CALL: Final[str] = "/api/swarm/tool-call"
 SWARM_DAEMON_API_PATH_BROADCAST: Final[str] = "/api/swarm/broadcast"
+SWARM_DAEMON_API_PATH_CREDENTIALS: Final[str] = "/api/swarm/credentials"
 SWARM_DAEMON_API_PATH_AGENTS: Final[str] = "/api/agents"
 
 # Daemon UI API paths (local swarm daemon - UI endpoints)
@@ -70,6 +72,7 @@ SWARM_DAEMON_API_PATH_DEPLOY_AUTH: Final[str] = "/api/deploy/auth"
 SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD: Final[str] = "/api/deploy/scaffold"
 SWARM_DAEMON_API_PATH_DEPLOY_INSTALL: Final[str] = "/api/deploy/install"
 SWARM_DAEMON_API_PATH_DEPLOY_RUN: Final[str] = "/api/deploy/run"
+SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS: Final[str] = "/api/deploy/settings"
 
 # WebSocket protocol message types (node <-> Team Worker)
 SWARM_WS_TYPE_SEARCH: Final[str] = "swarm_search"
@@ -183,6 +186,11 @@ SWARM_MESSAGE_WRANGLER_NOT_AVAILABLE: Final[str] = (
 )
 SWARM_MESSAGE_NPM_INSTALL_FAILED: Final[str] = "npm install failed: {output}"
 SWARM_MESSAGE_DEPLOY_FAILED: Final[str] = "Deploy failed: {output}"
+SWARM_MESSAGE_RESTARTING: Final[str] = "Restarting swarm daemon..."
+SWARM_MESSAGE_RESTARTED: Final[str] = "Swarm daemon restarted at http://localhost:{port}"
+SWARM_MESSAGE_RESTART_FAILED: Final[str] = (
+    "Failed to restart swarm daemon. Check logs: {log_file}"
+)
 SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
     "Swarm daemon failed to start. Check logs for details."
 )
