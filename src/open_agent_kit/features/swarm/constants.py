@@ -259,6 +259,7 @@ SWARM_TOOL_NODES: Final[str] = "swarm_nodes"
 SWARM_TOOL_CALL: Final[str] = "swarm_call"
 SWARM_TOOL_BROADCAST: Final[str] = "swarm_broadcast"
 SWARM_TOOL_STATUS: Final[str] = "swarm_status"
+SWARM_TOOL_FETCH: Final[str] = "swarm_fetch"
 SWARM_TOOL_HEALTH_CHECK: Final[str] = "swarm_health_check"
 
 # Health check

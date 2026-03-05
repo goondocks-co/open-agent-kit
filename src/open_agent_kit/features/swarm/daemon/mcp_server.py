@@ -25,6 +25,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from open_agent_kit.features.swarm.constants import (  # noqa: E402
     SWARM_DAEMON_API_PATH_BROADCAST,
+    SWARM_DAEMON_API_PATH_FETCH,
     SWARM_DAEMON_API_PATH_NODES,
     SWARM_DAEMON_API_PATH_SEARCH,
     SWARM_DAEMON_API_PATH_STATUS,
@@ -32,6 +33,7 @@ from open_agent_kit.features.swarm.constants import (  # noqa: E402
     SWARM_DAEMON_CONFIG_DIR,
     SWARM_DAEMON_DEFAULT_PORT,
     SWARM_DAEMON_PORT_FILE,
+    SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS,
     SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     SWARM_RESPONSE_KEY_ERROR,
 )
@@ -303,6 +305,39 @@ def create_mcp_server() -> FastMCP:
         """
         try:
             result = _call_daemon(SWARM_DAEMON_API_PATH_STATUS)
+            return json.dumps(result, indent=2)
+        except RuntimeError as exc:
+            return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
+
+    @mcp.tool()
+    def swarm_fetch(
+        ids: list[str],
+        project_slug: str = "",
+    ) -> str:
+        """Fetch full details for items found via swarm_search.
+
+        Use this after swarm_search to get the complete content of specific
+        results. Pass the chunk IDs and project slug from search results.
+
+        Args:
+            ids: List of chunk IDs from swarm_search results.
+            project_slug: Project slug from the search result (used for routing).
+
+        Returns:
+            JSON string with full content for the requested items.
+        """
+        if not ids:
+            return json.dumps({SWARM_RESPONSE_KEY_ERROR: "ids list is required"})
+
+        try:
+            result = _call_daemon(
+                SWARM_DAEMON_API_PATH_FETCH,
+                data={
+                    "ids": ids,
+                    "project_slug": project_slug,
+                },
+                timeout=SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS + 2.0,
+            )
             return json.dumps(result, indent=2)
         except RuntimeError as exc:
             return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
