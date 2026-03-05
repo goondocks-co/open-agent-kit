@@ -102,30 +102,40 @@ class ReconcileSkillsStage(BaseStage):
         obsolete_removed = skill_service.remove_obsolete_skills()
         skills_removed = obsolete_removed.get("skills_removed", [])
 
-        # Refresh skills - ensures all skills-capable agents have all skills
-        # This is idempotent - only creates missing skills
+        # Install any new skills that aren't yet installed
+        installed_skills = set(skill_service.list_installed_skills())
+        skills_installed: list[str] = []
+        for manifest in skill_service.list_available_skills():
+            if manifest.name not in installed_skills:
+                feature = skill_service.get_feature_for_skill(manifest.name)
+                skill_service.install_skill(manifest.name, feature)
+                skills_installed.append(manifest.name)
+
+        # Refresh existing skills to latest package versions
         result = skill_service.refresh_skills()
         skills_refreshed = result.get("skills_refreshed", [])
-        installed_skills = skill_service.list_installed_skills()
+        total_installed = skill_service.list_installed_skills()
 
-        if skills_refreshed or skills_removed:
+        if skills_installed or skills_refreshed or skills_removed:
             return StageOutcome.success(
-                f"Reconciled skills ({len(skills_refreshed)} added, "
-                f"{len(skills_removed)} removed, {len(installed_skills)} total)",
+                f"Reconciled skills ({len(skills_installed)} installed, "
+                f"{len(skills_refreshed)} refreshed, "
+                f"{len(skills_removed)} removed, {len(total_installed)} total)",
                 data={
-                    "skills_added": skills_refreshed,
+                    "skills_installed": skills_installed,
+                    "skills_refreshed": skills_refreshed,
                     "skills_removed": skills_removed,
-                    "total_skills": len(installed_skills),
+                    "total_skills": len(total_installed),
                     "agents": result.get("agents", []),
                 },
             )
         else:
             return StageOutcome.success(
-                f"Skills up to date ({len(installed_skills)} installed)",
+                f"Skills up to date ({len(total_installed)} installed)",
                 data={
                     "skills_added": [],
                     "skills_removed": [],
-                    "total_skills": len(installed_skills),
+                    "total_skills": len(total_installed),
                     "agents": [],
                 },
             )

@@ -261,21 +261,23 @@ class UpgradePlanner:
         if not skill_service.has_skills_capable_agent():
             return result
 
-        enabled_features = SUPPORTED_FEATURES
         installed_skills = set(skill_service.list_installed_skills())
 
+        # Discover skills from ALL features (not just SUPPORTED_FEATURES)
+        # so opt-in features like swarm are included.
         all_valid_skills: set[str] = set()
-        for feature_name in enabled_features:
-            feature_skills = skill_service.get_skills_for_feature(feature_name)
-            all_valid_skills.update(feature_skills)
+        skill_to_feature: dict[str, str] = {}
+        for manifest in skill_service.list_available_skills():
+            all_valid_skills.add(manifest.name)
+            feature = skill_service.get_feature_for_skill(manifest.name)
+            if feature:
+                skill_to_feature[manifest.name] = feature
 
-        for feature_name in enabled_features:
-            feature_skills = skill_service.get_skills_for_feature(feature_name)
-            for skill_name in feature_skills:
-                if skill_name not in installed_skills:
-                    result["install"].append({"skill": skill_name, "feature": feature_name})
-                elif self._skill_needs_upgrade(skill_service, skill_name):
-                    result["upgrade"].append({"skill": skill_name, "feature": feature_name})
+        for skill_name, feature_name in skill_to_feature.items():
+            if skill_name not in installed_skills:
+                result["install"].append({"skill": skill_name, "feature": feature_name})
+            elif self._skill_needs_upgrade(skill_service, skill_name):
+                result["upgrade"].append({"skill": skill_name, "feature": feature_name})
 
         for skill_name in installed_skills:
             if skill_name not in all_valid_skills:

@@ -764,21 +764,17 @@ class SkillService:
                 'errors': []
             }
         """
-        from open_agent_kit.constants import SUPPORTED_FEATURES
-
         results: dict[str, Any] = {
             "skills_removed": [],
             "agents": [],
             "errors": [],
         }
 
-        # All features are always enabled
-        enabled_features = SUPPORTED_FEATURES
-
+        # Discover skills from ALL features (not just SUPPORTED_FEATURES)
+        # so opt-in features like swarm are included.
         all_valid_skills: set[str] = set()
-        for feature_name in enabled_features:
-            feature_skills = self.get_skills_for_feature(feature_name)
-            all_valid_skills.update(feature_skills)
+        for manifest in self.list_available_skills():
+            all_valid_skills.add(manifest.name)
 
         # Get currently installed skills
         installed_skills = set(self.list_installed_skills())
