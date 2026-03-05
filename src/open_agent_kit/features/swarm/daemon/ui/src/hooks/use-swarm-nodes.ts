@@ -9,6 +9,9 @@ interface SwarmNode {
     status: string;
     last_seen?: string;
     capabilities?: string[];
+    tool_names?: string[];
+    oak_version?: string;
+    node_count?: number;
 }
 
 interface NodesResponse {
