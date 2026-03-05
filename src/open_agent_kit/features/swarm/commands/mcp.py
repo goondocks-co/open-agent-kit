@@ -29,13 +29,10 @@ def mcp_command(
     ),
 ) -> None:
     """Run the swarm MCP server for AI agent integration."""
-    from open_agent_kit.features.swarm.daemon.mcp_server import (
-        MCPTransport,
-        run_mcp_server,
-    )
+    from open_agent_kit.features.swarm.daemon.mcp_server import run_mcp_server
 
     # For stdio transport, force logging to stderr to preserve stdout for JSON-RPC
     if transport == "stdio":
         logging.basicConfig(stream=sys.stderr, level=logging.WARNING, force=True)
 
-    run_mcp_server(transport=MCPTransport(transport))
+    run_mcp_server(transport=transport)  # type: ignore[arg-type]
