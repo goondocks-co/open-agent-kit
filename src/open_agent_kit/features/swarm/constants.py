@@ -230,8 +230,7 @@ SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
     "Swarm daemon failed to start. Check logs for details."
 )
 SWARM_MESSAGE_MCP_HINT: Final[str] = (
-    "To install the swarm MCP server for your agents, "
-    "run: {cli_command} init"
+    "To install the swarm MCP server for your agents, " "run: {cli_command} init"
 )
 
 # Deploy route error messages

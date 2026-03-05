@@ -685,12 +685,7 @@ class TeamService:
         """
         from open_agent_kit.features.team.mcp import install_mcp_server
 
-        swarm_mcp_yaml = (
-            Path(__file__).resolve().parent.parent
-            / "swarm"
-            / "mcp"
-            / "mcp.yaml"
-        )
+        swarm_mcp_yaml = Path(__file__).resolve().parent.parent / "swarm" / "mcp" / "mcp.yaml"
         if not swarm_mcp_yaml.is_file():
             return dict.fromkeys(agents, "skipped (swarm mcp config not found)")
 
