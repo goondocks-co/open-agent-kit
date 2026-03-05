@@ -191,8 +191,7 @@ def get_all_activity_hashes(store: ActivityStore) -> set[str]:
     hashes = {row[0] for row in cursor.fetchall()}
 
     cursor = conn.execute(
-        "SELECT session_id, timestamp_epoch, tool_name FROM activities "
-        "WHERE content_hash IS NULL"
+        "SELECT session_id, timestamp_epoch, tool_name FROM activities WHERE content_hash IS NULL"
     )
     for row in cursor.fetchall():
         hashes.add(compute_activity_hash(str(row[0]), int(row[1]), str(row[2])))

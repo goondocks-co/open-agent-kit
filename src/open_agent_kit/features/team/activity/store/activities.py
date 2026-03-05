@@ -498,7 +498,7 @@ def execute_readonly_query(
     for keyword in CI_QUERY_FORBIDDEN_KEYWORDS:
         if f" {keyword} " in f" {normalized} ":
             raise ValueError(
-                f"Forbidden keyword '{keyword}' detected. " f"Only read-only queries are allowed."
+                f"Forbidden keyword '{keyword}' detected. Only read-only queries are allowed."
             )
 
     effective_limit = min(limit, CI_QUERY_MAX_ROWS)

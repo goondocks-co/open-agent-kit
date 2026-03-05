@@ -91,13 +91,15 @@ def count_unembedded_plans(store: ActivityStore) -> int:
         Unembedded plan count.
     """
     conn = store._get_connection()
-    cursor = conn.execute("""
+    cursor = conn.execute(
+        """
         SELECT COUNT(*) FROM prompt_batches
         WHERE source_type = 'plan'
           AND plan_content IS NOT NULL
           AND plan_content != ''
           AND (plan_embedded IS NULL OR plan_embedded = 0)
-        """)
+        """
+    )
     result = cursor.fetchone()
     return int(result[0]) if result else 0
 
@@ -112,13 +114,15 @@ def count_embedded_plans(store: ActivityStore) -> int:
         Embedded plan count.
     """
     conn = store._get_connection()
-    cursor = conn.execute("""
+    cursor = conn.execute(
+        """
         SELECT COUNT(*) FROM prompt_batches
         WHERE source_type = 'plan'
           AND plan_content IS NOT NULL
           AND plan_content != ''
           AND plan_embedded = 1
-        """)
+        """
+    )
     result = cursor.fetchone()
     return int(result[0]) if result else 0
 
@@ -136,13 +140,15 @@ def get_embedded_plan_chromadb_ids(store: ActivityStore) -> list[str]:
         List of ChromaDB-format plan IDs (e.g. 'plan-42').
     """
     conn = store._get_connection()
-    cursor = conn.execute("""
+    cursor = conn.execute(
+        """
         SELECT id FROM prompt_batches
         WHERE source_type = 'plan'
           AND plan_content IS NOT NULL
           AND plan_content != ''
           AND plan_embedded = 1
-        """)
+        """
+    )
     return [f"plan-{row[0]}" for row in cursor.fetchall()]
 
 

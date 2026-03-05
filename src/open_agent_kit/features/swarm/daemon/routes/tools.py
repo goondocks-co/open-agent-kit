@@ -55,11 +55,21 @@ async def swarm_tool_call(body: ToolCallRequest) -> dict:
             target_project=body.target_project,
             timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
         )
-        logger.info("Swarm tool call complete: tool=%s target=%s", body.tool_name, body.target_project)
-        logger.debug("Swarm tool call result keys: %s", list(result.keys()) if isinstance(result, dict) else type(result).__name__)
+        logger.info(
+            "Swarm tool call complete: tool=%s target=%s", body.tool_name, body.target_project
+        )
+        logger.debug(
+            "Swarm tool call result keys: %s",
+            list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+        )
         return result
     except Exception as exc:
-        logger.error("Swarm tool call failed: tool=%s target=%s error=%s", body.tool_name, body.target_project, exc)
+        logger.error(
+            "Swarm tool call failed: tool=%s target=%s error=%s",
+            body.tool_name,
+            body.target_project,
+            exc,
+        )
         return {SWARM_RESPONSE_KEY_ERROR: str(exc)}
 
 

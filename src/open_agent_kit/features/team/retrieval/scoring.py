@@ -179,8 +179,7 @@ def filter_by_confidence(
     dropped = len(results) - len(kept)
     if dropped > 0:
         logger.debug(
-            f"[FILTER] Dropped {dropped}/{len(results)} results below "
-            f"{min_confidence} confidence"
+            f"[FILTER] Dropped {dropped}/{len(results)} results below {min_confidence} confidence"
         )
 
     return kept

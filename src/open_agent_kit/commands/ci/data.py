@@ -333,18 +333,15 @@ def ci_restore(
 
         if ir:
             print_info(
-                f"  Sessions: {ir.sessions_imported} imported, " f"{ir.sessions_skipped} skipped"
+                f"  Sessions: {ir.sessions_imported} imported, {ir.sessions_skipped} skipped"
             )
-            print_info(
-                f"  Batches: {ir.batches_imported} imported, " f"{ir.batches_skipped} skipped"
-            )
+            print_info(f"  Batches: {ir.batches_imported} imported, {ir.batches_skipped} skipped")
             print_info(
                 f"  Memories: {ir.observations_imported} imported, "
                 f"{ir.observations_skipped} skipped"
             )
             print_info(
-                f"  Activities: {ir.activities_imported} imported, "
-                f"{ir.activities_skipped} skipped"
+                f"  Activities: {ir.activities_imported} imported, {ir.activities_skipped} skipped"
             )
 
             if ir.errors > 0:

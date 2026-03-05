@@ -267,8 +267,7 @@ class PlanDetector:
             return None
 
         logger.info(
-            f"Found recent plan file: {best_path} "
-            f"(agent={best_agent}, age={now - best_mtime:.0f}s)"
+            f"Found recent plan file: {best_path} (agent={best_agent}, age={now - best_mtime:.0f}s)"
         )
         return PlanDetectionResult(
             is_plan=True,

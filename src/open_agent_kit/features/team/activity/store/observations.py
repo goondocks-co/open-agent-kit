@@ -410,7 +410,7 @@ def get_observations_by_session(
         )
     else:
         cursor = conn.execute(
-            "SELECT * FROM memory_observations WHERE session_id = ? " "ORDER BY created_at_epoch",
+            "SELECT * FROM memory_observations WHERE session_id = ? ORDER BY created_at_epoch",
             (session_id,),
         )
     return [StoredObservation.from_row(row) for row in cursor.fetchall()]

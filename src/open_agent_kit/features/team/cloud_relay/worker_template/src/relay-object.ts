@@ -60,6 +60,9 @@ const FEDERATED_SEARCH_TIMEOUT_MS = 3_000;
 const FEDERATED_SEARCH_DEFAULT_LIMIT = 10;
 const FEDERATED_SEARCH_MAX_RESULTS = 50;
 const CAPABILITY_FEDERATED_TOOLS = "federated_tools_v1";
+const CAPABILITY_SWARM_SEARCH = "swarm_search_v1";
+const CAPABILITY_SWARM_TOOLS = "swarm_tools_v1";
+const CAPABILITY_SWARM_BROADCAST = "swarm_broadcast_v1";
 const FEDERATED_TOOL_TIMEOUT_MS = 10_000;
 const FEDERATED_TOOL_MAX_RESULTS = 50;
 /** Probability of running TTL cleanup on each obs push (1%). */
@@ -1625,6 +1628,34 @@ export class RelayObject implements DurableObject {
     return merged;
   }
 
+  /** Compute the union of capabilities from all connected nodes, with swarm capability inference. */
+  private getAggregatedCapabilities(): string[] {
+    const caps = new Set<string>();
+    for (const meta of this.nodeMetadata.values()) {
+      if (meta.capabilities) {
+        for (const cap of meta.capabilities) {
+          caps.add(cap);
+        }
+      }
+    }
+
+    // If any node supports federated tools, this relay can participate in swarm federation.
+    if (caps.has(CAPABILITY_FEDERATED_TOOLS)) {
+      caps.add(CAPABILITY_SWARM_SEARCH);
+      caps.add(CAPABILITY_SWARM_TOOLS);
+      caps.add(CAPABILITY_SWARM_BROADCAST);
+    }
+
+    return [...caps].sort();
+  }
+
+  /** Extract sorted tool names from the aggregated tool list. */
+  private getAggregatedToolNames(): string[] {
+    return this.getAggregatedTools()
+      .map((t) => t.name)
+      .sort();
+  }
+
   // -----------------------------------------------------------------------
   // Timeout-wrapped fetch (used by swarm HTTP calls)
   // -----------------------------------------------------------------------
@@ -1718,7 +1749,8 @@ export class RelayObject implements DurableObject {
           team_id: teamId,
           project_slug: this.getProjectSlug(),
           callback_url: this.getCallbackUrl(),
-          capabilities: ["swarm_search_v1", "swarm_tools_v1"],
+          capabilities: this.getAggregatedCapabilities(),
+          tool_names: this.getAggregatedToolNames(),
           node_count: connectedNodes,
           oak_version: this.getOakVersion(),
           sensitivity: this.swarmSensitivity,
@@ -1820,7 +1852,13 @@ export class RelayObject implements DurableObject {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.swarmToken}`,
           },
-          body: JSON.stringify({ team_id: this.getTeamId() }),
+          body: JSON.stringify({
+            team_id: this.getTeamId(),
+            capabilities: this.getAggregatedCapabilities(),
+            node_count: this.state.getWebSockets().length,
+            oak_version: this.getOakVersion(),
+            tool_names: this.getAggregatedToolNames(),
+          }),
         },
         SWARM_SEARCH_TIMEOUT_MS,
       );

@@ -718,7 +718,7 @@ class OtelHookStrategy:
             return HooksInstallResult(
                 success=False,
                 message=(
-                    f"Missing dependency for OTEL hooks: {e}. " "Install with: pip install tomli-w"
+                    f"Missing dependency for OTEL hooks: {e}. Install with: pip install tomli-w"
                 ),
                 method="otel",
             )

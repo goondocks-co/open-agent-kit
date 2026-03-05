@@ -819,7 +819,8 @@ def _backfill_session_summaries_from_observations(conn: sqlite3.Connection) -> i
     Returns:
         Number of sessions backfilled.
     """
-    cursor = conn.execute("""
+    cursor = conn.execute(
+        """
         UPDATE sessions SET
           summary = (SELECT observation FROM memory_observations
                      WHERE memory_observations.session_id = sessions.id
@@ -834,14 +835,15 @@ def _backfill_session_summaries_from_observations(conn: sqlite3.Connection) -> i
           WHERE memory_observations.session_id = sessions.id
           AND memory_observations.memory_type = 'session_summary'
         )
-        """)
+        """
+    )
     backfilled = cursor.rowcount
 
     if backfilled > 0:
         conn.execute("DELETE FROM memory_observations WHERE memory_type = 'session_summary'")
         conn.commit()
         logger.info(
-            f"Backfilled {backfilled} session summaries from legacy " "session_summary observations"
+            f"Backfilled {backfilled} session summaries from legacy session_summary observations"
         )
 
     return backfilled

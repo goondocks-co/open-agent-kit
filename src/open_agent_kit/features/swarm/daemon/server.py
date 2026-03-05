@@ -76,7 +76,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         rotation_enabled=rotation_enabled,
     )
     logger.info("Swarm daemon starting (log_level=%s)", log_level)
-    logger.debug("Environment: OAK_SWARM_ID=%s OAK_SWARM_URL=%s", swarm_id, swarm_url[:50] if swarm_url else "<unset>")
+    logger.debug(
+        "Environment: OAK_SWARM_ID=%s OAK_SWARM_URL=%s",
+        swarm_id,
+        swarm_url[:50] if swarm_url else "<unset>",
+    )
     custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "")
 
     # When a custom domain is configured, derive the effective URL so the UI

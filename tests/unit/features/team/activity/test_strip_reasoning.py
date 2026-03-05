@@ -81,11 +81,7 @@ class TestStripReasoningTokens:
 
     def test_implicit_think_open_tag_classification(self) -> None:
         """Real-world GLM-4.7 pattern: reasoning without <think>, ends with </think>."""
-        text = (
-            "1.  **Analyze the Request:**\n"
-            "    *   Selection: refactoring\n"
-            "</think>refactoring"
-        )
+        text = "1.  **Analyze the Request:**\n    *   Selection: refactoring\n</think>refactoring"
         assert strip_reasoning_tokens(text) == "refactoring"
 
     def test_implicit_think_open_tag_long_reasoning(self) -> None:

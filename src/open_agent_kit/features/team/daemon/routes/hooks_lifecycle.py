@@ -531,8 +531,7 @@ async def hook_agent_thought(request: Request) -> dict:
 
     # Lifecycle logging to dedicated hooks.log
     hooks_logger.info(
-        f"[AGENT-THOUGHT] session={session_id} duration_ms={duration_ms} "
-        f"length={len(thought_text)}"
+        f"[AGENT-THOUGHT] session={session_id} duration_ms={duration_ms} length={len(thought_text)}"
     )
 
     # Store as activity for analysis

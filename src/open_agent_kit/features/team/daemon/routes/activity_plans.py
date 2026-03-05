@@ -317,8 +317,7 @@ async def refresh_plan_from_source(
     state.activity_store.mark_plan_unembedded(batch_id)
 
     logger.info(
-        f"Refreshed plan batch {batch_id} from {batch.plan_file_path} "
-        f"({len(final_content)} chars)"
+        f"Refreshed plan batch {batch_id} from {batch.plan_file_path} ({len(final_content)} chars)"
     )
 
     return RefreshPlanResponse(

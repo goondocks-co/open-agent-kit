@@ -278,8 +278,7 @@ async def hook_prompt_submit(request: Request) -> dict:
 
             # Lifecycle logging to dedicated hooks.log
             hooks_logger.info(
-                f"[PROMPT-SUBMIT] session={session_id} batch={prompt_batch_id} "
-                f"source={source_type}"
+                f"[PROMPT-SUBMIT] session={session_id} batch={prompt_batch_id} source={source_type}"
             )
 
             # Detailed logging to daemon.log
@@ -373,8 +372,7 @@ async def hook_prompt_submit(request: Request) -> dict:
                     num_code = min(3, len(high_confidence_code))
                     logger.info(f"Injecting {num_code} code chunks for prompt")
                     hooks_logger.info(
-                        f"[CONTEXT-INJECT] code={num_code} session={session_id} "
-                        f"hook=prompt-submit"
+                        f"[CONTEXT-INJECT] code={num_code} session={session_id} hook=prompt-submit"
                     )
                     logger.debug(f"[INJECT:prompt-submit-code] Content:\n{code_text}")
 

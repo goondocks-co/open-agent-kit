@@ -224,14 +224,16 @@ def project_with_oak_config(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text("""
+    config_file.write_text(
+        """
 team:
   embedding:
     provider: ollama
     model: bge-m3
     base_url: http://localhost:11434
   log_level: INFO
-""")
+"""
+    )
 
     return tmp_path
 
@@ -250,7 +252,8 @@ def project_with_custom_config(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text("""
+    config_file.write_text(
+        """
 team:
   embedding:
     provider: openai
@@ -262,7 +265,8 @@ team:
     - "**/*.pyc"
     - "**/venv/**"
   log_level: DEBUG
-""")
+"""
+    )
 
     return tmp_path
 
@@ -281,13 +285,15 @@ def project_with_invalid_config(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text("""
+    config_file.write_text(
+        """
 team:
   embedding:
     provider: invalid_provider
     model: bge-m3
     base_url: http://localhost:11434
-""")
+"""
+    )
 
     return tmp_path
 
@@ -306,13 +312,15 @@ def project_with_malformed_yaml(tmp_path: Path) -> Path:
     oak_dir.mkdir()
 
     config_file = oak_dir / "config.yaml"
-    config_file.write_text("""
+    config_file.write_text(
+        """
 team:
   embedding:
     - invalid yaml structure
       - bad indentation
     model: bge-m3
-""")
+"""
+    )
 
     return tmp_path
 
