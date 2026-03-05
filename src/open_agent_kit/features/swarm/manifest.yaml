@@ -6,3 +6,5 @@ default_enabled: false
 dependencies:
   - team
   - agent-runtime
+skills:
+  - swarm
