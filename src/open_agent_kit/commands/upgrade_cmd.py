@@ -367,7 +367,7 @@ def _display_upgrade_plan(plan: UpgradePlan, dry_run: bool) -> None:
     mcp_servers = plan.get("mcp_servers", [])
     if mcp_servers:
         mcp_list = "\n".join(
-            [f"  • {m['agent']} (from {m['feature']} feature)" for m in mcp_servers]
+            [f"  • {m.get('server_name', m['feature'])} → {m['agent']}" for m in mcp_servers]
         )
         sections.append(
             f"[cyan]MCP Servers to Install[/cyan] ({len(mcp_servers)} server(s))\n{mcp_list}"

@@ -109,6 +109,7 @@ class UpgradePlanMcpItem(TypedDict):
 
     agent: str
     feature: str
+    server_name: str
 
 
 class UpgradePlanLegacyCommandItem(TypedDict):

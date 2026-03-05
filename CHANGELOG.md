@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-03-05]
+
+### Added
+
+- **Swarm heartbeat advisories and minimum OAK version enforcement** — The swarm heartbeat response now carries advisory messages that peers can surface; a new `min_oak_version` field lets operators enforce a floor version across all swarm members and reject older nodes on connect; includes dedicated health-check endpoints for probing liveness without invoking business logic — [Implement swarm heartbeat advisories and min OAK version configuration](http://localhost:38388/activity/sessions/4597e15a-7dc2-4ac8-8f2d-4636737017fa)
+- **Full swarm autonomous agent functionality** *(in progress)* — Ongoing work to make the Swarm Analyst agent fully autonomous, enabling it to independently discover peers, fan out tasks, and aggregate results without manual orchestration — [Implement full swarm autonomous agent functionality](http://localhost:38388/activity/sessions/18949cd7-ac70-4045-bfe7-c25f4192aa04)
+- **Complete declarative `mcp.yaml` tool list with tests** — The MCP tool registry in `mcp.yaml` is now fully declarative and accurate; new tests verify the runtime tool registry matches the YAML declaration, preventing silent divergence between config and implementation — [Add complete tool list to mcp.yaml and tests](http://localhost:38388/activity/sessions/10176b06-7f5a-4452-b895-d349d814f72f)
+- **Oak skill packaging, export, and benchmark file strategy** — The Oak CI skill bundle can now be exported and packaged for distribution; evaluation/benchmark JSON files follow a defined version-control strategy (tracked in `oak/ci/history/` benchmarks directory); export tests confirm the bundle shape is stable across builds — [Implement Oak skill packaging, export tests, and benchmark file strategy](http://localhost:38388/activity/sessions/a4e36d38-06be-4a39-b8a6-9cc92198cb21)
+- **Debug-level logging and rotating log files for swarm daemon** — Comprehensive debug logging added throughout the swarm daemon; log output now rotates automatically to prevent unbounded disk growth; a rich terminal-style log-viewer UI — matching the team daemon experience — added to the swarm dashboard — [Add debug log level and rotating logs to swarm daemon](http://localhost:38388/activity/sessions/349115b6-be42-4c74-8a23-75d004c44c25)
+
+### Changed
+
+- **Shared log viewer component extracted to `ui/shared/`** — The terminal-style log viewer is now a single shared React component consumed by both the team and swarm daemon UIs (via the `@oak/ui` alias); eliminates duplicated log-rendering logic and ensures consistent behaviour and styling across both surfaces — [Refactor log viewer into shared component for swarm and team daemons](http://localhost:38388/activity/sessions/c8e97337-1d5b-44a5-9ec8-9a4af9cfe822)
+- **Oak skill template refreshed; schema docs regenerated** — The Oak skill template is updated from source and re-exported; `references/schema.md`, `SKILL.md`, and all agent system-prompt files regenerated via `generate_schema_ref.py` to reflect the current schema; the `test_schema_version_matches` gate in `test_skill_service.py` now passes cleanly — [Update Oak skill template and regenerate schema docs](http://localhost:38388/activity/sessions/8027bf73-45e4-40a6-95f5-ab39f5290662)
+
+### Fixed
+
+- Fix swarm daemon restart endpoint failing silently — the `SWARM_AUTH_ENV_VAR` constant was inadvertently removed during a refactor, so the daemon manager never injected `OAK_SWARM_DAEMON_TOKEN` into the subprocess environment; the daemon started without a token, causing an auth error and a UI timeout; constant re-added and manager updated to use it when spawning the daemon
+- Fix swarm `/fetch` endpoint returning `None` for the `function` field — the FastAPI route handler omitted the `function` query parameter from its signature, causing FastAPI to inject `None`; added `function: str = Query(...)` to the handler and ensured it is always echoed in the response
+
 ## [2026-03-04]
 
 ### Added

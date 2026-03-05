@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, cast
 import jinja2
 
 if TYPE_CHECKING:
+    from open_agent_kit.models.config import OakConfig
     from open_agent_kit.services.skill_service import SkillService
 
 from open_agent_kit.config.paths import FEATURES_DIR, OAK_DIR
@@ -367,12 +368,22 @@ class UpgradePlanner:
         return result
 
     def _plan_mcp_servers(self) -> list[UpgradePlanMcpItem]:
-        """Get MCP servers that need to be installed."""
+        """Get MCP servers that need to be installed.
+
+        Discovers all features with ``mcp/mcp.yaml`` rather than only iterating
+        ``SUPPORTED_FEATURES``, so opt-in features like swarm are included when
+        the project has joined a swarm.
+        """
         result: list[UpgradePlanMcpItem] = []
 
         config = self._config_service.load_config()
-        enabled_features = SUPPORTED_FEATURES
         configured_agents = config.agents
+
+        # Build the set of features whose MCP servers should be considered.
+        # Always include SUPPORTED_FEATURES; conditionally add swarm.
+        enabled_features: list[str] = list(SUPPORTED_FEATURES)
+        if self._is_swarm_joined(config):
+            enabled_features.append("swarm")
 
         for feature_name in enabled_features:
             feature_mcp_config = (
@@ -381,14 +392,38 @@ class UpgradePlanner:
             if not feature_mcp_config.exists():
                 continue
 
+            # Read server name from mcp.yaml for display purposes.
+            server_name = feature_name
+            try:
+                import yaml
+
+                mcp_data = yaml.safe_load(feature_mcp_config.read_text()) or {}
+                server_name = mcp_data.get("name", feature_name)
+            except Exception:
+                pass
+
             for agent in configured_agents:
                 if not self._mcp_checker.agent_has_mcp(agent):
                     continue
                 if self._mcp_checker.is_configured(agent, feature_name, self._package_features_dir):
                     continue
-                result.append({"agent": agent, "feature": feature_name})
+                result.append({"agent": agent, "feature": feature_name, "server_name": server_name})
 
         return result
+
+    @staticmethod
+    def _is_swarm_joined(config: OakConfig) -> bool:
+        """Check whether this project has joined a swarm."""
+        try:
+            from open_agent_kit.features.swarm.constants import (
+                CI_CONFIG_SWARM_KEY_TOKEN,
+                CI_CONFIG_SWARM_KEY_URL,
+            )
+
+            swarm = config.swarm or {}
+            return bool(swarm.get(CI_CONFIG_SWARM_KEY_URL) and swarm.get(CI_CONFIG_SWARM_KEY_TOKEN))
+        except Exception:
+            return False
 
     def _plan_gitignore(self) -> list[UpgradePlanGitignoreItem]:
         """Get gitignore entries declared by features that are missing from .gitignore."""

@@ -11,7 +11,7 @@ description: >-
   end-to-end. Powered by semantic search, memory lookup, and direct SQL against
   the Oak CI database (.oak/ci/activities.db). Also use when the user mentions
   oak_search, oak_context, oak_remember, oak_resolve_memory, or asks to run
-  queries against activities.db.
+  queries against activities.db or oak.
 allowed-tools: Bash, Read
 user-invocable: true
 ---

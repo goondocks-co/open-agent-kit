@@ -14,6 +14,14 @@
         "team",
         "mcp"
       ]
+    },
+    "oak-swarm": {
+      "type": "local",
+      "command": [
+        "oak-dev",
+        "swarm",
+        "mcp"
+      ]
     }
   }
 }

@@ -6,6 +6,13 @@
         "team",
         "mcp"
       ]
+    },
+    "oak-swarm": {
+      "command": "oak-dev",
+      "args": [
+        "swarm",
+        "mcp"
+      ]
     }
   }
 }

@@ -16,7 +16,11 @@ constitution:
 languages:
   installed: [javascript, python, typescript]
 skills:
-  installed: [project-governance, context-engineering, oak]
+  installed:
+  - project-governance
+  - context-engineering
+  - oak
+  - swarm
   auto_install: true
 team:
   agents:
