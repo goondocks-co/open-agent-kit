@@ -104,6 +104,8 @@ release-files/
 .env.local
 .env.*.local
 
+.wrangler/
+
 # open-agent-kit: Issue raw JSON (local debugging only)
 oak/issue/**/context.json
 

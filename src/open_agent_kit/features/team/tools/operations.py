@@ -857,7 +857,23 @@ class ToolOperations:
         if not results:
             return "Broadcast completed but no results returned from swarm nodes."
 
-        return format_federated_tool_results(results)
+        # Swarm broadcast returns per-team entries, each wrapping the relay's
+        # federated results.  Unwrap so the formatter sees the inner results
+        # (which carry from_machine_id + MCP content).
+        unwrapped: list[dict[str, Any]] = []
+        for entry in results:
+            inner = entry.get("result")
+            if isinstance(inner, dict):
+                for federated in inner.get("results", []):
+                    unwrapped.append(federated)
+            elif entry.get("error"):
+                slug = entry.get("project_slug", "unknown")
+                unwrapped.append({"from_machine_id": slug, "error": entry["error"]})
+
+        if not unwrapped:
+            return "Broadcast completed but no results returned from swarm nodes."
+
+        return format_federated_tool_results(unwrapped)
 
     def swarm_status(self) -> str:
         """Get swarm connection status.
