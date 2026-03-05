@@ -158,6 +158,7 @@ from open_agent_kit.features.team.constants.api import (
     MCP_TOOL_ACTIVITY,
     MCP_TOOL_ARCHIVE_MEMORIES,
     MCP_TOOL_CONTEXT,
+    MCP_TOOL_FETCH,
     MCP_TOOL_MEMORIES,
     MCP_TOOL_NODES,
     MCP_TOOL_REMEMBER,

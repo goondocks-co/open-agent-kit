@@ -316,9 +316,13 @@ class RetrievalEngine:
     def fetch(self, ids: list[str]) -> FetchResult:
         """Fetch full content for chunk IDs (used by /api/fetch)."""
         result = FetchResult()
+        found_ids: set[str] = set()
 
         for collection in ("code", "memory"):
-            items = self.store.get_by_ids(ids, collection=collection)
+            remaining = [i for i in ids if i not in found_ids]
+            if not remaining:
+                break
+            items = self.store.get_by_ids(remaining, collection=collection)
             for item in items:
                 content = item.get("content", "")
                 tokens = len(content) // CHARS_PER_TOKEN_ESTIMATE
@@ -330,6 +334,26 @@ class RetrievalEngine:
                     }
                 )
                 result.total_tokens += tokens
+                found_ids.add(item["id"])
+
+        # Try session_summaries for any IDs not found in code/memory
+        remaining = [i for i in ids if i not in found_ids]
+        if remaining:
+            try:
+                items = self.store.get_by_ids(remaining, collection="session_summaries")
+                for item in items:
+                    content = item.get("content", "")
+                    tokens = len(content) // CHARS_PER_TOKEN_ESTIMATE
+                    result.results.append(
+                        {
+                            "id": item["id"],
+                            "content": content,
+                            "tokens": tokens,
+                        }
+                    )
+                    result.total_tokens += tokens
+            except Exception:
+                logger.debug("session_summaries fetch failed", exc_info=True)
 
         return result
 

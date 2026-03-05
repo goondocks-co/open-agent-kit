@@ -35,6 +35,7 @@ from open_agent_kit.features.team.constants import (
     MCP_TOOL_ACTIVITY,
     MCP_TOOL_ARCHIVE_MEMORIES,
     MCP_TOOL_CONTEXT,
+    MCP_TOOL_FETCH,
     MCP_TOOL_MEMORIES,
     MCP_TOOL_NODES,
     MCP_TOOL_REMEMBER,
@@ -386,6 +387,24 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": MCP_TOOL_FETCH,
+        "description": (
+            "Fetch full content for one or more chunk IDs returned by oak_search. "
+            "Use this to expand truncated previews into complete documents."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of chunk IDs to fetch full content for",
+                },
+            },
+            "required": ["ids"],
+        },
+    },
+    {
         "name": MCP_TOOL_NODES,
         "description": (
             "List connected team relay nodes. Shows machine IDs, online status, "
@@ -556,6 +575,7 @@ class MCPToolHandler:
             MCP_TOOL_STATS: lambda args: self.ops.get_stats(args),
             MCP_TOOL_ACTIVITY: self.ops.list_activities,
             MCP_TOOL_ARCHIVE_MEMORIES: self.ops.archive_memories,
+            MCP_TOOL_FETCH: self.ops.fetch,
             MCP_TOOL_NODES: lambda args: self.ops.list_nodes(args),
             # Swarm tools
             SWARM_TOOL_SEARCH: self.ops.swarm_search,
@@ -567,6 +587,7 @@ class MCPToolHandler:
 
         handler = handlers.get(tool_name)
         if not handler:
+            logger.warning("Unknown tool '%s' — available: %s", tool_name, list(handlers.keys()))
             return {
                 "isError": True,
                 "content": [{"type": "text", "text": f"Unknown tool: {tool_name}"}],

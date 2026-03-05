@@ -1279,20 +1279,30 @@ class CloudRelayClient(RelayClient):
         port = self._daemon_port
         url = CLOUD_RELAY_DAEMON_MCP_TOOLS_URL_TEMPLATE.format(port=port)
 
-        try:
-            client = self._http_client or httpx.AsyncClient()
-            response = await client.get(
-                url,
-                headers=self._auth_headers(),
-                timeout=CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS,
-            )
-            response.raise_for_status()
-            data = response.json()
-            tools: list[dict[str, Any]] = data.get(CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY, [])
-            return tools
-        except Exception as exc:
-            logger.warning("Failed to get tool list from daemon: %s", exc)
-            return []
+        # Retry with backoff — the daemon HTTP server may not be ready at startup.
+        max_attempts = 5
+        delay = 1.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                client = self._http_client or httpx.AsyncClient()
+                response = await client.get(
+                    url,
+                    headers=self._auth_headers(),
+                    timeout=CLOUD_RELAY_DAEMON_TOOL_LIST_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+                data = response.json()
+                tools: list[dict[str, Any]] = data.get(CLOUD_RELAY_DAEMON_MCP_TOOLS_RESPONSE_KEY, [])
+                return tools
+            except Exception as exc:
+                if attempt < max_attempts:
+                    logger.debug("Tool list fetch attempt %d failed, retrying in %.0fs: %s", attempt, delay, exc)
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 8.0)
+                else:
+                    logger.warning("Failed to get tool list from daemon after %d attempts: %s", max_attempts, exc)
+                    return []
+        return []  # unreachable, satisfies type checker
 
     # ------------------------------------------------------------------
     # Internal: reconnection

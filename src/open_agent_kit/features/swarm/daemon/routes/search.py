@@ -47,6 +47,7 @@ def _normalize_match(item: dict) -> dict:
     doc_type = item.get("doc_type") or item.get("memory_type") or result_type
 
     return {
+        "id": item.get("id"),
         "type": result_type,
         "content": content,
         "score": score,

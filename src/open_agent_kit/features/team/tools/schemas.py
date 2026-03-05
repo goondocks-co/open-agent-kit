@@ -190,6 +190,12 @@ class ResolveInput(BaseModel):
     )
 
 
+class FetchInput(BaseModel):
+    """Input for fetch tool (oak_fetch)."""
+
+    ids: list[str] = Field(..., description="List of chunk IDs to fetch full content for")
+
+
 class ArchiveInput(BaseModel):
     """Input for archive tool (ci_archive / oak_archive_memories)."""
 

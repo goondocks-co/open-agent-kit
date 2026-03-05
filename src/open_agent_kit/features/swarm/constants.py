@@ -265,3 +265,8 @@ SWARM_DAEMON_API_PATH_AGENTS_RUN_DETAIL: Final[str] = "/api/agents/runs/{run_id}
 
 # Daemon API path (node removal)
 SWARM_DAEMON_API_PATH_NODE_REMOVE: Final[str] = "/api/swarm/nodes/remove"
+
+# Fetch (detail expansion)
+SWARM_DAEMON_API_PATH_FETCH: Final[str] = "/api/swarm/fetch"
+SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS: Final[int] = 15
+MCP_TOOL_FETCH: Final[str] = "oak_fetch"

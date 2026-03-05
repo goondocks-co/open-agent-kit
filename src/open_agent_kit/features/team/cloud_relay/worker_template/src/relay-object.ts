@@ -557,16 +557,20 @@ export class RelayObject implements DurableObject {
     const url = new URL(request.url);
     const targetMachineId = url.searchParams.get("machine_id");
 
-    const ws = this.getTargetSocket(targetMachineId);
-    if (!ws) {
-      return Response.json({ error: "instance offline" }, { status: 502 });
-    }
-
     let body: ToolCallRequest;
     try {
       body = (await request.json()) as ToolCallRequest;
     } catch {
       return Response.json({ error: "invalid request body" }, { status: 400 });
+    }
+
+    // Route to a node that advertises the requested tool, falling back to
+    // the default target socket when no tool-aware match is found.
+    const ws = targetMachineId
+      ? this.getTargetSocket(targetMachineId)
+      : (this.getSocketForTool(body.tool_name) ?? this.getTargetSocket(null));
+    if (!ws) {
+      return Response.json({ error: "instance offline" }, { status: 502 });
     }
 
     const timeoutMs = body.timeout_ms ?? DEFAULT_TOOL_TIMEOUT_MS;
@@ -1495,6 +1499,17 @@ export class RelayObject implements DurableObject {
     for (const ws of allSockets) {
       if (this.getMachineId(ws) === machineId) {
         return ws;
+      }
+    }
+    return null;
+  }
+
+  /** Find a connected socket whose node advertises the given tool name. */
+  private getSocketForTool(toolName: string): WebSocket | null {
+    for (const [machineId, tools] of this.nodeTools) {
+      if (tools.some((t) => t.name === toolName)) {
+        const ws = this.getSocketByMachineId(machineId);
+        if (ws) return ws;
       }
     }
     return null;

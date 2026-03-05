@@ -405,8 +405,11 @@ export class SwarmObject implements DurableObject {
             Authorization: `Bearer ${team.callback_token}`,
           },
           body: JSON.stringify({
+            type: "tool_call",
+            call_id: crypto.randomUUID(),
             tool_name: body.tool_name,
             arguments: body.arguments ?? {},
+            timeout_ms: TOOL_CALL_TIMEOUT_MS,
           }),
         },
         TOOL_CALL_TIMEOUT_MS,

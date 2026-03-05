@@ -52,6 +52,7 @@ from open_agent_kit.features.team.tools.schemas import (
     ActivityInput,
     ArchiveInput,
     ContextInput,
+    FetchInput,
     MemoriesInput,
     QueryInput,
     RememberInput,
@@ -715,6 +716,24 @@ class ToolOperations:
             f"from the search index.\n"
             f"These observations remain in SQLite for historical queries "
             f"but will no longer appear in vector search results."
+        )
+
+    def fetch(self, args: dict[str, Any]) -> str:
+        """Fetch full content for chunk IDs.
+
+        Args:
+            args: Dict with 'ids' (list of chunk IDs).
+
+        Returns:
+            JSON string with results and total_tokens.
+        """
+        input_data = FetchInput(**args)
+        result = self.engine.fetch(input_data.ids)
+        return json.dumps(
+            {
+                "results": result.results,
+                "total_tokens": result.total_tokens,
+            }
         )
 
     # ------------------------------------------------------------------

@@ -19,6 +19,7 @@ from open_agent_kit.features.swarm.daemon.middleware import TokenAuthMiddleware
 from open_agent_kit.features.swarm.daemon.routes import (
     agents,
     deploy,
+    fetch,
     health,
     logs,
     nodes,
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     # API routes
     app.include_router(health.router)
     app.include_router(search.router)
+    app.include_router(fetch.router)
     app.include_router(nodes.router)
     app.include_router(status.router)
     app.include_router(tools.router)

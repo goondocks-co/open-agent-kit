@@ -135,7 +135,12 @@ def get_by_ids(store: VectorStore, ids: list[str], collection: str = "code") -> 
     """
     store._ensure_initialized()
 
-    coll = store._code_collection if collection == "code" else store._memory_collection
+    if collection == "code":
+        coll = store._code_collection
+    elif collection == "session_summaries":
+        coll = store._session_summaries_collection
+    else:
+        coll = store._memory_collection
 
     results = coll.get(
         ids=ids,

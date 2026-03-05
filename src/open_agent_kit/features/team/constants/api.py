@@ -112,6 +112,7 @@ MCP_TOOL_MEMORIES: Final[str] = "oak_memories"
 MCP_TOOL_STATS: Final[str] = "oak_stats"
 MCP_TOOL_ACTIVITY: Final[str] = "oak_activity"
 MCP_TOOL_ARCHIVE_MEMORIES: Final[str] = "oak_archive_memories"
+MCP_TOOL_FETCH: Final[str] = "oak_fetch"
 MCP_TOOL_NODES: Final[str] = "oak_nodes"
 
 # CI query tool configuration (read-only SQL execution)

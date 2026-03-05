@@ -1,7 +1,10 @@
 /**
- * Individual search result card — shows doc type, confidence, content preview, and metadata.
+ * Individual search result card — shows doc type, confidence, content preview,
+ * and an optional "View full content" button that triggers the parent's modal.
  */
 
+import { Button } from "@oak/ui/components/ui/button";
+import { Expand, Loader2 } from "lucide-react";
 import type { SearchMatch } from "@/hooks/use-swarm-search";
 import {
     DOC_TYPE_COLORS,
@@ -11,6 +14,9 @@ import {
 
 interface SearchResultCardProps {
     match: SearchMatch;
+    onViewFull?: () => void;
+    isFetching?: boolean;
+    fetchError?: string | null;
 }
 
 function getConfidenceLevel(score?: number): "high" | "medium" | "low" {
@@ -20,7 +26,7 @@ function getConfidenceLevel(score?: number): "high" | "medium" | "low" {
     return "low";
 }
 
-export function SearchResultCard({ match }: SearchResultCardProps) {
+export function SearchResultCard({ match, onViewFull, isFetching, fetchError }: SearchResultCardProps) {
     const docType = match.doc_type ?? match.type;
     const docTypeColor =
         DOC_TYPE_COLORS[docType as keyof typeof DOC_TYPE_COLORS] ??
@@ -58,6 +64,34 @@ export function SearchResultCard({ match }: SearchResultCardProps) {
                 <p className="text-xs text-muted-foreground whitespace-pre-wrap">
                     {match.content}
                 </p>
+            )}
+            {onViewFull && (
+                <div className="mt-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-muted-foreground cursor-pointer"
+                        onClick={onViewFull}
+                        disabled={isFetching}
+                    >
+                        {isFetching ? (
+                            <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Loading...
+                            </>
+                        ) : (
+                            <>
+                                <Expand className="h-3 w-3 mr-1" />
+                                View full content
+                            </>
+                        )}
+                    </Button>
+                    {fetchError && (
+                        <p className="text-xs text-destructive mt-1">
+                            {fetchError}
+                        </p>
+                    )}
+                </div>
             )}
         </div>
     );

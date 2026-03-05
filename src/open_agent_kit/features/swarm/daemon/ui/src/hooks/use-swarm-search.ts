@@ -3,6 +3,7 @@ import { postJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 
 export interface SearchMatch {
+    id?: string;
     type: string;
     content: string;
     score?: number;

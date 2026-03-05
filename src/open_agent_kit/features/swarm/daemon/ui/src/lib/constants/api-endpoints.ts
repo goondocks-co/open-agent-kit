@@ -4,6 +4,7 @@ export const API_ENDPOINTS = {
     SWARM_CREDENTIALS: "/api/swarm/credentials",
     SWARM_NODES: "/api/swarm/nodes",
     SWARM_SEARCH: "/api/swarm/search",
+    SWARM_FETCH: "/api/swarm/fetch",
 
     // Agents
     AGENTS: "/api/agents",
