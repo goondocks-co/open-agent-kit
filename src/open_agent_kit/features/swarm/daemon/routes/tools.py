@@ -55,6 +55,8 @@ async def swarm_tool_call(body: ToolCallRequest) -> dict:
             target_project=body.target_project,
             timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
         )
+        if isinstance(result, dict) and result.get("warning"):
+            logger.warning("Swarm tool-call warning: %s", result["warning"])
         logger.info(
             "Swarm tool call complete: tool=%s target=%s", body.tool_name, body.target_project
         )
@@ -88,6 +90,8 @@ async def swarm_broadcast(body: BroadcastRequest) -> dict:
             arguments=body.arguments,
             timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
         )
+        if isinstance(result, dict) and result.get("warning"):
+            logger.warning("Swarm broadcast warning: %s", result["warning"])
         result_count = len(result.get(SWARM_RESPONSE_KEY_RESULTS, []))
         logger.info("Swarm broadcast complete: tool=%s responses=%d", body.tool_name, result_count)
         for entry in result.get(SWARM_RESPONSE_KEY_RESULTS, []):
