@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-03-06]
+
+### Added
+
+- **Secure swarm token storage in environment variables** — Swarm tokens are now stored as environment variables rather than written to config files, enabling cross-machine portability without committing secrets to version control; connecting to a swarm from a new machine no longer requires manually copying config — [Implement secure swarm token storage in environment variables](http://localhost:38388/activity/sessions/9e94dbea-7751-4651-a21f-bfdb4ae8071f), [Configure secure swarm token storage and resolve UI build failures](http://localhost:38388/activity/sessions/be545ca7-c136-4dad-a5bb-e56ac7dec357)
+
+### Fixed
+
+- Fix UI build failure caused by uncommitted `ui/shared/lib/` directory — Git reported the directory existed on disk but was absent from `main`, causing a fatal error during Vite's pre-build step before any TypeScript compilation; fixed by committing the directory and its `log-constants.ts` contents to `main` — [Configure secure swarm token storage and resolve UI build failures](http://localhost:38388/activity/sessions/be545ca7-c136-4dad-a5bb-e56ac7dec357)
+
+### Notes
+
+> **Gotcha**: If `CI_CONFIG_SWARM_KEY_AGENT_TOKEN` is missing or empty, requests to swarm MCP endpoints fail silently with a 401/403 — the error surfaces as a generic network failure with no explicit authentication message in client logs. Always verify the agent token is populated before connecting an MCP client to the swarm. See the agent token retrieval logic in [`swarm/daemon/client.py`](src/open_agent_kit/features/swarm/daemon/client.py).
+
 ## [2026-03-05]
 
 ### Added

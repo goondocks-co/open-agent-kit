@@ -19,15 +19,21 @@ from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_KEY_SWARM,
     CI_CONFIG_SWARM_KEY_TOKEN,
     CI_CONFIG_SWARM_KEY_URL,
+    SWARM_ENV_VAR_AGENT_TOKEN,
+    SWARM_ENV_VAR_TOKEN,
     SWARM_MESSAGE_MCP_HINT,
     SWARM_RESPONSE_KEY_ERROR,
 )
+from open_agent_kit.features.team.cli_command import resolve_ci_cli_command
 from open_agent_kit.features.team.constants.api import (
+    CI_DAEMON_API_PATH_SWARM_DAEMON_LAUNCH,
+    CI_DAEMON_API_PATH_SWARM_DAEMON_STATUS,
     CI_DAEMON_API_PATH_SWARM_JOIN,
     CI_DAEMON_API_PATH_SWARM_LEAVE,
     CI_DAEMON_API_PATH_SWARM_STATUS,
 )
 from open_agent_kit.features.team.daemon.state import get_state
+from open_agent_kit.utils.env_utils import read_env_value, remove_env_key, update_env_file
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +141,38 @@ async def _push_swarm_config_to_relay(
         return False
 
 
+async def _fetch_agent_token(swarm_url: str, swarm_token: str) -> str | None:
+    """Fetch the agent_token from the swarm worker.
+
+    The agent_token is used for MCP access to the cloud worker.
+    Returns the token string on success, None on failure.
+    """
+    if not swarm_url:
+        return None
+
+    url = swarm_url.rstrip("/") + "/api/swarm/agent-token"
+    try:
+        async with httpx.AsyncClient(timeout=_RELAY_PUSH_TIMEOUT_SECONDS) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {swarm_token}"},
+            )
+        if resp.is_success:
+            data = resp.json()
+            token = data.get("agent_token")
+            if token:
+                logger.info("Fetched agent_token from swarm worker")
+                return str(token)
+        logger.warning(
+            "Failed to fetch agent_token from swarm worker: %s %s",
+            resp.status_code,
+            resp.text[:200],
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to fetch agent_token from swarm worker: %s", exc)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -150,9 +188,13 @@ async def join_swarm(request: _JoinSwarmRequest) -> dict:
         if not isinstance(swarm_section, dict):
             swarm_section = {}
         swarm_section[CI_CONFIG_SWARM_KEY_URL] = request.swarm_url
-        swarm_section[CI_CONFIG_SWARM_KEY_TOKEN] = request.swarm_token
+        # Remove legacy token from config.yaml (now stored in .env only)
+        swarm_section.pop(CI_CONFIG_SWARM_KEY_TOKEN, None)
         file_data[CI_CONFIG_KEY_SWARM] = swarm_section
         _save_config_yaml(project_root, file_data)
+
+        # Write token to .env (not git-tracked)
+        update_env_file(project_root, SWARM_ENV_VAR_TOKEN, request.swarm_token)
 
         # Invalidate cached config
         state = get_state()
@@ -163,6 +205,11 @@ async def join_swarm(request: _JoinSwarmRequest) -> dict:
             request.swarm_url,
             request.swarm_token,
         )
+
+        # Auto-fetch agent_token from swarm worker for MCP access
+        agent_token = await _fetch_agent_token(request.swarm_url, request.swarm_token)
+        if agent_token:
+            update_env_file(project_root, SWARM_ENV_VAR_AGENT_TOKEN, agent_token)
 
         return {
             "success": True,
@@ -183,6 +230,10 @@ async def leave_swarm() -> dict:
         file_data = _load_config_yaml(project_root)
         file_data.pop(CI_CONFIG_KEY_SWARM, None)
         _save_config_yaml(project_root, file_data)
+
+        # Remove tokens from .env
+        remove_env_key(project_root, SWARM_ENV_VAR_TOKEN)
+        remove_env_key(project_root, SWARM_ENV_VAR_AGENT_TOKEN)
 
         # Invalidate cached config
         state = get_state()
@@ -208,12 +259,155 @@ async def swarm_status() -> dict:
             return {"joined": False, "swarm_url": None}
 
         swarm_url = swarm_section.get(CI_CONFIG_SWARM_KEY_URL)
-        has_token = bool(swarm_section.get(CI_CONFIG_SWARM_KEY_TOKEN))
+        has_token = bool(
+            read_env_value(project_root, SWARM_ENV_VAR_TOKEN)
+            or swarm_section.get(CI_CONFIG_SWARM_KEY_TOKEN)
+        )
+
+        cli_command = resolve_ci_cli_command(project_root)
 
         return {
             "joined": bool(swarm_url and has_token),
             "swarm_url": swarm_url,
+            "cli_command": cli_command,
         }
     except Exception as exc:
         logger.error("Failed to get swarm status: %s", exc)
         return {SWARM_RESPONSE_KEY_ERROR: str(exc), "joined": False, "swarm_url": None}
+
+
+# ---------------------------------------------------------------------------
+# Swarm daemon management (launch local swarm daemon from team UI)
+# ---------------------------------------------------------------------------
+
+
+def _derive_swarm_name(swarm_url: str) -> str | None:
+    """Derive swarm name from worker URL (e.g. oak-swarm-oss-swarm.… → oss-swarm)."""
+    try:
+        from urllib.parse import urlparse
+
+        hostname = urlparse(swarm_url).hostname or ""
+        prefix = "oak-swarm-"
+        if not hostname.startswith(prefix):
+            return None
+        rest = hostname[len(prefix) :]
+        dot_index = rest.find(".")
+        return rest[:dot_index] if dot_index > 0 else rest
+    except Exception:
+        return None
+
+
+@router.get(CI_DAEMON_API_PATH_SWARM_DAEMON_STATUS)
+async def swarm_daemon_status() -> dict:
+    """Check if a local swarm daemon config exists and if the daemon is running."""
+    try:
+        project_root = _require_project_root()
+        file_data = _load_config_yaml(project_root)
+        swarm_section = file_data.get(CI_CONFIG_KEY_SWARM, {})
+        if not isinstance(swarm_section, dict):
+            return {"configured": False, "running": False}
+
+        swarm_url = swarm_section.get(CI_CONFIG_SWARM_KEY_URL)
+        if not swarm_url:
+            return {"configured": False, "running": False}
+
+        swarm_name = _derive_swarm_name(swarm_url)
+        if not swarm_name:
+            return {"configured": False, "running": False}
+
+        from open_agent_kit.features.swarm.config import load_swarm_config
+
+        config = load_swarm_config(swarm_name)
+        if not config:
+            return {"configured": False, "running": False, "name": swarm_name}
+
+        from open_agent_kit.features.swarm.daemon.manager import SwarmDaemonManager
+
+        manager = SwarmDaemonManager(swarm_id=swarm_name)
+        running = manager.is_running()
+
+        result: dict = {
+            "configured": True,
+            "running": running,
+            "name": swarm_name,
+        }
+        if running:
+            result["url"] = f"http://localhost:{manager.port}"
+
+        return result
+    except Exception as exc:
+        logger.error("Failed to check swarm daemon status: %s", exc)
+        return {SWARM_RESPONSE_KEY_ERROR: str(exc), "configured": False, "running": False}
+
+
+@router.post(CI_DAEMON_API_PATH_SWARM_DAEMON_LAUNCH)
+async def swarm_daemon_launch() -> dict:
+    """Create local swarm daemon config if needed and start the daemon.
+
+    Uses the swarm_url from config.yaml and swarm_token from .env to create
+    the local ~/.oak/swarms/{name}/config.json, then starts the daemon.
+    Returns the daemon URL for the UI to open in a new tab.
+    """
+    try:
+        project_root = _require_project_root()
+        file_data = _load_config_yaml(project_root)
+        swarm_section = file_data.get(CI_CONFIG_KEY_SWARM, {})
+        if not isinstance(swarm_section, dict):
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No swarm configured")
+
+        swarm_url = swarm_section.get(CI_CONFIG_SWARM_KEY_URL)
+        if not swarm_url:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST, detail="No swarm URL configured"
+            )
+
+        swarm_name = _derive_swarm_name(swarm_url)
+        if not swarm_name:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Cannot derive swarm name from URL",
+            )
+
+        # Get swarm token from .env (or legacy config.yaml)
+        swarm_token = read_env_value(project_root, SWARM_ENV_VAR_TOKEN)
+        if not swarm_token:
+            swarm_token = swarm_section.get(CI_CONFIG_SWARM_KEY_TOKEN)
+        if not swarm_token:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST, detail="No swarm token available"
+            )
+
+        # Ensure local swarm daemon config exists (delegates to swarm domain)
+        from open_agent_kit.features.swarm.config import ensure_swarm_config
+
+        agent_token = read_env_value(project_root, SWARM_ENV_VAR_AGENT_TOKEN)
+        ensure_swarm_config(
+            swarm_name,
+            swarm_token,
+            swarm_url,
+            agent_token=agent_token,
+        )
+
+        # Start the daemon
+        from open_agent_kit.features.swarm.daemon.manager import SwarmDaemonManager
+
+        manager = SwarmDaemonManager(swarm_id=swarm_name)
+        if not manager.is_running():
+            started = manager.start(wait=True)
+            if not started:
+                raise HTTPException(
+                    status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                    detail="Swarm daemon failed to start. Check logs.",
+                )
+            logger.info("Started swarm daemon '%s' on port %d", swarm_name, manager.port)
+
+        return {
+            "success": True,
+            "name": swarm_name,
+            "url": f"http://localhost:{manager.port}",
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to launch swarm daemon: %s", exc)
+        raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc

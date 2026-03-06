@@ -361,23 +361,33 @@ class CloudRelayClient(RelayClient):
         )
         await self._ws.send(register_msg.model_dump_json())
 
-        # Wait for registered confirmation
-        raw = await asyncio.wait_for(
-            self._ws.recv(),
-            timeout=CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS,
-        )
-        msg = json.loads(raw)
-        msg_type = msg.get(CLOUD_RELAY_WS_FIELD_TYPE)
-
-        if msg_type == RelayMessageType.ERROR.value:
-            error_text = msg.get(
-                CLOUD_RELAY_WS_FIELD_MESSAGE,
-                CLOUD_RELAY_WS_DEFAULT_REGISTRATION_REJECTED,
+        # Wait for registered confirmation.  The relay may broadcast other
+        # messages (e.g. node_list) to this socket before sending the
+        # registered confirmation — skip those during the handshake.
+        deadline = asyncio.get_event_loop().time() + CLOUD_RELAY_HEARTBEAT_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                raise ConnectionError("Timed out waiting for registration confirmation")
+            raw = await asyncio.wait_for(
+                self._ws.recv(),
+                timeout=remaining,
             )
-            raise ConnectionError(error_text)
+            msg = json.loads(raw)
+            msg_type = msg.get(CLOUD_RELAY_WS_FIELD_TYPE)
 
-        if msg_type != RelayMessageType.REGISTERED.value:
-            raise ConnectionError(f"Unexpected response type: {msg_type}")
+            if msg_type == RelayMessageType.ERROR.value:
+                error_text = msg.get(
+                    CLOUD_RELAY_WS_FIELD_MESSAGE,
+                    CLOUD_RELAY_WS_DEFAULT_REGISTRATION_REJECTED,
+                )
+                raise ConnectionError(error_text)
+
+            if msg_type == RelayMessageType.REGISTERED.value:
+                break
+
+            # Skip non-registration messages (e.g. node_list broadcast)
+            logger.debug("Skipping message during registration handshake: %s", msg_type)
 
         # Mark connected
         now_iso = datetime.now(UTC).isoformat()

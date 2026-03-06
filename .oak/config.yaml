@@ -1,4 +1,4 @@
-version: 1.4.3.dev2+g7bed1c44c.d20260304
+version: 1.4.3.dev51+gf8d2c9158.d20260306
 agents:
 - vscode-copilot
 - opencode
@@ -136,4 +136,3 @@ team:
   cli_command: oak-dev
 swarm:
   swarm_url: https://oak-swarm-oss-swarm.openagentkit.app
-  swarm_token: 3u0nsMcgYMqlLox9xfDHIdr4LQex-g144vAKzEreBD0

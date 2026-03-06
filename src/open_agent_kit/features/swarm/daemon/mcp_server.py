@@ -4,7 +4,8 @@ Provides native MCP protocol support for AI agents to discover and use
 swarm tools (swarm_search, swarm_nodes, swarm_call, swarm_broadcast,
 swarm_status) via stdio or HTTP transport.
 
-The MCP server proxies all calls to the local swarm daemon HTTP API.
+The MCP server tries the cloud worker first (swarm_url + swarm_token),
+falling back to the local swarm daemon HTTP API.
 """
 
 import atexit
@@ -92,14 +93,70 @@ def _create_pooled_client(base_url: str) -> httpx.Client:
     )
 
 
+def _load_cloud_config() -> tuple[str, str] | None:
+    """Load cloud worker URL and agent token for direct cloud MCP access.
+
+    Returns (swarm_url, agent_token) if both are available, None otherwise.
+    """
+    try:
+        from open_agent_kit.config.paths import OAK_DIR
+        from open_agent_kit.features.swarm.constants import (
+            CI_CONFIG_KEY_SWARM,
+            CI_CONFIG_SWARM_KEY_URL,
+            SWARM_ENV_VAR_AGENT_TOKEN,
+        )
+
+        # Read swarm_url from .oak/config.yaml
+        config_path = Path.cwd() / OAK_DIR / "config.yaml"
+        if not config_path.exists():
+            return None
+
+        import yaml
+
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+
+        swarm_section = data.get(CI_CONFIG_KEY_SWARM, {})
+        swarm_url = (
+            swarm_section.get(CI_CONFIG_SWARM_KEY_URL) if isinstance(swarm_section, dict) else None
+        )
+        if not swarm_url:
+            return None
+
+        # Read agent_token from .env — this is the token for MCP access
+        from open_agent_kit.utils.env_utils import read_env_value
+
+        agent_token = read_env_value(Path.cwd(), SWARM_ENV_VAR_AGENT_TOKEN)
+        if not agent_token:
+            return None
+
+        return (swarm_url, str(agent_token))
+    except Exception as exc:
+        logger.debug("Cloud config not available: %s", exc)
+        return None
+
+
 def create_mcp_server() -> FastMCP:
-    """Create an MCP server that wraps the swarm daemon REST API.
+    """Create an MCP server that wraps the swarm REST API.
+
+    Tries cloud worker first (swarm_url + agent_token), falls back to local daemon.
 
     Returns:
         FastMCP server instance configured with swarm tools.
     """
-    port = _find_daemon_port()
-    base_url = f"http://localhost:{port}"
+    # Try cloud-first
+    cloud_config = _load_cloud_config()
+
+    if cloud_config:
+        swarm_url, agent_token = cloud_config
+        base_url = swarm_url.rstrip("/")
+        logger.info("MCP server using cloud worker: %s", base_url)
+        auth_headers: dict[str, str] = {"Authorization": f"Bearer {agent_token}"}
+    else:
+        port = _find_daemon_port()
+        base_url = f"http://localhost:{port}"
+        logger.info("MCP server using local daemon: %s", base_url)
+        auth_headers = {}
 
     http_client = _create_pooled_client(base_url)
     atexit.register(http_client.close)
@@ -138,9 +195,11 @@ def create_mcp_server() -> FastMCP:
             resolved_method = resolved_method.upper()
 
             if resolved_method == "POST":
-                response = http_client.post(endpoint, json=data, timeout=timeout)
+                response = http_client.post(
+                    endpoint, json=data, timeout=timeout, headers=auth_headers
+                )
             else:
-                response = http_client.get(endpoint, timeout=timeout)
+                response = http_client.get(endpoint, timeout=timeout, headers=auth_headers)
             response.raise_for_status()
             return cast(dict[str, Any], response.json())
 
@@ -162,6 +221,11 @@ def create_mcp_server() -> FastMCP:
             except (httpx.ConnectError, httpx.HTTPStatusError):
                 continue
 
+        if cloud_config:
+            raise RuntimeError(
+                f"Cloud swarm worker unreachable at {base_url}.\n"
+                "Check your swarm_url and swarm_token configuration."
+            )
         raise RuntimeError(
             "Swarm daemon is not running.\n"
             "Start it with: oak swarm start\n"

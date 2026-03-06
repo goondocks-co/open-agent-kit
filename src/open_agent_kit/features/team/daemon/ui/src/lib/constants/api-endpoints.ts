@@ -110,6 +110,8 @@ export const API_ENDPOINTS = {
     SWARM_STATUS: "/api/swarm/status",
     SWARM_JOIN: "/api/swarm/join",
     SWARM_LEAVE: "/api/swarm/leave",
+    SWARM_DAEMON_STATUS: "/api/swarm/daemon/status",
+    SWARM_DAEMON_LAUNCH: "/api/swarm/daemon/launch",
     SWARM_ADVISORIES: "/api/swarm-advisories",
 
     // Team endpoints

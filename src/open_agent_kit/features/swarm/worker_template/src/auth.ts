@@ -7,12 +7,9 @@
 
 import type { Env } from "./types";
 
-const BEARER_PREFIX = "Bearer ";
-
 /**
  * Validate a swarm request against the configured swarm token.
- * Accepts both ``Authorization: Bearer <token>`` (standard) and
- * ``Authorization: <token>`` (convenience for tools that paste raw tokens).
+ * Requires standard ``Authorization: Bearer <token>`` format.
  * Returns null on success, or a 401 Response on failure.
  */
 export function validateSwarmToken(
@@ -30,10 +27,13 @@ export function validateSwarmToken(
     );
   }
 
-  // Accept both "Bearer <token>" and raw "<token>".
-  const token = header.startsWith(BEARER_PREFIX)
-    ? header.slice(BEARER_PREFIX.length)
-    : header;
+  const [scheme, token] = header.split(" ", 2);
+  if (scheme !== "Bearer" || !token) {
+    return new Response(
+      JSON.stringify({ error: "invalid Authorization header format" }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   if (!timingSafeEqual(token, env.SWARM_TOKEN)) {
     return new Response(JSON.stringify({ error: "invalid swarm token" }), {

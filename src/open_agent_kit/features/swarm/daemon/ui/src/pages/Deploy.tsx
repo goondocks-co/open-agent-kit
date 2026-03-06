@@ -1,11 +1,9 @@
 import { useDeployStatus, useDeployAuth } from "@/hooks/use-deploy";
 import { useDeployPipeline } from "@/hooks/use-deploy-pipeline";
 import { useSwarmStatus } from "@/hooks/use-swarm-status";
-import { useSwarmCredentials } from "@/hooks/use-swarm-credentials";
 import { useMcpConfig } from "@/hooks/use-mcp-config";
 import { SwarmConnectionCard } from "@/components/deploy/SwarmConnectionCard";
 import { CustomDomainCard } from "@/components/deploy/CustomDomainCard";
-import { SwarmCredentialsCard } from "@/components/deploy/SwarmCredentialsCard";
 import { McpEndpointCard } from "@/components/deploy/McpEndpointCard";
 import { DeploymentDetailsCard } from "@/components/deploy/DeploymentDetailsCard";
 
@@ -13,7 +11,6 @@ export default function Deploy() {
     const { data: status } = useDeployStatus();
     const { data: auth } = useDeployAuth();
     const { data: swarmStatus } = useSwarmStatus();
-    const { data: credentials } = useSwarmCredentials();
     const { data: mcpConfig } = useMcpConfig();
     const pipeline = useDeployPipeline();
 
@@ -49,14 +46,6 @@ export default function Deploy() {
                 workerName={status?.worker_name ?? null}
                 isDeployed={isDeployed}
             />
-
-            {/* Credentials when deployed */}
-            {isDeployed && workerUrl && (
-                <SwarmCredentialsCard
-                    workerUrl={workerUrl}
-                    swarmToken={credentials?.swarm_token ?? null}
-                />
-            )}
 
             {/* MCP endpoint for cloud agents */}
             {isDeployed && mcpConfig?.mcp_endpoint && (

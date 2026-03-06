@@ -303,6 +303,17 @@ export class RelayObject implements DurableObject {
       return this.handleFederatedToolFanout(request);
     }
 
+    if (url.pathname === "/fetch" && request.method === "POST") {
+      const authErr = this.validateRelayOrSwarmToken(request);
+      if (authErr) return authErr;
+      // Rewrite path to /api/fetch for the team daemon
+      const rewritten = new Request(
+        new URL("/api/fetch" + url.search, url.origin),
+        request,
+      );
+      return this.handleHttpProxy(rewritten);
+    }
+
     if (url.pathname === "/metrics" && request.method === "GET") {
       return this.handleMetrics();
     }
@@ -318,8 +329,11 @@ export class RelayObject implements DurableObject {
       return this.handleSwarmConfigUpdate(request);
     }
     if (url.pathname === "/api/swarm/config" && request.method === "GET") {
+      const authErr = this.validateRelayOrSwarmToken(request);
+      if (authErr) return authErr;
       return Response.json({
         swarm_url: this.swarmUrl,
+        swarm_token: this.swarmToken,
         swarm_connected: this.swarmConnected,
         swarm_id: this.swarmId,
         sensitivity: this.swarmSensitivity,

@@ -240,7 +240,7 @@ CLOUD_RELAY_HTTP_PROXY_TIMEOUT_SECONDS: Final[float] = 30.0
 CLOUD_RELAY_OBS_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
 
 # SSRF protection: only proxy requests to these path prefixes
-CLOUD_RELAY_ALLOWED_PROXY_PREFIXES: Final[tuple[str, ...]] = ("/api/team/",)
+CLOUD_RELAY_ALLOWED_PROXY_PREFIXES: Final[tuple[str, ...]] = ("/api/team/", "/api/fetch")
 CLOUD_RELAY_PROXY_FORBIDDEN_STATUS: Final[int] = 403
 
 # Auth failure HTTP status codes (stop reconnect loop on these)

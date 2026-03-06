@@ -22,6 +22,7 @@ import type {
   SwarmSearchRequest,
   SwarmToolCallRequest,
   SwarmBroadcastRequest,
+  SwarmFetchRequest,
   HeartbeatRequest,
   UnregisterRequest,
   SwarmAdvisory,
@@ -204,6 +205,11 @@ export class SwarmObject implements DurableObject {
       // --- Search fan-out ---
       if (path === "/api/swarm/search" && request.method === "POST") {
         return this.handleSearch(request);
+      }
+
+      // --- Fetch by ID ---
+      if (path === "/api/swarm/fetch" && request.method === "POST") {
+        return this.handleFetch(request);
       }
 
       // --- Targeted tool call ---
@@ -446,6 +452,120 @@ export class SwarmObject implements DurableObject {
 
     return Response.json({
       results: allResults,
+      ...(errors.length > 0 ? { errors } : {}),
+    });
+  }
+
+  private async handleFetch(request: Request): Promise<Response> {
+    const body = (await request.json()) as SwarmFetchRequest;
+
+    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      return Response.json(
+        { error: "missing required field: ids (non-empty array)" },
+        { status: 400 },
+      );
+    }
+
+    // If project_slug is provided, target that specific team
+    if (body.project_slug) {
+      const team = this.findTeamByProject(body.project_slug);
+      if (!team) {
+        return Response.json(
+          { error: `no team registered for project: ${body.project_slug}` },
+          { status: 404 },
+        );
+      }
+
+      try {
+        const response = await this.fetchWithTimeout(
+          `${team.callback_url}/fetch`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${team.callback_token}`,
+            },
+            body: JSON.stringify({ ids: body.ids }),
+          },
+          SEARCH_TIMEOUT_MS,
+        );
+
+        if (!response.ok) {
+          const text = await response.text();
+          return Response.json(
+            { error: `team returned HTTP ${response.status}`, detail: text },
+            { status: 502 },
+          );
+        }
+
+        const result = await response.json();
+        return Response.json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        return Response.json(
+          { error: `fetch failed: ${message}` },
+          { status: 502 },
+        );
+      }
+    }
+
+    // No project_slug — fan out to all search-capable teams
+    const teams = this.getTeamsWithCapability(CAPABILITY_SEARCH);
+    if (teams.length === 0) {
+      return Response.json({ results: [], total_tokens: 0 });
+    }
+
+    const promises = teams.map(async (team) => {
+      try {
+        const response = await this.fetchWithTimeout(
+          `${team.callback_url}/fetch`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${team.callback_token}`,
+            },
+            body: JSON.stringify({ ids: body.ids }),
+          },
+          SEARCH_TIMEOUT_MS,
+        );
+
+        if (!response.ok) {
+          return { project_slug: team.project_slug, results: [], error: `HTTP ${response.status}` };
+        }
+
+        const data = (await response.json()) as { results?: Record<string, unknown>[]; total_tokens?: number };
+        const results = (data.results ?? []).map((r) => ({
+          ...r,
+          project_slug: team.project_slug,
+        }));
+        return { project_slug: team.project_slug, results, total_tokens: data.total_tokens ?? 0, error: null };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        return { project_slug: team.project_slug, results: [], error: message };
+      }
+    });
+
+    const settled = await Promise.allSettled(promises);
+    const allResults: Record<string, unknown>[] = [];
+    const errors: { project_slug: string; error: string }[] = [];
+    let totalTokens = 0;
+
+    for (const outcome of settled) {
+      if (outcome.status === "fulfilled") {
+        if (outcome.value.error) {
+          errors.push({ project_slug: outcome.value.project_slug, error: outcome.value.error });
+        }
+        if (outcome.value.results) {
+          allResults.push(...outcome.value.results);
+        }
+        totalTokens += (outcome.value as { total_tokens?: number }).total_tokens ?? 0;
+      }
+    }
+
+    return Response.json({
+      results: allResults,
+      total_tokens: totalTokens,
       ...(errors.length > 0 ? { errors } : {}),
     });
   }

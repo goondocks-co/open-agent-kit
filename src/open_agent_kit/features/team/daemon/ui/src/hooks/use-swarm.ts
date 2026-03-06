@@ -14,6 +14,7 @@ import { API_ENDPOINTS, SWARM_STATUS_POLL_MS } from "@/lib/constants";
 interface SwarmStatusResponse {
     joined: boolean;
     swarm_url: string | null;
+    cli_command: string | null;
     error?: string;
 }
 
@@ -84,5 +85,46 @@ export function useSwarmAdvisories() {
             fetchJson<SwarmAdvisoriesResponse>(API_ENDPOINTS.SWARM_ADVISORIES, { signal }),
         refetchInterval: SWARM_STATUS_POLL_MS,
         pollCategory: "standard",
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Swarm daemon management (local daemon launch from team UI)
+// ---------------------------------------------------------------------------
+
+interface SwarmDaemonStatusResponse {
+    configured: boolean;
+    running: boolean;
+    name?: string;
+    url?: string;
+    error?: string;
+}
+
+interface SwarmDaemonLaunchResponse {
+    success: boolean;
+    name: string;
+    url: string;
+}
+
+/** Check if the local swarm daemon config exists and if it's running. */
+export function useSwarmDaemonStatus(enabled: boolean) {
+    return usePowerQuery<SwarmDaemonStatusResponse>({
+        queryKey: ["swarm", "daemon", "status"],
+        queryFn: ({ signal }) =>
+            fetchJson<SwarmDaemonStatusResponse>(API_ENDPOINTS.SWARM_DAEMON_STATUS, { signal }),
+        refetchInterval: SWARM_STATUS_POLL_MS,
+        pollCategory: "standard",
+        enabled,
+    });
+}
+
+/** Launch the local swarm daemon (creates config if needed). */
+export function useLaunchSwarmDaemon() {
+    const queryClient = useQueryClient();
+    return useMutation<SwarmDaemonLaunchResponse, Error, void>({
+        mutationFn: () => postJson(API_ENDPOINTS.SWARM_DAEMON_LAUNCH, {}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["swarm", "daemon", "status"] });
+        },
     });
 }

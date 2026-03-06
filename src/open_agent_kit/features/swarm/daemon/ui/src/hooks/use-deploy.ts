@@ -62,6 +62,7 @@ export function useDeploySettings() {
         mutationFn: (settings) =>
             fetchJson(API_ENDPOINTS.DEPLOY_SETTINGS, {
                 method: "PUT",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(settings),
             }),
         onSuccess: () => {

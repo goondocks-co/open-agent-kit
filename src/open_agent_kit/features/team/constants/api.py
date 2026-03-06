@@ -151,6 +151,8 @@ TOOL_NAME_GLOB: Final[str] = "Glob"
 CI_DAEMON_API_PATH_SWARM_JOIN: Final[str] = "/api/swarm/join"
 CI_DAEMON_API_PATH_SWARM_LEAVE: Final[str] = "/api/swarm/leave"
 CI_DAEMON_API_PATH_SWARM_STATUS: Final[str] = "/api/swarm/status"
+CI_DAEMON_API_PATH_SWARM_DAEMON_STATUS: Final[str] = "/api/swarm/daemon/status"
+CI_DAEMON_API_PATH_SWARM_DAEMON_LAUNCH: Final[str] = "/api/swarm/daemon/launch"
 
 # =============================================================================
 # Time and Formatting Constants

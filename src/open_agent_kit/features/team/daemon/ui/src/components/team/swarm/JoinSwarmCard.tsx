@@ -1,5 +1,6 @@
 /**
  * Join Swarm card — allows a team to connect to a swarm via URL + token.
+ * When connected, shows swarm info and a button to launch the local swarm daemon.
  */
 
 import { useState } from "react";
@@ -12,7 +13,23 @@ import {
     AlertCircle,
     CheckCircle2,
     Unlink,
+    ExternalLink,
+    Rocket,
 } from "lucide-react";
+
+/** Derive a human-readable swarm name from the worker URL. */
+function deriveSwarmName(url: string): string | null {
+  try {
+    const hostname = new URL(url).hostname;
+    const prefix = "oak-swarm-";
+    if (!hostname.startsWith(prefix)) return null;
+    const rest = hostname.slice(prefix.length);
+    const dotIndex = rest.indexOf(".");
+    return dotIndex > 0 ? rest.slice(0, dotIndex) : rest;
+  } catch {
+    return null;
+  }
+}
 
 interface JoinSwarmCardProps {
     onJoin: (url: string, token: string) => void;
@@ -24,7 +41,18 @@ interface JoinSwarmCardProps {
     swarmStatus: {
         joined: boolean;
         swarm_url: string | null;
+        cli_command: string | null;
     } | null;
+    daemonStatus: {
+        configured: boolean;
+        running: boolean;
+        name?: string;
+        url?: string;
+    } | null;
+    onLaunchDaemon: () => void;
+    isLaunchingDaemon: boolean;
+    launchError: string | null;
+    daemonUrl: string | null;
 }
 
 export function JoinSwarmCard({
@@ -35,6 +63,11 @@ export function JoinSwarmCard({
     joinError,
     joinSuccess,
     swarmStatus,
+    daemonStatus,
+    onLaunchDaemon,
+    isLaunchingDaemon,
+    launchError,
+    daemonUrl,
 }: JoinSwarmCardProps) {
     const [url, setUrl] = useState("");
     const [token, setToken] = useState("");
@@ -44,12 +77,16 @@ export function JoinSwarmCard({
 
     // Connected state
     if (isJoined) {
+        const swarmName = swarmStatus?.swarm_url ? deriveSwarmName(swarmStatus.swarm_url) : null;
+        const isDaemonRunning = daemonStatus?.running ?? false;
+        const activeDaemonUrl = daemonUrl ?? daemonStatus?.url;
+
         return (
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Hexagon className="h-5 w-5" />
-                        Swarm
+                        Swarm{swarmName ? `: ${swarmName}` : ""}
                     </CardTitle>
                     <CardDescription>Connected to a swarm for cross-project collaboration.</CardDescription>
                 </CardHeader>
@@ -63,6 +100,51 @@ export function JoinSwarmCard({
                             {swarmStatus.swarm_url}
                         </p>
                     )}
+
+                    {/* Swarm daemon management */}
+                    <div className="pt-2 border-t space-y-2">
+                        {isDaemonRunning && activeDaemonUrl ? (
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    Swarm daemon running
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => window.open(activeDaemonUrl, "_blank")}
+                                >
+                                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                                    Open
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm text-muted-foreground">
+                                    Local swarm daemon not running
+                                </p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onLaunchDaemon}
+                                    disabled={isLaunchingDaemon}
+                                >
+                                    {isLaunchingDaemon ? (
+                                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                    ) : (
+                                        <Rocket className="h-3.5 w-3.5 mr-1.5" />
+                                    )}
+                                    {isLaunchingDaemon ? "Launching..." : "Launch Daemon"}
+                                </Button>
+                            </div>
+                        )}
+                        {launchError && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{launchError}</AlertDescription>
+                            </Alert>
+                        )}
+                    </div>
                 </CardContent>
                 <CardFooter>
                     <Button

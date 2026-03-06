@@ -40,7 +40,7 @@ import {
     LeaveTeamSection,
 } from "./relay";
 import { JoinSwarmCard } from "./swarm/JoinSwarmCard";
-import { useSwarmStatus, useJoinSwarm, useLeaveSwarm } from "@/hooks/use-swarm";
+import { useSwarmStatus, useJoinSwarm, useLeaveSwarm, useSwarmDaemonStatus, useLaunchSwarmDaemon } from "@/hooks/use-swarm";
 
 export default function TeamRelay() {
     const { data: status, isLoading: statusLoading } = useCloudRelayStatus();
@@ -57,10 +57,15 @@ export default function TeamRelay() {
     const { data: swarmStatus } = useSwarmStatus();
     const joinSwarm = useJoinSwarm();
     const leaveSwarmMutation = useLeaveSwarm();
+    const isSwarmJoined = swarmStatus?.joined ?? false;
+    const { data: daemonStatus } = useSwarmDaemonStatus(isSwarmJoined);
+    const launchDaemon = useLaunchSwarmDaemon();
 
     // Swarm join flow state
     const [swarmJoinError, setSwarmJoinError] = useState<string | null>(null);
     const [swarmJoinSuccess, setSwarmJoinSuccess] = useState(false);
+    const [daemonLaunchError, setDaemonLaunchError] = useState<string | null>(null);
+    const [launchedDaemonUrl, setLaunchedDaemonUrl] = useState<string | null>(null);
 
     // Sync settings form state
     const [autoSync, setAutoSync] = useState(false);
@@ -169,6 +174,20 @@ export default function TeamRelay() {
 
     const handleLeaveSwarm = () => { leaveSwarmMutation.mutate(); };
 
+    const handleLaunchDaemon = async () => {
+        setDaemonLaunchError(null);
+        setLaunchedDaemonUrl(null);
+        try {
+            const result = await launchDaemon.mutateAsync();
+            if (result.url) {
+                setLaunchedDaemonUrl(result.url);
+                window.open(result.url, "_blank");
+            }
+        } catch (err) {
+            setDaemonLaunchError(err instanceof Error ? err.message : "Failed to launch daemon.");
+        }
+    };
+
     if (statusLoading || configLoading) {
         return (
             <div className="space-y-4">
@@ -237,6 +256,11 @@ export default function TeamRelay() {
                     joinError={swarmJoinError}
                     joinSuccess={swarmJoinSuccess}
                     swarmStatus={swarmStatus ?? null}
+                    daemonStatus={daemonStatus ?? null}
+                    onLaunchDaemon={handleLaunchDaemon}
+                    isLaunchingDaemon={launchDaemon.isPending}
+                    launchError={daemonLaunchError}
+                    daemonUrl={launchedDaemonUrl}
                 />
             )}
 

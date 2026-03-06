@@ -104,6 +104,97 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
         logger.warning(CI_CLOUD_RELAY_LOG_AUTO_CONNECT_FAILED.format(error=e))
 
 
+async def _ensure_swarm_tokens(state: "DaemonState", project_root: Path) -> None:
+    """Auto-fetch swarm_token and agent_token if missing.
+
+    On a fresh clone, the node has swarm_url in config.yaml (git-tracked) but
+    no tokens in .env.  The swarm_token is fetched from the relay worker (which
+    already has it from the team join), and the agent_token is then fetched from
+    the swarm worker using the swarm_token.
+    """
+    import yaml
+
+    from open_agent_kit.features.swarm.constants import (
+        CI_CONFIG_KEY_SWARM,
+        CI_CONFIG_SWARM_KEY_URL,
+        SWARM_ENV_VAR_AGENT_TOKEN,
+        SWARM_ENV_VAR_TOKEN,
+    )
+    from open_agent_kit.utils.env_utils import read_env_value, update_env_file
+
+    config_path = project_root / OAK_DIR / "config.yaml"
+    if not config_path.exists():
+        return
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            file_data = yaml.safe_load(f) or {}
+    except Exception:
+        return
+
+    swarm = file_data.get(CI_CONFIG_KEY_SWARM, {})
+    if not isinstance(swarm, dict):
+        return
+
+    swarm_url = swarm.get(CI_CONFIG_SWARM_KEY_URL)
+    if not swarm_url:
+        return
+
+    # Step 1: Ensure swarm_token — fetch from relay if missing
+    swarm_token = read_env_value(project_root, SWARM_ENV_VAR_TOKEN)
+    if not swarm_token and state.cloud_relay_client:
+        swarm_token = await _fetch_swarm_token_from_relay(state)
+        if swarm_token:
+            update_env_file(project_root, SWARM_ENV_VAR_TOKEN, swarm_token)
+            logger.info("Auto-fetched swarm_token from relay on startup")
+
+    if not swarm_token:
+        return
+
+    # Step 2: Ensure agent_token — fetch from swarm worker if missing
+    if not read_env_value(project_root, SWARM_ENV_VAR_AGENT_TOKEN):
+        from open_agent_kit.features.team.daemon.routes.swarm_config import _fetch_agent_token
+
+        agent_token = await _fetch_agent_token(swarm_url, swarm_token)
+        if agent_token:
+            update_env_file(project_root, SWARM_ENV_VAR_AGENT_TOKEN, agent_token)
+            logger.info("Auto-fetched swarm agent_token on startup")
+
+
+async def _fetch_swarm_token_from_relay(state: "DaemonState") -> str | None:
+    """Fetch swarm_token from the relay worker's GET /api/swarm/config."""
+    import httpx
+
+    client = state.cloud_relay_client
+    if client is None:
+        return None
+
+    ci_config = state.ci_config
+    if ci_config is None:
+        return None
+
+    relay_url = ci_config.cloud_relay.worker_url or ci_config.team.relay_worker_url
+    relay_token = ci_config.cloud_relay.token or ci_config.team.api_key
+    if not relay_url or not relay_token:
+        return None
+
+    url = relay_url.rstrip("/") + "/api/swarm/config"
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            resp = await http.get(
+                url,
+                headers={"Authorization": f"Bearer {relay_token}"},
+            )
+        if resp.is_success:
+            data = resp.json()
+            token = data.get("swarm_token")
+            if token:
+                return str(token)
+        logger.debug("Relay returned %s for swarm config", resp.status_code)
+    except httpx.HTTPError as exc:
+        logger.debug("Failed to fetch swarm config from relay: %s", exc)
+    return None
+
+
 def _init_embedding(state: "DaemonState", project_root: Path) -> bool:
     """Create and verify the embedding provider.
 
@@ -548,6 +639,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     migrate_scaffold_dir(project_root)
 
     await _init_cloud_relay(state, project_root)
+    await _ensure_swarm_tokens(state, project_root)
 
     provider_available = _init_embedding(state, project_root)
 

@@ -41,6 +41,60 @@ def load_swarm_config(swarm_id: str) -> dict[str, Any] | None:
     return data
 
 
+def ensure_swarm_config(
+    swarm_name: str,
+    swarm_token: str,
+    swarm_url: str,
+    *,
+    agent_token: str | None = None,
+) -> dict[str, Any]:
+    """Ensure a local swarm config exists, creating it if needed.
+
+    This is the canonical way to set up ``~/.oak/swarms/{name}/config.json``
+    for an existing swarm.  Both the CLI and the team daemon UI call this.
+
+    Returns the config dict (existing or newly created).
+    """
+    from open_agent_kit.features.swarm.constants import (
+        CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
+        CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
+        CI_CONFIG_SWARM_KEY_SWARM_ID,
+        CI_CONFIG_SWARM_KEY_TOKEN,
+        CI_CONFIG_SWARM_KEY_URL,
+        CI_CONFIG_SWARM_KEY_WORKER_NAME,
+    )
+    from open_agent_kit.features.swarm.scaffold import make_worker_name
+
+    existing = load_swarm_config(swarm_name)
+    if existing is not None:
+        return existing
+
+    worker_name = make_worker_name(swarm_name)
+    config: dict[str, Any] = {
+        CI_CONFIG_SWARM_KEY_SWARM_ID: swarm_name,
+        CI_CONFIG_SWARM_KEY_TOKEN: swarm_token,
+        CI_CONFIG_SWARM_KEY_URL: swarm_url,
+        CI_CONFIG_SWARM_KEY_WORKER_NAME: worker_name,
+    }
+
+    if agent_token:
+        config[CI_CONFIG_SWARM_KEY_AGENT_TOKEN] = agent_token
+
+    # Derive custom_domain from swarm_url (e.g. *.openagentkit.app → openagentkit.app)
+    try:
+        from urllib.parse import urlparse
+
+        hostname = urlparse(swarm_url).hostname or ""
+        parts = hostname.split(".")
+        if len(parts) >= 2:
+            config[CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN] = ".".join(parts[-2:])
+    except Exception:
+        pass
+
+    save_swarm_config(swarm_name, config)
+    return config
+
+
 def save_swarm_config(swarm_id: str, config: dict[str, Any]) -> None:
     """Save swarm config to disk."""
     swarm_dir = get_swarm_config_dir(swarm_id)

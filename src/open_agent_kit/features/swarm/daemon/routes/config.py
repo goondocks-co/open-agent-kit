@@ -154,15 +154,22 @@ async def get_mcp_config() -> dict:
     state = get_swarm_state()
     config = load_swarm_config(state.swarm_id) or {} if state.swarm_id else {}
 
-    swarm_url = os.environ.get("OAK_SWARM_URL", "")
-    custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "")
-    # Prefer custom domain; also check config for persisted values
-    base_url = (
-        custom_domain
-        or (config or {}).get(CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN, "")
-        or swarm_url
-        or (config or {}).get(CI_CONFIG_SWARM_KEY_URL, "")
+    swarm_url = os.environ.get("OAK_SWARM_URL", "") or (config or {}).get(
+        CI_CONFIG_SWARM_KEY_URL, ""
     )
+    custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "") or (config or {}).get(
+        CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN, ""
+    )
+
+    # Build base URL: prefer custom domain with worker name, fall back to swarm_url
+    if custom_domain and state.swarm_id:
+        from open_agent_kit.features.swarm.scaffold import make_worker_name
+
+        worker_name = make_worker_name(state.swarm_id)
+        base_url = f"https://{worker_name}.{custom_domain}"
+    else:
+        base_url = swarm_url
+
     agent_token = (config or {}).get(CI_CONFIG_SWARM_KEY_AGENT_TOKEN, "")
 
     return {

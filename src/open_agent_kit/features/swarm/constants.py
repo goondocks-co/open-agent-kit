@@ -176,6 +176,10 @@ SWARM_CLI_COMMAND_ENV_VAR: Final[str] = "OAK_CLI_COMMAND"
 
 # Authentication
 SWARM_AUTH_ENV_VAR: Final[str] = "OAK_SWARM_DAEMON_TOKEN"
+
+# Environment variable names for .env file (secrets — never in config.yaml)
+SWARM_ENV_VAR_TOKEN: Final[str] = "OAK_SWARM_TOKEN"
+SWARM_ENV_VAR_AGENT_TOKEN: Final[str] = "OAK_SWARM_AGENT_TOKEN"
 SWARM_AUTH_HEADER_NAME: Final[str] = "authorization"
 SWARM_AUTH_SCHEME_BEARER: Final[str] = "Bearer"
 SWARM_AUTH_EPHEMERAL_TOKEN_BYTES: Final[int] = 32
@@ -235,7 +239,6 @@ SWARM_MESSAGE_DAEMON_START_FAILED: Final[str] = (
 SWARM_MESSAGE_MCP_HINT: Final[str] = (
     "Run 'oak init' to install the swarm MCP server for your agents."
 )
-
 # Deploy route error messages
 SWARM_DEPLOY_ERROR_NO_SWARM_ID: Final[str] = "No swarm ID configured"
 SWARM_DEPLOY_ERROR_NO_SCAFFOLD_DIR: Final[str] = "Cannot determine scaffold directory"

@@ -616,18 +616,26 @@ class TeamService:
     def _is_swarm_joined(self) -> bool:
         """Check if this project has joined a swarm.
 
-        Returns True if swarm URL and token are configured in .oak/config.yaml.
+        Returns True if swarm URL is configured in .oak/config.yaml and
+        swarm token exists in .env (or legacy config.yaml).
         """
         try:
             from open_agent_kit.features.swarm.constants import (
                 CI_CONFIG_SWARM_KEY_TOKEN,
                 CI_CONFIG_SWARM_KEY_URL,
+                SWARM_ENV_VAR_TOKEN,
             )
             from open_agent_kit.services.config_service import ConfigService
+            from open_agent_kit.utils.env_utils import read_env_value
 
             config = ConfigService(self.project_root).load_config(auto_migrate=False)
             swarm = config.swarm or {}
-            return bool(swarm.get(CI_CONFIG_SWARM_KEY_URL) and swarm.get(CI_CONFIG_SWARM_KEY_TOKEN))
+            has_url = bool(swarm.get(CI_CONFIG_SWARM_KEY_URL))
+            has_token = bool(
+                read_env_value(self.project_root, SWARM_ENV_VAR_TOKEN)
+                or swarm.get(CI_CONFIG_SWARM_KEY_TOKEN)
+            )
+            return has_url and has_token
         except Exception:
             return False
 

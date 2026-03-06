@@ -75,6 +75,12 @@ export interface SwarmBroadcastRequest {
   required_capabilities?: string[];
 }
 
+/** Fetch request body */
+export interface SwarmFetchRequest {
+  ids: string[];
+  project_slug?: string;
+}
+
 /** Heartbeat request body */
 export interface HeartbeatRequest {
   team_id: string;

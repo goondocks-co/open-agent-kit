@@ -313,3 +313,12 @@ dogfood-reset:
 # ACP smoke test - live integration test against running daemon
 acp-smoke:  ## Run live ACP smoke tests against running daemon
 	uv run python scripts/acp_smoke_test.py
+
+ui-check-all: 
+	make ui-check && make swarm-ui-check
+
+ui-lint-all:
+	make ui-lint && make swarm-ui-lint
+
+ui-build-all:
+	make ui-build && make swarm-ui-build

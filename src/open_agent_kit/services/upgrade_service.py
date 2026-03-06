@@ -411,17 +411,23 @@ class UpgradePlanner:
 
         return result
 
-    @staticmethod
-    def _is_swarm_joined(config: OakConfig) -> bool:
+    def _is_swarm_joined(self, config: OakConfig) -> bool:
         """Check whether this project has joined a swarm."""
         try:
             from open_agent_kit.features.swarm.constants import (
                 CI_CONFIG_SWARM_KEY_TOKEN,
                 CI_CONFIG_SWARM_KEY_URL,
+                SWARM_ENV_VAR_TOKEN,
             )
+            from open_agent_kit.utils.env_utils import read_env_value
 
             swarm = config.swarm or {}
-            return bool(swarm.get(CI_CONFIG_SWARM_KEY_URL) and swarm.get(CI_CONFIG_SWARM_KEY_TOKEN))
+            has_url = bool(swarm.get(CI_CONFIG_SWARM_KEY_URL))
+            has_token = bool(
+                read_env_value(self._project_root, SWARM_ENV_VAR_TOKEN)
+                or swarm.get(CI_CONFIG_SWARM_KEY_TOKEN)
+            )
+            return has_url and has_token
         except Exception:
             return False
 

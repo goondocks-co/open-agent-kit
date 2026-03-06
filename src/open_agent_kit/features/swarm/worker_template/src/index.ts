@@ -11,6 +11,7 @@
  *   POST /api/swarm/unregister  — remove a team from the swarm (swarm_token auth)
  *   POST /api/swarm/health-check — health check for a specific team (swarm_token auth)
  *   GET|PUT /api/swarm/config/min-oak-version — version policy config (swarm_token auth)
+ *   GET  /api/swarm/agent-token — retrieve agent token (swarm_token auth)
  *   POST /mcp                   — MCP JSON-RPC endpoint (agent_token auth)
  *   GET  /health                — status check
  */
@@ -104,6 +105,14 @@ export default {
       return withCors(await doStub.fetch(request), request);
     }
 
+    // ----- POST /api/swarm/fetch — fetch items by ID from teams -----
+    if (path === "/api/swarm/fetch" && request.method === "POST") {
+      const authErr = validateSwarmToken(request, env);
+      if (authErr) return withCors(authErr, request);
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request), request);
+    }
+
     // ----- POST /api/swarm/tool-call — route tool call to a project -----
     if (path === "/api/swarm/tool-call" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
@@ -150,6 +159,16 @@ export default {
       if (authErr) return withCors(authErr, request);
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request), request);
+    }
+
+    // ----- GET /api/swarm/agent-token — retrieve agent token for MCP access -----
+    if (path === "/api/swarm/agent-token" && request.method === "GET") {
+      const authErr = validateSwarmToken(request, env);
+      if (authErr) return withCors(authErr, request);
+      return withCors(
+        Response.json({ agent_token: env.AGENT_TOKEN }),
+        request,
+      );
     }
 
     // ----- GET /health -----

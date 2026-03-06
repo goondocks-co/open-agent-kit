@@ -43,6 +43,56 @@ def update_env_file(project_root: Path, key: str, value: str) -> None:
         f.writelines(existing_lines)
 
 
+def read_env_value(project_root: Path, key: str) -> str | None:
+    """Read a value from the .env file.
+
+    Args:
+        project_root: Project root directory
+        key: Environment variable name
+
+    Returns:
+        The value if found, None otherwise.
+    """
+    env_path = project_root / ".env"
+    if not env_path.exists():
+        return None
+    with env_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith(f"{key}="):
+                return stripped[len(key) + 1 :]
+    return None
+
+
+def remove_env_key(project_root: Path, key: str) -> bool:
+    """Remove a key from the .env file.
+
+    Args:
+        project_root: Project root directory
+        key: Environment variable name to remove
+
+    Returns:
+        True if the key was found and removed.
+    """
+    env_path = project_root / ".env"
+    if not env_path.exists():
+        return False
+
+    lines: list[str] = []
+    found = False
+    with env_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip().startswith(f"{key}="):
+                found = True
+            else:
+                lines.append(line)
+
+    if found:
+        with env_path.open("w", encoding="utf-8") as f:
+            f.writelines(lines)
+    return found
+
+
 def ensure_gitignore_has_env(project_root: Path) -> None:
     """Ensure .gitignore includes .env file.
 

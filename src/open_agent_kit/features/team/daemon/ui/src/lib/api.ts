@@ -9,7 +9,7 @@ function getAuthToken(): string | null {
     return cachedAuthToken;
 }
 
-const client = createApiClient("http://localhost:37800", { getAuthToken });
+const client = createApiClient("", { getAuthToken });
 
 export const API_BASE = client.API_BASE;
 export const fetchJson = client.fetchJson;

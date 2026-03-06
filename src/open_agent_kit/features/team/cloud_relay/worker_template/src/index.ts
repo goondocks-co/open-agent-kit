@@ -114,6 +114,13 @@ export default {
       return withCors(await doStub.fetch(request), request);
     }
 
+    // ----- POST /fetch — fetch items by ID from connected peers -----
+    // Auth delegated to DO (accepts both relay_token and swarm callback_token).
+    if (path === "/fetch" && request.method === "POST") {
+      const doStub = getDurableObject(env);
+      return withCors(await doStub.fetch(request), request);
+    }
+
     // ----- POST /federate-tool — generic federated tool fan-out to peers -----
     // Auth delegated to DO (accepts both relay_token and swarm callback_token).
     if (path === "/federate-tool" && request.method === "POST") {
