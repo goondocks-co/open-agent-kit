@@ -5,7 +5,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson } from "@/lib/api";
+import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 
 // =============================================================================
@@ -86,10 +86,7 @@ export function useUpdateAgentSettings() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (settings: AgentSettingsUpdateRequest) =>
-            fetchJson(API_ENDPOINTS.AGENT_SETTINGS, {
-                method: "PUT",
-                body: JSON.stringify(settings),
-            }),
+            putJson(API_ENDPOINTS.AGENT_SETTINGS, settings),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agent-settings"] });
         },
@@ -117,9 +114,5 @@ export async function listAgentProviderModels(
 export async function testAgentProvider(
     request: TestProviderRequest
 ): Promise<TestProviderResponse> {
-    return fetchJson(API_ENDPOINTS.AGENT_TEST_PROVIDER, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-    });
+    return postJson(API_ENDPOINTS.AGENT_TEST_PROVIDER, request);
 }

@@ -14,6 +14,7 @@ interface ApiClient {
     API_BASE: string;
     fetchJson: <T = unknown>(url: string, init?: RequestInit) => Promise<T>;
     postJson: <T = unknown>(url: string, body: unknown, extra?: RequestInit) => Promise<T>;
+    putJson: <T = unknown>(url: string, body: unknown, extra?: RequestInit) => Promise<T>;
     patchJson: <T = unknown>(url: string, body: unknown, extra?: RequestInit) => Promise<T>;
     deleteJson: <T = unknown>(url: string) => Promise<T>;
 }
@@ -52,6 +53,15 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions): Api
         });
     }
 
+    async function putJson<T = unknown>(url: string, body: unknown, extra?: RequestInit): Promise<T> {
+        return fetchJson<T>(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            ...extra,
+        });
+    }
+
     async function patchJson<T = unknown>(url: string, body: unknown, extra?: RequestInit): Promise<T> {
         return fetchJson<T>(url, {
             method: "PATCH",
@@ -65,5 +75,5 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions): Api
         return fetchJson<T>(url, { method: "DELETE" });
     }
 
-    return { API_BASE, fetchJson, postJson, patchJson, deleteJson };
+    return { API_BASE, fetchJson, postJson, putJson, patchJson, deleteJson };
 }

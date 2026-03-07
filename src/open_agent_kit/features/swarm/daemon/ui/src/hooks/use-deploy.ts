@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
-import { fetchJson, postJson } from "@/lib/api";
+import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS, DEPLOY_POLL_MS } from "@/lib/constants";
 
 interface DeployStatus {
@@ -60,11 +60,7 @@ export function useDeploySettings() {
     const queryClient = useQueryClient();
     return useMutation<DeployStatus, Error, { custom_domain: string | null }>({
         mutationFn: (settings) =>
-            fetchJson(API_ENDPOINTS.DEPLOY_SETTINGS, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(settings),
-            }),
+            putJson(API_ENDPOINTS.DEPLOY_SETTINGS, settings),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["deploy"] });
         },

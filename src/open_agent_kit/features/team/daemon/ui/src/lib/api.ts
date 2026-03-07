@@ -14,6 +14,7 @@ const client = createApiClient("", { getAuthToken });
 export const API_BASE = client.API_BASE;
 export const fetchJson = client.fetchJson;
 export const postJson = client.postJson;
+export const putJson = client.putJson;
 export const patchJson = client.patchJson;
 export const deleteJson = client.deleteJson;
 

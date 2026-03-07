@@ -3,7 +3,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson, postJson } from "@/lib/api";
+import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
@@ -143,10 +143,7 @@ export function useCloudRelayUpdateSettings() {
     const queryClient = useQueryClient();
     return useMutation<CloudRelayStatus, Error, { custom_domain: string | null }>({
         mutationFn: (settings) =>
-            fetchJson(API_ENDPOINTS.CLOUD_RELAY_SETTINGS, {
-                method: "PUT",
-                body: JSON.stringify(settings),
-            }),
+            putJson(API_ENDPOINTS.CLOUD_RELAY_SETTINGS, settings),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["cloud-relay-status"] });
         },

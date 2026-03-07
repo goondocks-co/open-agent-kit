@@ -702,17 +702,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Register atexit handler so PID/token files are cleaned up even on
     # unclean exits (uncaught exceptions, interpreter shutdown).
+    # Note: uvicorn installs its own SIGTERM handler that triggers graceful
+    # shutdown (including lifespan teardown → _shutdown → cleanup). We do NOT
+    # override it — the atexit handler is a belt-and-suspenders backup for
+    # cases where the process exits without lifespan teardown (e.g. SIGKILL,
+    # uncaught exception in a non-uvicorn context).
     atexit.register(_cleanup_pid_and_token, project_root)
-
-    # Python's default SIGTERM handler exits without running atexit handlers.
-    # Install a handler that triggers a clean interpreter shutdown so atexit
-    # (and the lifespan teardown, if uvicorn propagates) actually runs.
-    import signal
-
-    def _sigterm_handler(signum: int, frame: object) -> None:
-        raise SystemExit(0)
-
-    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     # Load configuration
     ci_config = load_ci_config(project_root)

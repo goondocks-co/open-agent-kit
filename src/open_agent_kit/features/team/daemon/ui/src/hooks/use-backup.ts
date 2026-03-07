@@ -5,7 +5,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchJson } from "@/lib/api";
+import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
@@ -111,10 +111,7 @@ export function useCreateBackup() {
     const queryClient = useQueryClient();
     return useMutation<BackupResponse, Error, BackupRequest>({
         mutationFn: (request) =>
-            fetchJson(API_ENDPOINTS.BACKUP_CREATE, {
-                method: "POST",
-                body: JSON.stringify(request),
-            }),
+            postJson(API_ENDPOINTS.BACKUP_CREATE, request),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["backup-status"] });
         },
@@ -128,10 +125,7 @@ export function useRestoreBackup() {
     const queryClient = useQueryClient();
     return useMutation<RestoreResponse, Error, RestoreRequest>({
         mutationFn: (request) =>
-            fetchJson(API_ENDPOINTS.BACKUP_RESTORE, {
-                method: "POST",
-                body: JSON.stringify(request),
-            }),
+            postJson(API_ENDPOINTS.BACKUP_RESTORE, request),
         onSuccess: () => {
             // Invalidate memory stats after restore since data changed
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
@@ -148,10 +142,7 @@ export function useRestoreAllBackups() {
     const queryClient = useQueryClient();
     return useMutation<RestoreAllResponse, Error, RestoreAllRequest>({
         mutationFn: (request) =>
-            fetchJson(API_ENDPOINTS.BACKUP_RESTORE_ALL, {
-                method: "POST",
-                body: JSON.stringify(request),
-            }),
+            postJson(API_ENDPOINTS.BACKUP_RESTORE_ALL, request),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["memory-stats"] });
             queryClient.invalidateQueries({ queryKey: ["status"] });
@@ -191,10 +182,7 @@ export function useUpdateBackupDir() {
     const queryClient = useQueryClient();
     return useMutation<BackupDirConfig, Error, BackupDirRequest>({
         mutationFn: (request) =>
-            fetchJson(API_ENDPOINTS.BACKUP_DIR, {
-                method: "PUT",
-                body: JSON.stringify(request),
-            }),
+            putJson(API_ENDPOINTS.BACKUP_DIR, request),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["backup-dir"] });
             queryClient.invalidateQueries({ queryKey: ["backup-status"] });

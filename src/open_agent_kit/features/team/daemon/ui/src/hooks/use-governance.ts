@@ -10,7 +10,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson, postJson } from "@/lib/api";
+import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
@@ -116,10 +116,7 @@ async function fetchGovernanceConfig(signal?: AbortSignal): Promise<GovernanceCo
 }
 
 async function saveGovernanceConfig(config: GovernanceConfig): Promise<{ status: string; config: GovernanceConfig }> {
-    return fetchJson<{ status: string; config: GovernanceConfig }>(API_ENDPOINTS.GOVERNANCE_CONFIG, {
-        method: "PUT",
-        body: JSON.stringify(config),
-    });
+    return putJson<{ status: string; config: GovernanceConfig }>(API_ENDPOINTS.GOVERNANCE_CONFIG, config);
 }
 
 async function fetchAuditEvents(params: AuditQueryParams, signal?: AbortSignal): Promise<AuditListResponse> {

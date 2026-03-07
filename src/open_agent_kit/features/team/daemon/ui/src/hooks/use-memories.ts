@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJson, postJson } from "@/lib/api";
+import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS, getArchiveMemoryEndpoint, getUnarchiveMemoryEndpoint, getMemoryStatusEndpoint } from "@/lib/constants";
 import type { MemoryTypeFilter, BulkAction, ObservationStatusFilter } from "@/lib/constants";
 
@@ -134,11 +134,7 @@ export function useResolveMemory() {
 
     return useMutation({
         mutationFn: (memoryId: string) =>
-            fetchJson(getMemoryStatusEndpoint(memoryId), {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "resolved" }),
-            }),
+            putJson(getMemoryStatusEndpoint(memoryId), { status: "resolved" }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["memories"] });
         },

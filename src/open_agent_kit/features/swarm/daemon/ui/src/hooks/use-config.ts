@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchJson } from "@/lib/api";
+import { fetchJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 
 export interface LogRotationConfig {
@@ -28,10 +28,7 @@ export function useConfig() {
 }
 
 export async function updateConfig(data: Partial<{ log_level: string; log_rotation: Partial<LogRotationConfig> }>): Promise<ConfigUpdateResponse> {
-    return fetchJson(API_ENDPOINTS.CONFIG, {
-        method: "PUT",
-        body: JSON.stringify(data),
-    });
+    return putJson(API_ENDPOINTS.CONFIG, data);
 }
 
 export async function toggleDebugLogging(currentLevel: string): Promise<ConfigUpdateResponse> {
