@@ -12,8 +12,6 @@ Exposes tools that AI agents can call via MCP protocol:
 - oak_archive_memories: Archive observations from search index
 - swarm_search: Search across all projects in the swarm
 - swarm_nodes: List all teams in the swarm
-- swarm_call: Call a tool on a specific swarm project
-- swarm_broadcast: Broadcast a tool call to all swarm projects
 - swarm_status: Get swarm connection status
 
 These tools delegate to shared ToolOperations for actual implementation.
@@ -25,8 +23,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.swarm.constants import (
-    SWARM_TOOL_BROADCAST,
-    SWARM_TOOL_CALL,
     SWARM_TOOL_NODES,
     SWARM_TOOL_SEARCH,
     SWARM_TOOL_STATUS,
@@ -455,61 +451,11 @@ MCP_TOOLS = [
         "description": (
             "List all teams in the swarm with their connection status. "
             "Use this to see which projects are connected and available "
-            "for cross-project queries and tool calls."
+            "for cross-project queries."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {},
-        },
-    },
-    {
-        "name": SWARM_TOOL_CALL,
-        "description": (
-            "Call a tool on a specific project in the swarm. Routes the tool "
-            "invocation to the target project's CI daemon, allowing cross-project "
-            "operations like searching a specific project's codebase or reading its memories."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "tool_name": {
-                    "type": "string",
-                    "description": "Name of the tool to invoke (e.g., 'oak_search')",
-                },
-                "arguments": {
-                    "type": "string",
-                    "default": "{}",
-                    "description": "JSON string of tool arguments",
-                },
-                "target_project": {
-                    "type": "string",
-                    "description": "Project slug to route the call to",
-                },
-            },
-            "required": ["tool_name", "target_project"],
-        },
-    },
-    {
-        "name": SWARM_TOOL_BROADCAST,
-        "description": (
-            "Broadcast a tool call to all projects in the swarm. Sends the same "
-            "tool invocation to every connected project and aggregates the results. "
-            "Useful for swarm-wide searches or collecting information from all projects."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "tool_name": {
-                    "type": "string",
-                    "description": "Name of the tool to invoke (e.g., 'oak_search')",
-                },
-                "arguments": {
-                    "type": "string",
-                    "default": "{}",
-                    "description": "JSON string of tool arguments",
-                },
-            },
-            "required": ["tool_name"],
         },
     },
     {
@@ -580,8 +526,6 @@ class MCPToolHandler:
             # Swarm tools
             SWARM_TOOL_SEARCH: self.ops.swarm_search,
             SWARM_TOOL_NODES: lambda args: self.ops.swarm_nodes(),
-            SWARM_TOOL_CALL: self.ops.swarm_call,
-            SWARM_TOOL_BROADCAST: self.ops.swarm_broadcast,
             SWARM_TOOL_STATUS: lambda args: self.ops.swarm_status(),
         }
 

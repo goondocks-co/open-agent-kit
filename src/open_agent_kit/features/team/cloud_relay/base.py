@@ -201,33 +201,6 @@ class RelayClient(ABC):
         """
         return {"results": [], "error": "Not connected to swarm"}
 
-    async def swarm_call(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        target_project: str,
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
-        """Call a tool on a specific project in the swarm.
-
-        Returns:
-            Dict with result or error.
-        """
-        return {"error": "Not connected to swarm"}
-
-    async def swarm_broadcast(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
-        """Broadcast a tool call to all projects in the swarm.
-
-        Returns:
-            Dict with ``results`` list and optional ``error`` key.
-        """
-        return {"results": [], "error": "Not connected to swarm"}
-
     async def swarm_nodes(self) -> dict[str, Any]:
         """List all teams in the swarm.
 

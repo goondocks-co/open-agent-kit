@@ -20,6 +20,8 @@ from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_URL,
     SWARM_DAEMON_API_PATH_CONFIG,
     SWARM_DAEMON_DEFAULT_LOG_LEVEL,
+    SWARM_ENV_VAR_CUSTOM_DOMAIN,
+    SWARM_ENV_VAR_URL,
     SWARM_ERROR_NOT_CONNECTED,
     SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT,
     SWARM_LOG_ROTATION_DEFAULT_ENABLED,
@@ -154,10 +156,10 @@ async def get_mcp_config() -> dict:
     state = get_swarm_state()
     config = load_swarm_config(state.swarm_id) or {} if state.swarm_id else {}
 
-    swarm_url = os.environ.get("OAK_SWARM_URL", "") or (config or {}).get(
+    swarm_url = os.environ.get(SWARM_ENV_VAR_URL, "") or (config or {}).get(
         CI_CONFIG_SWARM_KEY_URL, ""
     )
-    custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "") or (config or {}).get(
+    custom_domain = os.environ.get(SWARM_ENV_VAR_CUSTOM_DOMAIN, "") or (config or {}).get(
         CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN, ""
     )
 

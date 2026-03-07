@@ -4,7 +4,6 @@
  * Architecture:
  *   Team Worker --HTTP POST /api/swarm/register--> Swarm Worker --> DO.fetch() --> SQLite registry
  *   Team Worker --HTTP POST /api/swarm/search----> Swarm Worker --> DO.fetch() --> fan-out to all teams
- *   Team Worker --HTTP POST /api/swarm/tool-call-> Swarm Worker --> DO.fetch() --> targeted team callback
  *
  * Unlike the Relay DO, the Swarm DO is purely HTTP — no WebSocket management.
  * It manages Team registration and routes search/tool requests to registered
@@ -20,7 +19,6 @@ import type {
   SwarmTeam,
   RegisterRequest,
   SwarmSearchRequest,
-  SwarmToolCallRequest,
   SwarmBroadcastRequest,
   SwarmFetchRequest,
   HeartbeatRequest,
@@ -45,8 +43,6 @@ const SWARM_SCHEMA_VERSION = 3;
 
 /** Capability identifier constants — must match Python SWARM_CAPABILITY_* values. */
 const CAPABILITY_SEARCH = "swarm_search_v1";
-const CAPABILITY_TOOLS = "swarm_tools_v1";
-const CAPABILITY_BROADCAST = "swarm_broadcast_v1";
 const CAPABILITY_MANAGEMENT = "swarm_management_v1";
 
 /** Swarm config keys stored in swarm_config table. */
@@ -55,8 +51,6 @@ const CONFIG_KEY_MIN_OAK_VERSION = "min_oak_version";
 /** Canonical set of swarm capabilities — unknown strings are stripped on registration. */
 const KNOWN_CAPABILITIES = new Set([
   CAPABILITY_SEARCH,
-  CAPABILITY_TOOLS,
-  CAPABILITY_BROADCAST,
   CAPABILITY_MANAGEMENT,
 ]);
 
@@ -212,12 +206,7 @@ export class SwarmObject implements DurableObject {
         return this.handleFetch(request);
       }
 
-      // --- Targeted tool call ---
-      if (path === "/api/swarm/tool-call" && request.method === "POST") {
-        return this.handleToolCall(request);
-      }
-
-      // --- Broadcast tool call ---
+      // --- Broadcast (internal: used by fetch fan-out) ---
       if (path === "/api/swarm/broadcast" && request.method === "POST") {
         return this.handleBroadcast(request);
       }
@@ -570,73 +559,11 @@ export class SwarmObject implements DurableObject {
     });
   }
 
-  private async handleToolCall(request: Request): Promise<Response> {
-    const body = (await request.json()) as SwarmToolCallRequest;
-
-    if (!body.target_project || !body.tool_name) {
-      return Response.json(
-        { error: "missing required fields: target_project, tool_name" },
-        { status: 400 },
-      );
-    }
-
-    const team = this.findTeamByProject(body.target_project);
-    if (!team) {
-      return Response.json(
-        { error: `no team registered for project: ${body.target_project}` },
-        { status: 404 },
-      );
-    }
-
-    if (!team.capabilities.includes(CAPABILITY_TOOLS)) {
-      return Response.json(
-        {
-          error: `team '${body.target_project}' does not advertise capability: ${CAPABILITY_TOOLS}`,
-          team_capabilities: team.capabilities,
-        },
-        { status: 422 },
-      );
-    }
-
-    try {
-      const response = await this.fetchWithTimeout(
-        `${team.callback_url}/tool-call`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${team.callback_token}`,
-          },
-          body: JSON.stringify({
-            type: "tool_call",
-            call_id: crypto.randomUUID(),
-            tool_name: body.tool_name,
-            arguments: body.arguments ?? {},
-            timeout_ms: TOOL_CALL_TIMEOUT_MS,
-          }),
-        },
-        TOOL_CALL_TIMEOUT_MS,
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        return Response.json(
-          { error: `team returned HTTP ${response.status}`, detail: text },
-          { status: 502 },
-        );
-      }
-
-      const result = await response.json();
-      return Response.json(result);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "unknown error";
-      return Response.json(
-        { error: `tool call failed: ${message}` },
-        { status: 502 },
-      );
-    }
-  }
-
+  /**
+   * Broadcast a tool call to all teams with search capability.
+   * Used internally by the fetch fan-out (swarm_fetch calls broadcast
+   * because chunk IDs are local to each node's vector store).
+   */
   private async handleBroadcast(request: Request): Promise<Response> {
     const body = (await request.json()) as SwarmBroadcastRequest;
 
@@ -647,13 +574,12 @@ export class SwarmObject implements DurableObject {
       );
     }
 
-    // Only fan out to teams that advertise broadcast capability (and any extra required caps).
-    const teams = this.getTeamsWithCapability(CAPABILITY_BROADCAST, body.required_capabilities);
+    // Fan out to all teams with search capability (broadcast is used for fetch).
+    const teams = this.getTeamsWithCapability(CAPABILITY_SEARCH, body.required_capabilities);
     if (teams.length === 0) {
       return Response.json({ results: [], warning: "no teams with required capability" });
     }
 
-    // Fan out tool call to all eligible teams
     const promises = teams.map(async (team) => {
       try {
         const response = await this.fetchWithTimeout(

@@ -17,6 +17,10 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_AGENTS_DEFINITIONS_DIR,
     SWARM_AUTH_ENV_VAR,
     SWARM_DAEMON_DEFAULT_LOG_LEVEL,
+    SWARM_ENV_VAR_CUSTOM_DOMAIN,
+    SWARM_ENV_VAR_ID,
+    SWARM_ENV_VAR_TOKEN,
+    SWARM_ENV_VAR_URL,
     SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT,
     SWARM_LOG_ROTATION_DEFAULT_ENABLED,
     SWARM_LOG_ROTATION_DEFAULT_MAX_SIZE_MB,
@@ -49,9 +53,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown lifecycle."""
     # Initialize SwarmWorkerClient from env vars set by SwarmDaemonManager
     state = get_swarm_state()
-    swarm_url = os.environ.get("OAK_SWARM_URL", "")
-    swarm_token = os.environ.get("OAK_SWARM_TOKEN", "")
-    swarm_id = os.environ.get("OAK_SWARM_ID", "")
+    swarm_url = os.environ.get(SWARM_ENV_VAR_URL, "")
+    swarm_token = os.environ.get(SWARM_ENV_VAR_TOKEN, "")
+    swarm_id = os.environ.get(SWARM_ENV_VAR_ID, "")
 
     # Read persisted log level from config (set via PUT /api/config)
     from open_agent_kit.features.swarm.config import load_swarm_config
@@ -81,7 +85,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         swarm_id,
         swarm_url[:50] if swarm_url else "<unset>",
     )
-    custom_domain = os.environ.get("OAK_SWARM_CUSTOM_DOMAIN", "")
+    custom_domain = os.environ.get(SWARM_ENV_VAR_CUSTOM_DOMAIN, "")
 
     # When a custom domain is configured, derive the effective URL so the UI
     # and credentials display the custom domain instead of the workers.dev URL.
@@ -175,12 +179,12 @@ def create_app() -> FastAPI:
     app.include_router(fetch.router)
     app.include_router(nodes.router)
     app.include_router(status.router)
-    app.include_router(tools.router)
     app.include_router(agents.router)
     app.include_router(restart.router)
     app.include_router(config.router)
     app.include_router(logs.router)
     app.include_router(deploy.router)
+    app.include_router(tools.router)
 
     # Static files for UI
     static_dir = Path(__file__).parent / "static"

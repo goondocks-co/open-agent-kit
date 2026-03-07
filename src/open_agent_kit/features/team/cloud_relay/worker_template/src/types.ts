@@ -29,10 +29,6 @@ export const RelayMessageType = {
   // Swarm messages (node <-> Team Worker, forwarded to Swarm Worker)
   SWARM_SEARCH: "swarm_search",
   SWARM_SEARCH_RESULT: "swarm_search_result",
-  SWARM_TOOL_CALL: "swarm_tool_call",
-  SWARM_TOOL_RESULT: "swarm_tool_result",
-  SWARM_BROADCAST: "swarm_broadcast",
-  SWARM_BROADCAST_RESULT: "swarm_broadcast_result",
   SWARM_NODES: "swarm_nodes",
   SWARM_NODE_LIST: "swarm_node_list",
 } as const;
@@ -211,39 +207,6 @@ export interface SwarmSearchResultMessage {
   error?: string;
 }
 
-/** Sent by node to call a tool on a specific project in the swarm. */
-export interface SwarmToolCallMessage {
-  type: typeof RelayMessageType.SWARM_TOOL_CALL;
-  request_id: string;
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  target_project: string;
-}
-
-/** Sent by worker with the result of a targeted swarm tool call. */
-export interface SwarmToolResultMessage {
-  type: typeof RelayMessageType.SWARM_TOOL_RESULT;
-  request_id: string;
-  result?: unknown;
-  error?: string;
-}
-
-/** Sent by node to broadcast a tool call to all projects in the swarm. */
-export interface SwarmBroadcastMessage {
-  type: typeof RelayMessageType.SWARM_BROADCAST;
-  request_id: string;
-  tool_name: string;
-  arguments: Record<string, unknown>;
-}
-
-/** Sent by worker with aggregated broadcast results from all projects. */
-export interface SwarmBroadcastResultMessage {
-  type: typeof RelayMessageType.SWARM_BROADCAST_RESULT;
-  request_id: string;
-  results: Record<string, unknown>[];
-  error?: string;
-}
-
 /** Sent by node to request the swarm membership list. */
 export interface SwarmNodesMessage {
   type: typeof RelayMessageType.SWARM_NODES;
@@ -296,10 +259,6 @@ export type RelayMessage =
   | FederatedToolResultMessage
   | SwarmSearchMessage
   | SwarmSearchResultMessage
-  | SwarmToolCallMessage
-  | SwarmToolResultMessage
-  | SwarmBroadcastMessage
-  | SwarmBroadcastResultMessage
   | SwarmNodesMessage
   | SwarmNodeListMessage;
 

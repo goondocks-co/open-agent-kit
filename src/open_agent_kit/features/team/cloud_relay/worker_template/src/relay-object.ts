@@ -40,10 +40,8 @@ import {
   type SearchQueryMessage,
   type SearchResultMessage,
   type RelayMetricsResponse,
-  type SwarmBroadcastMessage,
   type SwarmNodesMessage,
   type SwarmSearchMessage,
-  type SwarmToolCallMessage,
   type ToolCallRequest,
   type ToolCallResponse,
   type ToolInfo,
@@ -61,8 +59,6 @@ const FEDERATED_SEARCH_DEFAULT_LIMIT = 10;
 const FEDERATED_SEARCH_MAX_RESULTS = 50;
 const CAPABILITY_FEDERATED_TOOLS = "federated_tools_v1";
 const CAPABILITY_SWARM_SEARCH = "swarm_search_v1";
-const CAPABILITY_SWARM_TOOLS = "swarm_tools_v1";
-const CAPABILITY_SWARM_BROADCAST = "swarm_broadcast_v1";
 const CAPABILITY_SWARM_MANAGEMENT = "swarm_management_v1";
 const FEDERATED_TOOL_TIMEOUT_MS = 10_000;
 const FEDERATED_TOOL_MAX_RESULTS = 50;
@@ -76,7 +72,6 @@ const SWARM_HEARTBEAT_INTERVAL_MS = 60_000;
  */
 const SCHEMA_VERSION = 1;
 const SWARM_SEARCH_TIMEOUT_MS = 10_000;
-const SWARM_TOOL_CALL_TIMEOUT_MS = 30_000;
 
 /** Cache TTL (in seconds) for federated tool calls, keyed by tool name. */
 const CACHE_TTL_BY_TOOL: Record<string, number> = {
@@ -434,12 +429,6 @@ export class RelayObject implements DurableObject {
       // Swarm messages from nodes — forward to Swarm Worker via HTTP
       case RelayMessageType.SWARM_SEARCH:
         this.handleSwarmSearch(msg as SwarmSearchMessage, _ws);
-        break;
-      case RelayMessageType.SWARM_TOOL_CALL:
-        this.handleSwarmToolCall(msg as SwarmToolCallMessage, _ws);
-        break;
-      case RelayMessageType.SWARM_BROADCAST:
-        this.handleSwarmBroadcast(msg as SwarmBroadcastMessage, _ws);
         break;
       case RelayMessageType.SWARM_NODES:
         this.handleSwarmNodes(msg as SwarmNodesMessage, _ws);
@@ -1960,97 +1949,6 @@ export class RelayObject implements DurableObject {
         request_id: msg.request_id,
         results: [],
         error: `swarm search failed: ${message}`,
-      }));
-    }
-  }
-
-  /** Forward a swarm_tool_call from a node to the Swarm Worker. */
-  private async handleSwarmToolCall(msg: SwarmToolCallMessage, ws: WebSocket): Promise<void> {
-    if (!this.swarmConnected || !this.swarmUrl || !this.swarmToken) {
-      ws.send(JSON.stringify({
-        type: RelayMessageType.SWARM_TOOL_RESULT,
-        request_id: msg.request_id,
-        error: "not connected to swarm",
-      }));
-      return;
-    }
-
-    try {
-      const response = await this.fetchWithTimeout(
-        `${this.swarmUrl}/api/swarm/tool-call`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.swarmToken}`,
-          },
-          body: JSON.stringify({
-            tool_name: msg.tool_name,
-            arguments: msg.arguments ?? {},
-            target_project: msg.target_project,
-          }),
-        },
-        SWARM_TOOL_CALL_TIMEOUT_MS,
-      );
-
-      const data = await response.json();
-      ws.send(JSON.stringify({
-        type: RelayMessageType.SWARM_TOOL_RESULT,
-        request_id: msg.request_id,
-        result: data,
-      }));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "unknown error";
-      ws.send(JSON.stringify({
-        type: RelayMessageType.SWARM_TOOL_RESULT,
-        request_id: msg.request_id,
-        error: `swarm tool call failed: ${message}`,
-      }));
-    }
-  }
-
-  /** Forward a swarm_broadcast from a node to the Swarm Worker. */
-  private async handleSwarmBroadcast(msg: SwarmBroadcastMessage, ws: WebSocket): Promise<void> {
-    if (!this.swarmConnected || !this.swarmUrl || !this.swarmToken) {
-      ws.send(JSON.stringify({
-        type: RelayMessageType.SWARM_BROADCAST_RESULT,
-        request_id: msg.request_id,
-        results: [],
-        error: "not connected to swarm",
-      }));
-      return;
-    }
-
-    try {
-      const response = await this.fetchWithTimeout(
-        `${this.swarmUrl}/api/swarm/broadcast`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.swarmToken}`,
-          },
-          body: JSON.stringify({
-            tool_name: msg.tool_name,
-            arguments: msg.arguments ?? {},
-          }),
-        },
-        SWARM_TOOL_CALL_TIMEOUT_MS,
-      );
-
-      const data = (await response.json()) as { results?: Record<string, unknown>[] };
-      ws.send(JSON.stringify({
-        type: RelayMessageType.SWARM_BROADCAST_RESULT,
-        request_id: msg.request_id,
-        results: data.results ?? [],
-      }));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "unknown error";
-      ws.send(JSON.stringify({
-        type: RelayMessageType.SWARM_BROADCAST_RESULT,
-        request_id: msg.request_id,
-        results: [],
-        error: `swarm broadcast failed: ${message}`,
       }));
     }
   }

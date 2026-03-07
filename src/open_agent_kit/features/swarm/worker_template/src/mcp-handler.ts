@@ -85,46 +85,6 @@ const SWARM_TOOLS = [
     },
   },
   {
-    name: "swarm_call",
-    description: "Route a tool call to a specific project in the swarm.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        tool_name: {
-          type: "string",
-          description: "Name of the tool to invoke.",
-        },
-        arguments: {
-          type: "string",
-          description: "JSON-encoded arguments for the tool.",
-        },
-        target_project: {
-          type: "string",
-          description: "Project slug to route the call to.",
-        },
-      },
-      required: ["tool_name", "target_project"],
-    },
-  },
-  {
-    name: "swarm_broadcast",
-    description: "Broadcast a tool call to all teams in the swarm.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        tool_name: {
-          type: "string",
-          description: "Name of the tool to invoke on all teams.",
-        },
-        arguments: {
-          type: "string",
-          description: "JSON-encoded arguments for the tool.",
-        },
-      },
-      required: ["tool_name"],
-    },
-  },
-  {
     name: "swarm_status",
     description: "Get the current status of the swarm.",
     inputSchema: {
@@ -142,8 +102,6 @@ const TOOL_ENDPOINTS: Record<string, { path: string; method: string }> = {
   swarm_search: { path: "/api/swarm/search", method: "POST" },
   swarm_fetch: { path: "/api/swarm/fetch", method: "POST" },
   swarm_nodes: { path: "/api/swarm/nodes", method: "GET" },
-  swarm_call: { path: "/api/swarm/tool-call", method: "POST" },
-  swarm_broadcast: { path: "/api/swarm/broadcast", method: "POST" },
   swarm_status: { path: "/api/swarm/status", method: "GET" },
 };
 
@@ -160,7 +118,7 @@ export async function handleMcpRequest(
 ): Promise<JsonRpcResponse> {
   const req = body as JsonRpcRequest;
 
-  if (!req || req.jsonrpc !== "2.0" || !req.method) {
+  if (!req || req.jsonrpc !== "2.0" || !req.method || req.id === undefined) {
     return jsonRpcError(
       req?.id ?? (null as unknown as number),
       -32600,

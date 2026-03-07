@@ -1,8 +1,7 @@
 """MCP Protocol Server for Swarm Mode.
 
 Provides native MCP protocol support for AI agents to discover and use
-swarm tools (swarm_search, swarm_nodes, swarm_call, swarm_broadcast,
-swarm_status) via stdio or HTTP transport.
+swarm tools (swarm_search, swarm_fetch, swarm_nodes, swarm_status) via stdio or HTTP transport.
 
 The MCP server tries the cloud worker first (swarm_url + swarm_token),
 falling back to the local swarm daemon HTTP API.
@@ -25,20 +24,22 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO, force=True)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from open_agent_kit.features.swarm.constants import (  # noqa: E402
-    SWARM_DAEMON_API_PATH_BROADCAST,
     SWARM_DAEMON_API_PATH_FETCH,
     SWARM_DAEMON_API_PATH_NODES,
     SWARM_DAEMON_API_PATH_SEARCH,
     SWARM_DAEMON_API_PATH_STATUS,
-    SWARM_DAEMON_API_PATH_TOOL_CALL,
     SWARM_DAEMON_CONFIG_DIR,
     SWARM_DAEMON_DEFAULT_PORT,
     SWARM_DAEMON_PORT_FILE,
     SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS,
-    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     SWARM_MCP_TIMEOUT_PADDING_SECONDS,
     SWARM_RESPONSE_KEY_ERROR,
+    SWARM_TOOL_FETCH,
+    SWARM_TOOL_NODES,
+    SWARM_TOOL_SEARCH,
+    SWARM_TOOL_STATUS,
 )
+from open_agent_kit.features.swarm.tool_schema import SWARM_TOOL_DEFS_BY_NAME  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -216,13 +217,17 @@ def create_mcp_server() -> FastMCP:
                 f"Swarm daemon error: {exc.response.status_code} - {exc.response.text}"
             ) from exc
 
-        # Retry loop: daemon may be mid-restart
+        # Retry loop: daemon may be mid-restart (only transient connect errors)
         for _attempt in range(_CONNECT_RETRY_ATTEMPTS):
             time.sleep(_CONNECT_RETRY_DELAY_S)
             try:
                 return _make_request()
-            except (httpx.ConnectError, httpx.HTTPStatusError):
+            except httpx.ConnectError:
                 continue
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(
+                    f"Swarm daemon error: {exc.response.status_code} - {exc.response.text}"
+                ) from exc
 
         if cloud_config:
             raise RuntimeError(
@@ -235,25 +240,12 @@ def create_mcp_server() -> FastMCP:
             f"Check logs in: {SWARM_DAEMON_CONFIG_DIR}"
         )
 
-    @mcp.tool()
+    @mcp.tool(description=SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_SEARCH].description)
     def swarm_search(
         query: str,
         search_type: str = "all",
         limit: int = 10,
     ) -> str:
-        """Search across all projects in the swarm.
-
-        Use this to find code, memories, and context from other projects
-        connected to the same swarm.
-
-        Args:
-            query: Natural language search query (e.g., 'authentication middleware').
-            search_type: Search scope. Options: 'all', 'code', 'memory'.
-            limit: Maximum results to return (1-50).
-
-        Returns:
-            JSON string with search results from swarm nodes.
-        """
         try:
             result = _call_daemon(
                 SWARM_DAEMON_API_PATH_SEARCH,
@@ -267,133 +259,27 @@ def create_mcp_server() -> FastMCP:
         except RuntimeError as exc:
             return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
 
-    @mcp.tool()
+    @mcp.tool(description=SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_NODES].description)
     def swarm_nodes() -> str:
-        """List all teams in the swarm with their connection status.
-
-        Use this to see which projects are connected and available
-        for cross-project queries and tool calls.
-
-        Returns:
-            JSON string with list of swarm teams and their status.
-        """
         try:
             result = _call_daemon(SWARM_DAEMON_API_PATH_NODES)
             return json.dumps(result, indent=2)
         except RuntimeError as exc:
             return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
 
-    @mcp.tool()
-    def swarm_call(
-        tool_name: str,
-        arguments: str = "{}",
-        target_project: str = "",
-    ) -> str:
-        """Call a tool on a specific project in the swarm.
-
-        Routes the tool invocation to the target project's CI daemon,
-        allowing cross-project operations like searching a specific
-        project's codebase or reading its memories.
-
-        Args:
-            tool_name: Name of the tool to invoke (e.g., 'oak_search').
-            arguments: JSON string of tool arguments.
-            target_project: Project slug to route the call to.
-
-        Returns:
-            JSON string with the tool call result.
-        """
-        try:
-            parsed_args = json.loads(arguments)
-        except json.JSONDecodeError as exc:
-            return json.dumps({SWARM_RESPONSE_KEY_ERROR: f"Invalid JSON arguments: {exc}"})
-
-        if not target_project:
-            return json.dumps({SWARM_RESPONSE_KEY_ERROR: "target_project is required"})
-
-        try:
-            result = _call_daemon(
-                SWARM_DAEMON_API_PATH_TOOL_CALL,
-                data={
-                    "tool_name": tool_name,
-                    "arguments": parsed_args,
-                    "target_project": target_project,
-                },
-                timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
-            )
-            return json.dumps(result, indent=2)
-        except RuntimeError as exc:
-            return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
-
-    @mcp.tool()
-    def swarm_broadcast(
-        tool_name: str,
-        arguments: str = "{}",
-    ) -> str:
-        """Broadcast a tool call to all projects in the swarm.
-
-        Sends the same tool invocation to every connected project and
-        aggregates the results. Useful for swarm-wide searches or
-        collecting information from all projects at once.
-
-        Args:
-            tool_name: Name of the tool to invoke (e.g., 'oak_search').
-            arguments: JSON string of tool arguments.
-
-        Returns:
-            JSON string with aggregated results from all projects.
-        """
-        try:
-            parsed_args = json.loads(arguments)
-        except json.JSONDecodeError as exc:
-            return json.dumps({SWARM_RESPONSE_KEY_ERROR: f"Invalid JSON arguments: {exc}"})
-
-        try:
-            result = _call_daemon(
-                SWARM_DAEMON_API_PATH_BROADCAST,
-                data={
-                    "tool_name": tool_name,
-                    "arguments": parsed_args,
-                },
-                timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
-            )
-            return json.dumps(result, indent=2)
-        except RuntimeError as exc:
-            return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
-
-    @mcp.tool()
+    @mcp.tool(description=SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_STATUS].description)
     def swarm_status() -> str:
-        """Get swarm connection status.
-
-        Shows whether this node is connected to the swarm, the swarm ID,
-        swarm URL, and current connection state.
-
-        Returns:
-            JSON string with swarm connection status.
-        """
         try:
             result = _call_daemon(SWARM_DAEMON_API_PATH_STATUS)
             return json.dumps(result, indent=2)
         except RuntimeError as exc:
             return json.dumps({SWARM_RESPONSE_KEY_ERROR: str(exc)})
 
-    @mcp.tool()
+    @mcp.tool(description=SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_FETCH].description)
     def swarm_fetch(
         ids: list[str],
         project_slug: str = "",
     ) -> str:
-        """Fetch full details for items found via swarm_search.
-
-        Use this after swarm_search to get the complete content of specific
-        results. Pass the chunk IDs and project slug from search results.
-
-        Args:
-            ids: List of chunk IDs from swarm_search results.
-            project_slug: Project slug from the search result (used for routing).
-
-        Returns:
-            JSON string with full content for the requested items.
-        """
         if not ids:
             return json.dumps({SWARM_RESPONSE_KEY_ERROR: "ids list is required"})
 

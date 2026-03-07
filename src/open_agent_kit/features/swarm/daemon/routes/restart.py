@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException
 from open_agent_kit.features.swarm.constants import (
     SWARM_CLI_COMMAND_ENV_VAR,
     SWARM_DAEMON_API_PATH_RESTART,
+    SWARM_ENV_VAR_ID,
     SWARM_RESPONSE_KEY_STATUS,
     SWARM_RESTART_ERROR_NO_SWARM_ID,
     SWARM_RESTART_ERROR_SPAWN_DETAIL,
@@ -86,7 +87,7 @@ async def restart_daemon() -> dict:
     back up.  This routes through ``SwarmDaemonManager.restart()`` which
     properly manages the PID file and process lifecycle (stop → start).
     """
-    swarm_id = os.environ.get("OAK_SWARM_ID", "")
+    swarm_id = os.environ.get(SWARM_ENV_VAR_ID, "")
     if not swarm_id:
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,

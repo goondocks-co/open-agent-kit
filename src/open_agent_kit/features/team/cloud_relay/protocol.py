@@ -32,14 +32,10 @@ from open_agent_kit.features.team.constants import (
     CLOUD_RELAY_WS_TYPE_SEARCH_RESULT,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
     CLOUD_RELAY_WS_TYPE_TOOL_RESULT,
-    SWARM_WS_TYPE_BROADCAST,
-    SWARM_WS_TYPE_BROADCAST_RESULT,
     SWARM_WS_TYPE_NODE_LIST,
     SWARM_WS_TYPE_NODES,
     SWARM_WS_TYPE_SEARCH,
     SWARM_WS_TYPE_SEARCH_RESULT,
-    SWARM_WS_TYPE_TOOL_CALL,
-    SWARM_WS_TYPE_TOOL_RESULT,
 )
 
 # Timeout in milliseconds (wire protocol uses ms, config uses seconds)
@@ -67,10 +63,6 @@ class RelayMessageType(str, Enum):
     FEDERATED_TOOL_RESULT = CLOUD_RELAY_WS_TYPE_FEDERATED_TOOL_RESULT
     SWARM_SEARCH = SWARM_WS_TYPE_SEARCH
     SWARM_SEARCH_RESULT = SWARM_WS_TYPE_SEARCH_RESULT
-    SWARM_TOOL_CALL = SWARM_WS_TYPE_TOOL_CALL
-    SWARM_TOOL_RESULT = SWARM_WS_TYPE_TOOL_RESULT
-    SWARM_BROADCAST = SWARM_WS_TYPE_BROADCAST
-    SWARM_BROADCAST_RESULT = SWARM_WS_TYPE_BROADCAST_RESULT
     SWARM_NODES = SWARM_WS_TYPE_NODES
     SWARM_NODE_LIST = SWARM_WS_TYPE_NODE_LIST
 
@@ -265,43 +257,6 @@ class SwarmSearchResultMessage(BaseModel):
     """Sent by worker with aggregated cross-project search results."""
 
     type: str = SWARM_WS_TYPE_SEARCH_RESULT
-    request_id: str
-    results: list[dict[str, Any]] = Field(default_factory=list)
-    error: str | None = None
-
-
-class SwarmToolCallMessage(BaseModel):
-    """Sent by node to call a tool on a specific project in the swarm."""
-
-    type: str = SWARM_WS_TYPE_TOOL_CALL
-    request_id: str
-    tool_name: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
-    target_project: str = ""
-
-
-class SwarmToolResultMessage(BaseModel):
-    """Sent by worker with the result of a targeted swarm tool call."""
-
-    type: str = SWARM_WS_TYPE_TOOL_RESULT
-    request_id: str
-    result: Any | None = None
-    error: str | None = None
-
-
-class SwarmBroadcastMessage(BaseModel):
-    """Sent by node to broadcast a tool call to all projects in the swarm."""
-
-    type: str = SWARM_WS_TYPE_BROADCAST
-    request_id: str
-    tool_name: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
-
-
-class SwarmBroadcastResultMessage(BaseModel):
-    """Sent by worker with aggregated broadcast results from all projects."""
-
-    type: str = SWARM_WS_TYPE_BROADCAST_RESULT
     request_id: str
     results: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None

@@ -29,6 +29,10 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_DAEMON_PORT_FILE,
     SWARM_DAEMON_PORT_RANGE_SIZE,
     SWARM_DAEMON_STARTUP_TIMEOUT,
+    SWARM_ENV_VAR_CUSTOM_DOMAIN,
+    SWARM_ENV_VAR_ID,
+    SWARM_ENV_VAR_TOKEN,
+    SWARM_ENV_VAR_URL,
     SWARM_MESSAGE_ALREADY_RUNNING,
 )
 from open_agent_kit.utils.daemon_manager import BaseDaemonManager, DaemonConfig
@@ -168,7 +172,7 @@ class SwarmDaemonManager(BaseDaemonManager):
 
         # Environment
         env = os.environ.copy()
-        env["OAK_SWARM_ID"] = self.swarm_id
+        env[SWARM_ENV_VAR_ID] = self.swarm_id
 
         # Pass the CLI command so the daemon can self-restart using the
         # correct binary (oak / oak-dev / oak-beta).
@@ -185,11 +189,11 @@ class SwarmDaemonManager(BaseDaemonManager):
 
         # Pass swarm config as env vars
         if config.get(CI_CONFIG_SWARM_KEY_URL):
-            env["OAK_SWARM_URL"] = config[CI_CONFIG_SWARM_KEY_URL]
+            env[SWARM_ENV_VAR_URL] = config[CI_CONFIG_SWARM_KEY_URL]
         if config.get(CI_CONFIG_SWARM_KEY_TOKEN):
-            env["OAK_SWARM_TOKEN"] = config[CI_CONFIG_SWARM_KEY_TOKEN]
+            env[SWARM_ENV_VAR_TOKEN] = config[CI_CONFIG_SWARM_KEY_TOKEN]
         if config.get(CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN):
-            env["OAK_SWARM_CUSTOM_DOMAIN"] = config[CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN]
+            env[SWARM_ENV_VAR_CUSTOM_DOMAIN] = config[CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN]
 
         # Start the process
         try:

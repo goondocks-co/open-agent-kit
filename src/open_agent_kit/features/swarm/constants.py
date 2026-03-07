@@ -51,7 +51,6 @@ CI_CONFIG_SWARM_KEY_AGENT_TOKEN: Final[str] = "agent_token"
 SWARM_API_PATH_REGISTER: Final[str] = "/api/swarm/register"
 SWARM_API_PATH_HEARTBEAT: Final[str] = "/api/swarm/heartbeat"
 SWARM_API_PATH_SEARCH: Final[str] = "/api/swarm/search"
-SWARM_API_PATH_TOOL_CALL: Final[str] = "/api/swarm/tool-call"
 SWARM_API_PATH_BROADCAST: Final[str] = "/api/swarm/broadcast"
 SWARM_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_API_PATH_UNREGISTER: Final[str] = "/api/swarm/unregister"
@@ -64,8 +63,6 @@ SWARM_DAEMON_API_PATH_HEALTH: Final[str] = "/api/health"
 SWARM_DAEMON_API_PATH_SEARCH: Final[str] = "/api/swarm/search"
 SWARM_DAEMON_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_DAEMON_API_PATH_STATUS: Final[str] = "/api/swarm/status"
-SWARM_DAEMON_API_PATH_TOOL_CALL: Final[str] = "/api/swarm/tool-call"
-SWARM_DAEMON_API_PATH_BROADCAST: Final[str] = "/api/swarm/broadcast"
 SWARM_DAEMON_API_PATH_HEALTH_CHECK: Final[str] = "/api/swarm/health-check"
 SWARM_DAEMON_API_PATH_CREDENTIALS: Final[str] = "/api/swarm/credentials"
 SWARM_DAEMON_API_PATH_AGENTS: Final[str] = "/api/agents"
@@ -87,12 +84,6 @@ SWARM_LOG_ROTATION_DEFAULT_BACKUP_COUNT: Final[int] = 3
 SWARM_LOG_ROTATION_MIN_SIZE_MB: Final[int] = 1
 SWARM_LOG_ROTATION_MAX_SIZE_MB: Final[int] = 100
 SWARM_LOG_ROTATION_MAX_BACKUP_COUNT: Final[int] = 10
-SWARM_DAEMON_API_PATH_DEPLOY_STATUS: Final[str] = "/api/deploy/status"
-SWARM_DAEMON_API_PATH_DEPLOY_AUTH: Final[str] = "/api/deploy/auth"
-SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD: Final[str] = "/api/deploy/scaffold"
-SWARM_DAEMON_API_PATH_DEPLOY_INSTALL: Final[str] = "/api/deploy/install"
-SWARM_DAEMON_API_PATH_DEPLOY_RUN: Final[str] = "/api/deploy/run"
-SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS: Final[str] = "/api/deploy/settings"
 
 # Swarm config keys (inside swarm_config table in Swarm DO)
 SWARM_CONFIG_KEY_MIN_OAK_VERSION: Final[str] = "min_oak_version"
@@ -110,10 +101,6 @@ SWARM_ADVISORY_TYPE_GENERAL: Final[str] = "general"
 # WebSocket protocol message types (node <-> Team Worker)
 SWARM_WS_TYPE_SEARCH: Final[str] = "swarm_search"
 SWARM_WS_TYPE_SEARCH_RESULT: Final[str] = "swarm_search_result"
-SWARM_WS_TYPE_TOOL_CALL: Final[str] = "swarm_tool_call"
-SWARM_WS_TYPE_TOOL_RESULT: Final[str] = "swarm_tool_result"
-SWARM_WS_TYPE_BROADCAST: Final[str] = "swarm_broadcast"
-SWARM_WS_TYPE_BROADCAST_RESULT: Final[str] = "swarm_broadcast_result"
 SWARM_WS_TYPE_NODES: Final[str] = "swarm_nodes"
 SWARM_WS_TYPE_NODE_LIST: Final[str] = "swarm_node_list"
 
@@ -140,8 +127,6 @@ SWARM_SENSITIVITY_RESTRICTED: Final[str] = "restricted"
 
 # Capability identifiers
 SWARM_CAPABILITY_SEARCH: Final[str] = "swarm_search_v1"
-SWARM_CAPABILITY_TOOLS: Final[str] = "swarm_tools_v1"
-SWARM_CAPABILITY_BROADCAST: Final[str] = "swarm_broadcast_v1"
 SWARM_CAPABILITY_MANAGEMENT: Final[str] = "swarm_management_v1"
 
 # Scaffold constants
@@ -168,6 +153,11 @@ SWARM_DEPLOY_WRANGLER_URL_PATTERN: Final[str] = WORKER_DEPLOY_WRANGLER_URL_PATTE
 SWARM_DEPLOY_WRANGLER_WHOAMI_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT
 SWARM_DEPLOY_NPM_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPM_NOT_FOUND
 SWARM_DEPLOY_NPX_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPX_NOT_FOUND
+
+# Environment variables set by SwarmDaemonManager.start() for the daemon process
+SWARM_ENV_VAR_URL: Final[str] = "OAK_SWARM_URL"
+SWARM_ENV_VAR_ID: Final[str] = "OAK_SWARM_ID"
+SWARM_ENV_VAR_CUSTOM_DOMAIN: Final[str] = "OAK_SWARM_CUSTOM_DOMAIN"
 
 # CLI command env var — set by SwarmDaemonManager.start() so the daemon
 # process knows which CLI binary (oak / oak-dev / oak-beta) to use for
@@ -253,8 +243,6 @@ SWARM_DEPLOY_ERROR_NOT_SCAFFOLDED: Final[str] = "Worker not scaffolded. Run scaf
 # Error messages
 SWARM_ERROR_NOT_CONNECTED: Final[str] = "Not connected to swarm"
 SWARM_ERROR_SEARCH_FAILED: Final[str] = "Swarm search failed: {error}"
-SWARM_ERROR_TOOL_CALL_FAILED: Final[str] = "Swarm tool call failed: {error}"
-SWARM_ERROR_BROADCAST_FAILED: Final[str] = "Swarm broadcast failed: {error}"
 SWARM_ERROR_REGISTRATION_FAILED: Final[str] = "Swarm registration failed: {error}"
 SWARM_ERROR_INVALID_TOKEN: Final[str] = "Invalid swarm token"
 SWARM_ERROR_TEAM_NOT_FOUND: Final[str] = "Team '{team_id}' not found in swarm"
@@ -270,8 +258,6 @@ SWARM_LOG_ERROR: Final[str] = "Swarm error: {error}"
 # MCP tool names
 SWARM_TOOL_SEARCH: Final[str] = "swarm_search"
 SWARM_TOOL_NODES: Final[str] = "swarm_nodes"
-SWARM_TOOL_CALL: Final[str] = "swarm_call"
-SWARM_TOOL_BROADCAST: Final[str] = "swarm_broadcast"
 SWARM_TOOL_STATUS: Final[str] = "swarm_status"
 SWARM_TOOL_FETCH: Final[str] = "swarm_fetch"
 SWARM_TOOL_HEALTH_CHECK: Final[str] = "swarm_health_check"
@@ -313,6 +299,14 @@ SWARM_DAEMON_API_PATH_AGENTS_RELOAD: Final[str] = "/api/agents/reload"
 SWARM_DAEMON_API_PATH_AGENTS_TASK_RUN: Final[str] = "/api/agents/tasks/{task_name}/run"
 SWARM_DAEMON_API_PATH_AGENTS_RUNS: Final[str] = "/api/agents/runs"
 SWARM_DAEMON_API_PATH_AGENTS_RUN_DETAIL: Final[str] = "/api/agents/runs/{run_id}"
+
+# Daemon API paths (deploy routes)
+SWARM_DAEMON_API_PATH_DEPLOY_STATUS: Final[str] = "/api/deploy/status"
+SWARM_DAEMON_API_PATH_DEPLOY_AUTH: Final[str] = "/api/deploy/auth"
+SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD: Final[str] = "/api/deploy/scaffold"
+SWARM_DAEMON_API_PATH_DEPLOY_INSTALL: Final[str] = "/api/deploy/install"
+SWARM_DAEMON_API_PATH_DEPLOY_RUN: Final[str] = "/api/deploy/run"
+SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS: Final[str] = "/api/deploy/settings"
 
 # Daemon API path (node removal)
 SWARM_DAEMON_API_PATH_NODE_REMOVE: Final[str] = "/api/swarm/nodes/remove"

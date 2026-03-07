@@ -5,16 +5,12 @@ follow naming conventions (must align with the TypeScript side).
 """
 
 from open_agent_kit.features.swarm.constants import (
-    SWARM_CAPABILITY_BROADCAST,
     SWARM_CAPABILITY_MANAGEMENT,
     SWARM_CAPABILITY_SEARCH,
-    SWARM_CAPABILITY_TOOLS,
 )
 
 _ALL_CAPABILITIES: list[str] = [
     SWARM_CAPABILITY_SEARCH,
-    SWARM_CAPABILITY_TOOLS,
-    SWARM_CAPABILITY_BROADCAST,
     SWARM_CAPABILITY_MANAGEMENT,
 ]
 
@@ -24,12 +20,6 @@ class TestCapabilityConstants:
 
     def test_search_capability_value(self) -> None:
         assert SWARM_CAPABILITY_SEARCH == "swarm_search_v1"
-
-    def test_tools_capability_value(self) -> None:
-        assert SWARM_CAPABILITY_TOOLS == "swarm_tools_v1"
-
-    def test_broadcast_capability_value(self) -> None:
-        assert SWARM_CAPABILITY_BROADCAST == "swarm_broadcast_v1"
 
     def test_management_capability_value(self) -> None:
         assert SWARM_CAPABILITY_MANAGEMENT == "swarm_management_v1"

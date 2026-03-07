@@ -2,7 +2,7 @@
 
 Provides native MCP protocol support for AI agents to discover and use
 CI tools (oak_search, oak_remember, oak_context, oak_sessions, oak_memories, oak_stats, oak_activity)
-and swarm tools (swarm_search, swarm_nodes, swarm_call, swarm_broadcast, swarm_status)
+and swarm tools (swarm_search, swarm_nodes, swarm_status)
 via stdio or HTTP transport.
 
 The MCP server automatically starts the CI daemon if it's not running,
@@ -473,7 +473,7 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         """List all teams in the swarm with their connection status.
 
         Use this to see which projects are connected and available
-        for cross-project queries and tool calls.
+        for cross-project queries.
 
         Returns:
             JSON string with list of swarm teams and their status.
@@ -481,66 +481,6 @@ def create_mcp_server(project_root: Path) -> FastMCP:
         result = _call_daemon(
             "/api/mcp/call?tool_name=swarm_nodes",
             {},
-        )
-        return json.dumps(result)
-
-    @mcp.tool()
-    def swarm_call(
-        tool_name: str,
-        arguments: str = "{}",
-        target_project: str = "",
-    ) -> str:
-        """Call a tool on a specific project in the swarm.
-
-        Routes the tool invocation to the target project's CI daemon,
-        allowing cross-project operations like searching a specific
-        project's codebase or reading its memories.
-
-        Args:
-            tool_name: Name of the tool to invoke (e.g., 'oak_search').
-            arguments: JSON string of tool arguments.
-            target_project: Project slug to route the call to.
-
-        Returns:
-            JSON string with the tool call result.
-        """
-        if not target_project:
-            return json.dumps({"error": "target_project is required"})
-
-        result = _call_daemon(
-            "/api/mcp/call?tool_name=swarm_call",
-            {
-                "tool_name": tool_name,
-                "arguments": arguments,
-                "target_project": target_project,
-            },
-        )
-        return json.dumps(result)
-
-    @mcp.tool()
-    def swarm_broadcast(
-        tool_name: str,
-        arguments: str = "{}",
-    ) -> str:
-        """Broadcast a tool call to all projects in the swarm.
-
-        Sends the same tool invocation to every connected project and
-        aggregates the results. Useful for swarm-wide searches or
-        collecting information from all projects at once.
-
-        Args:
-            tool_name: Name of the tool to invoke (e.g., 'oak_search').
-            arguments: JSON string of tool arguments.
-
-        Returns:
-            JSON string with aggregated results from all projects.
-        """
-        result = _call_daemon(
-            "/api/mcp/call?tool_name=swarm_broadcast",
-            {
-                "tool_name": tool_name,
-                "arguments": arguments,
-            },
         )
         return json.dumps(result)
 

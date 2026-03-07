@@ -60,15 +60,7 @@ export interface SwarmSearchRequest {
   required_capabilities?: string[];
 }
 
-/** Tool call request body */
-export interface SwarmToolCallRequest {
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  target_project: string;
-  required_capabilities?: string[];
-}
-
-/** Broadcast request body */
+/** Broadcast request body (internal: used by fetch fan-out) */
 export interface SwarmBroadcastRequest {
   tool_name: string;
   arguments: Record<string, unknown>;

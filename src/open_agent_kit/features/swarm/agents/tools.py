@@ -19,14 +19,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.swarm.constants import (
-    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
-    SWARM_TOOL_BROADCAST,
-    SWARM_TOOL_CALL,
     SWARM_TOOL_HEALTH_CHECK,
     SWARM_TOOL_NODES,
     SWARM_TOOL_SEARCH,
     SWARM_TOOL_STATUS,
 )
+from open_agent_kit.features.swarm.tool_schema import SWARM_TOOL_DEFS_BY_NAME
 
 if TYPE_CHECKING:
     from open_agent_kit.features.swarm.daemon.client import (
@@ -72,8 +70,6 @@ def create_swarm_tools(
     default_tools = {
         SWARM_TOOL_SEARCH,
         SWARM_TOOL_NODES,
-        SWARM_TOOL_CALL,
-        SWARM_TOOL_BROADCAST,
         SWARM_TOOL_STATUS,
         SWARM_TOOL_HEALTH_CHECK,
     }
@@ -86,9 +82,7 @@ def create_swarm_tools(
 
         @tool(
             SWARM_TOOL_SEARCH,
-            "Search across all connected projects in the swarm. "
-            "Returns results from multiple codebases with project attribution. "
-            "Use search_type to narrow results to code, memories, or plans.",
+            SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_SEARCH].description,
             {
                 "query": str,  # Natural language search query
                 "search_type": str,  # 'all', 'code', 'memory', or 'plans'
@@ -124,8 +118,7 @@ def create_swarm_tools(
 
         @tool(
             SWARM_TOOL_NODES,
-            "List all projects currently connected to the swarm. "
-            "Returns project slugs, connection status, and capabilities.",
+            SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_NODES].description,
             {},
         )
         async def swarm_nodes(args: dict[str, Any]) -> dict[str, Any]:
@@ -142,108 +135,12 @@ def create_swarm_tools(
 
         tools.append(swarm_nodes)
 
-    # Tool: swarm_call - Call a tool on a specific swarm node
-    if SWARM_TOOL_CALL in active_tools:
-
-        @tool(
-            SWARM_TOOL_CALL,
-            "Call a CI tool on a specific project in the swarm. "
-            "Routes the tool call to the target project and returns its result. "
-            "Use swarm_nodes first to discover available projects.",
-            {
-                "tool_name": str,  # CI tool to invoke (e.g. 'ci_search', 'ci_memories')
-                "arguments": dict,  # Arguments to pass to the tool
-                "target_project": str,  # Project slug to route the call to
-            },
-        )
-        async def swarm_call(args: dict[str, Any]) -> dict[str, Any]:
-            """Call a tool on a specific swarm node."""
-            tool_name = args.get("tool_name", "")
-            target_project = args.get("target_project", "")
-            if not tool_name or not target_project:
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Error: tool_name and target_project are required",
-                        }
-                    ],
-                    "is_error": True,
-                }
-            try:
-                result = await client.call(
-                    tool_name=tool_name,
-                    arguments=args.get("arguments", {}),
-                    target_project=target_project,
-                    timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
-                )
-                return {"content": [{"type": "text", "text": _format_result(result)}]}
-            except Exception as e:
-                error_msg = str(e)
-                # Surface capability-mismatch details from 422 responses.
-                if hasattr(e, "response"):
-                    try:
-                        detail = e.response.json()
-                        if "team_capabilities" in detail:
-                            error_msg = (
-                                f"{detail.get('error', error_msg)}\n"
-                                f"Available capabilities: {detail['team_capabilities']}"
-                            )
-                    except Exception:
-                        pass
-                logger.error("Swarm call failed: %s", error_msg)
-                return {
-                    "content": [{"type": "text", "text": f"Swarm call error: {error_msg}"}],
-                    "is_error": True,
-                }
-
-        tools.append(swarm_call)
-
-    # Tool: swarm_broadcast - Broadcast a tool call to all swarm nodes
-    if SWARM_TOOL_BROADCAST in active_tools:
-
-        @tool(
-            SWARM_TOOL_BROADCAST,
-            "Broadcast a CI tool call to ALL connected projects in the swarm. "
-            "Returns aggregated results from every node. Use sparingly — "
-            "prefer swarm_search for discovery and swarm_call for targeted queries.",
-            {
-                "tool_name": str,  # CI tool to invoke on all nodes
-                "arguments": dict,  # Arguments to pass to the tool
-            },
-        )
-        async def swarm_broadcast(args: dict[str, Any]) -> dict[str, Any]:
-            """Broadcast a tool call to all swarm nodes."""
-            tool_name = args.get("tool_name", "")
-            if not tool_name:
-                return {
-                    "content": [{"type": "text", "text": "Error: tool_name is required"}],
-                    "is_error": True,
-                }
-            try:
-                result = await client.broadcast(
-                    tool_name=tool_name,
-                    arguments=args.get("arguments", {}),
-                    timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
-                )
-                return {"content": [{"type": "text", "text": _format_result(result)}]}
-            except Exception as e:
-                logger.error("Swarm broadcast failed: %s", e)
-                return {
-                    "content": [{"type": "text", "text": f"Swarm broadcast error: {e}"}],
-                    "is_error": True,
-                }
-
-        tools.append(swarm_broadcast)
-
     # Tool: swarm_status - Check swarm connectivity status
     if SWARM_TOOL_STATUS in active_tools:
 
         @tool(
             SWARM_TOOL_STATUS,
-            "Check the current swarm connectivity status. "
-            "Returns whether this node is connected, the swarm ID, "
-            "and the number of peer nodes.",
+            SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_STATUS].description,
             {},
         )
         async def swarm_status(args: dict[str, Any]) -> dict[str, Any]:
@@ -282,9 +179,7 @@ def create_swarm_tools(
 
         @tool(
             SWARM_TOOL_HEALTH_CHECK,
-            "Check the health status of a connected team in the swarm. "
-            "Returns version info, capabilities, and connection status for each node. "
-            "Requires the team to have swarm_management_v1 capability.",
+            SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_HEALTH_CHECK].description,
             {
                 "team_slug": str,  # Project slug of the team to check
             },

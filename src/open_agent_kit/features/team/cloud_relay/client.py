@@ -41,10 +41,8 @@ from open_agent_kit.features.team.cloud_relay.protocol import (
     RelayMessageType,
     SearchQueryMessage,
     SearchResultMessage,
-    SwarmBroadcastMessage,
     SwarmNodesMessage,
     SwarmSearchMessage,
-    SwarmToolCallMessage,
     ToolCallRequest,
     ToolCallResponse,
 )
@@ -102,7 +100,6 @@ from open_agent_kit.features.team.constants import (
     CLOUD_RELAY_WS_TYPE_SEARCH_QUERY,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
     SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
-    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -498,8 +495,6 @@ class CloudRelayClient(RelayClient):
                     # Swarm result messages — resolve pending futures
                     elif msg_type in (
                         RelayMessageType.SWARM_SEARCH_RESULT.value,
-                        RelayMessageType.SWARM_TOOL_RESULT.value,
-                        RelayMessageType.SWARM_BROADCAST_RESULT.value,
                         RelayMessageType.SWARM_NODE_LIST.value,
                     ):
                         request_id = msg.get("request_id", "")
@@ -1065,46 +1060,6 @@ class CloudRelayClient(RelayClient):
             msg.model_dump_json(),
             request_id,
             timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 1.0,
-        )
-
-    async def swarm_call(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        target_project: str,
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
-        """Call a tool on a specific project in the swarm."""
-        request_id = str(uuid4())
-        msg = SwarmToolCallMessage(
-            request_id=request_id,
-            tool_name=tool_name,
-            arguments=arguments,
-            target_project=target_project,
-        )
-        return await self._send_swarm_request(
-            msg.model_dump_json(),
-            request_id,
-            timeout=max(timeout, SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS) + 1.0,
-        )
-
-    async def swarm_broadcast(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
-        """Broadcast a tool call to all projects in the swarm."""
-        request_id = str(uuid4())
-        msg = SwarmBroadcastMessage(
-            request_id=request_id,
-            tool_name=tool_name,
-            arguments=arguments,
-        )
-        return await self._send_swarm_request(
-            msg.model_dump_json(),
-            request_id,
-            timeout=max(timeout, SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS) + 1.0,
         )
 
     async def swarm_nodes(self) -> dict[str, Any]:

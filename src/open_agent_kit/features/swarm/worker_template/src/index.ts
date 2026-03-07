@@ -5,8 +5,7 @@
  *   POST /api/swarm/register    — register a team in the swarm (swarm_token auth)
  *   POST /api/swarm/heartbeat   — team heartbeat (swarm_token auth)
  *   POST /api/swarm/search      — federated search across swarm (swarm_token auth)
- *   POST /api/swarm/tool-call   — route a tool call to a specific project (swarm_token auth)
- *   POST /api/swarm/broadcast   — broadcast a tool call to all teams (swarm_token auth)
+ *   POST /api/swarm/broadcast   — internal fetch fan-out to all teams (swarm_token auth)
  *   GET  /api/swarm/nodes       — list registered teams (swarm_token auth)
  *   POST /api/swarm/unregister  — remove a team from the swarm (swarm_token auth)
  *   POST /api/swarm/health-check — health check for a specific team (swarm_token auth)
@@ -113,15 +112,7 @@ export default {
       return withCors(await doStub.fetch(request), request);
     }
 
-    // ----- POST /api/swarm/tool-call — route tool call to a project -----
-    if (path === "/api/swarm/tool-call" && request.method === "POST") {
-      const authErr = validateSwarmToken(request, env);
-      if (authErr) return withCors(authErr, request);
-      const doStub = getDurableObject(env);
-      return withCors(await doStub.fetch(request), request);
-    }
-
-    // ----- POST /api/swarm/broadcast — broadcast tool call to all teams -----
+    // ----- POST /api/swarm/broadcast — internal fetch fan-out to all teams -----
     if (path === "/api/swarm/broadcast" && request.method === "POST") {
       const authErr = validateSwarmToken(request, env);
       if (authErr) return withCors(authErr, request);

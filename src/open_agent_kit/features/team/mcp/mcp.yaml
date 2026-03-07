@@ -35,6 +35,4 @@ capabilities:
     # Swarm tools (cross-project federation)
     - swarm_search          # Search across all swarm projects
     - swarm_nodes           # List swarm teams and status
-    - swarm_call            # Call a tool on a specific swarm project
-    - swarm_broadcast       # Broadcast a tool call to all swarm projects
     - swarm_status          # Swarm connection status

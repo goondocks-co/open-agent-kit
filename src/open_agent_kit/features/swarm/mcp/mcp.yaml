@@ -6,6 +6,4 @@ capabilities:
     - swarm_search
     - swarm_fetch
     - swarm_nodes
-    - swarm_call
-    - swarm_broadcast
     - swarm_status

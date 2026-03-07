@@ -35,8 +35,10 @@ def _normalize_match(item: dict) -> dict:
     The relay client tags items with ``_result_type`` and type-specific
     field names.  The UI expects ``type``, ``content``, ``score``,
     ``doc_type``, and optionally ``file_path``.
+
+    Note: this function does NOT mutate *item*.
     """
-    result_type = item.pop("_result_type", item.get("type", "unknown"))
+    result_type = item.get("_result_type", item.get("type", "unknown"))
     content = (
         item.get("summary")  # memory
         or item.get("preview")  # plan / session
@@ -73,9 +75,7 @@ def _group_results_by_project(raw: dict) -> dict:
 
     grouped: dict[str, list[dict]] = {}
     for item in flat:
-        slug = item.pop("project_slug", "unknown")
-        # Remove relay metadata not needed by the UI.
-        item.pop("machine_id", None)
+        slug = item.get("project_slug", "unknown")
         grouped.setdefault(slug, []).append(_normalize_match(item))
 
     result: dict = {

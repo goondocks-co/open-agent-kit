@@ -30,7 +30,6 @@ from open_agent_kit.features.team.constants import (
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
     SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
-    SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     VALID_ARCHIVE_FILTERS,
     VALID_OBSERVATION_STATUSES,
 )
@@ -74,25 +73,6 @@ if TYPE_CHECKING:
     from open_agent_kit.features.team.retrieval.engine import RetrievalEngine
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_json_arguments(raw: Any) -> tuple[dict[str, Any], str | None]:
-    """Parse tool arguments that may be a JSON string or a dict.
-
-    Args:
-        raw: Raw arguments value — either a JSON string or a dict.
-
-    Returns:
-        Tuple of (parsed_dict, error_message_or_none).
-    """
-    if isinstance(raw, dict):
-        return raw, None
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw), None
-        except json.JSONDecodeError as exc:
-            return {}, f"Error: Invalid JSON arguments: {exc}"
-    return {}, f"Error: arguments must be a JSON string or dict, got {type(raw).__name__}"
 
 
 class ToolOperations:
@@ -787,93 +767,6 @@ class ToolOperations:
             return f"Swarm nodes error: {result['error']}"
 
         return format_swarm_nodes(result)
-
-    def swarm_call(self, args: dict[str, Any]) -> str:
-        """Call a tool on a specific project in the swarm.
-
-        Args:
-            args: Dict with tool_name, arguments (JSON string), target_project.
-
-        Returns:
-            Formatted tool call result as markdown string.
-        """
-        if self.relay_client is None:
-            return "Cloud relay not connected. Swarm unavailable."
-
-        tool_name = args.get("tool_name", "")
-        if not tool_name:
-            return "Error: tool_name is required."
-
-        target_project = args.get("target_project", "")
-        if not target_project:
-            return "Error: target_project is required."
-
-        # Parse arguments — accept both JSON string and dict
-        parsed_args, parse_error = _parse_json_arguments(args.get("arguments", "{}"))
-        if parse_error:
-            return parse_error
-
-        result = self._run_relay_coro(
-            self.relay_client.swarm_call(tool_name, parsed_args, target_project),
-            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
-        )
-
-        if result.get("error"):
-            return f"## Error from {target_project}\n\n{result['error']}"
-
-        text = extract_text_from_mcp_result(result.get("result", result))
-        return f"## Result from {target_project}\n\n{text}"
-
-    def swarm_broadcast(self, args: dict[str, Any]) -> str:
-        """Broadcast a tool call to all projects in the swarm.
-
-        Args:
-            args: Dict with tool_name and arguments (JSON string).
-
-        Returns:
-            Formatted aggregated results as markdown string.
-        """
-        if self.relay_client is None:
-            return "Cloud relay not connected. Swarm unavailable."
-
-        tool_name = args.get("tool_name", "")
-        if not tool_name:
-            return "Error: tool_name is required."
-
-        # Parse arguments — accept both JSON string and dict
-        parsed_args, parse_error = _parse_json_arguments(args.get("arguments", "{}"))
-        if parse_error:
-            return parse_error
-
-        result = self._run_relay_coro(
-            self.relay_client.swarm_broadcast(tool_name, parsed_args),
-            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
-        )
-
-        if result.get("error"):
-            return f"Swarm broadcast error: {result['error']}"
-
-        results = result.get("results", [])
-        if not results:
-            return "Broadcast completed but no results returned from swarm nodes."
-
-        # Swarm broadcast returns per-team entries, each wrapping the relay's
-        # federated results.  Unwrap so the formatter sees the inner results
-        # (which carry from_machine_id + MCP content).
-        unwrapped: list[dict[str, Any]] = []
-        for entry in results:
-            inner = entry.get("result")
-            if isinstance(inner, dict):
-                for federated in inner.get("results", []):
-                    unwrapped.append(federated)
-            elif entry.get("error"):
-                slug = entry.get("project_slug", "unknown")
-                unwrapped.append({"from_machine_id": slug, "error": entry["error"]})
-
-        if not unwrapped:
-            return "Broadcast completed but no results returned from swarm nodes."
-
-        return format_federated_tool_results(unwrapped)
 
     def swarm_status(self) -> str:
         """Get swarm connection status.

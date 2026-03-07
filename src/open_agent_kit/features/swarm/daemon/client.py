@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import TracebackType
 from typing import Any, cast
 
 import httpx
@@ -15,7 +16,6 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_API_PATH_NODES,
     SWARM_API_PATH_REGISTER,
     SWARM_API_PATH_SEARCH,
-    SWARM_API_PATH_TOOL_CALL,
     SWARM_API_PATH_UNREGISTER,
     SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
     SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
@@ -64,49 +64,6 @@ class SwarmWorkerClient:
         logger.debug(
             "HTTP POST %s -> %d (%d bytes)",
             SWARM_API_PATH_SEARCH,
-            resp.status_code,
-            len(resp.content),
-        )
-        return cast(dict[str, Any], resp.json())
-
-    async def call(
-        self,
-        tool_name: str,
-        arguments: dict,
-        target_project: str,
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
-        """Call a tool on a specific swarm node.
-
-        Args:
-            tool_name: Name of the tool to invoke.
-            arguments: Tool arguments.
-            target_project: Project slug to route the call to.
-            timeout: Request timeout in seconds.
-
-        Returns:
-            Tool call result from the target node.
-        """
-        logger.debug(
-            "HTTP POST %s tool=%s target=%s timeout=%.1f",
-            SWARM_API_PATH_TOOL_CALL,
-            tool_name,
-            target_project,
-            timeout,
-        )
-        resp = await self._client.post(
-            self._url(SWARM_API_PATH_TOOL_CALL),
-            json={
-                "tool_name": tool_name,
-                "arguments": arguments,
-                "target_project": target_project,
-            },
-            timeout=timeout + 2.0,
-        )
-        resp.raise_for_status()
-        logger.debug(
-            "HTTP POST %s -> %d (%d bytes)",
-            SWARM_API_PATH_TOOL_CALL,
             resp.status_code,
             len(resp.content),
         )
@@ -315,3 +272,14 @@ class SwarmWorkerClient:
         """Close the underlying HTTP client."""
         if not self._client.is_closed:
             await self._client.aclose()
+
+    async def __aenter__(self) -> SwarmWorkerClient:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        await self.close()
