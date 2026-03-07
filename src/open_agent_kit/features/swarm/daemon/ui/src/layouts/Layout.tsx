@@ -15,11 +15,28 @@ import {
     Moon,
     Laptop,
     RefreshCw,
+    Info,
 } from "lucide-react";
 import { cn } from "@oak/ui/lib/utils";
 import { useTheme } from "@oak/ui/components/theme-provider";
+import { AboutDialog } from "@oak/ui/components/ui/about-dialog";
+import type { AboutDialogConfig } from "@oak/ui/components/ui/about-dialog";
 import { useSwarmStatus } from "@/hooks/use-swarm-status";
 import { useRestart } from "@/hooks/use-restart";
+import { useChannel } from "@/hooks/use-channel";
+import { fetchJson } from "@/lib/api";
+import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
+
+const ABOUT_CONFIG: AboutDialogConfig = {
+    title: "Oak Swarm",
+    logoSrc: "/favicon.svg",
+    channelEndpoint: API_ENDPOINTS.CHANNEL,
+    channelSwitchEndpoint: API_ENDPOINTS.CHANNEL_SWITCH,
+    healthEndpoint: API_ENDPOINTS.HEALTH,
+    startCommand: "swarm start",
+    restartPollIntervalMs: RESTART_POLL_INTERVAL_MS,
+    restartTimeoutMs: RESTART_TIMEOUT_MS,
+};
 
 const NAV_ITEMS = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
@@ -35,9 +52,11 @@ export default function Layout() {
     const [collapsed, setCollapsed] = useState(() =>
         localStorage.getItem("swarm-sidebar-collapsed") === "true"
     );
+    const [aboutOpen, setAboutOpen] = useState(false);
     const { theme, setTheme } = useTheme();
     const { data: swarmStatus } = useSwarmStatus();
     const { restart, isRestarting, error: restartError } = useRestart();
+    const { data: channelData } = useChannel();
 
     const toggleCollapse = () => {
         const next = !collapsed;
@@ -47,6 +66,13 @@ export default function Layout() {
 
     return (
         <div className="flex h-screen">
+            <AboutDialog
+                open={aboutOpen}
+                onOpenChange={setAboutOpen}
+                config={ABOUT_CONFIG}
+                channelData={channelData}
+                fetchJson={fetchJson as (url: string, init?: RequestInit) => Promise<unknown>}
+            />
             {/* Sidebar */}
             <aside
                 className={`flex flex-col border-r bg-card transition-all ${
@@ -57,9 +83,16 @@ export default function Layout() {
                 <div className="flex items-center gap-2 border-b px-4 py-3">
                     <Hexagon className="h-5 w-5 text-primary shrink-0" />
                     {!collapsed && (
-                        <span className="font-semibold text-sm truncate">
-                            {swarmStatus?.swarm_id || "Oak Swarm"}
-                        </span>
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-semibold text-sm truncate">
+                                {swarmStatus?.swarm_id || "Oak Swarm"}
+                            </span>
+                            {channelData?.current_channel === "beta" && (
+                                <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
+                                    Beta
+                                </span>
+                            )}
+                        </div>
                     )}
                 </div>
 
@@ -93,6 +126,20 @@ export default function Layout() {
 
                 {/* Footer */}
                 <div className={cn("border-t", collapsed ? "p-2" : "p-4")}>
+                    {/* About button */}
+                    <button
+                        onClick={() => setAboutOpen(true)}
+                        title="About Oak Swarm"
+                        aria-label="About Oak Swarm"
+                        className={cn(
+                            "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground mb-2",
+                            collapsed && "justify-center px-2",
+                        )}
+                    >
+                        <Info className="w-4 h-4 flex-shrink-0" />
+                        {!collapsed && <span>About</span>}
+                    </button>
+
                     {/* Restart daemon button */}
                     <button
                         onClick={() => restart()}

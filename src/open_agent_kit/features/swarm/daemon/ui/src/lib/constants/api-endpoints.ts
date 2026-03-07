@@ -24,6 +24,10 @@ export const API_ENDPOINTS = {
     DEPLOY_RUN: "/api/deploy/run",
     DEPLOY_SETTINGS: "/api/deploy/settings",
 
+    // Channel
+    CHANNEL: "/api/channel",
+    CHANNEL_SWITCH: "/api/channel/switch",
+
     // System
     HEALTH: "/api/health",
     RESTART: "/api/restart",

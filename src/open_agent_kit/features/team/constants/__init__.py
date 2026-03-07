@@ -776,10 +776,6 @@ from open_agent_kit.features.team.constants.release_channel import (
     CI_CHANNEL_BETA,
     CI_CHANNEL_STABLE,
     CI_CHANNEL_SWITCH_API_PATH,
-    CI_INSTALL_METHOD_HOMEBREW,
-    CI_INSTALL_METHOD_PIPX,
-    CI_INSTALL_METHOD_UNKNOWN,
-    CI_INSTALL_METHOD_UV,
 )
 from open_agent_kit.features.team.constants.search import (
     CHUNK_TYPE_CLASS,

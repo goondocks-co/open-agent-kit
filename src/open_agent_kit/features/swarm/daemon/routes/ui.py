@@ -31,6 +31,19 @@ async def favicon() -> Response:
     return FileResponse(path)
 
 
+@router.get("/favicon.svg", response_class=Response)
+async def favicon_svg() -> Response:
+    """Serve the SVG favicon — used by the About dialog as the swarm logo."""
+    # The build copies public/favicon.svg into static/assets/ with a content hash,
+    # but we also need it at a stable URL for the About dialog.
+    # Check for the original in the Vite public dir first, then fall back to static.
+    public_dir = Path(__file__).parent.parent / "ui" / "public"
+    for candidate in (public_dir / "favicon.svg", static_path / "favicon.svg"):
+        if candidate.exists():
+            return FileResponse(candidate, media_type="image/svg+xml")
+    return Response(status_code=404)
+
+
 @router.get("/", response_class=HTMLResponse)
 @router.get("/search", response_class=HTMLResponse)
 @router.get("/nodes", response_class=HTMLResponse)

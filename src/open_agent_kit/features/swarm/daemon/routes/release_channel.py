@@ -1,10 +1,10 @@
-"""Release channel info and channel-switch routes.
+"""Release channel info and channel-switch routes for the swarm daemon.
 
 GET  /api/channel        — Returns current channel, version, and available
                            PyPI versions (cached 5 min).
 POST /api/channel/switch — Updates cli_command in config, runs upgrade to
-                           re-render skills/hooks, then restarts the daemon
-                           with the new binary.
+                           re-render skills/hooks, then restarts the swarm
+                           daemon with the new binary.
 """
 
 from __future__ import annotations
@@ -26,8 +26,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from open_agent_kit.constants import VERSION as OAK_VERSION
-from open_agent_kit.features.team.cli_command import (
-    resolve_ci_cli_command,
+from open_agent_kit.features.swarm.constants import (
+    SWARM_CLI_COMMAND_ENV_VAR,
+    SWARM_ENV_VAR_ID,
 )
 from open_agent_kit.features.team.constants.release_channel import (
     CI_CHANNEL_API_PATH,
@@ -35,7 +36,6 @@ from open_agent_kit.features.team.constants.release_channel import (
     CI_CHANNEL_STABLE,
     CI_CHANNEL_SWITCH_API_PATH,
 )
-from open_agent_kit.features.team.daemon.state import get_state
 from open_agent_kit.utils.platform import get_process_detach_kwargs
 
 logger = logging.getLogger(__name__)
@@ -124,13 +124,27 @@ async def _fetch_pypi_versions() -> tuple[str | None, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# Channel helpers
+# Channel / CLI command helpers
 # ---------------------------------------------------------------------------
+
+
+def _resolve_cli_command() -> str:
+    """Resolve the CLI command from the env var set at daemon launch."""
+    from_env = os.environ.get(SWARM_CLI_COMMAND_ENV_VAR, "").strip()
+    if from_env:
+        resolved = shutil.which(from_env)
+        return resolved or from_env
+
+    path = shutil.which("oak")
+    return path or "oak"
 
 
 def _get_current_channel(cli_command: str) -> str:
     """Infer release channel from the CLI command name."""
-    return CI_CHANNEL_BETA if cli_command == "oak-beta" else CI_CHANNEL_STABLE
+    from pathlib import Path
+
+    name = Path(cli_command).name
+    return CI_CHANNEL_BETA if name == "oak-beta" else CI_CHANNEL_STABLE
 
 
 def _target_binary_name(target_channel: str) -> str:
@@ -146,12 +160,7 @@ def _target_binary_name(target_channel: str) -> str:
 @router.get(CI_CHANNEL_API_PATH)
 async def get_channel() -> dict:
     """Return current channel, version, and PyPI availability."""
-    from pathlib import Path
-
-    state = get_state()
-    project_root = state.project_root or Path.cwd()
-
-    cli_command = resolve_ci_cli_command(project_root)
+    cli_command = _resolve_cli_command()
     current_channel = _get_current_channel(cli_command)
 
     available_stable, available_beta = await _fetch_pypi_versions()
@@ -187,23 +196,16 @@ class SwitchChannelRequest(BaseModel):
 
 @router.post(CI_CHANNEL_SWITCH_API_PATH, status_code=HTTPStatus.ACCEPTED)
 async def switch_channel(request: SwitchChannelRequest) -> dict:
-    """Switch channel: update config, run upgrade, restart daemon.
+    """Switch channel: update config, run upgrade, restart swarm daemon.
 
     1. Validate the target binary exists on PATH.
-    2. Update ``cli_command`` in ``.oak/config.yaml``.
+    2. Update ``cli_command`` in ``.oak/config.yaml`` (if a project root
+       is available via the team config).
     3. Spawn a detached subprocess that runs ``{binary} upgrade --force``
-       followed by ``{binary} team start``.
+       followed by ``{binary} swarm restart -n {swarm_id}``.
     4. Shut down the current daemon so the new one takes over.
     """
-    state = get_state()
-    if not state.project_root:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="No project root configured.",
-        )
-
-    project_root = state.project_root
-    cli_command = resolve_ci_cli_command(project_root)
+    cli_command = _resolve_cli_command()
     current_channel = _get_current_channel(cli_command)
 
     target = request.target_channel
@@ -219,6 +221,13 @@ async def switch_channel(request: SwitchChannelRequest) -> dict:
             detail=f"Already on the '{target}' channel.",
         )
 
+    swarm_id = os.environ.get(SWARM_ENV_VAR_ID, "")
+    if not swarm_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="No swarm ID configured. Cannot restart after switch.",
+        )
+
     new_binary = _target_binary_name(target)
     resolved_binary = shutil.which(new_binary)
     if not resolved_binary:
@@ -231,25 +240,10 @@ async def switch_channel(request: SwitchChannelRequest) -> dict:
             ),
         )
 
-    # Update cli_command in CI config
-    try:
-        from open_agent_kit.features.team.config import (
-            load_ci_config,
-            save_ci_config,
-        )
-
-        ci_config = load_ci_config(project_root)
-        ci_config.cli_command = new_binary
-        save_ci_config(project_root, ci_config)
-    except Exception as exc:
-        logger.warning("Could not update cli_command in CI config: %s", exc)
-
-    # Build the switch command: upgrade assets then restart daemon
-    quoted_root = shlex.quote(str(project_root))
+    # Build the switch command: upgrade assets then restart swarm daemon
     switch_cmd = (
-        f"cd {quoted_root} && "
         f"{shlex.quote(resolved_binary)} upgrade --force && "
-        f"{shlex.quote(resolved_binary)} team start"
+        f"{shlex.quote(resolved_binary)} swarm restart -n {shlex.quote(swarm_id)}"
     )
 
     # Spawn detached subprocess: sleep briefly, then run the switch command.
@@ -259,7 +253,6 @@ async def switch_channel(request: SwitchChannelRequest) -> dict:
     try:
         subprocess.Popen(
             [_SHELL, "-c", full_cmd],
-            cwd=str(project_root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -275,9 +268,9 @@ async def switch_channel(request: SwitchChannelRequest) -> dict:
     # Gracefully shut down so the new daemon takes over.
     async def _delayed_shutdown() -> None:
         await asyncio.sleep(_SHUTDOWN_DELAY_SECONDS)
-        logger.info("Channel switch initiated — shutting down daemon (SIGTERM).")
+        logger.info("Channel switch initiated — shutting down swarm daemon (SIGTERM).")
         os.kill(os.getpid(), signal.SIGTERM)
 
-    asyncio.create_task(_delayed_shutdown(), name="channel_switch_shutdown")
+    asyncio.create_task(_delayed_shutdown(), name="swarm_channel_switch_shutdown")
 
     return {"status": "switching"}

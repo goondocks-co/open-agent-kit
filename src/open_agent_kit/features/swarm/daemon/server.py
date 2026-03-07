@@ -34,6 +34,7 @@ from open_agent_kit.features.swarm.daemon.routes import (
     health,
     logs,
     nodes,
+    release_channel,
     restart,
     search,
     status,
@@ -185,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(logs.router)
     app.include_router(deploy.router)
     app.include_router(tools.router)
+    app.include_router(release_channel.router)
 
     # Static files for UI
     static_dir = Path(__file__).parent / "static"
