@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, Folder, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText, Info } from "lucide-react";
+import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@oak/ui/components/theme-provider";
 import { usePowerState } from "@oak/ui/hooks/use-power-state";
@@ -76,12 +76,16 @@ export function Layout() {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
     }, [collapsed]);
 
-    const projectName = status?.project_root
+    const projectSlug = status?.project_root
         ? status.project_root.split('/').pop()
         : null;
 
+    const projectName = projectSlug
+        ? projectSlug.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+        : null;
+
     useEffect(() => {
-        document.title = projectName ? `${projectName} — Oak CI` : "Oak CI";
+        document.title = projectName ? `${projectName} — OAK Team` : "OAK Team";
     }, [projectName]);
 
     const navItems = [
@@ -110,11 +114,11 @@ export function Layout() {
                 <div className={cn("border-b", collapsed ? "p-3" : "p-6")}>
                     <div className={cn("flex items-center mb-3", collapsed ? "justify-center" : "gap-2")}>
                         <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-                            <img src="/logo.png" alt="Oak CI" className="w-8 h-8 object-contain" />
+                            <img src="/logo.png" alt="OAK" className="w-8 h-8 object-contain" />
                         </div>
                         {!collapsed && (
                             <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-bold text-lg tracking-tight">Oak CI</span>
+                                <span className="font-bold text-lg tracking-tight truncate">{projectName ?? "OAK Team"}</span>
                                 {channelData?.current_channel === "beta" && (
                                     <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
                                         Beta
@@ -123,12 +127,6 @@ export function Layout() {
                             </div>
                         )}
                     </div>
-                    {!collapsed && projectName && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-                            <Folder className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate" title={status?.project_root}>{projectName}</span>
-                        </div>
-                    )}
                 </div>
 
                 <nav className={cn("flex-1 space-y-1 overflow-y-auto", collapsed ? "p-2" : "p-4")}>
@@ -146,8 +144,8 @@ export function Layout() {
                     {/* About / Info button */}
                     <button
                         onClick={() => setAboutOpen(true)}
-                        title="About Oak CI"
-                        aria-label="About Oak CI"
+                        title="About OAK Team"
+                        aria-label="About OAK Team"
                         className={cn(
                             "flex items-center gap-2 w-full px-3 py-2 rounded-md transition-colors text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground mb-2",
                             collapsed && "justify-center px-2",

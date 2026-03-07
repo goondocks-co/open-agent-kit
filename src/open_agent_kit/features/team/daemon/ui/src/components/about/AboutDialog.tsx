@@ -5,7 +5,7 @@ import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
 
 const ABOUT_CONFIG: AboutDialogConfig = {
-    title: "Oak CI",
+    title: "OAK Team",
     logoSrc: "/logo.png",
     channelEndpoint: API_ENDPOINTS.CHANNEL,
     channelSwitchEndpoint: API_ENDPOINTS.CHANNEL_SWITCH,
