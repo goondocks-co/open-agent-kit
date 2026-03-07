@@ -1279,7 +1279,12 @@ class TestPromptPlanDiskResolution:
     """Test that plan execution prompts resolve content from disk."""
 
     def test_prompt_submit_plan_resolves_from_disk(self, client, setup_state_with_mocks, tmp_path):
-        """Execution prompt resolves full content from disk when session has plan_file_path."""
+        """Execution prompt resolves full content from disk when session has plan_file_path.
+
+        When an existing plan batch already exists for the same file,
+        the prompt hook consolidates: it updates the existing batch and
+        creates the new batch as a regular 'user' prompt (no duplicate plan).
+        """
         from unittest.mock import patch
 
         session_id = str(uuid4())
@@ -1313,13 +1318,22 @@ class TestPromptPlanDiskResolution:
             )
 
         assert response.status_code == 200
-        # Verify create_prompt_batch was called with the disk content and file path
-        call_args = setup_state_with_mocks.activity_store.create_prompt_batch.call_args
-        assert call_args[1]["plan_file_path"] == str(plan_file)
-        assert "Big Plan" in call_args[1]["plan_content"]
-        assert (
-            len(call_args[1]["plan_content"]) > 5000
-        )  # Full disk content, not 50-char instruction
+
+        # Existing plan batch should be updated with latest disk content
+        store = setup_state_with_mocks.activity_store
+        store.update_prompt_batch_source_type.assert_called_once_with(
+            10,
+            PROMPT_SOURCE_PLAN,
+            plan_file_path=str(plan_file),
+            plan_content=plan_file.read_text(),
+        )
+        store.mark_plan_unembedded.assert_called_once_with(10)
+
+        # New batch should be created as regular 'user' prompt (not a duplicate plan)
+        call_args = store.create_prompt_batch.call_args
+        assert call_args[1]["source_type"] == "user"
+        assert call_args[1]["plan_file_path"] is None
+        assert call_args[1]["plan_content"] is None
 
     def test_prompt_submit_plan_claude_not_regressed(self, client, setup_state_with_mocks):
         """Claude's flow unchanged — prompt content used when no substantially larger disk file."""

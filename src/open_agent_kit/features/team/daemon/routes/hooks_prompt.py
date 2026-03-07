@@ -265,13 +265,44 @@ async def hook_prompt_submit(request: Request) -> dict:
                 except HOOK_STORE_EXCEPTIONS as e:
                     logger.warning(f"Failed to resolve plan content: {e}")
 
+            # Consolidate plan iterations: if session already has a plan batch
+            # for the same file, update that batch's content and create this
+            # batch as a regular (non-plan) prompt.  This prevents duplicate
+            # plan entries when the agent iterates on a plan across multiple
+            # prompts within the same session.
+            effective_source_type = source_type
+            effective_plan_file_path = plan_file_path
+            effective_plan_content = plan_content
+
+            if source_type == PROMPT_SOURCE_PLAN and plan_file_path and session_id:
+                existing_plan = state.activity_store.get_session_plan_batch(
+                    session_id, plan_file_path=plan_file_path
+                )
+                if existing_plan and existing_plan.id:
+                    # Update existing plan batch with latest content
+                    state.activity_store.update_prompt_batch_source_type(
+                        existing_plan.id,
+                        PROMPT_SOURCE_PLAN,
+                        plan_file_path=plan_file_path,
+                        plan_content=plan_content,
+                    )
+                    state.activity_store.mark_plan_unembedded(existing_plan.id)
+                    logger.info(
+                        f"Updated existing plan batch {existing_plan.id} "
+                        f"from prompt (iteration of {plan_file_path})"
+                    )
+                    # This batch is a plan continuation, not a new plan
+                    effective_source_type = "user"
+                    effective_plan_file_path = None
+                    effective_plan_content = None
+
             # Create new prompt batch with full user prompt and source type
             batch = state.activity_store.create_prompt_batch(
                 session_id=session_id,
                 user_prompt=prompt,  # Full prompt, truncated to 10K in store
-                source_type=source_type,
-                plan_file_path=plan_file_path,  # Carry forward from Read/Edit detection
-                plan_content=plan_content,  # Plan content if extracted from prompt
+                source_type=effective_source_type,
+                plan_file_path=effective_plan_file_path,
+                plan_content=effective_plan_content,
                 agent=agent,  # For session recreation if previously deleted
             )
             prompt_batch_id = batch.id
