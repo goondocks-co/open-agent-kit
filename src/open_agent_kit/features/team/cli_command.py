@@ -61,6 +61,13 @@ def detect_invoked_cli_command() -> str:
 
     Python module entry points (e.g. ``__main__.py`` from ``python -m
     uvicorn``) are rejected because they are not real CLI commands.
+
+    Homebrew workaround: Homebrew beta formula creates a shell wrapper
+    ``oak-beta`` that does ``exec .../libexec/bin/oak "$@"``, so by the
+    time Python starts, argv[0] is ``oak`` inside the libexec venv.
+    When the detected name is the default (``oak``) but the package
+    version is a PEP 440 beta (contains ``b``), we correct to
+    ``oak-beta`` — the name the user actually typed.
     """
     import re
     import sys
@@ -73,8 +80,44 @@ def detect_invoked_cli_command() -> str:
     if name.endswith(".py"):
         return CI_CLI_COMMAND_DEFAULT
     if re.fullmatch(CI_CLI_COMMAND_VALIDATION_PATTERN, name):
+        # Homebrew beta workaround: argv[0] is "oak" but we're a beta package.
+        if name == CI_CLI_COMMAND_DEFAULT:
+            name = _correct_for_beta_package(name)
         return name
     return CI_CLI_COMMAND_DEFAULT
+
+
+def _correct_for_beta_package(name: str) -> str:
+    """Return ``oak-beta`` if the running package is a PEP 440 beta release
+    and the ``oak-beta`` binary exists on PATH.
+
+    Homebrew beta formula creates a shell wrapper ``oak-beta`` that does
+    ``exec .../libexec/bin/oak "$@"``, so argv[0] becomes ``oak``.
+    We detect this by checking the package version + binary presence.
+    The PATH check prevents false positives in dev/editable installs
+    where the version may contain ``b`` but no ``oak-beta`` exists.
+    """
+    import shutil
+
+    try:
+        from open_agent_kit._version import __version__
+
+        # PEP 440 beta: "1.5.0b3", "1.5.0b1" — the 'b' marker
+        if "b" in __version__ and not __version__.startswith("0."):
+            beta_name = f"{name}-beta"
+            if shutil.which(beta_name):
+                logger.debug(
+                    "Detected beta package (%s) with %s on PATH, "
+                    "correcting CLI command: %s -> %s",
+                    __version__,
+                    beta_name,
+                    name,
+                    beta_name,
+                )
+                return beta_name
+    except (ImportError, AttributeError):
+        pass
+    return name
 
 
 def render_cli_command_placeholder(content: str, cli_command: str) -> str:
