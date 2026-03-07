@@ -99,8 +99,7 @@ def _get_relay_credentials() -> tuple[str, str] | None:
     if ci_config is None:
         return None
 
-    relay_worker_url = ci_config.cloud_relay.worker_url or ci_config.team.relay_worker_url
-    relay_token = ci_config.cloud_relay.token or ci_config.team.api_key
+    relay_worker_url, relay_token = ci_config.resolve_relay_credentials()
 
     if not relay_worker_url or not relay_token:
         return None

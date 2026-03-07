@@ -772,6 +772,7 @@ class TestScrubDeadKeys:
         """Test that dead team sub-keys are removed."""
         ci_dict = {
             "team": {
+                "auto_sync": True,
                 "server_url": "http://localhost:8080",
                 "pull_interval_seconds": 30,
                 "transport": "http",
@@ -781,7 +782,7 @@ class TestScrubDeadKeys:
             },
         }
         _scrub_dead_keys(ci_dict)
-        assert ci_dict["team"] == {"server_url": "http://localhost:8080"}
+        assert ci_dict["team"] == {"auto_sync": True}
 
     def test_removes_dead_governance_data_collection_keys(self):
         """Test that dead governance.data_collection sub-keys are removed."""

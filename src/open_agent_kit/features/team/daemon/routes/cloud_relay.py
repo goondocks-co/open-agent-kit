@@ -442,12 +442,11 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
         )
 
     # Persist auto_connect so the relay reconnects after daemon restart.
-    # Also auto-populate team relay config — the team relay IS this Worker,
-    # so relay_worker_url and api_key are the same values.
+    # relay_worker_url goes to project config (git-tracked) so teammates
+    # can auto-connect.  Token is already in cloud_relay.token (user config).
     ci_config_ac = load_ci_config(project_root)
     ci_config_ac.cloud_relay.auto_connect = True
     ci_config_ac.team.relay_worker_url = worker_url
-    ci_config_ac.team.api_key = token
     save_ci_config(project_root, ci_config_ac)
     state.ci_config = None
 
@@ -702,14 +701,9 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
     relay_config = state.ci_config.cloud_relay
 
     # Resolve worker_url and token (request body overrides config).
-    # Fall back to team config for consumer nodes that store credentials there.
-    team_config = state.ci_config.team
-    worker_url = (
-        body.get(CLOUD_RELAY_REQUEST_KEY_WORKER_URL)
-        or relay_config.worker_url
-        or team_config.relay_worker_url
-    )
-    token = body.get(CLOUD_RELAY_REQUEST_KEY_TOKEN) or relay_config.token or team_config.api_key
+    config_url, config_token = state.ci_config.resolve_relay_credentials()
+    worker_url = body.get(CLOUD_RELAY_REQUEST_KEY_WORKER_URL) or config_url
+    token = body.get(CLOUD_RELAY_REQUEST_KEY_TOKEN) or config_token
 
     if not worker_url:
         raise HTTPException(

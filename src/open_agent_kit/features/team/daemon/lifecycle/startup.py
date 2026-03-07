@@ -57,15 +57,12 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
     relay_config = ci_config.cloud_relay
     team_config = ci_config.team
 
-    # Publisher path: relay was deployed by this node
-    if relay_config.auto_connect and relay_config.worker_url and relay_config.token:
-        worker_url = relay_config.worker_url
-        token = relay_config.token
-    # Consumer path: team relay configured manually (teammate's Worker)
-    elif team_config.auto_sync and team_config.relay_worker_url and team_config.api_key:
-        worker_url = team_config.relay_worker_url
-        token = team_config.api_key
-    else:
+    # Only auto-connect when at least one path opted in
+    if not (relay_config.auto_connect or team_config.auto_sync):
+        return
+
+    worker_url, token = ci_config.resolve_relay_credentials()
+    if not worker_url or not token:
         return
 
     from open_agent_kit.features.team.daemon.manager import (
@@ -247,8 +244,7 @@ async def _fetch_swarm_token_from_relay(state: "DaemonState") -> str | None:
     if ci_config is None:
         return None
 
-    relay_url = ci_config.cloud_relay.worker_url or ci_config.team.relay_worker_url
-    relay_token = ci_config.cloud_relay.token or ci_config.team.api_key
+    relay_url, relay_token = ci_config.resolve_relay_credentials()
     if not relay_url or not relay_token:
         return None
 

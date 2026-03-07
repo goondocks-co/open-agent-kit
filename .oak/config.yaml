@@ -37,7 +37,7 @@ team:
   team:
     sync_interval_seconds: 3
     project_slug: null
-    relay_worker_url: https://oak-relay-open-agent-kit.goondocks.workers.dev
+    relay_worker_url: https://oak-relay-open-agent-kit.openagentkit.app
     relay_worker_name: null
   backup:
     on_upgrade: true

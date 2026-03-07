@@ -226,6 +226,17 @@ class CloudRelayConfig:
     custom_domain: str | None = None
     deployed_template_hash: str | None = None
 
+    @property
+    def canonical_url(self) -> str | None:
+        """Canonical relay URL using custom domain when available.
+
+        Returns ``https://{worker_name}.{custom_domain}`` when both are set,
+        otherwise falls back to ``worker_url``.
+        """
+        if self.custom_domain and self.worker_name:
+            return f"https://{self.worker_name}.{self.custom_domain}"
+        return self.worker_url
+
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         self._validate()

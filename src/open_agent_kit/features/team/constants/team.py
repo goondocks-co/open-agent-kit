@@ -8,7 +8,6 @@ from typing import Final
 
 # Config keys (inside team.team section)
 CI_CONFIG_KEY_TEAM: Final[str] = "team"
-CI_CONFIG_TEAM_KEY_SERVER_URL: Final[str] = "server_url"
 CI_CONFIG_TEAM_KEY_API_KEY: Final[str] = "api_key"
 CI_CONFIG_TEAM_KEY_AUTO_SYNC: Final[str] = "auto_sync"
 CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: Final[str] = "sync_interval_seconds"

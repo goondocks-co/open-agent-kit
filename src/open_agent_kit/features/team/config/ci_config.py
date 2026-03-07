@@ -173,6 +173,20 @@ class CIConfig:
             CI_CONFIG_KEY_LOG_ROTATION: self.log_rotation.to_dict(),
         }
 
+    def resolve_relay_credentials(self) -> tuple[str | None, str | None]:
+        """Resolve relay URL and token from publisher or consumer config.
+
+        Publisher stores credentials in ``cloud_relay.*``; consumer stores
+        in ``team.*``.  Returns whichever source has them, preferring the
+        canonical (custom-domain) URL when available.
+
+        Returns:
+            (worker_url, token) — either or both may be ``None``.
+        """
+        worker_url = self.cloud_relay.canonical_url or self.team.relay_worker_url
+        token = self.cloud_relay.token or self.team.api_key
+        return worker_url, token
+
     def get_combined_exclude_patterns(self) -> list[str]:
         """Get combined exclusion patterns (user patterns merged with defaults).
 

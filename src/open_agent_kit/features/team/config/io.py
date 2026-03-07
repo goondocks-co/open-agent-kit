@@ -16,6 +16,10 @@ from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.team.constants import (
     AUTO_RESOLVE_CONFIG_KEY,
     BACKUP_CONFIG_KEY,
+    CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN,
+    CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+    CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME,
+    CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL,
     CI_CONFIG_KEY_AGENTS,
     CI_CONFIG_KEY_CLI_COMMAND,
     CI_CONFIG_KEY_CLOUD_RELAY,
@@ -30,7 +34,7 @@ from open_agent_kit.features.team.constants import (
     CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
     CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE,
-    CI_CONFIG_TEAM_KEY_SERVER_URL,
+    CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL,
 )
 from open_agent_kit.features.team.exceptions import (
     ValidationError,
@@ -184,7 +188,6 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{CI_CONFIG_KEY_AGENTS}.provider_model",  # Agent LLM backend varies per machine
         CI_CONFIG_KEY_CLOUD_RELAY,  # Cloud relay config is machine-local (token, worker URL)
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_API_KEY}",  # Team API keys are machine-local secrets
-        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_SERVER_URL}",  # Loopback or remote URL is per-machine
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_AUTO_SYNC}",  # Depends on per-machine state
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE}",  # Per-machine power preference
         CI_CONFIG_KEY_LOG_LEVEL,  # Personal debugging preference
@@ -292,6 +295,7 @@ def _scrub_dead_keys(ci_dict: dict[str, Any]) -> None:
             "bind_host",
             "bind_port",
             "server_side_llm",
+            "server_url",  # replaced by cloud_relay.worker_url / team.relay_worker_url
         ):
             team.pop(key, None)
 
@@ -329,6 +333,52 @@ def _scrub_user_keys_from_project(ci_dict: dict[str, Any]) -> None:
         sub = ci_dict.get(section)
         if isinstance(sub, dict):
             sub.pop(leaf, None)
+
+
+def _normalize_relay_urls(ci_dict: dict[str, Any]) -> None:
+    """Rewrite relay URLs to use custom domain when available **in place**.
+
+    When ``cloud_relay.custom_domain`` and ``cloud_relay.worker_name`` are
+    both set, the canonical URL is ``https://{worker_name}.{custom_domain}``.
+    Updates ``cloud_relay.worker_url`` and ``team.relay_worker_url`` to match.
+    """
+    relay = ci_dict.get(CI_CONFIG_KEY_CLOUD_RELAY)
+    if not isinstance(relay, dict):
+        return
+
+    custom_domain = relay.get(CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN)
+    worker_name = relay.get(CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME)
+    if not custom_domain or not worker_name:
+        return
+
+    canonical_url = f"https://{worker_name}.{custom_domain}"
+
+    if relay.get(CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL):
+        relay[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL] = canonical_url
+
+    team = ci_dict.get(CI_CONFIG_KEY_TEAM)
+    if isinstance(team, dict):
+        if team.get(CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL):
+            team[CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL] = canonical_url
+
+
+def _dedup_relay_credentials(ci_dict: dict[str, Any]) -> None:
+    """Remove ``team.api_key`` when it duplicates ``cloud_relay.token``.
+
+    On publisher nodes the deploy flow historically wrote the relay token
+    to both locations.  Only ``cloud_relay.token`` is the source of truth;
+    ``team.api_key`` is kept only for consumer nodes that don't have
+    ``cloud_relay.token``.
+    """
+    relay = ci_dict.get(CI_CONFIG_KEY_CLOUD_RELAY)
+    if not isinstance(relay, dict):
+        return
+    team = ci_dict.get(CI_CONFIG_KEY_TEAM)
+    if not isinstance(team, dict):
+        return
+    relay_token = relay.get(CI_CONFIG_CLOUD_RELAY_KEY_TOKEN)
+    if relay_token and team.get(CI_CONFIG_TEAM_KEY_API_KEY) == relay_token:
+        team.pop(CI_CONFIG_TEAM_KEY_API_KEY, None)
 
 
 def _user_config_path(project_root: Path) -> Path:
@@ -479,9 +529,20 @@ def save_ci_config(
     if isinstance(team_dict, dict):
         team_dict.pop("token", None)
 
+    # Normalize relay URLs to use custom domain when available
+    _normalize_relay_urls(ci_dict)
+    # Remove team.api_key when it duplicates cloud_relay.token
+    _dedup_relay_credentials(ci_dict)
+
+    # Remove legacy "codebase_intelligence" key (renamed to "team")
+    existing_config.pop("codebase_intelligence", None)
+
+    # Scrub dead keys before any split so both user and project outputs
+    # are clean.
+    _scrub_dead_keys(ci_dict)
+
     if force_project:
         # Write everything to project config as team baseline
-        _scrub_dead_keys(ci_dict)
         existing_config["team"] = ci_dict
         _write_yaml_config(config_file, existing_config)
         logger.info(f"Saved full CI config to project file {config_file}")
@@ -518,6 +579,7 @@ def save_ci_config(
                         existing_user = yaml.safe_load(f) or {}
                 except (OSError, yaml.YAMLError) as e:
                     logger.warning(f"Failed to read existing user config: {e}")
+            existing_user.pop("codebase_intelligence", None)
             existing_user["team"] = user_keys
             _write_yaml_config(user_file, existing_user)
             logger.info(f"Saved user CI config to {user_file}")
