@@ -177,9 +177,14 @@ SWARM_CLI_COMMAND_ENV_VAR: Final[str] = "OAK_CLI_COMMAND"
 # Authentication
 SWARM_AUTH_ENV_VAR: Final[str] = "OAK_SWARM_DAEMON_TOKEN"
 
-# Environment variable names for .env file (secrets — never in config.yaml)
+# Legacy environment variable names (kept for migration from .env to user config)
 SWARM_ENV_VAR_TOKEN: Final[str] = "OAK_SWARM_TOKEN"
 SWARM_ENV_VAR_AGENT_TOKEN: Final[str] = "OAK_SWARM_AGENT_TOKEN"
+
+# User config keys (stored in .oak/config.{machine_id}.yaml)
+SWARM_USER_CONFIG_SECTION: Final[str] = "swarm"
+SWARM_USER_CONFIG_KEY_TOKEN: Final[str] = "swarm_token"
+SWARM_USER_CONFIG_KEY_AGENT_TOKEN: Final[str] = "agent_token"
 SWARM_AUTH_HEADER_NAME: Final[str] = "authorization"
 SWARM_AUTH_SCHEME_BEARER: Final[str] = "Bearer"
 SWARM_AUTH_EPHEMERAL_TOKEN_BYTES: Final[int] = 32

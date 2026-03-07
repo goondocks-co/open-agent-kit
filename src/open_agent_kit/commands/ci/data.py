@@ -34,7 +34,6 @@ def _show_backup_info(project_root: Path, machine_id: str) -> None:
     )
     from open_agent_kit.features.team.constants import (
         CI_HISTORY_BACKUP_DIR,
-        OAK_CI_BACKUP_DIR_ENV,
     )
 
     backup_dir = get_backup_dir(project_root)
@@ -45,10 +44,8 @@ def _show_backup_info(project_root: Path, machine_id: str) -> None:
     console.print("[bold]Backup Directory Configuration:[/bold]")
     console.print(f"  Path: {backup_dir}")
 
-    if backup_dir_source == "environment variable":
-        console.print(f"  Source: [cyan]environment variable[/cyan] ({OAK_CI_BACKUP_DIR_ENV})")
-    elif backup_dir_source == "dotenv file (.env)":
-        console.print("  Source: [cyan]dotenv file[/cyan] (.env in project root)")
+    if backup_dir_source == "user config":
+        console.print("  Source: [cyan]user config[/cyan] (.oak/config.{machine_id}.yaml)")
     else:
         console.print("  Source: [dim]default[/dim]")
 
@@ -114,8 +111,8 @@ def ci_backup(
     The backup file is text-based, can be committed to git, and will be
     automatically restored when the feature is re-enabled.
 
-    Set OAK_CI_BACKUP_DIR environment variable to override the default
-    backup directory (useful for shared drives or separate repos).
+    Use the Team UI or user config to set a custom backup directory
+    (useful for shared drives or separate repos).
 
     Examples:
         oak ci backup                    # Backup to machine-specific file

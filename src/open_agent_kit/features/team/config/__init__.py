@@ -73,6 +73,13 @@ from open_agent_kit.features.team.config.summarization import (
 # --- Team ---
 from open_agent_kit.features.team.config.team import TeamConfig
 
+# --- User store (raw key/value access to per-machine config) ---
+from open_agent_kit.features.team.config.user_store import (
+    read_user_value,
+    remove_user_value,
+    write_user_value,
+)
+
 __all__ = [
     # Dataclass configs
     "AgentConfig",
@@ -110,4 +117,8 @@ __all__ = [
     "_split_by_classification",
     "_user_config_path",
     "_write_yaml_config",
+    # User store
+    "read_user_value",
+    "remove_user_value",
+    "write_user_value",
 ]

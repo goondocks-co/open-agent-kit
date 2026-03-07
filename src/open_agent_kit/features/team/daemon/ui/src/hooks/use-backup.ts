@@ -4,7 +4,7 @@
  * Supports multi-machine/multi-user backups with content-based deduplication.
  */
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
@@ -22,7 +22,7 @@ interface BackupStatus {
     backup_exists: boolean;
     backup_path: string;
     backup_dir: string;
-    backup_dir_source: string; // "environment variable" or "default"
+    backup_dir_source: string; // "user config" or "default"
     backup_size_bytes?: number;
     last_modified?: string;
     machine_id: string;
@@ -160,5 +160,47 @@ export function useRestoreAllBackups() {
     });
 }
 
+/** Backup directory configuration from API */
+interface BackupDirConfig {
+    backup_dir: string;
+    backup_dir_source: string;
+    default_dir: string;
+    is_valid: boolean;
+    error: string | null;
+}
+
+/** Request to update backup directory */
+interface BackupDirRequest {
+    backup_dir: string;
+}
+
+/**
+ * Hook to get current backup directory configuration.
+ */
+export function useBackupDir() {
+    return useQuery<BackupDirConfig>({
+        queryKey: ["backup-dir"],
+        queryFn: ({ signal }) => fetchJson(API_ENDPOINTS.BACKUP_DIR, { signal }),
+    });
+}
+
+/**
+ * Hook to update the backup directory.
+ */
+export function useUpdateBackupDir() {
+    const queryClient = useQueryClient();
+    return useMutation<BackupDirConfig, Error, BackupDirRequest>({
+        mutationFn: (request) =>
+            fetchJson(API_ENDPOINTS.BACKUP_DIR, {
+                method: "PUT",
+                body: JSON.stringify(request),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["backup-dir"] });
+            queryClient.invalidateQueries({ queryKey: ["backup-status"] });
+        },
+    });
+}
+
 // Export types for use in components
-export type { BackupStatus, BackupFileInfo, RestoreResponse, RestoreAllResponse };
+export type { BackupStatus, BackupFileInfo, BackupDirConfig, RestoreResponse, RestoreAllResponse };

@@ -43,7 +43,6 @@ from open_agent_kit.features.team.activity.store.backup.models import (
     RestoreResult,
 )
 from open_agent_kit.features.team.activity.store.backup.paths import (
-    _read_dotenv_value,
     discover_backup_files,
     extract_machine_id_from_filename,
     get_backup_dir,
@@ -55,7 +54,6 @@ __all__ = [
     "BackupResult",
     "ImportResult",
     "_parse_backup_schema_version",
-    "_read_dotenv_value",
     "RestoreAllResult",
     "RestoreResult",
     "backfill_content_hashes",

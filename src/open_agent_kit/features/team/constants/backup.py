@@ -35,6 +35,10 @@ CI_BACKUP_PATH_INVALID_ERROR: Final[str] = "Backup path must be within {backup_d
 # Allows teams to store backups in external locations (shared drives, separate repos)
 OAK_CI_BACKUP_DIR_ENV: Final[str] = "OAK_CI_BACKUP_DIR"
 
+# User config keys for backup dir override (stored in .oak/config.{machine_id}.yaml)
+BACKUP_USER_CONFIG_SECTION: Final[str] = "backup"
+BACKUP_USER_CONFIG_KEY_DIR: Final[str] = "backup_dir"
+
 # =============================================================================
 # Machine Identifier Configuration (privacy-preserving)
 # =============================================================================

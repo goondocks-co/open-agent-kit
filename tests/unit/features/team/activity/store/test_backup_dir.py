@@ -10,8 +10,8 @@ import pytest
 class TestGetBackupDir:
     """Tests for get_backup_dir function."""
 
-    def test_default_when_no_env_var(self, tmp_path: Path) -> None:
-        """Should return default path when no env var is set."""
+    def test_default_when_no_user_config(self, tmp_path: Path) -> None:
+        """Should return default path when no user config is set."""
         from open_agent_kit.features.team.activity.store.backup import (
             get_backup_dir,
         )
@@ -19,67 +19,13 @@ class TestGetBackupDir:
             CI_HISTORY_BACKUP_DIR,
         )
 
-        with mock.patch.dict(os.environ, {}, clear=True):
-            # Remove OAK_CI_BACKUP_DIR if it exists
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value=None,
+        ):
             result = get_backup_dir(tmp_path)
 
-            assert result == tmp_path / CI_HISTORY_BACKUP_DIR
-
-    def test_env_var_absolute_path(self, tmp_path: Path) -> None:
-        """Should use absolute path from env var."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-
-        custom_dir = tmp_path / "custom-backups"
-        custom_dir.mkdir(parents=True)
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": str(custom_dir)}):
-            result = get_backup_dir(tmp_path)
-
-            assert result == custom_dir
-
-    def test_env_var_relative_path(self, tmp_path: Path) -> None:
-        """Should resolve relative path against project root."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": "relative/backup/dir"}):
-            result = get_backup_dir(tmp_path)
-
-            expected = (tmp_path / "relative/backup/dir").resolve()
-            assert result == expected
-
-    def test_env_var_empty_uses_default(self, tmp_path: Path) -> None:
-        """Should use default path when env var is empty string."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-        from open_agent_kit.features.team.constants import (
-            CI_HISTORY_BACKUP_DIR,
-        )
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": ""}):
-            result = get_backup_dir(tmp_path)
-
-            assert result == tmp_path / CI_HISTORY_BACKUP_DIR
-
-    def test_env_var_whitespace_only_uses_default(self, tmp_path: Path) -> None:
-        """Should use default path when env var is whitespace only."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-        from open_agent_kit.features.team.constants import (
-            CI_HISTORY_BACKUP_DIR,
-        )
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": "   "}):
-            result = get_backup_dir(tmp_path)
-
-            assert result == tmp_path / CI_HISTORY_BACKUP_DIR
+        assert result == tmp_path / CI_HISTORY_BACKUP_DIR
 
     def test_uses_cwd_when_no_project_root(self) -> None:
         """Should use cwd when project_root is None."""
@@ -90,120 +36,50 @@ class TestGetBackupDir:
             CI_HISTORY_BACKUP_DIR,
         )
 
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value=None,
+        ):
             result = get_backup_dir(None)
 
             assert result == Path.cwd() / CI_HISTORY_BACKUP_DIR
 
 
-class TestDotenvSupport:
-    """Tests for .env file reading in get_backup_dir."""
+class TestUserConfigSupport:
+    """Tests for user config reading in get_backup_dir."""
 
-    def test_dotenv_absolute_path(self, tmp_path: Path) -> None:
-        """Should read backup dir from .env file."""
+    def test_user_config_absolute_path(self, tmp_path: Path) -> None:
+        """Should read backup dir from user config."""
         from open_agent_kit.features.team.activity.store.backup import (
             get_backup_dir,
         )
 
         custom_dir = tmp_path / "shared-backups"
-        dotenv = tmp_path / ".env"
-        dotenv.write_text(f"OAK_CI_BACKUP_DIR={custom_dir}\n")
 
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value=str(custom_dir),
+        ):
             result = get_backup_dir(tmp_path)
 
-            assert result == custom_dir
+        assert result == custom_dir
 
-    def test_dotenv_relative_path(self, tmp_path: Path) -> None:
-        """Should resolve relative .env paths against project root."""
+    def test_user_config_relative_path(self, tmp_path: Path) -> None:
+        """Should resolve relative user config paths against project root."""
         from open_agent_kit.features.team.activity.store.backup import (
             get_backup_dir,
         )
 
-        dotenv = tmp_path / ".env"
-        dotenv.write_text("OAK_CI_BACKUP_DIR=backups/shared\n")
-
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value="backups/shared",
+        ):
             result = get_backup_dir(tmp_path)
 
-            assert result == (tmp_path / "backups/shared").resolve()
+        assert result == (tmp_path / "backups/shared").resolve()
 
-    def test_env_var_overrides_dotenv(self, tmp_path: Path) -> None:
-        """Shell env var should take priority over .env file."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-
-        dotenv_dir = tmp_path / "from-dotenv"
-        env_dir = tmp_path / "from-env"
-
-        dotenv = tmp_path / ".env"
-        dotenv.write_text(f"OAK_CI_BACKUP_DIR={dotenv_dir}\n")
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": str(env_dir)}):
-            result = get_backup_dir(tmp_path)
-
-            assert result == env_dir
-
-    def test_dotenv_quoted_value(self, tmp_path: Path) -> None:
-        """Should handle quoted values in .env file."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-
-        custom_dir = tmp_path / "quoted-path"
-        dotenv = tmp_path / ".env"
-        dotenv.write_text(f'OAK_CI_BACKUP_DIR="{custom_dir}"\n')
-
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
-            result = get_backup_dir(tmp_path)
-
-            assert result == custom_dir
-
-    def test_dotenv_with_comments(self, tmp_path: Path) -> None:
-        """Should skip comments in .env file."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-
-        custom_dir = tmp_path / "backups"
-        dotenv = tmp_path / ".env"
-        dotenv.write_text(f"# This is a comment\nOTHER_VAR=foo\nOAK_CI_BACKUP_DIR={custom_dir}\n")
-
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
-            result = get_backup_dir(tmp_path)
-
-            assert result == custom_dir
-
-    def test_dotenv_with_inline_comment(self, tmp_path: Path) -> None:
-        """Should handle inline comments for unquoted values."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-
-        custom_dir = tmp_path / "backups"
-        dotenv = tmp_path / ".env"
-        dotenv.write_text(f"OAK_CI_BACKUP_DIR={custom_dir} # team shared dir\n")
-
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
-            result = get_backup_dir(tmp_path)
-
-            assert result == custom_dir
-
-    def test_no_dotenv_uses_default(self, tmp_path: Path) -> None:
-        """Should use default when no .env file exists."""
+    def test_no_user_config_uses_default(self, tmp_path: Path) -> None:
+        """Should use default when user config has no value."""
         from open_agent_kit.features.team.activity.store.backup import (
             get_backup_dir,
         )
@@ -211,100 +87,45 @@ class TestDotenvSupport:
             CI_HISTORY_BACKUP_DIR,
         )
 
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value=None,
+        ):
             result = get_backup_dir(tmp_path)
 
-            assert result == tmp_path / CI_HISTORY_BACKUP_DIR
-
-    def test_dotenv_empty_value_uses_default(self, tmp_path: Path) -> None:
-        """Should use default when .env has empty value."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir,
-        )
-        from open_agent_kit.features.team.constants import (
-            CI_HISTORY_BACKUP_DIR,
-        )
-
-        dotenv = tmp_path / ".env"
-        dotenv.write_text("OAK_CI_BACKUP_DIR=\n")
-
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
-            result = get_backup_dir(tmp_path)
-
-            assert result == tmp_path / CI_HISTORY_BACKUP_DIR
+        assert result == tmp_path / CI_HISTORY_BACKUP_DIR
 
 
 class TestGetBackupDirSource:
     """Tests for get_backup_dir_source function."""
 
-    def test_returns_environment_variable_when_set(self, tmp_path: Path) -> None:
-        """Should return 'environment variable' when env var is set."""
+    def test_returns_default_when_no_config(self, tmp_path: Path) -> None:
+        """Should return 'default' when no user config is set."""
         from open_agent_kit.features.team.activity.store.backup import (
             get_backup_dir_source,
         )
 
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": "/some/path"}):
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value=None,
+        ):
             result = get_backup_dir_source(tmp_path)
 
-            assert result == "environment variable"
+        assert result == "default"
 
-    def test_returns_default_when_not_set(self, tmp_path: Path) -> None:
-        """Should return 'default' when env var is not set."""
+    def test_returns_user_config_source(self, tmp_path: Path) -> None:
+        """Should return 'user config' when set via user override config."""
         from open_agent_kit.features.team.activity.store.backup import (
             get_backup_dir_source,
         )
 
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
+        with mock.patch(
+            "open_agent_kit.features.team.config.user_store.read_user_value",
+            return_value="/shared/backups",
+        ):
             result = get_backup_dir_source(tmp_path)
 
-            assert result == "default"
-
-    def test_returns_default_when_empty(self, tmp_path: Path) -> None:
-        """Should return 'default' when env var is empty."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir_source,
-        )
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": ""}):
-            result = get_backup_dir_source(tmp_path)
-
-            assert result == "default"
-
-    def test_returns_dotenv_source(self, tmp_path: Path) -> None:
-        """Should return 'dotenv file (.env)' when set via .env."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir_source,
-        )
-
-        dotenv = tmp_path / ".env"
-        dotenv.write_text("OAK_CI_BACKUP_DIR=/shared/backups\n")
-
-        with mock.patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OAK_CI_BACKUP_DIR", None)
-
-            result = get_backup_dir_source(tmp_path)
-
-            assert result == "dotenv file (.env)"
-
-    def test_env_var_source_overrides_dotenv_source(self, tmp_path: Path) -> None:
-        """Should report 'environment variable' even when .env also exists."""
-        from open_agent_kit.features.team.activity.store.backup import (
-            get_backup_dir_source,
-        )
-
-        dotenv = tmp_path / ".env"
-        dotenv.write_text("OAK_CI_BACKUP_DIR=/from-dotenv\n")
-
-        with mock.patch.dict(os.environ, {"OAK_CI_BACKUP_DIR": "/from-env"}):
-            result = get_backup_dir_source(tmp_path)
-
-            assert result == "environment variable"
+        assert result == "user config"
 
 
 class TestValidateBackupDir:

@@ -623,16 +623,19 @@ class TeamService:
             from open_agent_kit.features.swarm.constants import (
                 CI_CONFIG_SWARM_KEY_TOKEN,
                 CI_CONFIG_SWARM_KEY_URL,
-                SWARM_ENV_VAR_TOKEN,
+                SWARM_USER_CONFIG_KEY_TOKEN,
+                SWARM_USER_CONFIG_SECTION,
             )
+            from open_agent_kit.features.team.config.user_store import read_user_value
             from open_agent_kit.services.config_service import ConfigService
-            from open_agent_kit.utils.env_utils import read_env_value
 
             config = ConfigService(self.project_root).load_config(auto_migrate=False)
             swarm = config.swarm or {}
             has_url = bool(swarm.get(CI_CONFIG_SWARM_KEY_URL))
             has_token = bool(
-                read_env_value(self.project_root, SWARM_ENV_VAR_TOKEN)
+                read_user_value(
+                    self.project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_TOKEN
+                )
                 or swarm.get(CI_CONFIG_SWARM_KEY_TOKEN)
             )
             return has_url and has_token

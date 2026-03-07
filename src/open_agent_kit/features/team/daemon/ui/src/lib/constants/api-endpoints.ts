@@ -80,6 +80,7 @@ export const API_ENDPOINTS = {
     BACKUP_CREATE: "/api/backup/create",
     BACKUP_RESTORE: "/api/backup/restore",
     BACKUP_RESTORE_ALL: "/api/backup/restore-all",
+    BACKUP_DIR: "/api/backup/dir",
 
     // Governance endpoints
     GOVERNANCE_CONFIG: "/api/governance/config",

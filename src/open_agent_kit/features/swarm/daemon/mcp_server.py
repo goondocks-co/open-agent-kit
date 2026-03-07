@@ -103,7 +103,8 @@ def _load_cloud_config() -> tuple[str, str] | None:
         from open_agent_kit.features.swarm.constants import (
             CI_CONFIG_KEY_SWARM,
             CI_CONFIG_SWARM_KEY_URL,
-            SWARM_ENV_VAR_AGENT_TOKEN,
+            SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+            SWARM_USER_CONFIG_SECTION,
         )
 
         # Read swarm_url from .oak/config.yaml
@@ -123,10 +124,12 @@ def _load_cloud_config() -> tuple[str, str] | None:
         if not swarm_url:
             return None
 
-        # Read agent_token from .env — this is the token for MCP access
-        from open_agent_kit.utils.env_utils import read_env_value
+        # Read agent_token from user config — this is the token for MCP access
+        from open_agent_kit.features.team.config.user_store import read_user_value
 
-        agent_token = read_env_value(Path.cwd(), SWARM_ENV_VAR_AGENT_TOKEN)
+        agent_token = read_user_value(
+            Path.cwd(), SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_AGENT_TOKEN
+        )
         if not agent_token:
             return None
 

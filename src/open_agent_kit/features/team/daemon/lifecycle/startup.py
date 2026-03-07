@@ -104,23 +104,87 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
         logger.warning(CI_CLOUD_RELAY_LOG_AUTO_CONNECT_FAILED.format(error=e))
 
 
+def _migrate_env_to_user_config(project_root: Path) -> None:
+    """One-time migration: move persisted .env values to user override config.
+
+    Moves OAK_SWARM_TOKEN, OAK_SWARM_AGENT_TOKEN, and OAK_CI_BACKUP_DIR from
+    the project-root .env file into .oak/config.{machine_id}.yaml.  Idempotent:
+    skips values already present in user config.
+    """
+    from open_agent_kit.features.swarm.constants import (
+        SWARM_ENV_VAR_AGENT_TOKEN,
+        SWARM_ENV_VAR_TOKEN,
+        SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+        SWARM_USER_CONFIG_KEY_TOKEN,
+        SWARM_USER_CONFIG_SECTION,
+    )
+    from open_agent_kit.features.team.config.user_store import (
+        read_user_value,
+        write_user_value,
+    )
+    from open_agent_kit.features.team.constants.backup import (
+        BACKUP_USER_CONFIG_KEY_DIR,
+        BACKUP_USER_CONFIG_SECTION,
+        OAK_CI_BACKUP_DIR_ENV,
+    )
+    from open_agent_kit.utils.env_utils import read_env_value, remove_env_key
+
+    migrations: list[tuple[str, str, str, str]] = [
+        (
+            SWARM_ENV_VAR_TOKEN,
+            SWARM_USER_CONFIG_SECTION,
+            SWARM_USER_CONFIG_KEY_TOKEN,
+            "swarm_token",
+        ),
+        (
+            SWARM_ENV_VAR_AGENT_TOKEN,
+            SWARM_USER_CONFIG_SECTION,
+            SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+            "swarm agent_token",
+        ),
+        (
+            OAK_CI_BACKUP_DIR_ENV,
+            BACKUP_USER_CONFIG_SECTION,
+            BACKUP_USER_CONFIG_KEY_DIR,
+            "backup_dir",
+        ),
+    ]
+
+    for env_var, section, key, label in migrations:
+        env_value = read_env_value(project_root, env_var)
+        if not env_value:
+            continue
+        # Skip if already migrated
+        if read_user_value(project_root, section, key):
+            # Still remove from .env to avoid confusion
+            remove_env_key(project_root, env_var)
+            continue
+        write_user_value(project_root, section, key, env_value)
+        remove_env_key(project_root, env_var)
+        logger.info("Migrated %s from .env to user config", label)
+
+
 async def _ensure_swarm_tokens(state: "DaemonState", project_root: Path) -> None:
     """Auto-fetch swarm_token and agent_token if missing.
 
     On a fresh clone, the node has swarm_url in config.yaml (git-tracked) but
-    no tokens in .env.  The swarm_token is fetched from the relay worker (which
-    already has it from the team join), and the agent_token is then fetched from
-    the swarm worker using the swarm_token.
+    no tokens in user config.  The swarm_token is fetched from the relay worker
+    (which already has it from the team join), and the agent_token is then
+    fetched from the swarm worker using the swarm_token.
     """
     import yaml
 
     from open_agent_kit.features.swarm.constants import (
         CI_CONFIG_KEY_SWARM,
         CI_CONFIG_SWARM_KEY_URL,
-        SWARM_ENV_VAR_AGENT_TOKEN,
-        SWARM_ENV_VAR_TOKEN,
+        SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+        SWARM_USER_CONFIG_KEY_TOKEN,
+        SWARM_USER_CONFIG_SECTION,
     )
-    from open_agent_kit.utils.env_utils import read_env_value, update_env_file
+    from open_agent_kit.features.team.config.user_store import (
+        read_user_value,
+        write_user_value,
+    )
 
     config_path = project_root / OAK_DIR / "config.yaml"
     if not config_path.exists():
@@ -140,23 +204,34 @@ async def _ensure_swarm_tokens(state: "DaemonState", project_root: Path) -> None
         return
 
     # Step 1: Ensure swarm_token — fetch from relay if missing
-    swarm_token = read_env_value(project_root, SWARM_ENV_VAR_TOKEN)
+    swarm_token = read_user_value(
+        project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_TOKEN
+    )
     if not swarm_token and state.cloud_relay_client:
         swarm_token = await _fetch_swarm_token_from_relay(state)
         if swarm_token:
-            update_env_file(project_root, SWARM_ENV_VAR_TOKEN, swarm_token)
+            write_user_value(
+                project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_TOKEN, swarm_token
+            )
             logger.info("Auto-fetched swarm_token from relay on startup")
 
     if not swarm_token:
         return
 
     # Step 2: Ensure agent_token — fetch from swarm worker if missing
-    if not read_env_value(project_root, SWARM_ENV_VAR_AGENT_TOKEN):
+    if not read_user_value(
+        project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_AGENT_TOKEN
+    ):
         from open_agent_kit.features.team.daemon.routes.swarm_config import _fetch_agent_token
 
         agent_token = await _fetch_agent_token(swarm_url, swarm_token)
         if agent_token:
-            update_env_file(project_root, SWARM_ENV_VAR_AGENT_TOKEN, agent_token)
+            write_user_value(
+                project_root,
+                SWARM_USER_CONFIG_SECTION,
+                SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+                agent_token,
+            )
             logger.info("Auto-fetched swarm agent_token on startup")
 
 
@@ -637,6 +712,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     migrate_scaffold_dir(project_root)
+
+    # One-time migration: move .env secrets to user override config
+    _migrate_env_to_user_config(project_root)
 
     await _init_cloud_relay(state, project_root)
     await _ensure_swarm_tokens(state, project_root)

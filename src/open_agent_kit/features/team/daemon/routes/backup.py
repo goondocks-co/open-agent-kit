@@ -24,6 +24,7 @@ from open_agent_kit.features.team.activity.store.backup import (
     get_backup_dir,
     get_backup_dir_source,
     get_backup_filename,
+    validate_backup_dir,
 )
 from open_agent_kit.features.team.activity.store.backup import (
     create_backup as do_create_backup,
@@ -35,6 +36,10 @@ from open_agent_kit.features.team.activity.store.backup import (
     restore_backup as do_restore_backup,
 )
 from open_agent_kit.features.team.activity.store.schema import SCHEMA_VERSION
+from open_agent_kit.features.team.config.user_store import (
+    remove_user_value,
+    write_user_value,
+)
 from open_agent_kit.features.team.constants import (
     BACKUP_TRIGGER_MANUAL,
     BACKUP_TRIGGER_ON_TRANSITION,
@@ -44,6 +49,11 @@ from open_agent_kit.features.team.constants import (
     CI_DATA_DIR,
     CI_LINE_SEPARATOR,
     CI_TEXT_ENCODING,
+)
+from open_agent_kit.features.team.constants.backup import (
+    BACKUP_USER_CONFIG_KEY_DIR,
+    BACKUP_USER_CONFIG_SECTION,
+    CI_HISTORY_BACKUP_DIR,
 )
 from open_agent_kit.features.team.daemon.state import DaemonState, get_state
 
@@ -149,7 +159,7 @@ class BackupStatusResponse(BaseModel):
     backup_exists: bool
     backup_path: str
     backup_dir: str  # The backup directory path
-    backup_dir_source: str  # "environment variable" or "default"
+    backup_dir_source: str  # "user config" or "default"
     backup_size_bytes: int | None = None
     last_modified: str | None = None
     machine_id: str  # Current machine identifier
@@ -624,3 +634,88 @@ async def get_backup_config() -> dict:
         "on_upgrade": config.backup.on_upgrade,
         "last_auto_backup": last_auto_backup_iso,
     }
+
+
+class BackupDirResponse(BaseModel):
+    """Response for backup directory configuration."""
+
+    backup_dir: str
+    backup_dir_source: str  # "user config" or "default"
+    default_dir: str  # The default backup dir (oak/history)
+    is_valid: bool
+    error: str | None = None
+
+
+class BackupDirRequest(BaseModel):
+    """Request to set the backup directory."""
+
+    backup_dir: str  # Empty string means reset to default
+
+
+@router.get("/api/backup/dir")
+async def get_backup_dir_config() -> BackupDirResponse:
+    """Get current backup directory configuration."""
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=503, detail="Project root not initialized")
+
+    backup_dir = get_backup_dir(state.project_root)
+    source = get_backup_dir_source(state.project_root)
+    is_valid, error = validate_backup_dir(backup_dir, create=False)
+
+    return BackupDirResponse(
+        backup_dir=str(backup_dir),
+        backup_dir_source=source,
+        default_dir=CI_HISTORY_BACKUP_DIR,
+        is_valid=is_valid,
+        error=error,
+    )
+
+
+@router.put("/api/backup/dir")
+async def update_backup_dir(request: BackupDirRequest) -> BackupDirResponse:
+    """Set or reset the backup directory in user config.
+
+    Pass an empty string to reset to the default directory.
+    """
+    state = get_state()
+
+    if not state.project_root:
+        raise HTTPException(status_code=503, detail="Project root not initialized")
+
+    new_dir = request.backup_dir.strip()
+
+    if not new_dir:
+        # Reset to default: remove user config override
+        remove_user_value(
+            state.project_root, BACKUP_USER_CONFIG_SECTION, BACKUP_USER_CONFIG_KEY_DIR
+        )
+        logger.info("Backup directory reset to default")
+    else:
+        # Validate the new directory path
+        backup_path = Path(new_dir)
+        if not backup_path.is_absolute():
+            backup_path = (state.project_root / backup_path).resolve()
+
+        is_valid, error = validate_backup_dir(backup_path, create=True)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error or "Invalid backup directory")
+
+        write_user_value(
+            state.project_root, BACKUP_USER_CONFIG_SECTION, BACKUP_USER_CONFIG_KEY_DIR, new_dir
+        )
+        logger.info("Backup directory set to: %s", new_dir)
+
+    # Return updated state
+    backup_dir = get_backup_dir(state.project_root)
+    source = get_backup_dir_source(state.project_root)
+    is_valid, error = validate_backup_dir(backup_dir, create=False)
+
+    return BackupDirResponse(
+        backup_dir=str(backup_dir),
+        backup_dir_source=source,
+        default_dir=CI_HISTORY_BACKUP_DIR,
+        is_valid=is_valid,
+        error=error,
+    )

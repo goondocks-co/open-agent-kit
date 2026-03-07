@@ -1374,13 +1374,12 @@ function ExclusionsCard() {
 
                 {/* Add new pattern */}
                 <div className="flex gap-2">
-                    <input
-                        type="text"
+                    <Input
                         value={newPattern}
                         onChange={(e) => setNewPattern(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleAddPattern()}
                         placeholder="e.g., vendor, tmp/*, *.log"
-                        className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="flex-1"
                     />
                     <Button onClick={handleAddPattern} disabled={!newPattern.trim() || updateExclusions.isPending || isApplying}>
                         {(updateExclusions.isPending || isApplying) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}

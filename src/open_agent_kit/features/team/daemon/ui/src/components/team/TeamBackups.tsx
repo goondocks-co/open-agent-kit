@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@oak/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
-import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal, FolderCog, Info, Settings, Save, Loader2, Clock } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Upload, Users, HardDrive, GitBranch, Cloud, Terminal, FolderCog, Settings, Save, Loader2, Clock, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@oak/ui/components/ui/alert";
 import { Checkbox } from "@oak/ui/components/ui/checkbox";
+import { Input } from "@oak/ui/components/ui/input";
 import { Label } from "@oak/ui/components/ui/label";
 import { MESSAGE_TYPES } from "@/lib/constants";
-import { useBackupStatus, useCreateBackup, useRestoreBackup, useRestoreAllBackups, type RestoreResponse } from "@/hooks/use-backup";
+import { useBackupStatus, useBackupDir, useUpdateBackupDir, useCreateBackup, useRestoreBackup, useRestoreAllBackups, type RestoreResponse } from "@/hooks/use-backup";
 import { useConfig, useUpdateConfig } from "@/hooks/use-config";
 import type { BackupConfig } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,26 @@ export default function TeamBackups() {
     const [isDirty, setIsDirty] = useState(false);
     const [configMessage, setConfigMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+    // Backup dir hooks
+    const { data: backupDirConfig } = useBackupDir();
+    const updateBackupDir = useUpdateBackupDir();
+    const [backupDirInput, setBackupDirInput] = useState("");
+    const [backupDirDirty, setBackupDirDirty] = useState(false);
+    const [backupDirMessage, setBackupDirMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+    // Sync backup dir input with API response
+    useEffect(() => {
+        if (backupDirConfig && !backupDirDirty) {
+            if (backupDirConfig.backup_dir_source === "user config") {
+                // Show the raw user config value (relative or absolute)
+                setBackupDirInput(backupDirConfig.backup_dir);
+            } else {
+                // Default or env var — show default placeholder
+                setBackupDirInput("");
+            }
+        }
+    }, [backupDirConfig, backupDirDirty]);
+
     // Sync backup form with config on load
     useEffect(() => {
         if (config && "backup" in config && !isDirty) {
@@ -92,6 +113,38 @@ export default function TeamBackups() {
         } catch (err: unknown) {
             const errMessage = err instanceof Error ? err.message : "Failed to save backup settings.";
             setConfigMessage({ type: "error", text: errMessage });
+        }
+    };
+
+    const handleSaveBackupDir = async () => {
+        setBackupDirMessage(null);
+        try {
+            const result = await updateBackupDir.mutateAsync({ backup_dir: backupDirInput.trim() });
+            setBackupDirDirty(false);
+            setBackupDirMessage({
+                type: "success",
+                text: result.backup_dir_source === "default"
+                    ? "Backup directory reset to default."
+                    : "Backup directory updated.",
+            });
+            refetchBackupStatus();
+        } catch (err: unknown) {
+            const errMessage = err instanceof Error ? err.message : "Failed to update backup directory.";
+            setBackupDirMessage({ type: "error", text: errMessage });
+        }
+    };
+
+    const handleResetBackupDir = async () => {
+        setBackupDirMessage(null);
+        try {
+            await updateBackupDir.mutateAsync({ backup_dir: "" });
+            setBackupDirInput("");
+            setBackupDirDirty(false);
+            setBackupDirMessage({ type: "success", text: "Backup directory reset to default." });
+            refetchBackupStatus();
+        } catch (err: unknown) {
+            const errMessage = err instanceof Error ? err.message : "Failed to reset backup directory.";
+            setBackupDirMessage({ type: "error", text: errMessage });
         }
     };
 
@@ -338,7 +391,7 @@ export default function TeamBackups() {
                                         {backupStatus.backup_dir}
                                     </code>
                                     <span className="text-muted-foreground">
-                                        (via {backupStatus.backup_dir_source === "environment variable" ? "OAK_CI_BACKUP_DIR env var" : ".env file"})
+                                        (via {backupStatus.backup_dir_source})
                                     </span>
                                 </div>
                             )}
@@ -402,7 +455,7 @@ export default function TeamBackups() {
                         </code>
                         {backupStatus?.backup_dir_source && backupStatus.backup_dir_source !== "default" && (
                             <span className="text-xs text-muted-foreground ml-1">
-                                (via {backupStatus.backup_dir_source === "environment variable" ? "OAK_CI_BACKUP_DIR" : ".env"})
+                                (via {backupStatus.backup_dir_source})
                             </span>
                         )}
                         {" "}and can be committed to git.
@@ -528,38 +581,77 @@ export default function TeamBackups() {
                 </p>
             </div>
 
-            {/* Custom Backup Directory Help */}
-            <Card id="custom-backup-dir" className="border-dashed scroll-mt-6">
+            {/* Custom Backup Directory */}
+            <Card id="custom-backup-dir" className="scroll-mt-6">
                 <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
                         <FolderCog className="h-4 w-4" />
-                        Custom Backup Directory
+                        Backup Directory
                     </CardTitle>
                     <CardDescription>
-                        Store backups in a shared location (network drive, separate repo) instead of the default <code className="bg-muted px-1 rounded text-xs">oak/history/</code>.
+                        Store backups in a shared location (network drive, separate repo) instead of the default <code className="bg-muted px-1 rounded text-xs">{backupDirConfig?.default_dir || "oak/history"}/</code>.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="rounded-lg bg-muted/50 p-4 space-y-3">
-                        <div className="flex items-start gap-2">
-                            <Info className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                            <div className="text-sm">
-                                <p className="font-medium">Add to your project's <code className="bg-background px-1 rounded text-xs border">.env</code> file:</p>
-                                <pre className="mt-2 bg-background border rounded-md p-3 text-xs font-mono overflow-x-auto">
-                                    <code>OAK_CI_BACKUP_DIR=/path/to/shared/backups</code>
-                                </pre>
-                                <p className="text-muted-foreground mt-2 text-xs">
-                                    OAK automatically reads this from <code className="bg-background px-0.5 rounded border">.env</code> in your project root.
-                                    Both absolute and relative paths work (relative paths resolve against project root).
-                                </p>
-                            </div>
+                <CardContent className="space-y-4">
+                    {backupDirMessage && (
+                        <div className={cn(
+                            "p-3 rounded-md text-sm flex items-center gap-2",
+                            backupDirMessage.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+                        )}>
+                            {backupDirMessage.type === "error" && <AlertCircle className="h-4 w-4" />}
+                            {backupDirMessage.text}
                         </div>
-                        <div className="text-xs text-muted-foreground border-t pt-3 space-y-1">
-                            <p><strong>Priority:</strong> <code className="bg-background px-0.5 rounded border">OAK_CI_BACKUP_DIR</code> shell env var &gt; <code className="bg-background px-0.5 rounded border">.env</code> file &gt; default</p>
-                            <p><strong>Verify:</strong> <code className="bg-background px-0.5 rounded border">oak ci backup --info</code></p>
-                        </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="backup-dir" className="text-sm">
+                            Backup directory path
+                        </Label>
+                        <Input
+                            id="backup-dir"
+                            placeholder={backupDirConfig?.default_dir || "oak/history"}
+                            value={backupDirInput}
+                            onChange={(e) => {
+                                setBackupDirInput(e.target.value);
+                                setBackupDirDirty(true);
+                                setBackupDirMessage(null);
+                            }}
+                            className="font-mono"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Absolute or relative path (relative paths resolve against project root). Leave empty for the default.
+                        </p>
                     </div>
                 </CardContent>
+                <CardFooter className="bg-muted/30 py-3 border-t flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                        {backupDirConfig?.backup_dir_source === "user config"
+                            ? <>Custom: <code className="bg-background px-1 rounded border">{backupDirConfig.backup_dir}</code></>
+                            : <>Using default: <code className="bg-background px-1 rounded border">{backupDirConfig?.default_dir || "oak/history"}/</code></>
+                        }
+                    </p>
+                    <div className="flex items-center gap-2">
+                        {backupDirConfig?.backup_dir_source === "user config" && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleResetBackupDir}
+                                disabled={updateBackupDir.isPending}
+                            >
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Reset
+                            </Button>
+                        )}
+                        <Button
+                            onClick={handleSaveBackupDir}
+                            disabled={!backupDirDirty || updateBackupDir.isPending}
+                            size="sm"
+                        >
+                            {updateBackupDir.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            <Save className="mr-2 h-4 w-4" /> Save
+                        </Button>
+                    </div>
+                </CardFooter>
             </Card>
         </div>
     );

@@ -19,12 +19,18 @@ from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_KEY_SWARM,
     CI_CONFIG_SWARM_KEY_TOKEN,
     CI_CONFIG_SWARM_KEY_URL,
-    SWARM_ENV_VAR_AGENT_TOKEN,
-    SWARM_ENV_VAR_TOKEN,
     SWARM_MESSAGE_MCP_HINT,
     SWARM_RESPONSE_KEY_ERROR,
+    SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+    SWARM_USER_CONFIG_KEY_TOKEN,
+    SWARM_USER_CONFIG_SECTION,
 )
 from open_agent_kit.features.team.cli_command import resolve_ci_cli_command
+from open_agent_kit.features.team.config.user_store import (
+    read_user_value,
+    remove_user_value,
+    write_user_value,
+)
 from open_agent_kit.features.team.constants.api import (
     CI_DAEMON_API_PATH_SWARM_DAEMON_LAUNCH,
     CI_DAEMON_API_PATH_SWARM_DAEMON_STATUS,
@@ -33,7 +39,6 @@ from open_agent_kit.features.team.constants.api import (
     CI_DAEMON_API_PATH_SWARM_STATUS,
 )
 from open_agent_kit.features.team.daemon.state import get_state
-from open_agent_kit.utils.env_utils import read_env_value, remove_env_key, update_env_file
 
 logger = logging.getLogger(__name__)
 
@@ -188,13 +193,18 @@ async def join_swarm(request: _JoinSwarmRequest) -> dict:
         if not isinstance(swarm_section, dict):
             swarm_section = {}
         swarm_section[CI_CONFIG_SWARM_KEY_URL] = request.swarm_url
-        # Remove legacy token from config.yaml (now stored in .env only)
+        # Remove legacy token from config.yaml (stored in user config)
         swarm_section.pop(CI_CONFIG_SWARM_KEY_TOKEN, None)
         file_data[CI_CONFIG_KEY_SWARM] = swarm_section
         _save_config_yaml(project_root, file_data)
 
-        # Write token to .env (not git-tracked)
-        update_env_file(project_root, SWARM_ENV_VAR_TOKEN, request.swarm_token)
+        # Write token to user config (not git-tracked)
+        write_user_value(
+            project_root,
+            SWARM_USER_CONFIG_SECTION,
+            SWARM_USER_CONFIG_KEY_TOKEN,
+            request.swarm_token,
+        )
 
         # Invalidate cached config
         state = get_state()
@@ -209,7 +219,12 @@ async def join_swarm(request: _JoinSwarmRequest) -> dict:
         # Auto-fetch agent_token from swarm worker for MCP access
         agent_token = await _fetch_agent_token(request.swarm_url, request.swarm_token)
         if agent_token:
-            update_env_file(project_root, SWARM_ENV_VAR_AGENT_TOKEN, agent_token)
+            write_user_value(
+                project_root,
+                SWARM_USER_CONFIG_SECTION,
+                SWARM_USER_CONFIG_KEY_AGENT_TOKEN,
+                agent_token,
+            )
 
         return {
             "success": True,
@@ -231,9 +246,11 @@ async def leave_swarm() -> dict:
         file_data.pop(CI_CONFIG_KEY_SWARM, None)
         _save_config_yaml(project_root, file_data)
 
-        # Remove tokens from .env
-        remove_env_key(project_root, SWARM_ENV_VAR_TOKEN)
-        remove_env_key(project_root, SWARM_ENV_VAR_AGENT_TOKEN)
+        # Remove tokens from user config
+        remove_user_value(project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_TOKEN)
+        remove_user_value(
+            project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_AGENT_TOKEN
+        )
 
         # Invalidate cached config
         state = get_state()
@@ -260,7 +277,7 @@ async def swarm_status() -> dict:
 
         swarm_url = swarm_section.get(CI_CONFIG_SWARM_KEY_URL)
         has_token = bool(
-            read_env_value(project_root, SWARM_ENV_VAR_TOKEN)
+            read_user_value(project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_TOKEN)
             or swarm_section.get(CI_CONFIG_SWARM_KEY_TOKEN)
         )
 
@@ -344,7 +361,7 @@ async def swarm_daemon_status() -> dict:
 async def swarm_daemon_launch() -> dict:
     """Create local swarm daemon config if needed and start the daemon.
 
-    Uses the swarm_url from config.yaml and swarm_token from .env to create
+    Uses the swarm_url from config.yaml and swarm_token from user config to create
     the local ~/.oak/swarms/{name}/config.json, then starts the daemon.
     Returns the daemon URL for the UI to open in a new tab.
     """
@@ -368,8 +385,10 @@ async def swarm_daemon_launch() -> dict:
                 detail="Cannot derive swarm name from URL",
             )
 
-        # Get swarm token from .env (or legacy config.yaml)
-        swarm_token = read_env_value(project_root, SWARM_ENV_VAR_TOKEN)
+        # Get swarm token from user config (or legacy config.yaml)
+        swarm_token = read_user_value(
+            project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_TOKEN
+        )
         if not swarm_token:
             swarm_token = swarm_section.get(CI_CONFIG_SWARM_KEY_TOKEN)
         if not swarm_token:
@@ -380,7 +399,9 @@ async def swarm_daemon_launch() -> dict:
         # Ensure local swarm daemon config exists (delegates to swarm domain)
         from open_agent_kit.features.swarm.config import ensure_swarm_config
 
-        agent_token = read_env_value(project_root, SWARM_ENV_VAR_AGENT_TOKEN)
+        agent_token = read_user_value(
+            project_root, SWARM_USER_CONFIG_SECTION, SWARM_USER_CONFIG_KEY_AGENT_TOKEN
+        )
         ensure_swarm_config(
             swarm_name,
             swarm_token,
