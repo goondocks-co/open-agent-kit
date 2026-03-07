@@ -115,8 +115,8 @@ def _correct_for_beta_package(name: str) -> str:
                     beta_name,
                 )
                 return beta_name
-    except (ImportError, AttributeError):
-        pass
+    except (ImportError, AttributeError) as exc:
+        logger.debug("Could not check beta version for CLI correction: %s", exc)
     return name
 
 
