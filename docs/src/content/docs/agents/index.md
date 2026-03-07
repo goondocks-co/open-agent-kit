@@ -6,7 +6,7 @@ description: AI coding agents that OAK captures, enriches, and extends.
 These are the AI coding agents your team uses to build software — Claude Code, Cursor, Gemini, and others. OAK integrates with each of them through hooks (to capture activity and inject context), MCP tools (for semantic search and memory), and skills (to extend what agents can do). No matter which agent your engineers prefer, OAK ensures every session contributes to and benefits from your project's shared intelligence.
 
 :::note[Looking for OAK's built-in agents?]
-OAK also runs its own autonomous agents that turn captured intelligence into action — documentation, analysis, and insights. See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/).
+OAK also runs its own autonomous agents that turn captured intelligence into action — documentation, analysis, and insights. See [OAK Agents](/team/agents/).
 :::
 
 ## Supported Agents
@@ -21,18 +21,19 @@ OAK also runs its own autonomous agents that turn captured intelligence into act
 | **VS Code Copilot** | `.github/` | Yes | Yes | Yes |
 | **Windsurf** | `.windsurf/` | Yes | No | Yes |
 
-For details on what each agent's hooks actually provide (context injection, activity capture, summarization), see the [Codebase Intelligence overview](/open-agent-kit/features/codebase-intelligence/).
+For details on what each agent's hooks actually provide (context injection, activity capture, summarization), see the [Team overview](/team/).
 
 ## Skills & Commands
 
-OAK deploys **[skills](/open-agent-kit/agents/skills/)** and commands into each agent's native directories. Skills are the primary way OAK extends your agent — invoke them with slash commands like `/project-governance` or `/codebase-intelligence`.
+OAK deploys **[skills](/agents/skills/)** and commands into each agent's native directories. Skills are the primary way OAK extends your agent — invoke them with slash commands like `/project-governance` or `/oak`.
 
-After `oak init`, **3 skills** are available across three domains:
+After `oak init`, **4 skills** are available:
+- **OAK** — `/oak` (semantic search, impact analysis, memory, database queries)
 - **Rules Management** — `/project-governance` (constitutions, agent files, RFCs)
-- **Codebase Intelligence** — `/codebase-intelligence` (semantic search, impact analysis, database queries)
 - **Context Engineering** — `/context-engineering` (prompt design, context optimization, the four strategies)
+- **Swarm** — `/swarm` (cross-project search for collective knowledge and patterns)
 
-See the **[Skills](/open-agent-kit/agents/skills/)** page for full details on each skill.
+See the **[Skills](/agents/skills/)** page for full details on each skill.
 
 ## Agent Instruction Files
 
@@ -53,16 +54,16 @@ If your team already has these files with established conventions:
 
 ## ACP: OAK as a Coding Agent
 
-In addition to enriching existing agents, OAK can act as the agent itself via the **[Agent Client Protocol (ACP)](/open-agent-kit/features/codebase-intelligence/acp/)**. ACP-compatible editors like Zed connect to OAK directly, getting full Codebase Intelligence built into every response — no hooks or MCP required.
+In addition to enriching existing agents, OAK can act as the agent itself via the **[Agent Client Protocol (ACP)](/team/acp/)**. ACP-compatible editors like Zed connect to OAK directly, getting full team intelligence built into every response — no hooks or MCP required.
 
 ```bash
-oak ci start        # Start the daemon
+oak team start        # Start the daemon
 oak acp serve       # Start the ACP agent server
 ```
 
 The ACP integration supports **session modes** (Code, Architect, Ask) and **focus switching** between specialized agent templates (documentation, analysis, engineering, maintenance) — all within the editor's native UI.
 
-See the [ACP documentation](/open-agent-kit/features/codebase-intelligence/acp/) for setup instructions and details.
+See the [ACP documentation](/team/acp/) for setup instructions and details.
 
 ## Multi-Agent Workflows
 

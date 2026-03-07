@@ -20,7 +20,7 @@ oak ci port
 
 ## CORS
 
-The daemon only allows requests from `localhost` and active tunnel URLs. External origins are blocked by the CORS middleware. To access the API from another machine, set up [Cloud Relay](/open-agent-kit/features/cloud-relay/) to expose MCP tools to remote agents.
+The daemon only allows requests from `localhost` and active tunnel URLs. External origins are blocked by the CORS middleware. To access the API from another machine, connect to a [team](/team/sync/) to expose MCP tools to remote agents.
 
 ## Endpoints
 
@@ -119,7 +119,7 @@ Hook endpoints receive data from AI coding agents. The prefix is `/api/oak/ci/`.
 
 ### ACP Interactive Sessions
 
-Endpoints for the [Agent Client Protocol](/open-agent-kit/features/codebase-intelligence/acp/) integration. These manage long-lived interactive sessions between ACP-compatible editors and the OAK daemon.
+Endpoints for the [Agent Client Protocol](/team/acp/) integration. These manage long-lived interactive sessions between ACP-compatible editors and the OAK daemon.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -180,7 +180,7 @@ Endpoints for the [Agent Client Protocol](/open-agent-kit/features/codebase-inte
 | `GET` | `/api/mcp/tools` | List available MCP tools |
 | `POST` | `/api/mcp/call` | Call an MCP tool (query param: `tool_name`) |
 
-### Cloud Relay & Team
+### Team
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -189,4 +189,4 @@ Endpoints for the [Agent Client Protocol](/open-agent-kit/features/codebase-inte
 | `GET` | `/api/team/config` | Get team sync configuration |
 | `PUT` | `/api/team/config` | Update team sync configuration |
 
-See also the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for the MCP protocol tools exposed to agents.
+See also the [MCP Tools Reference](/team/mcp/) for the MCP protocol tools exposed to agents.

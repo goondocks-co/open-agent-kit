@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-The core power of Codebase Intelligence is its ability to learn and remember. This page explains how the **Memory Engine** works and how it integrates with your existing tools.
+The core power of OAK is its ability to learn and remember. This page explains how the **Memory Engine** works and how it integrates with your existing tools.
 
 ## The Memory Lifecycle
 
@@ -125,13 +125,13 @@ When using fully supported agents (Claude/Gemini), the CI daemon analyzes every 
 - **Archive** memories to hide them from active lists (reversible)
 - **Delete** memories that are outdated or incorrect
 
-![Memories with type and tag filters](../../../../assets/images/activity-memories.png)
+![Memories with type and tag filters](../../../assets/images/activity-memories.png)
 
-Agents can also store memories programmatically using the MCP tools. See [MCP Tools](/open-agent-kit/api/mcp-tools/) for details on `oak_remember` and `oak_resolve_memory`.
+Agents can also store memories programmatically using the MCP tools. See [MCP Tools](/team/mcp/) for details on `oak_remember` and `oak_resolve_memory`.
 
 ## Rebuilding Memory Embeddings
 
-If you change embedding models, rebuild the memory index from the dashboard's **[DevTools](/open-agent-kit/features/codebase-intelligence/devtools/)** page — click **Rebuild Memories** to re-embed all observations from SQLite into ChromaDB.
+If you change embedding models, rebuild the memory index from the dashboard's **[DevTools](/team/devtools/)** page — click **Rebuild Memories** to re-embed all observations from SQLite into ChromaDB.
 
 ## Agent Hooks API
 
@@ -145,4 +145,4 @@ POST /api/oak/ci/hooks/session/start
 }
 ```
 
-See the [API Reference](/open-agent-kit/features/codebase-intelligence/developer-api/) for more details.
+See the [API Reference](/team/developer-api/) for more details.

@@ -31,7 +31,9 @@ body:
       options:
         - label: Installers and setup flow (install.sh / install.ps1 / pipx / uv / pip)
         - label: CLI commands and pipeline
-        - label: Codebase Intelligence (daemon, activity, memory, search)
+        - label: Team (daemon, activity, memory, search, sync)
+        - label: Swarm (cross-project federation, Cloudflare worker)
+        - label: Cloud relay (WebSocket relay, Durable Objects)
         - label: Agent integrations (hooks, MCP, skills)
         - label: Templates and rules management
         - label: Strategic planning / RFC workflow

@@ -1,6 +1,6 @@
 ---
 title: Documentation Agent
-description: An autonomous agent that maintains project documentation using Codebase Intelligence.
+description: An autonomous agent that maintains project documentation using team intelligence.
 ---
 
 The Documentation Agent is an autonomous AI agent that maintains project documentation by analyzing your code, session history, and CI memories. It runs locally within OAK's daemon, powered by the Claude Agent SDK.
@@ -326,7 +326,7 @@ schema_version: 1
 
 The Documentation Agent uses the shared OAK Agents provider configured in **Agents page → Settings** (`/agents/settings`).
 
-See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/#provider-configuration) for supported providers and setup details.
+See [OAK Agents](/team/agents/#provider-configuration) for supported providers and setup details.
 
 ## Security
 

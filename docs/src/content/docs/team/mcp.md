@@ -1,9 +1,131 @@
 ---
-title: MCP Tools Reference
-description: Reference documentation for the MCP tools exposed by the Codebase Intelligence daemon.
+title: MCP
+description: Team MCP tools and cloud agent configuration for the Team relay.
+sidebar:
+  order: 1
 ---
 
-The Codebase Intelligence daemon exposes ten tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These tools are automatically registered when you run `oak init` and are available to any MCP-compatible agent.
+When connected to a team, the relay exposes your local MCP tools through a Streamable HTTP endpoint. Any AI agent that supports MCP can connect — Claude.ai, ChatGPT, Claude Code, Cursor, Windsurf, and more.
+
+## What You Need
+
+After connecting to a team (via the dashboard or `oak team cloud-init`), you need two values:
+
+- **MCP Server URL**: `https://<your-worker>.workers.dev/mcp`
+- **Agent Token**: Displayed on the Teams page (masked with reveal/copy buttons)
+
+Also stored in `.oak/config.yaml` and `oak/cloud-relay/wrangler.toml`.
+
+## MCP Config File (mcp.json)
+
+Many MCP-compatible clients read configuration from a `mcp.json` file:
+
+```json
+{
+  "mcpServers": {
+    "oak-team": {
+      "url": "https://<team-worker>.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer <agent_token>"
+      }
+    }
+  }
+}
+```
+
+Place the file in your project root for per-project config, or in your home directory for global config.
+
+| Client | Config File Location |
+|--------|---------------------|
+| **Claude Code** | `.claude/mcp.json` |
+| **Cursor** | `.cursor/mcp.json` |
+| **Windsurf** | `.windsurf/mcp.json` |
+| **VS Code Copilot** | `.vscode/mcp.json` |
+
+:::tip
+The dashboard generates this JSON config block with your actual URL and token pre-filled. Click the copy button to grab it.
+:::
+
+## Claude.ai
+
+1. Open Claude.ai and go to **Settings**
+2. Navigate to the **MCP Servers** section
+3. Click **Add MCP Server**
+4. Enter:
+   - **Name**: A descriptive label (e.g., "My Project — OAK")
+   - **URL**: `https://<your-worker>.workers.dev/mcp`
+   - **Authentication**: Bearer token — paste your `agent_token`
+5. Save the configuration
+
+Claude.ai connects to your relay and discovers available tools. Verify by asking Claude to list available tools or run a code search.
+
+## ChatGPT
+
+1. Open ChatGPT and go to **Settings** > **Connected Tools**
+2. Click **Add Tool** and select MCP
+3. Enter the MCP server URL: `https://<your-worker>.workers.dev/mcp`
+4. Authenticate using your agent token when prompted
+
+Refer to OpenAI's documentation for the current MCP configuration interface.
+
+## Other MCP-Compatible Agents
+
+Any AI agent that supports MCP Streamable HTTP can connect:
+
+| Setting | Value |
+|---------|-------|
+| **URL** | `https://<your-worker>.workers.dev/mcp` |
+| **Transport** | Streamable HTTP (POST) |
+| **Auth header** | `Authorization: Bearer <agent_token>` |
+| **Content-Type** | `application/json` |
+
+## Agent Token
+
+The **agent token** authenticates cloud AI agents to the relay's MCP endpoint.
+
+- Generated automatically during team deployment (`oak team cloud-init`)
+- Stored in `.oak/config.yaml` and the Worker's secrets (encrypted at rest on Cloudflare)
+- Accepted in two formats: `Authorization: Bearer <token>` (standard) or `Authorization: <token>` (raw)
+- All cloud agents share the same agent token
+
+To rotate the token and revoke all agent access, see [Token Rotation](/team/sync/#token-rotation).
+
+## Testing with curl
+
+Verify the relay is working before configuring a cloud agent:
+
+```bash
+# List available tools
+curl -X POST https://<your-worker>.workers.dev/mcp \
+  -H "Authorization: Bearer <agent_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```
+
+A successful response returns a JSON-RPC result with the tool list. If the local daemon is not connected, you'll receive an error indicating the instance is offline.
+
+### Test a Tool Call
+
+```bash
+curl -X POST https://<your-worker>.workers.dev/mcp \
+  -H "Authorization: Bearer <agent_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"oak_search","arguments":{"query":"authentication"}},"id":2}'
+```
+
+### MCP Inspector
+
+For interactive testing, use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) — a visual tool for browsing and calling MCP server tools. Point it at your relay endpoint and provide the agent token.
+
+## Multiple Agents
+
+You can register the same relay with multiple cloud agents simultaneously. All agents share the same agent token and have access to the same set of tools. The Worker handles concurrent requests transparently.
+
+---
+
+## Tools
+
+The Team daemon exposes the following tools via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). These are automatically registered when you run `oak init` and are available to any MCP-compatible agent — both local (via `oak team mcp`) and cloud (via the relay).
 
 | Tool | Purpose |
 |------|---------|
@@ -16,11 +138,12 @@ The Codebase Intelligence daemon exposes ten tools via the [Model Context Protoc
 | [`oak_stats`](#oak_stats) | Get project intelligence statistics |
 | [`oak_activity`](#oak_activity) | View tool execution history |
 | [`oak_archive_memories`](#oak_archive_memories) | Archive observations from search index |
+| [`oak_fetch`](#oak_fetch) | Fetch full content for specific chunk IDs |
 | [`oak_nodes`](#oak_nodes) | List connected team relay nodes |
 
 ### Federation Parameters
 
-When [Team Sync](/open-agent-kit/features/teams/) is active and a [Cloud Relay](/open-agent-kit/features/cloud-relay/) is connected, several tools support **federated queries** across connected nodes:
+When [Team Sync](/team/sync/) is active, several tools support **federated queries** across all connected nodes (developers and machines on the *same* project):
 
 | Parameter | Type | Available On | Description |
 |-----------|------|--------------|-------------|
@@ -30,6 +153,12 @@ When [Team Sync](/open-agent-kit/features/teams/) is active and a [Cloud Relay](
 :::tip[Discover nodes first]
 Use `oak_nodes` to list connected relay nodes and their capabilities before targeting them with `node_id` in other tools.
 :::
+
+:::note[Team vs Swarm]
+Team federation fans out to nodes on the *same* project. For cross-project queries, see [Swarm MCP Configuration](/swarm/mcp/).
+:::
+
+---
 
 ## oak_search
 
@@ -43,7 +172,7 @@ Search the codebase, project memories, and past implementation plans using seman
 | `search_type` | string | No | `"all"` | What to search: `"all"`, `"code"`, `"memory"`, `"plans"`, or `"sessions"` |
 | `include_resolved` | boolean | No | `false` | Include resolved/superseded memories in results |
 | `limit` | integer | No | `10` | Maximum results to return (1–50) |
-| `include_network` | boolean | No | `false` | Also search across connected team nodes via the cloud relay. Not available for `"code"` searches. |
+| `include_network` | boolean | No | `false` | Also search across connected team nodes. Not available for `"code"` searches. |
 
 ### Response
 
@@ -278,7 +407,7 @@ Returns a list of memories with:
 
 ## oak_stats
 
-Get project intelligence statistics including indexed code chunks, unique files, memory count, and observation status breakdown. Use this for a quick health check of the codebase intelligence system.
+Get project intelligence statistics including indexed code chunks, unique files, memory count, and observation status breakdown. Use this for a quick health check of the team intelligence system.
 
 ### Parameters
 
@@ -383,6 +512,30 @@ Returns the number of observations archived (or that would be archived in dry-ru
 
 ---
 
+## oak_fetch
+
+Fetch the full content for specific code chunk IDs returned by `oak_search`. Use this to retrieve the complete code snippet when search results only include a preview.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `ids` | array of strings | Yes | — | Chunk IDs to fetch (from search results) |
+
+### Response
+
+Returns the full content for each requested chunk, including file path, line range, and complete code text.
+
+### Example
+
+```json
+{
+  "ids": ["chunk_abc123", "chunk_def456"]
+}
+```
+
+---
+
 ## oak_nodes
 
 List connected team relay nodes. Shows machine IDs, online status, OAK version, and capabilities for each node. Use this to discover available nodes before targeting them with `node_id` in other tools.
@@ -403,3 +556,4 @@ Returns a list of connected nodes with:
 
 ```json
 {}
+```

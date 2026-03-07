@@ -5,9 +5,9 @@ sidebar:
   order: 8
 ---
 
-The **DevTools** page provides power-user capabilities for managing the Codebase Intelligence backend. Open it from the sidebar in the [Dashboard](/open-agent-kit/features/codebase-intelligence/dashboard/).
+The **DevTools** page provides power-user capabilities for managing the team intelligence backend. Open it from the sidebar in the [Dashboard](/team/dashboard/).
 
-![DevTools page showing stats and maintenance actions](../../../../assets/images/devtools-page.png)
+![DevTools page showing stats and maintenance actions](../../../assets/images/devtools-page.png)
 
 ## Stats at a Glance
 
@@ -83,7 +83,7 @@ A few DevTools actions are also available from the terminal:
 
 ```bash
 oak ci index --force   # Rebuild the entire code index
-oak ci reset           # Reset the entire system (data + index)
+oak team reset          # Reset the entire system (data + index)
 ```
 
 ## When to Use Each Tool

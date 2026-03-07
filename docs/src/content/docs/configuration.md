@@ -4,7 +4,7 @@ description: How OAK is configured — via the dashboard and project files.
 ---
 
 :::note[Configure from the dashboard]
-Most Codebase Intelligence settings are managed through the **[Dashboard](/open-agent-kit/features/codebase-intelligence/dashboard/)** — open it with `oak ci start --open` and click **Configuration** in the sidebar. The dashboard provides a visual interface for embedding providers, summarization, exclusions, and more.
+Most settings are managed through the **[Dashboard](/team/dashboard/)** — open it with `oak team start --open` and click **Configuration** in the sidebar. The dashboard provides a visual interface for embedding providers, summarization, exclusions, and more.
 :::
 
 ## Project Configuration
@@ -23,9 +23,9 @@ rfc:
   validate_on_create: true
 ```
 
-## Codebase Intelligence Settings
+## Team Daemon Settings
 
-The CI daemon stores its configuration in `.oak/ci/config.yaml`. **You don't need to edit this file directly** — the dashboard reads and writes it for you.
+The Team daemon stores its configuration in `.oak/ci/config.yaml`. **You don't need to edit this file directly** — the dashboard reads and writes it for you.
 
 Settings managed via the dashboard:
 - **Embedding provider and model** (Ollama, LM Studio, OpenAI-compatible)
@@ -34,7 +34,7 @@ Settings managed via the dashboard:
 - **Log rotation** (max file size, backup count)
 - **Directory exclusions** (patterns to skip during indexing)
 
-See the [Dashboard](/open-agent-kit/features/codebase-intelligence/dashboard/) page for details on each setting.
+See the [Dashboard](/team/dashboard/) page for details on each setting.
 
 ## RFC Templates
 
@@ -69,7 +69,7 @@ oak ci config --cli-command oak-dev
 ```
 
 This updates managed integrations in that project to use the new command.
-See [Codebase Intelligence Configuration](/open-agent-kit/features/codebase-intelligence/configuration/#cli-command-for-managed-integrations) for details.
+See [Team Configuration](/team/configuration/#cli-command-for-managed-integrations) for details.
 
 ## Agent Instruction Files
 
@@ -87,7 +87,7 @@ If your team already has these files, OAK will **append** constitution reference
 
 ## MCP Tools
 
-The daemon exposes ten tools for agents via the Model Context Protocol:
+The daemon exposes tools for agents via the Model Context Protocol:
 
 | Tool | Description |
 |------|-------------|
@@ -100,6 +100,11 @@ The daemon exposes ten tools for agents via the Model Context Protocol:
 | `oak_stats` | Get project intelligence statistics |
 | `oak_activity` | View tool execution history for a session |
 | `oak_archive_memories` | Archive observations from the search index |
+| `oak_fetch` | Fetch full content for specific chunk IDs |
 | `oak_nodes` | List connected team relay nodes |
 
-See the [MCP Tools Reference](/open-agent-kit/api/mcp-tools/) for full parameter documentation.
+**Team federation:** When [Team Sync](/team/sync/) is active, several tools (`oak_search`, `oak_context`, `oak_sessions`, `oak_memories`, `oak_stats`) support `include_network=true` to fan out queries across all connected nodes on the same project. Tools like `oak_resolve_memory`, `oak_activity`, and `oak_archive_memories` support `node_id` to target a specific remote node.
+
+**Swarm tools:** When connected to a [Swarm](/swarm/), additional tools (`swarm_search`, `swarm_fetch`, `swarm_nodes`, `swarm_status`) are available for cross-project queries across different projects.
+
+See the [MCP Tools Reference](/team/mcp/) for full parameter documentation.

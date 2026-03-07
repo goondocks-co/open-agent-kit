@@ -27,6 +27,7 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_TOOL_SEARCH,
     SWARM_TOOL_STATUS,
 )
+from open_agent_kit.features.swarm.tool_schema import SWARM_TOOL_DEFS_BY_NAME
 from open_agent_kit.features.team.constants import (
     MCP_TOOL_ACTIVITY,
     MCP_TOOL_ARCHIVE_MEMORIES,
@@ -417,11 +418,7 @@ MCP_TOOLS = [
     # ------------------------------------------------------------------
     {
         "name": SWARM_TOOL_SEARCH,
-        "description": (
-            "Search across all projects in the swarm for code, memories, and observations. "
-            "Use this to find relevant implementations and learnings from other projects "
-            "connected to the same swarm."
-        ),
+        "description": SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_SEARCH].description,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -448,11 +445,7 @@ MCP_TOOLS = [
     },
     {
         "name": SWARM_TOOL_NODES,
-        "description": (
-            "List all teams in the swarm with their connection status. "
-            "Use this to see which projects are connected and available "
-            "for cross-project queries."
-        ),
+        "description": SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_NODES].description,
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -460,10 +453,7 @@ MCP_TOOLS = [
     },
     {
         "name": SWARM_TOOL_STATUS,
-        "description": (
-            "Get swarm connection status. Shows whether this node is connected "
-            "to the swarm, the swarm ID, and current connection state."
-        ),
+        "description": SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_STATUS].description,
         "inputSchema": {
             "type": "object",
             "properties": {},

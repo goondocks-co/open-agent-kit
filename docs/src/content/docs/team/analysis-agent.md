@@ -5,7 +5,7 @@ description: An autonomous agent that turns CI data into actionable insights abo
 
 The Analysis Agent is an autonomous AI agent that queries your CI database directly to produce actionable reports about how your team uses AI coding agents. It analyzes session quality, tool usage, costs, prompt effectiveness, and codebase activity patterns — turning the development record into insights you can act on.
 
-Where the [Documentation Agent](/open-agent-kit/features/codebase-intelligence/documentation-agent/) works with your filesystem and semantic search to maintain docs, the Analysis Agent works with **direct SQL access** to your CI database. It reads the raw data — every session, prompt, tool execution, memory, and agent run — and surfaces patterns that would be invisible otherwise.
+Where the [Documentation Agent](/team/documentation-agent/) works with your filesystem and semantic search to maintain docs, the Analysis Agent works with **direct SQL access** to your CI database. It reads the raw data — every session, prompt, tool execution, memory, and agent run — and surfaces patterns that would be invisible otherwise.
 
 ## How It Works
 
@@ -204,7 +204,7 @@ Include example SQL queries in your `default_task` prompt. The agent uses them a
 
 The Analysis Agent uses the shared OAK Agents provider configured in **Agents page → Settings** (`/agents/settings`).
 
-See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/#provider-configuration) for supported providers and setup details.
+See [OAK Agents](/team/agents/#provider-configuration) for supported providers and setup details.
 
 ## Security
 

@@ -8,7 +8,7 @@ sidebar:
 Sessions track all activity within an agent invocation. While the diagrams reference Claude Code, the same lifecycle applies to Cursor and Gemini via equivalent hook events.
 
 :::note[ACP sessions]
-When using OAK via the [Agent Client Protocol (ACP)](/open-agent-kit/features/codebase-intelligence/acp/), sessions follow a similar lifecycle but are managed directly by the daemon rather than through hooks. ACP sessions are created via the `/api/acp/sessions` endpoint and appear in the Activities page with agent type `oak`. The daemon handles context injection, activity recording, and summary generation internally — no hook events are fired.
+When using OAK via the [Agent Client Protocol (ACP)](/team/acp/), sessions follow a similar lifecycle but are managed directly by the daemon rather than through hooks. ACP sessions are created via the `/api/acp/sessions` endpoint and appear in the Activities page with agent type `oak`. The daemon handles context injection, activity recording, and summary generation internally — no hook events are fired.
 :::
 
 ## Lifecycle Overview
@@ -48,7 +48,7 @@ sequenceDiagram
     end
 ```
 
-Dashed arrows show context flowing **back** to the agent. Not all agents support this — see [Supported Agents](/open-agent-kit/features/codebase-intelligence/#supported-agents) for which agents get context injection.
+Dashed arrows show context flowing **back** to the agent. Not all agents support this — see [Supported Agents](/team/#supported-agents) for which agents get context injection.
 
 ### Data Flow
 
@@ -188,13 +188,13 @@ BACKGROUND_PROCESSING_INTERVAL = 60      # seconds
 
 ## Debugging
 
-### Using the `/codebase-intelligence` skill
+### Using the `/oak` skill
 
-The recommended way to inspect session data is with the `/codebase-intelligence` agent skill. It provides the current database schema and ready-to-use queries, so you don't need to discover table names or column types yourself — especially useful as the schema evolves across releases.
+The recommended way to inspect session data is with the `/oak` agent skill. It provides the current database schema and ready-to-use queries, so you don't need to discover table names or column types yourself — especially useful as the schema evolves across releases.
 
 Ask your agent:
 ```
-/codebase-intelligence show me recent sessions and their statuses
+/oak show me recent sessions and their statuses
 ```
 
 ### Manual queries
@@ -211,5 +211,5 @@ grep -E "Session start|Session end|Recovered" .oak/ci/daemon.log | tail -20
 ```
 
 :::caution[Schema may change]
-The SQLite schema evolves between releases. Prefer the `/codebase-intelligence` skill for accurate, up-to-date queries.
+The SQLite schema evolves between releases. Prefer the `/oak` skill for accurate, up-to-date queries.
 :::

@@ -18,7 +18,7 @@ OAK maintains two separate log files:
 
 Switch between logs using the tabs at the top of the page.
 
-![Logs page with daemon log and tag chip filters](../../../../assets/images/logs-daemon.png)
+![Logs page with daemon log and tag chip filters](../../../assets/images/logs-daemon.png)
 
 ## Features
 
@@ -51,7 +51,7 @@ Configure how many log lines to display (100–5000) to balance between history 
 You can also follow logs from the terminal:
 
 ```bash
-oak ci logs -f          # Follow daemon logs
+oak team logs -f         # Follow daemon logs
 ```
 
-![Hooks log view showing agent activity](../../../../assets/images/logs-cli.png)
+![Hooks log view showing agent activity](../../../assets/images/logs-cli.png)

@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-Codebase Intelligence integrates with AI agents via **hooks** — events fired by the agent that the CI daemon responds to. The daemon captures agent activity, processes it to extract observations using LLM classification, and injects relevant context back into the agent's conversation.
+The Team daemon integrates with AI agents via **hooks** — events fired by the agent that the CI daemon responds to. The daemon captures agent activity, processes it to extract observations using LLM classification, and injects relevant context back into the agent's conversation.
 
 All hooks communicate via HTTP POST requests to the daemon's API endpoints.
 
@@ -144,7 +144,7 @@ Hooks are deduplicated to prevent duplicate processing:
 
 ## Hook Configuration
 
-Hooks are configured in agent-specific settings files. These files are **local-only** — they are automatically added to `.gitignore` and regenerated from templates on each `oak ci start`.
+Hooks are configured in agent-specific settings files. These files are **local-only** — they are automatically added to `.gitignore` and regenerated from templates on each `oak team start`.
 
 Example for Claude Code (written to `.claude/settings.local.json`):
 
@@ -179,6 +179,6 @@ grep "Deduped" .oak/ci/daemon.log
 
 ## Related Documentation
 
-- [Session Lifecycle](/open-agent-kit/features/codebase-intelligence/session-lifecycle/) — Session state management and recovery
-- [Memory](/open-agent-kit/features/codebase-intelligence/memory/) — How memories are stored and retrieved
-- [API Reference](/open-agent-kit/features/codebase-intelligence/developer-api/) — REST endpoints
+- [Session Lifecycle](/team/session-lifecycle/) — Session state management and recovery
+- [Memory](/team/memory/) — How memories are stored and retrieved
+- [API Reference](/team/developer-api/) — REST endpoints

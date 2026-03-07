@@ -20,7 +20,10 @@ body:
         - oak init
         - oak upgrade
         - oak remove
-        - oak ci commands
+        - oak team commands
+        - oak team swarm commands
+        - oak skill commands
+        - oak agent commands
         - other CLI command
     validations:
       required: true

@@ -1,12 +1,12 @@
-name: "Bug: Agent / Codebase Intelligence"
-description: Report issues in agent integrations, skills, hooks, MCP, or CI daemon behavior.
+name: "Bug: Agent / Team / Swarm"
+description: Report issues in agent integrations, skills, hooks, MCP, team daemon, swarm federation, or cloud relay behavior.
 title: "[Agent] "
 labels: ["bug", "agent-commands"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this template for issues involving AI agent flows, skills, hooks, MCP tools, and CI daemon features.
+        Use this template for issues involving AI agent flows, skills, hooks, MCP tools, team daemon, team sync, swarm federation, and cloud relay features.
 
   - type: dropdown
     id: agent
@@ -33,7 +33,10 @@ body:
         - Skills activation / discovery
         - Hooks ingestion
         - MCP server / tools
-        - CI daemon API / dashboard
+        - Team daemon API / dashboard
+        - Team sync (multi-node federation)
+        - Swarm (cross-project search / federation)
+        - Cloud relay (WebSocket / Cloudflare worker)
         - Agent task execution (oak agents)
         - Prompt/session tracking
         - Retrieval/search/memory behavior
@@ -47,8 +50,9 @@ body:
       label: Command / skill / task used
       description: Include command, skill name, and/or agent task.
       placeholder: |
-        /codebase-intelligence
-        oak ci start
+        oak team start
+        oak team swarm join <url>
+        swarm_search "authentication patterns"
         oak agent run docs-site-sync
     validations:
       required: true
@@ -87,8 +91,8 @@ body:
   - type: textarea
     id: ci_debug
     attributes:
-      label: CI daemon diagnostics (if applicable)
-      description: Paste output from `oak ci status` and relevant `.oak/ci/daemon.log` lines.
+      label: Team daemon diagnostics (if applicable)
+      description: Paste output from `oak team status` and relevant `.oak/ci/daemon.log` lines.
       render: text
 
   - type: input

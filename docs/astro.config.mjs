@@ -22,88 +22,68 @@ export default defineConfig({
       sidebar: [
         { label: "Getting Started", link: "/" },
         {
-          label: "Codebase Intelligence",
+          label: "Team",
           items: [
             {
               label: "Overview",
-              slug: "features/codebase-intelligence",
+              slug: "team",
             },
             {
               label: "Getting Started",
-              slug: "features/codebase-intelligence/getting-started",
+              slug: "team/getting-started",
             },
             {
               label: "Dashboard",
-              slug: "features/codebase-intelligence/dashboard",
+              slug: "team/dashboard",
             },
             {
               label: "Activities",
-              slug: "features/codebase-intelligence/activities",
+              slug: "team/activities",
             },
             {
               label: "Logs",
-              slug: "features/codebase-intelligence/logs",
+              slug: "team/logs",
             },
             {
               label: "Configuration",
-              slug: "features/codebase-intelligence/configuration",
+              slug: "team/configuration",
             },
             {
               label: "Governance",
-              slug: "features/codebase-intelligence/governance",
+              slug: "team/governance",
             },
             {
               label: "DevTools",
-              slug: "features/codebase-intelligence/devtools",
+              slug: "team/devtools",
             },
             {
               label: "Memory",
-              slug: "features/codebase-intelligence/memory",
+              slug: "team/memory",
             },
             {
               label: "Session Lifecycle",
-              slug: "features/codebase-intelligence/session-lifecycle",
+              slug: "team/session-lifecycle",
             },
             {
-              label: "Hooks Reference",
-              slug: "features/codebase-intelligence/hooks-reference",
+              label: "Team Sync",
+              slug: "team/sync",
             },
             {
-              label: "API Reference",
-              slug: "features/codebase-intelligence/developer-api",
+              label: "MCP",
+              slug: "team/mcp",
             },
           ],
         },
         {
-          label: "Teams",
+          label: "Swarm",
           items: [
             {
               label: "Overview",
-              slug: "features/teams",
+              slug: "swarm",
             },
             {
-              label: "Cloud Relay",
-              slug: "features/cloud-relay",
-            },
-            {
-              label: "Cloudflare Setup",
-              slug: "features/cloud-relay/cloudflare-setup",
-            },
-            {
-              label: "Deployment",
-              slug: "features/cloud-relay/deployment",
-            },
-            {
-              label: "Cloud Agents",
-              slug: "features/cloud-relay/cloud-agents",
-            },
-            {
-              label: "Authentication",
-              slug: "features/cloud-relay/authentication",
-            },
-            {
-              label: "Relay Troubleshooting",
-              slug: "features/cloud-relay/troubleshooting",
+              label: "MCP",
+              slug: "swarm/mcp",
             },
           ],
         },
@@ -112,27 +92,27 @@ export default defineConfig({
           items: [
             {
               label: "Overview",
-              slug: "features/codebase-intelligence/agents",
+              slug: "team/agents",
             },
             {
               label: "Agent Client Protocol (ACP)",
-              slug: "features/codebase-intelligence/acp",
+              slug: "team/acp",
             },
             {
               label: "Documentation Agent",
-              slug: "features/codebase-intelligence/documentation-agent",
+              slug: "team/documentation-agent",
             },
             {
               label: "Analysis Agent",
-              slug: "features/codebase-intelligence/analysis-agent",
+              slug: "team/analysis-agent",
             },
             {
               label: "Engineering Agent",
-              slug: "features/codebase-intelligence/engineering-agent",
+              slug: "team/engineering-agent",
             },
             {
               label: "Maintenance Agent",
-              slug: "features/codebase-intelligence/maintenance-agent",
+              slug: "team/maintenance-agent",
             },
           ],
         },
@@ -148,7 +128,8 @@ export default defineConfig({
           items: [
             { label: "CLI Commands", slug: "cli" },
             { label: "Configuration", slug: "configuration" },
-            { label: "MCP Tools", slug: "api/mcp-tools" },
+            { label: "Hooks Reference", slug: "team/hooks-reference" },
+            { label: "API Reference", slug: "team/developer-api" },
             { label: "Release Process", slug: "releasing" },
           ],
         },

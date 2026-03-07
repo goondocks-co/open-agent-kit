@@ -4,14 +4,14 @@ description: Reference for oak CLI commands used in setup and maintenance.
 ---
 
 :::note[CLI + Dashboard]
-The CLI handles **setup, upgrades, and daemon management** (`oak init`, `oak upgrade`, `oak ci start/stop/sync`). For search, memory, configuration, and activity browsing, use the **[Dashboard](/open-agent-kit/features/codebase-intelligence/dashboard/)**.
+The CLI handles **setup, upgrades, and daemon management** (`oak init`, `oak upgrade`, `oak team start/stop`). For search, memory, configuration, and activity browsing, use the **[Dashboard](/team/dashboard/)**.
 :::
 
 ## Setup
 
 ### `oak init`
 
-Initialize Open Agent Kit in the current project. Creates the `.oak` directory structure with configuration, agent command directories, and Codebase Intelligence data.
+Initialize Open Agent Kit in the current project. Creates the `.oak` directory structure with configuration, agent command directories, and team intelligence data.
 
 **Options:**
 
@@ -70,9 +70,10 @@ oak upgrade --commands   # Upgrade only commands
 
 Skills provide specialized capabilities to your AI agent:
 
+- **oak** — Semantic search, impact analysis, memory, and database queries against the team intelligence database
 - **project-governance** — Create and maintain project constitutions, agent instruction files, and RFC/ADR documents
-- **codebase-intelligence** — Semantic search, impact analysis, and database queries against the Oak CI database
 - **context-engineering** — Prompt and context engineering guidance using the four strategies (Write, Select, Compress, Isolate)
+- **swarm** — Cross-project search for collective knowledge, patterns, and decisions across swarm-connected projects
 
 ```bash
 oak skill list         # List available skills
@@ -94,40 +95,57 @@ oak languages remove ruby php             # Remove parsers
 
 **Supported languages**: Python, JavaScript, TypeScript, Java, C#, Go, Rust, C, C++, Ruby, PHP, Kotlin, Scala
 
-## Codebase Intelligence
+## Team (Daemon Lifecycle)
 
-These commands manage the daemon lifecycle. Once the daemon is running, use the **[Dashboard](/open-agent-kit/features/codebase-intelligence/dashboard/)** for configuration, search, and memory management.
+These commands manage the daemon lifecycle. Once the daemon is running, use the **[Dashboard](/team/dashboard/)** for configuration, search, and memory management.
 
 ```bash
-oak ci start       # Start the daemon
-oak ci start -o    # Start and open dashboard in browser
-oak ci stop        # Stop the daemon
-oak ci restart     # Restart the daemon
-oak ci status      # Show daemon status and index statistics
+oak team start       # Start the daemon
+oak team start -o    # Start and open dashboard in browser
+oak team stop        # Stop the daemon
+oak team restart     # Restart the daemon
+oak team status      # Show daemon status and index statistics
+oak team reset       # Clear all indexed data
+oak team logs -f     # Follow daemon logs
+```
+
+### Team Relay
+
+```bash
+oak team cloud-init          # Deploy relay Worker and connect (turnkey)
+oak team cloud-init --force  # Re-scaffold and re-deploy with latest template
+oak team cloud-connect [url] # Connect to a specific Worker URL
+oak team cloud-disconnect    # Disconnect from the relay
+oak team cloud-status        # Show relay connection state
+oak team cloud-url           # Print Worker URL (for scripting)
+```
+
+### Team Members
+
+```bash
+oak team members             # List online team members
+```
+
+### MCP Server
+
+```bash
+oak team mcp                 # Start the MCP server (used by agents)
+```
+
+## CI (Index & Data)
+
+These commands manage the codebase index, search, and data operations.
+
+```bash
 oak ci sync        # Sync daemon after OAK upgrade (re-indexes if needed)
-oak ci reset       # Clear all indexed data
-oak ci logs -f     # Follow daemon logs
 oak ci port        # Show the daemon's port number
 oak ci backup      # Create a backup
 oak ci restore     # Restore from backup
-```
-
-### Team Sync
-
-```bash
-oak ci team status     # Show team sync connection and relay status
-oak ci team members    # List online team members
-```
-
-### Cloud Relay
-
-```bash
-oak ci cloud-init          # Deploy relay Worker and connect (turnkey)
-oak ci cloud-init --force  # Re-scaffold and re-deploy with latest template
-oak ci cloud-connect [url] # Connect to a specific Worker URL
-oak ci cloud-disconnect    # Disconnect from the relay
-oak ci cloud-status        # Show relay connection state
-oak ci cloud-url           # Print Worker URL (for scripting)
+oak ci index       # Rebuild the codebase index
+oak ci config      # Manage CI configuration
+oak ci search      # CLI semantic search
+oak ci memories    # Query stored memories
+oak ci sessions    # Query session history
 ```
 
 :::tip
@@ -136,13 +154,28 @@ After running `oak upgrade`, run `oak ci sync` to ensure the daemon picks up any
 
 ## Agent Client Protocol (ACP)
 
-OAK can act as a coding agent in ACP-compatible editors like Zed. See the [ACP documentation](/open-agent-kit/features/codebase-intelligence/acp/) for full details.
+OAK can act as a coding agent in ACP-compatible editors like Zed. See the [ACP documentation](/team/acp/) for full details.
 
 ```bash
 oak acp serve      # Start the ACP agent server (stdio transport for editors)
 ```
 
-The ACP server requires the daemon to be running (`oak ci start`). It communicates with the daemon over HTTP and translates between the ACP JSON-RPC protocol and the daemon's REST API.
+The ACP server requires the daemon to be running (`oak team start`). It communicates with the daemon over HTTP and translates between the ACP JSON-RPC protocol and the daemon's REST API.
+
+## Swarm
+
+Swarm enables cross-project federation — connecting multiple OAK projects into a unified search and agent network via a Cloudflare Worker.
+
+```bash
+oak swarm create             # Create a new swarm configuration
+oak swarm deploy             # Deploy the swarm Worker to Cloudflare
+oak swarm destroy            # Remove the swarm Worker
+oak swarm start              # Start the swarm daemon
+oak swarm stop               # Stop the swarm daemon
+oak swarm restart            # Restart the swarm daemon
+oak swarm status             # Show swarm status and connected nodes
+oak swarm mcp                # Start the swarm MCP server
+```
 
 ## Project Removal
 

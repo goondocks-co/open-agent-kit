@@ -16,7 +16,7 @@ make check           # Runs all CI checks
 ```
 
 > **Note**: `make setup` only installs the package — it does not initialize the project.
-> `oak-dev init` is required before `oak-dev ci start` will work.
+> `oak-dev init` is required before `oak-dev team start` will work.
 
 ## Prerequisites
 
@@ -88,31 +88,13 @@ Run `make help` to see all available commands:
 
 ## How to Contribute
 
-### Reporting Bugs
+**Bugs** — check for duplicates first, then open an issue with: a clear title, reproduction
+steps, expected vs actual behavior, OS / Python / oak version, and any error output.
 
-Before creating bug reports, check the issue tracker for duplicates. Include:
+**Enhancements** — describe the feature, use cases, and why it would be valuable.
 
-- Clear, descriptive title
-- Steps to reproduce
-- Expected vs actual behavior
-- Environment (OS, Python version, oak version)
-- Error messages or logs
-
-### Suggesting Enhancements
-
-Provide:
-
-- Clear, descriptive title
-- Detailed description of the enhancement
-- Use cases and examples
-- Why it would be useful
-
-### Pull Request Requirements
-
-- All CI checks pass (`make check`)
-- Tests added for new functionality
-- Documentation updated if needed
-- Clean, descriptive commits
+**Pull Requests** — all CI checks must pass (`make check`), include tests for new
+functionality, and update documentation if needed. Use clean, descriptive commits.
 
 ## Project References
 

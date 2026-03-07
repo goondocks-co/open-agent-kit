@@ -1,11 +1,11 @@
 ---
-title: Codebase Intelligence
+title: Team Intelligence
 description: The complete development record for AI-driven projects — capturing plans, decisions, and context that git can't.
 sidebar:
   order: 0
 ---
 
-**Codebase Intelligence (CI)** captures the complete development story behind AI-written code. Every plan, decision, gotcha, and trade-off is recorded as your agents work — creating a semantically rich history that goes far beyond what git blame or commit messages could ever tell you.
+**Team Intelligence** captures the complete development story behind AI-written code. Every plan, decision, gotcha, and trade-off is recorded as your agents work — creating a semantically rich history that goes far beyond what git blame or commit messages could ever tell you. It is the core capability of the [Team daemon](/cli/#team-daemon-lifecycle) — the same daemon that powers [team sync](/team/sync/) and [swarm](/swarm/).
 
 ## The Problem
 
@@ -15,7 +15,7 @@ Git captures *what* changed. OAK captures *why*, *how*, and *what was learned al
 
 ## How CI Works
 
-Codebase Intelligence runs as a lightweight local daemon that provides four interconnected capabilities:
+The Team daemon runs as the lightweight local [Team daemon](/cli/#team-daemon-lifecycle) that provides four interconnected capabilities:
 
 ### 1. The Development Record
 CI automatically captures the full lifecycle of every agent session — prompts, tool executions, plans, AI summaries, and outcomes. In the background, an LLM classifies these activities and extracts observations: gotchas, decisions, discoveries, bug fixes, and trade-offs. These become your project's persistent memory.
@@ -39,13 +39,13 @@ CI doesn't wait for you to ask. It integrates directly with your agent's workflo
 The result: agents that remember what your team has learned, across every session and every engineer.
 
 ### 4. Agent Skills
-OAK extends your agent's capabilities through [Skills](/open-agent-kit/agents/skills/) — slash commands that leverage CI's knowledge base for tasks like finding related code, analyzing change impacts, creating RFCs, and establishing project standards.
+OAK extends your agent's capabilities through [Skills](/agents/skills/) — slash commands that leverage CI's knowledge base for tasks like finding related code, analyzing change impacts, creating RFCs, and establishing project standards.
 
 ## The Dashboard
 
-After setup, **the [Dashboard](/open-agent-kit/features/codebase-intelligence/dashboard/) is your primary interface**. Use it to search your codebase, browse agent sessions, manage memories, configure settings, and more — all from your browser.
+After setup, **the [Dashboard](/team/dashboard/) is your primary interface**. Use it to search your codebase, browse agent sessions, manage memories, configure settings, and more — all from your browser.
 
-![The OAK Dashboard](../../../../assets/images/dashboard-home.png)
+![The OAK Dashboard](../../../assets/images/dashboard-home.png)
 
 ## Architecture
 
@@ -68,7 +68,7 @@ graph TD
     end
 ```
 
-The **[ACP Server](/open-agent-kit/features/codebase-intelligence/acp/)** integration lets ACP-compatible editors (like Zed) use OAK as a first-class coding agent — with CI built in rather than bolted on via hooks.
+The **[ACP Server](/team/acp/)** integration lets ACP-compatible editors (like Zed) use OAK as a first-class coding agent — with CI built in rather than bolted on via hooks.
 
 ## Supported Agents
 
@@ -86,4 +86,4 @@ The **[ACP Server](/open-agent-kit/features/codebase-intelligence/acp/)** integr
 
 **Context injection** is what makes CI proactive — it automatically surfaces relevant memories and code search results into your agent's context. Agents with **Session + Prompt + Post-tool** injection get the richest experience: context at session start, before each prompt, and after file operations. Agents with **Prompt only** receive context before each prompt but not at session start.
 
-**OAK via ACP** is the deepest integration — CI is built into every response, not injected through hooks. See the [ACP documentation](/open-agent-kit/features/codebase-intelligence/acp/) for details.
+**OAK via ACP** is the deepest integration — CI is built into every response, not injected through hooks. See the [ACP documentation](/team/acp/) for details.

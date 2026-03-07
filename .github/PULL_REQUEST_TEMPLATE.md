@@ -21,7 +21,9 @@ Describe what changed and why.
 
 - [ ] Installers (`install.sh`, `install.ps1`)
 - [ ] CLI / pipeline commands
-- [ ] Codebase Intelligence (daemon/activity/memory/search)
+- [ ] Team (daemon, activity, memory, search, sync)
+- [ ] Swarm (federation, cross-project search, Cloudflare worker)
+- [ ] Cloud relay (WebSocket relay, Cloudflare Durable Objects)
 - [ ] Agent integrations (hooks/MCP/skills)
 - [ ] Templates / rules / strategic planning
 - [ ] Packaging/release

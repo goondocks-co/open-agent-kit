@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Set up models, session quality, logging, and exclusions for Codebase Intelligence.
+description: Set up models, session quality, logging, and exclusions for the Team daemon.
 sidebar:
   order: 7
 ---
@@ -9,7 +9,7 @@ The **Configuration** page is where you set up everything the daemon needs to fu
 
 Open it from the dashboard sidebar, or navigate to `http://localhost:{port}/config`.
 
-![Configuration page showing model setup and settings](../../../../assets/images/configuration-page.png)
+![Configuration page showing model setup and settings](../../../assets/images/configuration-page.png)
 
 ## Models
 
@@ -111,7 +111,7 @@ oak ci config --sum-context show    # Show current setting
 
 ## Backup Settings
 
-Configure automatic backups and related policies from the Teams page or via the configuration file. See [Teams — Automatic Backups](/open-agent-kit/features/teams/#automatic-backups) for the full guide.
+Configure automatic backups and related policies from the Teams page or via the configuration file. See [Teams — Automatic Backups](/team/sync/#automatic-backups) for the full guide.
 
 | Setting | Config Key | Default | Description |
 |---------|-----------|---------|-------------|
@@ -159,7 +159,7 @@ Configure log rotation to manage disk usage:
 | **Max file size** | Maximum size of each log file before rotation |
 | **Backup count** | Number of rotated log files to keep |
 
-See the [Logs](/open-agent-kit/features/codebase-intelligence/logs/) page for details on viewing and filtering logs.
+See the [Logs](/team/logs/) page for details on viewing and filtering logs.
 
 ## CLI Command For Managed Integrations
 
@@ -208,7 +208,7 @@ If you've added patterns you no longer need, use the **Reset to Defaults** butto
 
 ## Governance
 
-Governance settings control what AI agents are allowed to do. Enable rules-based policy enforcement and audit logging from the [Governance](/open-agent-kit/features/codebase-intelligence/governance/) page.
+Governance settings control what AI agents are allowed to do. Enable rules-based policy enforcement and audit logging from the [Governance](/team/governance/) page.
 
 | Setting | Config Key | Default | Description |
 |---------|-----------|---------|-------------|
@@ -225,7 +225,7 @@ team:
     rules: []  # See Governance docs for rule syntax
 ```
 
-See the [Governance](/open-agent-kit/features/codebase-intelligence/governance/) page for full documentation on rules, audit logging, and enforcement modes.
+See the [Governance](/team/governance/) page for full documentation on rules, audit logging, and enforcement modes.
 
 ## Test & Detect
 

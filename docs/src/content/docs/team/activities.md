@@ -16,7 +16,7 @@ Every interaction with an AI coding agent is tracked as a session. The sessions 
 - **Agent** — Which coding agent (Claude, Cursor, Codex, etc.) created the session
 - **Timestamps** — When the session started and was last active
 
-![Sessions list with status badges and activity counts](../../../../assets/images/activity-sessions.png)
+![Sessions list with status badges and activity counts](../../../assets/images/activity-sessions.png)
 
 ### Session Detail
 
@@ -27,7 +27,7 @@ Click into any session to see its full timeline:
 - **Session lineage** — Parent-child relationships when sessions spawn sub-agents or compact/resume cycles
 - **Related sessions** — Sessions working on similar tasks, detected automatically or linked manually
 
-![Session detail showing full timeline](../../../../assets/images/activity-session-detail.png)
+![Session detail showing full timeline](../../../assets/images/activity-session-detail.png)
 
 ### Session Actions
 
@@ -44,7 +44,7 @@ Browse implementation plans captured during agent sessions. Plans are detected f
 - **Rendered markdown** — Click into a plan to see its full content rendered as markdown
 - **Refresh from source** — If the plan file still exists on disk, refresh to pick up any changes
 
-![Plans list view](../../../../assets/images/activity-plans.png)
+![Plans list view](../../../assets/images/activity-plans.png)
 
 ## Memories
 
@@ -63,8 +63,8 @@ View, search, and manage all stored observations across your project.
 - **Delete** — Permanently remove a memory
 - **Bulk actions** — Select multiple memories for batch delete, archive, resolve, or tag management
 
-![Memories with type and tag filters](../../../../assets/images/activity-memories.png)
+![Memories with type and tag filters](../../../assets/images/activity-memories.png)
 
 :::tip
-Most observations are resolved automatically. When a new observation supersedes an older one on the same topic, OAK marks the older one as `superseded` automatically using semantic similarity matching. See [Memory — Auto-Resolve](/open-agent-kit/features/codebase-intelligence/memory/#auto-resolve-automatic-supersession) for details.
+Most observations are resolved automatically. When a new observation supersedes an older one on the same topic, OAK marks the older one as `superseded` automatically using semantic similarity matching. See [Memory — Auto-Resolve](/team/memory/#auto-resolve-automatic-supersession) for details.
 :::

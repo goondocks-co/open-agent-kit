@@ -1,27 +1,52 @@
 ---
-title: Teams
-description: Share observations across your team via a Cloudflare relay — real-time sync, federated search, backups, and data governance.
+title: Team Sync
+description: Connect your team to share observations, federate tool calls across nodes, and give cloud AI agents access to your local MCP tools.
 sidebar:
   order: 0
 ---
 
-**Teams** is OAK's collaboration layer. It lets you share Codebase Intelligence across developers and machines using a **relay-based peer architecture** — all nodes push and receive observations through a shared [Cloud Relay](/open-agent-kit/features/cloud-relay/) (a Cloudflare Worker). There is no central server or peer-to-peer hub.
+**Team Sync** connects developers, machines, and cloud AI agents into a single collaborative network. When you connect to a team, you get:
 
-The same relay also powers [Cloud Agent Access](/open-agent-kit/features/cloud-relay/cloud-agents/) — letting cloud-hosted AI agents (Claude.ai, ChatGPT, etc.) call your local MCP tools through a secure HTTP endpoint.
+- **Observation sharing** — Memories, decisions, gotchas, and discoveries sync across all connected nodes
+- **Federated search & tool calls** — Query any node's local index from any other node
+- **Cloud agent access** — Cloud-hosted AI agents (Claude.ai, ChatGPT, etc.) call your local MCP tools through a secure HTTP endpoint
 
-## Architecture Overview
+All of this runs through a **Cloudflare Worker relay** that OAK deploys and manages for you. Your codebase never leaves your machine — only MCP tool calls, their results, and observation payloads travel through the relay.
+
+## Architecture
 
 ```mermaid
-graph LR
-    A["Dev A<br/>(publisher)"] -->|WebSocket| R["Cloudflare<br/>Worker Relay"]
-    B["Dev B<br/>(consumer)"] -->|WebSocket| R
-    C["Dev C<br/>(consumer)"] -->|WebSocket| R
-    R -->|Observations| A
-    R -->|Observations| B
-    R -->|Observations| C
+sequenceDiagram
+    participant Agent as Cloud Agent
+    participant Team as Teammate
+    participant Worker as Cloudflare Worker
+    participant Daemon as Local Team Daemon
+
+    Note over Daemon,Worker: Outbound WebSocket (initiated by local)
+    Daemon->>Worker: Connect via WebSocket
+    Worker-->>Daemon: Connection established
+
+    Note over Agent,Worker: MCP Streamable HTTP
+    Agent->>Worker: POST /mcp (tool call)
+    Worker->>Daemon: Relay via WebSocket
+    Daemon->>Daemon: Execute tool locally
+    Daemon->>Worker: Return result via WebSocket
+    Worker->>Agent: HTTP response
+
+    Note over Team,Worker: Team Observation Sync
+    Daemon->>Worker: Push observations
+    Worker->>Team: Fan out to connected nodes
+    Team->>Worker: Push observations
+    Worker->>Daemon: Deliver to local node
 ```
 
-Every node is a peer. One developer **deploys** the relay Worker (the "publisher"), and teammates **join** by entering the relay URL and API key. Once connected, observations flow automatically in both directions.
+Your local daemon initiates the connection outward — no inbound ports, no firewall rules, no dynamic DNS. The Cloudflare Worker relays messages between all connected sides.
+
+| Component | Role | Runs On |
+|-----------|------|---------|
+| **Cloudflare Worker** | Accepts MCP requests and relays observations | Cloudflare's edge network (your account) |
+| **Durable Object** | Manages WebSocket state, message routing, and observation buffering | Cloudflare (co-located with Worker) |
+| **WebSocket Client** | Maintains persistent outbound connection to Worker | Your local machine (inside OAK daemon) |
 
 ### What Gets Synced
 
@@ -39,24 +64,78 @@ Team sync shares **observations only** — the distilled knowledge extracted fro
 
 ### Federated Search & Tool Calls
 
-When team sync is active, MCP tool queries can be **federated** across all connected nodes through the relay:
+When connected to a team, MCP tool queries can be **federated** across all connected nodes:
 
 - **Search fan-out** — Set `include_network=true` on `oak_search`, `oak_context`, `oak_sessions`, `oak_memories`, or `oak_stats` to fan the query out to all connected nodes. Each node executes against its local index and returns results, which are merged and ranked. This means your agents can find code patterns and memories from across the entire team — without any node needing a copy of another's full index.
 - **Targeted tool calls** — Set `node_id` on `oak_resolve_memory`, `oak_activity`, or `oak_archive_memories` to route the call to a specific remote node. Use `oak_nodes` to discover available nodes and their capabilities.
-- **Cloud agent access** — Cloud agents connected via [Streamable HTTP](/open-agent-kit/features/cloud-relay/cloud-agents/) have the same federation capabilities as local agents.
+- **Cloud agent access** — Cloud agents connected via [MCP Streamable HTTP](/team/mcp/) have the same federation capabilities as local agents.
 
 :::note[Code search stays local]
 `include_network` is not available for `search_type="code"` — code is project-specific and searching another machine's index would return irrelevant file paths. Memory, session, plan, and stats queries federate well because they are project-agnostic knowledge.
 :::
 
+## Prerequisites
+
+Team sync requires a free Cloudflare account and Node.js v18+.
+
+### Cloudflare Account
+
+1. Go to [cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
+2. Enter your email and create a password
+3. Verify your email address
+
+No credit card is required. The Workers free tier includes everything the relay needs.
+
+### Wrangler CLI
+
+Wrangler is Cloudflare's CLI for managing Workers:
+
+```bash
+# Option 1: Use via npx (recommended — no global install needed)
+npx wrangler --version
+
+# Option 2: Global install
+npm install -g wrangler
+wrangler --version
+```
+
+### Authenticate Wrangler
+
+```bash
+npx wrangler login
+```
+
+This opens your browser for an OAuth flow. Verify authentication:
+
+```bash
+npx wrangler whoami
+```
+
+:::tip
+The OAK dashboard's **Teams** page includes a **Prerequisites** card that shows live checks for npm, wrangler, and authentication status.
+:::
+
+### Free Tier Limits
+
+| Resource | Free Limit | Typical Usage |
+|----------|------------|---------------|
+| Worker requests | 100,000/day | ~500–2,000/day |
+| Worker CPU time | 10ms/request | ~2–5ms/request |
+| Durable Object requests | 100,000/day | ~500–2,000/day |
+| Durable Object storage | 1 GB | < 1 KB |
+| WebSocket messages | Unlimited | ~1,000–5,000/day |
+| Egress bandwidth | Free | All |
+
+For a typical developer workflow, free tier usage stays well under 5% of the daily limits.
+
 ## Getting Started
 
-### Option A: Deploy a Relay (Publisher)
+### Option A: Deploy (Publisher)
 
 If you're the first team member setting up sync:
 
 1. Open the **Teams** page in the dashboard
-2. Click **Deploy** — this runs the [Cloud Relay](/open-agent-kit/features/cloud-relay/) turnkey pipeline:
+2. Click **Deploy** — this runs the turnkey deployment pipeline:
    - Scaffolds a Cloudflare Worker project in `oak/cloud-relay/`
    - Installs dependencies and verifies Cloudflare authentication
    - Deploys the Worker via `wrangler`
@@ -66,14 +145,12 @@ If you're the first team member setting up sync:
 Or from the CLI:
 
 ```bash
-oak ci cloud-init          # Deploy and connect
+oak team cloud-init          # Deploy and connect
 ```
 
-:::tip[Prerequisites]
-You need a free Cloudflare account and Node.js v18+. See [Cloudflare Setup](/open-agent-kit/features/cloud-relay/cloudflare-setup/) for account creation and wrangler authentication.
-:::
+The pipeline skips any phase that's already complete. First run takes ~30–60 seconds; reconnecting takes ~2–3 seconds.
 
-### Option B: Join a Team (Consumer)
+### Option B: Join (Consumer)
 
 If a teammate has already deployed a relay:
 
@@ -105,8 +182,8 @@ The Teams page shows real-time connection status:
 ### CLI Status
 
 ```bash
-oak ci team status          # Show connection and sync status
-oak ci team members         # List online team members
+oak team status          # Show connection and sync status
+oak team members         # List online team members
 ```
 
 ## Sync Settings
@@ -155,24 +232,119 @@ team:
 
 You can also toggle both settings from the dashboard: **Teams > Policy**.
 
-## Cloud Agent Access (MCP)
+## Cloud Agent Access
 
-When the relay is deployed, cloud AI agents can also connect via MCP. The relay exposes all registered MCP tools through a Streamable HTTP endpoint:
+When connected to a team, cloud AI agents can connect to the relay's MCP endpoint:
 
 - **MCP Endpoint**: `https://<your-worker>.workers.dev/mcp`
 - **Agent Token**: Displayed on the Teams page (masked with reveal/copy)
 
-See [Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/) for per-agent setup instructions (Claude.ai, ChatGPT, MCP config files).
+See [MCP Configuration](/team/mcp/) for per-agent setup instructions (Claude.ai, ChatGPT, mcp.json config files) and agent token details.
 
 ## Leaving a Team
 
 Click **Leave Team** on the Teams page, or disconnect via CLI:
 
 ```bash
-oak ci cloud-disconnect
+oak team cloud-disconnect
 ```
 
 This disconnects the relay and clears team configuration. The Worker is **not** deleted — you can rejoin later by re-entering the URL and key.
+
+## Deployment Details
+
+### Generated Directory Structure
+
+The deployment pipeline creates a Cloudflare Worker project at `oak/cloud-relay/`:
+
+```
+oak/cloud-relay/
+  src/
+    index.ts           # Worker entry point — HTTP routing and CORS
+    auth.ts            # Token validation logic
+    mcp-handler.ts     # MCP Streamable HTTP request handling
+    relay-object.ts    # Durable Object — WebSocket relay and state
+    types.ts           # Shared TypeScript interfaces
+  wrangler.toml        # Cloudflare config with tokens and bindings
+  package.json         # Dependencies (minimal)
+  tsconfig.json        # TypeScript config
+  .gitignore           # Excludes wrangler.toml, node_modules/, .wrangler/
+```
+
+The scaffold's `.gitignore` excludes `wrangler.toml` (contains secrets), `node_modules/`, and `.wrangler/`. Worker source code can be committed to version control.
+
+### Worker Naming
+
+Each project gets a unique Worker name derived from the project directory:
+
+```
+oak-relay-<sanitized-project-name>
+```
+
+For example, a project in `~/projects/my-app` gets the Worker name `oak-relay-my-app`.
+
+### Re-Deploying After Upgrades
+
+When you upgrade OAK, the Worker template may include protocol changes. To update:
+
+```bash
+oak team cloud-init --force
+```
+
+This re-scaffolds with the latest template, re-installs dependencies, and re-deploys. Existing tokens are preserved.
+
+### Viewing Worker Logs
+
+```bash
+cd oak/cloud-relay
+npx wrangler tail
+```
+
+### Removing a Deployment
+
+```bash
+cd oak/cloud-relay
+npx wrangler delete        # Remove from Cloudflare
+```
+
+To clean up the local scaffold: `rm -rf oak/cloud-relay`
+
+## Authentication
+
+The relay uses a **two-token model** to secure both sides:
+
+| Token | Purpose | Used By |
+|-------|---------|---------|
+| `relay_token` | Authenticates the daemon to the Worker | Local OAK daemon (WebSocket `Sec-WebSocket-Protocol` header) |
+| `agent_token` | Authenticates cloud AI agents to the Worker | Claude.ai, ChatGPT, etc. (HTTP `Authorization: Bearer` header) |
+
+Both tokens are generated automatically during deployment using `secrets.token_urlsafe(32)` (256 bits of entropy each).
+
+### Token Storage
+
+| Location | Contains |
+|----------|----------|
+| `.oak/config.yaml` | Both tokens |
+| `oak/cloud-relay/wrangler.toml` | Both tokens as env vars (excluded from git) |
+| Cloudflare Workers secrets | Both tokens (encrypted at rest) |
+
+### Token Rotation
+
+To rotate tokens (e.g., if compromised or to revoke all cloud agent access):
+
+```bash
+rm -rf oak/cloud-relay
+oak team cloud-init
+```
+
+This generates fresh tokens and re-deploys. Update any cloud agents with the new agent token.
+
+### Security Properties
+
+- **No inbound ports** — The daemon initiates WebSocket outward. No incoming connections needed.
+- **Transport encryption** — All connections use TLS (HTTPS for MCP, WSS for WebSocket).
+- **Blast radius** — Each project has its own Worker with its own token pair.
+- **CORS support** — The Worker includes CORS headers for browser-based MCP clients.
 
 ## Team Backups
 
@@ -306,12 +478,62 @@ oak ci sync --dry-run    # Preview without applying changes
 Run `oak ci sync --team` after pulling from git to pick up your teammates' latest backups.
 :::
 
+## Troubleshooting
+
+### Wrangler Issues
+
+**"wrangler: command not found"** — Install Node.js (which includes npm), then use `npx wrangler --version` or install globally with `npm install -g wrangler`.
+
+**"wrangler login" opens browser but auth fails** — Check that popups aren't blocked. Try an incognito window. Behind a corporate proxy, use an API token instead:
+```bash
+export CLOUDFLARE_API_TOKEN=your-api-token
+```
+Generate a token in the Cloudflare dashboard under **My Profile > API Tokens** with the **Edit Cloudflare Workers** template.
+
+### Deployment Issues
+
+**Worker deployment failed** — Common causes:
+- **Account not verified** — Check email for a Cloudflare verification link
+- **Subdomain not set** — New accounts need to choose a `*.workers.dev` subdomain at **Workers & Pages > Overview**
+- **Durable Object migration error** — Re-scaffold: `oak team cloud-init --force`
+
+**npm install failed** — Delete and retry: `rm -rf oak/cloud-relay/node_modules && oak team cloud-init`
+
+**Could not detect Worker URL** — Check Cloudflare dashboard for the URL, then connect manually: `oak team cloud-connect https://your-worker.your-subdomain.workers.dev`
+
+### Connection Issues
+
+**"Connection Refused"** — Checklist:
+1. Verify Worker is deployed: `curl https://your-worker.workers.dev/health`
+2. Check URL: `oak team cloud-url`
+3. Ensure outbound WebSocket (wss://) is allowed
+4. Check daemon is running: `oak team status`
+
+**Instance shows "Offline"**:
+
+| Cause | Solution |
+|-------|----------|
+| Daemon not running | `oak team start` |
+| Daemon restarting | Wait for auto-reconnect (exponential backoff, up to 60s) |
+| Network interruption | Connection auto-recovers when network returns |
+| Token mismatch | Re-scaffold: `rm -rf oak/cloud-relay && oak team cloud-init` |
+
+**WebSocket disconnects frequently** — Check network stability. Review daemon logs (`tail -50 .oak/ci/daemon.log`) and Worker logs (`cd oak/cloud-relay && npx wrangler tail`).
+
+### Authentication Issues
+
+**"Token Invalid" or "Unauthorized"** — For the relay token (daemon→Worker), check `.oak/config.yaml`. For the agent token (cloud agent→Worker), verify it matches the dashboard. Re-scaffold to reset: `rm -rf oak/cloud-relay && oak team cloud-init`
+
+**Token lost** — Check the dashboard Teams page (reveal button), `.oak/config.yaml`, or `oak/cloud-relay/wrangler.toml`. If all lost, re-scaffold to generate fresh tokens.
+
+### Timeout Errors
+
+MCP tool calls may time out if the codebase is very large (first search builds embeddings), network latency is high, or the daemon is under heavy load. Ensure indexing is complete (`oak team status`) before using cloud relay features.
+
 ## Next Steps
 
-- **[Cloud Relay](/open-agent-kit/features/cloud-relay/)** — How the Cloudflare Worker relay works under the hood
-- **[Cloudflare Setup](/open-agent-kit/features/cloud-relay/cloudflare-setup/)** — Create your free account and install wrangler
-- **[Cloud Agents](/open-agent-kit/features/cloud-relay/cloud-agents/)** — Register cloud AI agents with your relay
-- **[Authentication](/open-agent-kit/features/cloud-relay/authentication/)** — Understand the two-token security model
+- **[MCP Configuration](/team/mcp/)** — Configure cloud AI agents to connect to your Team and Swarm MCP endpoints
+- **[Swarm](/swarm/)** — Connect *different* projects into a cross-project federation network
 
 ## Known Issues & Gotchas
 

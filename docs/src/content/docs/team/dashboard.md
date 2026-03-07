@@ -1,15 +1,15 @@
 ---
 title: Dashboard
-description: Your primary interface for managing Codebase Intelligence.
+description: Your primary interface for managing team intelligence.
 sidebar:
   order: 2
 ---
 
 The dashboard is **your primary interface to OAK** after initial setup. It provides a visual interface to everything the daemon tracks — code search, agent activity, project memory, configuration, and more.
 
-**Open the dashboard**: Run `oak ci start --open`, or navigate to `http://localhost:{port}/ui` (use `oak ci port` to find the port).
+**Open the dashboard**: Run `oak team start --open`, or navigate to `http://localhost:{port}/ui` (use `oak ci port` or `oak team status` to find the port).
 
-![The OAK Dashboard home page](../../../../assets/images/dashboard-home.png)
+![The OAK Dashboard home page](../../../assets/images/dashboard-home.png)
 
 ## Dashboard Home
 
@@ -22,7 +22,7 @@ The home page gives you an at-a-glance view of your project:
 
 Test and explore semantic search across your entire codebase, memories, and plans.
 
-![Semantic search results showing code, memories, and plans](../../../../assets/images/dashboard-search.png)
+![Semantic search results showing code, memories, and plans](../../../assets/images/dashboard-search.png)
 
 - **Natural language queries** — Ask questions like "How is authentication handled?" or "Where are database migrations?"
 - **Category filters** — Search across All, Code Only, Memories Only, Plans Only, or Sessions Only
@@ -35,13 +35,13 @@ Each major dashboard feature has its own dedicated page in the sidebar. Here's a
 
 | Page | What it does |
 |------|-------------|
-| **[Activities](/open-agent-kit/features/codebase-intelligence/activities/)** | Browse sessions, plans, and memories with filtering and bulk actions |
-| **[OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/)** | View built-in agents, run tasks, create custom tasks |
-| **[Logs](/open-agent-kit/features/codebase-intelligence/logs/)** | Live log viewer for daemon and hooks activity |
-| **[Teams](/open-agent-kit/features/teams/)** | Team sync, backup, restore, and cloud agent access |
-| **[Configuration](/open-agent-kit/features/codebase-intelligence/configuration/)** | Models, session quality, logging, exclusions |
-| **[Governance](/open-agent-kit/features/codebase-intelligence/governance/)** | Rules, audit logging, and enforcement for agent tool calls |
-| **[DevTools](/open-agent-kit/features/codebase-intelligence/devtools/)** | Stats, maintenance, index rebuilds, cleanup |
+| **[Activities](/team/activities/)** | Browse sessions, plans, and memories with filtering and bulk actions |
+| **[OAK Agents](/team/agents/)** | View built-in agents, run tasks, create custom tasks |
+| **[Logs](/team/logs/)** | Live log viewer for daemon and hooks activity |
+| **[Team Sync](/team/sync/)** | Team sync, backup, restore, and cloud agent access |
+| **[Configuration](/team/configuration/)** | Models, session quality, logging, exclusions |
+| **[Governance](/team/governance/)** | Rules, audit logging, and enforcement for agent tool calls |
+| **[DevTools](/team/devtools/)** | Stats, maintenance, index rebuilds, cleanup |
 
 ## UI Features
 

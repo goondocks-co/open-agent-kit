@@ -116,7 +116,7 @@ The CI daemon provides semantic code search, session history, and project memori
 
 ```bash
 # Start the daemon with browser UI
-oak ci start --open
+oak team start --open
 ```
 
 This gives your agents access to:
@@ -128,7 +128,7 @@ This gives your agents access to:
 
 Team Sync lets multiple machines share codebase memories and search results via a Cloudflare Worker relay, enabling cross-team semantic intelligence without exposing your local database.
 
-For full setup, see the [Team Sync guide](https://openagentkit.app/features/codebase-intelligence/teams/) in the documentation.
+For full setup, see the [Team Sync guide](https://openagentkit.app/team/sync/) in the documentation.
 
 ## Troubleshooting
 
@@ -183,7 +183,7 @@ Agent commands are installed in their native directories (`.claude/commands/`, `
 
 ```bash
 # Stop and restart the daemon
-oak ci stop && oak ci start
+oak team stop && oak team start
 ```
 
 > ⚠️ **Gotcha**: The daemon returns `401 Missing Authorization header` when the `.oak/ci/.daemon_token` file is absent or the `OAK_CI_TOKEN` environment variable was never set. The client reads the token file unconditionally and crashes if it doesn't exist.
@@ -192,7 +192,7 @@ oak ci stop && oak ci start
 
 ```bash
 # Stop the daemon, then restart — it will regenerate the token file
-oak ci stop && oak ci start
+oak team stop && oak team start
 ```
 
 If the problem persists, verify the token file exists:
@@ -208,7 +208,7 @@ ls -la .oak/ci/.daemon_token
 ```bash
 # Clear stale port files
 rm -f ~/.oak/daemon.port .oak/daemon.port
-oak ci start
+oak team start
 ```
 
 > ⚠️ **Gotcha**: If the repository is nested inside another git repo, the installer may identify the wrong project root, leading to mis-located hook files.
@@ -234,6 +234,5 @@ Then upgrade project templates: `oak upgrade --dry-run` to preview, `oak upgrade
 ## Next Steps
 
 - [Full documentation](https://openagentkit.app/) — features, CLI reference, workflows
-- [RFC workflow](https://openagentkit.app/features/strategic-planning/) — technical decision documentation
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribute to the project
 - [README.md](README.md) — project overview

@@ -5,7 +5,7 @@ sidebar:
   order: 13
 ---
 
-The **[Agent Client Protocol (ACP)](https://agentclientprotocol.com/)** integration turns OAK into a full coding agent that any ACP-compatible editor can talk to directly. Instead of only enriching other agents through hooks and MCP tools, OAK becomes the agent — with all of Codebase Intelligence built in.
+The **[Agent Client Protocol (ACP)](https://agentclientprotocol.com/)** integration turns OAK into a full coding agent that any ACP-compatible editor can talk to directly. Instead of only enriching other agents through hooks and MCP tools, OAK becomes the agent — with all of team intelligence built in.
 
 ## What is ACP?
 
@@ -23,7 +23,7 @@ When you use OAK through ACP instead of a standalone agent with hooks:
 - **Permission modes** — Control what the agent can do: full access (Code), plan-then-execute (Architect), or ask-per-action (Ask).
 
 :::caution[Daemon required]
-The ACP server is a thin protocol bridge — all intelligence lives in the OAK daemon. The daemon must be running (`oak ci start`) before launching the ACP server.
+The ACP server is a thin protocol bridge — all intelligence lives in the OAK daemon. The daemon must be running (`oak team start`) before launching the ACP server.
 :::
 
 ## Quick Start
@@ -31,7 +31,7 @@ The ACP server is a thin protocol bridge — all intelligence lives in the OAK d
 ### 1. Start the OAK daemon
 
 ```bash
-oak ci start
+oak team start
 ```
 
 ### 2. Configure your editor
@@ -66,7 +66,7 @@ graph TD
     Editor["ACP Editor"] -->|"JSON-RPC (stdio)"| ACP["ACP Server Process"]
     ACP -->|"HTTP / NDJSON"| Daemon["OAK Daemon"]
     Daemon --> SDK["Claude Agent SDK"]
-    Daemon --> CI["Codebase Intelligence"]
+    Daemon --> CI["Team Intelligence"]
     CI --> Sess["Sessions & Plans"]
     CI --> Mem["Memory Engine"]
     CI --> Srch["Semantic Search"]
@@ -166,20 +166,20 @@ ACP sessions are fully integrated with the OAK activity store:
 - **Session summaries** — Generated asynchronously when you close the session
 - **Plans** — Captured automatically when the agent proposes changes in Architect mode
 
-ACP sessions appear alongside hook-captured sessions in the [Activities](/open-agent-kit/features/codebase-intelligence/activities/) page and are searchable through semantic search and the `/codebase-intelligence` skill.
+ACP sessions appear alongside hook-captured sessions in the [Activities](/team/activities/) page and are searchable through semantic search and the `/oak` skill.
 
 ## Troubleshooting
 
 ### Daemon not running
 
 ```
-OAK daemon is not running. Start it with 'oak ci start'.
+OAK daemon is not running. Start it with 'oak team start'.
 ```
 
 The ACP server requires the daemon. Start it first:
 
 ```bash
-oak ci start
+oak team start
 ```
 
 ### Check ACP logs
@@ -192,7 +192,7 @@ tail -f .oak/ci/acp.log
 
 ### Session not appearing in dashboard
 
-ACP sessions are recorded with agent type `oak`. Use the **Oak** filter on the [Activities](/open-agent-kit/features/codebase-intelligence/activities/) page to find them.
+ACP sessions are recorded with agent type `oak`. Use the **Oak** filter on the [Activities](/team/activities/) page to find them.
 
 ### Editor can't connect
 
@@ -202,4 +202,4 @@ Verify the ACP server works standalone:
 oak acp serve
 ```
 
-If it exits immediately, check the daemon status with `oak ci status`.
+If it exits immediately, check the daemon status with `oak team status`.

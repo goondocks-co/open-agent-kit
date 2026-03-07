@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Enable Codebase Intelligence in your project and start the daemon.
+description: Enable team intelligence in your project and start the daemon.
 sidebar:
   order: 1
 ---
@@ -46,11 +46,11 @@ The interactive setup walks you through two screens:
 The CI feature runs as a background daemon. Start it and open the dashboard:
 
 ```bash
-oak ci start --open
+oak team start --open
 ```
 
 :::note[Fresh clones]
-Hook config files are **local-only** — they are gitignored and never committed. When you clone a project that already has OAK configured, just run `oak ci start` and it will automatically regenerate the hook files and start the daemon. No `oak init` required.
+Hook config files are **local-only** — they are gitignored and never committed. When you clone a project that already has OAK configured, just run `oak team start` and it will automatically regenerate the hook files and start the daemon. No `oak init` required.
 
 Contributors who don't have OAK installed won't see any errors — the hook files simply don't exist in the working tree.
 :::
@@ -63,7 +63,7 @@ The dashboard opens automatically in your browser — you can watch indexing pro
 
 ## Configuration
 
-After the daemon starts, **use the dashboard to configure everything**. Open the **[Configuration](/open-agent-kit/features/codebase-intelligence/configuration/)** page from the sidebar to:
+After the daemon starts, **use the dashboard to configure everything**. Open the **[Configuration](/team/configuration/)** page from the sidebar to:
 
 - **Choose your embedding provider** — Select from Ollama, LM Studio, or any OpenAI-compatible endpoint. The UI auto-detects available models and dimensions.
 - **Enable summarization** — Optionally connect a local LLM for automatic session summaries.
@@ -72,7 +72,7 @@ After the daemon starts, **use the dashboard to configure everything**. Open the
   - `stale_timeout`: how long an inactive session sits before cleanup by background maintenance
 - **Manage exclusions** — Add directory patterns to skip during indexing (e.g., `dist/**`, `vendor/**`). OAK includes sensible defaults (`.git`, `node_modules`, `__pycache__`, etc.) and respects `.gitignore`.
 
-![The Configuration page with embedding and summarization settings](../../../../assets/images/dashboard-config.png)
+![The Configuration page with embedding and summarization settings](../../../assets/images/dashboard-config.png)
 
 :::note[Model quality matters]
 Higher quality local models produce better summaries. Find the balance between speed and quality that works for your hardware. If using Ollama, consider increasing `num_ctx` beyond the default 2048 — session summaries benefit from larger context windows. The same applies to LM Studio's default context size.
@@ -116,7 +116,7 @@ After updating the constitution, sync the changes to all agent instruction files
 oak rules sync-agents
 ```
 
-See the [Skills](/open-agent-kit/agents/skills/#project-governance) page for the full `/project-governance` reference.
+See the [Skills](/agents/skills/#project-governance) page for the full `/project-governance` reference.
 
 ## Verify Installation
 
@@ -130,5 +130,5 @@ Open the dashboard home page to verify everything is working:
 You can also check from the terminal:
 
 ```bash
-oak ci status
+oak team status
 ```

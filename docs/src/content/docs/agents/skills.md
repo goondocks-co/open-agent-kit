@@ -8,19 +8,20 @@ Skills are the primary way OAK extends your AI agent's capabilities. They are de
 You don't need to memorize commands — just describe what you need:
 
 ```
-"We need coding standards for this Python project"     → /project-governance
-"What did we discuss about auth last week?"             → /codebase-intelligence
-"I'm about to refactor the payment module — what breaks?" → /codebase-intelligence
-"Propose an RFC for switching to PostgreSQL"            → /project-governance
+"We need coding standards for this Python project"        → /project-governance
+"What did we discuss about auth last week?"               → /oak
+"I'm about to refactor the payment module — what breaks?" → /oak
+"How do other projects handle auth?"                      → /swarm
+"Propose an RFC for switching to PostgreSQL"              → /project-governance
 ```
 
-Skills use CI's semantic search and memory under the hood — no additional API keys required beyond what your agent already uses.
+Skills use the team's semantic search and memory under the hood — no additional API keys required beyond what your agent already uses.
 
-## Codebase Intelligence
+## OAK (Team Intelligence)
 
-### `/codebase-intelligence`
+### `/oak`
 
-Search, analyze, and query your codebase using semantic vector search, impact analysis, and direct SQL queries against the Oak CI database. Finds conceptually related code that grep would miss, assesses refactoring risk, and provides direct database access for session history, activity logs, and agent run data.
+Search, analyze, and query your codebase using semantic vector search, impact analysis, and direct SQL queries against the team intelligence database. Finds conceptually related code that grep would miss, assesses refactoring risk, and provides direct database access for session history, activity logs, and agent run data.
 
 **When to use:**
 - Finding similar implementations across the codebase
@@ -35,22 +36,22 @@ Search, analyze, and query your codebase using semantic vector search, impact an
 **Examples:**
 ```
 # Find code by concept, not just text
-/codebase-intelligence how does the authentication middleware work?
+/oak how does the authentication middleware work?
 
 # Assess risk before refactoring
-/codebase-intelligence I'm about to change the session model schema — what might be affected?
+/oak I'm about to change the session model schema — what might be affected?
 
 # Recall past conversations and decisions
-/codebase-intelligence what did we discuss about the auth refactor last week?
+/oak what did we discuss about the auth refactor last week?
 
 # Look up what happened in previous sessions
-/codebase-intelligence show me recent sessions and what was accomplished
+/oak show me recent sessions and what was accomplished
 
 # Search past learnings and gotchas
-/codebase-intelligence are there any known gotchas with the payment module?
+/oak are there any known gotchas with the payment module?
 
 # Query raw data when you need specifics
-/codebase-intelligence how many sessions have we had this week and what was the total cost?
+/oak how many sessions have we had this week and what was the total cost?
 ```
 
 :::tip
@@ -149,6 +150,32 @@ Design effective prompts and optimize the full context window for AI models and 
 - **Memory-as-a-tool** — Store information externally with `oak_remember`, retrieve just-in-time with `oak_search`
 
 **Reference docs included:** prompt foundations, context engineering framework, agent context patterns, system prompt design templates, memory and sessions guide, before/after examples gallery.
+
+## Swarm
+
+### `/swarm`
+
+Search across multiple projects in your organization's swarm for collective knowledge — code patterns, memories, decisions, and learnings from other teams. Complements the `/oak` skill which covers single-project knowledge.
+
+**When to use:**
+- Finding how other projects solved a similar problem
+- Discovering org-wide patterns or conventions
+- Checking cross-project dependencies
+- Looking up collective memories and decisions from other teams
+
+**Examples:**
+```
+# Find patterns across all projects
+/swarm how do other projects handle authentication?
+
+# Discover org conventions
+/swarm what retry/backoff patterns are used across our projects?
+
+# Check what other teams learned
+/swarm any gotchas with the payment API integration?
+```
+
+**Requires:** A running [Swarm](/swarm/) connection (`oak swarm start`).
 
 ## Refreshing Skills
 

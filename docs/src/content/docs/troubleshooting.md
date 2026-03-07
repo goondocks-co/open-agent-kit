@@ -47,14 +47,14 @@ export PATH="$HOME/.local/bin:$PATH"
 
 After upgrading OAK, the running daemon may still be on the old version. OAK detects this automatically:
 
-- **In the CLI**: `oak ci start` or `oak ci status` will display a hint if the daemon version doesn't match the installed CLI version.
+- **In the CLI**: `oak team start` or `oak team status` will display a hint if the daemon version doesn't match the installed CLI version.
 - **In the Dashboard**: A banner appears at the top of the page showing the running and installed versions, with a **Restart** button to apply the update.
 
 To resolve manually:
 
 ```bash
-oak ci restart      # Restart the daemon with the new version
-oak ci sync         # Or run sync, which also restarts and applies migrations
+oak team restart     # Restart the daemon with the new version
+oak ci sync          # Or run sync, which also restarts and applies migrations
 ```
 
 :::tip
@@ -149,14 +149,14 @@ Agent commands are installed in their native directories (`.claude/commands/`, `
 Check if the daemon is already running:
 
 ```bash
-oak ci status
+oak team status
 ```
 
 If the port is in use or the daemon is in a bad state:
 
 ```bash
-oak ci stop       # Stop any existing daemon
-oak ci start      # Start fresh
+oak team stop      # Stop any existing daemon
+oak team start     # Start fresh
 ```
 
 ## Uninstallation

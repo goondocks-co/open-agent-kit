@@ -1,11 +1,11 @@
 ---
 title: Engineering Agent
-description: An autonomous engineering team powered by Codebase Intelligence.
+description: An autonomous engineering team powered by team intelligence.
 ---
 
 The Engineering Agent is an autonomous AI agent that operates as your engineering team — with tasks for different team roles like Senior Engineer and Product Manager. Each task brings a distinct perspective and methodology, while all share access to CI's full knowledge base.
 
-Unlike the [Documentation Agent](/open-agent-kit/features/codebase-intelligence/documentation-agent/) (which focuses on maintaining docs) or the [Analysis Agent](/open-agent-kit/features/codebase-intelligence/analysis-agent/) (which focuses on insights and reports), the Engineering Agent performs hands-on engineering work: reviewing code, implementing features, fixing bugs, and triaging issues.
+Unlike the [Documentation Agent](/team/documentation-agent/) (which focuses on maintaining docs) or the [Analysis Agent](/team/analysis-agent/) (which focuses on insights and reports), the Engineering Agent performs hands-on engineering work: reviewing code, implementing features, fixing bugs, and triaging issues.
 
 ## How It Works
 
@@ -210,7 +210,7 @@ schema_version: 1
 
 The Engineering Agent uses the shared OAK Agents provider configured in **Agents page → Settings** (`/agents/settings`).
 
-See [OAK Agents](/open-agent-kit/features/codebase-intelligence/agents/#provider-configuration) for supported providers and setup details.
+See [OAK Agents](/team/agents/#provider-configuration) for supported providers and setup details.
 
 ## Security
 

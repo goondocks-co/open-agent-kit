@@ -112,7 +112,7 @@ pip install oak-ci --index-url https://test.pypi.org/simple/ --extra-index-url h
 1. Ensure `main` is green (`make check` passes, CI is clean).
 2. Update `CHANGELOG` or release notes if maintained.
 3. Create and push the tag (see formats above).
-4. Monitor the [Release workflow](https://github.com/goondocks-co/open-agent-kit/actions/workflows/release.yml).
+4. Monitor the [Release workflow](https://github.com/goondocks-co/actions/workflows/release.yml).
 5. Verify the GitHub Release was created with the correct `prerelease` flag.
 6. For stable: confirm [PyPI](https://pypi.org/project/oak-ci/) shows the new version and `brew upgrade oak-ci` works.
 7. For beta: confirm PyPI shows the pre-release and `brew install goondocks-co/oak/oak-ci-beta` works.
