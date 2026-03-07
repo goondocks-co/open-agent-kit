@@ -15,8 +15,8 @@ def test_ui_root_serves_html():
     assert "text/html" in response.headers["content-type"]
     # Vite generates lowercase doctype
     assert "<!doctype html>" in response.text.lower()
-    # New UI uses "Oak CI" title
-    assert "oak ci" in response.text.lower()
+    # UI uses "OAK Team" title
+    assert "oak team" in response.text.lower()
 
 
 def test_root_redirects_or_serves_html():
