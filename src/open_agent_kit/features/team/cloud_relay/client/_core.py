@@ -218,6 +218,7 @@ class CloudRelayClient(ObsSyncMixin, FederationMixin, SwarmMixin, ProxyMixin, Re
                 try:
                     await task
                 except asyncio.CancelledError:
+                    # Expected when awaiting tasks we explicitly cancelled during disconnect.
                     pass
 
         self._reconnect_task = None
@@ -243,6 +244,7 @@ class CloudRelayClient(ObsSyncMixin, FederationMixin, SwarmMixin, ProxyMixin, Re
             try:
                 await self._ws.close(CLOUD_RELAY_WS_CLOSE_NORMAL)
             except Exception:
+                # Best-effort socket close during disconnect; connection may already be gone.
                 pass
             self._ws = None
 
@@ -523,6 +525,7 @@ class CloudRelayClient(ObsSyncMixin, FederationMixin, SwarmMixin, ProxyMixin, Re
                                 await self._ws.close(CLOUD_RELAY_WS_CLOSE_GOING_AWAY)
                             return
                     except ValueError:
+                        # Ignore malformed heartbeat timestamps and retry next interval.
                         pass
 
         except asyncio.CancelledError:
