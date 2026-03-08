@@ -7,7 +7,7 @@ sidebar:
 
 The **DevTools** page provides power-user capabilities for managing the team intelligence backend. Open it from the sidebar in the [Dashboard](/team/dashboard/).
 
-![DevTools page showing stats and maintenance actions](../../../assets/images/devtools-page.png)
+![DevTools page showing stats and maintenance actions](../../../assets/images/devtools-collapsed.png)
 
 ## Stats at a Glance
 

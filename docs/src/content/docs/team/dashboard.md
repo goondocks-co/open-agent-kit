@@ -9,7 +9,7 @@ The dashboard is **your primary interface to OAK** after initial setup. It provi
 
 **Open the dashboard**: Run `oak team start --open`, or navigate to `http://localhost:{port}/ui` (use `oak ci port` or `oak team status` to find the port).
 
-![The OAK Dashboard home page](../../../assets/images/dashboard-home.png)
+![The OAK Dashboard home page](../../../assets/images/dashboard-team-topo-normal.png)
 
 ## Dashboard Home
 
@@ -22,7 +22,7 @@ The home page gives you an at-a-glance view of your project:
 
 Test and explore semantic search across your entire codebase, memories, and plans.
 
-![Semantic search results showing code, memories, and plans](../../../assets/images/dashboard-search.png)
+![Semantic search results showing code, memories, and plans](../../../assets/images/semantic-search-auth-middleware.png)
 
 - **Natural language queries** — Ask questions like "How is authentication handled?" or "Where are database migrations?"
 - **Category filters** — Search across All, Code Only, Memories Only, Plans Only, or Sessions Only

@@ -21,6 +21,9 @@ skills:
   - context-engineering
   - oak
   - swarm
+  - dependency-audit
+  - pattern-finder
+  - swarm-report
   auto_install: true
 team:
   agents:
@@ -47,10 +50,14 @@ team:
     similarity_threshold_no_context: 0.88
     search_limit: 10
   governance:
-    enabled: false
+    enabled: true
     log_allowed: false
     retention_days: 30
-    rules: []
+    rules: [{id: no-destructive-bash, description: Block destructive shell commands,
+        enabled: true, tool: Bash, pattern: rm\s+-rf, path_pattern: '', action: deny,
+        message: Destructive commands are blocked by governance policy.}, {id: warn-env-access,
+        description: Warn when agent reads or writes to env file, enabled: true, tool: '*',
+        pattern: '', path_pattern: '*.env', action: warn, message: ''}]
     data_collection:
       sync_observations: true
       federated_tools: true

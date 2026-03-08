@@ -47,14 +47,14 @@ SWARM_TOOL_DEFS: tuple[SwarmToolDef, ...] = (
         description=(
             "Search across all connected projects in the swarm. "
             "Returns results from multiple codebases with project attribution. "
-            "Use search_type to narrow results to code, memories, or plans."
+            "Use search_type to narrow results to memories, sessions, or plans."
         ),
         params=(
             ToolParam("query", str, "Natural language search query."),
             ToolParam(
                 "search_type",
                 str,
-                "Search scope: 'all', 'code', 'memory'.",
+                "Search scope: 'all', 'memory', 'sessions', 'plans'.",
                 required=False,
                 default="all",
             ),

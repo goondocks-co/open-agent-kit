@@ -1,16 +1,16 @@
 {
   "servers": {
-    "oak-ci": {
-      "command": "oak-dev",
-      "args": [
-        "team",
-        "mcp"
-      ]
-    },
     "oak-swarm": {
       "command": "oak-dev",
       "args": [
         "swarm",
+        "mcp"
+      ]
+    },
+    "oak-team": {
+      "command": "oak-dev",
+      "args": [
+        "team",
         "mcp"
       ]
     }

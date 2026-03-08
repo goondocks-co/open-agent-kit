@@ -7,9 +7,7 @@ started this daemon may have been deleted from disk.
 
 import asyncio
 import logging
-import os
 import shlex
-import signal
 import subprocess
 from http import HTTPStatus
 from pathlib import Path
@@ -47,6 +45,7 @@ from open_agent_kit.features.team.constants import (
     CI_UPGRADE_AND_RESTART_STATUS_UPGRADED,
 )
 from open_agent_kit.features.team.daemon.state import get_state
+from open_agent_kit.utils.daemon_lifecycle import delayed_shutdown
 from open_agent_kit.utils.platform import get_process_detach_kwargs
 
 logger = logging.getLogger(__name__)
@@ -113,13 +112,6 @@ def _run_upgrade_pipeline(
     return {"success": result.success, "failed": failed_items}
 
 
-async def _delayed_shutdown() -> None:
-    """Wait briefly then send SIGTERM to trigger a graceful shutdown."""
-    await asyncio.sleep(CI_RESTART_SHUTDOWN_DELAY_SECONDS)
-    logger.info(CI_SHUTDOWN_LOG_SIGTERM)
-    os.kill(os.getpid(), signal.SIGTERM)
-
-
 @router.post(CI_RESTART_API_PATH)
 async def self_restart() -> dict:
     """Trigger a graceful self-restart of the CI daemon.
@@ -164,7 +156,10 @@ async def self_restart() -> dict:
 
     # Schedule graceful shutdown
     logger.info(CI_RESTART_LOG_SCHEDULING_SHUTDOWN.format(delay=CI_RESTART_SHUTDOWN_DELAY_SECONDS))
-    asyncio.create_task(_delayed_shutdown(), name="self_restart_shutdown")
+    asyncio.create_task(
+        delayed_shutdown(CI_RESTART_SHUTDOWN_DELAY_SECONDS, log_message=CI_SHUTDOWN_LOG_SIGTERM),
+        name="self_restart_shutdown",
+    )
 
     return {"status": CI_RESTART_STATUS_RESTARTING}
 
@@ -255,6 +250,9 @@ async def upgrade_and_restart() -> dict:
         }
 
     logger.info(CI_RESTART_LOG_SCHEDULING_SHUTDOWN.format(delay=CI_RESTART_SHUTDOWN_DELAY_SECONDS))
-    asyncio.create_task(_delayed_shutdown(), name="upgrade_restart_shutdown")
+    asyncio.create_task(
+        delayed_shutdown(CI_RESTART_SHUTDOWN_DELAY_SECONDS, log_message=CI_SHUTDOWN_LOG_SIGTERM),
+        name="upgrade_restart_shutdown",
+    )
 
     return {"status": CI_UPGRADE_AND_RESTART_STATUS}

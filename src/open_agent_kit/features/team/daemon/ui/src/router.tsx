@@ -15,6 +15,7 @@ import TeamRelay from "@/components/team/TeamRelay";
 import TeamMembers from "@/components/team/TeamMembers";
 import TeamPolicy from "@/components/team/TeamPolicy";
 import TeamBackups from "@/components/team/TeamBackups";
+import Connect from "@/pages/Connect";
 import Help from "@/pages/Help";
 import AgentsLayout from "@/pages/AgentsLayout";
 import AgentsList from "@/components/agents/AgentsList";
@@ -84,6 +85,7 @@ export const router = createBrowserRouter([
                     { path: "sharing", element: <Navigate to="/team/relay" replace /> },
                 ]
             },
+            { path: "connect", element: <Connect /> },
             { path: "config", element: <Config /> },
             { path: "help", element: <Help /> },
             { path: "devtools", element: <DevTools /> },

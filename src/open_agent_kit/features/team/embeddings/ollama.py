@@ -33,7 +33,7 @@ class OllamaProvider(EmbeddingProvider):
         self,
         model: str,
         base_url: str = DEFAULT_BASE_URL,
-        timeout: float = 30.0,
+        timeout: float = 120.0,
         max_chars: int | None = None,
         dimensions: int | None = None,
     ):
@@ -176,39 +176,40 @@ class OllamaProvider(EmbeddingProvider):
                 provider=self.name,
             )
 
-        embeddings = []
         # Use resolved model name if available (handles namespaced models like manutic/nomic-embed-code)
         model_name = self._resolved_model or self._model
+
         try:
-            for text in truncated_texts:
-                response = self._client.post(
-                    f"{self._base_url}/api/embeddings",
-                    json={"model": model_name, "prompt": text},
+            # Use the batch /api/embed endpoint (Ollama ≥0.1.26) which accepts
+            # multiple inputs in a single request — dramatically faster than the
+            # legacy /api/embeddings endpoint that handles one text at a time.
+            response = self._client.post(
+                f"{self._base_url}/api/embed",
+                json={"model": model_name, "input": truncated_texts},
+            )
+
+            if response.status_code != 200:
+                error_text = response.text
+                if "-Inf" in error_text or "Inf" in error_text:
+                    raise EmbeddingError(
+                        f"Model '{model_name}' produced invalid values (infinity). "
+                        "This model may be unstable for embeddings. "
+                        "Try using 'nomic-embed-text' instead.",
+                        provider=self.name,
+                    )
+                raise EmbeddingError(
+                    f"Ollama returned status {response.status_code}: {error_text}",
+                    provider=self.name,
                 )
 
-                if response.status_code != 200:
-                    error_text = response.text
-                    # Check for known Ollama model issues
-                    if "-Inf" in error_text or "Inf" in error_text:
-                        raise EmbeddingError(
-                            f"Model '{model_name}' produced invalid values (infinity). "
-                            "This model may be unstable for embeddings. "
-                            "Try using 'nomic-embed-text' instead.",
-                            provider=self.name,
-                        )
-                    raise EmbeddingError(
-                        f"Ollama returned status {response.status_code}: {error_text}",
-                        provider=self.name,
-                    )
-
-                data = response.json()
-                embedding = data.get("embedding")
-                if not embedding:
-                    raise EmbeddingError(
-                        f"No embedding in Ollama response: {data}",
-                        provider=self.name,
-                    )
-                embeddings.append(embedding)
+            data = response.json()
+            embeddings = data.get("embeddings")
+            if not embeddings or len(embeddings) != len(truncated_texts):
+                raise EmbeddingError(
+                    f"Expected {len(truncated_texts)} embeddings, got "
+                    f"{len(embeddings) if embeddings else 0} from Ollama",
+                    provider=self.name,
+                )
 
         except httpx.RequestError as e:
             raise EmbeddingError(

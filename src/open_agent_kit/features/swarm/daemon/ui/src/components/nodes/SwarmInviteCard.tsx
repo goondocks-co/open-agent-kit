@@ -20,7 +20,7 @@ export function SwarmInviteCard() {
 
     if (!swarmUrl) return null;
 
-    const cliCommand = `oak team join-swarm --url ${swarmUrl} --token <token>`;
+    const cliCommand = `oak team join-swarm --url ${swarmUrl} --token ${showToken && swarmToken ? swarmToken : "<token>"}`;
 
     return (
         <Card>

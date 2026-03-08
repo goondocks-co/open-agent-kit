@@ -84,7 +84,7 @@
     ]
   },
   "mcpServers": {
-    "oak-ci": {
+    "oak-team": {
       "command": "oak-dev",
       "args": [
         "team",

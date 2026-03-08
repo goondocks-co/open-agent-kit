@@ -7,19 +7,19 @@
     }
   },
   "mcp": {
-    "oak-ci": {
-      "type": "local",
-      "command": [
-        "oak-dev",
-        "team",
-        "mcp"
-      ]
-    },
     "oak-swarm": {
       "type": "local",
       "command": [
         "oak-dev",
         "swarm",
+        "mcp"
+      ]
+    },
+    "oak-team": {
+      "type": "local",
+      "command": [
+        "oak-dev",
+        "team",
         "mcp"
       ]
     }

@@ -90,6 +90,10 @@ OAK_TOOL_ARCHIVE: Final[str] = "oak_archive"
 OAK_MCP_SERVER_NAME: Final[str] = "oak"
 OAK_MCP_SERVER_VERSION: Final[str] = "1.0.0"
 
+# Installed MCP server names (registered in agent MCP configs like .mcp.json)
+TEAM_MCP_INSTALLED_SERVER_NAME: Final[str] = "oak-team"
+TEAM_MCP_LEGACY_SERVER_NAME: Final[str] = "oak-ci"
+
 # Backward compatibility aliases (deprecated — use OAK_* names)
 CI_TOOL_SEARCH = OAK_TOOL_SEARCH
 CI_TOOL_MEMORIES = OAK_TOOL_MEMORIES

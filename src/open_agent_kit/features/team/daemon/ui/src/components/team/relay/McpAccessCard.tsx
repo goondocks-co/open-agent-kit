@@ -11,7 +11,7 @@ import { Globe, Bot, FileJson, FlaskConical, ExternalLink, Eye, EyeOff } from "l
 function McpJsonBlock({ mcpEndpoint, agentToken }: { mcpEndpoint: string; agentToken: string | null }) {
     const tokenPlaceholder = agentToken || "<your-agent-token>";
     const jsonConfig = JSON.stringify(
-        { mcpServers: { "oak-ci": { url: mcpEndpoint, headers: { Authorization: `Bearer ${tokenPlaceholder}` } } } },
+        { mcpServers: { "oak-team": { url: mcpEndpoint, headers: { Authorization: `Bearer ${tokenPlaceholder}` } } } },
         null, 2,
     );
     return (

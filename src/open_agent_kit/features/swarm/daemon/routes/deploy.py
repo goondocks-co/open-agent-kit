@@ -23,10 +23,12 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_DEPLOY_ERROR_NO_TOKEN,
     SWARM_DEPLOY_ERROR_NOT_SCAFFOLDED,
     SWARM_ROUTE_TAG,
-    SWARM_SCAFFOLD_NODE_MODULES_DIR,
     SWARM_SCAFFOLD_WORKER_SUBDIR,
 )
 from open_agent_kit.features.swarm.daemon.state import get_swarm_state
+from open_agent_kit.utils.worker_scaffold_shared import (
+    WORKER_SCAFFOLD_NODE_MODULES_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ async def deploy_status() -> dict:
     node_modules = (
         scaffolded
         and scaffold_dir is not None
-        and (scaffold_dir / SWARM_SCAFFOLD_NODE_MODULES_DIR).is_dir()
+        and (scaffold_dir / WORKER_SCAFFOLD_NODE_MODULES_DIR).is_dir()
     )
 
     worker_name = make_worker_name(state.swarm_id) if state.swarm_id else None

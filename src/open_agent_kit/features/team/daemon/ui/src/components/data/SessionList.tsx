@@ -131,7 +131,7 @@ export default function SessionList() {
     return (
         <div className="space-y-4">
             {/* Filter controls */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pb-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Terminal className="w-4 h-4" />
                     <span>Coding agent sessions</span>
@@ -199,26 +199,30 @@ export default function SessionList() {
                             "hover:bg-accent/5 transition-colors cursor-pointer group border-l-2",
                             isOtherMachine
                                 ? "border-l-indigo-400/50 dark:border-l-indigo-500/40"
-                                : "border-l-transparent"
+                                : "border-l-primary/20 dark:border-l-border"
                         )}>
                             <CardHeader className="py-4">
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn("p-2 rounded-md", session.status === "active" ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground")}>
+                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <div className={cn("p-2 rounded-md flex-shrink-0", session.status === "active" ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground")}>
                                             <Terminal className="w-4 h-4" />
                                         </div>
-                                        <div>
-                                            <CardTitle className="text-base font-medium flex items-center gap-2">
-                                                <span className="text-sm font-semibold text-primary/80">{session.agent || DEFAULT_AGENT_NAME}</span>
-                                                <span className="text-muted-foreground font-normal">&middot;</span>
-                                                <span className="font-normal truncate max-w-[600px]">{sessionTitle}</span>
-                                                <span className={cn("text-xs px-2 py-0.5 rounded-full border flex-shrink-0",
+                                        <div className="min-w-0">
+                                            <CardTitle className="text-base font-medium flex items-center gap-2 min-w-0">
+                                                <span className="text-sm font-semibold text-primary/80 flex-shrink-0">{session.agent || DEFAULT_AGENT_NAME}</span>
+                                                <span className="text-muted-foreground font-normal flex-shrink-0">&middot;</span>
+                                                <span className="font-normal truncate">{sessionTitle}</span>
+                                            </CardTitle>
+                                            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+                                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(session.started_at)}</span>
+                                                <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {session.activity_count} activities</span>
+                                                <span className={cn("px-2 py-0.5 rounded-full border",
                                                     session.status === "active" ? "border-green-500/50 text-green-500" : "border-muted-foreground/30 text-muted-foreground")}>
                                                     {session.status}
                                                 </span>
                                                 {isOtherMachine && session.source_machine_id && (
                                                     <span
-                                                        className="text-xs px-2 py-0.5 rounded-full border flex-shrink-0 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 flex items-center gap-1"
+                                                        className="px-2 py-0.5 rounded-full border bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 flex items-center gap-1"
                                                         title={`Machine: ${session.source_machine_id}`}
                                                     >
                                                         <Monitor className="w-3 h-3" />
@@ -230,17 +234,13 @@ export default function SessionList() {
                                                 {session.plan_count > 0 && (
                                                     <button
                                                         onClick={(e) => handlePlanClick(e, session.id)}
-                                                        className="text-xs px-2 py-0.5 rounded-full border flex-shrink-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 flex items-center gap-1 hover:bg-amber-500/20 transition-colors"
+                                                        className="px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 flex items-center gap-1 hover:bg-amber-500/20 transition-colors"
                                                         title="View plan"
                                                     >
                                                         <FileText className="w-3 h-3" />
                                                         {session.plan_count} {session.plan_count === 1 ? "plan" : "plans"}
                                                     </button>
                                                 )}
-                                            </CardTitle>
-                                            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
-                                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(session.started_at)}</span>
-                                                <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {session.activity_count} activities</span>
                                                 {session.parent_session_id && (
                                                     <button
                                                         onClick={(e) => {

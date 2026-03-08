@@ -66,7 +66,7 @@ class MCPInstaller:
         installer = MCPInstaller(
             project_root=Path("/path/to/project"),
             agent="claude",
-            server_name="oak-ci",
+            server_name="oak-team",
             command="oak team mcp"
         )
         result = installer.install()
@@ -84,7 +84,7 @@ class MCPInstaller:
         Args:
             project_root: Project root directory.
             agent: Agent name (e.g., "claude", "cursor").
-            server_name: Name for the MCP server (e.g., "oak-ci").
+            server_name: Name for the MCP server (e.g., "oak-team").
             command: Full command to run the MCP server (e.g., "oak team mcp").
         """
         self.project_root = project_root

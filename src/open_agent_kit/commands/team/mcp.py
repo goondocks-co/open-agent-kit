@@ -49,7 +49,7 @@ def team_mcp(
     For Claude Code, add to your MCP config (.mcp.json at project root):
     {
       "mcpServers": {
-        "oak-ci": {
+        "oak-team": {
           "type": "stdio",
           "command": "oak",
           "args": ["team", "mcp"]

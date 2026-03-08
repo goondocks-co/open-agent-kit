@@ -11,7 +11,7 @@
 
 You architect. AI agents build. But the reasoning, trade-offs, and lessons learned disappear between sessions. OAK records the full development story — plans, decisions, gotchas, and context — creating a history that's semantically richer than git could ever be. Then autonomous OAK Agents and Skills turn that captured intelligence into better documentation, deeper insights, and ultimately higher quality software, faster.
 
-![OAK CI Dashboard](docs/src/assets/images/ci-dashboard.png)
+![OAK CI Dashboard](docs/src/assets/images/dashboard-team-topo-normal.png)
 
 ```mermaid
 graph LR

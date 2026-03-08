@@ -233,6 +233,11 @@ export class SwarmObject implements DurableObject {
         return this.handleHealthCheck(request);
       }
 
+      // --- Status (used by MCP swarm_status tool) ---
+      if (path === "/api/swarm/status" && request.method === "GET") {
+        return this.handleStatus();
+      }
+
       // --- Config: min_oak_version ---
       if (path === "/api/swarm/config/min-oak-version") {
         if (request.method === "GET") {
@@ -257,6 +262,27 @@ export class SwarmObject implements DurableObject {
   private handleHealth(): Response {
     const count = this.getTeamCount();
     return Response.json({ status: "ok", team_count: count });
+  }
+
+  private handleStatus(): Response {
+    const teams = this.getAllTeams();
+    const now = Date.now();
+    let onlineCount = 0;
+    let staleCount = 0;
+    for (const team of teams) {
+      const lastBeat = new Date(team.last_heartbeat).getTime();
+      if (now - lastBeat > STALE_THRESHOLD_MS) {
+        staleCount++;
+      } else {
+        onlineCount++;
+      }
+    }
+    return Response.json({
+      status: "ok",
+      team_count: teams.length,
+      online_count: onlineCount,
+      stale_count: staleCount,
+    });
   }
 
   private async handleRegister(request: Request): Promise<Response> {

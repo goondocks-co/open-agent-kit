@@ -136,7 +136,7 @@ If you're the first team member setting up sync:
 
 1. Open the **Teams** page in the dashboard
 2. Click **Deploy** — this runs the turnkey deployment pipeline:
-   - Scaffolds a Cloudflare Worker project in `oak/cloud-relay/`
+   - Scaffolds a Cloudflare Worker project in `.oak/ci/cloud-relay/`
    - Installs dependencies and verifies Cloudflare authentication
    - Deploys the Worker via `wrangler`
    - Connects the daemon over WebSocket
@@ -158,7 +158,7 @@ If a teammate has already deployed a relay:
 2. Enter the **Relay URL** and **API Key** your teammate shared
 3. Click **Connect**
 
-Or configure manually in `.oak/ci/config.yaml`:
+Or configure manually in `.oak/config.yaml`:
 
 ```yaml
 team:
@@ -183,7 +183,7 @@ The Teams page shows real-time connection status:
 
 ```bash
 oak team status          # Show connection and sync status
-oak team members         # List online team members
+oak team members list    # List online team members
 ```
 
 ## Sync Settings
@@ -196,7 +196,7 @@ Control observation sync behavior from the Teams page or via configuration:
 | **Sync interval** | 3s | 1–60s | How often the outbox flushes observations to the relay |
 
 ```yaml
-# In .oak/ci/config.yaml
+# In .oak/config.yaml
 team:
   auto_sync: true
   sync_interval_seconds: 3
@@ -222,7 +222,7 @@ The `federated_tools` setting defaults to `true`. If you want a conservative opt
 :::
 
 ```yaml
-# In .oak/ci/config.yaml
+# In .oak/config.yaml
 team:
   governance:
     data_collection:
@@ -255,10 +255,10 @@ This disconnects the relay and clears team configuration. The Worker is **not** 
 
 ### Generated Directory Structure
 
-The deployment pipeline creates a Cloudflare Worker project at `oak/cloud-relay/`:
+The deployment pipeline creates a Cloudflare Worker project at `.oak/ci/cloud-relay/`:
 
 ```
-oak/cloud-relay/
+.oak/ci/cloud-relay/
   src/
     index.ts           # Worker entry point — HTTP routing and CORS
     auth.ts            # Token validation logic
@@ -296,18 +296,18 @@ This re-scaffolds with the latest template, re-installs dependencies, and re-dep
 ### Viewing Worker Logs
 
 ```bash
-cd oak/cloud-relay
+cd .oak/ci/cloud-relay
 npx wrangler tail
 ```
 
 ### Removing a Deployment
 
 ```bash
-cd oak/cloud-relay
+cd .oak/ci/cloud-relay
 npx wrangler delete        # Remove from Cloudflare
 ```
 
-To clean up the local scaffold: `rm -rf oak/cloud-relay`
+To clean up the local scaffold: `rm -rf .oak/ci/cloud-relay`
 
 ## Authentication
 
@@ -325,7 +325,7 @@ Both tokens are generated automatically during deployment using `secrets.token_u
 | Location | Contains |
 |----------|----------|
 | `.oak/config.yaml` | Both tokens |
-| `oak/cloud-relay/wrangler.toml` | Both tokens as env vars (excluded from git) |
+| `.oak/ci/cloud-relay/wrangler.toml` | Both tokens as env vars (excluded from git) |
 | Cloudflare Workers secrets | Both tokens (encrypted at rest) |
 
 ### Token Rotation
@@ -333,7 +333,7 @@ Both tokens are generated automatically during deployment using `secrets.token_u
 To rotate tokens (e.g., if compromised or to revoke all cloud agent access):
 
 ```bash
-rm -rf oak/cloud-relay
+rm -rf .oak/ci/cloud-relay
 oak team cloud-init
 ```
 
@@ -497,7 +497,7 @@ Generate a token in the Cloudflare dashboard under **My Profile > API Tokens** w
 - **Subdomain not set** — New accounts need to choose a `*.workers.dev` subdomain at **Workers & Pages > Overview**
 - **Durable Object migration error** — Re-scaffold: `oak team cloud-init --force`
 
-**npm install failed** — Delete and retry: `rm -rf oak/cloud-relay/node_modules && oak team cloud-init`
+**npm install failed** — Delete and retry: `rm -rf .oak/ci/cloud-relay/node_modules && oak team cloud-init`
 
 **Could not detect Worker URL** — Check Cloudflare dashboard for the URL, then connect manually: `oak team cloud-connect https://your-worker.your-subdomain.workers.dev`
 
@@ -516,15 +516,15 @@ Generate a token in the Cloudflare dashboard under **My Profile > API Tokens** w
 | Daemon not running | `oak team start` |
 | Daemon restarting | Wait for auto-reconnect (exponential backoff, up to 60s) |
 | Network interruption | Connection auto-recovers when network returns |
-| Token mismatch | Re-scaffold: `rm -rf oak/cloud-relay && oak team cloud-init` |
+| Token mismatch | Re-scaffold: `rm -rf .oak/ci/cloud-relay && oak team cloud-init` |
 
-**WebSocket disconnects frequently** — Check network stability. Review daemon logs (`tail -50 .oak/ci/daemon.log`) and Worker logs (`cd oak/cloud-relay && npx wrangler tail`).
+**WebSocket disconnects frequently** — Check network stability. Review daemon logs (`tail -50 .oak/ci/daemon.log`) and Worker logs (`cd .oak/ci/cloud-relay && npx wrangler tail`).
 
 ### Authentication Issues
 
-**"Token Invalid" or "Unauthorized"** — For the relay token (daemon→Worker), check `.oak/config.yaml`. For the agent token (cloud agent→Worker), verify it matches the dashboard. Re-scaffold to reset: `rm -rf oak/cloud-relay && oak team cloud-init`
+**"Token Invalid" or "Unauthorized"** — For the relay token (daemon→Worker), check `.oak/config.yaml`. For the agent token (cloud agent→Worker), verify it matches the dashboard. Re-scaffold to reset: `rm -rf .oak/ci/cloud-relay && oak team cloud-init`
 
-**Token lost** — Check the dashboard Teams page (reveal button), `.oak/config.yaml`, or `oak/cloud-relay/wrangler.toml`. If all lost, re-scaffold to generate fresh tokens.
+**Token lost** — Check the dashboard Teams page (reveal button), `.oak/config.yaml`, or `.oak/ci/cloud-relay/wrangler.toml`. If all lost, re-scaffold to generate fresh tokens.
 
 ### Timeout Errors
 

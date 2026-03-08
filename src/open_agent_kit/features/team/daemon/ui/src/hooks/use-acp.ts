@@ -2,7 +2,7 @@
  * React Query hooks for ACP server management.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
 import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
@@ -21,6 +21,7 @@ export interface AcpLogs {
 }
 
 const ACP_STATUS_REFETCH_INTERVAL_MS = 10000;
+const ACP_LOGS_REFETCH_INTERVAL_MS = 5000;
 
 export function useAcpStatus() {
     return usePowerQuery<AcpStatus>({
@@ -52,9 +53,10 @@ export function useAcpStop() {
 }
 
 export function useAcpLogs(lines: number = 100) {
-    return useQuery<AcpLogs>({
+    return usePowerQuery<AcpLogs>({
         queryKey: ["acp-logs", lines],
-        queryFn: ({ signal }) => fetchJson(`${API_ENDPOINTS.ACP_LOGS}?lines=${lines}`, { signal }),
-        refetchInterval: 5000,
+        queryFn: ({ signal }: { signal: AbortSignal }) => fetchJson(`${API_ENDPOINTS.ACP_LOGS}?lines=${lines}`, { signal }),
+        refetchInterval: ACP_LOGS_REFETCH_INTERVAL_MS,
+        pollCategory: "realtime",
     });
 }

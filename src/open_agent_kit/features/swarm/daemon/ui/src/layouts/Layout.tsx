@@ -1,12 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
     LayoutDashboard,
     Search,
     Network,
-    Hexagon,
+    Plug,
     Rocket,
-    Bot,
     ScrollText,
     Settings,
     PanelLeftClose,
@@ -17,8 +16,10 @@ import {
     RefreshCw,
     Info,
 } from "lucide-react";
-import { cn } from "@oak/ui/lib/utils";
+import { cn, humanizeSlug } from "@oak/ui/lib/utils";
 import { useTheme } from "@oak/ui/components/theme-provider";
+import { FontSelector } from "@oak/ui/components/ui/font-selector";
+import { DensitySelector } from "@oak/ui/components/ui/density-selector";
 import { AboutDialog } from "@oak/ui/components/ui/about-dialog";
 import type { AboutDialogConfig } from "@oak/ui/components/ui/about-dialog";
 import { useSwarmStatus } from "@/hooks/use-swarm-status";
@@ -42,8 +43,8 @@ const NAV_ITEMS = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
     { to: "/search", icon: Search, label: "Search" },
     { to: "/nodes", icon: Network, label: "Nodes" },
+    { to: "/connect", icon: Plug, label: "Connect" },
     { to: "/deploy", icon: Rocket, label: "Deploy" },
-    { to: "/agents", icon: Bot, label: "Agents" },
     { to: "/logs", icon: ScrollText, label: "Logs" },
     { to: "/config", icon: Settings, label: "Settings" },
 ] as const;
@@ -58,6 +59,11 @@ export default function Layout() {
     const { restart, isRestarting, error: restartError } = useRestart();
     const { data: channelData } = useChannel();
 
+    const swarmDisplayName = useMemo(
+        () => swarmStatus?.swarm_id ? humanizeSlug(swarmStatus.swarm_id) : "Oak Swarm",
+        [swarmStatus?.swarm_id],
+    );
+
     const toggleCollapse = () => {
         const next = !collapsed;
         setCollapsed(next);
@@ -65,7 +71,7 @@ export default function Layout() {
     };
 
     return (
-        <div className="flex h-screen">
+        <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans">
             <AboutDialog
                 open={aboutOpen}
                 onOpenChange={setAboutOpen}
@@ -80,28 +86,32 @@ export default function Layout() {
                 }`}
             >
                 {/* Header */}
-                <div className="flex items-center gap-2 border-b px-4 py-3">
-                    <Hexagon className="h-5 w-5 text-primary shrink-0" />
-                    {!collapsed && (
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-semibold text-sm truncate">
-                                {swarmStatus?.swarm_id || "Oak Swarm"}
-                            </span>
-                            {channelData?.current_channel === "beta" && (
-                                <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
-                                    Beta
-                                </span>
-                            )}
+                <div className={cn("border-b", collapsed ? "p-3" : "px-4 py-3")}>
+                    <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2")}>
+                        <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                            <img src="/favicon.svg" alt="Oak Swarm" className="w-6 h-6 object-contain" />
                         </div>
-                    )}
-                </div>
-
-                {/* Swarm ID */}
-                {!collapsed && swarmStatus?.swarm_id && (
-                    <div className="px-4 py-2 text-xs text-muted-foreground truncate border-b">
-                        {swarmStatus.swarm_id}
+                        {!collapsed && (
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-sm truncate">
+                                        {swarmDisplayName}
+                                    </span>
+                                    {channelData?.current_channel === "beta" && (
+                                        <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
+                                            Beta
+                                        </span>
+                                    )}
+                                </div>
+                                {swarmStatus?.swarm_id && (
+                                    <span className="text-xs text-muted-foreground truncate block">
+                                        {swarmStatus.swarm_id}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
 
                 {/* Nav */}
                 <nav className="flex-1 py-2 space-y-1 px-2">
@@ -193,6 +203,12 @@ export default function Layout() {
                             <Moon className="w-4 h-4" />
                         </button>
                     </div>
+
+                    {/* Density selector */}
+                    <DensitySelector collapsed={collapsed} />
+
+                    {/* Font selector */}
+                    <FontSelector collapsed={collapsed} />
 
                     {/* Collapse toggle */}
                     <button

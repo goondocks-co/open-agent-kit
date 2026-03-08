@@ -16,10 +16,15 @@ if TYPE_CHECKING:
     from open_agent_kit.features.team.daemon.manager import DaemonManager
 
 from open_agent_kit.config.paths import OAK_DIR
+from open_agent_kit.features.swarm.constants import SWARM_MCP_INSTALLED_SERVER_NAME
 from open_agent_kit.features.team.cli_command import (
     resolve_ci_cli_command,
 )
-from open_agent_kit.features.team.constants import CI_DATA_DIR
+from open_agent_kit.features.team.constants import (
+    CI_DATA_DIR,
+    TEAM_MCP_INSTALLED_SERVER_NAME,
+    TEAM_MCP_LEGACY_SERVER_NAME,
+)
 from open_agent_kit.features.team.daemon.manager import get_project_port
 
 logger = logging.getLogger(__name__)
@@ -654,14 +659,14 @@ class TeamService:
         Returns:
             Dictionary mapping agent names to installation status.
         """
-        from open_agent_kit.features.team.mcp import install_mcp_server
+        from open_agent_kit.features.team.mcp import install_mcp_server, remove_mcp_server
 
         # Load MCP server configuration
         mcp_config = self._load_mcp_config()
         if not mcp_config:
             return dict.fromkeys(agents, "error: MCP config not found")
 
-        server_name = mcp_config.get("name", "oak-ci")
+        server_name = mcp_config.get("name", TEAM_MCP_INSTALLED_SERVER_NAME)
         # Build command (no longer uses --project flag, relies on cwd)
         command = mcp_config.get("command", f"{MCP_CLI_COMMAND_PLACEHOLDER} team mcp")
         command = command.replace(
@@ -671,6 +676,20 @@ class TeamService:
         # Remove any {{PROJECT_ROOT}} placeholder if present (legacy configs)
         command = command.replace("--project {{PROJECT_ROOT}}", "").strip()
         command = command.replace("{{PROJECT_ROOT}}", "").strip()
+
+        # Legacy name cleanup: remove stale entries left from before the
+        # rename to the current server name.  Safe to call even if the old
+        # entry doesn't exist — remove_mcp_server is a no-op in that case.
+        if server_name != TEAM_MCP_LEGACY_SERVER_NAME:
+            for agent in agents:
+                try:
+                    remove_mcp_server(
+                        project_root=self.project_root,
+                        agent=agent,
+                        server_name=TEAM_MCP_LEGACY_SERVER_NAME,
+                    )
+                except Exception:
+                    pass  # best-effort cleanup
 
         results = {}
         for agent in agents:
@@ -706,7 +725,7 @@ class TeamService:
         if not mcp_config:
             return dict.fromkeys(agents, "skipped (swarm mcp config not found)")
 
-        server_name = mcp_config.get("name", "oak-swarm")
+        server_name = mcp_config.get("name", SWARM_MCP_INSTALLED_SERVER_NAME)
         command = mcp_config.get("command", f"{MCP_CLI_COMMAND_PLACEHOLDER} swarm mcp")
         command = command.replace(
             MCP_CLI_COMMAND_PLACEHOLDER,
@@ -751,7 +770,11 @@ class TeamService:
 
         # Load MCP server configuration to get server name
         mcp_config = self._load_mcp_config()
-        server_name = mcp_config.get("name", "oak-ci") if mcp_config else "oak-ci"
+        server_name = (
+            mcp_config.get("name", TEAM_MCP_INSTALLED_SERVER_NAME)
+            if mcp_config
+            else TEAM_MCP_INSTALLED_SERVER_NAME
+        )
 
         results = {}
         for agent in agents:

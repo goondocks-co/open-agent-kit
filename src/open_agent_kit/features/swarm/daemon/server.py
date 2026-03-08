@@ -9,12 +9,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from open_agent_kit.features.agent_runtime.executor import AgentExecutor
-from open_agent_kit.features.agent_runtime.registry import AgentRegistry
 from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_LOG_LEVEL,
     CI_CONFIG_SWARM_KEY_LOG_ROTATION,
-    SWARM_AGENTS_DEFINITIONS_DIR,
     SWARM_AUTH_ENV_VAR,
     SWARM_DAEMON_DEFAULT_LOG_LEVEL,
     SWARM_ENV_VAR_CUSTOM_DOMAIN,
@@ -27,7 +24,6 @@ from open_agent_kit.features.swarm.constants import (
 )
 from open_agent_kit.features.swarm.daemon.middleware import TokenAuthMiddleware
 from open_agent_kit.features.swarm.daemon.routes import (
-    agents,
     config,
     deploy,
     fetch,
@@ -44,7 +40,6 @@ from open_agent_kit.features.swarm.daemon.routes import (
 from open_agent_kit.features.swarm.daemon.state import (
     get_swarm_state,
 )
-from open_agent_kit.features.team.config.agents import AgentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -115,46 +110,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "OAK_SWARM_URL or OAK_SWARM_TOKEN not set; swarm daemon running without worker connection"
         )
 
-    # Initialize agent runtime
-    try:
-        # Definitions live inside the swarm feature package
-        definitions_dir = Path(__file__).parent.parent / SWARM_AGENTS_DEFINITIONS_DIR
-
-        registry = AgentRegistry(
-            definitions_dir=definitions_dir,
-            project_root=None,
-        )
-        registry.load_all()
-        logger.debug("Agent definitions dir: %s", definitions_dir)
-        logger.debug("Loaded templates: %s", [t.name for t in registry.templates.values()])
-
-        agent_config = AgentConfig(enabled=True)
-        executor = AgentExecutor(
-            project_root=Path.cwd(),
-            agent_config=agent_config,
-        )
-
-        state.agent_registry = registry
-        state.agent_executor = executor
-
-        # Inject swarm MCP server so agents can use swarm tools
-        if state.http_client:
-            try:
-                from open_agent_kit.features.swarm.agents.tools import (
-                    create_swarm_mcp_server,
-                )
-
-                swarm_mcp = create_swarm_mcp_server(state.http_client)
-                if swarm_mcp:
-                    executor.add_mcp_server("oak-swarm", swarm_mcp)
-                    logger.info("Swarm MCP server injected into agent executor")
-            except Exception as mcp_exc:
-                logger.warning("Failed to inject swarm MCP server: %s", mcp_exc)
-
-        logger.info("Agent runtime initialized with %d templates", len(registry.templates))
-    except Exception as exc:
-        logger.warning("Failed to initialize agent runtime: %s", exc)
-
     yield
 
     # Cleanup
@@ -180,7 +135,6 @@ def create_app() -> FastAPI:
     app.include_router(fetch.router)
     app.include_router(nodes.router)
     app.include_router(status.router)
-    app.include_router(agents.router)
     app.include_router(restart.router)
     app.include_router(config.router)
     app.include_router(logs.router)

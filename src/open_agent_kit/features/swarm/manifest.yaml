@@ -5,6 +5,8 @@ version: "1.0.0"
 default_enabled: false
 dependencies:
   - team
-  - agent-runtime
 skills:
   - swarm
+  - swarm-report
+  - dependency-audit
+  - pattern-finder

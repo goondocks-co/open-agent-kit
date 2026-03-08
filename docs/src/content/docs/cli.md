@@ -82,6 +82,49 @@ oak skill remove <n>   # Remove a skill
 oak skill refresh      # Refresh all installed skills
 ```
 
+## Rules Management
+
+Manage project constitutions and agent instruction files:
+
+```bash
+oak rules analyze          # Analyze project for constitution creation
+oak rules analyze --json   # Output JSON for agent parsing
+oak rules sync-agents      # Sync agent instruction files with constitution
+oak rules sync-agents --dry-run  # Preview changes
+oak rules detect-existing  # Detect existing agent instruction files
+```
+
+### `oak rules analyze`
+
+Performs comprehensive project analysis to determine if the project is greenfield, brownfield-minimal, or brownfield-mature. Useful for understanding the project context before creating a constitution.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON for agent parsing |
+
+### `oak rules sync-agents`
+
+Ensures all configured agents have instruction files that reference the project constitution. Creates files for agents that don't have one, appends references to existing files.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON for agent parsing |
+| `--dry-run` | Show what would be done without making changes |
+
+### `oak rules detect-existing`
+
+Checks for existing agent instruction files (`.github/copilot-instructions.md`, `CLAUDE.md`, `AGENTS.md`, etc.) and reports what exists.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON for agent parsing |
+
 ## Language Parsers
 
 Add language support for better code understanding:
@@ -123,7 +166,8 @@ oak team cloud-url           # Print Worker URL (for scripting)
 ### Team Members
 
 ```bash
-oak team members             # List online team members
+oak team members status      # Show team sync status
+oak team members list        # List online team members
 ```
 
 ### MCP Server
@@ -143,7 +187,7 @@ oak ci backup      # Create a backup
 oak ci restore     # Restore from backup
 oak ci index       # Rebuild the codebase index
 oak ci config      # Manage CI configuration
-oak ci search      # CLI semantic search
+oak ci search QUERY # CLI semantic search
 oak ci memories    # Query stored memories
 oak ci sessions    # Query session history
 ```
@@ -167,13 +211,13 @@ The ACP server requires the daemon to be running (`oak team start`). It communic
 Swarm enables cross-project federation — connecting multiple OAK projects into a unified search and agent network via a Cloudflare Worker.
 
 ```bash
-oak swarm create             # Create a new swarm configuration
-oak swarm deploy             # Deploy the swarm Worker to Cloudflare
-oak swarm destroy            # Remove the swarm Worker
-oak swarm start              # Start the swarm daemon
-oak swarm stop               # Stop the swarm daemon
-oak swarm restart            # Restart the swarm daemon
-oak swarm status             # Show swarm status and connected nodes
+oak swarm create -n NAME     # Create a new swarm configuration
+oak swarm deploy -n NAME     # Deploy the swarm Worker to Cloudflare
+oak swarm destroy -n NAME    # Remove the swarm Worker
+oak swarm start -n NAME      # Start the swarm daemon
+oak swarm stop -n NAME       # Stop the swarm daemon
+oak swarm restart -n NAME    # Restart the swarm daemon
+oak swarm status -n NAME     # Show swarm status and connected nodes
 oak swarm mcp                # Start the swarm MCP server
 ```
 

@@ -155,7 +155,7 @@ export function LogViewer({
 
             {/* Terminal card */}
             <Card className="flex-1 overflow-hidden flex flex-col">
-                <CardContent className="flex-1 p-0 overflow-hidden bg-black text-green-400 font-mono text-xs rounded-b-lg">
+                <CardContent className="flex-1 p-0 overflow-hidden bg-muted dark:bg-background text-foreground dark:text-green-400 font-mono text-xs rounded-b-lg">
                     {isLoading ? (
                         <div className="p-4">Loading logs...</div>
                     ) : isError ? (

@@ -14,16 +14,16 @@ log_user_prompt = true
 endpoint = "http://127.0.0.1:38388/v1/logs"
 protocol = "json"
 
-[mcp_servers.oak-ci]
-command = "oak-dev"
-args = [
-    "team",
-    "mcp",
-]
-
 [mcp_servers.oak-swarm]
 command = "oak-dev"
 args = [
     "swarm",
+    "mcp",
+]
+
+[mcp_servers.oak-team]
+command = "oak-dev"
+args = [
+    "team",
     "mcp",
 ]

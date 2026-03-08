@@ -6,12 +6,6 @@ export const API_ENDPOINTS = {
     SWARM_SEARCH: "/api/swarm/search",
     SWARM_FETCH: "/api/swarm/fetch",
 
-    // Agents
-    AGENTS: "/api/agents",
-    AGENTS_RELOAD: "/api/agents/reload",
-    AGENTS_TASK_RUN: "/api/agents/tasks/:taskName/run",
-    AGENTS_RUNS: "/api/agents/runs",
-
     // Node management
     SWARM_NODE_REMOVE: "/api/swarm/nodes/remove",
     SWARM_HEALTH_CHECK: "/api/swarm/health-check",

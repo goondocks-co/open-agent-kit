@@ -32,6 +32,7 @@ from open_agent_kit.features.swarm.constants import (  # noqa: E402
     SWARM_DAEMON_DEFAULT_PORT,
     SWARM_DAEMON_PORT_FILE,
     SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS,
+    SWARM_MCP_INSTALLED_SERVER_NAME,
     SWARM_MCP_TIMEOUT_PADDING_SECONDS,
     SWARM_RESPONSE_KEY_ERROR,
     SWARM_TOOL_FETCH,
@@ -166,7 +167,7 @@ def create_mcp_server() -> FastMCP:
     atexit.register(http_client.close)
 
     mcp = FastMCP(
-        "oak-swarm",
+        SWARM_MCP_INSTALLED_SERVER_NAME,
         json_response=True,
     )
 

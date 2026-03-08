@@ -18,7 +18,7 @@ OAK maintains two separate log files:
 
 Switch between logs using the tabs at the top of the page.
 
-![Logs page with daemon log and tag chip filters](../../../assets/images/logs-daemon.png)
+![Logs page with daemon log and tag chip filters](../../../assets/images/logs-debug-collapsed.png)
 
 ## Features
 

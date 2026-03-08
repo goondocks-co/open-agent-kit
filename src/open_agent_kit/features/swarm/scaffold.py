@@ -15,17 +15,17 @@ import jinja2
 
 from open_agent_kit.features.swarm.constants import (
     SWARM_DEFAULT_WORKER_NAME_PREFIX,
-    SWARM_JINJA2_EXTENSION,
-    SWARM_SCAFFOLD_GITIGNORE_ENTRIES,
     SWARM_SCAFFOLD_OUTPUT_DIR,
-    SWARM_SCAFFOLD_PACKAGE_JSON,
-    SWARM_SCAFFOLD_WRANGLER_TOML,
-    SWARM_TOKEN_BYTES,
-    SWARM_WORKER_NAME_FALLBACK,
-    SWARM_WORKER_NAME_MAX_LENGTH,
     SWARM_WORKER_TEMPLATE_DIR,
 )
 from open_agent_kit.utils.worker_scaffold_shared import (
+    WORKER_JINJA2_EXTENSION,
+    WORKER_NAME_FALLBACK,
+    WORKER_NAME_MAX_LENGTH,
+    WORKER_SCAFFOLD_GITIGNORE_ENTRIES,
+    WORKER_SCAFFOLD_PACKAGE_JSON,
+    WORKER_SCAFFOLD_WRANGLER_TOML,
+    WORKER_TOKEN_BYTES,
     ScaffoldConfig,
 )
 from open_agent_kit.utils.worker_scaffold_shared import (
@@ -57,15 +57,15 @@ _TEMPLATE_DIR = Path(__file__).parent / SWARM_WORKER_TEMPLATE_DIR
 
 _CONFIG = ScaffoldConfig(
     template_dir=_TEMPLATE_DIR,
-    token_bytes=SWARM_TOKEN_BYTES,
+    token_bytes=WORKER_TOKEN_BYTES,
     worker_name_prefix=SWARM_DEFAULT_WORKER_NAME_PREFIX,
-    worker_name_max_length=SWARM_WORKER_NAME_MAX_LENGTH,
-    worker_name_fallback=SWARM_WORKER_NAME_FALLBACK,
-    jinja2_extension=SWARM_JINJA2_EXTENSION,
+    worker_name_max_length=WORKER_NAME_MAX_LENGTH,
+    worker_name_fallback=WORKER_NAME_FALLBACK,
+    jinja2_extension=WORKER_JINJA2_EXTENSION,
     scaffold_output_dir=SWARM_SCAFFOLD_OUTPUT_DIR,
-    scaffold_package_json=SWARM_SCAFFOLD_PACKAGE_JSON,
-    scaffold_wrangler_toml=SWARM_SCAFFOLD_WRANGLER_TOML,
-    scaffold_gitignore_entries=SWARM_SCAFFOLD_GITIGNORE_ENTRIES,
+    scaffold_package_json=WORKER_SCAFFOLD_PACKAGE_JSON,
+    scaffold_wrangler_toml=WORKER_SCAFFOLD_WRANGLER_TOML,
+    scaffold_gitignore_entries=WORKER_SCAFFOLD_GITIGNORE_ENTRIES,
 )
 
 
@@ -155,7 +155,7 @@ def render_worker_template(
     shutil.copytree(
         _TEMPLATE_DIR,
         output_dir,
-        ignore=shutil.ignore_patterns(f"*{SWARM_JINJA2_EXTENSION}"),
+        ignore=shutil.ignore_patterns(f"*{WORKER_JINJA2_EXTENSION}"),
     )
 
     # Render .j2 templates with Jinja2.
@@ -172,19 +172,19 @@ def render_worker_template(
         undefined=jinja2.StrictUndefined,
     )
 
-    for j2_path in _TEMPLATE_DIR.rglob(f"*{SWARM_JINJA2_EXTENSION}"):
+    for j2_path in _TEMPLATE_DIR.rglob(f"*{WORKER_JINJA2_EXTENSION}"):
         rel = j2_path.relative_to(_TEMPLATE_DIR)
         template = jinja_env.get_template(str(rel))
         rendered = template.render(template_vars)
 
         # Write without the .j2 extension.
-        dest = output_dir / str(rel).removesuffix(SWARM_JINJA2_EXTENSION)
+        dest = output_dir / str(rel).removesuffix(WORKER_JINJA2_EXTENSION)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(rendered, encoding="utf-8")
 
     # Write .gitignore to keep secrets and build artifacts out of version control.
     gitignore_path = output_dir / ".gitignore"
-    gitignore_content = "\n".join(SWARM_SCAFFOLD_GITIGNORE_ENTRIES) + "\n"
+    gitignore_content = "\n".join(WORKER_SCAFFOLD_GITIGNORE_ENTRIES) + "\n"
     gitignore_path.write_text(gitignore_content, encoding="utf-8")
 
     return output_dir
@@ -218,9 +218,9 @@ def render_wrangler_config(
         undefined=jinja2.StrictUndefined,
     )
 
-    template_name = SWARM_SCAFFOLD_WRANGLER_TOML + SWARM_JINJA2_EXTENSION
+    template_name = WORKER_SCAFFOLD_WRANGLER_TOML + WORKER_JINJA2_EXTENSION
     template = jinja_env.get_template(template_name)
     rendered = template.render(template_vars)
 
-    dest = scaffold_dir / SWARM_SCAFFOLD_WRANGLER_TOML
+    dest = scaffold_dir / WORKER_SCAFFOLD_WRANGLER_TOML
     dest.write_text(rendered, encoding="utf-8")

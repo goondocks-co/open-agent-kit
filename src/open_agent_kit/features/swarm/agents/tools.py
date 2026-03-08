@@ -19,6 +19,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from open_agent_kit.features.swarm.constants import (
+    SWARM_MCP_INSTALLED_SERVER_NAME,
     SWARM_TOOL_HEALTH_CHECK,
     SWARM_TOOL_NODES,
     SWARM_TOOL_SEARCH,
@@ -85,7 +86,7 @@ def create_swarm_tools(
             SWARM_TOOL_DEFS_BY_NAME[SWARM_TOOL_SEARCH].description,
             {
                 "query": str,  # Natural language search query
-                "search_type": str,  # 'all', 'code', 'memory', or 'plans'
+                "search_type": str,  # 'all', 'memory', 'sessions', or 'plans'
                 "limit": int,  # Maximum results per node (1-50)
             },
         )
@@ -170,6 +171,7 @@ def create_swarm_tools(
                             "text": json.dumps({"connected": False, "error": str(e)}, indent=2),
                         }
                     ],
+                    "is_error": True,
                 }
 
         tools.append(swarm_status)
@@ -248,7 +250,7 @@ def create_swarm_mcp_server(
         return None
 
     return create_sdk_mcp_server(
-        name="oak-swarm",
+        name=SWARM_MCP_INSTALLED_SERVER_NAME,
         version="0.1.0",
         tools=tools,
     )

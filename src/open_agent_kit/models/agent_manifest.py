@@ -442,7 +442,7 @@ class AgentHooksConfig(BaseModel):
     )
     plugin_file: str | None = Field(
         default=None,
-        description="Plugin filename to install (e.g., 'oak-ci.ts')",
+        description="Plugin filename to install (e.g., 'oak-team.ts')",
     )
     # OTEL-specific fields (for type="otel")
     otel: AgentOtelConfig | None = Field(

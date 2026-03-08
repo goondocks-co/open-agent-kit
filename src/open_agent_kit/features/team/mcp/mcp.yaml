@@ -8,7 +8,7 @@
 # No shell scripts are needed - it's all done in Python for cross-platform support.
 
 # Server identity
-name: oak-ci
+name: oak-team
 description: "OAK Team - semantic code search and persistent memory for AI assistants"
 
 # The command to run the MCP server
@@ -20,7 +20,7 @@ command: "{oak-cli-command} team mcp"
 # Actual tool registration lives in daemon/mcp_server.py and daemon/mcp_tools.py.
 capabilities:
   tools:
-    # Core CI tools
+    # Core team tools
     - oak_search            # Semantic search across code, memories, plans, sessions
     - oak_remember          # Store observations for future sessions
     - oak_context           # Get curated context for a task

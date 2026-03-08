@@ -58,7 +58,7 @@ async def save_governance_config(request: Request) -> dict[str, Any]:
     full_dict[CI_CONFIG_KEY_GOVERNANCE] = gov_config.to_dict()
 
     updated = CIConfig.from_dict(full_dict)
-    save_ci_config(state.project_root, updated)
+    save_ci_config(state.project_root, updated, include_governance=True)
 
     # Invalidate cached config so DaemonState picks up changes
     state.ci_config = None

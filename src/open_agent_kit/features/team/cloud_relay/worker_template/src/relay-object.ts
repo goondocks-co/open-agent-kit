@@ -1564,6 +1564,8 @@ export class RelayObject implements DurableObject {
         "SELECT machine_id, tools_json, metadata_json, is_home FROM node_state ORDER BY registered_at ASC",
       ).toArray();
 
+      console.log(`[rehydrate] Found ${rows.length} node(s) in SQLite`);
+
       for (const row of rows) {
         const machineId = row.machine_id as string;
 
@@ -1858,8 +1860,12 @@ export class RelayObject implements DurableObject {
   /** DO alarm handler — survives hibernation unlike setInterval. */
   async alarm(): Promise<void> {
     if (this.swarmConnected && this.swarmUrl && this.swarmToken) {
-      await this.sendSwarmHeartbeat();
-      // Schedule next heartbeat
+      try {
+        await this.sendSwarmHeartbeat();
+      } catch (err) {
+        console.error("[alarm] Swarm heartbeat threw unexpectedly:", err);
+      }
+      // Always reschedule — even if this heartbeat failed, the next one may succeed.
       this.state.storage.setAlarm(Date.now() + SWARM_HEARTBEAT_INTERVAL_MS);
     }
   }

@@ -138,7 +138,7 @@ If you change embedding models, rebuild the memory index from the dashboard's **
 If you are building your own tools or agent integrations, you can hit the hook endpoints directly:
 
 ```http
-POST /api/oak/ci/hooks/session/start
+POST /api/oak/ci/session-start
 {
   "agent": "custom-agent",
   "project_path": "/path/to/project"

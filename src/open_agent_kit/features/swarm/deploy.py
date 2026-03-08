@@ -5,15 +5,13 @@ Thin wrapper around :mod:`worker_deploy_shared` with Swarm constants.
 
 from pathlib import Path
 
-from open_agent_kit.features.swarm.constants import (
-    SWARM_DEPLOY_NPM_INSTALL_TIMEOUT,
-    SWARM_DEPLOY_NPM_NOT_FOUND,
-    SWARM_DEPLOY_NPX_NOT_FOUND,
-    SWARM_DEPLOY_WRANGLER_TIMEOUT,
-    SWARM_DEPLOY_WRANGLER_URL_PATTERN,
-    SWARM_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
-)
 from open_agent_kit.utils.worker_deploy_shared import (
+    WORKER_DEPLOY_NPM_INSTALL_TIMEOUT,
+    WORKER_DEPLOY_NPM_NOT_FOUND,
+    WORKER_DEPLOY_NPX_NOT_FOUND,
+    WORKER_DEPLOY_WRANGLER_TIMEOUT,
+    WORKER_DEPLOY_WRANGLER_URL_PATTERN,
+    WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
     DeployConfig,
     WranglerAuthInfo,
 )
@@ -31,12 +29,12 @@ from open_agent_kit.utils.worker_deploy_shared import (
 )
 
 _CONFIG = DeployConfig(
-    npm_install_timeout=SWARM_DEPLOY_NPM_INSTALL_TIMEOUT,
-    wrangler_timeout=SWARM_DEPLOY_WRANGLER_TIMEOUT,
-    wrangler_whoami_timeout=SWARM_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
-    wrangler_url_pattern=SWARM_DEPLOY_WRANGLER_URL_PATTERN,
-    npm_not_found=SWARM_DEPLOY_NPM_NOT_FOUND,
-    npx_not_found=SWARM_DEPLOY_NPX_NOT_FOUND,
+    npm_install_timeout=WORKER_DEPLOY_NPM_INSTALL_TIMEOUT,
+    wrangler_timeout=WORKER_DEPLOY_WRANGLER_TIMEOUT,
+    wrangler_whoami_timeout=WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
+    wrangler_url_pattern=WORKER_DEPLOY_WRANGLER_URL_PATTERN,
+    npm_not_found=WORKER_DEPLOY_NPM_NOT_FOUND,
+    npx_not_found=WORKER_DEPLOY_NPX_NOT_FOUND,
 )
 
 __all__ = [

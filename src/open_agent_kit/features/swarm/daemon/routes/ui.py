@@ -47,6 +47,7 @@ async def favicon_svg() -> Response:
 @router.get("/", response_class=HTMLResponse)
 @router.get("/search", response_class=HTMLResponse)
 @router.get("/nodes", response_class=HTMLResponse)
+@router.get("/connect", response_class=HTMLResponse)
 @router.get("/deploy", response_class=HTMLResponse)
 @router.get("/agents", response_class=HTMLResponse)
 @router.get("/logs", response_class=HTMLResponse)

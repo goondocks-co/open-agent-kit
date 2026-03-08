@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, TypedDict
 if TYPE_CHECKING:
     from open_agent_kit.models.agent_manifest import AgentManifest
 
+from open_agent_kit.features.team.constants import TEAM_MCP_INSTALLED_SERVER_NAME
 from open_agent_kit.models.enums import HookType
 from open_agent_kit.services.agent_service import AgentService
 from open_agent_kit.utils.naming import feature_name_to_dir as _feature_name_to_dir
@@ -193,7 +194,7 @@ class McpConfigChecker:
 
             with open(mcp_config_path) as f:
                 mcp_config = yaml.safe_load(f)
-            server_name = mcp_config.get("name", "oak-ci")
+            server_name = mcp_config.get("name", TEAM_MCP_INSTALLED_SERVER_NAME)
         except Exception:
             return False
 

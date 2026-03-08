@@ -9,6 +9,8 @@ sidebar:
 
 Open the Governance page from the dashboard sidebar, or navigate to `http://localhost:{port}/governance`.
 
+![The OAK Dashboard home page](../../../assets/images/governance-list-collapsed.png)
+
 ## Why Governance?
 
 AI coding agents are powerful, but that power comes with risk. An agent might accidentally delete critical files, expose secrets, or make changes you didn't expect. Governance helps you:

@@ -13,7 +13,6 @@ import asyncio
 import logging
 import os
 import shlex
-import signal
 import subprocess
 from http import HTTPStatus
 
@@ -35,47 +34,18 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_RESTART_STATUS_RESTARTING,
     SWARM_RESTART_SUBPROCESS_DELAY_SECONDS,
 )
+from open_agent_kit.utils.daemon_lifecycle import delayed_shutdown
 from open_agent_kit.utils.platform import get_process_detach_kwargs
+from open_agent_kit.utils.release_channel import SHELL, resolve_swarm_cli_command
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=[SWARM_RESTART_ROUTE_TAG])
 
-# /bin/sh is guaranteed to exist on all POSIX systems.  We use it instead of
-# sys.executable because after a Homebrew (or similar) upgrade the old Python
-# interpreter path baked into the running process may no longer exist on disk.
-_SHELL = "/bin/sh"
-
-# Default CLI command — matches CI_CLI_COMMAND_DEFAULT from team constants.
-_CLI_COMMAND_DEFAULT = "oak"
-
 
 def _resolve_cli_command() -> str:
-    """Resolve the CLI command to use for the restart subprocess.
-
-    Reads ``OAK_CLI_COMMAND`` env var (set by ``SwarmDaemonManager.start()``
-    at daemon launch time).  This ensures the restart uses the same binary
-    that started the daemon (e.g. ``oak-dev`` in development).
-
-    Falls back to ``shutil.which("oak")`` if the env var is unset.
-    """
-    import shutil
-
-    from_env = os.environ.get(SWARM_CLI_COMMAND_ENV_VAR, "").strip()
-    if from_env:
-        # Resolve full path so the detached subprocess doesn't depend on $PATH
-        resolved = shutil.which(from_env)
-        return resolved or from_env
-
-    path = shutil.which(_CLI_COMMAND_DEFAULT)
-    return path or _CLI_COMMAND_DEFAULT
-
-
-async def _delayed_shutdown() -> None:
-    """Wait briefly then send SIGTERM to trigger a graceful shutdown."""
-    await asyncio.sleep(SWARM_RESTART_SHUTDOWN_DELAY_SECONDS)
-    logger.info(SWARM_RESTART_LOG_SIGTERM)
-    os.kill(os.getpid(), signal.SIGTERM)
+    """Resolve the CLI command for the restart subprocess."""
+    return resolve_swarm_cli_command(SWARM_CLI_COMMAND_ENV_VAR)
 
 
 @router.post(SWARM_DAEMON_API_PATH_RESTART)
@@ -105,7 +75,7 @@ async def restart_daemon() -> dict:
     logger.info(SWARM_RESTART_LOG_SPAWNING, cli_restart)
     try:
         subprocess.Popen(
-            [_SHELL, "-c", restart_cmd],
+            [SHELL, "-c", restart_cmd],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -122,6 +92,11 @@ async def restart_daemon() -> dict:
     logger.info(
         SWARM_RESTART_LOG_SCHEDULING_SHUTDOWN.format(delay=SWARM_RESTART_SHUTDOWN_DELAY_SECONDS)
     )
-    asyncio.create_task(_delayed_shutdown(), name="swarm_self_restart_shutdown")
+    asyncio.create_task(
+        delayed_shutdown(
+            SWARM_RESTART_SHUTDOWN_DELAY_SECONDS, log_message=SWARM_RESTART_LOG_SIGTERM
+        ),
+        name="swarm_self_restart_shutdown",
+    )
 
     return {SWARM_RESPONSE_KEY_STATUS: SWARM_RESTART_STATUS_RESTARTING}

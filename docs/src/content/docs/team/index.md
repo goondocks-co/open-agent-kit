@@ -45,7 +45,7 @@ OAK extends your agent's capabilities through [Skills](/agents/skills/) — slas
 
 After setup, **the [Dashboard](/team/dashboard/) is your primary interface**. Use it to search your codebase, browse agent sessions, manage memories, configure settings, and more — all from your browser.
 
-![The OAK Dashboard](../../../assets/images/dashboard-home.png)
+![The OAK Dashboard](../../../assets/images/dashboard-team-topo-normal.png)
 
 ## Architecture
 
@@ -81,7 +81,6 @@ The **[ACP Server](/team/acp/)** integration lets ACP-compatible editors (like Z
 | **VS Code Copilot** | Session + Prompt + Post-tool | Yes | `.github/hooks/hooks.json` |
 | **Windsurf** | Prompt only | Yes | `.windsurf/hooks.json` |
 | **Codex CLI** | Via OpenTelemetry | Yes | OTLP log events & Notify |
-
 | **OAK (ACP)** | Built-in (full) | Yes | ACP server (direct integration) |
 
 **Context injection** is what makes CI proactive — it automatically surfaces relevant memories and code search results into your agent's context. Agents with **Session + Prompt + Post-tool** injection get the richest experience: context at session start, before each prompt, and after file operations. Agents with **Prompt only** receive context before each prompt but not at session start.

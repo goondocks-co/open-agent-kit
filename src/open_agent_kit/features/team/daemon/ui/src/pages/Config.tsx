@@ -754,6 +754,26 @@ export default function Config() {
                             <p className="col-span-2 text-xs text-muted-foreground">
                                 Click Test & Detect to auto-fill dimensions. Select a common context window or enter manually.
                             </p>
+                            {formData[CONFIG_SECTIONS.EMBEDDING].provider === "ollama" && Number(formData[CONFIG_SECTIONS.EMBEDDING].max_tokens) > 2048 && (
+                                <div className="col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                                    <span>
+                                        Ollama defaults to a 2K context window. You must set{" "}
+                                        <code className="bg-amber-500/10 px-1 rounded">OLLAMA_CONTEXT_LENGTH={String(formData[CONFIG_SECTIONS.EMBEDDING].max_tokens)}</code>{" "}
+                                        in your Ollama environment for this value to take effect.{" "}
+                                        <Link to="/help" className="underline font-medium hover:text-amber-500">See Setup Guide</Link> for platform-specific instructions.
+                                    </span>
+                                </div>
+                            )}
+                            {formData[CONFIG_SECTIONS.EMBEDDING].provider === "lmstudio" && Number(formData[CONFIG_SECTIONS.EMBEDDING].max_tokens) > 2048 && (
+                                <p className="col-span-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                                    <span>
+                                        Ensure the context length in LM Studio's model settings matches this value.
+                                        Open LM Studio → select your model → adjust the context length slider.
+                                    </span>
+                                </p>
+                            )}
                             <TestResult result={embeddingTestResult} />
                         </div>
                     </div>
@@ -865,6 +885,26 @@ export default function Config() {
                             <p className="col-span-2 text-xs text-muted-foreground">
                                 Click Test & Detect to verify connection. Select a common context window or enter manually.
                             </p>
+                            {formData[CONFIG_SECTIONS.SUMMARIZATION].provider === "ollama" && Number(formData[CONFIG_SECTIONS.SUMMARIZATION].max_tokens) > 2048 && (
+                                <div className="col-span-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                                    <span>
+                                        Ollama defaults to a 2K context window. You must set{" "}
+                                        <code className="bg-amber-500/10 px-1 rounded">OLLAMA_CONTEXT_LENGTH={String(formData[CONFIG_SECTIONS.SUMMARIZATION].max_tokens)}</code>{" "}
+                                        in your Ollama environment for this value to take effect.{" "}
+                                        <Link to="/help" className="underline font-medium hover:text-amber-500">See Setup Guide</Link> for platform-specific instructions.
+                                    </span>
+                                </div>
+                            )}
+                            {formData[CONFIG_SECTIONS.SUMMARIZATION].provider === "lmstudio" && Number(formData[CONFIG_SECTIONS.SUMMARIZATION].max_tokens) > 2048 && (
+                                <p className="col-span-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                                    <span>
+                                        Ensure the context length in LM Studio's model settings matches this value.
+                                        Open LM Studio → select your model → adjust the context length slider.
+                                    </span>
+                                </p>
+                            )}
                             <TestResult result={sumTestResult} />
                         </div>
                     </div>

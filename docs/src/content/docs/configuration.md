@@ -25,7 +25,7 @@ rfc:
 
 ## Team Daemon Settings
 
-The Team daemon stores its configuration in `.oak/ci/config.yaml`. **You don't need to edit this file directly** — the dashboard reads and writes it for you.
+The Team daemon stores its configuration in `.oak/config.yaml` under the `team` section. **You don't need to edit this file directly** — the dashboard reads and writes it for you.
 
 Settings managed via the dashboard:
 - **Embedding provider and model** (Ollama, LM Studio, OpenAI-compatible)

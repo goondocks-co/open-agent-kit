@@ -20,7 +20,7 @@ export const deleteJson = client.deleteJson;
 
 /** Headers required for devtools mutating endpoints. */
 export function devtoolsHeaders(): HeadersInit {
-    return { 'X-Devtools-Confirm': 'true' };
+    return { 'X-Devtools-Confirm': 'true', 'Content-Type': 'application/json' };
 }
 
 /** Backup configuration sent/received via the config endpoint under the "backup" key. */

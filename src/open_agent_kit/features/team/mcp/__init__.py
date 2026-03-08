@@ -14,7 +14,7 @@ Example usage:
     result = install_mcp_server(
         project_root=Path("/path/to/project"),
         agent="claude",
-        server_name="oak-ci",
+        server_name="oak-team",
         command="oak team mcp",
     )
 
@@ -22,7 +22,7 @@ Example usage:
     result = remove_mcp_server(
         project_root=Path("/path/to/project"),
         agent="claude",
-        server_name="oak-ci",
+        server_name="oak-team",
     )
 """
 
@@ -60,7 +60,7 @@ def install_mcp_server(
     Args:
         project_root: Project root directory.
         agent: Agent name (e.g., "claude", "cursor", "gemini").
-        server_name: Name for the MCP server (e.g., "oak-ci").
+        server_name: Name for the MCP server (e.g., "oak-team").
         command: Full command to run the MCP server (e.g., "oak team mcp").
 
     Returns:
@@ -88,7 +88,7 @@ def remove_mcp_server(
     Args:
         project_root: Project root directory.
         agent: Agent name (e.g., "claude", "cursor", "gemini").
-        server_name: Name for the MCP server (e.g., "oak-ci").
+        server_name: Name for the MCP server (e.g., "oak-team").
 
     Returns:
         InstallResult with success status and details.

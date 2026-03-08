@@ -64,13 +64,13 @@ The database schema evolves between releases. This skill always provides the cur
 
 ### `/project-governance`
 
-Create and maintain project constitutions, agent instruction files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`), and RFC/ADR documents. A constitution (`oak/constitution.md`) codifies your team's engineering standards, architecture patterns, and conventions so that AI agents follow them consistently.
+Create and maintain project constitutions, agent instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`), and RFC/ADR documents. A constitution (`oak/constitution.md`) codifies your team's engineering standards, architecture patterns, and conventions so that AI agents follow them consistently.
 
 **When to use:**
 - Creating a new constitution for a project
 - Adding or updating coding standards
 - Syncing agent instruction files after constitution changes
-- Creating `CLAUDE.md`, `AGENTS.md`, or `.cursorrules` for a new project
+- Creating `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` for a new project
 - Proposing a new feature via RFC
 - Reviewing an RFC for completeness and technical soundness
 

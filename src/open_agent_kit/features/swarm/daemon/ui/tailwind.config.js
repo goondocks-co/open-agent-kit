@@ -43,6 +43,9 @@ export default {
                     foreground: "hsl(var(--card-foreground))",
                 },
             },
+            fontFamily: {
+                sans: ['var(--font-ui)', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+            },
             borderRadius: {
                 lg: "var(--radius)",
                 md: "calc(var(--radius) - 2px)",

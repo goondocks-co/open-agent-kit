@@ -1,225 +1,126 @@
-"""Tests for the swarm fetch route helpers.
+"""Tests for the swarm fetch route.
 
 Tests cover:
-- _extract_fetch_payload() parsing MCP tool-result envelopes
-- _merge_broadcast_results() merging nested broadcast responses
-- _merge_broadcast_results() deduplicating by chunk ID
-- swarm_fetch() endpoint error handling
+- swarm_fetch() calls SwarmWorkerClient.fetch() with correct args
+- swarm_fetch() returns the DO response directly (no envelope wrapping)
+- swarm_fetch() handles missing http_client gracefully
+- swarm_fetch() handles upstream errors gracefully
 """
 
-import json
+from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from open_agent_kit.features.swarm.constants import (
+    SWARM_ERROR_NOT_CONNECTED,
+    SWARM_RESPONSE_KEY_ERROR,
+)
 from open_agent_kit.features.swarm.daemon.routes.fetch import (
-    _extract_fetch_payload,
-    _merge_broadcast_results,
+    FetchRequest,
+    swarm_fetch,
 )
 
-# =========================================================================
-# _extract_fetch_payload() tests
-# =========================================================================
+
+@pytest.fixture
+def anyio_backend() -> str:
+    """Restrict anyio tests to asyncio backend."""
+    return "asyncio"
 
 
-class TestExtractFetchPayload:
-    """Test MCP tool-result envelope parsing."""
+@pytest.fixture()
+def _mock_state_connected():
+    """Patch get_swarm_state to return a state with a connected http_client."""
+    mock_client = AsyncMock()
+    mock_state = AsyncMock()
+    mock_state.http_client = mock_client
 
-    def test_extracts_valid_payload(self) -> None:
-        """Parses JSON from a standard MCP text content block."""
-        mcp_result = {
-            "content": [
-                {"type": "text", "text": json.dumps({"results": [{"id": "a"}], "total_tokens": 10})}
-            ]
+    with patch(
+        "open_agent_kit.features.swarm.daemon.routes.fetch.get_swarm_state",
+        return_value=mock_state,
+    ):
+        yield mock_client
+
+
+@pytest.fixture()
+def _mock_state_disconnected():
+    """Patch get_swarm_state to return a state with no http_client."""
+    mock_state = AsyncMock()
+    mock_state.http_client = None
+
+    with patch(
+        "open_agent_kit.features.swarm.daemon.routes.fetch.get_swarm_state",
+        return_value=mock_state,
+    ):
+        yield
+
+
+class TestSwarmFetch:
+    """Test the swarm_fetch route handler."""
+
+    @pytest.mark.anyio
+    async def test_calls_client_fetch_with_correct_args(
+        self, _mock_state_connected: AsyncMock
+    ) -> None:
+        """Passes ids and project_slug to SwarmWorkerClient.fetch()."""
+        client = _mock_state_connected
+        client.fetch.return_value = {
+            "results": [{"id": "chunk-1", "content": "hello", "tokens": 5}],
+            "total_tokens": 5,
         }
-        payload = _extract_fetch_payload(mcp_result)
-        assert payload is not None
-        assert payload["results"] == [{"id": "a"}]
-        assert payload["total_tokens"] == 10
+        body = FetchRequest(ids=["chunk-1"], project_slug="my-project")
+        await swarm_fetch(body)
 
-    def test_returns_none_on_error(self) -> None:
-        """Returns None when isError is set."""
-        mcp_result = {"isError": True, "content": [{"type": "text", "text": "{}"}]}
-        assert _extract_fetch_payload(mcp_result) is None
-
-    def test_returns_none_on_invalid_json(self) -> None:
-        """Returns None when text is not valid JSON."""
-        mcp_result = {"content": [{"type": "text", "text": "not json"}]}
-        assert _extract_fetch_payload(mcp_result) is None
-
-    def test_skips_non_text_blocks(self) -> None:
-        """Skips image or other block types, returns None if no text found."""
-        mcp_result = {"content": [{"type": "image", "data": "..."}]}
-        assert _extract_fetch_payload(mcp_result) is None
-
-    def test_returns_none_on_empty_content(self) -> None:
-        """Returns None when content list is empty."""
-        assert _extract_fetch_payload({"content": []}) is None
-        assert _extract_fetch_payload({}) is None
-
-
-# =========================================================================
-# _merge_broadcast_results() tests
-# =========================================================================
-
-
-def _make_mcp_envelope(results: list[dict], total_tokens: int = 0) -> dict:
-    """Build an MCP tool-result envelope with the given results."""
-    return {
-        "content": [
-            {"type": "text", "text": json.dumps({"results": results, "total_tokens": total_tokens})}
-        ]
-    }
-
-
-def _make_broadcast_response(project_entries: list[dict]) -> dict:
-    """Build a broadcast response with project entries."""
-    return {"results": project_entries}
-
-
-class TestMergeBroadcastResults:
-    """Test broadcast response merging."""
-
-    def test_merges_single_node_results(self) -> None:
-        """Merges results from a single node correctly."""
-        raw = _make_broadcast_response(
-            [
-                {
-                    "project_slug": "proj-a",
-                    "error": None,
-                    "result": {
-                        "results": [
-                            {
-                                "from_machine_id": "node-1",
-                                "result": _make_mcp_envelope(
-                                    [{"id": "chunk-1", "content": "hello", "tokens": 5}],
-                                    total_tokens=5,
-                                ),
-                            }
-                        ]
-                    },
-                }
-            ]
+        client.fetch.assert_awaited_once_with(
+            ids=["chunk-1"],
+            project_slug="my-project",
         )
-        merged = _merge_broadcast_results(raw)
-        inner = json.loads(merged["result"]["content"][0]["text"])
-        assert len(inner["results"]) == 1
-        assert inner["results"][0]["id"] == "chunk-1"
-        assert inner["total_tokens"] == 5
 
-    def test_deduplicates_by_chunk_id(self) -> None:
-        """Same chunk ID from multiple nodes is included only once."""
-        node_result = _make_mcp_envelope(
-            [{"id": "chunk-1", "content": "hello", "tokens": 5}],
-            total_tokens=5,
-        )
-        raw = _make_broadcast_response(
-            [
-                {
-                    "project_slug": "proj-a",
-                    "error": None,
-                    "result": {
-                        "results": [
-                            {"from_machine_id": "node-1", "result": node_result},
-                            {"from_machine_id": "node-2", "result": node_result},
-                        ]
-                    },
-                }
-            ]
-        )
-        merged = _merge_broadcast_results(raw)
-        inner = json.loads(merged["result"]["content"][0]["text"])
-        assert len(inner["results"]) == 1
+    @pytest.mark.anyio
+    async def test_returns_do_response_directly(self, _mock_state_connected: AsyncMock) -> None:
+        """Returns the swarm DO response as-is (no MCP envelope wrapping)."""
+        client = _mock_state_connected
+        do_response = {
+            "results": [
+                {"id": "chunk-1", "content": "hello", "tokens": 5},
+                {"id": "chunk-2", "content": "world", "tokens": 3},
+            ],
+            "total_tokens": 8,
+        }
+        client.fetch.return_value = do_response
+        body = FetchRequest(ids=["chunk-1", "chunk-2"], project_slug="proj")
+        result = await swarm_fetch(body)
 
-    def test_merges_across_projects(self) -> None:
-        """Results from different projects are merged together."""
-        raw = _make_broadcast_response(
-            [
-                {
-                    "project_slug": "proj-a",
-                    "error": None,
-                    "result": {
-                        "results": [
-                            {
-                                "from_machine_id": "node-1",
-                                "result": _make_mcp_envelope(
-                                    [{"id": "a-1", "content": "from a", "tokens": 3}]
-                                ),
-                            }
-                        ]
-                    },
-                },
-                {
-                    "project_slug": "proj-b",
-                    "error": None,
-                    "result": {
-                        "results": [
-                            {
-                                "from_machine_id": "node-2",
-                                "result": _make_mcp_envelope(
-                                    [{"id": "b-1", "content": "from b", "tokens": 4}]
-                                ),
-                            }
-                        ]
-                    },
-                },
-            ]
-        )
-        merged = _merge_broadcast_results(raw)
-        inner = json.loads(merged["result"]["content"][0]["text"])
-        assert len(inner["results"]) == 2
-        ids = {r["id"] for r in inner["results"]}
-        assert ids == {"a-1", "b-1"}
-        assert inner["total_tokens"] == 7
+        assert result == do_response
 
-    def test_skips_errored_projects(self) -> None:
-        """Projects with errors are skipped."""
-        raw = _make_broadcast_response(
-            [
-                {"project_slug": "proj-a", "error": "connection failed", "result": None},
-                {
-                    "project_slug": "proj-b",
-                    "error": None,
-                    "result": {
-                        "results": [
-                            {
-                                "from_machine_id": "node-1",
-                                "result": _make_mcp_envelope(
-                                    [{"id": "b-1", "content": "ok", "tokens": 2}]
-                                ),
-                            }
-                        ]
-                    },
-                },
-            ]
-        )
-        merged = _merge_broadcast_results(raw)
-        inner = json.loads(merged["result"]["content"][0]["text"])
-        assert len(inner["results"]) == 1
-        assert inner["results"][0]["id"] == "b-1"
+    @pytest.mark.anyio
+    async def test_returns_error_when_disconnected(self, _mock_state_disconnected: None) -> None:
+        """Returns an error dict when no http_client is available."""
+        body = FetchRequest(ids=["chunk-1"], project_slug="proj")
+        result = await swarm_fetch(body)
 
-    def test_empty_broadcast(self) -> None:
-        """Returns empty results for empty broadcast response."""
-        merged = _merge_broadcast_results({"results": []})
-        inner = json.loads(merged["result"]["content"][0]["text"])
-        assert inner["results"] == []
-        assert inner["total_tokens"] == 0
+        assert result[SWARM_RESPONSE_KEY_ERROR] == SWARM_ERROR_NOT_CONNECTED
 
-    def test_skips_error_mcp_results(self) -> None:
-        """MCP results with isError are skipped."""
-        raw = _make_broadcast_response(
-            [
-                {
-                    "project_slug": "proj-a",
-                    "error": None,
-                    "result": {
-                        "results": [
-                            {
-                                "from_machine_id": "node-1",
-                                "result": {"isError": True, "content": []},
-                            }
-                        ]
-                    },
-                }
-            ]
-        )
-        merged = _merge_broadcast_results(raw)
-        inner = json.loads(merged["result"]["content"][0]["text"])
-        assert inner["results"] == []
+    @pytest.mark.anyio
+    async def test_returns_error_on_upstream_exception(
+        self, _mock_state_connected: AsyncMock
+    ) -> None:
+        """Returns an error dict when the upstream call raises."""
+        client = _mock_state_connected
+        client.fetch.side_effect = RuntimeError("connection reset")
+        body = FetchRequest(ids=["chunk-1"], project_slug="proj")
+        result = await swarm_fetch(body)
+
+        assert "connection reset" in result[SWARM_RESPONSE_KEY_ERROR]
+
+    @pytest.mark.anyio
+    async def test_empty_results_returned_as_is(self, _mock_state_connected: AsyncMock) -> None:
+        """Empty results from the DO are returned without error wrapping."""
+        client = _mock_state_connected
+        client.fetch.return_value = {"results": [], "total_tokens": 0}
+        body = FetchRequest(ids=["nonexistent"], project_slug="proj")
+        result = await swarm_fetch(body)
+
+        assert result["results"] == []
+        assert SWARM_RESPONSE_KEY_ERROR not in result

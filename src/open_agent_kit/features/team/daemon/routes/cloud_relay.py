@@ -402,6 +402,17 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
                 CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME: effective_worker_name,
             }
 
+    # Disconnect the old client before creating a new one.  After a redeploy
+    # the old client's WebSocket was dropped and its reconnect loop is running.
+    # If we don't disconnect it, two clients will fight over the same machine_id,
+    # each causing the worker to close the other's socket in an infinite loop.
+    if state.cloud_relay_client is not None:
+        try:
+            await state.cloud_relay_client.disconnect()
+        except Exception as exc:
+            logger.debug("Error disconnecting old relay client: %s", exc)
+        state.cloud_relay_client = None
+
     port = _get_daemon_port()
     logger.info(CI_CLOUD_RELAY_LOG_CONNECTING.format(worker_url=worker_url))
 

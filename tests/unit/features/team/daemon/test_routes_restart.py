@@ -6,15 +6,13 @@ Tests cover:
 - Uses configured cli_command
 - Uses default cli_command when not set
 - Passes project_root as cwd
-- Schedules SIGTERM shutdown task
+- Schedules shutdown task
 - Error when no project_root
 - Uses detach kwargs
 - Returns 500 on subprocess spawn failure
 
-Note: ``asyncio.create_task`` must NOT be mocked because the TestClient ASGI
-transport depends on it internally.  We mock ``os.kill`` instead, which makes
-the scheduled SIGTERM a no-op while still allowing us to verify the task was
-created.
+Note: ``delayed_shutdown`` is replaced with a no-op coroutine so that the
+scheduled SIGTERM never fires during tests.
 """
 
 from contextlib import contextmanager
@@ -40,25 +38,23 @@ from open_agent_kit.features.team.daemon.state import (
 _RESTART_MODULE = "open_agent_kit.features.team.daemon.routes.restart"
 
 
+async def _noop_shutdown(delay_seconds: float, *, log_message: str | None = None) -> None:
+    """No-op replacement for delayed_shutdown during tests."""
+
+
 class _RestartMocks(NamedTuple):
     popen: MagicMock
-    kill: MagicMock
+    shutdown: MagicMock
 
 
 @contextmanager
 def _patch_restart_internals():
-    """Patch subprocess and os.kill around the restart endpoint call.
-
-    We intentionally do NOT mock ``asyncio.create_task`` because patching it on
-    the restart module mutates the global ``asyncio`` module object and breaks
-    the Starlette/ASGI test transport.  Instead we mock ``os.kill`` so the
-    scheduled SIGTERM is a no-op.
-    """
+    """Patch subprocess and delayed_shutdown around the restart endpoint call."""
     with (
         patch(f"{_RESTART_MODULE}.subprocess.Popen") as mock_popen,
-        patch(f"{_RESTART_MODULE}.os.kill") as mock_kill,
+        patch(f"{_RESTART_MODULE}.delayed_shutdown", side_effect=_noop_shutdown) as mock_shutdown,
     ):
-        yield _RestartMocks(popen=mock_popen, kill=mock_kill)
+        yield _RestartMocks(popen=mock_popen, shutdown=mock_shutdown)
 
 
 @pytest.fixture(autouse=True)
@@ -152,17 +148,13 @@ class TestSelfRestart:
         assert call_kwargs["cwd"] == str(tmp_path)
 
     def test_schedules_shutdown_task(self, client, setup_state_with_project) -> None:
-        """A background task named 'self_restart_shutdown' is created.
-
-        We let ``asyncio.create_task`` run for real (mocking it globally would
-        break the ASGI transport).  The scheduled coroutine calls ``os.kill``
-        which is mocked, so the SIGTERM is a no-op.
-        """
-        with _patch_restart_internals():
+        """delayed_shutdown is called to schedule graceful shutdown."""
+        with _patch_restart_internals() as mocks:
             response = client.post(CI_RESTART_API_PATH)
 
         assert response.status_code == 200
         assert response.json()["status"] == CI_RESTART_STATUS_RESTARTING
+        mocks.shutdown.assert_called_once()
 
     def test_error_when_no_project_root(self, client) -> None:
         """Returns error when state.project_root is None."""

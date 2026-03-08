@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Codebase-wide quality refactor** *(in progress)* — Full review targeting code reuse, efficiency, and correctness across the project — [Refactor entire codebase for quality review](http://localhost:38388/activity/sessions/f6813456-3583-4ffb-8fd3-c808d2d673af)
+
+### Fixed
+
+- Fix `/ui` route returning a raw string instead of an HTML template response — the handler was missing `templates.TemplateResponse`; tests now confirm the endpoint returns `text/html` with the correct `<title>Oak CI</title>` — [Refactor entire codebase for quality review](http://localhost:38388/activity/sessions/f6813456-3583-4ffb-8fd3-c808d2d673af)
+- Fix duplicate `description` entries in [`mcp_tools.py`](src/open_agent_kit/features/team/daemon/mcp_tools.py) tool schema — two tool definitions shared identical description strings, causing ambiguity in tool selection and documentation generation — [Refactor entire codebase for quality review](http://localhost:38388/activity/sessions/f6813456-3583-4ffb-8fd3-c808d2d673af)
+
+## [2026-03-08]
+
+### Added
+
+- **UI density selector with three display modes** — Users can switch between Compact, Normal, and Comfy densities; the preference persists in local storage and applies globally across both Team and Swarm daemon dashboards — [Fix UI layout, persist font selection, and enable dark mode](http://localhost:38388/activity/sessions/5aa00f0b-efb2-496e-bfcb-0fac109bf02c)
+- **Dark mode across Team and Swarm daemon UIs** — Full dark mode support added to all surfaces including the log viewer, navigation, and layout components — [Fix UI layout, persist font selection, and enable dark mode](http://localhost:38388/activity/sessions/5aa00f0b-efb2-496e-bfcb-0fac109bf02c)
+- **Swarm dashboard topology enhancements** — Hub node tooltips now display extent counts; node-tool visibility restored after a prior refactor removed it; topology rendering improved for larger swarms — [Refactor swarm agent code, enhance dashboard topology and node visibility](http://localhost:38388/activity/sessions/68bbc511-688a-4fbf-96e9-1f8b55ba9dad)
+
+### Changed
+
+- **Font selection persists across sessions** — Font preference is now stored in local storage (mirroring the density selector pattern) and restored on reload — [Fix UI layout, persist font selection, and enable dark mode](http://localhost:38388/activity/sessions/5aa00f0b-efb2-496e-bfcb-0fac109bf02c)
+- **Swarm agent code refactored for reusable skills** — Agent implementation slimmed down; reusable skill abstractions extracted; unused helpers removed — [Refactor swarm agent code, enhance dashboard topology and node visibility](http://localhost:38388/activity/sessions/68bbc511-688a-4fbf-96e9-1f8b55ba9dad)
+
+### Fixed
+
+- Fix `EISDIR` build failure caused by importing `ui/shared/components/ui/config` as a single module — Node attempted to read the directory itself; updated all references to import the explicit `index.tsx` entry point — [Fix UI layout, persist font selection, and enable dark mode](http://localhost:38388/activity/sessions/5aa00f0b-efb2-496e-bfcb-0fac109bf02c)
+- Fix `projectName` typo in [`Layout.tsx`](src/open_agent_kit/features/team/daemon/ui/src/layouts/Layout.tsx) — prop was referenced as `projectNam`, causing a runtime render error in both Team and Swarm dashboards — [Fix UI layout, persist font selection, and enable dark mode](http://localhost:38388/activity/sessions/5aa00f0b-efb2-496e-bfcb-0fac109bf02c)
+
+### Notes
+
+> **Gotcha**: The density selector relies on CSS custom properties defined in [`variables.css`](src/open_agent_kit/ui/shared/styles/variables.css) for all three density levels. If a new theme omits any of these tokens, components silently fall back to default spacing. Always define all three variants (`compact`, `normal`, `comfy`) when extending the theme.
+
+> **Gotcha**: The `FontProvider` wrapper was removed from daemon entry points when density support was added. Font persistence is now handled by a standalone local-storage hook — do not re-add `FontProvider` to new entry points. See `main.tsx` under `features/*/daemon/ui/src/`.
+
+## [2026-03-07]
+
+### Added
+
+- **Swarm feature promoted to beta** — The Swarm UI and CLI commands are now surfaced as a beta feature; CI builds pass and the swarm binary is included in the release artifact — [Fix CI failures and enable beta swarm binary](http://localhost:38388/activity/sessions/b3748af2-3db4-413a-91cc-6e87aa9484ed)
+- **Migration helper for secrets from `.env` to per-machine YAML config** — A migration utility reads legacy `.env` swarm tokens and backup paths and writes them into the machine-specific override config (`.oak/config.<machine_id>.yaml`); subsequent upgrades no longer require manual secret copying — [Implement migration helper and unify secret handling in YAML config](http://localhost:38388/activity/sessions/559630c6-f969-4bdd-9f4b-5395437f7e4a)
+
+### Changed
+
+- **All machine-local secrets unified under per-machine YAML config** — Swarm tokens and backup directory path moved out of `.env` and into `.oak/config.<machine_id>.yaml`; eliminates the dual-source secret problem and keeps the config portable without exposing secrets in version control — [Implement migration helper and unify secret handling in YAML config](http://localhost:38388/activity/sessions/559630c6-f969-4bdd-9f4b-5395437f7e4a)
+- **Swarm skill cleaned up; unused broadcast/call helpers removed** — `swarm_broadcast` and `swarm_call` helper functions removed; Swarm skill slimmed to its core MCP surface — [Refactor swarm skill, clean helpers, restore Cloudflare relay](http://localhost:38388/activity/sessions/9ab73711-6991-4419-a4ff-a528f67816d1)
+
+### Fixed
+
+- Fix Cloudflare relay disconnecting after worker template changes — the `RelayMessageType` enum had `SwarmSea` removed during a refactor, causing a runtime type error and immediate disconnection; enum member reinstated and all switch cases updated — [Refactor swarm skill, clean helpers, restore Cloudflare relay](http://localhost:38388/activity/sessions/9ab73711-6991-4419-a4ff-a528f67816d1)
+- Fix `MCP_SERVER_NAME` constant rename causing silent `ImportError` in init/upgrade pipelines — reference updated to [`features/swarm/constants.py`](src/open_agent_kit/features/swarm/constants.py); swarm MCP server now correctly installed during `oak init` and `oak upgrade` — [Fix CI failures and enable beta swarm binary](http://localhost:38388/activity/sessions/b3748af2-3db4-413a-91cc-6e87aa9484ed)
+- Fix stale PID files blocking daemon restarts — [`daemon_manager.py`](src/open_agent_kit/utils/daemon_manager.py) compared the PID filename against a hard-coded string without resolving the full path; normalized with `os.path.abspath` and added an explicit existence check so the PID file is always cleaned up on unexpected exit — [Fix CI failures and enable beta swarm binary](http://localhost:38388/activity/sessions/b3748af2-3db4-413a-91cc-6e87aa9484ed)
+- Fix `ModuleNotFoundError` on daemon startup — [`startup.py`](src/open_agent_kit/features/team/daemon/lifecycle/startup.py) had a typo importing `open_agent_kit.confi` instead of `open_agent_kit.config.path` — [Fix CI failures and enable beta swarm binary](http://localhost:38388/activity/sessions/b3748af2-3db4-413a-91cc-6e87aa9484ed)
+- Fix ChromaDB 1.x breaking import and runtime errors — pinned `chromadb` to `>=0.5.0,<1.0.0` in `pyproject.toml`; ChromaDB 1.x changed environment variable handling in an incompatible way — [Fix CI failures and enable beta swarm binary](http://localhost:38388/activity/sessions/b3748af2-3db4-413a-91cc-6e87aa9484ed)
+- Fix `@cloudflare/workers-types` missing from `package.json` — package was listed in `tsconfig.json` `compilerOptions.types` but not installed, causing TypeScript build failures in the worker template — [Refactor swarm skill, clean helpers, restore Cloudflare relay](http://localhost:38388/activity/sessions/9ab73711-6991-4419-a4ff-a528f67816d1)
+- Fix `CAPABILITY_SWARM_TOOLS` and `CAPABILITY_SWARM_BROADCAST` constants used before declaration in [`relay-object.ts`](src/open_agent_kit/features/team/cloud_relay/worker_template/src/relay-object.ts) — moved declarations to the top of the file to resolve `TS2304` errors — [Refactor swarm skill, clean helpers, restore Cloudflare relay](http://localhost:38388/activity/sessions/9ab73711-6991-4419-a4ff-a528f67816d1)
+- Fix swarm daemon `/connect` route path mismatch — FastAPI route used a placeholder path instead of `/connect`, causing navigation failures; updated to `@router.get("/connect")` to match the React Router expectation — [Fix CI failures and enable beta swarm binary](http://localhost:38388/activity/sessions/b3748af2-3db4-413a-91cc-6e87aa9484ed)
+
 ## [2026-03-06]
 
 ### Added

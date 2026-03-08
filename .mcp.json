@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "oak-ci": {
+    "oak-team": {
       "type": "stdio",
       "command": "oak-dev",
       "args": [

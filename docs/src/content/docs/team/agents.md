@@ -21,7 +21,7 @@ Each autonomous agent has:
 - **Scheduling** — Run tasks automatically on a cron schedule
 - **Run history** — Every run is logged with status, output, files modified, and token usage
 
-![Agents page showing templates and task list](../../../assets/images/agents-page.png)
+![Agents page showing templates and task list](../../../assets/images/agents-list-collapsed.png)
 
 | Agent | Purpose | Built-in Tasks |
 |-------|---------|---------------|

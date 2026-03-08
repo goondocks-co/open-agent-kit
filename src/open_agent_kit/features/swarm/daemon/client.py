@@ -11,15 +11,18 @@ import httpx
 from open_agent_kit.features.swarm.constants import (
     SWARM_API_PATH_BROADCAST,
     SWARM_API_PATH_CONFIG_MIN_OAK_VERSION,
+    SWARM_API_PATH_FETCH,
     SWARM_API_PATH_HEALTH_CHECK,
     SWARM_API_PATH_HEARTBEAT,
     SWARM_API_PATH_NODES,
     SWARM_API_PATH_REGISTER,
     SWARM_API_PATH_SEARCH,
     SWARM_API_PATH_UNREGISTER,
+    SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS,
     SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS,
     SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS,
     SWARM_HEALTH_CHECK_TIMEOUT_SECONDS,
+    SWARM_MCP_TIMEOUT_PADDING_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,7 +45,7 @@ class SwarmWorkerClient:
 
         Args:
             query: Search query string.
-            search_type: Type of search (e.g. "all", "code", "memory").
+            search_type: Type of search: "all", "memory", "sessions", or "plans".
             limit: Maximum number of results.
 
         Returns:
@@ -58,12 +61,54 @@ class SwarmWorkerClient:
         resp = await self._client.post(
             self._url(SWARM_API_PATH_SEARCH),
             json={"query": query, "search_type": search_type, "limit": limit},
-            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + 2.0,
+            timeout=SWARM_DEFAULT_SEARCH_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
         )
         resp.raise_for_status()
         logger.debug(
             "HTTP POST %s -> %d (%d bytes)",
             SWARM_API_PATH_SEARCH,
+            resp.status_code,
+            len(resp.content),
+        )
+        return cast(dict[str, Any], resp.json())
+
+    async def fetch(
+        self,
+        ids: list[str],
+        project_slug: str | None = None,
+        timeout: float = SWARM_DEFAULT_FETCH_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
+        """Fetch full content for chunk IDs via the swarm DO.
+
+        Uses the same ``/api/swarm/fetch`` path that the MCP ``swarm_fetch``
+        tool uses, ensuring a single code-path for fetch operations.
+
+        Args:
+            ids: Chunk IDs to fetch.
+            project_slug: Optional project to scope the fetch to.
+            timeout: Request timeout in seconds.
+
+        Returns:
+            ``{results: [...], total_tokens: N}`` from the swarm DO.
+        """
+        body: dict[str, Any] = {"ids": ids}
+        if project_slug:
+            body["project_slug"] = project_slug
+        logger.debug(
+            "HTTP POST %s ids=%d project=%s",
+            SWARM_API_PATH_FETCH,
+            len(ids),
+            project_slug,
+        )
+        resp = await self._client.post(
+            self._url(SWARM_API_PATH_FETCH),
+            json=body,
+            timeout=timeout + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
+        )
+        resp.raise_for_status()
+        logger.debug(
+            "HTTP POST %s -> %d (%d bytes)",
+            SWARM_API_PATH_FETCH,
             resp.status_code,
             len(resp.content),
         )
@@ -88,7 +133,7 @@ class SwarmWorkerClient:
         resp = await self._client.post(
             self._url(SWARM_API_PATH_BROADCAST),
             json={"tool_name": tool_name, "arguments": arguments},
-            timeout=timeout + 2.0,
+            timeout=timeout + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
         )
         resp.raise_for_status()
         logger.debug(
@@ -227,7 +272,7 @@ class SwarmWorkerClient:
         resp = await self._client.post(
             self._url(SWARM_API_PATH_HEALTH_CHECK),
             json={"team_slug": team_slug},
-            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + 2.0,
+            timeout=SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS + SWARM_MCP_TIMEOUT_PADDING_SECONDS,
         )
         resp.raise_for_status()
         logger.debug(

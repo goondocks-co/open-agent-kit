@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText, Info } from "lucide-react";
+import { LayoutDashboard, Search, Activity, Settings, Sun, Moon, Laptop, Wrench, HelpCircle, Users, Bot, PanelLeft, PanelLeftClose, RefreshCw, Shield, ScrollText, Info, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { humanizeSlug } from "@oak/ui/lib/utils";
 import { useTheme } from "@oak/ui/components/theme-provider";
+import { FontSelector } from "@oak/ui/components/ui/font-selector";
+import { DensitySelector } from "@oak/ui/components/ui/density-selector";
 import { usePowerState } from "@oak/ui/hooks/use-power-state";
 import type { PowerState } from "@oak/ui/hooks/use-power-state";
 import { useStatus } from "@/hooks/use-status";
@@ -11,7 +14,6 @@ import { useRestart } from "@/hooks/use-restart";
 import { useChannel } from "@/hooks/use-channel";
 import { AboutDialog } from "@/components/about/AboutDialog";
 import { UpdateBanner } from "@/components/ui/update-banner";
-import { TeamStatusBanner } from "@/components/ui/team-status-banner";
 
 import type { LucideIcon } from "lucide-react";
 
@@ -76,13 +78,20 @@ export function Layout() {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
     }, [collapsed]);
 
+    // Derive system health: green = running, yellow = indexing, red = team configured but disconnected
+    const healthColor = !status
+        ? "bg-gray-400"
+        : status.team?.configured && !status.team?.connected
+            ? "bg-red-500"
+            : status.indexing
+                ? "bg-yellow-500"
+                : "bg-green-500";
+
     const projectSlug = status?.project_root
         ? status.project_root.split('/').pop()
         : null;
 
-    const projectName = projectSlug
-        ? projectSlug.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
-        : null;
+    const projectName = projectSlug ? humanizeSlug(projectSlug) : null;
 
     useEffect(() => {
         document.title = projectName ? `${projectName} — OAK Team` : "OAK Team";
@@ -93,6 +102,7 @@ export function Layout() {
         { to: "/search", icon: Search, label: "Search" },
         { to: "/activity", icon: Activity, label: "Activity" },
         { to: "/team", icon: Users, label: "Team" },
+        { to: "/connect", icon: Plug, label: "Connect" },
         { to: "/agents", icon: Bot, label: "Agents" },
         { to: "/governance", icon: Shield, label: "Governance" },
         { to: "/config", icon: Settings, label: "Configuration" },
@@ -108,13 +118,21 @@ export function Layout() {
             <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
             {/* Sidebar */}
             <aside className={cn(
-                "border-r bg-card flex flex-col transition-all duration-200",
+                "border-r flex flex-col transition-all duration-200",
+                "bg-gradient-to-b from-card to-muted/40 dark:bg-card dark:from-card dark:to-card",
                 collapsed ? "w-16" : "w-64"
             )}>
                 <div className={cn("border-b", collapsed ? "p-3" : "p-6")}>
                     <div className={cn("flex items-center mb-3", collapsed ? "justify-center" : "gap-2")}>
-                        <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-                            <img src="/logo.png" alt="OAK" className="w-8 h-8 object-contain" />
+                        <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 relative">
+                            <img src="/logo.png" alt="OAK" className="w-8 h-8 object-contain rounded-lg" />
+                            <span
+                                className={cn(
+                                    "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card",
+                                    healthColor
+                                )}
+                                title={!status ? "Loading" : healthColor === "bg-green-500" ? "Healthy" : healthColor === "bg-yellow-500" ? "Busy" : "Disconnected"}
+                            />
                         </div>
                         {!collapsed && (
                             <div className="min-w-0">
@@ -207,6 +225,12 @@ export function Layout() {
                         </button>
                     </div>
 
+                    {/* Density selector */}
+                    <DensitySelector collapsed={collapsed} />
+
+                    {/* Font selector */}
+                    <FontSelector collapsed={collapsed} />
+
                     {/* Collapse toggle */}
                     <button
                         onClick={toggleCollapse}
@@ -240,7 +264,6 @@ export function Layout() {
                                 cliCommand={status.cli_command}
                             />
                         )}
-                        <TeamStatusBanner status={status} />
                         <Outlet />
                     </div>
                 </div>

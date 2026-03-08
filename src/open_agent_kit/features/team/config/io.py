@@ -499,6 +499,7 @@ def save_ci_config(
     config: CIConfig,
     *,
     force_project: bool = False,
+    include_governance: bool = False,
 ) -> None:
     """Save Team configuration to project.
 
@@ -511,6 +512,11 @@ def save_ci_config(
         config: Configuration to save.
         force_project: If True, write ALL settings to the project config
             (team-shared baseline). Does not touch user overlay.
+        include_governance: If True, include the governance section in the
+            save.  Defaults to False so that non-governance save paths
+            (config route, cloud relay, CLI commands, startup) cannot
+            accidentally overwrite governance rules on disk with defaults.
+            Only the governance save route should pass True.
     """
     config_file = project_root / OAK_DIR / "config.yaml"
 
@@ -549,6 +555,14 @@ def save_ci_config(
     else:
         # Split user/project keys
         user_keys, project_keys = _split_by_classification(ci_dict)
+
+        # Exclude governance from the merge unless the caller explicitly
+        # opted in.  This prevents non-governance save paths (config
+        # route, cloud relay, CLI, startup) from overwriting governance
+        # rules on disk when the in-memory config has empty defaults.
+        if not include_governance:
+            project_keys.pop(CI_CONFIG_KEY_GOVERNANCE, None)
+            user_keys.pop(CI_CONFIG_KEY_GOVERNANCE, None)
 
         # Update project-classified keys in .oak/config.yaml while
         # preserving existing user-classified defaults for other machines

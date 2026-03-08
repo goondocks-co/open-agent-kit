@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@oak/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
@@ -570,14 +570,7 @@ export default function TeamBackups() {
                 <Terminal className="h-3.5 w-3.5 flex-shrink-0" />
                 <p>
                     For advanced workflows (version detection, schema migrations after OAK updates), you can also use{" "}
-                    <code className="bg-muted px-1 py-0.5 rounded font-mono">oak ci sync --team</code> from the CLI.{" "}
-                    <Link
-                        to="/help"
-                        state={{ tab: "team-sync" }}
-                        className="text-blue-500 hover:underline"
-                    >
-                        Learn more &rarr;
-                    </Link>
+                    <code className="bg-muted px-1 py-0.5 rounded font-mono">oak ci sync --team</code> from the CLI.
                 </p>
             </div>
 

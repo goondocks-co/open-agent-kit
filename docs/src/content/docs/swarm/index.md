@@ -15,6 +15,8 @@ Swarm is a new feature under active development. The CLI, API surface, and UI ma
 **Team** = multiple developers/machines on the *same* project. Federation uses `include_network=true` on standard MCP tools to fan out across team nodes. **Swarm** = multiple *projects* connected together. Uses dedicated `swarm_*` tools to fan out across projects. Both can be active simultaneously.
 :::
 
+![The OAK Swarm Dashboard](../../../assets/images/swarm-dashboard-topo-normal.png)
+
 ## How It Works
 
 Swarm uses a Cloudflare Worker (similar to the [Team relay](/team/sync/)) as the central registry and query router. Each project registers with the swarm Worker and advertises its capabilities. When a swarm query arrives, the Worker fans it out to all registered projects via HTTP callbacks to each project's Team daemon.
@@ -43,7 +45,7 @@ Each project retains its own local data — code index, sessions, memories. Swar
 ### 1. Create a swarm configuration
 
 ```bash
-oak swarm create
+oak swarm create -n my-swarm
 ```
 
 This scaffolds the swarm Worker project and generates authentication tokens.
@@ -51,7 +53,7 @@ This scaffolds the swarm Worker project and generates authentication tokens.
 ### 2. Deploy the swarm Worker
 
 ```bash
-oak swarm deploy
+oak swarm deploy -n my-swarm
 ```
 
 Deploys the Worker to your Cloudflare account. Requires the same prerequisites as [Team Sync](/team/sync/#prerequisites) (free Cloudflare account + Node.js v18+).
@@ -59,7 +61,7 @@ Deploys the Worker to your Cloudflare account. Requires the same prerequisites a
 ### 3. Start the swarm daemon
 
 ```bash
-oak swarm start
+oak swarm start -n my-swarm
 ```
 
 The swarm daemon connects to the deployed Worker and makes this project available for cross-project queries.
@@ -71,13 +73,13 @@ In each additional project that should join the swarm, configure the swarm URL a
 ## CLI Commands
 
 ```bash
-oak swarm create     # Create a new swarm configuration
-oak swarm deploy     # Deploy the swarm Worker to Cloudflare
-oak swarm destroy    # Remove the swarm Worker
-oak swarm start      # Start the swarm daemon
-oak swarm stop       # Stop the swarm daemon
-oak swarm restart    # Restart the swarm daemon
-oak swarm status     # Show swarm status and connected nodes
+oak swarm create -n NAME     # Create a new swarm configuration
+oak swarm deploy -n NAME     # Deploy the swarm Worker to Cloudflare
+oak swarm destroy -n NAME    # Remove the swarm Worker
+oak swarm start -n NAME      # Start the swarm daemon
+oak swarm stop -n NAME       # Stop the swarm daemon
+oak swarm restart -n NAME    # Restart the swarm daemon
+oak swarm status -n NAME     # Show swarm status and connected nodes
 oak swarm mcp        # Start the swarm MCP server
 ```
 

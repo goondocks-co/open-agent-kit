@@ -9,14 +9,16 @@ When connected to a swarm, the Swarm Worker exposes cross-project MCP tools thro
 
 ## What You Need
 
-After deploying the swarm Worker (`oak swarm deploy`), you need two values:
+After deploying the swarm Worker (`oak swarm deploy -n <name>`), you need two values:
 
 - **MCP Server URL**: `https://<swarm-worker>.workers.dev/mcp`
-- **Agent Token**: Available via `oak swarm status`
+- **Agent Token**: Stored in the swarm config file (`~/.oak/swarms/<name>/config.json`)
 
-Also stored in `.oak/config.yaml` and `oak/swarm-worker/wrangler.toml`.
+The Worker scaffold is stored under `~/.oak/swarms/<name>/worker/` (including `wrangler.toml`).
 
-## MCP Config File (mcp.json)
+## MCP Config File
+
+Many MCP-compatible clients read project MCP configuration files (JSON or TOML):
 
 ```json
 {
@@ -31,13 +33,15 @@ Also stored in `.oak/config.yaml` and `oak/swarm-worker/wrangler.toml`.
 }
 ```
 
-You can configure both Team and Swarm MCP servers in the same file — they use different URLs and tokens.
+Use project-scoped config so Team and Swarm server entries stay tied to this repository.
 
 | Client | Config File Location |
 |--------|---------------------|
-| **Claude Code** | `.claude/mcp.json` |
+| **Claude Code** | `.mcp.json` |
 | **Cursor** | `.cursor/mcp.json` |
-| **Windsurf** | `.windsurf/mcp.json` |
+| **Codex** | `.codex/config.toml` |
+| **Gemini CLI** | `.gemini/settings.json` |
+| **OpenCode** | `opencode.json` |
 | **VS Code Copilot** | `.vscode/mcp.json` |
 
 ## Cloud Agent Setup
@@ -48,11 +52,11 @@ The setup process is the same as for Team MCP — add the swarm URL and token to
 
 The **agent token** authenticates cloud AI agents to the Swarm Worker's MCP endpoint.
 
-- Generated automatically during swarm deployment (`oak swarm deploy`)
-- Stored in `.oak/config.yaml` and the Worker's secrets (encrypted at rest on Cloudflare)
-- Accepted in two formats: `Authorization: Bearer <token>` (standard) or `Authorization: <token>` (raw)
+- Generated automatically during swarm deployment (`oak swarm deploy -n <name>`)
+- Stored in `~/.oak/swarms/<name>/config.json` and the Worker's secrets (encrypted at rest on Cloudflare)
+- Requires `Authorization: Bearer <token>`
 
-To rotate the token, re-deploy: `oak swarm deploy --force`
+To rotate the token, re-deploy: `oak swarm deploy -n <name> --force`
 
 ## Testing with curl
 
@@ -102,7 +106,7 @@ Search across all connected projects in the swarm. Returns results from multiple
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `query` | string | Yes | — | Natural language search query |
-| `search_type` | string | No | `"all"` | Search scope: `"all"`, `"code"`, or `"memory"` |
+| `search_type` | string | No | `"all"` | Search scope: `"all"`, `"memory"`, `"sessions"`, or `"plans"` |
 | `limit` | integer | No | `10` | Maximum results to return (1–50) |
 
 ### Response
@@ -114,7 +118,7 @@ Returns ranked results from all connected projects. Each result includes project
 ```json
 {
   "query": "retry backoff pattern",
-  "search_type": "code",
+  "search_type": "memory",
   "limit": 10
 }
 ```

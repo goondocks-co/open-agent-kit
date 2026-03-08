@@ -2,25 +2,6 @@
 
 from typing import Final
 
-from open_agent_kit.utils.worker_deploy_shared import (
-    WORKER_DEPLOY_NPM_INSTALL_TIMEOUT,
-    WORKER_DEPLOY_NPM_NOT_FOUND,
-    WORKER_DEPLOY_NPX_NOT_FOUND,
-    WORKER_DEPLOY_WRANGLER_TIMEOUT,
-    WORKER_DEPLOY_WRANGLER_URL_PATTERN,
-    WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT,
-)
-from open_agent_kit.utils.worker_scaffold_shared import (
-    WORKER_JINJA2_EXTENSION,
-    WORKER_NAME_FALLBACK,
-    WORKER_NAME_MAX_LENGTH,
-    WORKER_SCAFFOLD_GITIGNORE_ENTRIES,
-    WORKER_SCAFFOLD_NODE_MODULES_DIR,
-    WORKER_SCAFFOLD_PACKAGE_JSON,
-    WORKER_SCAFFOLD_WRANGLER_TOML,
-    WORKER_TOKEN_BYTES,
-)
-
 # =============================================================================
 # Swarm
 # =============================================================================
@@ -32,8 +13,6 @@ SWARM_DEFAULT_TOOL_TIMEOUT_SECONDS: Final[int] = 30
 SWARM_MCP_TIMEOUT_PADDING_SECONDS: Final[float] = 2.0
 SWARM_HEARTBEAT_INTERVAL_SECONDS: Final[int] = 60
 SWARM_STALE_THRESHOLD_SECONDS: Final[int] = 300  # 5 minutes
-SWARM_TOKEN_BYTES: Final[int] = WORKER_TOKEN_BYTES
-
 # Payload limits
 SWARM_MAX_RESPONSE_BYTES: Final[int] = 1048576  # 1 MB
 
@@ -56,6 +35,7 @@ SWARM_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_API_PATH_UNREGISTER: Final[str] = "/api/swarm/unregister"
 SWARM_API_PATH_CONFIG: Final[str] = "/api/swarm/config"
 SWARM_API_PATH_CONFIG_MIN_OAK_VERSION: Final[str] = "/api/swarm/config/min-oak-version"
+SWARM_API_PATH_FETCH: Final[str] = "/api/swarm/fetch"
 SWARM_API_PATH_HEALTH_CHECK: Final[str] = "/api/swarm/health-check"
 
 # Daemon API paths (local swarm daemon)
@@ -65,8 +45,6 @@ SWARM_DAEMON_API_PATH_NODES: Final[str] = "/api/swarm/nodes"
 SWARM_DAEMON_API_PATH_STATUS: Final[str] = "/api/swarm/status"
 SWARM_DAEMON_API_PATH_HEALTH_CHECK: Final[str] = "/api/swarm/health-check"
 SWARM_DAEMON_API_PATH_CREDENTIALS: Final[str] = "/api/swarm/credentials"
-SWARM_DAEMON_API_PATH_AGENTS: Final[str] = "/api/agents"
-
 # Daemon UI API paths (local swarm daemon - UI endpoints)
 SWARM_DAEMON_API_PATH_RESTART: Final[str] = "/api/restart"
 SWARM_DAEMON_API_PATH_CONFIG: Final[str] = "/api/config"
@@ -132,27 +110,15 @@ SWARM_CAPABILITY_MANAGEMENT: Final[str] = "swarm_management_v1"
 # Scaffold constants
 SWARM_WORKER_TEMPLATE_DIR: Final[str] = "worker_template"
 SWARM_SCAFFOLD_OUTPUT_DIR: Final[str] = ".oak/ci/swarm-worker"
-SWARM_JINJA2_EXTENSION: Final[str] = WORKER_JINJA2_EXTENSION
-SWARM_SCAFFOLD_GITIGNORE_ENTRIES: Final[tuple[str, ...]] = WORKER_SCAFFOLD_GITIGNORE_ENTRIES
-SWARM_SCAFFOLD_PACKAGE_JSON: Final[str] = WORKER_SCAFFOLD_PACKAGE_JSON
-SWARM_SCAFFOLD_WRANGLER_TOML: Final[str] = WORKER_SCAFFOLD_WRANGLER_TOML
-SWARM_SCAFFOLD_NODE_MODULES_DIR: Final[str] = WORKER_SCAFFOLD_NODE_MODULES_DIR
 
 # Scaffold subdirectory (inside swarm config dir)
 SWARM_SCAFFOLD_WORKER_SUBDIR: Final[str] = "worker"
 
 # Worker name
 SWARM_DEFAULT_WORKER_NAME_PREFIX: Final[str] = "oak-swarm"
-SWARM_WORKER_NAME_MAX_LENGTH: Final[int] = WORKER_NAME_MAX_LENGTH
-SWARM_WORKER_NAME_FALLBACK: Final[str] = WORKER_NAME_FALLBACK
 
-# Deploy timeouts
-SWARM_DEPLOY_NPM_INSTALL_TIMEOUT: Final[int] = WORKER_DEPLOY_NPM_INSTALL_TIMEOUT
-SWARM_DEPLOY_WRANGLER_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_TIMEOUT
-SWARM_DEPLOY_WRANGLER_URL_PATTERN: Final[str] = WORKER_DEPLOY_WRANGLER_URL_PATTERN
-SWARM_DEPLOY_WRANGLER_WHOAMI_TIMEOUT: Final[int] = WORKER_DEPLOY_WRANGLER_WHOAMI_TIMEOUT
-SWARM_DEPLOY_NPM_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPM_NOT_FOUND
-SWARM_DEPLOY_NPX_NOT_FOUND: Final[str] = WORKER_DEPLOY_NPX_NOT_FOUND
+# Installed MCP server name (registered in agent MCP configs like .mcp.json)
+SWARM_MCP_INSTALLED_SERVER_NAME: Final[str] = "oak-swarm"
 
 # Environment variables set by SwarmDaemonManager.start() for the daemon process
 SWARM_ENV_VAR_URL: Final[str] = "OAK_SWARM_URL"
@@ -282,23 +248,11 @@ SWARM_RESTART_LOG_SIGTERM: Final[str] = "Sending SIGTERM to self for restart"
 # Swarm route tag
 SWARM_ROUTE_TAG: Final[str] = "swarm"
 
-# Agent route tag
-SWARM_AGENTS_ROUTE_TAG: Final[str] = "agents"
-
-# Agent definitions directory (relative to swarm feature package)
-SWARM_AGENTS_DEFINITIONS_DIR: Final[str] = "agents/definitions"
-
 # Config key for daemon port (inside swarm config.json)
 CI_CONFIG_SWARM_KEY_PORT: Final[str] = "daemon_port"
 
 # Port auto-assignment range (probes SWARM_DAEMON_DEFAULT_PORT + 0..99)
 SWARM_DAEMON_PORT_RANGE_SIZE: Final[int] = 100
-
-# Daemon API paths (agent routes)
-SWARM_DAEMON_API_PATH_AGENTS_RELOAD: Final[str] = "/api/agents/reload"
-SWARM_DAEMON_API_PATH_AGENTS_TASK_RUN: Final[str] = "/api/agents/tasks/{task_name}/run"
-SWARM_DAEMON_API_PATH_AGENTS_RUNS: Final[str] = "/api/agents/runs"
-SWARM_DAEMON_API_PATH_AGENTS_RUN_DETAIL: Final[str] = "/api/agents/runs/{run_id}"
 
 # Daemon API paths (deploy routes)
 SWARM_DAEMON_API_PATH_DEPLOY_STATUS: Final[str] = "/api/deploy/status"

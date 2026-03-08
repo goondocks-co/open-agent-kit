@@ -9,7 +9,7 @@ The **Configuration** page is where you set up everything the daemon needs to fu
 
 Open it from the dashboard sidebar, or navigate to `http://localhost:{port}/config`.
 
-![Configuration page showing model setup and settings](../../../assets/images/configuration-page.png)
+![Configuration page showing model setup and settings](../../../assets/images/config-embedding-collapsed.png)
 
 ## Models
 

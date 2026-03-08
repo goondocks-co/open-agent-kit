@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
-import { ExternalLink, BookOpen, Wrench, RefreshCw, Cloud } from "lucide-react";
+import { ExternalLink, BookOpen, Wrench, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandBlock } from "@oak/ui/components/ui/command-block";
 
@@ -11,7 +11,6 @@ import { CommandBlock } from "@oak/ui/components/ui/command-block";
 
 const HELP_TABS = {
     SETUP: "setup",
-    TEAM_SYNC: "team-sync",
     CLOUD_RELAY: "cloud-relay",
     TROUBLESHOOTING: "troubleshooting",
 } as const;
@@ -43,6 +42,145 @@ function TabButton({ active, onClick, icon, label }: TabButtonProps) {
             {icon}
             {label}
         </button>
+    );
+}
+
+// =============================================================================
+// Performance Tuning Card (tabbed by platform)
+// =============================================================================
+
+const PLATFORMS = ["macOS", "Linux", "Windows"] as const;
+type Platform = typeof PLATFORMS[number];
+
+function PlatformTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+    return (
+        <button
+            onClick={onClick}
+            className={cn(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                active
+                    ? "bg-blue-600 text-white dark:bg-blue-500"
+                    : "text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+            )}
+        >
+            {label}
+        </button>
+    );
+}
+
+function PerformanceTuningCard() {
+    const [platform, setPlatform] = useState<Platform>("macOS");
+
+    return (
+        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                Performance Tuning
+            </p>
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+                Ollama defaults to a small context window (2–4K tokens) which can truncate longer code during summarization.
+                OAK works well with 8K — large enough without wasting memory.
+            </p>
+
+            {/* Recommended variables */}
+            <div className="space-y-1.5">
+                <p className="text-xs font-medium text-blue-800 dark:text-blue-200">Recommended Settings</p>
+                <div className="space-y-1 text-xs text-blue-700 dark:text-blue-300">
+                    <p>
+                        <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">OLLAMA_CONTEXT_LENGTH=8192</code>{" "}
+                        — 8K context for code summarization. 32K+ wastes memory with little benefit for OAK.
+                    </p>
+                    <p>
+                        <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">OLLAMA_KV_CACHE_TYPE=q8_0</code>{" "}
+                        — Halves attention cache memory, letting you fit larger contexts or more models.
+                    </p>
+                    <p>
+                        <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">OLLAMA_FLASH_ATTENTION=1</code>{" "}
+                        — Faster long-context inference. <strong>NVIDIA GPUs only</strong> (not needed on Apple Silicon).
+                    </p>
+                </div>
+            </div>
+
+            <div className="h-px bg-blue-200 dark:bg-blue-800" />
+
+            {/* Platform tabs */}
+            <div className="space-y-3">
+                <div className="flex gap-1">
+                    {PLATFORMS.map((p) => (
+                        <PlatformTab key={p} label={p} active={platform === p} onClick={() => setPlatform(p)} />
+                    ))}
+                </div>
+
+                {platform === "macOS" && (
+                    <div className="space-y-3 text-xs text-blue-700 dark:text-blue-300">
+                        <p>
+                            Most Ollama installations on macOS run as a LaunchAgent — either from Homebrew or the desktop app.
+                            Add these keys to the{" "}
+                            <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">EnvironmentVariables</code> dict in your
+                            plist file:
+                        </p>
+                        <CommandBlock command={[
+                            "<key>OLLAMA_CONTEXT_LENGTH</key>",
+                            "<string>8192</string>",
+                            "<key>OLLAMA_KV_CACHE_TYPE</key>",
+                            "<string>q8_0</string>",
+                        ].join("\n")} />
+                        <p>
+                            The plist is typically at{" "}
+                            <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">~/Library/LaunchAgents/com.user.ollama.plist</code>{" "}
+                            or{" "}
+                            <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">~/Library/LaunchAgents/homebrew.mxcl.ollama.plist</code>{" "}
+                            if installed via Homebrew. After editing, reload the service:
+                        </p>
+                        <CommandBlock command={[
+                            "launchctl stop com.user.ollama",
+                            "launchctl unload ~/Library/LaunchAgents/com.user.ollama.plist",
+                            "launchctl load ~/Library/LaunchAgents/com.user.ollama.plist",
+                            "launchctl start com.user.ollama",
+                        ].join("\n")} />
+                        <p>
+                            Settings in the plist persist across reboots automatically.
+                        </p>
+                    </div>
+                )}
+
+                {platform === "Linux" && (
+                    <div className="space-y-3 text-xs text-blue-700 dark:text-blue-300">
+                        <p>
+                            Ollama typically runs as a systemd service on Linux.
+                            Create an override file to set the variables without editing the packaged unit:
+                        </p>
+                        <CommandBlock command="sudo systemctl edit ollama" />
+                        <p>Add the following under <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">[Service]</code>:</p>
+                        <CommandBlock command={[
+                            "[Service]",
+                            'Environment="OLLAMA_CONTEXT_LENGTH=8192"',
+                            'Environment="OLLAMA_KV_CACHE_TYPE=q8_0"',
+                            'Environment="OLLAMA_FLASH_ATTENTION=1"',
+                        ].join("\n")} />
+                        <p>Then restart:</p>
+                        <CommandBlock command="sudo systemctl restart ollama" />
+                    </div>
+                )}
+
+                {platform === "Windows" && (
+                    <div className="space-y-3 text-xs text-blue-700 dark:text-blue-300">
+                        <p>
+                            On Windows, set the environment variables system-wide via PowerShell (run as Administrator):
+                        </p>
+                        <CommandBlock command={[
+                            "[System.Environment]::SetEnvironmentVariable('OLLAMA_CONTEXT_LENGTH', '8192', 'User')",
+                            "[System.Environment]::SetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'q8_0', 'User')",
+                            "[System.Environment]::SetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', '1', 'User')",
+                        ].join("\n")} />
+                        <p>
+                            Then restart the Ollama desktop app (or the Ollama service from Task Manager).
+                            These persist across reboots. You can also set them through{" "}
+                            <strong>System Settings → System → About → Advanced system settings → Environment Variables</strong>.
+                        </p>
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }
 
@@ -207,20 +345,8 @@ function SetupGuideContent() {
                             </p>
                         </div>
 
-                        {/* Context Window Tip */}
-                        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2">
-                            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                                Tip: Increase Ollama's Context Window
-                            </p>
-                            <p className="text-xs text-blue-700 dark:text-blue-300">
-                                Ollama defaults to a 4K context window on machines with less than 24 GB of VRAM, which limits how much code the summarization model can process at once.
-                                To increase it, set the <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">OLLAMA_CONTEXT_LENGTH</code> environment variable when starting Ollama:
-                            </p>
-                            <CommandBlock command="OLLAMA_CONTEXT_LENGTH=32768 ollama serve" />
-                            <p className="text-xs text-blue-700 dark:text-blue-300">
-                                Use a value that fits your available memory — 32768 is a good starting point. Higher values use more RAM.
-                            </p>
-                        </div>
+                        {/* Performance Tuning Tips */}
+                        <PerformanceTuningCard />
                     </div>
 
                     {/* Configure */}
@@ -300,166 +426,6 @@ function SetupGuideContent() {
                         <li>Anyscale</li>
                         <li>Any other OpenAI-compatible endpoint</li>
                     </ul>
-                </CardContent>
-            </Card>
-        </div>
-    );
-}
-
-// =============================================================================
-// Sync Guide Tab Content
-// =============================================================================
-
-function SyncGuideContent() {
-    return (
-        <div className="space-y-6">
-            {/* Overview */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        Team Sync
-                        <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full font-normal">
-                            Recommended
-                        </span>
-                    </CardTitle>
-                    <CardDescription>
-                        The <code className="bg-muted px-1 rounded">oak ci sync</code> command is the preferred way to synchronize CI state after pulling code changes or merging team backups.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
-                        <p className="text-sm text-blue-800 dark:text-blue-200">
-                            <strong>Why CLI?</strong> The CLI handles the complete sync workflow automatically: stopping the daemon, running migrations, importing backups in the correct order, and restarting with new code. This ensures schema compatibility and prevents data corruption.
-                        </p>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">When to Use</h3>
-                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-2">
-                            <li><strong>After pulling OAK code changes</strong> - Restarts daemon with new code and runs any pending schema migrations</li>
-                            <li><strong>After pulling project changes with team backups</strong> - Imports team knowledge from <code className="bg-muted px-1 rounded">oak/history/</code></li>
-                            <li><strong>When search results seem stale</strong> - Full rebuild recreates the vector index from scratch</li>
-                        </ul>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Basic Commands */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Quick Commands</CardTitle>
-                    <CardDescription>
-                        Common sync workflows for everyday use.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">Quick Sync (After Code Pull)</h3>
-                        <CommandBlock command="oak ci sync" />
-                        <p className="text-sm text-muted-foreground">
-                            Detects version mismatches and restarts the daemon with new code. Use this after pulling OAK updates.
-                        </p>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">Team Sync (Merge Team Knowledge)</h3>
-                        <CommandBlock command="oak ci sync --team" />
-                        <p className="text-sm text-muted-foreground">
-                            Imports all team backup files from <code className="bg-muted px-1 rounded">oak/history/</code>. Duplicates are automatically skipped using content-based hashing.
-                        </p>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">Full Rebuild (Fresh Start)</h3>
-                        <CommandBlock command="oak ci sync --full" />
-                        <p className="text-sm text-muted-foreground">
-                            Deletes the vector index (ChromaDB) and rebuilds from scratch. Use this if search results seem incorrect or after major schema changes.
-                        </p>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">Preview Mode (Dry Run)</h3>
-                        <CommandBlock command="oak ci sync --team --full --dry-run" />
-                        <p className="text-sm text-muted-foreground">
-                            Shows what would happen without making any changes. Great for verifying before a sync.
-                        </p>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h3 className="font-semibold">Include Activities in Backup</h3>
-                        <CommandBlock command="oak ci sync --team --include-activities" />
-                        <p className="text-sm text-muted-foreground">
-                            Creates larger backup files that include the activities table. Useful for debugging or when you want complete history preserved.
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Workflow Details */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Sync Workflow</CardTitle>
-                    <CardDescription>
-                        Understanding what happens during a sync operation.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                        The sync command orchestrates multiple operations in the correct order:
-                    </p>
-                    <ol className="list-decimal list-inside text-sm space-y-2">
-                        <li><strong>Version Detection</strong> - Compares running daemon version against current code</li>
-                        <li><strong>Stop Daemon</strong> - Gracefully stops the daemon if a restart is needed</li>
-                        <li><strong>First Restore Pass</strong> - <span className="text-muted-foreground">(--team)</span> Imports all team backups</li>
-                        <li><strong>Delete ChromaDB</strong> - <span className="text-muted-foreground">(--full)</span> Removes vector index for rebuild</li>
-                        <li><strong>Start Daemon</strong> - Starts with new code, runs pending migrations</li>
-                        <li><strong>Create Backup</strong> - <span className="text-muted-foreground">(--team)</span> Creates fresh backup with current schema</li>
-                        <li><strong>Second Restore Pass</strong> - <span className="text-muted-foreground">(--team)</span> Re-imports team backups after migrations</li>
-                        <li><strong>Background Rebuild</strong> - Vector index rebuilds automatically if needed</li>
-                    </ol>
-                    <p className="text-xs text-muted-foreground mt-2">
-                        Steps marked with flags only run when those flags are provided. Duplicates are always skipped using content-based hashing.
-                    </p>
-                </CardContent>
-            </Card>
-
-            {/* Common Scenarios */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Common Scenarios</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div>
-                        <h3 className="font-semibold text-sm">New team member joining</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            After cloning the project, run <code className="bg-muted px-1 rounded">oak ci sync --team</code> to import all existing team knowledge.
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-sm">Live team sync: historical data</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            When you join a team server, OAK automatically backfills all your historical sessions, memories, and activities so teammates can see your full context — not just future work.
-                            Check the <strong>Team → Status</strong> tab to see progress and trigger a manual re-sync if needed.
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-sm">Daily workflow</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            After <code className="bg-muted px-1 rounded">git pull</code>, run <code className="bg-muted px-1 rounded">oak ci sync --team</code> to get the latest from teammates.
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-sm">After OAK upgrade</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            Run <code className="bg-muted px-1 rounded">oak ci sync</code> to restart the daemon with the new version and run any schema migrations.
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-sm">Search returning wrong results</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            Run <code className="bg-muted px-1 rounded">oak ci sync --full</code> to rebuild the vector index from scratch.
-                        </p>
-                    </div>
                 </CardContent>
             </Card>
         </div>
@@ -670,12 +636,10 @@ export default function Help() {
     const location = useLocation();
     const [activeTab, setActiveTab] = useState<HelpTab>(HELP_TABS.SETUP);
 
-    // Handle navigation state (e.g., from Team page linking to team-sync tab)
+    // Handle navigation state (e.g., from Team page linking to cloud-relay tab)
     useEffect(() => {
         const state = location.state as { tab?: string } | null;
-        if (state?.tab === "team-sync") {
-            setActiveTab(HELP_TABS.TEAM_SYNC);
-        } else if (state?.tab === "cloud-relay") {
+        if (state?.tab === "cloud-relay") {
             setActiveTab(HELP_TABS.CLOUD_RELAY);
         }
     }, [location.state]);
@@ -699,12 +663,6 @@ export default function Help() {
                     label="Setup Guide"
                 />
                 <TabButton
-                    active={activeTab === HELP_TABS.TEAM_SYNC}
-                    onClick={() => setActiveTab(HELP_TABS.TEAM_SYNC)}
-                    icon={<RefreshCw className="h-4 w-4" />}
-                    label="Team Sync"
-                />
-                <TabButton
                     active={activeTab === HELP_TABS.CLOUD_RELAY}
                     onClick={() => setActiveTab(HELP_TABS.CLOUD_RELAY)}
                     icon={<Cloud className="h-4 w-4" />}
@@ -720,7 +678,6 @@ export default function Help() {
 
             {/* Tab Content */}
             {activeTab === HELP_TABS.SETUP && <SetupGuideContent />}
-            {activeTab === HELP_TABS.TEAM_SYNC && <SyncGuideContent />}
             {activeTab === HELP_TABS.CLOUD_RELAY && <CloudRelayContent />}
             {activeTab === HELP_TABS.TROUBLESHOOTING && <TroubleshootingContent />}
         </div>

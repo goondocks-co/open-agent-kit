@@ -20,7 +20,7 @@ oak ci port
 
 ## CORS
 
-The daemon only allows requests from `localhost` and active tunnel URLs. External origins are blocked by the CORS middleware. To access the API from another machine, connect to a [team](/team/sync/) to expose MCP tools to remote agents.
+The daemon only allows requests from loopback origins (`http://localhost:{port}` and `http://127.0.0.1:{port}`). External origins are blocked by the CORS middleware. To access tools from another machine, connect to a [team](/team/sync/) to expose MCP tools through the relay.
 
 ## Endpoints
 
@@ -79,10 +79,14 @@ Hook endpoints receive data from AI coding agents. The prefix is `/api/oak/ci/`.
 | `GET` | `/api/activity/sessions/{id}/activities` | List session activities |
 | `GET` | `/api/activity/sessions/{id}/lineage` | Get session lineage |
 | `GET` | `/api/activity/sessions/{id}/related` | Get related sessions |
+| `POST` | `/api/activity/sessions/{id}/related` | Add a related session relationship |
+| `DELETE` | `/api/activity/sessions/{id}/related/{rid}` | Remove a related session relationship |
+| `GET` | `/api/activity/sessions/{id}/suggested-related` | Suggested related sessions (semantic) |
 | `POST` | `/api/activity/sessions/{id}/complete` | Manually complete a session |
 | `POST` | `/api/activity/sessions/{id}/regenerate-summary` | Regenerate summary |
 | `DELETE` | `/api/activity/sessions/{id}` | Delete session (cascade) |
 | `GET` | `/api/activity/plans` | List plans |
+| `POST` | `/api/activity/plans/{id}/refresh` | Refresh plan content from disk |
 | `GET` | `/api/activity/stats` | Get activity statistics |
 | `GET` | `/api/activity/search` | Full-text search activities |
 
@@ -112,8 +116,13 @@ Hook endpoints receive data from AI coding agents. The prefix is `/api/oak/ci/`.
 | `GET` | `/api/agents/runs` | List agent runs |
 | `GET` | `/api/agents/runs/{id}` | Get run details |
 | `POST` | `/api/agents/runs/{id}/cancel` | Cancel a running agent |
-| `GET` | `/api/agents/schedules` | List task schedules |
-| `PUT` | `/api/agents/schedules/{name}` | Update schedule |
+| `GET` | `/api/schedules` | List schedules |
+| `GET` | `/api/schedules/{task_name}` | Get schedule details |
+| `POST` | `/api/schedules` | Create a schedule |
+| `PUT` | `/api/schedules/{task_name}` | Update schedule |
+| `DELETE` | `/api/schedules/{task_name}` | Delete schedule |
+| `POST` | `/api/schedules/{task_name}/run` | Trigger a schedule manually |
+| `POST` | `/api/schedules/sync` | Remove orphaned schedules |
 | `GET` | `/api/agents/settings` | Get agent settings |
 | `PUT` | `/api/agents/settings` | Update agent settings |
 
@@ -140,6 +149,54 @@ Endpoints for the [Agent Client Protocol](/team/acp/) integration. These manage 
 | `POST` | `/api/acp/stop` | Stop the ACP server subprocess |
 | `GET` | `/api/acp/logs` | Get recent ACP server logs |
 
+### Governance
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/governance/config` | Get governance configuration |
+| `PUT` | `/api/governance/config` | Save governance configuration |
+| `GET` | `/api/governance/audit` | Query audit events with filters |
+| `GET` | `/api/governance/audit/summary` | Aggregate audit stats for dashboard |
+| `POST` | `/api/governance/audit/prune` | Manually prune old audit events |
+| `POST` | `/api/governance/test` | Test a hypothetical tool call against policy |
+
+### Release Channel
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/channel` | Get current channel, version, and PyPI availability |
+| `POST` | `/api/channel/switch` | Switch release channel (stable/beta) |
+
+### Notifications
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/oak/ci/notify` | Handle agent notification events (e.g., Codex notify) |
+
+### OTEL (OpenTelemetry)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/logs` | OTLP HTTP logs receiver endpoint |
+
+### Index
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/index/status` | Get codebase index status |
+| `POST` | `/api/index/rebuild` | Trigger full index rebuild |
+| `POST` | `/api/index/build` | Trigger index build |
+
+### Swarm Configuration
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/swarm/join` | Join a swarm (save URL/token and connect) |
+| `POST` | `/api/swarm/leave` | Leave the swarm (clear config and disconnect) |
+| `GET` | `/api/swarm/status` | Get swarm connection status |
+| `GET` | `/api/swarm/daemon/status` | Check if swarm daemon is running |
+| `POST` | `/api/swarm/daemon/launch` | Create swarm daemon config and start |
+
 ### Backup
 
 | Method | Path | Description |
@@ -149,13 +206,17 @@ Endpoints for the [Agent Client Protocol](/team/acp/) integration. These manage 
 | `POST` | `/api/backup/restore` | Restore from backup |
 | `POST` | `/api/backup/restore-all` | Restore all team backups |
 
-### Tunnel
+### Cloud Relay
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/tunnel/start` | Start sharing tunnel |
-| `POST` | `/api/tunnel/stop` | Stop sharing tunnel |
-| `GET` | `/api/tunnel/status` | Get tunnel status |
+| `POST` | `/api/cloud/start` | Deploy/connect cloud relay (scaffold, deploy, connect) |
+| `POST` | `/api/cloud/stop` | Stop cloud relay and clear local connection |
+| `GET` | `/api/cloud/preflight` | Check scaffold/auth/deploy readiness |
+| `PUT` | `/api/cloud/settings` | Update relay URL and token settings |
+| `POST` | `/api/cloud/connect` | Connect daemon to an existing relay |
+| `POST` | `/api/cloud/disconnect` | Disconnect daemon from relay |
+| `GET` | `/api/cloud/status` | Get relay connection status |
 
 ### DevTools
 
@@ -187,6 +248,6 @@ Endpoints for the [Agent Client Protocol](/team/acp/) integration. These manage 
 | `GET` | `/api/team/status` | Team sync connection status |
 | `GET` | `/api/team/members` | List online team members |
 | `GET` | `/api/team/config` | Get team sync configuration |
-| `PUT` | `/api/team/config` | Update team sync configuration |
+| `POST` | `/api/team/config` | Update team sync configuration |
 
 See also the [MCP Tools Reference](/team/mcp/) for the MCP protocol tools exposed to agents.

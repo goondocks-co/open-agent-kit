@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-When connected to a team, the relay exposes your local MCP tools through a Streamable HTTP endpoint. Any AI agent that supports MCP can connect — Claude.ai, ChatGPT, Claude Code, Cursor, Windsurf, and more.
+When connected to a team, the relay exposes your local MCP tools through a Streamable HTTP endpoint. Any AI agent that supports MCP can connect — Claude.ai, ChatGPT, Claude Code, Cursor, Codex, Gemini, OpenCode, and more.
 
 ## What You Need
 
@@ -14,11 +14,11 @@ After connecting to a team (via the dashboard or `oak team cloud-init`), you nee
 - **MCP Server URL**: `https://<your-worker>.workers.dev/mcp`
 - **Agent Token**: Displayed on the Teams page (masked with reveal/copy buttons)
 
-Also stored in `.oak/config.yaml` and `oak/cloud-relay/wrangler.toml`.
+Also stored in `.oak/config.yaml` and `.oak/ci/cloud-relay/wrangler.toml`.
 
-## MCP Config File (mcp.json)
+## MCP Config File
 
-Many MCP-compatible clients read configuration from a `mcp.json` file:
+Many MCP-compatible clients read project MCP configuration files (JSON or TOML):
 
 ```json
 {
@@ -33,13 +33,15 @@ Many MCP-compatible clients read configuration from a `mcp.json` file:
 }
 ```
 
-Place the file in your project root for per-project config, or in your home directory for global config.
+Use project-scoped config to keep the Team daemon binding local to this repository.
 
 | Client | Config File Location |
 |--------|---------------------|
-| **Claude Code** | `.claude/mcp.json` |
+| **Claude Code** | `.mcp.json` |
 | **Cursor** | `.cursor/mcp.json` |
-| **Windsurf** | `.windsurf/mcp.json` |
+| **Codex** | `.codex/config.toml` |
+| **Gemini CLI** | `.gemini/settings.json` |
+| **OpenCode** | `opencode.json` |
 | **VS Code Copilot** | `.vscode/mcp.json` |
 
 :::tip
@@ -85,7 +87,7 @@ The **agent token** authenticates cloud AI agents to the relay's MCP endpoint.
 
 - Generated automatically during team deployment (`oak team cloud-init`)
 - Stored in `.oak/config.yaml` and the Worker's secrets (encrypted at rest on Cloudflare)
-- Accepted in two formats: `Authorization: Bearer <token>` (standard) or `Authorization: <token>` (raw)
+- Requires `Authorization: Bearer <token>`
 - All cloud agents share the same agent token
 
 To rotate the token and revoke all agent access, see [Token Rotation](/team/sync/#token-rotation).

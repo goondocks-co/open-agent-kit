@@ -53,15 +53,19 @@ export interface CommandBlockProps {
 }
 
 export function CommandBlock({ command, label }: CommandBlockProps) {
+    const isMultiline = command.includes("\n");
     return (
         <div className="relative group">
             {label && (
                 <div className="text-xs text-muted-foreground mb-1">{label}</div>
             )}
-            <div className="flex items-center gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm">
-                <Terminal className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <code className="flex-1">{command}</code>
-                <CopyButton text={command} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className={cn(
+                "flex gap-2 bg-muted rounded-md px-4 py-3 font-mono text-sm",
+                isMultiline ? "items-start" : "items-center",
+            )}>
+                <Terminal className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <pre className="flex-1 whitespace-pre-wrap overflow-x-auto">{command}</pre>
+                <CopyButton text={command} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
             </div>
         </div>
     );

@@ -1,7 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { postJson } from "@/lib/api";
 import { API_ENDPOINTS } from "@/lib/constants";
-import { extractMcpText, parseMcpEnvelope } from "@/lib/mcp";
 
 export interface FetchedChunk {
     id: string;
@@ -19,46 +18,13 @@ export interface FetchParams {
     project_slug: string;
 }
 
-function isFetchResult(obj: Record<string, unknown>): obj is Record<string, unknown> & FetchResult {
-    return Array.isArray(obj.results);
-}
-
 /**
- * Extract the inner payload from a tool-result envelope.
+ * Fetch full content for chunk IDs via the swarm daemon.
  *
- * The swarm daemon proxies MCP tool calls and returns the raw relay response:
- *   `{type: "tool_result", result: {isError, content: [{type: "text", text: "..."}]}}`
- *
- * If the response is already unwrapped, returns it as-is.
+ * The daemon now calls the swarm DO's `/api/swarm/fetch` directly (the same
+ * path the MCP `swarm_fetch` tool uses), so the response is plain JSON —
+ * no MCP envelope unwrapping needed.
  */
-function unwrapToolResult(raw: unknown): unknown {
-    const obj = raw as Record<string, unknown>;
-
-    // Direct error from swarm daemon
-    if (obj.error && typeof obj.error === "string") {
-        throw new Error(obj.error);
-    }
-
-    // MCP tool-result envelope from relay
-    if (obj.type === "tool_result" && obj.result) {
-        const result = obj.result as Record<string, unknown>;
-        if (result.isError) {
-            const text = extractMcpText(result);
-            throw new Error(text ?? "Tool call failed");
-        }
-        const text = extractMcpText(result);
-        if (text) {
-            try {
-                return JSON.parse(text);
-            } catch {
-                throw new Error(`Invalid JSON in tool result: ${text.slice(0, 200)}`);
-            }
-        }
-    }
-
-    return raw;
-}
-
 export function useSwarmFetch() {
     return useMutation<FetchResult, Error, FetchParams>({
         mutationFn: async (params) => {
@@ -67,13 +33,19 @@ export function useSwarmFetch() {
                 project_slug: params.project_slug,
             });
 
-            const unwrapped = unwrapToolResult(raw);
-            const result = parseMcpEnvelope<FetchResult>(
-                unwrapped,
-                isFetchResult,
-                { results: [], total_tokens: 0 },
-            );
+            const obj = raw as Record<string, unknown>;
 
+            // Direct error from swarm daemon
+            if (obj.error && typeof obj.error === "string") {
+                throw new Error(obj.error);
+            }
+
+            const results = obj.results;
+            if (!Array.isArray(results)) {
+                throw new Error("Unexpected response shape from swarm fetch");
+            }
+
+            const result = raw as unknown as FetchResult;
             if (result.results.length === 0) {
                 throw new Error("No results returned for the requested IDs");
             }

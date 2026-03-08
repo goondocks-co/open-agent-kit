@@ -1,11 +1,15 @@
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@oak/ui/components/ui/card";
-import { StatCard, StatusDot, StatusBadge } from "@/components/ui/config-components";
+import { StatusDot, StatusBadge } from "@/components/ui/config-components";
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { usePlans } from "@/hooks/use-plans";
-import { Check, FileCode, Brain, Clock, Activity, Terminal, ArrowRight, ClipboardList, Layers, HardDrive, Save, Server } from "lucide-react";
+import { useSwarmDaemonStatus } from "@/hooks/use-swarm";
+import { useGovernanceConfig, useGovernanceAuditSummary } from "@/hooks/use-governance";
+import { Check, Clock, Activity, Terminal, ArrowRight, HardDrive, Save, Server, Users, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TeamTopology } from "@/components/topology";
+import type { GovernanceData } from "@/components/topology/TeamTopology";
 import {
     formatRelativeTime,
     formatUptime,
@@ -68,12 +72,25 @@ function formatBackupAge(ageHours: number | null): string {
 }
 
 export default function Dashboard() {
-    const { data: status, isLoading, isError } = useStatus();
+    const { data: status, isError } = useStatus();
     const { data: sessionsData, isLoading: sessionsLoading, isError: sessionsError } = useSessions(PAGINATION.DASHBOARD_SESSION_LIMIT);
-    const { data: plansData, isLoading: plansLoading } = usePlans({ limit: 1 });
+    const { data: plansData } = usePlans({ limit: 1 });
+    const hasSwarmConfig = !!status?.team?.configured;
+    const { data: swarmDaemon } = useSwarmDaemonStatus(hasSwarmConfig);
+    const { data: govConfig } = useGovernanceConfig();
+    const { data: govSummary } = useGovernanceAuditSummary(7);
+
+    // Show governance node when enabled OR in observe mode (observe still tracks events)
+    const governanceActive = govConfig?.enabled || govConfig?.enforcement_mode === "observe";
+    const governance: GovernanceData | undefined = governanceActive
+        ? {
+              enabled: true,
+              total: govSummary?.total ?? 0,
+              byAction: govSummary?.by_action ?? {},
+          }
+        : undefined;
 
     const isIndexing = status?.indexing;
-    const indexStats = status?.index_stats;
     const sessions = sessionsData?.sessions || [];
     const totalSessions = sessionsData?.total || 0;
     const totalPlans = plansData?.total || 0;
@@ -90,11 +107,29 @@ export default function Dashboard() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    {status && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatUptime(status.uptime_seconds)}
+                        </span>
+                    )}
                     <StatusDot status={systemStatus} className="w-3 h-3" />
                     <span className="text-sm font-medium">
                         {systemStatusLabel}
                     </span>
+                    {status?.cloud_relay?.connected && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 border-l pl-3">
+                            <Cloud className="w-3 h-3 text-green-500" />
+                            Cloud
+                        </span>
+                    )}
+                    {status?.team?.connected && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 border-l pl-3">
+                            <Users className="w-3 h-3 text-green-500" />
+                            {status.team.members_online} {status.team.members_online === 1 ? "node" : "nodes"}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -110,48 +145,15 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Stats Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                <StatCard
-                    title="Files Indexed"
-                    value={indexStats?.files_indexed || 0}
-                    icon={FileCode}
-                    subtext={indexStats?.ast_stats?.ast_success ? `${indexStats.ast_stats.ast_success} AST parsed` : "Files in index"}
-                    loading={isLoading}
-                    href="/search?tab=code"
-                />
-                <StatCard
-                    title="Memories"
-                    value={indexStats?.memories_stored || 0}
-                    icon={Brain}
-                    subtext="Stored observations"
-                    loading={isLoading}
-                    href="/activity/memories"
-                />
-                <StatCard
-                    title="Sessions"
-                    value={totalSessions}
-                    icon={Layers}
-                    subtext="Agent sessions tracked"
-                    loading={sessionsLoading}
-                    href="/activity/sessions"
-                />
-                <StatCard
-                    title="Plans"
-                    value={totalPlans}
-                    icon={ClipboardList}
-                    subtext="Implementation plans"
-                    loading={plansLoading}
-                    href="/activity/plans"
-                />
-                <StatCard
-                    title="Uptime"
-                    value={status ? formatUptime(status.uptime_seconds) : "0m"}
-                    icon={Clock}
-                    subtext="Daemon session"
-                    loading={isLoading}
-                />
-            </div>
+            {/* System Topology */}
+            <TeamTopology
+                status={status}
+                sessions={sessions}
+                totalSessions={totalSessions}
+                totalPlans={totalPlans}
+                swarmName={swarmDaemon?.name}
+                governance={governance}
+            />
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <Card className="col-span-4">

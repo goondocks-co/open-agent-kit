@@ -37,10 +37,23 @@ def _find_log_file() -> Path | None:
 
 
 def _tail_lines(path: Path, n: int) -> list[str]:
-    """Read the last *n* lines from a file without loading the entire file."""
+    """Read the last *n* lines from a file by seeking from the end."""
     try:
-        with path.open(encoding="utf-8", errors="replace") as f:
-            return list(deque(f, maxlen=n))
+        size = path.stat().st_size
+        if size == 0:
+            return []
+        # For small files, just read the whole thing
+        if size < 65536:
+            with path.open(encoding="utf-8", errors="replace") as f:
+                return list(deque(f, maxlen=n))
+        # For larger files, read a chunk from the end and expand if needed.
+        # Cap at 4 MB to avoid excessive memory allocation for large n values.
+        chunk_size = min(size, 512 * n, 4 * 1024 * 1024)
+        with path.open("rb") as f:
+            f.seek(max(0, size - chunk_size))
+            data = f.read()
+        lines = data.decode("utf-8", errors="replace").splitlines()
+        return lines[-n:] if len(lines) > n else lines
     except OSError:
         return []
 
