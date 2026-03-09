@@ -14,6 +14,7 @@ export default function Deploy() {
     const isDeployed = !!status?.worker_url;
     const workerUrl = status?.worker_url ?? null;
     const swarmId = swarmStatus?.swarm_id ?? status?.swarm_id ?? null;
+    const workerReachable = status?.worker_reachable ?? null;
 
     return (
         <div className="space-y-6">
@@ -33,6 +34,7 @@ export default function Deploy() {
                 swarmId={swarmId}
                 error={pipeline.error}
                 updateAvailable={status?.update_available ?? false}
+                workerReachable={workerReachable}
                 onDeploy={() => pipeline.mutate()}
                 onRedeploy={() => pipeline.mutate({ force: true })}
             />
@@ -49,8 +51,8 @@ export default function Deploy() {
                 wranglerAvailable={auth?.wrangler_available ?? false}
                 authenticated={auth?.authenticated ?? false}
                 accountName={auth?.account_name ?? null}
-                scaffolded={status?.scaffolded ?? false}
-                depsInstalled={status?.node_modules_installed ?? false}
+                scaffolded={isDeployed}
+                depsInstalled={isDeployed}
                 defaultCollapsed={isDeployed}
             />
         </div>

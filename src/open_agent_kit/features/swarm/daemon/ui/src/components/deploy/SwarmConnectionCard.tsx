@@ -19,6 +19,7 @@ export interface SwarmConnectionCardProps {
     swarmId: string | null;
     error: string | null;
     updateAvailable: boolean;
+    workerReachable: boolean | null;
     onDeploy: () => void;
     onRedeploy: () => void;
 }
@@ -31,17 +32,18 @@ export function SwarmConnectionCard({
     swarmId,
     error,
     updateAvailable,
+    workerReachable,
     onDeploy,
     onRedeploy,
 }: SwarmConnectionCardProps) {
     const statusLabel = isDeployed
-        ? "Deployed"
+        ? (workerReachable === false ? "Deployed (unreachable)" : "Deployed")
         : isDeploying
             ? `${DEPLOY_STEPS[currentStep - 1] ?? "Deploying..."} (${currentStep}/3)`
             : "Not deployed";
 
     const statusColor = isDeployed
-        ? "bg-green-500"
+        ? (workerReachable === false ? "bg-amber-500" : "bg-green-500")
         : isDeploying
             ? "bg-amber-500 animate-pulse"
             : "bg-gray-400";
