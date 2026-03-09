@@ -117,6 +117,12 @@ jobs:
           pip install build hatchling hatch-vcs
 
       - name: Build package
+        env:
+          # Previous steps (npm build, pip install -e, skill assets) dirty
+          # the working tree.  hatch-vcs / setuptools_scm treats any
+          # uncommitted change as "dirty" and appends a dev+date suffix,
+          # which PyPI rejects.  Force the version from the validated tag.
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.validate-tag.outputs.version }}
         run: |
           python -m build
 
