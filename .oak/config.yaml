@@ -1,4 +1,4 @@
-version: 1.5.0b7.dev0+gfa4728f35.d20260307
+version: 1.5.2.dev1+g4974c223e.d20260309
 agents:
 - vscode-copilot
 - opencode
@@ -141,5 +141,13 @@ team:
   - '*.pot'
   - '*.mo'
   cli_command: oak-dev
+  cloud_relay:
+    worker_url: https://oak-relay-open-agent-kit.openagentkit.app
+    worker_name: oak-relay-open-agent-kit
+    tool_timeout_seconds: 30
+    reconnect_max_seconds: 60
+    custom_domain: openagentkit.app
+    deployed_template_hash: f6d02dd89708f72a332084633d282a1afbf15696af2c3b518035f35cbc175fe2
+    auto_connect: false
 swarm:
   swarm_url: https://oak-swarm-oss-swarm.openagentkit.app
