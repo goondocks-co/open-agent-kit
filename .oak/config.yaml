@@ -148,6 +148,6 @@ team:
     reconnect_max_seconds: 60
     custom_domain: openagentkit.app
     deployed_template_hash: f6d02dd89708f72a332084633d282a1afbf15696af2c3b518035f35cbc175fe2
-    auto_connect: false
+    auto_connect: true
 swarm:
   swarm_url: https://oak-swarm-oss-swarm.openagentkit.app

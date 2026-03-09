@@ -100,22 +100,6 @@ class PolicyUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-_TOKEN_MASK_VISIBLE_CHARS: int = 4
-_TOKEN_MASK_PREFIX: str = "****"
-
-
-def _mask_token(token: str | None) -> str | None:
-    """Mask an API token, showing only the last few characters.
-
-    Returns None if the token is None/empty, otherwise ``****<last 4 chars>``.
-    """
-    if not token:
-        return None
-    if len(token) <= _TOKEN_MASK_VISIBLE_CHARS:
-        return _TOKEN_MASK_PREFIX
-    return f"{_TOKEN_MASK_PREFIX}{token[-_TOKEN_MASK_VISIBLE_CHARS:]}"
-
-
 def _require_project_root() -> Path:
     """Return project_root from state or raise 500."""
     state = get_state()
@@ -149,7 +133,7 @@ async def get_team_config() -> TeamConfigResponse:
         auto_sync=tc.auto_sync,
         sync_interval_seconds=tc.sync_interval_seconds,
         relay_worker_url=relay_worker_url,
-        api_key=_mask_token(api_key),
+        api_key=api_key,
         keep_relay_alive=tc.keep_relay_alive,
     )
 
