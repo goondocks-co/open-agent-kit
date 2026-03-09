@@ -837,17 +837,13 @@ async def get_cloud_relay_status() -> dict:
     # Compute update_available from stored deployed_template_hash (not scaffold dir).
     from open_agent_kit.features.team.cloud_relay.scaffold import compute_template_hash
 
-    deployed_hash = (
-        state.ci_config.cloud_relay.deployed_template_hash if state.ci_config else None
-    )
+    deployed_hash = state.ci_config.cloud_relay.deployed_template_hash if state.ci_config else None
     update_available = deployed_hash is not None and deployed_hash != compute_template_hash()
 
     # Health probe (cached, 30s TTL)
     from open_agent_kit.utils.worker_health import probe_worker_health
 
-    worker_url_for_probe = (
-        state.ci_config.cloud_relay.worker_url if state.ci_config else None
-    )
+    worker_url_for_probe = state.ci_config.cloud_relay.worker_url if state.ci_config else None
     worker_reachable: bool | None = None
     if worker_url_for_probe:
         worker_reachable = await probe_worker_health(worker_url_for_probe)
