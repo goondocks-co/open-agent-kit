@@ -82,6 +82,7 @@ from open_agent_kit.features.team.constants import (
     CLOUD_RELAY_RESPONSE_KEY_SUGGESTION,
     CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE,
     CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME,
+    CLOUD_RELAY_RESPONSE_KEY_WORKER_REACHABLE,
     CLOUD_RELAY_RESPONSE_KEY_WORKER_URL,
     CLOUD_RELAY_SCAFFOLD_NODE_MODULES_DIR,
     CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR,
@@ -833,19 +834,23 @@ async def get_cloud_relay_status() -> dict:
 
         worker_name = make_worker_name(state.project_root.name)
 
-    # Compute update_available: True when the scaffold source files differ from
-    # the bundled template.  This directly detects stale deploys regardless of
-    # config state or when the last deploy happened.
-    from open_agent_kit.features.team.cloud_relay.scaffold import (
-        compute_scaffold_hash,
-        compute_template_hash,
-    )
+    # Compute update_available from stored deployed_template_hash (not scaffold dir).
+    from open_agent_kit.features.team.cloud_relay.scaffold import compute_template_hash
 
-    scaffold_dir = (
-        state.project_root / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR if state.project_root else None
+    deployed_hash = (
+        state.ci_config.cloud_relay.deployed_template_hash if state.ci_config else None
     )
-    scaffold_hash = compute_scaffold_hash(scaffold_dir) if scaffold_dir else None
-    update_available = scaffold_hash is not None and scaffold_hash != compute_template_hash()
+    update_available = deployed_hash is not None and deployed_hash != compute_template_hash()
+
+    # Health probe (cached, 30s TTL)
+    from open_agent_kit.utils.worker_health import probe_worker_health
+
+    worker_url_for_probe = (
+        state.ci_config.cloud_relay.worker_url if state.ci_config else None
+    )
+    worker_reachable: bool | None = None
+    if worker_url_for_probe:
+        worker_reachable = await probe_worker_health(worker_url_for_probe)
 
     if state.cloud_relay_client is None:
         # Surface config-backed values even when disconnected so the UI can
@@ -869,6 +874,7 @@ async def get_cloud_relay_status() -> dict:
             CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN: custom_domain,
             CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME: worker_name,
             CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: update_available,
+            CLOUD_RELAY_RESPONSE_KEY_WORKER_REACHABLE: worker_reachable,
         }
 
     status_dict = state.cloud_relay_client.get_status().to_dict()
@@ -888,5 +894,6 @@ async def get_cloud_relay_status() -> dict:
     status_dict[CLOUD_RELAY_RESPONSE_KEY_CUSTOM_DOMAIN] = custom_domain
     status_dict[CLOUD_RELAY_RESPONSE_KEY_WORKER_NAME] = worker_name
     status_dict[CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE] = update_available
+    status_dict[CLOUD_RELAY_RESPONSE_KEY_WORKER_REACHABLE] = worker_reachable
 
     return status_dict

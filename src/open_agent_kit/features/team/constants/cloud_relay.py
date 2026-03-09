@@ -325,6 +325,7 @@ CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH: Final[str] = "deployed_templat
 
 # Status response key for Worker template update detection
 CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: Final[str] = "update_available"
+CLOUD_RELAY_RESPONSE_KEY_WORKER_REACHABLE: Final[str] = "worker_reachable"
 
 # Observation stats endpoint path
 CLOUD_RELAY_OBS_STATS_PATH: Final[str] = "/obs/stats"
