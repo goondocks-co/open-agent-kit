@@ -212,6 +212,7 @@ export default function TeamRelay() {
                 isStopping={isStopping}
                 cfAccountName={cfAccountName}
                 updateAvailable={updateAvailable}
+                workerReachable={status?.worker_reachable ?? null}
                 startError={isConnected ? null : startError}
                 connectError={isConnected ? null : connectError}
                 stopError={stopError}
