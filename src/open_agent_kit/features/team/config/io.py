@@ -16,6 +16,7 @@ from open_agent_kit.config.paths import OAK_DIR
 from open_agent_kit.features.team.constants import (
     AUTO_RESOLVE_CONFIG_KEY,
     BACKUP_CONFIG_KEY,
+    CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME,
@@ -186,7 +187,8 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{CI_CONFIG_KEY_AGENTS}.provider_type",  # Agent LLM backend varies per machine
         f"{CI_CONFIG_KEY_AGENTS}.provider_base_url",  # Agent LLM backend varies per machine
         f"{CI_CONFIG_KEY_AGENTS}.provider_model",  # Agent LLM backend varies per machine
-        CI_CONFIG_KEY_CLOUD_RELAY,  # Cloud relay config is machine-local (token, worker URL)
+        f"{CI_CONFIG_KEY_CLOUD_RELAY}.{CI_CONFIG_CLOUD_RELAY_KEY_TOKEN}",  # Secret
+        f"{CI_CONFIG_KEY_CLOUD_RELAY}.{CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN}",  # Secret
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_API_KEY}",  # Team API keys are machine-local secrets
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_AUTO_SYNC}",  # Depends on per-machine state
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE}",  # Per-machine power preference
