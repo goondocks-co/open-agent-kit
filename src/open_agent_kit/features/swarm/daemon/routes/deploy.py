@@ -11,6 +11,7 @@ from open_agent_kit.features.swarm.config import get_swarm_config_dir
 from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
     CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
+    CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH,
     CI_CONFIG_SWARM_KEY_URL,
     SWARM_DAEMON_API_PATH_DEPLOY_AUTH,
     SWARM_DAEMON_API_PATH_DEPLOY_INSTALL,
@@ -26,22 +27,10 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_SCAFFOLD_WORKER_SUBDIR,
 )
 from open_agent_kit.features.swarm.daemon.state import get_swarm_state
-from open_agent_kit.utils.worker_scaffold_shared import (
-    WORKER_SCAFFOLD_NODE_MODULES_DIR,
-)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=[SWARM_ROUTE_TAG])
-
-# Cached scaffold hash — recomputing on every UI poll (5s) is wasteful since
-# the scaffold only changes on explicit scaffold/deploy actions.
-_scaffold_hash_cache: dict[str, str | None] = {}
-
-
-def _invalidate_scaffold_hash_cache() -> None:
-    """Clear the cached scaffold hash (call after scaffold or deploy)."""
-    _scaffold_hash_cache.clear()
 
 
 def _get_scaffold_dir() -> Path | None:
@@ -54,44 +43,36 @@ def _get_scaffold_dir() -> Path | None:
 
 @router.get(SWARM_DAEMON_API_PATH_DEPLOY_STATUS)
 async def deploy_status() -> dict:
-    """Check scaffold status and worker deployment info."""
+    """Check deploy status using stored config and health probe."""
+    from open_agent_kit.features.swarm.config import load_swarm_config
     from open_agent_kit.features.swarm.scaffold import (
-        compute_scaffold_hash,
         compute_template_hash,
         make_worker_name,
     )
+    from open_agent_kit.utils.worker_health import probe_worker_health
 
     state = get_swarm_state()
-    scaffold_dir = _get_scaffold_dir()
-    scaffolded = scaffold_dir is not None and scaffold_dir.is_dir()
-    node_modules = (
-        scaffolded
-        and scaffold_dir is not None
-        and (scaffold_dir / WORKER_SCAFFOLD_NODE_MODULES_DIR).is_dir()
-    )
-
     worker_name = make_worker_name(state.swarm_id) if state.swarm_id else None
 
-    # Detect if the bundled template has been updated since the scaffold was deployed.
-    # Hashes are cached to avoid re-reading files on every UI poll.
+    # Compute update_available from stored hash (not scaffold dir)
     update_available = False
-    if scaffolded and scaffold_dir is not None:
-        scaffold_key = str(scaffold_dir)
-        if scaffold_key not in _scaffold_hash_cache:
-            _scaffold_hash_cache[scaffold_key] = compute_scaffold_hash(scaffold_dir)
-        template_hash = compute_template_hash()  # already lru_cached upstream
-        scaffold_hash = _scaffold_hash_cache[scaffold_key]
-        update_available = scaffold_hash is not None and template_hash != scaffold_hash
+    config = load_swarm_config(state.swarm_id) if state.swarm_id else None
+    stored_hash = (config or {}).get(CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH)
+    if stored_hash:
+        update_available = stored_hash != compute_template_hash()
+
+    # Health probe (cached, 30s TTL)
+    worker_reachable: bool | None = None
+    if state.swarm_url:
+        worker_reachable = await probe_worker_health(state.swarm_url)
 
     return {
-        "scaffolded": scaffolded,
-        "scaffold_dir": str(scaffold_dir) if scaffold_dir else None,
-        "node_modules_installed": node_modules,
         "worker_url": state.swarm_url or None,
         "swarm_id": state.swarm_id,
         "worker_name": worker_name,
         "custom_domain": state.custom_domain or None,
         "update_available": update_available,
+        "worker_reachable": worker_reachable,
     }
 
 
@@ -163,7 +144,9 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
             force=body.force,
             agent_token=agent_token,
         )
-        _invalidate_scaffold_hash_cache()
+        from open_agent_kit.utils.worker_health import invalidate_health_cache
+
+        invalidate_health_cache(state.swarm_url)
         return {
             "success": True,
             "scaffold_dir": str(scaffold_dir),
@@ -214,9 +197,14 @@ async def deploy_run() -> dict:
         config[CI_CONFIG_SWARM_KEY_URL] = effective_url
         save_swarm_config(state.swarm_id, config)
 
+        # Persist deployed template hash for cross-machine update detection
+        from open_agent_kit.features.swarm.scaffold import compute_template_hash
+
+        config[CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH] = compute_template_hash()
+        save_swarm_config(state.swarm_id, config)
+
         # Update in-memory state so daemon connects without restart
         state.swarm_url = effective_url
-        _invalidate_scaffold_hash_cache()
 
         # Create a fresh SwarmWorkerClient for the new URL
         from open_agent_kit.features.swarm.daemon.client import SwarmWorkerClient
@@ -225,6 +213,10 @@ async def deploy_run() -> dict:
             swarm_url=effective_url,
             swarm_token=state.swarm_token,
         )
+
+        from open_agent_kit.utils.worker_health import invalidate_health_cache
+
+        invalidate_health_cache(state.swarm_url)
 
     return {
         "success": success,
@@ -303,6 +295,8 @@ async def deploy_settings(body: DeploySettingsRequest) -> dict:
             custom_domain or None,
             agent_token,
         )
-        _invalidate_scaffold_hash_cache()
+        from open_agent_kit.utils.worker_health import invalidate_health_cache
+
+        invalidate_health_cache(state.swarm_url)
 
     return await deploy_status()
