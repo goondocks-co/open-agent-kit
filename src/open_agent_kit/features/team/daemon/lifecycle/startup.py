@@ -104,6 +104,87 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
         logger.warning(CI_CLOUD_RELAY_LOG_AUTO_CONNECT_FAILED.format(error=e))
 
 
+def _migrate_cloud_relay_to_project_config(project_root: Path) -> None:
+    """One-time migration: promote cloud_relay project-classified keys to project config.
+
+    Before the user/project classification split, the entire ``cloud_relay``
+    section was user-classified.  After the split, only ``token`` and
+    ``agent_token`` remain user-classified; everything else (``worker_url``,
+    ``worker_name``, ``auto_connect``, ``custom_domain``,
+    ``deployed_template_hash``, etc.) belongs in the git-tracked project
+    config.
+
+    This migration copies those project-classified keys from the user
+    overlay into ``.oak/config.yaml`` so that new clones see the relay
+    URL and auto-connect flag without waiting for the publisher to
+    trigger a manual save.
+
+    Idempotent: skips keys already present in project config.
+    """
+    import yaml
+
+    from open_agent_kit.features.team.config.io import (
+        USER_CLASSIFIED_PATHS,
+        _user_config_path,
+        _write_yaml_config,
+    )
+    from open_agent_kit.features.team.constants import (
+        CI_CONFIG_KEY_CLOUD_RELAY,
+    )
+
+    config_file = project_root / OAK_DIR / "config.yaml"
+    if not config_file.exists():
+        return
+
+    user_file = _user_config_path(project_root)
+    if not user_file.exists():
+        return
+
+    try:
+        with open(user_file, encoding="utf-8") as f:
+            user_data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return
+
+    user_relay = (user_data.get("team") or {}).get(CI_CONFIG_KEY_CLOUD_RELAY)
+    if not isinstance(user_relay, dict) or not user_relay:
+        return
+
+    try:
+        with open(config_file, encoding="utf-8") as f:
+            project_data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return
+
+    project_relay = (project_data.get("team") or {}).get(CI_CONFIG_KEY_CLOUD_RELAY, {})
+    if not isinstance(project_relay, dict):
+        project_relay = {}
+
+    # Identify user-classified leaf keys for cloud_relay (secrets to skip)
+    user_only_leaves: set[str] = set()
+    prefix = f"{CI_CONFIG_KEY_CLOUD_RELAY}."
+    for path in USER_CLASSIFIED_PATHS:
+        if path.startswith(prefix):
+            user_only_leaves.add(path[len(prefix) :])
+
+    promoted: list[str] = []
+    for key, value in user_relay.items():
+        if key in user_only_leaves:
+            continue  # Never promote secrets
+        if key not in project_relay:
+            project_relay[key] = value
+            promoted.append(key)
+
+    if not promoted:
+        return
+
+    # Write updated project config
+    project_team = project_data.setdefault("team", {})
+    project_team[CI_CONFIG_KEY_CLOUD_RELAY] = project_relay
+    _write_yaml_config(config_file, project_data)
+    logger.info("Migrated cloud_relay keys to project config: %s", ", ".join(promoted))
+
+
 def _migrate_env_to_user_config(project_root: Path) -> None:
     """One-time migration: move persisted .env values to user override config.
 
@@ -743,6 +824,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # One-time migration: move .env secrets to user override config
     _migrate_env_to_user_config(project_root)
+
+    # One-time migration: promote cloud_relay project-classified keys
+    # from user overlay to project config (after classification split)
+    _migrate_cloud_relay_to_project_config(project_root)
 
     await _init_cloud_relay(state, project_root)
     await _ensure_swarm_tokens(state, project_root)

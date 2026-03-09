@@ -4,14 +4,12 @@ import { fetchJson, postJson, putJson } from "@/lib/api";
 import { API_ENDPOINTS, DEPLOY_POLL_MS } from "@/lib/constants";
 
 interface DeployStatus {
-    scaffolded: boolean;
-    scaffold_dir: string | null;
-    node_modules_installed: boolean;
     worker_url: string | null;
     swarm_id: string;
     worker_name: string | null;
     custom_domain: string | null;
     update_available: boolean;
+    worker_reachable: boolean | null;
 }
 
 interface AuthStatus {

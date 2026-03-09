@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from open_agent_kit.features.swarm.constants import (
+    CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH,
     CI_CONFIG_SWARM_KEY_LOG_LEVEL,
     CI_CONFIG_SWARM_KEY_LOG_ROTATION,
     SWARM_AUTH_ENV_VAR,
@@ -96,6 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.swarm_token = swarm_token
     state.swarm_id = swarm_id
     state.custom_domain = custom_domain
+    state.deployed_template_hash = swarm_config.get(CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH, "")
     state.auth_token = os.environ.get(SWARM_AUTH_ENV_VAR)
 
     if swarm_url and swarm_token:

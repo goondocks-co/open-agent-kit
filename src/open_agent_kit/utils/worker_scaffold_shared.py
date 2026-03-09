@@ -30,6 +30,9 @@ WORKER_SCAFFOLD_WRANGLER_TOML: Final[str] = "wrangler.toml"
 WORKER_SCAFFOLD_NODE_MODULES_DIR: Final[str] = "node_modules"
 WORKER_NAME_MAX_LENGTH: Final[int] = 63
 WORKER_NAME_FALLBACK: Final[str] = "default"
+WORKER_HEALTH_PROBE_TTL_SECONDS: Final[int] = 30
+WORKER_HEALTH_PROBE_TIMEOUT_SECONDS: Final[float] = 5.0
+WORKER_HEALTH_PROBE_PATH: Final[str] = "/health"
 
 
 @dataclass(frozen=True)

@@ -25,6 +25,7 @@ CI_CONFIG_SWARM_KEY_SWARM_ID: Final[str] = "swarm_id"
 CI_CONFIG_SWARM_KEY_WORKER_NAME: Final[str] = "worker_name"
 CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN: Final[str] = "custom_domain"
 CI_CONFIG_SWARM_KEY_AGENT_TOKEN: Final[str] = "agent_token"
+CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH: Final[str] = "deployed_template_hash"
 
 # API paths (Swarm Worker HTTP API)
 SWARM_API_PATH_REGISTER: Final[str] = "/api/swarm/register"

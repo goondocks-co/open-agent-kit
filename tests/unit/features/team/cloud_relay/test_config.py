@@ -1,5 +1,7 @@
 """Tests for CloudRelayConfig in CIConfig."""
 
+from pathlib import Path
+
 import pytest
 
 from open_agent_kit.features.team.config import (
@@ -38,7 +40,7 @@ class TestCloudRelayConfigDefaults:
         assert config.worker_url is None
         assert config.worker_name is None
         assert config.token is None
-        assert config.auto_connect is False
+        assert config.auto_connect is True
         assert config.tool_timeout_seconds == CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS
         assert config.reconnect_max_seconds == CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS
 
@@ -70,7 +72,7 @@ class TestCloudRelayConfigFromDict:
         config = CloudRelayConfig.from_dict({})
         assert config.worker_url is None
         assert config.token is None
-        assert config.auto_connect is False
+        assert config.auto_connect is True
 
     def test_env_var_token_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Token with ${ENV_VAR} syntax is resolved from environment."""
@@ -123,7 +125,7 @@ class TestCloudRelayConfigToDict:
         assert d[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL] is None
         assert d[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME] is None
         assert d[CI_CONFIG_CLOUD_RELAY_KEY_TOKEN] is None
-        assert d[CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT] is False
+        assert d[CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT] is True
 
     def test_ci_config_to_dict_includes_cloud_relay(self) -> None:
         ci = CIConfig()
@@ -368,8 +370,176 @@ class TestCloudRelayConfigCustomDomain:
 
 
 class TestCloudRelayInUserClassifiedPaths:
-    """Tests that cloud_relay is in USER_CLASSIFIED_PATHS."""
+    """Tests that cloud_relay secrets are in USER_CLASSIFIED_PATHS."""
 
-    def test_cloud_relay_is_user_classified(self) -> None:
-        """Cloud relay config is machine-local (token, worker URL)."""
-        assert CI_CONFIG_KEY_CLOUD_RELAY in USER_CLASSIFIED_PATHS
+    def test_cloud_relay_secrets_are_user_classified(self) -> None:
+        """Cloud relay token and agent_token are machine-local."""
+        from open_agent_kit.features.team.constants import (
+            CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
+            CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+        )
+
+        for key in (
+            CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+            CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
+        ):
+            assert f"{CI_CONFIG_KEY_CLOUD_RELAY}.{key}" in USER_CLASSIFIED_PATHS
+
+    def test_cloud_relay_section_not_wholly_user_classified(self) -> None:
+        """deployed_template_hash must be project-classified (git-tracked)."""
+        assert CI_CONFIG_KEY_CLOUD_RELAY not in USER_CLASSIFIED_PATHS
+
+
+class TestMigrateCloudRelayToProjectConfig:
+    """Tests for _migrate_cloud_relay_to_project_config startup migration."""
+
+    @pytest.fixture()
+    def project_root(self, tmp_path: Path) -> Path:
+        """Create a minimal project root with .oak dir."""
+        oak_dir = tmp_path / ".oak"
+        oak_dir.mkdir()
+        return tmp_path
+
+    def _write_yaml(self, path: Path, data: dict) -> None:
+        import yaml
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f)
+
+    def _read_yaml(self, path: Path) -> dict:
+        import yaml
+
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    def test_promotes_project_classified_keys(self, project_root: Path) -> None:
+        """worker_url and auto_connect move from user overlay to project config."""
+        from unittest.mock import patch
+
+        from open_agent_kit.features.team.daemon.lifecycle.startup import (
+            _migrate_cloud_relay_to_project_config,
+        )
+
+        config_file = project_root / ".oak" / "config.yaml"
+        self._write_yaml(config_file, {"team": {}})
+
+        user_file = project_root / ".oak" / "config.test-machine.yaml"
+        self._write_yaml(
+            user_file,
+            {
+                "team": {
+                    CI_CONFIG_KEY_CLOUD_RELAY: {
+                        CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: TEST_WORKER_URL,
+                        CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT: True,
+                        CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME: "oak-relay-test",
+                        CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: TEST_RELAY_TOKEN,
+                        CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN: TEST_AGENT_TOKEN,
+                    }
+                }
+            },
+        )
+
+        with patch(
+            "open_agent_kit.features.team.config.io._user_config_path",
+            return_value=user_file,
+        ):
+            _migrate_cloud_relay_to_project_config(project_root)
+
+        project_data = self._read_yaml(config_file)
+        project_relay = project_data["team"][CI_CONFIG_KEY_CLOUD_RELAY]
+
+        # Project-classified keys were promoted
+        assert project_relay[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL] == TEST_WORKER_URL
+        assert project_relay[CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT] is True
+        assert project_relay[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME] == "oak-relay-test"
+
+        # Secrets were NOT promoted
+        assert CI_CONFIG_CLOUD_RELAY_KEY_TOKEN not in project_relay
+        assert CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN not in project_relay
+
+    def test_idempotent_when_project_already_has_keys(self, project_root: Path) -> None:
+        """Migration does not overwrite existing project config values."""
+        from unittest.mock import patch
+
+        from open_agent_kit.features.team.daemon.lifecycle.startup import (
+            _migrate_cloud_relay_to_project_config,
+        )
+
+        existing_url = "https://existing-relay.workers.dev"
+        config_file = project_root / ".oak" / "config.yaml"
+        self._write_yaml(
+            config_file,
+            {
+                "team": {
+                    CI_CONFIG_KEY_CLOUD_RELAY: {
+                        CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: existing_url,
+                    }
+                }
+            },
+        )
+
+        user_file = project_root / ".oak" / "config.test-machine.yaml"
+        self._write_yaml(
+            user_file,
+            {
+                "team": {
+                    CI_CONFIG_KEY_CLOUD_RELAY: {
+                        CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: TEST_WORKER_URL,
+                        CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT: False,
+                    }
+                }
+            },
+        )
+
+        with patch(
+            "open_agent_kit.features.team.config.io._user_config_path",
+            return_value=user_file,
+        ):
+            _migrate_cloud_relay_to_project_config(project_root)
+
+        project_data = self._read_yaml(config_file)
+        project_relay = project_data["team"][CI_CONFIG_KEY_CLOUD_RELAY]
+
+        # Existing key preserved (not overwritten by user overlay value)
+        assert project_relay[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL] == existing_url
+        # New key promoted
+        assert project_relay[CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT] is False
+
+    def test_skips_when_no_user_overlay(self, project_root: Path) -> None:
+        """Migration is a no-op when user overlay does not exist."""
+        from open_agent_kit.features.team.daemon.lifecycle.startup import (
+            _migrate_cloud_relay_to_project_config,
+        )
+
+        config_file = project_root / ".oak" / "config.yaml"
+        self._write_yaml(config_file, {"team": {}})
+
+        # No user overlay file exists — should not raise
+        _migrate_cloud_relay_to_project_config(project_root)
+
+        project_data = self._read_yaml(config_file)
+        assert CI_CONFIG_KEY_CLOUD_RELAY not in project_data.get("team", {})
+
+    def test_skips_when_user_overlay_has_no_cloud_relay(self, project_root: Path) -> None:
+        """Migration is a no-op when user overlay has no cloud_relay section."""
+        from unittest.mock import patch
+
+        from open_agent_kit.features.team.daemon.lifecycle.startup import (
+            _migrate_cloud_relay_to_project_config,
+        )
+
+        config_file = project_root / ".oak" / "config.yaml"
+        self._write_yaml(config_file, {"team": {}})
+
+        user_file = project_root / ".oak" / "config.test-machine.yaml"
+        self._write_yaml(user_file, {"team": {"agents": {"provider_type": "openai"}}})
+
+        with patch(
+            "open_agent_kit.features.team.config.io._user_config_path",
+            return_value=user_file,
+        ):
+            _migrate_cloud_relay_to_project_config(project_root)
+
+        project_data = self._read_yaml(config_file)
+        assert CI_CONFIG_KEY_CLOUD_RELAY not in project_data.get("team", {})

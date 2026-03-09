@@ -70,6 +70,7 @@ def swarm_deploy(
     )
     from open_agent_kit.features.swarm.constants import (
         CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
+        CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH,
         CI_CONFIG_SWARM_KEY_TOKEN,
         CI_CONFIG_SWARM_KEY_URL,
         CI_CONFIG_SWARM_KEY_WORKER_NAME,
@@ -134,8 +135,11 @@ def swarm_deploy(
         print_error(SWARM_MESSAGE_DEPLOY_FAILED.format(output=output))
         raise typer.Exit(code=1)
 
-    # Update config with deployed URL
+    # Update config with deployed URL and template hash in a single save
+    from open_agent_kit.features.swarm.scaffold import compute_template_hash
+
     config[CI_CONFIG_SWARM_KEY_URL] = swarm_url
+    config[CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH] = compute_template_hash()
     save_swarm_config(name, config)
 
     print_info(SWARM_MESSAGE_DEPLOY_SUCCESS)

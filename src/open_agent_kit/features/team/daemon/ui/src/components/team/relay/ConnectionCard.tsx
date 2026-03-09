@@ -18,6 +18,7 @@ export interface ConnectionCardProps {
     isStopping: boolean;
     cfAccountName: string | null;
     updateAvailable: boolean;
+    workerReachable: boolean | null;
     startError: CloudRelayStartResponse | null;
     connectError: string | null;
     stopError: string | null;
@@ -30,7 +31,7 @@ export interface ConnectionCardProps {
 export function ConnectionCard({
     isConnected, isDeployed,
     isStarting, isConnecting, isStopping,
-    cfAccountName, updateAvailable,
+    cfAccountName, updateAvailable, workerReachable,
     startError, connectError, stopError,
     onDeploy, onConnect, onDisconnect, onRedeploy,
 }: ConnectionCardProps) {
@@ -39,7 +40,7 @@ export function ConnectionCard({
     const statusLabel = isConnected
         ? "Connected"
         : isDeployed
-            ? "Deployed, not connected"
+            ? (workerReachable === false ? "Deployed (unreachable)" : "Deployed, not connected")
             : "Not deployed";
 
     const statusColor = isConnected

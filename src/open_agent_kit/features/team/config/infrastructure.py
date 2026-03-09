@@ -220,7 +220,7 @@ class CloudRelayConfig:
     worker_name: str | None = None
     token: str | None = None
     agent_token: str | None = None
-    auto_connect: bool = False
+    auto_connect: bool = True
     tool_timeout_seconds: int = CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS
     reconnect_max_seconds: int = CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS
     custom_domain: str | None = None
@@ -321,7 +321,7 @@ class CloudRelayConfig:
             worker_name=data.get(CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME),
             token=token,
             agent_token=agent_token,
-            auto_connect=data.get(CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT, False),
+            auto_connect=data.get(CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT, True),
             tool_timeout_seconds=data.get(
                 CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT,
                 CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS,
