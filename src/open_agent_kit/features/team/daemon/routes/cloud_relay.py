@@ -170,6 +170,34 @@ def _mcp_endpoint(
     return worker_url + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
 
 
+async def _fetch_agent_token(worker_url: str, relay_token: str) -> str | None:
+    """Fetch the agent_token from the relay Worker's /config endpoint.
+
+    Returns the token string on success, or ``None`` on any failure
+    (non-critical — the node can still operate without it).
+    """
+    import httpx
+
+    from open_agent_kit.features.team.constants import (
+        CLOUD_RELAY_CONFIG_PATH,
+        CLOUD_RELAY_CONFIG_TIMEOUT_SECONDS,
+    )
+
+    try:
+        url = worker_url.rstrip("/") + CLOUD_RELAY_CONFIG_PATH
+        headers = {"Authorization": f"Bearer {relay_token}"}
+        async with httpx.AsyncClient(timeout=CLOUD_RELAY_CONFIG_TIMEOUT_SECONDS) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code == HTTPStatus.OK:
+            data = resp.json()
+            token: str | None = data.get("agent_token")
+            if token:
+                return token
+    except Exception as exc:
+        logger.debug("Failed to fetch agent_token from relay: %s", exc)
+    return None
+
+
 # =========================================================================
 # POST /api/cloud/start  — all-in-one orchestration
 # =========================================================================
@@ -759,8 +787,9 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
         if relay_status.connected:
             state.cache_relay_credentials(worker_url, token, port, machine_id)
 
-            # Persist auto_connect and worker_url so the relay reconnects
+            # Persist relay credentials and config so the relay reconnects
             # after daemon restart — same as the deploy (start) path.
+            # cloud_relay.token is user-classified (goes to user overlay).
             if state.project_root:
                 from open_agent_kit.features.team.config import (
                     load_ci_config,
@@ -769,9 +798,18 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
 
                 ci_config_ac = load_ci_config(state.project_root)
                 ci_config_ac.cloud_relay.auto_connect = True
+                ci_config_ac.cloud_relay.token = token
                 if not ci_config_ac.cloud_relay.worker_url:
                     ci_config_ac.cloud_relay.worker_url = worker_url
                 ci_config_ac.team.relay_worker_url = worker_url
+
+                # Fetch agent_token from the relay if this node doesn't
+                # have one yet (joining node — deployer already has it).
+                if not ci_config_ac.cloud_relay.agent_token:
+                    agent_token = await _fetch_agent_token(worker_url, token)
+                    if agent_token:
+                        ci_config_ac.cloud_relay.agent_token = agent_token
+
                 save_ci_config(state.project_root, ci_config_ac)
                 state.ci_config = None
 
