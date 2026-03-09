@@ -4,7 +4,7 @@ import { StatusDot, StatusBadge } from "@/components/ui/config-components";
 import { useStatus } from "@/hooks/use-status";
 import { useSessions, type SessionItem } from "@/hooks/use-activity";
 import { usePlans } from "@/hooks/use-plans";
-import { useSwarmDaemonStatus } from "@/hooks/use-swarm";
+import { useSwarmDaemonStatus, useSwarmStatus } from "@/hooks/use-swarm";
 import { useGovernanceConfig, useGovernanceAuditSummary } from "@/hooks/use-governance";
 import { Check, Clock, Activity, Terminal, ArrowRight, HardDrive, Save, Server, Users, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -77,6 +77,7 @@ export default function Dashboard() {
     const { data: plansData } = usePlans({ limit: 1 });
     const hasSwarmConfig = !!status?.team?.configured;
     const { data: swarmDaemon } = useSwarmDaemonStatus(hasSwarmConfig);
+    const { data: swarmStatus } = useSwarmStatus();
     const { data: govConfig } = useGovernanceConfig();
     const { data: govSummary } = useGovernanceAuditSummary(7);
 
@@ -152,6 +153,7 @@ export default function Dashboard() {
                 totalSessions={totalSessions}
                 totalPlans={totalPlans}
                 swarmName={swarmDaemon?.name}
+                swarmJoined={swarmStatus?.joined ?? false}
                 governance={governance}
             />
 

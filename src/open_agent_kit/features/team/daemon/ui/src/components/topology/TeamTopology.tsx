@@ -94,6 +94,7 @@ function buildTopology(
     totalSessions: number,
     totalPlans: number,
     swarmName?: string,
+    swarmJoined?: boolean,
     governance?: GovernanceData,
 ): TopologyData {
     if (!status) return { primary: [], swarm: null, showMcp: false };
@@ -191,15 +192,15 @@ function buildTopology(
         active: !!status.team?.connected,
     });
 
-    // Swarm offshoot of relay
-    const hasSwarm = status.team?.configured || status.cloud_relay?.connected;
+    // Swarm offshoot of relay — only show when actually joined to a swarm
+    const hasSwarm = !!swarmJoined;
     const swarm: TopoNode | null = hasSwarm ? {
         id: "swarm",
         label: "Swarm",
-        sublabel: swarmName || (status.cloud_relay?.connected ? "Connected" : "Not connected"),
+        sublabel: swarmName || "Connected",
         href: "/team",
-        category: status.cloud_relay?.connected ? "swarm" : "inactive",
-        active: !!status.cloud_relay?.connected,
+        category: "swarm",
+        active: true,
     } : null;
 
     // MCP offshoot of relay — shown when team is configured
@@ -683,10 +684,11 @@ interface TeamTopologyProps {
     totalSessions: number;
     totalPlans: number;
     swarmName?: string;
+    swarmJoined?: boolean;
     governance?: GovernanceData;
 }
 
-export function TeamTopology({ status, sessions, totalSessions, totalPlans, swarmName, governance }: TeamTopologyProps) {
+export function TeamTopology({ status, sessions, totalSessions, totalPlans, swarmName, swarmJoined, governance }: TeamTopologyProps) {
     const navigate = useNavigate();
     const [hovered, setHovered] = useState<HoverState>(null);
 
@@ -703,8 +705,8 @@ export function TeamTopology({ status, sessions, totalSessions, totalPlans, swar
     );
 
     const topology = useMemo(
-        () => buildTopology(status, sessions, totalSessions, totalPlans, swarmName, governance),
-        [status, sessions, totalSessions, totalPlans, swarmName, governance],
+        () => buildTopology(status, sessions, totalSessions, totalPlans, swarmName, swarmJoined, governance),
+        [status, sessions, totalSessions, totalPlans, swarmName, swarmJoined, governance],
     );
 
     const { primary, swarm, showMcp } = topology;
