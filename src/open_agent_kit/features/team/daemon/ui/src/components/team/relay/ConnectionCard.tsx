@@ -13,6 +13,7 @@ import { ErrorCard } from "./ErrorCard";
 export interface ConnectionCardProps {
     isConnected: boolean;
     isDeployed: boolean;
+    hasCredentials: boolean;
     isStarting: boolean;
     isConnecting: boolean;
     isStopping: boolean;
@@ -29,7 +30,7 @@ export interface ConnectionCardProps {
 }
 
 export function ConnectionCard({
-    isConnected, isDeployed,
+    isConnected, isDeployed, hasCredentials,
     isStarting, isConnecting, isStopping,
     cfAccountName, updateAvailable, workerReachable,
     startError, connectError, stopError,
@@ -37,31 +38,41 @@ export function ConnectionCard({
 }: ConnectionCardProps) {
     const isToggling = isStarting || isConnecting || isStopping;
 
+    // A node that sees the relay URL from git but has no credentials is a
+    // consumer that hasn't joined yet — show "awaiting join" instead of
+    // misleading deployer status.
+    const awaitingJoin = isDeployed && !hasCredentials && !isConnected;
+
     const statusLabel = isConnected
         ? "Connected"
-        : isDeployed
-            ? (workerReachable === false ? "Deployed (unreachable)" : "Deployed, not connected")
-            : "Not deployed";
+        : awaitingJoin
+            ? "Team relay available — join to connect"
+            : isDeployed
+                ? (workerReachable === false ? "Deployed (unreachable)" : "Deployed, not connected")
+                : "Not deployed";
 
     const statusColor = isConnected
         ? "bg-green-500"
-        : isDeployed
-            ? "bg-amber-500"
-            : "bg-gray-400";
+        : awaitingJoin
+            ? "bg-blue-500"
+            : isDeployed
+                ? "bg-amber-500"
+                : "bg-gray-400";
 
     const primaryLabel = () => {
         if (isStarting) return "Deploying...";
         if (isConnecting) return "Connecting...";
         if (isStopping) return "Disconnecting...";
         if (isConnected) return "Disconnect";
+        if (awaitingJoin) return null;  // No primary action — user must join first
         if (isDeployed) return "Connect";
         return "Deploy Relay";
     };
 
     const handlePrimary = () => {
         if (isConnected) onDisconnect();
-        else if (isDeployed) onConnect();
-        else onDeploy();
+        else if (isDeployed && !awaitingJoin) onConnect();
+        else if (!isDeployed) onDeploy();
     };
 
     return (
@@ -74,9 +85,11 @@ export function ConnectionCard({
                 <CardDescription>
                     {isConnected
                         ? "Your daemon is connected. Observations sync with teammates automatically."
-                        : isDeployed
-                            ? "Your relay is deployed but your daemon is not connected."
-                            : "Deploy a Cloudflare Worker to enable team sync and remote AI agent access."
+                        : awaitingJoin
+                            ? "A teammate has deployed a relay. Enter the relay URL and token below to join."
+                            : isDeployed
+                                ? "Your relay is deployed but your daemon is not connected."
+                                : "Deploy a Cloudflare Worker to enable team sync and remote AI agent access."
                     }
                 </CardDescription>
             </CardHeader>
@@ -94,7 +107,7 @@ export function ConnectionCard({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {isDeployed && (
+                        {isDeployed && !awaitingJoin && (
                             <Button
                                 onClick={onRedeploy}
                                 disabled={isToggling}
@@ -111,20 +124,22 @@ export function ConnectionCard({
                                 )}
                             </Button>
                         )}
-                        <Button
-                            onClick={handlePrimary}
-                            disabled={isToggling}
-                            variant={isConnected ? "outline" : "default"}
-                            size="sm"
-                        >
-                            {(isStarting || isConnecting || isStopping) && (
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            )}
-                            {!isConnected && !isStarting && !isConnecting && (
-                                <Cloud className="h-4 w-4 mr-2" />
-                            )}
-                            {primaryLabel()}
-                        </Button>
+                        {!awaitingJoin && (
+                            <Button
+                                onClick={handlePrimary}
+                                disabled={isToggling}
+                                variant={isConnected ? "outline" : "default"}
+                                size="sm"
+                            >
+                                {(isStarting || isConnecting || isStopping) && (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                )}
+                                {!isConnected && !isStarting && !isConnecting && (
+                                    <Cloud className="h-4 w-4 mr-2" />
+                                )}
+                                {primaryLabel()}
+                            </Button>
+                        )}
                     </div>
                 </div>
 

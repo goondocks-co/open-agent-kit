@@ -99,6 +99,10 @@ export default function TeamRelay() {
     const workerUrl = status?.worker_url ?? config?.relay_worker_url ?? null;
     const isDeployed = !!workerUrl;
     const relayToken = config?.api_key ?? null;
+    // A node has credentials if it has a relay token (consumer join) or an
+    // agent token (publisher deploy).  Without credentials the node should
+    // show the JoinTeamCard instead of the deployer/credentials view.
+    const hasCredentials = !!relayToken || !!status?.agent_token;
     const mcpEndpoint = status?.mcp_endpoint ?? (workerUrl ? `${workerUrl}/mcp` : null);
     const agentToken = status?.agent_token ?? null;
     const updateAvailable = status?.update_available ?? false;
@@ -207,6 +211,7 @@ export default function TeamRelay() {
             <ConnectionCard
                 isConnected={isConnected}
                 isDeployed={isDeployed}
+                hasCredentials={hasCredentials}
                 isStarting={isStarting}
                 isConnecting={isConnecting}
                 isStopping={isStopping}
@@ -280,9 +285,10 @@ export default function TeamRelay() {
             {/* Config sections — always visible when not connected, toggled when connected */}
             {showConfigSections && (
                 <>
-                    {/* Consumer join form — when no relay is configured */}
-                    {!isDeployed && (
+                    {/* Consumer join form — when relay exists but this node has no credentials */}
+                    {(!isDeployed || (isDeployed && !hasCredentials && !isConnected)) && (
                         <JoinTeamCard
+                            defaultUrl={workerUrl}
                             onJoin={handleJoin}
                             isSaving={updateConfig.isPending}
                             isConnecting={isConnecting}
@@ -291,8 +297,8 @@ export default function TeamRelay() {
                         />
                     )}
 
-                    {/* Team credentials — when relay is deployed (deployer view) */}
-                    {workerUrl && (
+                    {/* Team credentials — when relay is deployed AND this node has credentials */}
+                    {workerUrl && hasCredentials && (
                         <TeamCredentialsCard workerUrl={workerUrl} relayToken={relayToken} />
                     )}
 
@@ -327,8 +333,8 @@ export default function TeamRelay() {
                 </>
             )}
 
-            {/* Leave team — always visible when relay is configured */}
-            {(isDeployed || relayToken) && (
+            {/* Leave team — only visible when this node has credentials (joined or deployed) */}
+            {hasCredentials && (
                 <LeaveTeamSection onLeave={handleLeave} isLeaving={leaveTeam.isPending} />
             )}
         </div>

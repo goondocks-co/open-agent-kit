@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from "@oak/ui/components/ui/alert";
 import { Link2, Loader2, AlertCircle, CheckCircle2, Cloud } from "lucide-react";
 
 export interface JoinTeamCardProps {
+    /** Pre-filled relay URL from project config (git-tracked). */
+    defaultUrl?: string | null;
     onJoin: (url: string, token: string) => void;
     isSaving: boolean;
     isConnecting: boolean;
@@ -16,8 +18,8 @@ export interface JoinTeamCardProps {
     joinSuccess: boolean;
 }
 
-export function JoinTeamCard({ onJoin, isSaving, isConnecting, joinError, joinSuccess }: JoinTeamCardProps) {
-    const [url, setUrl] = useState("");
+export function JoinTeamCard({ defaultUrl, onJoin, isSaving, isConnecting, joinError, joinSuccess }: JoinTeamCardProps) {
+    const [url, setUrl] = useState(defaultUrl ?? "");
     const [token, setToken] = useState("");
 
     const isBusy = isSaving || isConnecting;
