@@ -140,7 +140,6 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
             force=body.force,
             agent_token=agent_token,
         )
-        invalidate_health_cache(state.swarm_url)
         return {
             "success": True,
             "scaffold_dir": str(scaffold_dir),
@@ -283,6 +282,7 @@ async def deploy_settings(body: DeploySettingsRequest) -> dict:
             custom_domain or None,
             agent_token,
         )
-        invalidate_health_cache(state.swarm_url)
+        # Flush all cached health results (old URL entry would linger)
+        invalidate_health_cache()
 
     return await deploy_status()

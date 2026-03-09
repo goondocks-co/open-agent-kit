@@ -46,7 +46,7 @@ export function ConnectionCard({
     const statusColor = isConnected
         ? "bg-green-500"
         : isDeployed
-            ? (workerReachable === false ? "bg-red-500" : "bg-amber-500")
+            ? "bg-amber-500"
             : "bg-gray-400";
 
     const primaryLabel = () => {
