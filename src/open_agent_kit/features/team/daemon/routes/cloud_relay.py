@@ -758,6 +758,23 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
 
         if relay_status.connected:
             state.cache_relay_credentials(worker_url, token, port, machine_id)
+
+            # Persist auto_connect and worker_url so the relay reconnects
+            # after daemon restart — same as the deploy (start) path.
+            if state.project_root:
+                from open_agent_kit.features.team.config import (
+                    load_ci_config,
+                    save_ci_config,
+                )
+
+                ci_config_ac = load_ci_config(state.project_root)
+                ci_config_ac.cloud_relay.auto_connect = True
+                if not ci_config_ac.cloud_relay.worker_url:
+                    ci_config_ac.cloud_relay.worker_url = worker_url
+                ci_config_ac.team.relay_worker_url = worker_url
+                save_ci_config(state.project_root, ci_config_ac)
+                state.ci_config = None
+
             return {
                 CLOUD_RELAY_RESPONSE_KEY_STATUS: CLOUD_RELAY_API_STATUS_CONNECTED,
                 **relay_status.to_dict(),
