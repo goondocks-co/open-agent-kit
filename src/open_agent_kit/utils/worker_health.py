@@ -20,6 +20,15 @@ from open_agent_kit.utils.worker_scaffold_shared import (
 logger = logging.getLogger(__name__)
 
 _cache: dict[str, tuple[bool, float]] = {}
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Return a module-level reusable async HTTP client."""
+    global _http_client  # noqa: PLW0603
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient()
+    return _http_client
 
 
 def invalidate_health_cache(url: str | None = None) -> None:
@@ -54,9 +63,9 @@ async def probe_worker_health(url: str) -> bool:
 
     health_url = f"{url.rstrip('/')}{WORKER_HEALTH_PROBE_PATH}"
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(health_url, timeout=WORKER_HEALTH_PROBE_TIMEOUT_SECONDS)
-            reachable = resp.status_code == 200
+        client = _get_http_client()
+        resp = await client.get(health_url, timeout=WORKER_HEALTH_PROBE_TIMEOUT_SECONDS)
+        reachable = resp.status_code == 200
     except Exception:
         logger.debug("Health probe failed for %s", url, exc_info=True)
         reachable = False

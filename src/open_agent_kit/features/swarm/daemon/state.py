@@ -19,6 +19,7 @@ class SwarmDaemonState:
     swarm_token: str = ""
     swarm_id: str = ""
     custom_domain: str = ""
+    deployed_template_hash: str = ""
     auth_token: str | None = None
     http_client: SwarmWorkerClient | None = None
 

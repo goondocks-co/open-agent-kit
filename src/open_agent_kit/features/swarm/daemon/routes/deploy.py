@@ -7,7 +7,11 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from open_agent_kit.features.swarm.config import get_swarm_config_dir
+from open_agent_kit.features.swarm.config import (
+    get_swarm_config_dir,
+    load_swarm_config,
+    save_swarm_config,
+)
 from open_agent_kit.features.swarm.constants import (
     CI_CONFIG_SWARM_KEY_AGENT_TOKEN,
     CI_CONFIG_SWARM_KEY_CUSTOM_DOMAIN,
@@ -27,6 +31,8 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_SCAFFOLD_WORKER_SUBDIR,
 )
 from open_agent_kit.features.swarm.daemon.state import get_swarm_state
+from open_agent_kit.features.swarm.scaffold import compute_template_hash, make_worker_name
+from open_agent_kit.utils.worker_health import invalidate_health_cache, probe_worker_health
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +50,14 @@ def _get_scaffold_dir() -> Path | None:
 @router.get(SWARM_DAEMON_API_PATH_DEPLOY_STATUS)
 async def deploy_status() -> dict:
     """Check deploy status using stored config and health probe."""
-    from open_agent_kit.features.swarm.config import load_swarm_config
-    from open_agent_kit.features.swarm.scaffold import (
-        compute_template_hash,
-        make_worker_name,
-    )
-    from open_agent_kit.utils.worker_health import probe_worker_health
-
     state = get_swarm_state()
     worker_name = make_worker_name(state.swarm_id) if state.swarm_id else None
 
-    # Compute update_available from stored hash (not scaffold dir)
+    # Compute update_available from in-memory cached hash (populated at startup
+    # and updated after deploy)
     update_available = False
-    config = load_swarm_config(state.swarm_id) if state.swarm_id else None
-    stored_hash = (config or {}).get(CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH)
-    if stored_hash:
-        update_available = stored_hash != compute_template_hash()
+    if state.deployed_template_hash:
+        update_available = state.deployed_template_hash != compute_template_hash()
 
     # Health probe (cached, 30s TTL)
     worker_reachable: bool | None = None
@@ -105,7 +103,7 @@ class ScaffoldRequest(BaseModel):
 @router.post(SWARM_DAEMON_API_PATH_DEPLOY_SCAFFOLD)
 async def deploy_scaffold(body: ScaffoldRequest) -> dict:
     """Scaffold the worker template using the token from config."""
-    from open_agent_kit.features.swarm.scaffold import make_worker_name, render_worker_template
+    from open_agent_kit.features.swarm.scaffold import render_worker_template
 
     state = get_swarm_state()
     if not state.swarm_id:
@@ -121,8 +119,6 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
         return {"success": False, "error": SWARM_DEPLOY_ERROR_NO_TOKEN}
 
     # Get or generate agent token
-    from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
-
     config = load_swarm_config(state.swarm_id) if state.swarm_id else {}
     agent_token = config.get(CI_CONFIG_SWARM_KEY_AGENT_TOKEN, "") if config else ""
     if not agent_token:
@@ -144,8 +140,6 @@ async def deploy_scaffold(body: ScaffoldRequest) -> dict:
             force=body.force,
             agent_token=agent_token,
         )
-        from open_agent_kit.utils.worker_health import invalidate_health_cache
-
         invalidate_health_cache(state.swarm_url)
         return {
             "success": True,
@@ -173,7 +167,6 @@ async def deploy_install() -> dict:
 @router.post(SWARM_DAEMON_API_PATH_DEPLOY_RUN)
 async def deploy_run() -> dict:
     """Run wrangler deploy and persist the result to config."""
-    from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
     from open_agent_kit.features.swarm.deploy import run_wrangler_deploy
 
     state = get_swarm_state()
@@ -184,27 +177,22 @@ async def deploy_run() -> dict:
     success, worker_url, output = await asyncio.to_thread(run_wrangler_deploy, scaffold_dir)
 
     if success and worker_url and state.swarm_id:
-        from open_agent_kit.features.swarm.scaffold import make_worker_name
-
         # Prefer custom domain URL when configured
         effective_url = worker_url
         if state.custom_domain:
             worker_name = make_worker_name(state.swarm_id)
             effective_url = f"https://{worker_name}.{state.custom_domain}"
 
-        # Persist swarm_url to config on disk
+        # Persist URL and template hash in a single config save
+        template_hash = compute_template_hash()
         config = load_swarm_config(state.swarm_id) or {}
         config[CI_CONFIG_SWARM_KEY_URL] = effective_url
-        save_swarm_config(state.swarm_id, config)
-
-        # Persist deployed template hash for cross-machine update detection
-        from open_agent_kit.features.swarm.scaffold import compute_template_hash
-
-        config[CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH] = compute_template_hash()
+        config[CI_CONFIG_SWARM_KEY_DEPLOYED_TEMPLATE_HASH] = template_hash
         save_swarm_config(state.swarm_id, config)
 
         # Update in-memory state so daemon connects without restart
         state.swarm_url = effective_url
+        state.deployed_template_hash = template_hash
 
         # Create a fresh SwarmWorkerClient for the new URL
         from open_agent_kit.features.swarm.daemon.client import SwarmWorkerClient
@@ -214,9 +202,8 @@ async def deploy_run() -> dict:
             swarm_token=state.swarm_token,
         )
 
-        from open_agent_kit.utils.worker_health import invalidate_health_cache
-
-        invalidate_health_cache(state.swarm_url)
+        # Flush all health cache entries (old URL entry would linger otherwise)
+        invalidate_health_cache()
 
     return {
         "success": success,
@@ -243,8 +230,7 @@ def _normalize_domain(raw: str) -> str:
 @router.put(SWARM_DAEMON_API_PATH_DEPLOY_SETTINGS)
 async def deploy_settings(body: DeploySettingsRequest) -> dict:
     """Save deploy settings (custom domain) and re-render wrangler.toml."""
-    from open_agent_kit.features.swarm.config import load_swarm_config, save_swarm_config
-    from open_agent_kit.features.swarm.scaffold import make_worker_name, render_wrangler_config
+    from open_agent_kit.features.swarm.scaffold import render_wrangler_config
 
     state = get_swarm_state()
     if not state.swarm_id:
@@ -276,7 +262,9 @@ async def deploy_settings(body: DeploySettingsRequest) -> dict:
             save_swarm_config(state.swarm_id, config)
 
             # Reconnect client with new URL
-            from open_agent_kit.features.swarm.daemon.client import SwarmWorkerClient
+            from open_agent_kit.features.swarm.daemon.client import (
+                SwarmWorkerClient,
+            )
 
             state.http_client = SwarmWorkerClient(
                 swarm_url=effective_url,
@@ -295,8 +283,6 @@ async def deploy_settings(body: DeploySettingsRequest) -> dict:
             custom_domain or None,
             agent_token,
         )
-        from open_agent_kit.utils.worker_health import invalidate_health_cache
-
         invalidate_health_cache(state.swarm_url)
 
     return await deploy_status()
