@@ -30,6 +30,7 @@ from open_agent_kit.features.team.daemon.lifecycle.update_installer import (
 from open_agent_kit.features.team.daemon.lifecycle.version_check import (
     check_upgrade_needed,
     check_version,
+    periodic_self_update_check,
     periodic_version_check,
 )
 
@@ -41,6 +42,7 @@ __all__ = [
     "check_version",
     "configure_logging",
     "lifespan",
+    "periodic_self_update_check",
     "periodic_version_check",
     "run_auto_backup",
     "run_governance_prune",

@@ -170,3 +170,70 @@ async def periodic_version_check() -> None:
                 _stale_logged = True
         except (OSError, RuntimeError):
             logger.debug("Stale install check failed", exc_info=True)
+
+
+async def periodic_self_update_check(state: "DaemonState") -> None:
+    """Periodically check PyPI for new OAK versions and auto-download.
+
+    Runs as a non-blocking async task. Respects exemptions, channel config,
+    and check interval. Downloads wheel if auto_download is enabled.
+    """
+    from open_agent_kit.constants import VERSION
+    from open_agent_kit.features.team.daemon.lifecycle.update_checker import (
+        check_for_update,
+        should_check_now,
+    )
+    from open_agent_kit.features.team.daemon.lifecycle.update_downloader import (
+        download_and_stage,
+    )
+    from open_agent_kit.utils.global_config import (
+        ensure_global_dir,
+        load_update_config,
+        read_staged_update,
+        read_update_error,
+    )
+    from open_agent_kit.utils.update_exempt import check_update_exempt
+
+    # Check exemptions once at startup
+    exemption = check_update_exempt()
+    if exemption:
+        state.self_update_exempt = True
+        state.self_update_exempt_reason = exemption.reason
+        logger.info("Self-update disabled: %s", exemption.message)
+        return
+
+    if not ensure_global_dir():
+        state.self_update_exempt = True
+        state.self_update_exempt_reason = "global_dir_unavailable"
+        logger.warning("Self-update disabled: cannot create ~/.oak/")
+        return
+
+    while True:
+        config = load_update_config()
+        try:
+            if should_check_now(config.check_interval_hours):
+                result = await check_for_update(
+                    running_version=VERSION,
+                    config=config,
+                )
+                state.self_update_available = result.update_available
+                state.self_update_version = result.latest_version
+
+                if result.update_available and config.auto_download and result.latest_version:
+                    # Check if already staged
+                    staged = read_staged_update()
+                    if not staged or staged.get("version") != result.latest_version:
+                        await download_and_stage(result.latest_version, channel=config.channel)
+
+                # Update staged status
+                staged = read_staged_update()
+                state.self_update_staged = staged is not None
+
+            # Check for errors from previous update attempts
+            error = read_update_error()
+            state.self_update_error = error
+
+        except Exception as exc:
+            logger.warning("Self-update check failed: %s", exc)
+
+        await asyncio.sleep(config.check_interval_hours * 3600)

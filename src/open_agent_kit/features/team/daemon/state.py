@@ -231,6 +231,13 @@ class DaemonState:
     team_sync_worker: "ObsFlushWorker | None" = None
     # Cached relay credentials for reconnecting after power wake
     _relay_credentials: RelayCredentials | None = field(default=None, init=False, repr=False)
+    # Self-update state
+    self_update_exempt: bool = False
+    self_update_exempt_reason: str | None = None
+    self_update_available: bool = False
+    self_update_version: str | None = None
+    self_update_staged: bool = False
+    self_update_error: str | None = None
 
     def initialize(self, project_root: Path) -> None:
         """Initialize daemon state for startup.
@@ -671,6 +678,12 @@ class DaemonState:
         self.power_state = POWER_STATE_ACTIVE
         self.team_sync_worker = None
         self._relay_credentials = None
+        self.self_update_exempt = False
+        self.self_update_exempt_reason = None
+        self.self_update_available = False
+        self.self_update_version = None
+        self.self_update_staged = False
+        self.self_update_error = None
 
 
 # Global daemon state instance
