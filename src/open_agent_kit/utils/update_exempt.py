@@ -5,6 +5,7 @@ Two categories are exempt: editable installs (development) and Windows.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 
@@ -19,11 +20,20 @@ class UpdateExemption:
     message: str
 
 
+FORCE_SELF_UPDATE_ENV_VAR = "OAK_FORCE_SELF_UPDATE"
+
+
 def check_update_exempt() -> UpdateExemption | None:
     """Check if self-update should be disabled.
 
     Returns None if self-update is allowed, or an UpdateExemption with the reason.
+
+    Set ``OAK_FORCE_SELF_UPDATE=1`` to bypass all exemption checks (useful for
+    smoke-testing the self-update UI on an editable/dev install).
     """
+    if os.environ.get(FORCE_SELF_UPDATE_ENV_VAR):
+        return None
+
     _, is_editable = get_install_source()
     if is_editable:
         return UpdateExemption(

@@ -1,9 +1,6 @@
-import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ExternalLink, Loader2, CheckCircle2, ArrowUpCircle, RefreshCw } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
 import { Button } from "./button";
-import { ConfirmDialog } from "./confirm-dialog";
 import { cn } from "../../lib/utils";
 
 export interface ChannelInfo {
@@ -19,12 +16,7 @@ export interface AboutDialogConfig {
     title: string;
     logoSrc: string;
     channelEndpoint: string;
-    channelSwitchEndpoint: string;
     healthEndpoint: string;
-    /** CLI subcommand shown in manual instructions (e.g. "team start", "swarm start") */
-    startCommand: string;
-    restartPollIntervalMs?: number;
-    restartTimeoutMs?: number;
 }
 
 /** Staged update waiting to be applied */
@@ -59,7 +51,6 @@ interface AboutDialogProps {
     onOpenChange: (open: boolean) => void;
     config: AboutDialogConfig;
     channelData: ChannelInfo | undefined;
-    fetchJson: (url: string, init?: RequestInit) => Promise<unknown>;
     /** Update status from the self-update API (optional — omit for swarm or exempt installs) */
     updateStatus?: UpdateStatus;
     /** Called when user clicks "Check Now" */
@@ -71,181 +62,6 @@ interface AboutDialogProps {
     /** Whether a check/apply mutation is currently pending */
     isCheckingUpdate?: boolean;
     isApplyingUpdate?: boolean;
-}
-
-const DEFAULT_POLL_INTERVAL = 2000;
-const DEFAULT_TIMEOUT = 120000;
-
-function ChannelSection({
-    data,
-    config,
-    fetchJson,
-}: {
-    data: ChannelInfo;
-    config: AboutDialogConfig;
-    fetchJson: (url: string, init?: RequestInit) => Promise<unknown>;
-}) {
-    const [confirmOpen, setConfirmOpen] = React.useState(false);
-    const [isSwitching, setIsSwitching] = React.useState(false);
-    const [switchError, setSwitchError] = React.useState<string | null>(null);
-
-    const targetChannel = data.current_channel === "stable" ? "beta" : "stable";
-    const switchVersion =
-        targetChannel === "beta" ? data.available_beta_version : data.available_stable_version;
-
-    const switchMutation = useMutation({
-        mutationFn: (target: string) =>
-            fetchJson(config.channelSwitchEndpoint, {
-                method: "POST",
-                body: JSON.stringify({ target_channel: target }),
-            }),
-    });
-
-    const pollInterval = config.restartPollIntervalMs ?? DEFAULT_POLL_INTERVAL;
-    const timeout = config.restartTimeoutMs ?? DEFAULT_TIMEOUT;
-
-    const handleConfirmedSwitch = async () => {
-        setConfirmOpen(false);
-        setIsSwitching(true);
-        setSwitchError(null);
-
-        try {
-            await switchMutation.mutateAsync(targetChannel);
-
-            // Poll health until the new daemon is up
-            const deadline = Date.now() + timeout;
-            await new Promise<void>((resolve, reject) => {
-                const check = async () => {
-                    if (Date.now() > deadline) {
-                        reject(new Error("timeout"));
-                        return;
-                    }
-                    try {
-                        await fetchJson(config.healthEndpoint);
-                        resolve();
-                    } catch {
-                        setTimeout(check, pollInterval);
-                    }
-                };
-                setTimeout(check, pollInterval);
-            });
-
-            window.location.reload();
-        } catch (err) {
-            const message = err instanceof Error ? err.message : "Unknown error";
-            setSwitchError(
-                message === "timeout"
-                    ? "Switch timed out. The daemon may still be upgrading \u2014 check the terminal for progress."
-                    : message,
-            );
-            setIsSwitching(false);
-        }
-    };
-
-    const channelLabel = data.current_channel === "stable" ? "Stable" : "Beta";
-    const channelDot = data.current_channel === "beta" ? "bg-amber-500" : "bg-green-500";
-    const targetBinary = targetChannel === "beta" ? "oak-beta" : "oak";
-
-    const confirmDescription = switchVersion
-        ? `This will switch to ${targetBinary} v${switchVersion}, run upgrade to re-render all assets, and restart the daemon. You can switch back at any time.`
-        : `This will switch to the ${targetChannel} channel, run upgrade, and restart the daemon. You can switch back at any time.`;
-
-    // Switch is supported when the target binary exists on PATH (checked by backend)
-    const canSwitch =
-        data.switch_supported &&
-        (targetChannel === "stable" || data.available_beta_version !== null);
-
-    const noBetaAvailable =
-        targetChannel === "beta" &&
-        data.current_channel === "stable" &&
-        data.available_beta_version === null;
-
-    return (
-        <div className="space-y-3">
-            <div className="flex items-center gap-2">
-                <span className={cn("w-2 h-2 rounded-full flex-shrink-0", channelDot)} />
-                <span className="text-sm font-medium">
-                    Release Channel: {channelLabel}
-                    {data.current_channel === "beta" && data.current_version && (
-                        <span className="ml-1 text-muted-foreground">v{data.current_version}</span>
-                    )}
-                </span>
-            </div>
-
-            {/* Available version info */}
-            {targetChannel === "beta" && data.available_beta_version && (
-                <p className="text-sm text-muted-foreground pl-4">
-                    Beta channel: v{data.available_beta_version} available
-                </p>
-            )}
-            {targetChannel === "stable" && data.available_stable_version && (
-                <p className="text-sm text-muted-foreground pl-4">
-                    Stable channel: v{data.available_stable_version} available
-                </p>
-            )}
-            {noBetaAvailable && (
-                <p className="text-sm text-muted-foreground pl-4">
-                    Beta channel: no pre-release available
-                </p>
-            )}
-
-            {/* Switch button */}
-            {canSwitch && !isSwitching && (
-                <div className="pl-4">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setConfirmOpen(true)}
-                    >
-                        Switch to {targetChannel === "beta" ? "Beta" : "Stable"}
-                    </Button>
-                </div>
-            )}
-
-            {/* Target binary not installed */}
-            {!data.switch_supported && (
-                <div className="pl-4 space-y-1 text-sm text-muted-foreground">
-                    <p>
-                        To switch channels, install the{" "}
-                        <code className="px-1 py-0.5 rounded bg-muted font-mono text-xs">{targetBinary}</code>{" "}
-                        binary first:
-                    </p>
-                    <a
-                        href="https://github.com/goondocks-co/open-agent-kit#install"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                        Installation guide
-                        <ExternalLink className="h-3 w-3" />
-                    </a>
-                </div>
-            )}
-
-            {isSwitching && (
-                <div className="flex items-center gap-2 pl-4 text-sm text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Switching channel&hellip; upgrading assets and restarting.</span>
-                </div>
-            )}
-
-            {switchError && (
-                <p className="pl-4 text-sm text-destructive">{switchError}</p>
-            )}
-
-            <ConfirmDialog
-                open={confirmOpen}
-                onOpenChange={setConfirmOpen}
-                title={`Switch to ${targetChannel === "beta" ? "Beta" : "Stable"} Channel`}
-                description={confirmDescription}
-                confirmLabel="Switch"
-                loadingLabel="Switching..."
-                requireConfirmText="SWITCH"
-                variant="destructive"
-                onConfirm={handleConfirmedSwitch}
-            />
-        </div>
-    );
 }
 
 function formatLastChecked(timestamp: number): string {
@@ -382,7 +198,7 @@ function UpdateSection({
     );
 }
 
-export function AboutDialog({ open, onOpenChange, config, channelData, fetchJson, updateStatus, onCheckUpdate, onApplyUpdate, onSwitchChannel, isCheckingUpdate, isApplyingUpdate }: AboutDialogProps) {
+export function AboutDialog({ open, onOpenChange, config, channelData, updateStatus, onCheckUpdate, onApplyUpdate, onSwitchChannel, isCheckingUpdate, isApplyingUpdate }: AboutDialogProps) {
     return (
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
@@ -404,28 +220,20 @@ export function AboutDialog({ open, onOpenChange, config, channelData, fetchJson
                             </div>
                         </div>
 
-                        {/* Channel section */}
-                        {channelData ? (
-                            <ChannelSection data={channelData} config={config} fetchJson={fetchJson} />
+                        {/* Update section */}
+                        {updateStatus ? (
+                            <UpdateSection
+                                updateStatus={updateStatus}
+                                onCheckUpdate={onCheckUpdate}
+                                onApplyUpdate={onApplyUpdate}
+                                onSwitchChannel={onSwitchChannel}
+                                isCheckingUpdate={isCheckingUpdate}
+                                isApplyingUpdate={isApplyingUpdate}
+                            />
                         ) : (
                             <p className="text-sm text-muted-foreground">
-                                Loading channel info&hellip;
+                                Loading update info&hellip;
                             </p>
-                        )}
-
-                        {/* Update section (optional — only shown when updateStatus is provided) */}
-                        {updateStatus && (
-                            <>
-                                <div className="border-t" />
-                                <UpdateSection
-                                    updateStatus={updateStatus}
-                                    onCheckUpdate={onCheckUpdate}
-                                    onApplyUpdate={onApplyUpdate}
-                                    onSwitchChannel={onSwitchChannel}
-                                    isCheckingUpdate={isCheckingUpdate}
-                                    isApplyingUpdate={isApplyingUpdate}
-                                />
-                            </>
                         )}
 
                         {/* Links */}

@@ -26,18 +26,13 @@ import { useSwarmStatus } from "@/hooks/use-swarm-status";
 import { useRestart } from "@/hooks/use-restart";
 import { useChannel } from "@/hooks/use-channel";
 import { useUpdateStatus, useUpdateCheck, useUpdateApply, useUpdateChannel } from "@/hooks/use-update-status";
-import { fetchJson } from "@/lib/api";
-import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
+import { API_ENDPOINTS } from "@/lib/constants";
 
 const ABOUT_CONFIG: AboutDialogConfig = {
     title: "Oak Swarm",
     logoSrc: "/favicon.svg",
     channelEndpoint: API_ENDPOINTS.CHANNEL,
-    channelSwitchEndpoint: API_ENDPOINTS.CHANNEL_SWITCH,
     healthEndpoint: API_ENDPOINTS.HEALTH,
-    startCommand: "swarm start",
-    restartPollIntervalMs: RESTART_POLL_INTERVAL_MS,
-    restartTimeoutMs: RESTART_TIMEOUT_MS,
 };
 
 const NAV_ITEMS = [
@@ -83,7 +78,6 @@ export default function Layout() {
                 onOpenChange={setAboutOpen}
                 config={ABOUT_CONFIG}
                 channelData={channelData}
-                fetchJson={fetchJson as (url: string, init?: RequestInit) => Promise<unknown>}
                 updateStatus={updateStatus}
                 onCheckUpdate={() => updateCheck.mutate()}
                 onApplyUpdate={() => updateApply.mutate()}

@@ -20,7 +20,6 @@ export const API_ENDPOINTS = {
 
     // Channel
     CHANNEL: "/api/channel",
-    CHANNEL_SWITCH: "/api/channel/switch",
 
     // System
     HEALTH: "/api/health",

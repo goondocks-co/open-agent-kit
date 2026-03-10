@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from open_agent_kit.utils.update_exempt import (
+    FORCE_SELF_UPDATE_ENV_VAR,
     check_update_exempt,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_force_env(monkeypatch):
+    """Ensure the force-bypass env var is never set during exemption tests."""
+    monkeypatch.delenv(FORCE_SELF_UPDATE_ENV_VAR, raising=False)
 
 
 class TestCheckUpdateExempt:

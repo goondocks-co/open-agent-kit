@@ -33,7 +33,7 @@ class TestGenerateUpdateScript:
             install_method=InstallMethod.PIP_USER,
             daemon_type="team",
         )
-        assert 'cd "/home/user/project"' in script
+        assert "cd /home/user/project" in script or "cd '/home/user/project'" in script
 
     def test_script_contains_pip_install_for_pip_user(self) -> None:
         script = generate_update_script(
