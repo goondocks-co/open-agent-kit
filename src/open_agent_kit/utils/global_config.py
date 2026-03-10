@@ -86,7 +86,8 @@ def load_update_config() -> UpdateConfig:
 
 
 def save_update_config(config: UpdateConfig) -> None:
-    """Save update config to ~/.oak/update.yaml."""
+    """Save update config to ~/.oak/update.yaml, creating the dir if needed."""
+    ensure_global_dir()
     config_path = get_global_oak_dir() / UPDATE_CONFIG_FILE
     data = {
         "update": {
@@ -110,7 +111,8 @@ def _read_json(filename: str) -> dict | None:  # type: ignore[type-arg]
 
 
 def _write_json(filename: str, data: dict) -> None:  # type: ignore[type-arg]
-    """Write a JSON file to the global dir."""
+    """Write a JSON file to the global dir, creating it if needed."""
+    ensure_global_dir()
     path = get_global_oak_dir() / filename
     path.write_text(json.dumps(data, indent=2))
 
