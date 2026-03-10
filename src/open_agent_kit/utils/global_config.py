@@ -155,5 +155,5 @@ def clear_update_error() -> None:
     path = get_global_oak_dir() / UPDATE_ERROR_FILE
     try:
         path.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.warning("Failed to clear update error file %s: %s", path, exc)

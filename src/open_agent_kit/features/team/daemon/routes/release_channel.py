@@ -4,7 +4,6 @@ GET /api/channel — Returns current channel (from ~/.oak/update.yaml),
                    running version, and available PyPI versions (cached 5 min).
 
 Channel switching is handled by PUT /api/update/channel (see routes/update.py).
-The binary-swap ``POST /api/channel/switch`` endpoint has been removed.
 """
 
 from __future__ import annotations

@@ -66,6 +66,9 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
     """
     router = APIRouter(prefix="/api/update", tags=["update"])
 
+    # Guard against spawning duplicate background check tasks
+    _active_bg_task: asyncio.Task | None = None  # type: ignore[type-arg]
+
     @router.get("/status")
     async def update_status() -> dict:
         """Return current self-update state.
@@ -74,6 +77,8 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
         so UI polling naturally drives update detection without needing
         a separate background loop.
         """
+        nonlocal _active_bg_task
+
         exemption = check_update_exempt()
         if exemption:
             return {"exempt": True, "reason": exemption.reason, "message": exemption.message}
@@ -83,12 +88,13 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
         last_check = read_last_check()
         error = read_update_error()
 
-        # Trigger a background check if the last one is stale
-        if should_check_now(config.check_interval_hours):
-            asyncio.create_task(
-                _background_check_and_stage(config),
-                name="update_check_on_read",
-            )
+        # Trigger a background check if the last one is stale and no task is running
+        if should_check_now(config.check_interval_hours, last_check=last_check):
+            if _active_bg_task is None or _active_bg_task.done():
+                _active_bg_task = asyncio.create_task(
+                    _background_check_and_stage(config),
+                    name="update_check_on_read",
+                )
 
         return {
             "exempt": False,

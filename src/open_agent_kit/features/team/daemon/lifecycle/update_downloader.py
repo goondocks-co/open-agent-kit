@@ -70,8 +70,8 @@ def _try_acquire_lock() -> Generator[bool, None, None]:
         finally:
             try:
                 release_file_lock(lock_fd)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to release download lock: %s", exc)
             lock_fd.close()
     except OSError:
         yield False

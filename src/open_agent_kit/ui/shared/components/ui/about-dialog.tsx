@@ -5,9 +5,7 @@ import { cn } from "../../lib/utils";
 
 export interface ChannelInfo {
     current_channel: "stable" | "beta";
-    cli_command: string;
     current_version: string;
-    switch_supported: boolean;
     available_stable_version: string | null;
     available_beta_version: string | null;
 }

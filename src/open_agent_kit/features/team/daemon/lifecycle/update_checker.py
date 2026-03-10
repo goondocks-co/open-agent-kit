@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 
 from packaging.version import Version
 
+from open_agent_kit.features.team.constants.release_channel import (
+    CI_CHANNEL_BETA,
+)
 from open_agent_kit.utils.global_config import (
     UpdateConfig,
     load_update_config,
@@ -22,8 +25,6 @@ from open_agent_kit.utils.global_config import (
 from open_agent_kit.utils.release_channel import fetch_pypi_raw, parse_pypi_versions
 
 logger = logging.getLogger(__name__)
-
-PYPI_PACKAGE_NAME = "oak-ci"
 
 
 @dataclass
@@ -39,9 +40,16 @@ class UpdateCheckResult:
     pypi_raw: bytes | None = None
 
 
-def should_check_now(check_interval_hours: int) -> bool:
-    """Return True if enough time has passed since the last check."""
-    last = read_last_check()
+def should_check_now(
+    check_interval_hours: int,
+    last_check: dict | None = None,  # type: ignore[type-arg]
+) -> bool:
+    """Return True if enough time has passed since the last check.
+
+    Accepts an optional pre-read *last_check* dict to avoid redundant
+    file reads when the caller already has the data.
+    """
+    last = last_check if last_check is not None else read_last_check()
     if not last or "timestamp" not in last:
         return True
     elapsed_hours = (time.time() - last["timestamp"]) / 3600
@@ -71,7 +79,7 @@ async def check_for_update(
         stable_str, beta_str = parse_pypi_versions(raw)
 
         # Determine the best available version for this channel
-        if config.channel == "beta":
+        if config.channel == CI_CHANNEL_BETA:
             # Beta channel: max(stable, beta) — never downgrade
             candidates = []
             if stable_str:

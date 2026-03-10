@@ -144,8 +144,8 @@ def apply_staged_update(
     finally:
         try:
             release_file_lock(lock_fd)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to release update lock: %s", exc)
         lock_fd.close()
 
 

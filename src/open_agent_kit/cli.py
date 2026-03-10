@@ -182,7 +182,6 @@ def main(
     For more information, visit: https://openagentkit.app
     """
     _stamp_cli_version()
-    _check_daemon_version_hint()
 
     # Handle version flag
     if version_flag:
@@ -212,10 +211,6 @@ def _stamp_cli_version() -> None:
                 stamp.write_text(VERSION)
         except OSError:
             pass
-
-
-def _check_daemon_version_hint() -> None:
-    """No-op: version mismatch notifications are now shown in the daemon UI."""
 
 
 def cli_main() -> None:

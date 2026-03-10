@@ -16,6 +16,7 @@ from open_agent_kit.utils.update_exempt import (
 def _clear_force_env(monkeypatch):
     """Ensure the force-bypass env var is never set during exemption tests."""
     monkeypatch.delenv(FORCE_SELF_UPDATE_ENV_VAR, raising=False)
+    check_update_exempt.cache_clear()
 
 
 class TestCheckUpdateExempt:

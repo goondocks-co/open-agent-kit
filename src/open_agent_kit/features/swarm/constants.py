@@ -127,7 +127,7 @@ SWARM_ENV_VAR_ID: Final[str] = "OAK_SWARM_ID"
 SWARM_ENV_VAR_CUSTOM_DOMAIN: Final[str] = "OAK_SWARM_CUSTOM_DOMAIN"
 
 # CLI command env var — set by SwarmDaemonManager.start() so the daemon
-# process knows which CLI binary (oak / oak-dev / oak-beta) to use for
+# process knows which CLI binary (oak / oak-dev) to use for
 # self-restart.  Falls back to "oak" when unset.
 SWARM_CLI_COMMAND_ENV_VAR: Final[str] = "OAK_CLI_COMMAND"
 

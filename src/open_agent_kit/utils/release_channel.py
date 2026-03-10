@@ -4,10 +4,8 @@ This module centralises PyPI version fetching (with caching) and the
 ``build_channel_info`` response builder so the two daemon route files only
 contain their own wiring logic.
 
-Channel inference from binary names (``get_current_channel``,
-``target_binary_name``) and the binary-swap ``SwitchChannelRequest`` were
-removed when channel switching moved to a config-file approach via
-``~/.oak/update.yaml`` (``/api/update/channel`` PUT).
+Channel switching is handled via ``~/.oak/update.yaml``
+(``/api/update/channel`` PUT).
 """
 
 from __future__ import annotations
@@ -17,6 +15,7 @@ import json
 import logging
 import time
 import urllib.request
+from typing import Final
 
 from open_agent_kit.constants import VERSION as OAK_VERSION
 
@@ -26,9 +25,9 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-PYPI_URL: str = "https://pypi.org/pypi/oak-ci/json"
-PYPI_TIMEOUT_SECONDS: int = 5
-PYPI_CACHE_TTL_SECONDS: int = 300  # 5 minutes
+PYPI_URL: Final[str] = "https://pypi.org/pypi/oak-ci/json"
+PYPI_TIMEOUT_SECONDS: Final[int] = 5
+PYPI_CACHE_TTL_SECONDS: Final[int] = 300  # 5 minutes
 
 # ---------------------------------------------------------------------------
 # PyPI version cache
