@@ -281,7 +281,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # ------------------------------------------------------------------
     if not is_scaffolded(project_root):
         logger.info(CI_CLOUD_RELAY_LOG_PHASE_SCAFFOLD)
-        relay_token = relay_config.token or generate_token()
+        relay_token = relay_config.relay_token or generate_token()
         agent_token = body.get(CLOUD_RELAY_REQUEST_KEY_AGENT_TOKEN) or generate_token()
         worker_name = relay_config.worker_name or make_worker_name(project_root.name)
 
@@ -306,7 +306,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
         # Persist tokens and worker name to config; clear stale worker_url
         # so deploy phase runs with the (possibly new) worker name.
         ci_config = load_ci_config(project_root)
-        ci_config.cloud_relay.token = relay_token
+        ci_config.cloud_relay.relay_token = relay_token
         ci_config.cloud_relay.agent_token = agent_token
         ci_config.cloud_relay.worker_name = worker_name
         ci_config.cloud_relay.worker_url = None
@@ -324,7 +324,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # changes without requiring a full re-scaffold).
     render_wrangler_config(
         scaffold_dir=scaffold_dir,
-        relay_token=relay_config.token or "",
+        relay_token=relay_config.relay_token or "",
         agent_token=relay_config.agent_token or "",
         worker_name=relay_config.worker_name or make_worker_name(project_root.name),
         custom_domain=relay_config.custom_domain,
@@ -401,7 +401,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # Re-read config for latest token
     ci_config_final = load_ci_config(project_root)
     relay_config_final = ci_config_final.cloud_relay
-    token = relay_config_final.token
+    token = relay_config_final.relay_token
 
     if not token:
         return _make_error_response(
@@ -483,7 +483,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
 
     # Persist auto_connect so the relay reconnects after daemon restart.
     # relay_worker_url goes to project config (git-tracked) so teammates
-    # can auto-connect.  Token is already in cloud_relay.token (user config).
+    # can auto-connect.  Token is already in cloud_relay.relay_token (user config).
     ci_config_ac = load_ci_config(project_root)
     ci_config_ac.cloud_relay.auto_connect = True
     ci_config_ac.team.relay_worker_url = worker_url
@@ -693,7 +693,7 @@ async def update_cloud_relay_settings(body: dict) -> dict:
     if is_scaffolded(state.project_root):
         render_wrangler_config(
             scaffold_dir=state.project_root / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR,
-            relay_token=ci_config.cloud_relay.token or "",
+            relay_token=ci_config.cloud_relay.relay_token or "",
             agent_token=ci_config.cloud_relay.agent_token or "",
             worker_name=ci_config.cloud_relay.worker_name
             or make_worker_name(state.project_root.name),
@@ -789,7 +789,7 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
 
             # Persist relay credentials and config so the relay reconnects
             # after daemon restart — same as the deploy (start) path.
-            # cloud_relay.token is user-classified (goes to user overlay).
+            # cloud_relay.relay_token is user-classified (goes to user overlay).
             if state.project_root:
                 from open_agent_kit.features.team.config import (
                     load_ci_config,
@@ -798,7 +798,7 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
 
                 ci_config_ac = load_ci_config(state.project_root)
                 ci_config_ac.cloud_relay.auto_connect = True
-                ci_config_ac.cloud_relay.token = token
+                ci_config_ac.cloud_relay.relay_token = token
                 if not ci_config_ac.cloud_relay.worker_url:
                     ci_config_ac.cloud_relay.worker_url = worker_url
                 ci_config_ac.team.relay_worker_url = worker_url

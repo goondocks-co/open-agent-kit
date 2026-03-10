@@ -1,12 +1,10 @@
 """Team sync configuration for Team."""
 
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from open_agent_kit.features.team.constants.team import (
-    CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
     CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE,
     CI_CONFIG_TEAM_KEY_PROJECT_SLUG,
@@ -32,7 +30,6 @@ class TeamConfig:
     Allows syncing observations between team members via a cloud relay.
 
     Attributes:
-        api_key: Team API key (supports ${ENV_VAR} syntax).
         auto_sync: Whether to start sync automatically on daemon startup.
         sync_interval_seconds: Seconds between outbox flush cycles.
         project_slug: Project identifier override (defaults to directory name).
@@ -43,7 +40,6 @@ class TeamConfig:
             running so the daemon stays reachable by teammates.
     """
 
-    api_key: str | None = None
     auto_sync: bool = False
     sync_interval_seconds: int = TEAM_DEFAULT_SYNC_INTERVAL_SECONDS
     project_slug: str | None = None
@@ -86,14 +82,7 @@ class TeamConfig:
         Returns:
             TeamConfig instance.
         """
-        # Resolve environment variables in team API key
-        api_key = data.get(CI_CONFIG_TEAM_KEY_API_KEY)
-        if api_key and api_key.startswith("${") and api_key.endswith("}"):
-            env_var = api_key[2:-1]
-            api_key = os.environ.get(env_var)
-
         return cls(
-            api_key=api_key,
             auto_sync=data.get(CI_CONFIG_TEAM_KEY_AUTO_SYNC, False),
             sync_interval_seconds=data.get(
                 CI_CONFIG_TEAM_KEY_SYNC_INTERVAL,
@@ -108,7 +97,6 @@ class TeamConfig:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            CI_CONFIG_TEAM_KEY_API_KEY: self.api_key,
             CI_CONFIG_TEAM_KEY_AUTO_SYNC: self.auto_sync,
             CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: self.sync_interval_seconds,
             CI_CONFIG_TEAM_KEY_PROJECT_SLUG: self.project_slug,

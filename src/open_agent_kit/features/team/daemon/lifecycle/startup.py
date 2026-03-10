@@ -49,7 +49,7 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
 
     Supports two modes:
     - Publisher: cloud_relay.auto_connect=True (set after successful deploy).
-    - Consumer: team.auto_sync=True with relay_worker_url + api_key configured.
+    - Consumer: team.auto_sync=True with relay_worker_url + cloud_relay.relay_token configured.
 
     Non-critical: failures are logged but do not prevent startup.
     """

@@ -174,17 +174,17 @@ class CIConfig:
         }
 
     def resolve_relay_credentials(self) -> tuple[str | None, str | None]:
-        """Resolve relay URL and token from publisher or consumer config.
+        """Resolve relay URL and token for cloud relay connection.
 
-        Publisher stores credentials in ``cloud_relay.*``; consumer stores
-        in ``team.*``.  Returns whichever source has them, preferring the
-        canonical (custom-domain) URL when available.
+        The token is read exclusively from ``cloud_relay.relay_token``.
+        The URL prefers the canonical (custom-domain) URL from ``cloud_relay``,
+        falling back to ``team.relay_worker_url``.
 
         Returns:
             (worker_url, token) — either or both may be ``None``.
         """
         worker_url = self.cloud_relay.canonical_url or self.team.relay_worker_url
-        token = self.cloud_relay.token or self.team.api_key
+        token = self.cloud_relay.relay_token
         return worker_url, token
 
     def get_combined_exclude_patterns(self) -> list[str]:

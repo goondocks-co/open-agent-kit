@@ -55,7 +55,7 @@ class TeamConfigResponse(BaseModel):
     auto_sync: bool = False
     sync_interval_seconds: int = TEAM_DEFAULT_SYNC_INTERVAL_SECONDS
     relay_worker_url: str | None = None
-    api_key: str | None = None
+    relay_token: str | None = None
     keep_relay_alive: bool = False
 
 
@@ -65,7 +65,7 @@ class TeamConfigUpdate(BaseModel):
     auto_sync: bool | None = None
     sync_interval_seconds: int | None = None
     relay_worker_url: str | None = None
-    api_key: str | None = None
+    relay_token: str | None = None
     keep_relay_alive: bool | None = None
 
 
@@ -125,15 +125,13 @@ async def get_team_config() -> TeamConfigResponse:
         return TeamConfigResponse()
     tc = ci_config.team
     relay = ci_config.cloud_relay
-    # Relay URL and token: prefer explicit team config, fall back to cloud relay
-    # (they're the same Worker, so the values should be identical after deploy).
     relay_worker_url = tc.relay_worker_url or (relay.worker_url if relay else None)
-    api_key = tc.api_key or (relay.token if relay else None)
+    relay_token = relay.relay_token if relay else None
     return TeamConfigResponse(
         auto_sync=tc.auto_sync,
         sync_interval_seconds=tc.sync_interval_seconds,
         relay_worker_url=relay_worker_url,
-        api_key=api_key,
+        relay_token=relay_token,
         keep_relay_alive=tc.keep_relay_alive,
     )
 
@@ -158,8 +156,8 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
         tc.sync_interval_seconds = update.sync_interval_seconds
     if update.relay_worker_url is not None:
         tc.relay_worker_url = update.relay_worker_url or None
-    if update.api_key is not None:
-        tc.api_key = update.api_key or None
+    if update.relay_token is not None:
+        ci_config.cloud_relay.relay_token = update.relay_token or None
     if update.keep_relay_alive is not None:
         tc.keep_relay_alive = update.keep_relay_alive
 
@@ -181,9 +179,10 @@ async def update_team_config(update: TeamConfigUpdate) -> TeamConfigResponse:
 async def leave_team() -> dict:
     """Leave the team: disconnect relay and clear all team relay config.
 
-    Disconnects the cloud relay WebSocket and clears relay_worker_url,
-    api_key, and auto_sync from team config. Also disables cloud relay
-    auto_connect so the daemon does not reconnect on restart.
+    Disconnects the cloud relay WebSocket and clears relay_worker_url
+    and auto_sync from team config. Also clears cloud_relay.relay_token
+    and disables cloud relay auto_connect so the daemon does not
+    reconnect on restart.
 
     The Worker itself is not deleted — the user can redeploy later.
     """
@@ -211,8 +210,8 @@ async def leave_team() -> dict:
 
     ci_config = load_ci_config(project_root)
     ci_config.team.relay_worker_url = None
-    ci_config.team.api_key = None
     ci_config.team.auto_sync = False
+    ci_config.cloud_relay.relay_token = None
     ci_config.cloud_relay.auto_connect = False
     save_ci_config(project_root, ci_config)
     state.ci_config = None
@@ -275,7 +274,7 @@ async def get_team_status() -> TeamStatusResponse:
                 relay_client = state.cloud_relay_client
 
                 async def _fetch_obs_stats() -> dict[str, int]:
-                    token = state.ci_config.cloud_relay.token if state.ci_config else None
+                    token = state.ci_config.cloud_relay.relay_token if state.ci_config else None
                     headers = {"Authorization": f"Bearer {token}"} if token else {}
                     try:
                         url = _url_base.rstrip("/") + CLOUD_RELAY_OBS_STATS_PATH

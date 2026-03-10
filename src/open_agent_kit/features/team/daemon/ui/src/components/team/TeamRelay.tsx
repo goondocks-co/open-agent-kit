@@ -98,7 +98,7 @@ export default function TeamRelay() {
     const isConnected = status?.connected ?? false;
     const workerUrl = status?.worker_url ?? config?.relay_worker_url ?? null;
     const isDeployed = !!workerUrl;
-    const relayToken = config?.api_key ?? null;
+    const relayToken = config?.relay_token ?? null;
     // A node has credentials if it has a relay token (consumer join) or an
     // agent token (publisher deploy).  Without credentials the node should
     // show the JoinTeamCard instead of the deployer/credentials view.
@@ -132,7 +132,7 @@ export default function TeamRelay() {
         try {
             await updateConfig.mutateAsync({
                 relay_worker_url: url,
-                api_key: token,
+                relay_token: token,
                 auto_sync: true,
             });
             connectRelay.mutate(undefined, {
