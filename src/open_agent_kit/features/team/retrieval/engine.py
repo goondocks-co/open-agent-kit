@@ -29,6 +29,7 @@ from open_agent_kit.features.team.constants import (
     MEMORY_TYPE_PLAN,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
+    SEARCH_TYPE_KNOWLEDGE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
@@ -222,13 +223,13 @@ class RetrievalEngine:
         if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_CODE):
             self._search_code(query, limit, apply_doc_type_weights, result)
 
-        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_MEMORY):
+        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_KNOWLEDGE, SEARCH_TYPE_MEMORY):
             self._search_memory(query, limit, include_resolved, result)
 
-        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_PLANS):
+        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_KNOWLEDGE, SEARCH_TYPE_PLANS):
             self._search_plans(query, limit, result)
 
-        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_SESSIONS):
+        if search_type in (SEARCH_TYPE_ALL, SEARCH_TYPE_KNOWLEDGE, SEARCH_TYPE_SESSIONS):
             self._search_sessions(query, limit, result)
 
         return result

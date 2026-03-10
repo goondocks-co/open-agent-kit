@@ -7,17 +7,20 @@ from typing import Final
 # =============================================================================
 
 SEARCH_TYPE_ALL: Final[str] = "all"
+SEARCH_TYPE_KNOWLEDGE: Final[str] = "knowledge"
 SEARCH_TYPE_CODE: Final[str] = "code"
 SEARCH_TYPE_MEMORY: Final[str] = "memory"
 SEARCH_TYPE_PLANS: Final[str] = "plans"
 SEARCH_TYPE_SESSIONS: Final[str] = "sessions"
 VALID_SEARCH_TYPES: Final[tuple[str, ...]] = (
     SEARCH_TYPE_ALL,
+    SEARCH_TYPE_KNOWLEDGE,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
 )
+SEARCH_TYPE_PATTERN: Final[str] = f"^({'|'.join(VALID_SEARCH_TYPES)})$"
 
 # =============================================================================
 # Chunk Types
@@ -106,3 +109,74 @@ CONFIDENCE_SCORE_LOW: Final[float] = 0.3
 # Tags for auto-captured observations
 TAG_AUTO_CAPTURED: Final[str] = "auto-captured"
 TAG_SESSION_SUMMARY: Final[str] = "session-summary"
+
+# =============================================================================
+# include_network Field Descriptions (shared across MCP tools and schemas)
+# =============================================================================
+
+_NETWORK_BASE: Final[str] = "Gracefully skipped when not in a team."
+
+INCLUDE_NETWORK_DESC_SEARCH: Final[str] = (
+    f"Search across connected team network nodes. {_NETWORK_BASE} "
+    "Not available for code searches."
+)
+INCLUDE_NETWORK_DESC_CONTEXT: Final[str] = (
+    f"Fetch memories from connected team network nodes. {_NETWORK_BASE} "
+    "Code context stays local-only (branch/worktree differences)."
+)
+INCLUDE_NETWORK_DESC_MEMORIES: Final[str] = (
+    f"Fetch memories from connected team network nodes. {_NETWORK_BASE}"
+)
+INCLUDE_NETWORK_DESC_SESSIONS: Final[str] = (
+    f"Fetch sessions from connected team network nodes. {_NETWORK_BASE}"
+)
+INCLUDE_NETWORK_DESC_STATS: Final[str] = (
+    f"Fetch stats from connected team network nodes. {_NETWORK_BASE}"
+)
+
+# Explicit public API — satisfies CodeQL "unused global" checks for constants
+# that are imported by other modules (schemas.py, mcp_tools.py, models.py, etc.).
+__all__ = [
+    "CHUNK_TYPE_CLASS",
+    "CHUNK_TYPE_FUNCTION",
+    "CHUNK_TYPE_METHOD",
+    "CHUNK_TYPE_MODULE",
+    "CHUNK_TYPE_UNKNOWN",
+    "CONFIDENCE_GAP_BOOST_THRESHOLD",
+    "CONFIDENCE_HIGH",
+    "CONFIDENCE_HIGH_THRESHOLD",
+    "CONFIDENCE_LOW",
+    "CONFIDENCE_MEDIUM",
+    "CONFIDENCE_MEDIUM_THRESHOLD",
+    "CONFIDENCE_MIN_MEANINGFUL_RANGE",
+    "CONFIDENCE_SCORE_HIGH",
+    "CONFIDENCE_SCORE_LOW",
+    "CONFIDENCE_SCORE_MEDIUM",
+    "IMPORTANCE_HIGH_THRESHOLD",
+    "IMPORTANCE_MEDIUM_THRESHOLD",
+    "INCLUDE_NETWORK_DESC_CONTEXT",
+    "INCLUDE_NETWORK_DESC_MEMORIES",
+    "INCLUDE_NETWORK_DESC_SEARCH",
+    "INCLUDE_NETWORK_DESC_SESSIONS",
+    "INCLUDE_NETWORK_DESC_STATS",
+    "MEMORY_EMBED_LABEL_CONTEXT",
+    "MEMORY_EMBED_LABEL_FILE",
+    "MEMORY_EMBED_LABEL_SEPARATOR",
+    "MEMORY_EMBED_LABEL_TEMPLATE",
+    "MEMORY_EMBED_LINE_SEPARATOR",
+    "MEMORY_TYPE_PLAN",
+    "RETRIEVAL_CONFIDENCE_WEIGHT",
+    "RETRIEVAL_IMPORTANCE_WEIGHT",
+    "SEARCH_TYPE_ALL",
+    "SEARCH_TYPE_CODE",
+    "SEARCH_TYPE_KNOWLEDGE",
+    "SEARCH_TYPE_MEMORY",
+    "SEARCH_TYPE_PATTERN",
+    "SEARCH_TYPE_PLANS",
+    "SEARCH_TYPE_SESSIONS",
+    "SESSION_SUMMARY_OBS_ID_PREFIX",
+    "TAG_AUTO_CAPTURED",
+    "TAG_SESSION_SUMMARY",
+    "VALID_CONFIDENCE_LEVELS",
+    "VALID_SEARCH_TYPES",
+]

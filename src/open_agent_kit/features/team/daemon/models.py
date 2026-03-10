@@ -5,6 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from open_agent_kit.features.team.constants import SEARCH_TYPE_PATTERN
 from open_agent_kit.features.team.retrieval.engine import Confidence
 
 
@@ -81,7 +82,7 @@ class SearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, description="Search query")
     limit: int = Field(default=20, ge=1, le=100)
-    search_type: str = Field(default="all", pattern="^(all|code|memory|plans|sessions)$")
+    search_type: str = Field(default="all", pattern=SEARCH_TYPE_PATTERN)
     apply_doc_type_weights: bool = Field(
         default=True,
         description="Apply doc_type weighting to deprioritize i18n/config files. Disable for translation searches.",

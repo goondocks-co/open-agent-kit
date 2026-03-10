@@ -29,6 +29,11 @@ from open_agent_kit.features.swarm.constants import (
 )
 from open_agent_kit.features.swarm.tool_schema import SWARM_TOOL_DEFS_BY_NAME
 from open_agent_kit.features.team.constants import (
+    INCLUDE_NETWORK_DESC_CONTEXT,
+    INCLUDE_NETWORK_DESC_MEMORIES,
+    INCLUDE_NETWORK_DESC_SEARCH,
+    INCLUDE_NETWORK_DESC_SESSIONS,
+    INCLUDE_NETWORK_DESC_STATS,
     MCP_TOOL_ACTIVITY,
     MCP_TOOL_ARCHIVE_MEMORIES,
     MCP_TOOL_CONTEXT,
@@ -56,10 +61,11 @@ MCP_TOOLS = [
     {
         "name": MCP_TOOL_SEARCH,
         "description": (
-            "Search the codebase, project memories, sessions, and past implementation plans using "
-            "semantic similarity. Use this to find relevant code implementations, past "
-            "decisions, gotchas, learnings, plans, and session history. Returns ranked results with "
-            "relevance scores. Use search_type='plans' to find past implementation plans."
+            "Search project memories, sessions, and past implementation plans using "
+            "semantic similarity. Use this to find past decisions, gotchas, learnings, "
+            "plans, and session history. Returns ranked results with relevance scores. "
+            "Defaults to knowledge search (memories + plans + sessions). "
+            "Use search_type='code' for codebase search, or 'all' for everything."
         ),
         "inputSchema": {
             "type": "object",
@@ -73,9 +79,13 @@ MCP_TOOLS = [
                 },
                 "search_type": {
                     "type": "string",
-                    "enum": ["all", "code", "memory", "plans", "sessions"],
-                    "default": "all",
-                    "description": "Search code, memories, plans, sessions, or all",
+                    "enum": ["knowledge", "all", "code", "memory", "plans", "sessions"],
+                    "default": "knowledge",
+                    "description": (
+                        "Search scope: 'knowledge' (memories+plans+sessions, default), "
+                        "'code' (codebase only), 'memory', 'plans', 'sessions', "
+                        "or 'all' (includes code)"
+                    ),
                 },
                 "limit": {
                     "type": "integer",
@@ -91,11 +101,8 @@ MCP_TOOLS = [
                 },
                 "include_network": {
                     "type": "boolean",
-                    "default": False,
-                    "description": (
-                        "If True, also search across connected team network nodes "
-                        "via the cloud relay. Not available for code searches."
-                    ),
+                    "default": True,
+                    "description": INCLUDE_NETWORK_DESC_SEARCH,
                 },
             },
             "required": ["query"],
@@ -137,8 +144,8 @@ MCP_TOOLS = [
             "Get relevant context for your current task. Call this when starting "
             "work on something to retrieve related code, past decisions, and "
             "applicable project guidelines. Returns a curated set of context "
-            "optimized for the task at hand. Set include_network=true to also "
-            "fetch memories from connected team nodes (code context stays local)."
+            "optimized for the task at hand. Automatically includes team network "
+            "memories when available (code context stays local)."
         ),
         "inputSchema": {
             "type": "object",
@@ -159,11 +166,8 @@ MCP_TOOLS = [
                 },
                 "include_network": {
                     "type": "boolean",
-                    "default": False,
-                    "description": (
-                        "If True, also fetch memories from connected team network nodes. "
-                        "Code context stays local-only (branch/worktree differences)."
-                    ),
+                    "default": True,
+                    "description": INCLUDE_NETWORK_DESC_CONTEXT,
                 },
             },
             "required": ["task"],
@@ -214,7 +218,7 @@ MCP_TOOLS = [
             "List recent coding sessions with their status and summaries. "
             "Use this to understand what work has been done recently and find "
             "session IDs for deeper investigation with oak_activity. "
-            "Set include_network=true to also fetch sessions from connected team nodes."
+            "Automatically includes team network sessions when available."
         ),
         "inputSchema": {
             "type": "object",
@@ -233,10 +237,8 @@ MCP_TOOLS = [
                 },
                 "include_network": {
                     "type": "boolean",
-                    "default": False,
-                    "description": (
-                        "If True, also fetch sessions from connected team network nodes."
-                    ),
+                    "default": True,
+                    "description": INCLUDE_NETWORK_DESC_SESSIONS,
                 },
             },
         },
@@ -247,7 +249,7 @@ MCP_TOOLS = [
             "Browse stored memories and observations. Use this to review what "
             "the system has learned about the codebase, including gotchas, "
             "bug fixes, decisions, discoveries, and trade-offs. "
-            "Set include_network=true to also fetch memories from connected team nodes."
+            "Automatically includes team network memories when available."
         ),
         "inputSchema": {
             "type": "object",
@@ -277,10 +279,8 @@ MCP_TOOLS = [
                 },
                 "include_network": {
                     "type": "boolean",
-                    "default": False,
-                    "description": (
-                        "If True, also fetch memories from connected team network nodes."
-                    ),
+                    "default": True,
+                    "description": INCLUDE_NETWORK_DESC_MEMORIES,
                 },
             },
         },
@@ -291,15 +291,15 @@ MCP_TOOLS = [
             "Get project intelligence statistics including indexed code chunks, "
             "unique files, memory count, and observation status breakdown. "
             "Use this for a quick health check of the team system. "
-            "Set include_network=true to also fetch stats from connected team nodes."
+            "Automatically includes team network stats when available."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "include_network": {
                     "type": "boolean",
-                    "default": False,
-                    "description": ("If True, also fetch stats from connected team network nodes."),
+                    "default": True,
+                    "description": INCLUDE_NETWORK_DESC_STATS,
                 },
             },
         },

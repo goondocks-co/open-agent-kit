@@ -12,8 +12,13 @@ from open_agent_kit.features.team.constants import (
     CI_QUERY_DEFAULT_LIMIT,
     DEFAULT_MAX_CONTEXT_TOKENS,
     DEFAULT_SEARCH_LIMIT,
+    INCLUDE_NETWORK_DESC_CONTEXT,
+    INCLUDE_NETWORK_DESC_MEMORIES,
+    INCLUDE_NETWORK_DESC_SEARCH,
+    INCLUDE_NETWORK_DESC_SESSIONS,
+    INCLUDE_NETWORK_DESC_STATS,
     OBSERVATION_STATUS_ACTIVE,
-    SEARCH_TYPE_ALL,
+    SEARCH_TYPE_KNOWLEDGE,
 )
 
 
@@ -22,8 +27,11 @@ class SearchInput(BaseModel):
 
     query: str = Field(..., description="Natural language search query")
     search_type: str = Field(
-        default=SEARCH_TYPE_ALL,
-        description="Type of search: 'code', 'memory', 'plans', 'sessions', or 'all'",
+        default=SEARCH_TYPE_KNOWLEDGE,
+        description=(
+            "Type of search: 'knowledge' (memories+plans+sessions, default), "
+            "'code', 'memory', 'plans', 'sessions', or 'all' (includes code)"
+        ),
     )
     limit: int = Field(
         default=DEFAULT_SEARCH_LIMIT,
@@ -36,11 +44,8 @@ class SearchInput(BaseModel):
         description="If True, include resolved/superseded memories in results",
     )
     include_network: bool = Field(
-        default=False,
-        description=(
-            "If True, also search across connected team network nodes via the "
-            "cloud relay. Not available for code searches."
-        ),
+        default=True,
+        description=INCLUDE_NETWORK_DESC_SEARCH,
     )
 
 
@@ -77,11 +82,8 @@ class ContextInput(BaseModel):
         description="Maximum tokens of context to return",
     )
     include_network: bool = Field(
-        default=False,
-        description=(
-            "If True, also fetch memories from connected team network nodes. "
-            "Code context stays local-only (branch/worktree differences)."
-        ),
+        default=True,
+        description=INCLUDE_NETWORK_DESC_CONTEXT,
     )
 
 
@@ -107,8 +109,8 @@ class MemoriesInput(BaseModel):
         description="If True, include all statuses regardless of status filter",
     )
     include_network: bool = Field(
-        default=False,
-        description=("If True, also fetch memories from connected team network nodes."),
+        default=True,
+        description=INCLUDE_NETWORK_DESC_MEMORIES,
     )
 
 
@@ -126,8 +128,8 @@ class SessionsInput(BaseModel):
         description="Include session summaries in output",
     )
     include_network: bool = Field(
-        default=False,
-        description=("If True, also fetch sessions from connected team network nodes."),
+        default=True,
+        description=INCLUDE_NETWORK_DESC_SESSIONS,
     )
 
 
@@ -135,8 +137,8 @@ class StatsInput(BaseModel):
     """Input for project stats tool (ci_project_stats)."""
 
     include_network: bool = Field(
-        default=False,
-        description=("If True, also fetch stats from connected team network nodes."),
+        default=True,
+        description=INCLUDE_NETWORK_DESC_STATS,
     )
 
 
