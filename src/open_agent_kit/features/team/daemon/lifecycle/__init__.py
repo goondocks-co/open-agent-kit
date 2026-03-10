@@ -23,6 +23,10 @@ from open_agent_kit.features.team.daemon.lifecycle.startup import (
 from open_agent_kit.features.team.daemon.lifecycle.sync_check import (
     check_and_rebuild_chromadb,
 )
+from open_agent_kit.features.team.daemon.lifecycle.update_installer import (
+    apply_staged_update,
+    generate_update_script,
+)
 from open_agent_kit.features.team.daemon.lifecycle.version_check import (
     check_upgrade_needed,
     check_version,
@@ -30,6 +34,8 @@ from open_agent_kit.features.team.daemon.lifecycle.version_check import (
 )
 
 __all__ = [
+    "apply_staged_update",
+    "generate_update_script",
     "check_and_rebuild_chromadb",
     "check_upgrade_needed",
     "check_version",
