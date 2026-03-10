@@ -25,9 +25,13 @@ Prefer MCP tools (`oak_search`, `oak_context`, `oak_remember`, `oak_resolve_memo
 ### MCP tools (preferred when available)
 
 ```
-# Semantic search for code or memories
+# Search knowledge — memories, plans, and sessions (default)
+oak_search(query="authentication refactor decision")
+
+# Narrow by category
 oak_search(query="form validation logic", search_type="code")
-oak_search(query="authentication refactor decision", search_type="memory")
+oak_search(query="backup directory decision", search_type="memory")
+oak_search(query="migration plan", search_type="plans")
 
 # Impact analysis — get context for a specific file
 oak_context(task="impact of changes to executor", files=["src/features/agent_runtime/executor.py"])
