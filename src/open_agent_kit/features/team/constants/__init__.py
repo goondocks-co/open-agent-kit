@@ -780,7 +780,6 @@ from open_agent_kit.features.team.constants.release_channel import (
     CI_CHANNEL_API_PATH,
     CI_CHANNEL_BETA,
     CI_CHANNEL_STABLE,
-    CI_CHANNEL_SWITCH_API_PATH,
 )
 from open_agent_kit.features.team.constants.search import (
     CHUNK_TYPE_CLASS,

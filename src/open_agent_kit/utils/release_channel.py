@@ -1,8 +1,13 @@
 """Shared release-channel helpers used by both team and swarm daemon routes.
 
-This module centralises PyPI version fetching (with caching), channel
-inference, binary-name mapping, and the ``SwitchChannelRequest`` model so
-the two daemon route files only contain their own wiring logic.
+This module centralises PyPI version fetching (with caching) and the
+``build_channel_info`` response builder so the two daemon route files only
+contain their own wiring logic.
+
+Channel inference from binary names (``get_current_channel``,
+``target_binary_name``) and the binary-swap ``SwitchChannelRequest`` were
+removed when channel switching moved to a config-file approach via
+``~/.oak/update.yaml`` (``/api/update/channel`` PUT).
 """
 
 from __future__ import annotations
@@ -10,18 +15,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 import urllib.request
-from typing import Final
-
-from pydantic import BaseModel
 
 from open_agent_kit.constants import VERSION as OAK_VERSION
-from open_agent_kit.features.team.constants.release_channel import (
-    CI_CHANNEL_BETA,
-    CI_CHANNEL_STABLE,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +26,9 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-SHELL: Final[str] = "/bin/sh"
-PYPI_URL: Final[str] = "https://pypi.org/pypi/oak-ci/json"
-PYPI_TIMEOUT_SECONDS: Final[int] = 5
-PYPI_CACHE_TTL_SECONDS: Final[int] = 300  # 5 minutes
-SWITCH_SUBPROCESS_DELAY_SECONDS: Final[int] = 2
+PYPI_URL: str = "https://pypi.org/pypi/oak-ci/json"
+PYPI_TIMEOUT_SECONDS: int = 5
+PYPI_CACHE_TTL_SECONDS: int = 300  # 5 minutes
 
 # ---------------------------------------------------------------------------
 # PyPI version cache
@@ -110,34 +105,8 @@ async def fetch_pypi_versions() -> tuple[str | None, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# Channel helpers
+# Swarm CLI helper (still needed for swarm channel info route)
 # ---------------------------------------------------------------------------
-
-
-def get_current_channel(cli_command: str) -> str:
-    """Infer release channel from the CLI command name.
-
-    Handles both bare names (``oak-beta``) and full paths
-    (``/usr/local/bin/oak-beta``).
-    """
-    from pathlib import Path
-
-    name = Path(cli_command).name
-    return CI_CHANNEL_BETA if name == "oak-beta" else CI_CHANNEL_STABLE
-
-
-def target_binary_name(target_channel: str) -> str:
-    """Return the binary name for a target channel."""
-    return "oak-beta" if target_channel == CI_CHANNEL_BETA else "oak"
-
-
-# ---------------------------------------------------------------------------
-# Shared Pydantic model
-# ---------------------------------------------------------------------------
-
-
-class SwitchChannelRequest(BaseModel):
-    target_channel: str
 
 
 def resolve_swarm_cli_command(env_var: str, default: str = "oak") -> str:
@@ -147,6 +116,7 @@ def resolve_swarm_cli_command(env_var: str, default: str = "oak") -> str:
     launch time) and resolves it to a full path via ``shutil.which``.  Falls
     back to *default* when the env var is unset.
     """
+    import os
     import shutil
 
     from_env = os.environ.get(env_var, "").strip()
@@ -163,15 +133,18 @@ def resolve_swarm_cli_command(env_var: str, default: str = "oak") -> str:
 # ---------------------------------------------------------------------------
 
 
-async def build_channel_info(cli_command: str) -> dict:
+async def build_channel_info() -> dict:
     """Build the channel info response dict used by GET /api/channel.
 
-    Both the team and swarm daemons return the same shape — the only
-    difference is how *cli_command* is resolved, which the caller handles.
+    Channel is read from ``~/.oak/update.yaml`` (the global update config)
+    rather than inferred from the running binary name.  Both the team and
+    swarm daemons return the same shape.
     """
-    import shutil
+    from open_agent_kit.utils.global_config import load_update_config
 
-    current_channel = get_current_channel(cli_command)
+    config = load_update_config()
+    current_channel = config.channel
+
     available_stable, available_beta = await fetch_pypi_versions()
 
     # Apply no-downgrade rule: suppress beta option when available beta < current
@@ -184,16 +157,9 @@ async def build_channel_info(cli_command: str) -> dict:
         except Exception:
             pass  # best-effort comparison; keep beta if parsing fails
 
-    # Switch is supported if the target binary is installed on the system
-    target_channel = CI_CHANNEL_BETA if current_channel == CI_CHANNEL_STABLE else CI_CHANNEL_STABLE
-    target_binary = target_binary_name(target_channel)
-    switch_supported = shutil.which(target_binary) is not None
-
     return {
         "current_channel": current_channel,
-        "cli_command": cli_command,
         "current_version": OAK_VERSION,
-        "switch_supported": switch_supported,
         "available_stable_version": available_stable,
         "available_beta_version": available_beta,
     }
