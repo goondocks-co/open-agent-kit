@@ -130,28 +130,3 @@ export const FALLBACK_MESSAGES = {
     NO_RESULTS: "No results found",
     LOADING: "Loading...",
 } as const;
-
-// =============================================================================
-// Version Banner
-// =============================================================================
-
-/** Unified update/upgrade banner constants */
-export const UPDATE_BANNER = {
-    // Messages
-    UPDATE_MESSAGE: "A new version of OAK is available!",
-    UPGRADE_MESSAGE: "Your project needs an upgrade.",
-    FAILED_MESSAGE: "Upgrade may need a manual step. Run from your terminal:",
-    // Version display
-    VERSION_PREFIX: "v",
-    // Button labels
-    UPGRADE_BUTTON: "Upgrade & Restart",
-    UPGRADING: "Upgrading...",
-    COPIED_LABEL: "Copied!",
-    COPY_LABEL: "Copy",
-    DISMISS_LABEL: "Dismiss",
-    // Storage keys
-    SESSION_STORAGE_KEY: "oak-ci-update-dismissed",
-    UPGRADE_ATTEMPTED_KEY: "oak-ci-upgrade-attempted",
-    // API response status values (must match backend constants)
-    STATUS_UP_TO_DATE: "up_to_date",
-} as const;

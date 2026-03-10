@@ -207,13 +207,6 @@ CI_UPGRADE_AND_RESTART_DETAIL_RESTART_FAILED: Final[str] = (
 # Shared shutdown constants
 CI_SHUTDOWN_LOG_SIGTERM: Final[str] = "Sending SIGTERM for graceful shutdown"
 
-# CLI hint constants
-CI_CLI_HINT_VERSION_MISMATCH: Final[str] = (
-    "Hint: Daemon running v{running}, installed v{installed}. "
-    "Run '{cli_command} team restart' or visit the dashboard."
-)
-CI_CLI_HINT_TIMEOUT: Final[float] = 1.0
-
 # Daemon status response key (used across CLI commands)
 CI_DAEMON_STATUS_KEY_PORT: Final[str] = "port"
 

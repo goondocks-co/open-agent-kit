@@ -9,11 +9,12 @@ Tests cover:
 Note: ``delayed_shutdown`` is replaced with a no-op coroutine so that the
 scheduled SIGTERM never fires during tests.
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -105,7 +106,9 @@ class TestUpdateStatus:
 
     def test_status_returns_full_state_when_not_exempt(self, client) -> None:
         """Returns version/channel/staged info when update is allowed."""
-        fake_config = UpdateConfig(channel=_VALID_CHANNEL_STABLE, auto_download=True, check_interval_hours=6)
+        fake_config = UpdateConfig(
+            channel=_VALID_CHANNEL_STABLE, auto_download=True, check_interval_hours=6
+        )
 
         with (
             _no_exemption(),
@@ -296,9 +299,7 @@ class TestUpdateApply:
         assert response.status_code == 500
         assert "No project root configured" in response.json()["detail"]
 
-    def test_apply_returns_500_when_installer_fails(
-        self, client, setup_state_with_project
-    ) -> None:
+    def test_apply_returns_500_when_installer_fails(self, client, setup_state_with_project) -> None:
         """Returns 500 when apply_staged_update returns False."""
         staged = {"version": _STAGED_VERSION, "wheel_path": _STAGED_WHEEL}
 
@@ -312,9 +313,7 @@ class TestUpdateApply:
         assert response.status_code == 500
         assert "Failed to spawn update script" in response.json()["detail"]
 
-    def test_apply_succeeds_and_schedules_shutdown(
-        self, client, setup_state_with_project
-    ) -> None:
+    def test_apply_succeeds_and_schedules_shutdown(self, client, setup_state_with_project) -> None:
         """Returns 200 with applying status and schedules delayed shutdown."""
         staged = {"version": _STAGED_VERSION, "wheel_path": _STAGED_WHEEL}
 

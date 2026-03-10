@@ -4,6 +4,7 @@ Mounted on both team and swarm daemon routers. Provides endpoints for
 checking update status, triggering checks, applying updates, switching
 channels, and fetching release notes.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +17,6 @@ from pydantic import BaseModel
 
 from open_agent_kit.constants import VERSION
 from open_agent_kit.features.team.daemon.lifecycle.update_checker import (
-    UpdateCheckResult,
     check_for_update,
 )
 from open_agent_kit.features.team.daemon.lifecycle.update_installer import (
@@ -37,7 +37,9 @@ from open_agent_kit.utils.update_exempt import check_update_exempt
 logger = logging.getLogger(__name__)
 
 VALID_CHANNELS = ("stable", "beta")
-GITHUB_RELEASES_URL = "https://api.github.com/repos/goondocks-co/open-agent-kit/releases/tags/v{version}"
+GITHUB_RELEASES_URL = (
+    "https://api.github.com/repos/goondocks-co/open-agent-kit/releases/tags/v{version}"
+)
 RELEASE_NOTES_TIMEOUT_SECONDS = 10
 
 _DAEMON_TYPE = "team"  # Overridden by create_update_router() for swarm
