@@ -10,6 +10,7 @@
  *   GET  /metrics        — federation cache + latency metrics (relay_token auth)
  *   GET  /swarm/advisories — cached swarm advisories (relay_token auth)
  *   POST /health-check   — swarm-initiated health check (callback_token auth via DO)
+ *   GET  /config         — relay config for joining nodes (relay_token auth)
  *   GET  /health         — status check
  */
 
@@ -179,6 +180,16 @@ export default {
     if (path === "/health-check" && request.method === "POST") {
       const doStub = getDurableObject(env);
       return withCors(await doStub.fetch(request), request);
+    }
+
+    // ----- GET /config — relay config for joining nodes (relay_token auth) -----
+    if (path === "/config" && request.method === "GET") {
+      const authErr = validateRelayTokenHttp(request, env);
+      if (authErr) return withCors(authErr, request);
+      return withCors(
+        Response.json({ agent_token: env.AGENT_TOKEN }),
+        request,
+      );
     }
 
     // ----- GET /health -----

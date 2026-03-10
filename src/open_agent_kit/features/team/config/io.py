@@ -18,7 +18,7 @@ from open_agent_kit.features.team.constants import (
     BACKUP_CONFIG_KEY,
     CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN,
-    CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+    CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL,
     CI_CONFIG_KEY_AGENTS,
@@ -32,7 +32,6 @@ from open_agent_kit.features.team.constants import (
     CI_CONFIG_KEY_SESSION_QUALITY,
     CI_CONFIG_KEY_SUMMARIZATION,
     CI_CONFIG_KEY_TEAM,
-    CI_CONFIG_TEAM_KEY_API_KEY,
     CI_CONFIG_TEAM_KEY_AUTO_SYNC,
     CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE,
     CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL,
@@ -187,9 +186,8 @@ USER_CLASSIFIED_PATHS: frozenset[str] = frozenset(
         f"{CI_CONFIG_KEY_AGENTS}.provider_type",  # Agent LLM backend varies per machine
         f"{CI_CONFIG_KEY_AGENTS}.provider_base_url",  # Agent LLM backend varies per machine
         f"{CI_CONFIG_KEY_AGENTS}.provider_model",  # Agent LLM backend varies per machine
-        f"{CI_CONFIG_KEY_CLOUD_RELAY}.{CI_CONFIG_CLOUD_RELAY_KEY_TOKEN}",  # Secret
+        f"{CI_CONFIG_KEY_CLOUD_RELAY}.{CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN}",  # Secret
         f"{CI_CONFIG_KEY_CLOUD_RELAY}.{CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN}",  # Secret
-        f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_API_KEY}",  # Team API keys are machine-local secrets
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_AUTO_SYNC}",  # Depends on per-machine state
         f"{CI_CONFIG_KEY_TEAM}.{CI_CONFIG_TEAM_KEY_KEEP_RELAY_ALIVE}",  # Per-machine power preference
         CI_CONFIG_KEY_LOG_LEVEL,  # Personal debugging preference
@@ -298,8 +296,18 @@ def _scrub_dead_keys(ci_dict: dict[str, Any]) -> None:
             "bind_port",
             "server_side_llm",
             "server_url",  # replaced by cloud_relay.worker_url / team.relay_worker_url
+            "api_key",  # moved to cloud_relay.relay_token
         ):
             team.pop(key, None)
+
+    # Dead cloud_relay sub-keys
+    from open_agent_kit.features.team.constants.cloud_relay import (
+        _CI_CONFIG_CLOUD_RELAY_KEY_TOKEN_LEGACY,
+    )
+
+    cloud_relay = ci_dict.get("cloud_relay")
+    if isinstance(cloud_relay, dict):
+        cloud_relay.pop(_CI_CONFIG_CLOUD_RELAY_KEY_TOKEN_LEGACY, None)
 
     # Dead governance.data_collection sub-keys
     gov = ci_dict.get("governance")
@@ -362,25 +370,6 @@ def _normalize_relay_urls(ci_dict: dict[str, Any]) -> None:
     if isinstance(team, dict):
         if team.get(CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL):
             team[CI_CONFIG_TEAM_KEY_RELAY_WORKER_URL] = canonical_url
-
-
-def _dedup_relay_credentials(ci_dict: dict[str, Any]) -> None:
-    """Remove ``team.api_key`` when it duplicates ``cloud_relay.token``.
-
-    On publisher nodes the deploy flow historically wrote the relay token
-    to both locations.  Only ``cloud_relay.token`` is the source of truth;
-    ``team.api_key`` is kept only for consumer nodes that don't have
-    ``cloud_relay.token``.
-    """
-    relay = ci_dict.get(CI_CONFIG_KEY_CLOUD_RELAY)
-    if not isinstance(relay, dict):
-        return
-    team = ci_dict.get(CI_CONFIG_KEY_TEAM)
-    if not isinstance(team, dict):
-        return
-    relay_token = relay.get(CI_CONFIG_CLOUD_RELAY_KEY_TOKEN)
-    if relay_token and team.get(CI_CONFIG_TEAM_KEY_API_KEY) == relay_token:
-        team.pop(CI_CONFIG_TEAM_KEY_API_KEY, None)
 
 
 def _user_config_path(project_root: Path) -> Path:
@@ -539,8 +528,6 @@ def save_ci_config(
 
     # Normalize relay URLs to use custom domain when available
     _normalize_relay_urls(ci_dict)
-    # Remove team.api_key when it duplicates cloud_relay.token
-    _dedup_relay_credentials(ci_dict)
 
     # Remove legacy "codebase_intelligence" key (renamed to "team")
     existing_config.pop("codebase_intelligence", None)

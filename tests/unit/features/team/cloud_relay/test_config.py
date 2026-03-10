@@ -15,7 +15,7 @@ from open_agent_kit.features.team.constants import (
     CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN,
     CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH,
     CI_CONFIG_CLOUD_RELAY_KEY_RECONNECT_MAX,
-    CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+    CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN,
     CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME,
     CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL,
@@ -39,7 +39,7 @@ class TestCloudRelayConfigDefaults:
         config = CloudRelayConfig()
         assert config.worker_url is None
         assert config.worker_name is None
-        assert config.token is None
+        assert config.relay_token is None
         assert config.auto_connect is True
         assert config.tool_timeout_seconds == CLOUD_RELAY_DEFAULT_TOOL_TIMEOUT_SECONDS
         assert config.reconnect_max_seconds == CLOUD_RELAY_DEFAULT_RECONNECT_MAX_SECONDS
@@ -56,14 +56,14 @@ class TestCloudRelayConfigFromDict:
     def test_all_fields(self) -> None:
         data = {
             CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: TEST_WORKER_URL,
-            CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: TEST_RELAY_TOKEN,
+            CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: TEST_RELAY_TOKEN,
             CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT: True,
             CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT: 60,
             CI_CONFIG_CLOUD_RELAY_KEY_RECONNECT_MAX: 120,
         }
         config = CloudRelayConfig.from_dict(data)
         assert config.worker_url == TEST_WORKER_URL
-        assert config.token == TEST_RELAY_TOKEN
+        assert config.relay_token == TEST_RELAY_TOKEN
         assert config.auto_connect is True
         assert config.tool_timeout_seconds == 60
         assert config.reconnect_max_seconds == 120
@@ -71,28 +71,28 @@ class TestCloudRelayConfigFromDict:
     def test_empty_dict_uses_defaults(self) -> None:
         config = CloudRelayConfig.from_dict({})
         assert config.worker_url is None
-        assert config.token is None
+        assert config.relay_token is None
         assert config.auto_connect is True
 
     def test_env_var_token_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Token with ${ENV_VAR} syntax is resolved from environment."""
         monkeypatch.setenv("OAK_RELAY_SECRET", TEST_RELAY_TOKEN)
-        data = {CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: "${OAK_RELAY_SECRET}"}
+        data = {CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: "${OAK_RELAY_SECRET}"}
         config = CloudRelayConfig.from_dict(data)
-        assert config.token == TEST_RELAY_TOKEN
+        assert config.relay_token == TEST_RELAY_TOKEN
 
     def test_env_var_token_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Unset env var resolves to None."""
         monkeypatch.delenv("MISSING_VAR", raising=False)
-        data = {CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: "${MISSING_VAR}"}
+        data = {CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: "${MISSING_VAR}"}
         config = CloudRelayConfig.from_dict(data)
-        assert config.token is None
+        assert config.relay_token is None
 
     def test_literal_token_kept(self) -> None:
         """Plain string token is kept as-is."""
-        data = {CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: TEST_RELAY_TOKEN}
+        data = {CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: TEST_RELAY_TOKEN}
         config = CloudRelayConfig.from_dict(data)
-        assert config.token == TEST_RELAY_TOKEN
+        assert config.relay_token == TEST_RELAY_TOKEN
 
 
 class TestCloudRelayConfigToDict:
@@ -102,7 +102,7 @@ class TestCloudRelayConfigToDict:
         config = CloudRelayConfig(
             worker_url=TEST_WORKER_URL,
             worker_name="oak-relay-my-project",
-            token=TEST_RELAY_TOKEN,
+            relay_token=TEST_RELAY_TOKEN,
             auto_connect=True,
             tool_timeout_seconds=45,
             reconnect_max_seconds=90,
@@ -111,7 +111,7 @@ class TestCloudRelayConfigToDict:
         assert d == {
             CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: TEST_WORKER_URL,
             CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME: "oak-relay-my-project",
-            CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: TEST_RELAY_TOKEN,
+            CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: TEST_RELAY_TOKEN,
             CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN: None,
             CI_CONFIG_CLOUD_RELAY_KEY_CUSTOM_DOMAIN: None,
             CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT: True,
@@ -124,7 +124,7 @@ class TestCloudRelayConfigToDict:
         d = CloudRelayConfig().to_dict()
         assert d[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL] is None
         assert d[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME] is None
-        assert d[CI_CONFIG_CLOUD_RELAY_KEY_TOKEN] is None
+        assert d[CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN] is None
         assert d[CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT] is True
 
     def test_ci_config_to_dict_includes_cloud_relay(self) -> None:
@@ -175,14 +175,14 @@ class TestCloudRelayConfigAgentToken:
     def test_roundtrip(self) -> None:
         config = CloudRelayConfig(
             worker_url=TEST_WORKER_URL,
-            token=TEST_RELAY_TOKEN,
+            relay_token=TEST_RELAY_TOKEN,
             agent_token=TEST_AGENT_TOKEN,
         )
         d = config.to_dict()
         restored = CloudRelayConfig.from_dict(d)
         assert restored.agent_token == TEST_AGENT_TOKEN
         assert restored.worker_url == TEST_WORKER_URL
-        assert restored.token == TEST_RELAY_TOKEN
+        assert restored.relay_token == TEST_RELAY_TOKEN
 
     def test_env_var_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """agent_token with ${ENV_VAR} syntax is resolved from environment."""
@@ -220,7 +220,7 @@ class TestCloudRelayConfigWorkerName:
         config = CloudRelayConfig(
             worker_url=TEST_WORKER_URL,
             worker_name="oak-relay-my-app",
-            token=TEST_RELAY_TOKEN,
+            relay_token=TEST_RELAY_TOKEN,
         )
         d = config.to_dict()
         restored = CloudRelayConfig.from_dict(d)
@@ -320,7 +320,7 @@ class TestCloudRelayConfigCustomDomain:
     def test_roundtrip(self) -> None:
         config = CloudRelayConfig(
             worker_url=TEST_WORKER_URL,
-            token=TEST_RELAY_TOKEN,
+            relay_token=TEST_RELAY_TOKEN,
             custom_domain="relay.example.com",
         )
         d = config.to_dict()
@@ -376,11 +376,11 @@ class TestCloudRelayInUserClassifiedPaths:
         """Cloud relay token and agent_token are machine-local."""
         from open_agent_kit.features.team.constants import (
             CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
-            CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+            CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN,
         )
 
         for key in (
-            CI_CONFIG_CLOUD_RELAY_KEY_TOKEN,
+            CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN,
             CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN,
         ):
             assert f"{CI_CONFIG_KEY_CLOUD_RELAY}.{key}" in USER_CLASSIFIED_PATHS
@@ -433,7 +433,7 @@ class TestMigrateCloudRelayToProjectConfig:
                         CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: TEST_WORKER_URL,
                         CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT: True,
                         CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME: "oak-relay-test",
-                        CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: TEST_RELAY_TOKEN,
+                        CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: TEST_RELAY_TOKEN,
                         CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN: TEST_AGENT_TOKEN,
                     }
                 }
@@ -455,7 +455,7 @@ class TestMigrateCloudRelayToProjectConfig:
         assert project_relay[CI_CONFIG_CLOUD_RELAY_KEY_WORKER_NAME] == "oak-relay-test"
 
         # Secrets were NOT promoted
-        assert CI_CONFIG_CLOUD_RELAY_KEY_TOKEN not in project_relay
+        assert CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN not in project_relay
         assert CI_CONFIG_CLOUD_RELAY_KEY_AGENT_TOKEN not in project_relay
 
     def test_idempotent_when_project_already_has_keys(self, project_root: Path) -> None:

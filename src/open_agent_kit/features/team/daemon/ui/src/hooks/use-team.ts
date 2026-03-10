@@ -19,7 +19,7 @@ import { usePowerQuery } from "@oak/ui/hooks/use-power-query";
 
 export interface TeamConfigResponse {
     relay_worker_url: string | null;
-    api_key: string | null;
+    relay_token: string | null;
     auto_sync: boolean;
     sync_interval_seconds: number;
     keep_relay_alive: boolean;
@@ -27,7 +27,7 @@ export interface TeamConfigResponse {
 
 export interface TeamConfigUpdate {
     relay_worker_url?: string | null;
-    api_key?: string | null;
+    relay_token?: string | null;
     auto_sync?: boolean | null;
     sync_interval_seconds?: number | null;
     keep_relay_alive?: boolean | null;

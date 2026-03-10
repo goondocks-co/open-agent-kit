@@ -49,7 +49,7 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
 
     Supports two modes:
     - Publisher: cloud_relay.auto_connect=True (set after successful deploy).
-    - Consumer: team.auto_sync=True with relay_worker_url + api_key configured.
+    - Consumer: team.auto_sync=True with relay_worker_url + cloud_relay.relay_token configured.
 
     Non-critical: failures are logged but do not prevent startup.
     """
@@ -95,6 +95,24 @@ async def _init_cloud_relay(state: "DaemonState", project_root: Path) -> None:
         if relay_status.connected:
             logger.info(CI_CLOUD_RELAY_LOG_CONNECTED.format(worker_url=worker_url))
             state.cache_relay_credentials(worker_url, token, port, machine_id)
+
+            # Fetch agent_token from relay if missing (joining node)
+            if not relay_config.agent_token:
+                from open_agent_kit.features.team.config import (
+                    load_ci_config,
+                    save_ci_config,
+                )
+                from open_agent_kit.features.team.daemon.routes.cloud_relay import (
+                    _fetch_agent_token,
+                )
+
+                fetched = await _fetch_agent_token(worker_url, token)
+                if fetched:
+                    fresh_config = load_ci_config(project_root)
+                    fresh_config.cloud_relay.agent_token = fetched
+                    save_ci_config(project_root, fresh_config)
+                    state.ci_config = None
+                    logger.info("Fetched agent_token from relay")
         else:
             error_detail = relay_status.error or CI_CLOUD_RELAY_ERROR_CONNECT_FAILED.format(
                 error="unknown"

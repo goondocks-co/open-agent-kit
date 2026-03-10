@@ -38,7 +38,8 @@ CLOUD_RELAY_TOKEN_BYTES: Final[int] = WORKER_TOKEN_BYTES
 # Config keys (inside team.cloud_relay section)
 CI_CONFIG_KEY_CLOUD_RELAY: Final[str] = "cloud_relay"
 CI_CONFIG_CLOUD_RELAY_KEY_WORKER_URL: Final[str] = "worker_url"
-CI_CONFIG_CLOUD_RELAY_KEY_TOKEN: Final[str] = "token"
+CI_CONFIG_CLOUD_RELAY_KEY_RELAY_TOKEN: Final[str] = "relay_token"
+_CI_CONFIG_CLOUD_RELAY_KEY_TOKEN_LEGACY: Final[str] = "token"  # pre-rename key
 CI_CONFIG_CLOUD_RELAY_KEY_AUTO_CONNECT: Final[str] = "auto_connect"
 CI_CONFIG_CLOUD_RELAY_KEY_TOOL_TIMEOUT: Final[str] = "tool_timeout_seconds"
 CI_CONFIG_CLOUD_RELAY_KEY_RECONNECT_MAX: Final[str] = "reconnect_max_seconds"
@@ -96,7 +97,7 @@ CI_CLOUD_RELAY_ERROR_NO_WORKER_URL: Final[str] = (
     "Worker URL not configured. Set cloud_relay.worker_url in .oak/config.yaml"
 )
 CI_CLOUD_RELAY_ERROR_NO_TOKEN: Final[str] = (
-    "Relay token not configured. Set cloud_relay.token in .oak/config.yaml"
+    "Relay token not configured. Set cloud_relay.relay_token in .oak/config.yaml"
 )
 CI_CLOUD_RELAY_ERROR_CONNECT_FAILED: Final[str] = "Failed to connect to cloud relay: {error}"
 CI_CLOUD_RELAY_ERROR_DISCONNECT_FAILED: Final[str] = "Error disconnecting: {error}"
@@ -326,6 +327,10 @@ CI_CONFIG_CLOUD_RELAY_KEY_DEPLOYED_TEMPLATE_HASH: Final[str] = "deployed_templat
 # Status response key for Worker template update detection
 CLOUD_RELAY_RESPONSE_KEY_UPDATE_AVAILABLE: Final[str] = "update_available"
 CLOUD_RELAY_RESPONSE_KEY_WORKER_REACHABLE: Final[str] = "worker_reachable"
+
+# Relay config endpoint (returns agent_token to authenticated peers)
+CLOUD_RELAY_CONFIG_PATH: Final[str] = "/config"
+CLOUD_RELAY_CONFIG_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Observation stats endpoint path
 CLOUD_RELAY_OBS_STATS_PATH: Final[str] = "/obs/stats"

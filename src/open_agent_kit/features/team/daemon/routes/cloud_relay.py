@@ -170,6 +170,34 @@ def _mcp_endpoint(
     return worker_url + CLOUD_RELAY_MCP_ENDPOINT_SUFFIX
 
 
+async def _fetch_agent_token(worker_url: str, relay_token: str) -> str | None:
+    """Fetch the agent_token from the relay Worker's /config endpoint.
+
+    Returns the token string on success, or ``None`` on any failure
+    (non-critical — the node can still operate without it).
+    """
+    import httpx
+
+    from open_agent_kit.features.team.constants import (
+        CLOUD_RELAY_CONFIG_PATH,
+        CLOUD_RELAY_CONFIG_TIMEOUT_SECONDS,
+    )
+
+    try:
+        url = worker_url.rstrip("/") + CLOUD_RELAY_CONFIG_PATH
+        headers = {"Authorization": f"Bearer {relay_token}"}
+        async with httpx.AsyncClient(timeout=CLOUD_RELAY_CONFIG_TIMEOUT_SECONDS) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code == HTTPStatus.OK:
+            data = resp.json()
+            token: str | None = data.get("agent_token")
+            if token:
+                return token
+    except Exception as exc:
+        logger.debug("Failed to fetch agent_token from relay: %s", exc)
+    return None
+
+
 # =========================================================================
 # POST /api/cloud/start  — all-in-one orchestration
 # =========================================================================
@@ -253,7 +281,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # ------------------------------------------------------------------
     if not is_scaffolded(project_root):
         logger.info(CI_CLOUD_RELAY_LOG_PHASE_SCAFFOLD)
-        relay_token = relay_config.token or generate_token()
+        relay_token = relay_config.relay_token or generate_token()
         agent_token = body.get(CLOUD_RELAY_REQUEST_KEY_AGENT_TOKEN) or generate_token()
         worker_name = relay_config.worker_name or make_worker_name(project_root.name)
 
@@ -278,7 +306,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
         # Persist tokens and worker name to config; clear stale worker_url
         # so deploy phase runs with the (possibly new) worker name.
         ci_config = load_ci_config(project_root)
-        ci_config.cloud_relay.token = relay_token
+        ci_config.cloud_relay.relay_token = relay_token
         ci_config.cloud_relay.agent_token = agent_token
         ci_config.cloud_relay.worker_name = worker_name
         ci_config.cloud_relay.worker_url = None
@@ -296,7 +324,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # changes without requiring a full re-scaffold).
     render_wrangler_config(
         scaffold_dir=scaffold_dir,
-        relay_token=relay_config.token or "",
+        relay_token=relay_config.relay_token or "",
         agent_token=relay_config.agent_token or "",
         worker_name=relay_config.worker_name or make_worker_name(project_root.name),
         custom_domain=relay_config.custom_domain,
@@ -373,7 +401,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     # Re-read config for latest token
     ci_config_final = load_ci_config(project_root)
     relay_config_final = ci_config_final.cloud_relay
-    token = relay_config_final.token
+    token = relay_config_final.relay_token
 
     if not token:
         return _make_error_response(
@@ -455,7 +483,7 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
 
     # Persist auto_connect so the relay reconnects after daemon restart.
     # relay_worker_url goes to project config (git-tracked) so teammates
-    # can auto-connect.  Token is already in cloud_relay.token (user config).
+    # can auto-connect.  Token is already in cloud_relay.relay_token (user config).
     ci_config_ac = load_ci_config(project_root)
     ci_config_ac.cloud_relay.auto_connect = True
     ci_config_ac.team.relay_worker_url = worker_url
@@ -665,7 +693,7 @@ async def update_cloud_relay_settings(body: dict) -> dict:
     if is_scaffolded(state.project_root):
         render_wrangler_config(
             scaffold_dir=state.project_root / CLOUD_RELAY_SCAFFOLD_OUTPUT_DIR,
-            relay_token=ci_config.cloud_relay.token or "",
+            relay_token=ci_config.cloud_relay.relay_token or "",
             agent_token=ci_config.cloud_relay.agent_token or "",
             worker_name=ci_config.cloud_relay.worker_name
             or make_worker_name(state.project_root.name),
@@ -759,8 +787,9 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
         if relay_status.connected:
             state.cache_relay_credentials(worker_url, token, port, machine_id)
 
-            # Persist auto_connect and worker_url so the relay reconnects
+            # Persist relay credentials and config so the relay reconnects
             # after daemon restart — same as the deploy (start) path.
+            # cloud_relay.relay_token is user-classified (goes to user overlay).
             if state.project_root:
                 from open_agent_kit.features.team.config import (
                     load_ci_config,
@@ -769,9 +798,18 @@ async def connect_cloud_relay(body: dict | None = None) -> dict:
 
                 ci_config_ac = load_ci_config(state.project_root)
                 ci_config_ac.cloud_relay.auto_connect = True
+                ci_config_ac.cloud_relay.relay_token = token
                 if not ci_config_ac.cloud_relay.worker_url:
                     ci_config_ac.cloud_relay.worker_url = worker_url
                 ci_config_ac.team.relay_worker_url = worker_url
+
+                # Fetch agent_token from the relay if this node doesn't
+                # have one yet (joining node — deployer already has it).
+                if not ci_config_ac.cloud_relay.agent_token:
+                    agent_token = await _fetch_agent_token(worker_url, token)
+                    if agent_token:
+                        ci_config_ac.cloud_relay.agent_token = agent_token
+
                 save_ci_config(state.project_root, ci_config_ac)
                 state.ci_config = None
 

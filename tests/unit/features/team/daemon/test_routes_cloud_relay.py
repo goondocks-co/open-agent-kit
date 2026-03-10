@@ -112,22 +112,23 @@ def client(auth_headers):
 
 def _setup_state_with_config(
     worker_url: str | None = None,
-    token: str | None = None,
+    relay_token: str | None = None,
 ) -> MagicMock:
     """Set up daemon state with CI config.
 
     Args:
         worker_url: Optional worker URL in config.
-        token: Optional relay token in config.
+        relay_token: Optional relay token in config.
 
     Returns:
         The daemon state object.
     """
     state = get_state()
+    state.project_root = FAKE_PROJECT_ROOT
     state.ci_config = CIConfig()
     state.ci_config.cloud_relay = CloudRelayConfig(
         worker_url=worker_url,
-        token=token,
+        relay_token=relay_token,
     )
     return state
 
@@ -297,6 +298,8 @@ class TestCloudRelayConnect:
         with (
             patch(_PATCH_GET_PORT, return_value=TEST_DAEMON_PORT),
             patch(_PATCH_CLIENT_CLS, return_value=mock_instance),
+            patch(_PATCH_LOAD_CI_CONFIG, return_value=CIConfig()),
+            patch(_PATCH_SAVE_CI_CONFIG),
         ):
             response = client.post(
                 CI_CLOUD_RELAY_API_PATH_CONNECT,
@@ -309,7 +312,7 @@ class TestCloudRelayConnect:
 
     def test_connect_uses_config_url_and_token(self, client: TestClient) -> None:
         """Falls back to config values when body is empty."""
-        state = _setup_state_with_config(worker_url=TEST_WORKER_URL, token=TEST_RELAY_TOKEN)
+        state = _setup_state_with_config(worker_url=TEST_WORKER_URL, relay_token=TEST_RELAY_TOKEN)
 
         mock_instance = AsyncMock()
         mock_instance.connect = AsyncMock(
@@ -319,6 +322,8 @@ class TestCloudRelayConnect:
         with (
             patch(_PATCH_GET_PORT, return_value=TEST_DAEMON_PORT),
             patch(_PATCH_CLIENT_CLS, return_value=mock_instance),
+            patch(_PATCH_LOAD_CI_CONFIG, return_value=CIConfig()),
+            patch(_PATCH_SAVE_CI_CONFIG),
         ):
             response = client.post(CI_CLOUD_RELAY_API_PATH_CONNECT, json={})
         assert response.status_code == HTTPStatus.OK
@@ -328,7 +333,7 @@ class TestCloudRelayConnect:
 
     def test_connect_body_overrides_config(self, client: TestClient) -> None:
         """Request body values override config values."""
-        state = _setup_state_with_config(worker_url=TEST_WORKER_URL, token="config-token")
+        state = _setup_state_with_config(worker_url=TEST_WORKER_URL, relay_token="config-token")
 
         mock_instance = AsyncMock()
         mock_instance.connect = AsyncMock(
@@ -338,6 +343,8 @@ class TestCloudRelayConnect:
         with (
             patch(_PATCH_GET_PORT, return_value=TEST_DAEMON_PORT),
             patch(_PATCH_CLIENT_CLS, return_value=mock_instance),
+            patch(_PATCH_LOAD_CI_CONFIG, return_value=CIConfig()),
+            patch(_PATCH_SAVE_CI_CONFIG),
         ):
             response = client.post(
                 CI_CLOUD_RELAY_API_PATH_CONNECT,
@@ -358,7 +365,7 @@ class TestCloudRelayConnect:
 def _setup_state_for_start(
     *,
     worker_url: str | None = None,
-    token: str | None = TEST_RELAY_TOKEN,
+    relay_token: str | None = TEST_RELAY_TOKEN,
     agent_token: str | None = TEST_AGENT_TOKEN,
 ) -> None:
     """Set up daemon state for /api/cloud/start tests."""
@@ -367,7 +374,7 @@ def _setup_state_for_start(
     state.ci_config = CIConfig()
     state.ci_config.cloud_relay = CloudRelayConfig(
         worker_url=worker_url,
-        token=token,
+        relay_token=relay_token,
         agent_token=agent_token,
     )
 
@@ -375,14 +382,14 @@ def _setup_state_for_start(
 def _make_config_with(
     *,
     worker_url: str | None = None,
-    token: str | None = TEST_RELAY_TOKEN,
+    relay_token: str | None = TEST_RELAY_TOKEN,
     agent_token: str | None = TEST_AGENT_TOKEN,
 ) -> CIConfig:
     """Create a CIConfig for mocking load_ci_config."""
     ci = CIConfig()
     ci.cloud_relay = CloudRelayConfig(
         worker_url=worker_url,
-        token=token,
+        relay_token=relay_token,
         agent_token=agent_token,
     )
     return ci
@@ -873,7 +880,7 @@ class TestCloudRelaySettings:
         state.ci_config = CIConfig()
 
         ci_config = CIConfig()
-        ci_config.cloud_relay.token = TEST_RELAY_TOKEN
+        ci_config.cloud_relay.relay_token = TEST_RELAY_TOKEN
         ci_config.cloud_relay.agent_token = TEST_AGENT_TOKEN
         ci_config.cloud_relay.worker_name = "oak-relay-fake"
 

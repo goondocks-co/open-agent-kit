@@ -8,7 +8,6 @@ from typing import Final
 
 # Config keys (inside team.team section)
 CI_CONFIG_KEY_TEAM: Final[str] = "team"
-CI_CONFIG_TEAM_KEY_API_KEY: Final[str] = "api_key"
 CI_CONFIG_TEAM_KEY_AUTO_SYNC: Final[str] = "auto_sync"
 CI_CONFIG_TEAM_KEY_SYNC_INTERVAL: Final[str] = "sync_interval_seconds"
 CI_CONFIG_TEAM_KEY_PROJECT_SLUG: Final[str] = "project_slug"
@@ -81,8 +80,8 @@ TEAM_MESSAGE_DAEMON_NOT_RUNNING: Final[str] = "Daemon is not running. Start with
 TEAM_MESSAGE_REQUEST_TIMED_OUT: Final[str] = "Request timed out"
 TEAM_MESSAGE_NO_MEMBERS: Final[str] = "No team members found"
 
-# CLI env var for team API key
-TEAM_API_KEY_ENV_VAR: Final[str] = "OAK_TEAM_API_KEY"
+# CLI env var for team relay token
+TEAM_RELAY_TOKEN_ENV_VAR: Final[str] = "OAK_TEAM_RELAY_TOKEN"
 
 # CLI daemon API URL template (reuse pattern from cloud relay)
 TEAM_CLI_API_URL_TEMPLATE: Final[str] = "http://localhost:{port}{path}"

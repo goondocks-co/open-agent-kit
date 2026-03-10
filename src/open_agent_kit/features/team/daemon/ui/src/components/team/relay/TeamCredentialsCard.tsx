@@ -14,7 +14,7 @@ export function TeamCredentialsCard({ workerUrl, relayToken }: { workerUrl: stri
 
     const cliCommands = [
         `oak ci config set team.relay_worker_url ${workerUrl}`,
-        relayToken ? `oak ci config set team.api_key ${relayToken}` : null,
+        relayToken ? `oak ci config set cloud_relay.relay_token ${relayToken}` : null,
     ].filter(Boolean).join("\n");
 
     return (
