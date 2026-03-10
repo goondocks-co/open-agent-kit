@@ -4,11 +4,11 @@
 Tests: detect → download → stage → apply sequence with mocked PyPI
 and subprocess. Verifies all components work together.
 """
+
 from __future__ import annotations
 
-import json
 import hashlib
-from pathlib import Path
+import json
 from unittest.mock import patch
 
 import pytest
@@ -18,21 +18,24 @@ from open_agent_kit.features.team.daemon.server import create_app
 from open_agent_kit.features.team.daemon.state import get_state, reset_state
 from open_agent_kit.utils.global_config import ensure_global_dir, write_staged_update
 
-
 _WHEEL_CONTENT = b"PK\x03\x04integration-test-wheel"
 _WHEEL_SHA = hashlib.sha256(_WHEEL_CONTENT).hexdigest()
 
-_PYPI_RESPONSE = json.dumps({
-    "releases": {
-        "1.0.0": [],
-        "2.0.0": [{
-            "filename": "oak_ci-2.0.0-py3-none-any.whl",
-            "url": "https://example.com/oak_ci-2.0.0.whl",
-            "digests": {"sha256": _WHEEL_SHA},
-            "packagetype": "bdist_wheel",
-        }],
+_PYPI_RESPONSE = json.dumps(
+    {
+        "releases": {
+            "1.0.0": [],
+            "2.0.0": [
+                {
+                    "filename": "oak_ci-2.0.0-py3-none-any.whl",
+                    "url": "https://example.com/oak_ci-2.0.0.whl",
+                    "digests": {"sha256": _WHEEL_SHA},
+                    "packagetype": "bdist_wheel",
+                }
+            ],
+        }
     }
-}).encode()
+).encode()
 
 
 @pytest.fixture(autouse=True)
@@ -58,7 +61,10 @@ class TestSelfUpdateFlow:
         state.initialize(tmp_path)
 
         with (
-            patch("open_agent_kit.features.team.daemon.routes.update.check_update_exempt", return_value=None),
+            patch(
+                "open_agent_kit.features.team.daemon.routes.update.check_update_exempt",
+                return_value=None,
+            ),
             patch("open_agent_kit.features.team.daemon.routes.update.VERSION", "1.0.0"),
             patch(
                 "open_agent_kit.features.team.daemon.lifecycle.update_checker.fetch_pypi_raw",
@@ -83,16 +89,21 @@ class TestSelfUpdateFlow:
         staging.mkdir(exist_ok=True)
         wheel = staging / "oak_ci-2.0.0.whl"
         wheel.write_bytes(_WHEEL_CONTENT)
-        write_staged_update({
-            "schema_version": 1,
-            "version": "2.0.0",
-            "wheel_path": str(wheel),
-            "channel": "stable",
-            "downloaded_at": "2026-03-10T00:00:00Z",
-            "sha256": _WHEEL_SHA,
-        })
+        write_staged_update(
+            {
+                "schema_version": 1,
+                "version": "2.0.0",
+                "wheel_path": str(wheel),
+                "channel": "stable",
+                "downloaded_at": "2026-03-10T00:00:00Z",
+                "sha256": _WHEEL_SHA,
+            }
+        )
 
-        with patch("open_agent_kit.features.team.daemon.routes.update.check_update_exempt", return_value=None):
+        with patch(
+            "open_agent_kit.features.team.daemon.routes.update.check_update_exempt",
+            return_value=None,
+        ):
             resp = client.get("/api/update/status")
 
         assert resp.status_code == 200
