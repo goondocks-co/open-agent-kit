@@ -17,10 +17,6 @@ MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=12
 MAX_PYTHON_MINOR=13
 
-# Channel: "stable" (default) or "beta" (pre-release).
-# Override: OAK_CHANNEL=beta curl -fsSL .../install.sh | sh
-OAK_CHANNEL="${OAK_CHANNEL:-stable}"
-
 # --- Colors (disabled for non-TTY) ---
 
 if [ -t 1 ]; then
@@ -82,22 +78,12 @@ install_with_pipx() {
     version_spec="$1"
     python_cmd="$2"
     info "Installing with pipx (python: $python_cmd)..."
-    if [ "$OAK_CHANNEL" = "beta" ]; then
-        # Beta: --suffix=-beta produces the `oak-beta` binary so stable and beta coexist.
-        # Skip pre-uninstall; the suffixed app is independent of the stable install.
-        if [ -n "$version_spec" ]; then
-            pipx install --python "$python_cmd" --pip-args='--pre' --suffix=-beta "${PACKAGE}==${version_spec}"
-        else
-            pipx install --python "$python_cmd" --pip-args='--pre' --suffix=-beta "$PACKAGE"
-        fi
+    # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
+    pipx uninstall "$PACKAGE" 2>/dev/null || true
+    if [ -n "$version_spec" ]; then
+        pipx install --python "$python_cmd" "${PACKAGE}==${version_spec}"
     else
-        # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
-        pipx uninstall "$PACKAGE" 2>/dev/null || true
-        if [ -n "$version_spec" ]; then
-            pipx install --python "$python_cmd" "${PACKAGE}==${version_spec}"
-        else
-            pipx install --python "$python_cmd" "$PACKAGE"
-        fi
+        pipx install --python "$python_cmd" "$PACKAGE"
     fi
 }
 
@@ -107,12 +93,10 @@ install_with_uv() {
     info "Installing with uv (python: $python_cmd)..."
     # Uninstall first to ensure --python is respected (mirrors pipx workaround)
     uv tool uninstall "$PACKAGE" 2>/dev/null || true
-    pre_flag=""
-    [ "$OAK_CHANNEL" = "beta" ] && pre_flag="--prerelease=allow"
     if [ -n "$version_spec" ]; then
-        uv tool install --python "$python_cmd" $pre_flag "${PACKAGE}==${version_spec}"
+        uv tool install --python "$python_cmd" "${PACKAGE}==${version_spec}"
     else
-        uv tool install --python "$python_cmd" $pre_flag "$PACKAGE"
+        uv tool install --python "$python_cmd" "$PACKAGE"
     fi
 }
 
@@ -120,12 +104,10 @@ install_with_pip() {
     python_cmd="$1"
     version_spec="$2"
     info "Installing with pip (--user)..."
-    pre_flag=""
-    [ "$OAK_CHANNEL" = "beta" ] && pre_flag="--pre"
     if [ -n "$version_spec" ]; then
-        "$python_cmd" -m pip install --user --upgrade $pre_flag "${PACKAGE}==${version_spec}"
+        "$python_cmd" -m pip install --user --upgrade "${PACKAGE}==${version_spec}"
     else
-        "$python_cmd" -m pip install --user --upgrade $pre_flag "$PACKAGE"
+        "$python_cmd" -m pip install --user --upgrade "$PACKAGE"
     fi
 }
 
@@ -188,10 +170,6 @@ main() {
     printf "  The Intelligence Layer for AI Agents\n"
     printf "\n"
 
-    if [ "$OAK_CHANNEL" = "beta" ]; then
-        info "Channel: beta (pre-release)"
-    fi
-
     # Detect OS
     os="$(uname -s)"
     case "$os" in
@@ -213,13 +191,8 @@ main() {
     # Suggest Homebrew on macOS if available
     if [ "$os_name" = "macOS" ] && command -v brew >/dev/null 2>&1; then
         printf "\n"
-        if [ "$OAK_CHANNEL" = "beta" ]; then
-            info "Homebrew detected! You can also install the beta via:"
-            printf "  ${BOLD}brew install goondocks-co/oak/oak-ci-beta${RESET}\n"
-        else
-            info "Homebrew detected! You can also install via:"
-            printf "  ${BOLD}brew install goondocks-co/oak/oak-ci${RESET}\n"
-        fi
+        info "Homebrew detected! You can also install via:"
+        printf "  ${BOLD}brew install goondocks-co/oak/oak-ci${RESET}\n"
         printf "\n"
         info "Continuing with Python-based install...\n"
     fi
@@ -297,12 +270,7 @@ main() {
         exit 1
     fi
 
-    # The binary name depends on channel + method:
-    # pipx beta uses --suffix=-beta → produces `oak-beta`; all other combos produce `oak`
     oak_bin="oak"
-    if [ "$OAK_CHANNEL" = "beta" ] && [ "$actual_method" = "pipx" ]; then
-        oak_bin="oak-beta"
-    fi
 
     # Verify installation
     printf "\n"

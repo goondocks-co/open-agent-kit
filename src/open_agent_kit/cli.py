@@ -182,7 +182,6 @@ def main(
     For more information, visit: https://openagentkit.app
     """
     _stamp_cli_version()
-    _check_daemon_version_hint()
 
     # Handle version flag
     if version_flag:
@@ -212,49 +211,6 @@ def _stamp_cli_version() -> None:
                 stamp.write_text(VERSION)
         except OSError:
             pass
-
-
-def _check_daemon_version_hint() -> None:
-    """Print a hint if the running daemon version differs from the installed CLI."""
-    from open_agent_kit.config.paths import OAK_DIR
-    from open_agent_kit.features.team.constants import (
-        CI_CLI_HINT_TIMEOUT,
-        CI_CLI_HINT_VERSION_MISMATCH,
-        CI_DATA_DIR,
-        CI_PID_FILE,
-        is_meaningful_upgrade,
-    )
-
-    pid_file = Path.cwd() / OAK_DIR / CI_DATA_DIR / CI_PID_FILE
-    if not pid_file.exists():
-        return
-
-    try:
-        import httpx
-
-        from open_agent_kit.features.team.cli_command import (
-            resolve_ci_cli_command,
-        )
-        from open_agent_kit.features.team.daemon.manager import (
-            get_project_port,
-        )
-
-        project_root = Path.cwd()
-        ci_data_dir = project_root / OAK_DIR / CI_DATA_DIR
-        port = get_project_port(project_root, ci_data_dir)
-        resp = httpx.get(
-            f"http://127.0.0.1:{port}/api/health",
-            timeout=CI_CLI_HINT_TIMEOUT,
-        )
-        data = resp.json()
-        running_version = data.get("oak_version")
-        if running_version and is_meaningful_upgrade(running_version, VERSION):
-            cli_command = resolve_ci_cli_command(project_root)
-            console.print(
-                f"[yellow]{CI_CLI_HINT_VERSION_MISMATCH.format(running=running_version, installed=VERSION, cli_command=cli_command)}[/yellow]"
-            )
-    except Exception:
-        pass
 
 
 def cli_main() -> None:

@@ -14,4 +14,3 @@ CI_CHANNEL_BETA: Final[str] = "beta"
 # =============================================================================
 
 CI_CHANNEL_API_PATH: Final[str] = "/api/channel"
-CI_CHANNEL_SWITCH_API_PATH: Final[str] = "/api/channel/switch"

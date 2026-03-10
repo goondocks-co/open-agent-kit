@@ -1,6 +1,6 @@
 ---
 title: Release Process
-description: How to cut stable, beta, and TestPyPI releases for open-agent-kit.
+description: How to cut stable, pre-release, and TestPyPI releases for open-agent-kit.
 ---
 
 This document describes the release process for `oak-ci`. All releases are cut directly from `main` (trunk-based development).
@@ -43,46 +43,31 @@ uv tool install oak-ci --python python3.13
 
 ---
 
-### Beta / pre-release
+### Pre-release (beta, RC, alpha)
 
 Tag `vX.Y.ZbN` (or `rcN`, `aN`) on `main`. The workflow:
 
 1. Builds the Python wheel and sdist.
-2. Creates a GitHub Release marked **pre-release**, with a `⚠️ This is a pre-release` warning and beta install instructions.
-3. Publishes to [PyPI](https://pypi.org/project/oak-ci/) as a PEP 440 pre-release (not installed by default — users must opt in with `--pre`).
-4. Triggers `update-formula.yml` in `goondocks-co/homebrew-oak` to update `Formula/oak-ci-beta.rb`.
+2. Creates a GitHub Release marked **pre-release**.
+3. Publishes to [PyPI](https://pypi.org/project/oak-ci/) as a PEP 440 pre-release.
 
 ```bash
 git tag v0.6.0b1
 git push origin v0.6.0b1
 ```
 
-**User install:**
+**Switching to pre-release channel:**
 
-```bash
-# Homebrew (macOS) — installs the binary as `oak-beta`
-brew install goondocks-co/oak/oak-ci-beta
+Users on an existing OAK install can switch to the beta channel from the
+daemon UI (About dialog) or by editing `~/.oak/update.yaml`:
 
-# pipx
-pipx install oak-ci --python python3.13 --pip-args='--pre' --suffix=-beta
-
-# uv
-uv tool install oak-ci --python python3.13 --prerelease=allow
-
-# pip
-pip install oak-ci --pre
+```yaml
+update:
+  channel: beta
 ```
 
-**After installing, initialise your project with the beta binary:**
-
-```bash
-oak-beta init
-```
-
-Running `oak-beta init` automatically configures your project to use `oak-beta`
-in hooks and skills (via the `cli_command` setting in `.oak/config.yaml`).
-You can also switch channels from the daemon UI — open the **About** dialog
-(Info icon in the sidebar) and click **Switch to Beta / Stable**.
+The daemon automatically checks for and downloads pre-release versions
+via the self-update system.
 
 ---
 
@@ -115,7 +100,7 @@ pip install oak-ci --index-url https://test.pypi.org/simple/ --extra-index-url h
 4. Monitor the [Release workflow](https://github.com/goondocks-co/actions/workflows/release.yml).
 5. Verify the GitHub Release was created with the correct `prerelease` flag.
 6. For stable: confirm [PyPI](https://pypi.org/project/oak-ci/) shows the new version and `brew upgrade oak-ci` works.
-7. For beta: confirm PyPI shows the pre-release and `brew install goondocks-co/oak/oak-ci-beta` works.
+7. For pre-release: confirm PyPI shows the pre-release version.
 
 ## Homebrew tap
 
@@ -124,6 +109,5 @@ The tap lives at [`goondocks-co/homebrew-oak`](https://github.com/goondocks-co/h
 | Formula | Channel | Class |
 |---|---|---|
 | `Formula/oak-ci.rb` | Stable | `OakCi` |
-| `Formula/oak-ci-beta.rb` | Beta / pre-release | `OakCiBeta` |
 
-Both formulas are updated automatically by the `update-formula.yml` workflow, which is triggered by `release.yml` passing `formula=oak-ci` or `formula=oak-ci-beta` respectively. The `HOMEBREW_TAP_TOKEN` secret must have `workflow` scope on the `goondocks-co/homebrew-oak` repo.
+The formula is updated automatically by the `update-formula.yml` workflow, which is triggered by `release.yml` on stable releases. The `HOMEBREW_TAP_TOKEN` secret must have `workflow` scope on the `goondocks-co/homebrew-oak` repo.

@@ -485,8 +485,6 @@ from open_agent_kit.features.team.constants.daemon import (
     CI_AUTH_HEADER_NAME,
     CI_AUTH_SCHEME_BEARER,
     CI_AUTH_WARNING_NO_TOKEN,
-    CI_CLI_HINT_TIMEOUT,
-    CI_CLI_HINT_VERSION_MISMATCH,
     CI_CLI_VERSION_FILE,
     CI_CORS_ALLOWED_HEADERS,
     CI_CORS_ALLOWED_METHODS,
@@ -780,7 +778,6 @@ from open_agent_kit.features.team.constants.release_channel import (
     CI_CHANNEL_API_PATH,
     CI_CHANNEL_BETA,
     CI_CHANNEL_STABLE,
-    CI_CHANNEL_SWITCH_API_PATH,
 )
 from open_agent_kit.features.team.constants.search import (
     CHUNK_TYPE_CLASS,

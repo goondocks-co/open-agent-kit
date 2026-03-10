@@ -1,4 +1,4 @@
-version: 1.5.5.dev1+gd4d04bdc8.d20260310
+version: 1.5.5
 agents:
 - vscode-copilot
 - opencode
@@ -149,5 +149,6 @@ team:
     custom_domain: openagentkit.app
     deployed_template_hash: dfaa2f96bbab4b051d16bcac18416b2260012da550542ecee95dba1fc6da472a
     auto_connect: true
+    token: hvAf3OuBkDpotcWaYta72GSC1mNZGMS7taVS2wZuMkc
 swarm:
   swarm_url: https://oak-swarm-oss-swarm.openagentkit.app

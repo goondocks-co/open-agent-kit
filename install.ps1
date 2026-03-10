@@ -16,10 +16,6 @@ $MinPythonMajor = 3
 $MinPythonMinor = 12
 $MaxPythonMinor = 13
 
-# Channel: "stable" (default) or "beta" (pre-release).
-# Override: $env:OAK_CHANNEL = "beta"; irm .../install.ps1 | iex
-$OakChannel = if ($env:OAK_CHANNEL) { $env:OAK_CHANNEL } else { "stable" }
-
 function Write-Info  { param($Msg) Write-Host "==> $Msg" -ForegroundColor Blue }
 function Write-Ok    { param($Msg) Write-Host "==> $Msg" -ForegroundColor Green }
 function Write-Warn  { param($Msg) Write-Host "warning: $Msg" -ForegroundColor Yellow }
@@ -55,22 +51,12 @@ function Test-PythonVersion {
 function Install-WithPipx {
     param($VersionSpec)
     Write-Info "Installing with pipx..."
-    if ($OakChannel -eq "beta") {
-        # Beta: --suffix=-beta produces the `oak-beta` binary so stable and beta coexist.
-        # Skip pre-uninstall; the suffixed app is independent of the stable install.
-        if ($VersionSpec) {
-            pipx install --pip-args='--pre' --suffix=-beta "${Package}==${VersionSpec}"
-        } else {
-            pipx install --pip-args='--pre' --suffix=-beta $Package
-        }
+    # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
+    pipx uninstall $Package 2>$null | Out-Null
+    if ($VersionSpec) {
+        pipx install "${Package}==${VersionSpec}"
     } else {
-        # Uninstall first — pipx ignores --python when --force is passed (pipx >=1.8)
-        pipx uninstall $Package 2>$null | Out-Null
-        if ($VersionSpec) {
-            pipx install "${Package}==${VersionSpec}"
-        } else {
-            pipx install $Package
-        }
+        pipx install $Package
     }
 }
 
@@ -79,26 +65,20 @@ function Install-WithUv {
     Write-Info "Installing with uv..."
     # Uninstall first to ensure clean install (mirrors pipx workaround)
     uv tool uninstall $Package 2>$null | Out-Null
-    $PreFlag = if ($OakChannel -eq "beta") { "--prerelease=allow" } else { $null }
     if ($VersionSpec) {
-        if ($PreFlag) { uv tool install $PreFlag "${Package}==${VersionSpec}" }
-        else          { uv tool install "${Package}==${VersionSpec}" }
+        uv tool install "${Package}==${VersionSpec}"
     } else {
-        if ($PreFlag) { uv tool install $PreFlag $Package }
-        else          { uv tool install $Package }
+        uv tool install $Package
     }
 }
 
 function Install-WithPip {
     param($PythonCmd, $VersionSpec)
     Write-Info "Installing with pip (--user)..."
-    $PreFlag = if ($OakChannel -eq "beta") { "--pre" } else { $null }
     if ($VersionSpec) {
-        if ($PreFlag) { & $PythonCmd -m pip install --user --upgrade $PreFlag "${Package}==${VersionSpec}" }
-        else          { & $PythonCmd -m pip install --user --upgrade "${Package}==${VersionSpec}" }
+        & $PythonCmd -m pip install --user --upgrade "${Package}==${VersionSpec}"
     } else {
-        if ($PreFlag) { & $PythonCmd -m pip install --user --upgrade $PreFlag $Package }
-        else          { & $PythonCmd -m pip install --user --upgrade $Package }
+        & $PythonCmd -m pip install --user --upgrade $Package
     }
 }
 
@@ -172,10 +152,6 @@ function Main {
     Write-Host "  The Intelligence Layer for AI Agents"
     Write-Host ""
 
-    if ($OakChannel -eq "beta") {
-        Write-Info "Channel: beta (pre-release)"
-    }
-
     Write-Info "Detected OS: Windows"
 
     # Find Python
@@ -246,9 +222,7 @@ function Main {
         exit 1
     }
 
-    # The binary name depends on channel + method:
-    # pipx beta uses --suffix=-beta → produces `oak-beta`; all other combos produce `oak`
-    $oakBin = if ($OakChannel -eq "beta" -and $actualMethod -eq "pipx") { "oak-beta" } else { "oak" }
+    $oakBin = "oak"
 
     # Verify installation
     Write-Host ""

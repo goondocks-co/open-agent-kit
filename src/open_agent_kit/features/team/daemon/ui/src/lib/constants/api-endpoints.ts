@@ -105,7 +105,6 @@ export const API_ENDPOINTS = {
 
     // Channel endpoints
     CHANNEL: "/api/channel",
-    CHANNEL_SWITCH: "/api/channel/switch",
 
     // Swarm endpoints
     SWARM_STATUS: "/api/swarm/status",
@@ -121,6 +120,13 @@ export const API_ENDPOINTS = {
     TEAM_MEMBERS: "/api/team/members",
     TEAM_POLICY: "/api/team/policy",
     TEAM_LEAVE: "/api/team/leave",
+
+    // Self-update endpoints
+    UPDATE_STATUS: "/api/update/status",
+    UPDATE_CHECK: "/api/update/check",
+    UPDATE_APPLY: "/api/update/apply",
+    UPDATE_CHANNEL: "/api/update/channel",
+    UPDATE_RELEASE_NOTES: "/api/update/release-notes",
 } as const;
 
 // =============================================================================

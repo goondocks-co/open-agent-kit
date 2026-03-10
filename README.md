@@ -44,26 +44,15 @@ oak init
 <details>
 <summary><strong>Beta / pre-release channel</strong></summary>
 
-```bash
-# Homebrew (macOS) — installs the binary as `oak-beta`
-brew install goondocks-co/oak/oak-ci-beta
+After installing OAK, switch to the beta channel from the daemon UI
+(About dialog) or by editing `~/.oak/update.yaml`:
 
-# Install script (macOS / Linux) — set OAK_CHANNEL=beta
-OAK_CHANNEL=beta curl -fsSL https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.sh | sh
-
-# Install script (Windows PowerShell)
-$env:OAK_CHANNEL = "beta"; irm https://raw.githubusercontent.com/goondocks-co/open-agent-kit/main/install.ps1 | iex
-
-# pipx (manually)
-pipx install oak-ci --python python3.13 --pip-args='--pre' --suffix=-beta
-
-# uv (manually)
-uv tool install oak-ci --python python3.13 --prerelease=allow
+```yaml
+update:
+  channel: beta
 ```
 
-The beta formula installs the binary as `oak-beta`, so stable and beta can coexist.
-After installing, run `oak-beta init` in your project — this automatically sets
-`cli_command: oak-beta` in `.oak/config.yaml` so hooks and skills use the right binary.
+The daemon will automatically check for and download pre-release versions.
 
 </details>
 

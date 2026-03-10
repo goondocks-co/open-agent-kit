@@ -199,6 +199,11 @@ def create_app(
 
     app.include_router(release_channel.router)
 
+    # Self-update routes
+    from open_agent_kit.features.team.daemon.routes.update import create_update_router
+
+    app.include_router(create_update_router(daemon_type="team"))
+
     # Team UI routes (always available -- both client and server mode)
     from open_agent_kit.features.team.daemon.routes.team import (
         router as team_ui_router,

@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 IS_WINDOWS: Final[bool] = sys.platform == "win32"
 IS_POSIX: Final[bool] = os.name == "posix"
 
+# POSIX shell — guaranteed to exist on all POSIX systems.  Used instead of
+# sys.executable because after a Homebrew (or similar) upgrade the old Python
+# interpreter path may no longer exist on disk.
+POSIX_SHELL: Final[str] = "/bin/sh"
+
 
 # =============================================================================
 # File Locking

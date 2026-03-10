@@ -185,29 +185,17 @@ jobs:
 
           ${COMMITS}
 
-          ## Install / Upgrade
+          ## Switch to pre-release channel
 
-          The beta formula installs the binary as \`oak-beta\` so stable and beta can coexist.
+          If you already have OAK installed, switch to the beta channel from the
+          daemon UI (About dialog) or edit \`~/.oak/update.yaml\`:
 
-          \`\`\`bash
-          # Homebrew (macOS) — installs as \`oak-beta\`
-          brew install goondocks-co/oak/oak-ci-beta
-
-          # pipx — installs as \`oak-beta\`
-          pipx install oak-ci --python python3.13 --pip-args='--pre' --suffix=-beta
-
-          # uv
-          uv tool install oak-ci --python python3.13 --prerelease=allow
-
-          # pip
-          pip install oak-ci --pre
+          \`\`\`yaml
+          update:
+            channel: beta
           \`\`\`
 
-          After installing, initialise your project with the beta binary:
-
-          \`\`\`bash
-          oak-beta init
-          \`\`\`
+          The daemon will automatically download and apply pre-release updates.
 
           ## Documentation
 
@@ -342,20 +330,3 @@ jobs:
             -f version="$VERSION" \
             -f formula="oak-ci"
 
-  update-homebrew-beta:
-    name: Update Homebrew Beta Tap
-    runs-on: ubuntu-latest
-    needs: [validate-tag, publish-pypi]
-    if: >-
-      needs.validate-tag.outputs.is_testpypi == 'false' &&
-      needs.validate-tag.outputs.is_prerelease == 'true'
-    steps:
-      - name: Trigger beta tap update
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          VERSION: ${{ needs.validate-tag.outputs.version }}
-        run: |
-          gh workflow run update-formula.yml \
-            -R goondocks-co/homebrew-oak \
-            -f version="$VERSION" \
-            -f formula="oak-ci-beta"

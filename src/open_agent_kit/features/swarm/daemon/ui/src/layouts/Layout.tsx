@@ -25,18 +25,14 @@ import type { AboutDialogConfig } from "@oak/ui/components/ui/about-dialog";
 import { useSwarmStatus } from "@/hooks/use-swarm-status";
 import { useRestart } from "@/hooks/use-restart";
 import { useChannel } from "@/hooks/use-channel";
-import { fetchJson } from "@/lib/api";
-import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
+import { useUpdateStatus, useUpdateCheck, useUpdateApply, useUpdateChannel } from "@/hooks/use-update-status";
+import { API_ENDPOINTS } from "@/lib/constants";
 
 const ABOUT_CONFIG: AboutDialogConfig = {
     title: "Oak Swarm",
     logoSrc: "/favicon.svg",
     channelEndpoint: API_ENDPOINTS.CHANNEL,
-    channelSwitchEndpoint: API_ENDPOINTS.CHANNEL_SWITCH,
     healthEndpoint: API_ENDPOINTS.HEALTH,
-    startCommand: "swarm start",
-    restartPollIntervalMs: RESTART_POLL_INTERVAL_MS,
-    restartTimeoutMs: RESTART_TIMEOUT_MS,
 };
 
 const NAV_ITEMS = [
@@ -58,6 +54,11 @@ export default function Layout() {
     const { data: swarmStatus } = useSwarmStatus();
     const { restart, isRestarting, error: restartError } = useRestart();
     const { data: channelData } = useChannel();
+    const { data: updateStatus } = useUpdateStatus();
+    const updateCheck = useUpdateCheck();
+    const updateApply = useUpdateApply();
+    const updateChannel = useUpdateChannel();
+    const hasUpdate = updateStatus && !updateStatus.exempt && !!updateStatus.staged_update;
 
     const swarmDisplayName = useMemo(
         () => swarmStatus?.swarm_id ? humanizeSlug(swarmStatus.swarm_id) : "Oak Swarm",
@@ -77,7 +78,12 @@ export default function Layout() {
                 onOpenChange={setAboutOpen}
                 config={ABOUT_CONFIG}
                 channelData={channelData}
-                fetchJson={fetchJson as (url: string, init?: RequestInit) => Promise<unknown>}
+                updateStatus={updateStatus}
+                onCheckUpdate={() => updateCheck.mutate()}
+                onApplyUpdate={() => updateApply.mutate()}
+                onSwitchChannel={(channel) => updateChannel.mutate(channel)}
+                isCheckingUpdate={updateCheck.isPending}
+                isApplyingUpdate={updateApply.isPending}
             />
             {/* Sidebar */}
             <aside
@@ -146,7 +152,12 @@ export default function Layout() {
                             collapsed && "justify-center px-2",
                         )}
                     >
-                        <Info className="w-4 h-4 flex-shrink-0" />
+                        <span className="relative flex-shrink-0">
+                            <Info className="w-4 h-4" />
+                            {hasUpdate && (
+                                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-sidebar" />
+                            )}
+                        </span>
                         {!collapsed && <span>About</span>}
                     </button>
 

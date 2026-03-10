@@ -1,6 +1,9 @@
 # Worktrees
 .worktrees/
 
+# Superpowers brainstorm sessions
+.superpowers/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -132,7 +132,7 @@ class SyncCliCommandStage(BaseStage):
 
     Detects sys.argv[0] and persists it to .oak/config.yaml so that
     hook and skill installers (which run later) substitute the correct
-    binary name. Handles oak-beta and oak-dev editable installs.
+    binary name. Handles oak-dev editable installs.
     """
 
     name = "sync_cli_command"

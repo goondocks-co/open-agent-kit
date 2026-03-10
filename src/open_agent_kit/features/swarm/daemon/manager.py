@@ -175,7 +175,7 @@ class SwarmDaemonManager(BaseDaemonManager):
         env[SWARM_ENV_VAR_ID] = self.swarm_id
 
         # Pass the CLI command so the daemon can self-restart using the
-        # correct binary (oak / oak-dev / oak-beta).
+        # correct binary (oak / oak-dev).
         from open_agent_kit.features.team.cli_command import detect_invoked_cli_command
 
         env[SWARM_CLI_COMMAND_ENV_VAR] = detect_invoked_cli_command()
