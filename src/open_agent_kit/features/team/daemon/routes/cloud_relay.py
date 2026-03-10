@@ -320,6 +320,16 @@ async def start_cloud_relay(body: dict | None = None) -> dict:
     ci_config = load_ci_config(project_root)
     relay_config = ci_config.cloud_relay
 
+    # Ensure agent_token exists — may be missing for Workers deployed before
+    # the agent_token feature was added, or on joining nodes that never
+    # received the token from the relay's /config endpoint.
+    if not relay_config.agent_token:
+        relay_config.agent_token = generate_token()
+        ci_config.cloud_relay = relay_config
+        save_ci_config(project_root, ci_config)
+        state.ci_config = None
+        logger.info("Generated missing agent_token for re-deploy")
+
     # Always sync wrangler.toml with current config (handles custom_domain
     # changes without requiring a full re-scaffold).
     render_wrangler_config(
