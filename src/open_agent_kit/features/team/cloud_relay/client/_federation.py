@@ -29,6 +29,7 @@ from open_agent_kit.features.team.constants import (
     CLOUD_RELAY_SEARCH_PATH,
     CLOUD_RELAY_TOOL_CALL_PATH,
     CLOUD_RELAY_WS_TYPE_TOOL_CALL,
+    SEARCH_TYPE_ALL,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,11 +88,16 @@ class FederationMixin:
             url = CLOUD_RELAY_DAEMON_SEARCH_URL_TEMPLATE.format(port=port)
 
             client = self._get_http_client()
+            # Always use "all" for the local daemon search.  The federation
+            # handler already strips code results (line 115), so "all" and
+            # "knowledge" produce identical federated output.  Using "all"
+            # ensures backward compatibility when newer nodes send search
+            # types (e.g. "knowledge") that older daemons don't recognise.
             resp = await client.post(
                 url,
                 json={
                     "query": query.query,
-                    "search_type": query.search_type,
+                    "search_type": SEARCH_TYPE_ALL,
                     "limit": query.limit,
                 },
                 headers=self._auth_headers(),

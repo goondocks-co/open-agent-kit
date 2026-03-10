@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from open_agent_kit.features.team.constants import (
     OBSERVATION_STATUS_RESOLVED,
+    SEARCH_TYPE_PATTERN,
 )
 from open_agent_kit.features.team.daemon.models import (
     BulkAction,
@@ -82,7 +83,7 @@ def _get_retrieval_engine() -> tuple["RetrievalEngine", "DaemonState"]:
 async def search_get(
     query: str = Query(..., min_length=1),
     limit: int = Query(default=20, ge=1, le=100),
-    search_type: str = Query(default="all", pattern="^(all|code|memory|plans|sessions)$"),
+    search_type: str = Query(default="all", pattern=SEARCH_TYPE_PATTERN),
     apply_doc_type_weights: bool = Query(
         default=True, description="Apply doc_type weighting. Disable for translation searches."
     ),

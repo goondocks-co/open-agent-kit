@@ -26,6 +26,7 @@ from open_agent_kit.features.team.constants import (
     OBSERVATION_STATUS_SUPERSEDED,
     SEARCH_TYPE_ALL,
     SEARCH_TYPE_CODE,
+    SEARCH_TYPE_KNOWLEDGE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
@@ -226,6 +227,7 @@ class ToolOperations:
         # Validate search type
         valid_types = (
             SEARCH_TYPE_ALL,
+            SEARCH_TYPE_KNOWLEDGE,
             SEARCH_TYPE_CODE,
             SEARCH_TYPE_MEMORY,
             SEARCH_TYPE_PLANS,
@@ -233,7 +235,7 @@ class ToolOperations:
         )
         search_type = input_data.search_type
         if search_type not in valid_types:
-            search_type = SEARCH_TYPE_ALL
+            search_type = SEARCH_TYPE_KNOWLEDGE
 
         result = self.engine.search(
             query=input_data.query,

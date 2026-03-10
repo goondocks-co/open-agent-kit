@@ -84,19 +84,50 @@ class VectorStore:
             self._wipe_and_reinit()
 
     def _try_init_chromadb(self) -> None:
-        """Attempt to initialize ChromaDB client and collections."""
+        """Attempt to initialize ChromaDB client and collections.
+
+        Environment variables are temporarily masked during initialization to
+        prevent ChromaDB's Settings (Pydantic BaseSettings) from picking up
+        project env vars (e.g., from .env files used by Astro, Vite, or other
+        dev servers).  ChromaDB's Settings has no env_prefix and reads .env
+        files, so any matching var name can silently misconfigure the client.
+        """
+        import os
+
         import chromadb  # type: ignore[import-not-found]
         from chromadb.config import Settings  # type: ignore[import-not-found]
 
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
-        self._client = chromadb.PersistentClient(
-            path=str(self.persist_directory),
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True,
-            ),
+        # Mask env vars that ChromaDB's Settings would read.
+        # Non-prefixed fields (IS_PERSISTENT, PERSIST_DIRECTORY, etc.) and all
+        # CHROMA_* vars are temporarily removed so project .env / shell exports
+        # cannot interfere with the embedded PersistentClient.
+        _NON_PREFIXED = (
+            "IS_PERSISTENT",
+            "PERSIST_DIRECTORY",
+            "ANONYMIZED_TELEMETRY",
+            "ALLOW_RESET",
+            "ENVIRONMENT",
+            "TENANT_ID",
+            "TOPIC_NAMESPACE",
+            "MIGRATIONS",
+            "MIGRATIONS_HASH_ALGORITHM",
         )
+        mask_keys = [k for k in os.environ if k.startswith("CHROMA")]
+        mask_keys.extend(v for v in _NON_PREFIXED if v in os.environ)
+        saved_env = {k: os.environ.pop(k) for k in mask_keys}
+
+        try:
+            self._client = chromadb.PersistentClient(
+                path=str(self.persist_directory),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True,
+                ),
+            )
+        finally:
+            os.environ.update(saved_env)
 
         # Get embedding dimensions from provider
         embedding_dims = self.embedding_provider.dimensions

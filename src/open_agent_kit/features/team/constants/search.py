@@ -7,17 +7,20 @@ from typing import Final
 # =============================================================================
 
 SEARCH_TYPE_ALL: Final[str] = "all"
+SEARCH_TYPE_KNOWLEDGE: Final[str] = "knowledge"
 SEARCH_TYPE_CODE: Final[str] = "code"
 SEARCH_TYPE_MEMORY: Final[str] = "memory"
 SEARCH_TYPE_PLANS: Final[str] = "plans"
 SEARCH_TYPE_SESSIONS: Final[str] = "sessions"
 VALID_SEARCH_TYPES: Final[tuple[str, ...]] = (
     SEARCH_TYPE_ALL,
+    SEARCH_TYPE_KNOWLEDGE,
     SEARCH_TYPE_CODE,
     SEARCH_TYPE_MEMORY,
     SEARCH_TYPE_PLANS,
     SEARCH_TYPE_SESSIONS,
 )
+SEARCH_TYPE_PATTERN: Final[str] = f"^({'|'.join(VALID_SEARCH_TYPES)})$"
 
 # =============================================================================
 # Chunk Types
@@ -106,3 +109,27 @@ CONFIDENCE_SCORE_LOW: Final[float] = 0.3
 # Tags for auto-captured observations
 TAG_AUTO_CAPTURED: Final[str] = "auto-captured"
 TAG_SESSION_SUMMARY: Final[str] = "session-summary"
+
+# =============================================================================
+# include_network Field Descriptions (shared across MCP tools and schemas)
+# =============================================================================
+
+_NETWORK_BASE: Final[str] = "Gracefully skipped when not in a team."
+
+INCLUDE_NETWORK_DESC_SEARCH: Final[str] = (
+    f"Search across connected team network nodes. {_NETWORK_BASE} "
+    "Not available for code searches."
+)
+INCLUDE_NETWORK_DESC_CONTEXT: Final[str] = (
+    f"Fetch memories from connected team network nodes. {_NETWORK_BASE} "
+    "Code context stays local-only (branch/worktree differences)."
+)
+INCLUDE_NETWORK_DESC_MEMORIES: Final[str] = (
+    f"Fetch memories from connected team network nodes. {_NETWORK_BASE}"
+)
+INCLUDE_NETWORK_DESC_SESSIONS: Final[str] = (
+    f"Fetch sessions from connected team network nodes. {_NETWORK_BASE}"
+)
+INCLUDE_NETWORK_DESC_STATS: Final[str] = (
+    f"Fetch stats from connected team network nodes. {_NETWORK_BASE}"
+)
