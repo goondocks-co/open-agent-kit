@@ -35,10 +35,8 @@ from open_agent_kit.features.swarm.constants import (
     SWARM_RESTART_SUBPROCESS_DELAY_SECONDS,
 )
 from open_agent_kit.utils.daemon_lifecycle import delayed_shutdown
-from open_agent_kit.utils.platform import get_process_detach_kwargs
+from open_agent_kit.utils.platform import POSIX_SHELL, get_process_detach_kwargs
 from open_agent_kit.utils.release_channel import resolve_swarm_cli_command
-
-_SHELL = "/bin/sh"
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +75,7 @@ async def restart_daemon() -> dict:
     logger.info(SWARM_RESTART_LOG_SPAWNING, cli_restart)
     try:
         subprocess.Popen(
-            [_SHELL, "-c", restart_cmd],
+            [POSIX_SHELL, "-c", restart_cmd],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,

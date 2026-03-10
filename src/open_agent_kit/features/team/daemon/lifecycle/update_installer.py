@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 from open_agent_kit.utils.global_config import (
+    LOCK_FILE,
     STAGED_UPDATE_FILE,
     STAGING_DIR,
     UPDATE_ERROR_FILE,
@@ -25,6 +26,12 @@ from open_agent_kit.utils.install_method import (
     InstallMethod,
     detect_install_method,
     get_install_command,
+)
+from open_agent_kit.utils.platform import (
+    POSIX_SHELL,
+    acquire_file_lock,
+    get_process_detach_kwargs,
+    release_file_lock,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,8 +123,37 @@ def apply_staged_update(
 ) -> bool:
     """Apply a staged update by generating and spawning the update script.
 
+    Acquires the update lock so an in-flight download finishes before we
+    read the staged metadata and verify the wheel exists on disk.
+
     Returns True if the script was spawned successfully, False otherwise.
     """
+    lock_path = get_global_oak_dir() / LOCK_FILE
+    lock_fd = None
+    try:
+        lock_fd = lock_path.open("w")
+        acquire_file_lock(lock_fd, blocking=True)
+    except OSError as exc:
+        logger.error("Could not acquire update lock: %s", exc)
+        if lock_fd:
+            lock_fd.close()
+        return False
+
+    try:
+        return _apply_staged_update_locked(project_root, daemon_type)
+    finally:
+        try:
+            release_file_lock(lock_fd)
+        except Exception:
+            pass
+        lock_fd.close()
+
+
+def _apply_staged_update_locked(
+    project_root: Path,
+    daemon_type: str,
+) -> bool:
+    """Inner apply logic, called with the update lock held."""
     staged = read_staged_update()
     if not staged:
         logger.warning("No staged update found")
@@ -152,12 +188,12 @@ def apply_staged_update(
     # Spawn detached subprocess
     try:
         subprocess.Popen(
-            ["/bin/sh", script_path],
+            [POSIX_SHELL, script_path],
             cwd=str(project_root),
-            start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
+            **get_process_detach_kwargs(),
         )
         logger.info("Update script spawned: %s", script_path)
         return True

@@ -46,16 +46,11 @@ from open_agent_kit.features.team.constants import (
 )
 from open_agent_kit.features.team.daemon.state import get_state
 from open_agent_kit.utils.daemon_lifecycle import delayed_shutdown
-from open_agent_kit.utils.platform import get_process_detach_kwargs
+from open_agent_kit.utils.platform import POSIX_SHELL, get_process_detach_kwargs
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=[CI_RESTART_ROUTE_TAG])
-
-# /bin/sh is guaranteed to exist on all POSIX systems.  We use it instead of
-# sys.executable because after a Homebrew (or similar) upgrade the old Python
-# interpreter path baked into the running process may no longer exist on disk.
-_SHELL = "/bin/sh"
 
 
 def _run_upgrade_pipeline(
@@ -140,7 +135,7 @@ async def self_restart() -> dict:
     logger.info(CI_RESTART_LOG_SPAWNING.format(command=f"{cli_command} team restart"))
     try:
         subprocess.Popen(
-            [_SHELL, "-c", restart_cmd],
+            [POSIX_SHELL, "-c", restart_cmd],
             cwd=project_root,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -234,7 +229,7 @@ async def upgrade_and_restart() -> dict:
     logger.info(CI_RESTART_LOG_SPAWNING.format(command=f"{cli_command} team restart"))
     try:
         subprocess.Popen(
-            [_SHELL, "-c", restart_cmd],
+            [POSIX_SHELL, "-c", restart_cmd],
             cwd=str(project_root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

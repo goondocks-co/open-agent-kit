@@ -46,6 +46,7 @@ export interface UpdateStatus {
     error?: string | null;
 }
 
+
 interface AboutDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;

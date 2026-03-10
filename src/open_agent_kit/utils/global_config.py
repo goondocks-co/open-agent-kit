@@ -70,16 +70,15 @@ def load_update_config() -> UpdateConfig:
     """Load update config from ~/.oak/update.yaml, returning defaults if missing."""
     config_path = get_global_oak_dir() / UPDATE_CONFIG_FILE
     try:
-        if config_path.exists():
-            raw = yaml.safe_load(config_path.read_text()) or {}
-            update = raw.get("update", {})
-            return UpdateConfig(
-                channel=update.get("channel", DEFAULT_CHANNEL),
-                auto_download=update.get("auto_download", DEFAULT_AUTO_DOWNLOAD),
-                check_interval_hours=update.get(
-                    "check_interval_hours", DEFAULT_CHECK_INTERVAL_HOURS
-                ),
-            )
+        raw = yaml.safe_load(config_path.read_text()) or {}
+        update = raw.get("update", {})
+        return UpdateConfig(
+            channel=update.get("channel", DEFAULT_CHANNEL),
+            auto_download=update.get("auto_download", DEFAULT_AUTO_DOWNLOAD),
+            check_interval_hours=update.get("check_interval_hours", DEFAULT_CHECK_INTERVAL_HOURS),
+        )
+    except FileNotFoundError:
+        return UpdateConfig()
     except (OSError, yaml.YAMLError) as exc:
         logger.warning("Failed to load update config: %s", exc)
     return UpdateConfig()
@@ -103,8 +102,9 @@ def _read_json(filename: str) -> dict | None:  # type: ignore[type-arg]
     """Read a JSON file from the global dir, returning None if missing."""
     path = get_global_oak_dir() / filename
     try:
-        if path.exists():
-            return json.loads(path.read_text())  # type: ignore[no-any-return]
+        return json.loads(path.read_text())  # type: ignore[no-any-return]
+    except FileNotFoundError:
+        return None
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Failed to read %s: %s", path, exc)
     return None

@@ -11,16 +11,11 @@ import contextlib
 import hashlib
 import json
 import logging
-import sys
 import time
 from collections.abc import Generator
 from typing import Any
 
 import httpx
-
-# fcntl is POSIX-only; Windows is exempt from self-update but we guard the import
-if sys.platform != "win32":
-    import fcntl
 
 from open_agent_kit.utils.global_config import (
     LOCK_FILE,
@@ -29,6 +24,7 @@ from open_agent_kit.utils.global_config import (
     read_staged_update,
     write_staged_update,
 )
+from open_agent_kit.utils.platform import acquire_file_lock, release_file_lock
 from open_agent_kit.utils.release_channel import fetch_pypi_raw
 
 logger = logging.getLogger(__name__)
@@ -69,13 +65,11 @@ def _try_acquire_lock() -> Generator[bool, None, None]:
     try:
         lock_fd = lock_path.open("w")
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            yield True
-        except BlockingIOError:
-            yield False
+            acquired = acquire_file_lock(lock_fd, blocking=False)
+            yield acquired
         finally:
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                release_file_lock(lock_fd)
             except Exception:
                 pass
             lock_fd.close()
@@ -91,12 +85,18 @@ def clean_staging() -> None:
             f.unlink(missing_ok=True)
 
 
-async def download_and_stage(version: str, channel: str = "stable") -> bool:
+async def download_and_stage(
+    version: str,
+    channel: str = "stable",
+    pypi_raw: bytes | None = None,
+) -> bool:
     """Download a wheel from PyPI and stage it for installation.
 
     Args:
         version: The version string to download.
         channel: The update channel that triggered this download.
+        pypi_raw: Optional raw PyPI JSON (reuses data from a prior check
+            to avoid a redundant HTTP request).
 
     Returns True on success, False on failure.
     """
@@ -111,9 +111,13 @@ async def download_and_stage(version: str, channel: str = "stable") -> bool:
             return False
 
         try:
-            # Fetch PyPI metadata (fetch_pypi_raw is synchronous)
-            loop = asyncio.get_running_loop()
-            raw = await loop.run_in_executor(None, fetch_pypi_raw)
+            # Reuse PyPI metadata from prior check, or fetch fresh
+            raw: bytes
+            if pypi_raw is not None:
+                raw = pypi_raw
+            else:
+                loop = asyncio.get_running_loop()
+                raw = await loop.run_in_executor(None, fetch_pypi_raw)
             pypi_data = json.loads(raw)
 
             # Find the wheel

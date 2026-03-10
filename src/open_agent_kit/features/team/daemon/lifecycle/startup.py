@@ -790,7 +790,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from open_agent_kit.features.team.daemon.lifecycle.version_check import (
         check_upgrade_needed,
         check_version,
-        periodic_self_update_check,
         periodic_version_check,
     )
 
@@ -912,10 +911,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     check_upgrade_needed(state)
     version_check_task = asyncio.create_task(periodic_version_check(), name="version_check")
     state.background_tasks.append(version_check_task)
-    self_update_task = asyncio.create_task(
-        periodic_self_update_check(state), name="self_update_check"
-    )
-    state.background_tasks.append(self_update_task)
 
     # Run one immediate governance audit prune (ongoing pruning is power-aware via ActivityProcessor)
     run_governance_prune(state)

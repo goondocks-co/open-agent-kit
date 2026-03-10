@@ -36,6 +36,7 @@ class UpdateCheckResult:
     channel: str = "stable"
     error: str | None = None
     checked_at: float = field(default_factory=time.time)
+    pypi_raw: bytes | None = None
 
 
 def should_check_now(check_interval_hours: int) -> bool:
@@ -96,6 +97,7 @@ async def check_for_update(
             latest_version=str(best) if is_newer else None,
             running_version=running_version,
             channel=config.channel,
+            pypi_raw=raw,
         )
 
         # Record the check

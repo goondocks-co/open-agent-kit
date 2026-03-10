@@ -16,8 +16,16 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from open_agent_kit.constants import VERSION
+from open_agent_kit.features.team.constants.release_channel import (
+    CI_CHANNEL_BETA,
+    CI_CHANNEL_STABLE,
+)
 from open_agent_kit.features.team.daemon.lifecycle.update_checker import (
     check_for_update,
+    should_check_now,
+)
+from open_agent_kit.features.team.daemon.lifecycle.update_downloader import (
+    download_and_stage,
 )
 from open_agent_kit.features.team.daemon.lifecycle.update_installer import (
     apply_staged_update,
@@ -25,6 +33,7 @@ from open_agent_kit.features.team.daemon.lifecycle.update_installer import (
 from open_agent_kit.features.team.daemon.state import get_state
 from open_agent_kit.utils.daemon_lifecycle import delayed_shutdown
 from open_agent_kit.utils.global_config import (
+    UpdateConfig,
     ensure_global_dir,
     load_update_config,
     read_last_check,
@@ -36,7 +45,7 @@ from open_agent_kit.utils.update_exempt import check_update_exempt
 
 logger = logging.getLogger(__name__)
 
-VALID_CHANNELS = ("stable", "beta")
+VALID_CHANNELS = (CI_CHANNEL_STABLE, CI_CHANNEL_BETA)
 GITHUB_RELEASES_URL = (
     "https://api.github.com/repos/goondocks-co/open-agent-kit/releases/tags/v{version}"
 )
@@ -59,7 +68,12 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
 
     @router.get("/status")
     async def update_status() -> dict:
-        """Return current self-update state."""
+        """Return current self-update state.
+
+        Triggers a background PyPI check when ``last_check`` is stale,
+        so UI polling naturally drives update detection without needing
+        a separate background loop.
+        """
         exemption = check_update_exempt()
         if exemption:
             return {"exempt": True, "reason": exemption.reason, "message": exemption.message}
@@ -68,6 +82,13 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
         staged = read_staged_update()
         last_check = read_last_check()
         error = read_update_error()
+
+        # Trigger a background check if the last one is stale
+        if should_check_now(config.check_interval_hours):
+            asyncio.create_task(
+                _background_check_and_stage(config),
+                name="update_check_on_read",
+            )
 
         return {
             "exempt": False,
@@ -92,6 +113,19 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
 
         config = load_update_config()
         result = await check_for_update(running_version=VERSION, config=config)
+
+        # Kick off download immediately so user doesn't wait
+        if result.update_available and result.latest_version:
+            staged = read_staged_update()
+            if not staged or staged.get("version") != result.latest_version:
+                asyncio.create_task(
+                    download_and_stage(
+                        result.latest_version,
+                        channel=config.channel,
+                        pypi_raw=result.pypi_raw,
+                    ),
+                    name="update_download_manual",
+                )
 
         return {
             "update_available": result.update_available,
@@ -165,6 +199,25 @@ def create_update_router(daemon_type: str = "team") -> APIRouter:
             "channel": config.channel,
             "message": f"Switched to {config.channel} channel.",
         }
+
+    async def _background_check_and_stage(config: UpdateConfig) -> None:
+        """Run a PyPI check and optional download in the background.
+
+        Shared by the status endpoint (check-on-read) and the manual check
+        endpoint. Swallows all exceptions so fire-and-forget callers are safe.
+        """
+        try:
+            result = await check_for_update(running_version=VERSION, config=config)
+            if result.update_available and config.auto_download and result.latest_version:
+                staged = read_staged_update()
+                if not staged or staged.get("version") != result.latest_version:
+                    await download_and_stage(
+                        result.latest_version,
+                        channel=config.channel,
+                        pypi_raw=result.pypi_raw,
+                    )
+        except Exception as exc:
+            logger.warning("Background update check failed: %s", exc)
 
     @router.get("/release-notes")
     async def update_release_notes(version: str) -> dict:
