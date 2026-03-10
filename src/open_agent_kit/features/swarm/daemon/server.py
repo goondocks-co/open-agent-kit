@@ -144,6 +144,11 @@ def create_app() -> FastAPI:
     app.include_router(tools.router)
     app.include_router(release_channel.router)
 
+    # Self-update routes
+    from open_agent_kit.features.team.daemon.routes.update import create_update_router
+
+    app.include_router(create_update_router(daemon_type="swarm"))
+
     # Static files for UI
     static_dir = Path(__file__).parent / "static"
     if static_dir.is_dir():
