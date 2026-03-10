@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, CheckCircle2, ArrowUpCircle, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "./button";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -27,12 +27,50 @@ export interface AboutDialogConfig {
     restartTimeoutMs?: number;
 }
 
+/** Staged update waiting to be applied */
+export interface StagedUpdate {
+    version: string;
+    wheel_path: string;
+    downloaded_at: string;
+}
+
+/** Last update check result */
+export interface LastCheck {
+    timestamp: number;
+    version: string;
+    update_available: boolean;
+}
+
+/** Update status from the self-update API */
+export interface UpdateStatus {
+    exempt: boolean;
+    reason?: string;
+    message?: string;
+    running_version?: string;
+    channel?: string;
+    auto_download?: boolean;
+    staged_update?: StagedUpdate | null;
+    last_check?: LastCheck | null;
+    error?: string | null;
+}
+
 interface AboutDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     config: AboutDialogConfig;
     channelData: ChannelInfo | undefined;
     fetchJson: (url: string, init?: RequestInit) => Promise<unknown>;
+    /** Update status from the self-update API (optional — omit for swarm or exempt installs) */
+    updateStatus?: UpdateStatus;
+    /** Called when user clicks "Check Now" */
+    onCheckUpdate?: () => void;
+    /** Called when user clicks "Apply Update" */
+    onApplyUpdate?: () => void;
+    /** Called when user toggles the update channel */
+    onSwitchChannel?: (channel: string) => void;
+    /** Whether a check/apply mutation is currently pending */
+    isCheckingUpdate?: boolean;
+    isApplyingUpdate?: boolean;
 }
 
 const DEFAULT_POLL_INTERVAL = 2000;
@@ -210,7 +248,141 @@ function ChannelSection({
     );
 }
 
-export function AboutDialog({ open, onOpenChange, config, channelData, fetchJson }: AboutDialogProps) {
+function formatLastChecked(timestamp: number): string {
+    const diffMs = Date.now() - timestamp * 1000;
+    const diffMins = Math.floor(diffMs / 60_000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
+}
+
+function UpdateSection({
+    updateStatus,
+    onCheckUpdate,
+    onApplyUpdate,
+    onSwitchChannel,
+    isCheckingUpdate,
+    isApplyingUpdate,
+}: {
+    updateStatus: UpdateStatus;
+    onCheckUpdate?: () => void;
+    onApplyUpdate?: () => void;
+    onSwitchChannel?: (channel: string) => void;
+    isCheckingUpdate?: boolean;
+    isApplyingUpdate?: boolean;
+}) {
+    if (updateStatus.exempt) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                {updateStatus.message ?? "Self-update not available for this install."}
+            </div>
+        );
+    }
+
+    const hasUpdate = !!updateStatus.staged_update;
+    const channel = updateStatus.channel ?? "stable";
+    const lastCheck = updateStatus.last_check;
+
+    return (
+        <div className="space-y-3">
+            {/* Version + status row */}
+            <div className="flex items-center gap-2">
+                {hasUpdate ? (
+                    <ArrowUpCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                ) : (
+                    <CheckCircle2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                )}
+                <span className="text-sm font-medium">
+                    {hasUpdate
+                        ? `Update ready: v${updateStatus.staged_update!.version}`
+                        : "Up to date"}
+                </span>
+                {updateStatus.running_version && (
+                    <span className="text-xs text-muted-foreground">
+                        (running v{updateStatus.running_version})
+                    </span>
+                )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 pl-6">
+                {hasUpdate && onApplyUpdate && (
+                    <Button
+                        size="sm"
+                        onClick={onApplyUpdate}
+                        disabled={isApplyingUpdate}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                        {isApplyingUpdate ? (
+                            <>
+                                <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                                Applying&hellip;
+                            </>
+                        ) : (
+                            "Apply Update"
+                        )}
+                    </Button>
+                )}
+                {!hasUpdate && onCheckUpdate && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onCheckUpdate}
+                        disabled={isCheckingUpdate}
+                    >
+                        {isCheckingUpdate ? (
+                            <>
+                                <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />
+                                Checking&hellip;
+                            </>
+                        ) : (
+                            "Check Now"
+                        )}
+                    </Button>
+                )}
+            </div>
+
+            {/* Channel toggle */}
+            {onSwitchChannel && (
+                <div className="pl-6 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Channel:</span>
+                    <div className="flex items-center rounded-md bg-muted/50 p-0.5 gap-0.5">
+                        {(["stable", "beta"] as const).map((ch) => (
+                            <button
+                                key={ch}
+                                onClick={() => ch !== channel && onSwitchChannel(ch)}
+                                className={cn(
+                                    "px-2 py-0.5 rounded-sm text-xs font-medium transition-all capitalize",
+                                    ch === channel
+                                        ? "bg-background shadow-sm text-foreground"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                {ch === "beta" ? "Beta" : "Stable"}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Last checked */}
+            {lastCheck && (
+                <p className="pl-6 text-xs text-muted-foreground">
+                    Last checked {formatLastChecked(lastCheck.timestamp)}
+                </p>
+            )}
+
+            {/* Error */}
+            {updateStatus.error && (
+                <p className="pl-6 text-xs text-destructive">{updateStatus.error}</p>
+            )}
+        </div>
+    );
+}
+
+export function AboutDialog({ open, onOpenChange, config, channelData, fetchJson, updateStatus, onCheckUpdate, onApplyUpdate, onSwitchChannel, isCheckingUpdate, isApplyingUpdate }: AboutDialogProps) {
     return (
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
@@ -239,6 +411,21 @@ export function AboutDialog({ open, onOpenChange, config, channelData, fetchJson
                             <p className="text-sm text-muted-foreground">
                                 Loading channel info&hellip;
                             </p>
+                        )}
+
+                        {/* Update section (optional — only shown when updateStatus is provided) */}
+                        {updateStatus && (
+                            <>
+                                <div className="border-t" />
+                                <UpdateSection
+                                    updateStatus={updateStatus}
+                                    onCheckUpdate={onCheckUpdate}
+                                    onApplyUpdate={onApplyUpdate}
+                                    onSwitchChannel={onSwitchChannel}
+                                    isCheckingUpdate={isCheckingUpdate}
+                                    isApplyingUpdate={isApplyingUpdate}
+                                />
+                            </>
                         )}
 
                         {/* Links */}

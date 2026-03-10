@@ -12,8 +12,8 @@ import type { PowerState } from "@oak/ui/hooks/use-power-state";
 import { useStatus } from "@/hooks/use-status";
 import { useRestart } from "@/hooks/use-restart";
 import { useChannel } from "@/hooks/use-channel";
+import { useUpdateStatus } from "@/hooks/use-update-status";
 import { AboutDialog } from "@/components/about/AboutDialog";
-import { UpdateBanner } from "@/components/ui/update-banner";
 
 import type { LucideIcon } from "lucide-react";
 
@@ -42,6 +42,8 @@ export function Layout() {
     const { data: status } = useStatus();
     const { restart, isRestarting } = useRestart();
     const { data: channelData } = useChannel();
+    const { data: updateStatus } = useUpdateStatus();
+    const hasUpdate = updateStatus && !updateStatus.exempt && !!updateStatus.staged_update;
     const [aboutOpen, setAboutOpen] = useState(false);
     const queryClient = useQueryClient();
     const { state: powerState, reportActivity } = usePowerState();
@@ -174,7 +176,12 @@ export function Layout() {
                             collapsed && "justify-center px-2",
                         )}
                     >
-                        <Info className="w-4 h-4 flex-shrink-0" />
+                        <span className="relative flex-shrink-0">
+                            <Info className="w-4 h-4" />
+                            {hasUpdate && (
+                                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-sidebar" />
+                            )}
+                        </span>
                         {!collapsed && <span>About</span>}
                     </button>
 
@@ -257,13 +264,6 @@ export function Layout() {
             <main className="flex-1 flex flex-col overflow-hidden relative">
                 <div className="flex-1 overflow-y-auto p-8 relative z-10">
                     <div className="max-w-6xl mx-auto">
-                        {(status?.version?.update_available || status?.upgrade?.needed) && (
-                            <UpdateBanner
-                                version={status.version}
-                                upgrade={status.upgrade}
-                                cliCommand={status.cli_command}
-                            />
-                        )}
                         <Outlet />
                     </div>
                 </div>
