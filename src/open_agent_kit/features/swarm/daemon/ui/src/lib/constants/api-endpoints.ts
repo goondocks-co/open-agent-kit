@@ -29,4 +29,11 @@ export const API_ENDPOINTS = {
     CONFIG_MCP: "/api/config/mcp",
     CONFIG_MIN_OAK_VERSION: "/api/config/min-oak-version",
     LOGS: "/api/logs",
+
+    // Self-update endpoints
+    UPDATE_STATUS: "/api/update/status",
+    UPDATE_CHECK: "/api/update/check",
+    UPDATE_APPLY: "/api/update/apply",
+    UPDATE_CHANNEL: "/api/update/channel",
+    UPDATE_RELEASE_NOTES: "/api/update/release-notes",
 } as const;

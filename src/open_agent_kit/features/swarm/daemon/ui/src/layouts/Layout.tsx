@@ -25,6 +25,7 @@ import type { AboutDialogConfig } from "@oak/ui/components/ui/about-dialog";
 import { useSwarmStatus } from "@/hooks/use-swarm-status";
 import { useRestart } from "@/hooks/use-restart";
 import { useChannel } from "@/hooks/use-channel";
+import { useUpdateStatus, useUpdateCheck, useUpdateApply, useUpdateChannel } from "@/hooks/use-update-status";
 import { fetchJson } from "@/lib/api";
 import { API_ENDPOINTS, RESTART_POLL_INTERVAL_MS, RESTART_TIMEOUT_MS } from "@/lib/constants";
 
@@ -58,6 +59,11 @@ export default function Layout() {
     const { data: swarmStatus } = useSwarmStatus();
     const { restart, isRestarting, error: restartError } = useRestart();
     const { data: channelData } = useChannel();
+    const { data: updateStatus } = useUpdateStatus();
+    const updateCheck = useUpdateCheck();
+    const updateApply = useUpdateApply();
+    const updateChannel = useUpdateChannel();
+    const hasUpdate = updateStatus && !updateStatus.exempt && !!updateStatus.staged_update;
 
     const swarmDisplayName = useMemo(
         () => swarmStatus?.swarm_id ? humanizeSlug(swarmStatus.swarm_id) : "Oak Swarm",
@@ -78,6 +84,12 @@ export default function Layout() {
                 config={ABOUT_CONFIG}
                 channelData={channelData}
                 fetchJson={fetchJson as (url: string, init?: RequestInit) => Promise<unknown>}
+                updateStatus={updateStatus}
+                onCheckUpdate={() => updateCheck.mutate()}
+                onApplyUpdate={() => updateApply.mutate()}
+                onSwitchChannel={(channel) => updateChannel.mutate(channel)}
+                isCheckingUpdate={updateCheck.isPending}
+                isApplyingUpdate={updateApply.isPending}
             />
             {/* Sidebar */}
             <aside
@@ -146,7 +158,12 @@ export default function Layout() {
                             collapsed && "justify-center px-2",
                         )}
                     >
-                        <Info className="w-4 h-4 flex-shrink-0" />
+                        <span className="relative flex-shrink-0">
+                            <Info className="w-4 h-4" />
+                            {hasUpdate && (
+                                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-sidebar" />
+                            )}
+                        </span>
                         {!collapsed && <span>About</span>}
                     </button>
 
