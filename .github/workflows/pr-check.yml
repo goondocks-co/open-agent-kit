@@ -1,21 +1,11 @@
 name: PR Validation
 
 on:
-  # OAK is in maintenance mode. The `push` trigger was removed so doc-only
-  # commits to main don't show CI failures from drift in upstream deps. PRs
-  # still trigger full validation if anyone opens one.
-  pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "install.sh"
-      - "install.ps1"
-      - ".github/workflows/**"
+  # OAK is in maintenance mode. Both the `push` and `pull_request` triggers
+  # were removed so doc-only commits and Dependabot bumps don't show CI
+  # failures from drift in upstream deps. The workflow remains here for
+  # reference and can be invoked manually via the Actions tab if needed.
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
