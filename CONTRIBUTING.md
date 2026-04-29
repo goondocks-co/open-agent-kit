@@ -1,6 +1,8 @@
 # Contributing to open-agent-kit
 
 > **OAK is in maintenance mode.** This project is no longer under active development and is not accepting new feature contributions. I have since started [Myco](https://github.com/goondocks-co/myco), a new project originally inspired by ideas explored in OAK. Myco goes beyond memory and unlocks true intelligence for your project and your team.
+>
+> Moving from OAK to Myco? See the [migration guide](https://github.com/goondocks-co/myco/blob/main/docs/migrating-from-oak.md).
 
 Thank you for your interest in contributing to open-agent-kit! This guide covers the essentials for getting started.
 

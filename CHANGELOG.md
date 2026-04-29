@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **OAK is in maintenance mode.** This project is no longer under active development. I have since started [Myco](https://github.com/goondocks-co/myco), a new project originally inspired by ideas explored in OAK. Myco goes beyond memory and unlocks true intelligence for your project and your team.
+- **OAK is in maintenance mode.** This project is no longer under active development. I have since started [Myco](https://github.com/goondocks-co/myco), a new project originally inspired by ideas explored in OAK. Myco goes beyond memory and unlocks true intelligence for your project and your team. Moving over? See the [migration guide](https://github.com/goondocks-co/myco/blob/main/docs/migrating-from-oak.md).
 
 ## [2026-03-20]
 
