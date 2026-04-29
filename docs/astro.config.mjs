@@ -12,6 +12,9 @@ export default defineConfig({
       },
       plugins: [starlightClientMermaid()],
       customCss: ["./src/styles/custom.css"],
+      components: {
+        Banner: "./src/components/Banner.astro",
+      },
       social: [
         {
           icon: "github",

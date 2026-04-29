@@ -1,5 +1,7 @@
 # Open Agent Kit
 
+> **OAK is in maintenance mode.** This project is no longer under active development. I have since started [Myco](https://github.com/goondocks-co/myco), a new project originally inspired by ideas explored in OAK. Myco goes beyond memory and unlocks true intelligence for your project and your team.
+
 [![PR Check](https://github.com/goondocks-co/open-agent-kit/actions/workflows/pr-check.yml/badge.svg)](https://github.com/goondocks-co/open-agent-kit/actions/workflows/pr-check.yml)
 [![Release](https://github.com/goondocks-co/open-agent-kit/actions/workflows/release.yml/badge.svg)](https://github.com/goondocks-co/open-agent-kit/actions/workflows/release.yml)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/goondocks-co/open-agent-kit?sort=semver)
@@ -21,6 +23,9 @@ graph LR
     C --> D[OAK Agents]
     D -->|Docs · Analysis · Insights| E[Your Project]
 ```
+
+<details>
+<summary><strong>Legacy install (maintenance mode)</strong></summary>
 
 ## Quick Start
 
@@ -67,6 +72,8 @@ Start coding!
 ```bash
 claude
 ```
+
+</details>
 
 > **[Full documentation](https://openagentkit.app/)** | **[Quick Start](QUICKSTART.md)** | **[Contributing](CONTRIBUTING.md)**
 

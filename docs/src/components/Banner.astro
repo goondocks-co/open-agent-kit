@@ -1,0 +1,36 @@
+---
+import Default from '@astrojs/starlight/components/Banner.astro';
+---
+
+<aside class="maintenance-banner" aria-label="Maintenance mode notice">
+  <p>
+    <strong>OAK is in maintenance mode.</strong>
+    I have since started <a href="https://myco.sh">Myco</a>, a new project originally inspired by ideas explored in OAK. Myco goes beyond memory and unlocks true intelligence for your project and your team.
+  </p>
+</aside>
+
+<Default><slot /></Default>
+
+<style>
+  .maintenance-banner {
+    background: var(--sl-color-accent-low, #fff8e1);
+    color: var(--sl-color-text, inherit);
+    border-bottom: 1px solid var(--sl-color-accent, #f0b429);
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    text-align: center;
+  }
+
+  .maintenance-banner p {
+    margin: 0;
+    max-width: 72ch;
+    margin-inline: auto;
+  }
+
+  .maintenance-banner a {
+    color: var(--sl-color-accent-high, #b45309);
+    font-weight: 600;
+    text-decoration: underline;
+  }
+</style>
