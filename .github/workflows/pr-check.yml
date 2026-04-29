@@ -1,8 +1,9 @@
 name: PR Validation
 
 on:
-  push:
-    branches: [main]  # Build on main to populate cache for PRs
+  # OAK is in maintenance mode. The `push` trigger was removed so doc-only
+  # commits to main don't show CI failures from drift in upstream deps. PRs
+  # still trigger full validation if anyone opens one.
   pull_request:
     branches:
       - main
